@@ -270,9 +270,17 @@ reporter installed six weeks ago. That needs its own, explicit version.
    - **an unknown `kind` is ignored and counted**, never a rejection of the payload
      carrying it;
    - **an unrecognised value in a closed enum field is coerced to that field's designated
-     unknown member and counted**, never passed through and never a rejection. Every closed
-     enum in this wire contract therefore carries such a member, and a field that has none is
-     not a closed enum for this purpose;
+     unknown member and counted**, never passed through and never a rejection. A field that
+     has no unknown member is not a closed enum for this purpose — **and adding a member to
+     such a field is therefore a rule-4 change: a bump plus a stated window.** That
+     fall-through is stated rather than left implicit because it is the whole cost of
+     omitting an unknown member, and the omission is sometimes right: a value a *producer*
+     mints out of its own logic (rather than passing through from an upstream system) has no
+     benign unknown case, so an unknown member there would silently absorb a producer bug
+     that should be loud. What must not happen is for such a field to be treated as covered
+     by this rule — under atomic ingest, an upgraded producer sending a new member to a
+     not-yet-upgraded receiver would take a rejection for the whole payload, and independent
+     upgrade is the steady state, not an edge case;
    - **both counts are surfaced per seat**, so a producer running ahead of its receiver is a
      visible state rather than a silent one.
 
