@@ -8,6 +8,26 @@ The board is **board 14** on the fleet kanban. Its numeric id lives in exactly o
 
 ---
 
+## Wiring state — measured 2026-08-23
+
+The bridge half of this is **already done**; the sections below describe the whole chain, so
+read them as reference, not as a to-do list. What is true right now:
+
+| Piece | State | How it was checked |
+|---|---|---|
+| board 14 structure | ✅ live | 8 stages, 5 card types, 10 custom fields, 4 swimlanes; 11 cards seeded |
+| bridge `writeback.json` mapping | ✅ deployed | validated through the bridge's own loader in a temp config dir **before** deploying (G-4 makes a bad edit fail every repo closed), with two negative controls proven to throw; `bridge:check` green afterwards |
+| bridge webhook HMAC secret | ✅ written | `<secret_dir>/github/webhook-secret-scope-PupFuzz%2Fmezzanine`, mode 0600 |
+| `KANBAN_WRITEBACK_TOKEN` + `KANBAN_EXPECTED_HOST` | ✅ set by the operator | **not verifiable from an agent seat** — a fine-grained PAT is 403 on both stores, so the first workflow run is the check |
+| **repo webhook** | ⛔ **not created** | needs Webhooks permission the project PAT lacks; see G-13 for the two events it must tick |
+| a successful live promote | ⛔ never run | the release workflow is `push: main` only and no release has landed; G-2 also means the *first* promote must be a dispatch with an explicit base |
+
+⚠ **The bridge's writeback token is a different credential from `KANBAN_WRITEBACK_TOKEN`.**
+`bridge:check` proving the former sees board 14 says nothing about the latter — G-1 stays open
+for the CI token until a dry-run dispatch reports a non-zero census.
+
+---
+
 ## What ships here
 
 | File | What it is |
