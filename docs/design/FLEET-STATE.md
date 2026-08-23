@@ -706,6 +706,16 @@ marked `ended_at` with `closed_by: server_offline`, counting `offline_quiesced_s
 synthesized onto the wire
 ([§ 4.8](#48-what-may-never-mint-a-state)); these are ledger writes only.
 
+**These values outrank [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)'s session-close rule on this
+path, and the order stated above is the reason rather than a preference.** That rule closes whatever
+calls a session close finds still open — but quiescence closes the calls *before* it marks the session
+ended, in the sequence just given, so here the session close finds none: `last_turn_aborted_count` is
+**0**, `session_close_orphans` does not move, and each of those calls is closed once and counted once,
+by `offline_quiesced_calls`. The turn is this paragraph's for the same reason —
+`turn_close_source: server_offline`, not `session_close`. One physical event, one set of values, one
+counter; the alternative is two rules closing one call twice and a drill-down left to guess which of the
+two closes was the real one.
+
 **Quiescence never touches the `stalled` flag or an open attention request, and that is a precedence
 statement rather than an omission.** Reaching `offline` means the seat's `link_state` has *first become*
 `stale` **or** `offline`, which is exactly [§ 4.5](#45-link-states)'s leaving-live trigger — so by the
@@ -759,7 +769,10 @@ gap it exposes:
   stay null, rule 5 would fire and `session_closed_turn_open` would be a member no path can
   select. It therefore derives
   `unknown` / `session_closed_turn_open` — never `idle`, because no `turn.end(stop_hook, [])` was ever
-  observed. Filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-review-loop), item 1.
+  observed. **One means is excepted: offline quiescence**, which closes those calls before it ends the
+  session, so this rule finds none open and [§ 4.6](#46-every-open-fact-has-a-ceiling)'s values and
+  counter are the ones that apply — stated there, where the ordering that decides it lives.
+  Filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-review-loop), item 1.
 - A dead flusher emits nothing at all, and that seat is `stale` at 300 s — long before the turn's
   openness could mislead anyone.
 
