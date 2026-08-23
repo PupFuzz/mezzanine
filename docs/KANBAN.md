@@ -19,8 +19,9 @@ read them as reference, not as a to-do list. What is true right now:
 | bridge `writeback.json` mapping | ✅ deployed | validated through the bridge's own loader in a temp config dir **before** deploying (G-4 makes a bad edit fail every repo closed), with two negative controls proven to throw; `bridge:check` green afterwards |
 | bridge webhook HMAC secret | ✅ written | `<secret_dir>/github/webhook-secret-scope-PupFuzz%2Fmezzanine`, mode 0600 |
 | `KANBAN_WRITEBACK_TOKEN` + `KANBAN_EXPECTED_HOST` | ✅ set by the operator | **not verifiable from an agent seat** — a fine-grained PAT is 403 on both stores, so the first workflow run is the check |
-| **repo webhook** | ⛔ **not created** | needs Webhooks permission the project PAT lacks; see G-13 for the two events it must tick |
-| a successful live promote | ⛔ never run | the release workflow is `push: main` only and no release has landed; G-2 also means the *first* promote must be a dispatch with an explicit base |
+| **repo webhook** | ✅ live | created with **Pull requests + Pushes** (G-13); `ping`, `pull_request` and `push` deliveries all observed `200 OK` from the bridge |
+| the mover, against board 14 | ✅ dry-run proven **both ways** | a Backlog card reports `⊘ not a Shipped-class source stage — SKIPPED`; the same card staged to *Shipped to dev* reports `→ would move 107 → 108`. A one-directional check would not have distinguished a working guard from a broken mover. |
+| a successful live promote | ⛔ never run | still requires a real Actions run — see G-1 and G-16 |
 
 ⚠ **The bridge's writeback token is a different credential from `KANBAN_WRITEBACK_TOKEN`.**
 `bridge:check` proving the former sees board 14 says nothing about the latter — G-1 stays open
@@ -124,6 +125,23 @@ event; a Pull-requests-only webhook fires the open/merge moves and silently neve
 one. Two more halves must both be present in the mapping: `stages.started` **and**
 `started_from_stages`. Exactly one of the two leaves the trigger inert, and with
 `started_from_stages` absent the move is refused outright.
+
+### G-16 — `workflow_dispatch` only resolves from the DEFAULT branch
+The release workflow advertises a dry-run dispatch so the whole path can be rehearsed before
+the irreversible one. **That dispatch does not exist until the workflow file is on the default
+branch (`main`).** With the file only on `dev`, the API answers:
+
+```
+HTTP 404: workflow release-promote-cards.yml not found on the default branch
+```
+
+and `actions/workflows` lists only the lint — a `pull_request` workflow registers from the PR
+head, a `workflow_dispatch` one does not.
+
+**The release path is not broken by this.** A `push: main` trigger fires from the pushed
+commit's own tree, so the workflow arrives and runs on the very merge that lands it. What is
+blocked is *rehearsing* it. Seed `.github/workflows/` onto `main` as its own merge, before any
+release PR, if you want the dry-run before the real thing.
 
 ### G-5 — `.release-pr.json` `promote.api_base` is a credential-exfiltration surface
 It is PR-editable, and it is where `KANBAN_WRITEBACK_TOKEN` gets sent. That is why the
