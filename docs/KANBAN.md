@@ -165,7 +165,7 @@ silently dragging an un-shipped card to terminal. Do not widen the set to make a
 ### Release PRs into `main` must land as MERGE COMMITS
 A squash or rebase merge of the release PR collapses the per-PR subjects the mover correlates
 on. The mover detects a non-merge tip and exits **4** — it still promotes whatever tokens
-survived, then says the set may be SHORT and to verify by hand. `VERSIONING.md § Branch model`
+survived, then says the set may be SHORT and to verify by hand. `docs/VERSIONING.md § Branch model`
 already requires merge commits into `main`; this is the machine that notices when it does not
 happen.
 

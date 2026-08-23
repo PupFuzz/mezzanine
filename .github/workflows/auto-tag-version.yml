@@ -2,13 +2,13 @@
 #
 # WHAT FIRES IT. A push to `main` — i.e. a release PR landing. Nothing else; there is no
 # manual dispatch, because there is no case where a tag should be minted by hand (see
-# VERSIONING.md § The core rules, rule 4).
+# docs/VERSIONING.md § The core rules, rule 4).
 #
 # WHAT IT DOES. Reads `VERSION` at the pushed commit, and puts a LIGHTWEIGHT tag `v<VERSION>`
 # on that commit — so the tag's sha IS the merge commit's sha. That is the whole job: it is
 # TAG-ONLY. It publishes no GitHub Release, uploads no artifact, and deploys nothing. A tag
-# is not a deploy (VERSIONING.md § Deploy is not a tag), and this workflow deliberately does
-# not blur that line by doing both.
+# is not a deploy (docs/VERSIONING.md § Deploy is not a tag), and this workflow deliberately
+# does not blur that line by doing both.
 #
 # WHY CI OWNS THE TAG. A hand-cut tag is cut from whatever the tagger's local clone happened
 # to hold, at whatever moment they remembered — which is how a tag ends up on the wrong
@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
 
           if [ ! -f VERSION ]; then
-            echo "::error::VERSION is missing at ${COMMIT_SHA}. It is the single source of truth for the release version (VERSIONING.md § The core rules, rule 1); this job cannot guess one."
+            echo "::error::VERSION is missing at ${COMMIT_SHA}. It is the single source of truth for the release version (docs/VERSIONING.md § The core rules, rule 1); this job cannot guess one."
             exit 1
           fi
 
@@ -106,7 +106,7 @@ jobs:
           fi
 
           # Lightweight on purpose: the tag's sha then equals the merge commit's sha, which
-          # is what VERSIONING.md states and what makes `git rev-parse v0.1.0` answer with
+          # is what docs/VERSIONING.md states and what makes `git rev-parse v0.1.0` answer with
           # the commit a reader expects. It also needs no committer identity configured.
           git tag "$tag" "$COMMIT_SHA"
 

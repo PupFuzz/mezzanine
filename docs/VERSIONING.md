@@ -6,7 +6,10 @@ does not describe that contract and cannot.
 
 Adapted from `agent-board-toolkit`'s versioning policy: the branch model, the release-PR
 shape and the pre-1.0 bump sizing are deliberately the same, so a reader who knows the
-fleet's other release flow already knows most of this one. Everything from
+fleet's other release flow already knows most of this one. It lives in `docs/` rather than at
+the repo root — a deliberate divergence: in this repo the root is reserved for AI-parsed
+files and human-readable prose lives here. `VERSION` itself stays at the root, because it is
+a data file that tooling reads, not documentation. Everything from
 [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) onward is
 specific to Mezzanine and has no counterpart there.
 
@@ -23,8 +26,8 @@ specific to Mezzanine and has no counterpart there.
 1. **`VERSION` at the repo root is the single source of truth for the repo's version** — one
    semver string, one trailing newline, nothing else. Consumers read it with
    `tr -d '\n' < VERSION`. Today exactly one thing reads it:
-   [`.github/workflows/auto-tag-version.yml`](.github/workflows/auto-tag-version.yml).
-   [`.release-pr.json`](.release-pr.json) deliberately does **not** declare a `version_file`
+   [`.github/workflows/auto-tag-version.yml`](../.github/workflows/auto-tag-version.yml).
+   [`.release-pr.json`](../.release-pr.json) deliberately does **not** declare a `version_file`
    or an `artifacts` set — read that file's own `_note` before adding one. It carries only
    keys something in this repo actually reads, and a second statement of where the version
    lives would be free to drift with nothing binding it.
@@ -39,7 +42,7 @@ specific to Mezzanine and has no counterpart there.
    settled is the obligation. Until #344 lands, the release PR's own body carries the notes,
    so no release ships undescribed in the meantime.
 4. **Tags are minted by CI on `main`. Nobody hand-tags.** After a human merges the release PR
-   into `main`, [`auto-tag-version.yml`](.github/workflows/auto-tag-version.yml) fires on the
+   into `main`, [`auto-tag-version.yml`](../.github/workflows/auto-tag-version.yml) fires on the
    push, reads `VERSION`, and puts a lightweight tag `v<VERSION>` on the merge commit — so
    the tag's sha *is* the merge commit's sha. It is **tag-only**: no GitHub Release, no
    artifact upload, no deploy. It is idempotent (the tag already on this exact commit is a
@@ -151,7 +154,7 @@ cheap; the failure is not recoverable in the moment you notice it.
    and it is a deliberate human gate: an agent does not merge a `main`-targeted PR.
 10. **CI takes it from there on the push to `main`:** `auto-tag-version.yml` mints
     `v<version>`, and
-    [`release-promote-cards.yml`](.github/workflows/release-promote-cards.yml) promotes the
+    [`release-promote-cards.yml`](../.github/workflows/release-promote-cards.yml) promotes the
     board-14 cards named in the released range. Neither is done by hand. ⚠ **The first-ever
     release is different** — the card mover derives its range from the previous release tag
     and there is none yet, so it must be run via `workflow_dispatch` with an explicit `base`

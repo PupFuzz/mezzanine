@@ -52,7 +52,7 @@ release topology is enforced by the repo rather than remembered by whoever click
 
 Which method each branch permits, and everything else about versions — the `VERSION` file,
 release-PR shape, tagging, the two deploy targets, and the wire-compatibility rule between
-`fleet-reporter` and the ingest — is owned by **`VERSIONING.md`** and not restated here.
+`fleet-reporter` and the ingest — is owned by **`docs/VERSIONING.md`** and not restated here.
 
 ## Kanban
 
