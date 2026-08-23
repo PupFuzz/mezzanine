@@ -1527,7 +1527,7 @@ file as bookkeeping. Any event of [§ 3.2](#32-the-activity-event-set)'s activit
 `activity.last_event_time`, `activity.last_received_at` and `activity.last_kind`, so **every activity
 event emits a delta, whether or not it changes the rendered state** — including the ones whose whole
 effect is a drill-down detail, such as the `subagent.stop` at [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end)'s
-E6. That is not a concession: it is what [§ 8.3](#83-the-websocket-delta-feed)'s **8,940**/seat-day
+E6. That is not a concession: it is what [§ 8.3](#83-the-websocket-delta-feed)'s **8,980**/seat-day
 already counts (all 120 subagent events among them), and the alternative — excluding `activity.*` —
 would freeze the quiet age on every connected client between deltas, which is the false-idle class this
 document exists to prevent.
@@ -1552,7 +1552,7 @@ of facts outside the ten, and the closed list means each of them is version-bear
 Every row of that table is **edge-triggered**: it emits on the heartbeat that *changes* the fact and on
 no other, so the population is transitions per seat-day — single digits — and not the 1,440. That is why
 the rule is stated as *the heartbeat that moves nothing but bookkeeping emits no delta* rather than as
-*heartbeats emit no delta*, and why [§ 8.3](#83-the-websocket-delta-feed)'s 8,940 is unchanged by it:
+*heartbeats emit no delta*, and why [§ 8.3](#83-the-websocket-delta-feed)'s 8,980 is unchanged by it:
 that figure counts state-changing **events**, and these edges belong to the same handful-per-day
 population as the sweeper's own `stale` transition, which the figure has never counted either. The
 alternative — suppressing them because their carrier is a heartbeat — is a seat whose `enabled` flip or
@@ -1748,7 +1748,7 @@ different populations by construction ([§ 6.5](#65-the-fold)): a transition row
 [§ 8.2.1](#821-the-seat-state-object) object moves ([§ 6.5](#65-the-fold) names the set). At D1's ceiling a seat's render changes are
 ~1,200/day of turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) plus
 ~200/day of attention edges plus a handful of staleness and ceiling transitions — **~1,400/seat/day**,
-against 8,940 deltas. An earlier draft sized this table at the delta rate; the error was conservative
+against 8,980 deltas. An earlier draft sized this table at the delta rate; the error was conservative
 (it over-sized the store by 1.7 MB/seat-day) but it made two rows of
 [§ 12](#12-every-number-and-where-it-comes-from) claim a derivation they did not have.
 
@@ -2312,9 +2312,12 @@ outbound rate at **4 msg/s** regardless of what the seat does.
 
 **Volume, derived from D1's kind-table ceiling.** State-changing events per seat-day at the ceiling:
 6,000 tool events + 1,200 turn events + 1,440 context samples + 120 subagent + 80 session + 100
-attention = **8,940**, i.e. **0.103 msg/s/seat** before coalescing. For a 50-seat fleet that is
+attention + 40 compaction = **8,980**, i.e. **0.104 msg/s/seat** before coalescing. The population is
+every kind in [D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)'s kind table
+except `reporter.heartbeat`, which is the cross-check that it is complete: D1's own ceiling sum is
+10,420/seat-day, and 10,420 − 1,440 heartbeats = 8,980. For a 50-seat fleet that is
 **5.2 msg/s** and, at the measured 323 B typical delta, **~1.6 KiB/s** per connected client
-(5.17 × 323 B = 1,670 B/s). Heartbeats are **not** in that number and must not
+(5.20 × 323 B = 1,680 B/s). Heartbeats are **not** in that number and must not
 be: an **ordinary** `reporter.heartbeat` — one that moves nothing but the six `delivery` bookkeeping
 members and `reporter.uptime_s` — moves no version-bearing member ([§ 6.5](#65-the-fold)), so it emits no
 delta, and the client's ages come from
@@ -2324,7 +2327,7 @@ carrying no information. The heartbeat that carries *news* is a different case a
 exception set is [§ 6.5](#65-the-fold)'s, named there **once**, closed against the version-bearing one,
 and deliberately not enumerated again here, where a second copy could drift from it.
 Those are **edge-triggered**, single digits per seat-day, and they no more belong in this figure than
-the sweeper's own `stale` transition does: 8,940 counts state-changing **events**, and both classes sit
+the sweeper's own `stale` transition does: 8,980 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
 
 **Message bound: 8 KiB.** The worst-case delta is 6,112 B, measured by serializing
@@ -3178,7 +3181,7 @@ document.
 | Purge batch / budget | 5,000 rows / 60 s | **Chosen** — bounded DELETEs keep the transaction and the binlog small; the wall-clock budget makes a purge that cannot keep up fall behind *visibly* (`purge_backlog_rows`) instead of holding a long transaction | [§ 6.7](#67-retention-and-purge) |
 | `events` table-size alarm | 20 GB | **Derived** — ~2.9× the 50-seat 14-day figure below, so it can only fire on a fleet far larger than planned or a long-dead purge | [§ 6.7](#67-retention-and-purge) |
 | `events` row cost | **~732 B** | **Derived** — 479 B clustered (449 B of columns + ~30 B header) × 1.05, plus 153 B of three secondary index entries × 1.5 for fill and overhead | [§ 6.8](#68-sizing) |
-| Render-state changes per seat-day | **~1,400** | **Derived** — ~1,200 turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) + ~200 attention edges + a handful of staleness and ceiling transitions. **Not** the 8,940 delta rate: a transition row is written only on a `render_state` change and the two are different populations ([§ 6.5](#65-the-fold)) | [§ 6.8](#68-sizing) |
+| Render-state changes per seat-day | **~1,400** | **Derived** — ~1,200 turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) + ~200 attention edges + a handful of staleness and ceiling transitions. **Not** the 8,980 delta rate: a transition row is written only on a `render_state` change and the two are different populations ([§ 6.5](#65-the-fold)) | [§ 6.8](#68-sizing) |
 | Store per seat-day | **~9.7 MB** | **Derived** — 7.6 MB of `events` (10,420 × 732 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~136 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.54 / 1.6 / 6.8 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
@@ -3186,12 +3189,12 @@ document.
 | Fleet snapshot | **7.5 KB** (4 seats) … **91 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
 | Snapshot pagination trigger | 200 seats (~362 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
 | Delta message | **323 B** typical, **6,112 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
-| Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.17 msg/s × the measured 323 B typical delta = 1,670 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
 | Feed message bound | 8 KiB | **Chosen** — 1.34× the measured worst case, so a conforming message cannot breach it and a future field addition that would breaks a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Delta coalescing tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds one seat at 4 msg/s | [§ 8.3](#83-the-websocket-delta-feed) |
-| Delta volume | **8,940/seat/day = 0.103 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
+| Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed heartbeat | 15 s, dead at 45 s | **Derived** — the same assert-and-alarm shape as D1's 60 s/300 s heartbeat pair, scaled to a channel whose round trip is milliseconds; 3× is the same multiple D1's flusher-lock staleness uses against its own cadence | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed outbound queue | 256 messages / 512 KiB | **Derived** — 256 messages is ~49 s of a 50-seat fleet's ceiling traffic: long enough that an ordinary hiccup drains, short enough that a wedged client is noticed within a minute | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
 | `fleet.sweep = stalled` | 60 s | **Derived** — four sweep passes at the 15 s cadence: one missed pass is a hiccup, four is a dead daemon, and the fleet object needs a threshold it can render ([§ 8.2.4](#824-the-fleet-health-object)) | [§ 2.2](#22-fail-posture-per-path) |
