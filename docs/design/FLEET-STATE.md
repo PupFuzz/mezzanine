@@ -1436,11 +1436,20 @@ loop:
            -- is still empty; head moved => zero rows match, nothing advances, and the next pass
            -- folds the new rows through the branch above.  Same class of race as the visibility
            -- lag, and bought the same way -- at the write site, not left to an implementer.
+           fold_window_purged += 1              -- § 7.2, and counted on the PROOF, never on the
+                                                -- write below: window_empty IS the purge, and a
+                                                -- lost race does not un-purge it.  Counted on the
+                                                -- write instead, the lost race admits nothing --
+                                                -- and the next pass jumps that same interval
+                                                -- through the ordinary branch above, which is the
+                                                -- SILENT skip this counter exists to prevent.  One
+                                                -- worker cannot count the episode twice: once the
+                                                -- interleaved batch is committed the window is no
+                                                -- longer empty, so this branch is not reached for
+                                                -- it again.
            UPDATE seat_state SET fold_cursor_event_id    = H,
                                  fold_cursor_received_at = server_now, ...
-            WHERE seat_ref = ? AND head_event_id = H
-           if that UPDATE matched a row:
-             fold_window_purged += 1             -- § 7.2; the skip is counted, never silent
+            WHERE seat_ref = ? AND head_event_id = H   -- the guard is about the CURSOR alone
          -- else: rows exist but are all inside the 2 s visibility lag.  Do NOT advance; wait.
      COMMIT
      if state_version changed: enqueue a delta (§ 8.3)
@@ -1852,7 +1861,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `left_live_cleared_stalls` / `left_live_resolved_attention` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag or resolved an attention request at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while blocked or rate-limited, which is a different story from either state ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
-| `fold_window_purged` | `seat_counters` | seat detail | the fold found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge and advanced the cursor to the head its own emptiness proof covered, rather than re-claiming the seat forever ([§ 6.5](#65-the-fold)); the guarded write means a pass that loses the race to an ingest advances nothing and counts nothing | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
+| `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `feed_resync_required` | `global_counters` | fleet health | a connection was closed for backpressure or a version mismatch | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
@@ -3067,16 +3076,18 @@ below a window that has since aged out.
   head_event_id` with no event above the cursor; then, with the fold paused **between** its emptiness
   proof and its cursor write, commit an ordinary ingest batch for that seat (which writes its events and
   raises `head_event_id` in one transaction, [§ 2.1](#21-processes)). Drive it 20 times, as above.
-- **GREEN:** the cursor never lands above an unfolded event. Either the guarded write matched — cursor =
-  **H**, the head the proof covered, `fold_window_purged` +1 — or the interleaved commit moved the head,
-  the write matched no row, nothing advanced and `fold_window_purged` did not move; and in **both** cases
+- **GREEN:** the cursor never lands above an unfolded event, and **`fold_window_purged` is +1 in both
+  arms** — it records the emptiness proof, which both arms passed — with only the cursor differing:
+  either the guarded write matched and the cursor is **H**, the head the proof covered, or the
+  interleaved commit moved the head, the write matched no row and nothing advanced. In **both** cases
   the next pass folds the interleaved batch and the seat's final state equals a control run in which the
   same batch arrived after the purge branch completed. Assert the applied **event set**, as above.
 - **RED — write the head instead of the proven bound:** restore `fold_cursor_event_id = head_event_id`
   with no `AND head_event_id = H` guard and run the same 20 iterations → a pass that loses the race
-  writes the cursor to the interleaved batch's head, and that batch is **never folded**: no counter
-  moves, no badge fires, `fold_lag_ms` reads 0 because the cursor is at the head. The same silence the
-  visibility-lag RED produces, arriving through the other branch.
+  writes the cursor to the interleaved batch's head, and that batch is **never folded** while nothing
+  records the loss: `fold_window_purged` moves, but it is recording the purge the proof saw and says
+  nothing about the stranded batch; no badge fires; `fold_lag_ms` reads 0 because the cursor is at the
+  head. The same silence the visibility-lag RED produces, arriving through the other branch.
 - **Discriminating control:** the same purged-window fixture with **no** concurrent ingest → the cursor
   advances to `H` on the first pass, `fold_window_purged` = 1, and the seat leaves the claim, so the test
   is known to be capable of reporting "the branch did its job".
