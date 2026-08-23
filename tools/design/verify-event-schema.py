@@ -211,10 +211,180 @@ for i in range(1, len(lines) - 1):
                 f"column names. A legitimate table separation is followed by a header row "
                 f"plus its `|---|` delimiter")
 
+# ---- 9. capped objects: every one is dispositioned, and the exempt ones' arithmetic ------
+# § 6.0 rule 5 obliges a reduction rule of every capped object A SEAT CAN GROW past its cap,
+# and exempts the ones carrying one member per row of a declared table — on arithmetic stated
+# in § 6.14.  Both halves decay silently if nothing re-derives them: a fourth capped object
+# added with neither a rule nor an exemption inherits an obligation nobody notices, and a row
+# added to either member table falsifies a byte count that goes on being quoted.  A written
+# number becomes an authority the passes that falsify it never revisit, so the numbers below
+# are RE-DERIVED from the member tables and the document's own figures are checked against
+# them — never the other way round.
+# every capped object inside `data` is dispositioned: a reduction rule, or a named exemption.
+# The caps themselves are READ FROM the field tables — a cap this tool carried as a literal
+# would be one more number free to disagree with the document it is checking.
+capped, caps = {}, {}
+for i, line in enumerate(lines, 1):
+    if not (line_kind[i - 1] and line.startswith("|")):
+        continue
+    f = re.match(r"^\|\s*`([a-z_][a-z0-9_]*)`\s*\|\s*object\s*\|", line)
+    c = re.search(r"≤\s*([\d.]+)\s*(B|KiB)", line)
+    if not f or not c:
+        continue
+    capped[f"{line_kind[i - 1]}.{f.group(1)}"] = i
+    caps[f.group(1)] = int(float(c.group(1)) * (1024 if c.group(2) == "KiB" else 1))
+    if not re.search(r"reduction rule", line):
+        fail.append(f"L{i}: capped object `{f.group(1)}` states neither a reduction rule nor an "
+                    f"exemption from § 6.0 rule 5 — rule 5's claim is only true of objects that "
+                    f"say which one they are")
+
+WORD = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7}
+
+def rows_of(header_re, start_re=None):
+    """Data rows of the first table whose header matches, optionally after a heading."""
+    i0 = 0
+    if start_re:
+        for i, line in enumerate(lines):
+            if re.match(start_re, line):
+                i0 = i
+                break
+        else:
+            return None
+    for i in range(i0, len(lines)):
+        if re.match(header_re, lines[i]):
+            out, j = [], i + 2                       # skip header + |---| delimiter
+            while j < len(lines) and lines[j].startswith("|"):
+                out.append(lines[j])
+                j += 1
+            return out
+    return None
+
+def names_of(rows):
+    return [m.group(1) for m in (re.match(r"^\|\s*`([a-z_][a-z0-9_]*)`\s*\|", r) for r in rows) if m]
+
+pred_rows = rows_of(r"^\| Predicate \| Branches \|", r"^### 9\.4 ")
+self_rows = rows_of(r"^\| Member \| Asserts \| Stated at \|")
+n_pred = n_self = worst_pred = worst_self = 0
+if pred_rows is None or self_rows is None:
+    fail.append("§ 9.4's predicate table or § 6.14's `selftest` member table not found — the two "
+                "exempt objects' bounds cannot be re-derived, so this gate would report clean "
+                "over an unchecked exemption")
+else:
+    preds, checks = names_of(pred_rows), names_of(self_rows)
+    n_pred, n_self = len(preds), len(checks)
+    # `"name":{"true":N,"false":M}` = 21 B of keys and punctuation + name + two integers at the
+    # JS-safe-integer ceiling § 6.0 admits; `"name":"pass"` = 9 B + name, both values 4 B.
+    digits = len(str(2 ** 53 - 1))
+    sum_pred, sum_self = sum(map(len, preds)), sum(map(len, checks))
+    worst_pred = 2 + n_pred * (21 + 2 * digits) + sum_pred + (n_pred - 1)
+    worst_self = 2 + n_self * 9 + sum_self + (n_self - 1)
+    for label, worst, formula in (
+            ("predicates", worst_pred,
+             rf"2 \+ {n_pred}×\(21 \+ {2 * digits}\) \+ {sum_pred} \+ {n_pred - 1}"),
+            ("selftest", worst_self,
+             rf"2 \+ {n_self}×9 \+ {sum_self} \+ {n_self - 1}")):
+        cap = caps.get(label)
+        if cap is None:
+            fail.append(f"§ 6.14: no cap found on `{label}`'s field-table row — its exemption "
+                        f"from § 6.0 rule 5 rests on a cap this gate cannot read")
+            continue
+        if worst > cap:
+            fail.append(f"§ 6.14 `{label}`: worst case is {worst} B against a {cap} B cap — the "
+                        f"member table has outgrown the exemption, so the field now owes § 6.0 "
+                        f"rule 5 a reduction rule and a `data_truncated` member")
+        if len(re.findall(formula, raw)) == 0:
+            fail.append(f"§ 6.14 `{label}`: no stated arithmetic matches the member table — "
+                        f"expected the terms `{formula}` = {worst} B, re-derived from "
+                        f"{'§ 9.4' if label == 'predicates' else 'the member table'}")
+        # Every figure this document states for these two fields is checked against the
+        # re-derivation, wherever it is restated — § 6.14 derives them, § 6.14's field table and
+        # § 14 quote them, and a quoted number is exactly the kind that survives the pass that
+        # falsifies it.  A line naming BOTH fields is ambiguous and is skipped rather than
+        # guessed at; § 15's register rows are historical and name both by construction.
+        other = "selftest" if label == "predicates" else "predicates"
+        lbl = re.compile(rf"`(?:reporter\.heartbeat\.)?{label}`")
+        oth = re.compile(rf"`(?:reporter\.heartbeat\.)?{other}`")
+        for i, line in enumerate(lines, 1):
+            if not lbl.search(line) or oth.search(line):
+                continue
+            for pat, want, what in (
+                    (r"worst case \**(\d[\d,]*) B", worst, "worst case"),
+                    (r"\**(\d[\d,]*) B\** worst case", worst, "worst case"),
+                    (r"\bat \**(\d[\d,]*) B\b", worst, "worst case"),
+                    (r"(\d+) B under the cap", cap - worst, "headroom"),
+                    (r"(\d+) B spare", cap - worst, "headroom")):
+                for m in re.finditer(pat, line):
+                    stated = int(m.group(1).replace(",", ""))
+                    if stated != want:
+                        fail.append(f"L{i}: stated {what} {stated} B for `{label}` disagrees with "
+                                    f"{want} B re-derived from its member table")
+
+m_three = re.search(r"Exactly (\w+) objects inside `data` carry a serialized cap", raw)
+if not m_three:
+    fail.append("§ 6.0 rule 5 no longer states how many capped objects it partitions — the claim "
+                "it has no silent members is then unfalsifiable")
+elif WORD.get(m_three.group(1)) != len(capped):
+    fail.append(f"§ 6.0 rule 5 claims {m_three.group(1)} capped objects inside `data`; § 6's field "
+                f"tables declare {len(capped)}: {', '.join(sorted(capped))}")
+
+# ---- 10. the heartbeat example is the basis of § 10.3's residency arithmetic --------------
+# § 10.3 sizes a quiet seat's spool from the § 6.14 worked example, and that figure has been
+# wrong twice: once from a 500 B assumption, once from a reading of the example that omitted
+# its `counters` object — each time producing a residency the coupling argument then quoted.
+# The example is right there in the document, so the figure is MEASURED here instead of read
+# off: every number in that paragraph is recomputed from the example on every run.
+hb = None
+for m in re.finditer(r"```json\n(.*?)```", raw, re.S):
+    body = m.group(1)
+    if "…" in body or "..." in body:
+        continue
+    try:
+        obj = json.loads(body)
+    except Exception:
+        continue
+    if isinstance(obj, dict) and obj.get("kind") == "reporter.heartbeat":
+        hb = obj
+hb_bytes = 0
+if hb is None:
+    fail.append("§ 6.14's `reporter.heartbeat` worked example not found or does not parse — "
+                "§ 10.3's residency arithmetic has no measured basis")
+else:
+    ser = lambda o: len(json.dumps(o, separators=(",", ":")).encode())
+    hb_bytes = ser(hb)
+    per_day = hb_bytes * 1440
+    days = 32 * 1024 * 1024 / per_day
+    # § 10.3 is a blockquote and the prose wraps, so match against a line-joined copy:
+    # a check that silently fails to find its subject reports clean over an unread paragraph.
+    flat = re.sub(r"\n>?[ \t]*", " ", raw)
+    checks_103 = [
+        (r"worked example in \[§ 6\.14\]\([^)]*\) serializes to \*\*([\d,]+) B\*\*",
+         hb_bytes, 0, "the example's serialized size"),
+        (r"At ([\d,]+) B, 1,440/day", hb_bytes, 0, "the per-heartbeat size"),
+        (r"1,440/day is \*\*~([\d.]+) MB/day\*\*", per_day / 1e6, 0.05, "MB/day"),
+        (r"fills 32 MiB in \*\*~([\d.]+) days\*\*", days, 0.1, "days to fill the spool"),
+        (r"leaves the oldest event ([\d.]+) days past a 10-day dedup window",
+         days - 10, 0.1, "the margin over the dedup window"),
+        (r"its ([\d,]+) B `counters` object", ser(hb["data"]["counters"]), 0,
+         "the counters object omitted by the earlier reading"),
+    ]
+    for pat, want, tol, what in checks_103:
+        m = re.search(pat, flat)
+        if not m:
+            fail.append(f"§ 10.3: no stated figure matches {what} — expected {want:,.1f} measured "
+                        f"from § 6.14's example, and a paragraph the gate cannot read is a "
+                        f"paragraph nothing re-measures")
+        elif abs(float(m.group(1).replace(",", "")) - want) > tol:
+            fail.append(f"§ 10.3: stated {what} {m.group(1)} disagrees with {want:,.2f} measured "
+                        f"from § 6.14's worked example ({hb_bytes} B serialized)")
+
 print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"enum fields re-derived: {n_enum}, {n_enum - n_unclassified} classified; "
       f"counter-name mentions checked: {n_counter} against {len(wire_fields)} wire fields; "
-      f"blank lines between table rows: {n_table_breaks}")
+      f"blank lines between table rows: {n_table_breaks}; "
+      f"capped objects dispositioned: {len(capped)}; "
+      f"heartbeat example re-serialized: {hb_bytes} B; "
+      f"exempt-object bounds re-derived: predicates {worst_pred} B from {n_pred} members, "
+      f"selftest {worst_self} B from {n_self} members")
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
     for f in fail:

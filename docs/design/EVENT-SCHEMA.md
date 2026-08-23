@@ -110,7 +110,7 @@ one file plus one config; a dependency tree is a supply-chain surface on every a
 | `node fleet-reporter.js hook <HookName>` | one-shot, one process per hook fire | parse stdin, build ≤ 1 event, append to spool, exit 0 |
 | `node fleet-reporter.js statusline` | one-shot, fires on every status-line render | sample context ([§ 6.11](#611-contextsample)), write the session's last-sample state, **pass the wrapped status line through to stdout**, exit 0 |
 | `node fleet-reporter.js flusher` | long-lived, one per seat | own the spool cursor, POST batches, emit heartbeats |
-| `node fleet-reporter.js selftest` | one-shot, run by the installer and by CI | assert config, TLS reachability, accepted schema set, sanitizer fixtures, predicate discrimination, and **`harness_payload_keys`** — the captured-fixture assertion required by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
+| `node fleet-reporter.js selftest` | one-shot, run by the installer and by CI | run the six checks [§ 6.14](#614-reporterheartbeat)'s member table declares — that table names each one and what it asserts, and is the same set the heartbeat reports `pass`/`fail` for, so the subcommand and the wire object cannot drift apart. One of them, **`harness_payload_keys`**, is required outright by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
 
 Hook wiring lives in the seat's Claude Code settings; the complete set of hooks this design
 subscribes to, and what each one produces, is
@@ -939,15 +939,29 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
 5. **A numeric value outside its stated bound is clamped to the nearer bound, emitted, and counted
    `value_clamped.<wire field>`; an object over its stated serialized cap is reduced by the
    deterministic rule its own field table states, and counted `data_truncated.<wire field>`
-   (the grammar is rule 4's).** This rule exists because
+   (the grammar is rule 4's). A capped object owes that rule only where a seat can grow it past its
+   cap: an object carrying one member per row of a table this document declares owes none, and its
+   field table says so with the arithmetic rather than by saying nothing.** This rule exists because
    [§ 12.1](#121-validation-order) step 9 rejects an out-of-bounds integer or an over-cap `data` as
    `422 invalid_event`, [§ 12.4](#124-batches-are-atomic) then rejects all 200 events in the batch,
    and [§ 11.5](#115-retry-and-backoff) quarantines them permanently — so without a producer-side
    rule, *any* bound overrun is an unrecoverable loss of 200 good events. Every bound in
    [§ 6](#6-event-kinds) is therefore a clamp at the reporter and a validation at the ingest, and the
-   two agree by construction. The one object with a cap that a real seat can actually reach is
-   [§ 6.14](#614-reporterheartbeat)'s `counters`, and its reduction rule is stated there with its own
-   `counters_omitted` field. A clamp is a mislabelled field; a rejection is 200 deleted events.
+   two agree by construction. **Exactly three objects inside `data` carry a serialized cap of their
+   own, they resolve two ways, and both ways are named here so this rule has no silent members.**
+   [§ 6.14](#614-reporterheartbeat)'s `counters` is the one a real seat can reach — its open-ended
+   counter families have no member ceiling — and its reduction rule is stated there with its own
+   `counters_omitted` field. `reporter.heartbeat.predicates` and `reporter.heartbeat.selftest` are
+   **exempt, explicitly**: each carries one member per row of a declared table, and
+   [§ 6.14](#614-reporterheartbeat) derives each one's worst-case serialization arithmetically below
+   its cap, so those two caps are guards against a reporter bug rather than paths a seat can take.
+   Neither states a reduction rule, neither owes one, and neither has a `data_truncated` member —
+   which is why [§ 9.3](#93-degradation-counters)'s family has exactly one instance that can fire.
+   *(`data` itself is capped too — 3 KiB, [§ 4.3](#43-common-per-event-fields) — and is not one of
+   the three: its at-cap behaviour is the event-level one that lives with the 4 KiB event cap —
+   truncate `data.descriptor`, flag `oversize:true`, and quarantine-and-count an event still over it
+   ([§ 4.4](#44-size-caps-and-their-derivations), [§ 11.5](#115-retry-and-backoff)).)* A
+   clamp is a mislabelled field; a rejection is 200 deleted events.
 6. An unknown `kind` is treated the same way and for the same reason — accepted, ignored, counted,
    never a rejection ([§ 5](#5-compatibility--what-this-document-owes-the-policy)).
 
@@ -1886,8 +1900,8 @@ predicate rather than folding it in here.
 | `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all monotonic since flusher start; reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
-| `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}` | see below |
-| `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}` | see below |
+| `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **396 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
+| `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`; one member per check the member table below declares, worst case **171 B** — **no reduction rule, and none owed** (same exemption) | see below |
 | `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** | `"9f2c41a7be03d518"` |
 
 **`enabled` rides the heartbeat so a deliberately-disabled seat is distinguishable from a dead one.**
@@ -1925,6 +1939,75 @@ Descending value keeps the loudest signals, name-ascending makes the output iden
 input (a fixture can assert it), and `counters_omitted > 0` is itself a `degraded` condition — a seat
 with too many kinds of trouble to report is reporting that fact.
 
+**`predicates` and `selftest` state no reduction rule because neither can need one, and this is the
+arithmetic that says so.** [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5 obliges a
+reduction rule of every capped object *a seat can grow past its cap*. `counters` is such an object —
+its open-ended counter families (`payload_key_missing.<key>` and the rest) have no member ceiling at
+all, which is exactly what the rule above exists for. These two are the opposite case: each carries
+**one member per row of a table this document declares**, so its worst case is arithmetic rather than
+an estimate, and it sits below the cap. Both figures are on the serialized form with no insignificant
+whitespace — `JSON.stringify`, which is the form every cap in this document is measured on, since a
+spooled event is one `\n`-terminated line ([§ 11.2](#112-spool-line-format)) and the worked examples
+are pretty-printed only for the page — and `tools/design/verify-event-schema.py` **re-derives both from the tables on
+every run**, so a row added to either table reds the gate rather than quietly falsifying a number
+written here.
+
+- **`predicates` — 396 B worst case, 512 B cap.** One member per predicate in
+  [§ 9.4](#94-the-predicate-constant-alarm)'s table, and adding a predicate to the reporter without
+  adding it to that table is already a review-blocking defect there, so that table *is* this object's
+  population. A member serializes as `"name":{"true":N,"false":M}` — 21 B of keys and punctuation,
+  plus the name, plus two integers whose widest admissible value is a JS safe integer
+  ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), 16 digits. The five names total
+  125 B, so: `2 + 5×(21 + 32) + 125 + 4 = 396 B` — two braces, five members at maximum integer width,
+  the names, four separators. That is **116 B under the cap with every branch count at
+  9,007,199,254,740,991**, a value no seat reaches and one rule 5's own clamp forbids exceeding. A
+  sixth predicate fits while its name is ≤ 62 B.
+- **`selftest` — 171 B worst case, 256 B cap.** One member per check the table below declares. A
+  member serializes as `"name":"pass"` — 9 B plus the name — and both values are 4 B, so every
+  combination of results costs the same. The six names total 110 B, so: `2 + 6×9 + 110 + 5 = 171 B`,
+  **85 B under the cap**. Two further checks fit at the 32 B key bound stated below.
+
+**The `selftest` member set, declared here because it was declared nowhere.** [§ 2.1](#21-one-file-four-subcommands)
+says what the `selftest` subcommand asserts; this is the wire object it reports through, one member
+per check, and until this table existed a builder had the four names of the example below and no
+statement of whether the names an example happened to carry were the set — and they were not: the
+example below carried four of these six. That is the defect [§ 9.3](#93-degradation-counters) records
+against `degraded` — a member set stated nowhere is not implementable — one field over.
+
+| Member | Asserts | Stated at |
+|---|---|---|
+| `config_readable` | the seat config parses and passes validation, including the `https://` `ingest_url` rule | [§ 3.1](#31-the-seat-config-file) |
+| `tls_verify` | the ingest is reachable with certificate verification on, and refuses to proceed without it | [§ 3.5](#35-transport-is-wan-always) |
+| `schema_version_accepted` | this reporter's `schema_version` is in the set the ingest's health surface reports — the set this document deliberately does not restate ([§ 15](#15-decisions-taken-revisable-at-review)) | [`docs/VERSIONING.md § Wire compatibility` rule 2](../VERSIONING.md#the-rules) |
+| `sanitizer_fixtures` | every RED fixture redacts to its stated output | [§ 7.5](#75-red-fixtures--required-tests) |
+| `predicate_discrimination` | every predicate in [§ 9.4](#94-the-predicate-constant-alarm)'s table is present in `predicates` and has a criterion its own volume can reach | [§ 9.4](#94-the-predicate-constant-alarm) |
+| `harness_payload_keys` | every payload key this reporter reads is present in that hook's vendored fixture, and every enum value it recognises is a member of the declared set | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
+
+**The keys are declared, not closed at the ingest, and the difference is deliberate.**
+[§ 12.1](#121-validation-order) step 10 validates this object's *shape* — every value in
+`{"pass","fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B, ≤ 256 B serialized — not its key
+set. So a reporter shipping a seventh check ahead of an edit to this table costs one key a consumer
+does not yet render, never a `422` and never a quarantined batch. `degraded` is closed for the
+opposite reason and it is worth being explicit about why they differ: an unrenderable *badge* is a
+hole in the desk's own state model, while an unrecognised self-test result is one line of a
+drill-down. What declaring the set buys here is the bound above, and a consumer that knows which
+checks a healthy seat reports.
+
+**So both fields are exempt from rule 5's reduction-rule obligation by a named structural bound
+rather than by silence.** Their caps are guards against a reporter bug — a member set that grew while
+this document stood still — not operational paths, and neither
+`data_truncated.reporter.heartbeat.predicates` nor `data_truncated.reporter.heartbeat.selftest`
+exists or can fire ([§ 9.3](#93-degradation-counters)). **The three caps also compose under the
+enclosing one:** every heartbeat field at its worst at once — `counters` at its 1.5 KiB cap,
+`predicates` and `selftest` at the two worst cases above, `degraded` carrying all twelve of its
+members, every integer at 16 digits —
+serializes to **2,700 B of the 3 KiB `data` cap** ([§ 4.3](#43-common-per-event-fields)), 372 B spare,
+so the counters rule reducing to 1.5 KiB is what keeps the event valid and nothing else has to. The
+residual is an editor who adds a row to [§ 9.4](#94-the-predicate-constant-alarm)'s table or the one
+above and does not re-run the arithmetic; the verifier re-derives it and
+[AT-22](#at-22-a-maximally-degraded-seat-still-heartbeats) asserts both serializations at their worst
+case, which is what makes this exemption checkable rather than asserted.
+
 ```json
 { "event_id":"01K3TB2P3Q4R5T6W7X8Y9Z0A1B","schema_version":1,"kind":"reporter.heartbeat",
   "event_time":"2026-08-23T14:45:00.000Z","seq":48374,
@@ -1948,7 +2031,8 @@ with too many kinds of trouble to report is reporting that fact.
                   "agent_scope_subagent":{"true":412,"false":2522},
                   "attention_resolved_by_hook":{"true":25,"false":0}},
     "selftest":{"sanitizer_fixtures":"pass","harness_payload_keys":"pass",
-                "config_readable":"pass","tls_verify":"pass"},
+                "config_readable":"pass","tls_verify":"pass",
+                "schema_version_accepted":"pass","predicate_discrimination":"pass"},
     "config_fingerprint":"9f2c41a7be03d518"} }
 ```
 
@@ -2646,7 +2730,7 @@ statusLine processes reach the flusher through the counter sink
 | `open_call_index_overflow` | > 64 concurrent open calls or tombstones | `degraded` |
 | `open_session_index_overflow` | > 16 concurrent open sessions; the least-recently-active was evicted and reaped ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | `degraded` |
 | `value_clamped.<wire field>` | a numeric value or array exceeded its stated bound and was clamped ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5) | `degraded` — a clamp means the reporter's own arithmetic left its declared range |
-| `data_truncated.<wire field>` | an object exceeded its stated serialized cap and was reduced by that field's stated rule | `degraded`, member `counters_omitted`. `reporter.heartbeat.counters` is the **only** field in [§ 6](#6-event-kinds) whose table states a reduction rule, so `data_truncated.reporter.heartbeat.counters` is this family's only instance that can fire today and the count rides the event as `counters_omitted`. A second truncatable field owes *both* a stated reduction rule and a member below — a rule-4 change, not a free addition |
+| `data_truncated.<wire field>` | an object exceeded its stated serialized cap and was reduced by that field's stated rule | `degraded`, member `counters_omitted`. `reporter.heartbeat.counters` is the **only** field in [§ 6](#6-event-kinds) whose table states a reduction rule, so `data_truncated.reporter.heartbeat.counters` is this family's only instance that can fire today and the count rides the event as `counters_omitted`. **That is a derived fact, not an omission:** the wire's two other capped objects, `reporter.heartbeat.predicates` and `reporter.heartbeat.selftest`, are exempt from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's obligation by the arithmetic in [§ 6.14](#614-reporterheartbeat) — each carries one member per declared table row and cannot reach its cap — so they state no rule because they owe none. A field that is genuinely truncatable owes *both* a stated reduction rule and a member below — a rule-4 change, not a free addition |
 | `notification_not_attention.<type>` | a `Notification` whose `notification_type` is not an attention type, so no `attention.request` was emitted ([§ 6.12](#612-attentionrequest)) | informational, and the record that the one emission gate in the design is never silent. Also the measurement of which types a real fleet produces |
 | `dispatch_tool_name.<name>` | which `tool_name` the subagent-dispatch hook actually carried — `Agent` at 2.1.240 ([§ 6.7](#67-subagentspawn)) | informational; a change in the distribution means the harness renamed the tool and this document owes an edit |
 | `payload_key_missing.is_interrupt` | `PostToolUseFailure` arrived without `is_interrupt`, so the close defaulted to `failed` ([§ 6.6](#66-toolend)) | `degraded`; an interrupted call would be mislabelled as a failure while this is non-zero |
@@ -2869,11 +2953,22 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > days, but a **quiet** seat — one emitting little more than its 1,440 daily heartbeats — takes far
 > longer. A heartbeat is not a ~500 B typical event: its `data` alone allows 1.5 KiB of counters plus
 > 512 B of predicates plus 256 B of selftest, and the worked example in
-> [§ 6.14](#614-reporterheartbeat) serializes to ~900 B. At ~900 B, 1,440/day is **~1.3 MB/day**, so a
-> heartbeat-only seat fills 32 MiB in **~25 days** — not the 50+ an earlier draft claimed from a
-> 500 B assumption, and not the ~0.6 MB/day it cited. The conclusion is unchanged and the corrected
-> number makes it *stronger*, not weaker: 25 days still leaves the oldest event 15 days past a 10-day
-> dedup window while it is still queued. Residency has to be bounded by age, and the age bound is the
+> [§ 6.14](#614-reporterheartbeat) serializes to **1,487 B**. At 1,487 B, 1,440/day is
+> **~2.1 MB/day**, so a heartbeat-only seat fills 32 MiB in **~15.7 days**. Two earlier readings of
+> this same paragraph were wrong in the same direction — 50+ days from a 500 B assumption, then
+> ~25 days from a "~900 B" measurement of the worked example **taken with its 524 B `counters` object
+> left out**, which is why the third one is *measured by the gate* rather than read off:
+> `tools/design/verify-event-schema.py` re-serializes that example on every run and reds if any figure
+> in this paragraph disagrees with it. The correction that produced "~25 days" also stopped here:
+> [§ 11.3](#113-rotation-and-the-overflow-policy), [§ 14](#14-every-number-and-where-it-comes-from)
+> and [§ 15](#15-decisions-taken-revisable-at-review) were still carrying the "50+ days" it had
+> replaced, so the fill time now has **one home — this paragraph** — and those three state the
+> property they actually rest on (the fill time exceeds the dedup window) rather than a copy of the
+> number. **The conclusion survives and its margin has narrowed twice**,
+> which argues for holding the age cap rather than relaxing it: 15.7 days still leaves the oldest
+> event 5.7 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
+> event plus its `v`/`t` wrapper ([§ 11.2](#112-spool-line-format)), so the real fill is marginally
+> faster than the event bytes alone. Residency has to be bounded by age, and the age bound is the
 > one the coupling is stated against.
 
 ### 10.4 Batch-level idempotency
@@ -3034,7 +3129,7 @@ correctness depends on it identically. Line size is capped at 4 KiB
 | Bound | Value | Derivation |
 |---|---|---|
 | Total spool | **32 MiB** | at the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling — 10,420 events/seat/day at ~500 B ≈ **5.2 MB/day** — 32 MiB is **~6.4 days** of a busy seat (33.55 MB ÷ 5.21 MB/day). The requirement is "survives the server being down for days"; a working week of a broken deploy fits, at a disk cost nobody will notice on a developer machine |
-| **Residency cap** | **8 days** | a bucket older than 8 days is dropped whatever the spool's size. This is what bounds residency on a *quiet* seat, where 32 MiB would take 50+ days to fill, and it is the bound the 10-day dedup window is coupled to ([§ 10.3](#103-idempotency-and-the-dedup-window)). It is also independently right: a nine-day-old event has no consumer left |
+| **Residency cap** | **8 days** | a bucket older than 8 days is dropped whatever the spool's size. This is what bounds residency on a *quiet* seat, where filling 32 MiB takes longer than the 10-day dedup window is long — [§ 10.3](#103-idempotency-and-the-dedup-window) owns that measurement and this row does not restate it — and it is the bound that window is coupled to. It is also independently right: a nine-day-old event has no consumer left |
 | Overflow unit | one whole hour bucket | O(1) `unlink`, no rewriting of a file another process is appending to |
 | Overflow policy | **drop oldest** | the dashboard's value is *current* state; a week-old queued event has no consumer left. Dropping newest would discard exactly the events that still matter |
 | Loss visibility | `spool_dropped_events` += the dropped file's line count; badge `lossy` | never a silent drop, per [`docs/VERSIONING.md § The failure direction must be safe`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly) |
@@ -3897,6 +3992,17 @@ happen ([§ 6.14](#614-reporterheartbeat)).*
   moment the seat becomes interesting. It is unreachable only because [§ 9.3](#93-degradation-counters)
   declares the member set and both ends validate against the same declaration — which is why a
   `array<enum>` whose members are stated nowhere is a blocker and not a documentation gap.
+- **GREEN — the two capped objects that state no reduction rule, asserted by size, because their
+  exemption from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5 rests on
+  arithmetic and arithmetic can go stale.** Drive both branch counts of every
+  [§ 9.4](#94-the-predicate-constant-alarm) predicate to `Number.MAX_SAFE_INTEGER` and every
+  [§ 6.14](#614-reporterheartbeat) self-test check to `"fail"`, then assert `predicates` and
+  `selftest` serialize to exactly the worst-case byte counts [§ 6.14](#614-reporterheartbeat)
+  derives, both under their caps, with no `data_truncated` counter incremented for either. **Fourth
+  RED:** add a sixth predicate whose name is 63 B — one byte past the headroom that section states —
+  and the object exceeds 512 B, the ingest returns `422 invalid_event`, and the batch is quarantined.
+  That is the whole cost of an editor adding a row to a member table without re-running the
+  arithmetic, and it is why the exemption is written with its arithmetic rather than as an assertion.
 - **RED:** remove the reduction rule and emit every non-zero counter → `data` exceeds 3 KiB, the
   ingest returns `422 invalid_event`, [§ 12.4](#124-batches-are-atomic) rejects the whole batch, and
   [§ 11.5](#115-retry-and-backoff) quarantines it permanently. **The seat's liveness signal dies at
@@ -3945,6 +4051,10 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Open-session index | 16 open sessions | Chosen — far above the two or three terminals a real seat runs, so reaching it is itself the signal; **enforced** by eviction-and-reap, which is what makes `open_sessions`' 0…16 bound real rather than asserted | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Harness build the MEASURED facts are pinned to | Claude Code **2.1.240** | **Measured** — 56 payloads across 10 hook events captured 2026-08-23, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **16** distinct shapes every MEASURED row is read from. The 16 is re-derived from the appendix by the verifier; the 56 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build, and a harness minor bump re-runs the capture | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | `reporter.heartbeat.degraded` length | 12 elements | **Derived** — not chosen: the array carries at most one of each declared member, so its bound *is* the size of [§ 9.3](#93-degradation-counters)'s member table and moves only when that table moves | [§ 9.3](#93-degradation-counters) |
+| `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
+| `reporter.heartbeat.predicates` cap | 512 B; worst case **396 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 5×(21 + 32) + 125 + 4`, both branch counts at the 16-digit JS-safe-integer ceiling. 116 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
+| `reporter.heartbeat.selftest` cap | 256 B; worst case **171 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 6×9 + 110 + 5`. 85 B spare, same exemption, re-derived by the same tool | [§ 6.14](#614-reporterheartbeat) |
+| Worst-case heartbeat `data` | 2,700 B of the 3 KiB cap | **Derived** — every field at its worst at once: `counters` at its cap, `predicates` and `selftest` at the two worst cases above, `degraded` all twelve members, every integer 16 digits. 372 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap | [§ 6.14](#614-reporterheartbeat) |
 | Wire enum fields, and how many are classified | **23**, all of them | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session. Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
 | Compaction close timeout | 10 min | Derived — ~10× a typical one-minute compaction | [§ 6.10](#610-compactionend) |
@@ -3957,7 +4067,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Predicate-constant criteria | 500 evaluations / 24 h (high-volume predicates); 50 / 7 days, or 20 / 7 days for `clear_reap_by_session_end` | **Chosen provisionally** — ~a working day of evidence for a predicate evaluated thousands of times a day, scaled down for the three evaluated tens of times a day, because a threshold above a predicate's own rate is an alarm that can never fire. Re-picked from the first week's per-predicate counts | [§ 9.4](#94-the-predicate-constant-alarm) |
 | Clock-skew badge | 120 s | Derived — 2× heartbeat, above NTP drift, below the 300 s stale threshold so the alarms cannot alias | [§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what) |
 | Dedup window | 10 days | Derived — 25 % above the **8-day residency cap**, which is what bounds how old a delivered event can be. **Moves whenever the residency cap moves** | [§ 10.3](#103-idempotency-and-the-dedup-window) |
-| Spool residency cap | 8 days | Chosen — bounds residency by *age* rather than leaving it to fall out of a volume estimate, which a quiet seat would stretch past 50 days and out of the dedup window | [§ 11.3](#113-rotation-and-the-overflow-policy) |
+| Spool residency cap | 8 days | Chosen — bounds residency by *age* rather than leaving it to fall out of a volume estimate, which on a quiet seat stretches past the 10-day dedup window. The fill time itself is measured in [§ 10.3](#103-idempotency-and-the-dedup-window) from the worked heartbeat and re-measured by the gate; it is deliberately not restated here | [§ 11.3](#113-rotation-and-the-overflow-policy) |
 | Batch-id memory | 24 h | Chosen — covers the retry ladder plus a same-day manual replay; bounded by the 6/min ceiling at ≤ 8,640 rows/seat/day | [§ 10.4](#104-batch-level-idempotency) |
 | Spool bound | 32 MiB | Derived — ~6.4 days at the ceiling rate (33.55 MB ÷ 5.21 MB/day); satisfies "survives the server being down for days" at negligible disk cost | [§ 11.3](#113-rotation-and-the-overflow-policy) |
 | Spool / journal bucket | 1 UTC hour | Chosen — removes rotation-rename races entirely; ~430 events ≈ 215 KB per spool bucket at the ceiling | [§ 11.1](#111-layout) |
@@ -4002,7 +4112,13 @@ was checking it. **Row 38 is the fifth round's**, and it is the same lesson one 
 32's fix stated a *scope* in prose, the prose generalised it to a case it does not hold for, and the
 counter-name and severed-table guards added alongside it are there because the two things this round
 had to correct were both things a previous round had stated correctly in one place and re-minted
-wrongly in another.
+wrongly in another. **Row 39 is the sixth round's**, and it is that lesson one rung lower again: the
+note round 5 added to the truncation counter was true of the field it named and named an obligation
+two *other* fields never discharged, so the close is arithmetic put on the record — and re-derived by
+the gate — rather than prose asserting a bound. **Row 17's amendment is that round's sibling
+finding**, and the same shape again: a quiet-seat fill time superseded twice in
+[§ 10.3](#103-idempotency-and-the-dedup-window) and left standing in the three sections that quote
+it.
 
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
@@ -4022,7 +4138,7 @@ wrongly in another.
 | 14 | **The call index is an append-only journal folded over a flusher-written snapshot** | keep the shared `open-calls.json` rewritten `.tmp`+rename by every hook, or add OS advisory locks | tool calls run in parallel, so the old design was a lost-update generator with no lock and one fixed temp name: a forgotten open call can never be closed, and a healthy seat renders *working* until the orphan timeout. Locking in the hook path would put contention inside the 250 ms budget; appending is the primitive the spool already proves | a fold on every hook invocation (~1 ms per 100 KiB of tail) and a compaction duty for the flusher. Bounded, counted (`index_fold_truncated`), and tested by AT-10 |
 | 15 | **Counters and predicates travel to the flusher through an hour-bucketed append-only sink** | let hook processes write `state.json` directly, or drop the counters that hooks compute | `state.json` is flusher-owned and the counters are computed in short-lived concurrent processes — the earlier draft specified both and reconciled neither, which left [§ 9.4](#94-the-predicate-constant-alarm)'s alarm unbuildable from this document. The sink reuses the spool's own primitive, so there is one concurrency discipline in the design rather than two | one extra small append per process exit, and counters up to one flush interval stale in a heartbeat. StatusLine-side counters remain a floor because the harness cancels renders — stated at [§ 9.3](#93-degradation-counters) rather than hidden |
 | 16 | **A `state.json` reset re-sends from the OLDEST spool bucket** | keep the cursor jump to the newest bucket, or count the skipped lines as loss | the jump discarded up to a full spool — days of events — with no counter and no badge, while [§ 0](#0-overview) item 9 promises a counter for every discarded event. Re-sending is nearly free: dedup absorbs it, and the 10-day window exceeds the 8-day residency cap by design | one extra drain after a rare event, visible as a `duplicates` spike and an `epoch_reset` badge. AT-17 asserts the id-set equality |
-| 17 | **Spool residency is capped by age (8 days) as well as by size (32 MiB)** | derive maximum residency from the size bound and the volume estimate alone | residency-from-size is rate-dependent, and the *quiet* seat is the dangerous one: at heartbeat-only volume a 32 MiB spool takes 50+ days to fill, so its oldest event would age out of the 10-day dedup window while still queued and be re-ingested as new. An age cap makes the dedup coupling exact and rate-independent | a quiet seat's week-old events are dropped and counted rather than kept; that is the same judgement the drop-oldest policy already makes |
+| 17 | **Spool residency is capped by age (8 days) as well as by size (32 MiB)** | derive maximum residency from the size bound and the volume estimate alone | residency-from-size is rate-dependent, and the *quiet* seat is the dangerous one: at heartbeat-only volume a 32 MiB spool takes longer to fill than the 10-day dedup window, so its oldest event would age out of that window while still queued and be re-ingested as new. An age cap makes the dedup coupling exact and rate-independent | a quiet seat's week-old events are dropped and counted rather than kept; that is the same judgement the drop-oldest policy already makes. **Amended 2026-08-23 (round 6):** the fill time this row carried — "50+ days" — had been superseded twice in [§ 10.3](#103-idempotency-and-the-dedup-window) and never here, and [§ 11.3](#113-rotation-and-the-overflow-policy) and [§ 14](#14-every-number-and-where-it-comes-from) carried it too. It is **deleted** at all three rather than re-synced by hand: what this decision rests on is that the fill time exceeds the dedup window, not its value, and the value now has one home that the gate re-measures from the worked heartbeat |
 | 18 | **Exactly one flusher runs per seat: `O_EXCL` lock plus an ownership check on `state.json`** | tolerate brief overlap and let server-side dedup absorb the duplicates | dedup absorbs *events*, not the `seq` counter: two flushers each reading `next_seq = X` produce either a gap (the seat renders `lossy` from nothing) or a duplicated `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing | a losing flusher exits silently (counted). The residual microsecond window is not assumed away: the server counts `seq_collision` |
 | 19 | **`schema_version` rides every event as well as the batch** | keep it batch-only, or make D2 stamp it onto each event at ingest | the policy's rule 1 says *every event* carries it, and the stored event is what gets replayed, quoted and pasted; a field that tells a reader what the other fields **mean** is the last one to leave the durable unit. Making the store stamp it would put a compliance obligation in another document | ~20 B/event (~4 %). Equality with the batch is enforced, so it cannot drift |
 | 20 | **An unrecognised closed-enum value is coerced to the field's unknown member and counted, at both ends** | pass the harness's value through verbatim and let the ingest validate strictly | verbatim pass-through plus atomic batches means one unannounced harness value (`SessionStart.source: "fork"` was exactly this, and is now a known member) destroys up to 200 good events and quarantines them permanently. Coercion costs one mislabelled field | a genuinely new harness state is rendered as `unknown` until this document is updated — visible in `enum_value_unknown.<wire field>`, which is the edit's trigger |
@@ -4044,6 +4160,7 @@ wrongly in another.
 | 36 | **`stalled` has three stated exits and `notification_kind` has three members, not four** | ~~`stalled` with an entry edge and one sentence of exit; `notification_kind` carrying `other` as its unknown member~~ | Both were minted in round 3 and both are the shape this document names elsewhere and forbids. `stalled` had an entry edge and no bounded exit — and because the flusher heartbeats every 60 s regardless of session activity, a `stalled` seat never reaches `stale`, so one transient rate-limit rendered `stalled` for the rest of the day. `notification_kind.other` was the opposite defect: a member **no path can emit**, because the lookup's unrecognised row suppresses the event before rule 4 could coerce anything onto it — a render branch D2 and D3 would build and never reach, on a quarter of the field's surface | **Superseded 2026-08-23 (round 4).** `stalled` clears on the next `turn.start`, on `session.end` (including the 90-minute `inferred_silence` close, so the bound needs no new timer), or on the seat leaving live state; past a `session.end` it renders `unknown`. `other` is deleted and the unknown case lives where it actually is — the counter `enum_value_unknown.notification_type`, the one counter in this design named after a payload key rather than a wire field, stated as the single exception to the grammar. Cost: D2 gains one clearing rule and loses one dead branch |
 | 37 | **The failed-authentication rate limit is evaluated inside [§ 12.1](#121-validation-order) step 4** | ~~step 5, with the other three limits~~ | `Validation order` states "the first failure wins": a request whose token resolves to nothing terminates at step 4 and never reaches step 5, so a limit whose entire subject is *failed* authentications was evaluated only on requests that had already authenticated. It could never return the `429` it declared. This is the same defect class [§ 12.3](#123-rate-limits) already congratulates itself for fixing in this limit's **key** — a counter keyed on the presented string never accumulates past 1 — arriving a second time through its **placement** | **Superseded 2026-08-23 (round 4).** One exception to the ordering, stated at both ends (step 4, and the limit's own row). Cost: the auth check now has a side effect and a second exit status, which is why the attribution table gains the `429` explicitly — it degrades no seat, because a token that resolves to nothing names none. [AT-6](#at-6-unknown-schema-version-is-refused-loudly) case B drives the 61st bad token and carries a distinct-IP negative control |
 | 38 | **`open_calls_at_end` and `aborted_call_ids` are scoped to the reap that produced the event, which differs by `end_reason`** — `(session_id, agent_scope_id ?? "main")` for `stop_hook`/`api_error`, the whole `session_id` for `session_cleared`/`session_ended` | ~~one scope for all four `end_reason` values: the turn reap's, inferred from "a `turn.end` is emitted only where no `agent_id` is present"~~ | The inference conflates *the trigger payload carries no `agent_id`* (true of `SessionEnd`) with *the reap that ran was main-scoped* (false of it). [§ 8.3](#83-the-reap-rules)'s session-boundary rows abort every open call of that `session_id` with no scope filter, so on a `/clear` the subagent's own calls **are** aborted and must be named. Two scopes stated per trigger cost one clause; one scope asserted for all four was wrong on half the triggers | **Amended 2026-08-23 (round 5).** Cost if the wrong version had shipped: a builder implementing [§ 6.4](#64-turnend) as written emits `open_calls_at_end: 1` on [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s trace and **fails [AT-1](#at-1-kill-vs-complete-the-headline-test)**, this document's headline test — the field contract and the acceptance test disagreeing is the one failure mode the register exists to catch. AT-1 Cases B and C now assert the two scopes separately, so the readings are separated by a test |
+| 39 | **A capped object owes a reduction rule only where a seat can grow it past its cap** — `reporter.heartbeat.predicates` and `reporter.heartbeat.selftest` are exempt by stated arithmetic, and `selftest`'s member set is declared so that arithmetic exists | ~~give both fields a reduction rule, a `degraded` member and a `data_truncated` instance, on the ground that [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5 said every capped object states one~~ | Rule 5 asserted a reduction rule for every capped object while two of the three stated none, so the rule named an obligation nothing discharged and a reader could not tell a considered exemption from an omission. Writing the rules would have been worse than the gap: any reduction rule for `selftest` drops self-test results to fit, and the first result dropped on a broken seat is the one naming what broke — [§ 9.2](#92-why-this-is-the-structural-backstop)'s failure mode arriving through the fix for it. Both objects carry one member per row of a table this document declares, so the honest close is the arithmetic, at maximum values: **396 B of 512 B** and **171 B of 256 B** | **New 2026-08-23 (round 6).** Cost: declaring `selftest`'s member set had to key two checks [§ 2.1](#21-one-file-four-subcommands) described in prose and never named — `schema_version_accepted` and `predicate_discrimination` — and those two names are the contestable part of this row. Renaming either is free, because the object's keys are validated as a shape and not as a closed set, which is also why a reporter that ships a seventh check ahead of the table takes no `422`. The residual is an editor who moves a member table without re-running the arithmetic: `tools/design/verify-event-schema.py` re-derives both figures from the tables and [AT-22](#at-22-a-maximally-degraded-seat-still-heartbeats) asserts both serializations at their worst case, with a RED one byte past the headroom |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
