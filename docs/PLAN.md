@@ -98,7 +98,7 @@ in the room, understand it."
 
 **D1 — the wire schema (`docs/design/EVENT-SCHEMA.md`).** The keystone; everything downstream is
 shaped by it, and it is the most expensive thing to get wrong because seats upgrade independently
-of the server (`docs/VERSIONING.md § Wire protocol` already owns the compatibility rules — this
+of the server (`docs/VERSIONING.md § Wire compatibility` already owns the compatibility rules — this
 artifact fills in the fields). Hard requirements it must satisfy:
 - explicit `schema` version field; ingest declares accepted versions; unknown ⇒ **loud reject,
   never silent drop** (a floor that quietly looks idle is worse than one visibly broken);

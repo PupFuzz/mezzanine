@@ -49,7 +49,10 @@
     payload ([§ 17](#17-appendix--the-captured-harness-payloads)), DOCS-CITED with its source and
     date, or UNVERIFIED with its cost — and the reporter's `selftest` asserts its own expectations
     against those fixtures ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read),
-    [AT-21](#at-21-the-harness-fact-drift-guard)).
+    [AT-21](#at-21-the-harness-fact-drift-guard)). The check has **two** bindings, because the first
+    one alone let a wrong value set through three reviews: key names are bound to the installed
+    build's payload schema, and every harness enum's **value set** is bound to the build's own
+    declaration, at every place this document states it.
 
 ```
   Claude Code seat (Linux or Windows)                    │ WAN, TLS 1.2+ │   Mezzanine host
@@ -120,8 +123,12 @@ hook name as `argv[2]` and the hook's JSON payload on stdin.*
 **The reporter ships the fixtures beside itself.** `fixtures/hooks/<HookEventName>.json` is part of
 the installed artifact, not a test-only asset, because `selftest` runs at install time on the seat and
 the `harness_payload_keys` check needs them there
-([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). One file per subscribed hook; their
-content is [§ 17](#17-appendix--the-captured-harness-payloads) verbatim.
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). One file per subscribed hook; each
+carries [§ 17](#17-appendix--the-captured-harness-payloads)'s payload for that hook verbatim, plus
+one added key — `"_source": "capture"` or `"_source": "docs-cited-stub"`, which is how the vendored
+file records whether it is a measurement or a declaration
+([§ 17.1](#171-docs-cited-stubs--the-five-hooks-that-could-not-be-driven)). The appendix does not show
+that key, because there it is the surrounding prose that says which a payload is.
 
 ```json
 {
@@ -597,36 +604,81 @@ NFC-normalised; all integers fit in a JS safe integer.
 **Missing vs null.** A missing key and an explicit `null` are the same thing. The server normalises
 missing → `null` before validation. Producers should send `null` explicitly for legibility.
 
-**Every *harness-sourced* enum carries an unknown member, and it is always the last one listed.**
-`unknown` on [`session.start.source`](#61-sessionstart) and
-[`compaction.start.trigger`](#69-compactionstart); `other` on
-[`session.end.end_reason`](#62-sessionend), on
-[`attention.request.notification_kind`](#612-attentionrequest) and on `reporter_platform`
-([§ 4.2](#42-batch-envelope-fields)).
+**One table classifies every enum field on this wire, and a tool re-derives its population.** The
+population is every row typed `enum` or `array\<enum\>` in [§ 4.2](#42-batch-envelope-fields) and
+[§ 6](#6-event-kinds) — **23 fields** — and `tools/design/verify-event-schema.py` re-derives that
+population from the field tables on every run and fails if any row is missing here. The check is the
+point, not a nicety: an earlier draft carried *two* hand-written lists asserted to partition this same
+population, each claiming completeness, and between them they omitted five fields — which therefore
+inherited neither of the two rules below. A partition asserted by prose decays silently; a partition a
+tool re-derives cannot.
 
-**Reporter-minted enums have no unknown member — and adding a member to one is a rule-4 change.**
-This is the complete list. Nothing outside it is reporter-minted, and every row names the one section
-that owns its value set, because an earlier draft named `close_source` once while it denoted two
-different sets:
+**Which side a field falls on decides its cross-version rule, and that is the only reason the
+classification exists:**
 
-| Reporter-minted enum | Owned by |
-|---|---|
-| `turn.end.end_reason` | [§ 6.4](#64-turnend) |
-| `tool.end.outcome`, `tool.end.abort_reason`, `tool.end.match` | [§ 6.6](#66-toolend) |
-| `tool.end.close_source` *(the six tool-close values)* | [§ 6.6](#66-toolend) |
-| `subagent.stop.outcome` / `.abort_reason` / `.close_source` | [§ 6.8](#68-subagentstop) — the same sets as [§ 6.6](#66-toolend), by reference, never restated |
-| `compaction.end.close_source` *(a **different** set of three)* | [§ 6.10](#610-compactionend) |
-| `context.sample.sample_reason` | [§ 6.11](#611-contextsample) |
-| `attention.request.source` | [§ 6.12](#612-attentionrequest) |
-| `attention.resolved.resolution`, `attention.resolved.resolution_source` | [§ 6.13](#613-attentionresolved) |
+- **Harness-sourced** — the value passes through from a harness payload, so the harness may add a
+  member without telling anyone. Every such field carries an **unknown member**, an unrecognised value
+  is coerced to it and counted (rule 4 below), and adding a member is free under
+  [`docs/VERSIONING.md § Wire compatibility` rule 7](../VERSIONING.md#the-rules).
+- **Reporter-minted** — the value comes from this reporter's own logic, so a value outside the set is a
+  reporter *bug* rather than a harness change. These fields carry **no unknown member** (one stated
+  exception below), and the paragraph after the table is what that costs.
 
-A value outside one of those sets is a reporter bug, not a harness change, and the ingest refuses it
-as `422 invalid_event`. That refusal is deliberate, and it carries a cost that has to be paid out
-loud rather than discovered: because these fields have no unknown member,
+| Wire enum field | Minted by | Unknown member | Value set owned by |
+|---|---|---|---|
+| `reporter_platform` | reporter — Node's `process.platform` | `other` | [§ 4.2](#42-batch-envelope-fields) |
+| `session.start.source` | harness — `SessionStart.source` | `unknown` | [§ 6.1](#61-sessionstart) |
+| `session.end.end_reason` | harness — `SessionEnd.reason`, plus the reporter-added `inferred_silence` | `other` | [§ 6.2](#62-sessionend) |
+| `turn.end.end_reason` | reporter | — | [§ 6.4](#64-turnend) |
+| `turn.end.api_error_type` | harness — `StopFailure.error` | `unrecognised` | [§ 6.4](#64-turnend) |
+| `tool.start.agent_scope` | reporter | — | [§ 6.5](#65-toolstart) |
+| `tool.end.outcome` | reporter | — | [§ 6.6](#66-toolend) |
+| `tool.end.abort_reason` | reporter | — | [§ 6.6](#66-toolend) |
+| `tool.end.duration_source` | reporter | — | [§ 6.6](#66-toolend) |
+| `tool.end.close_source` *(the six tool-close values)* | reporter | — | [§ 6.6](#66-toolend) |
+| `tool.end.match` | reporter | — | [§ 6.6](#66-toolend) |
+| `subagent.stop.outcome` | reporter | — | [§ 6.6](#66-toolend), by reference — never restated |
+| `subagent.stop.abort_reason` | reporter | — | [§ 6.6](#66-toolend), by reference |
+| `subagent.stop.close_source` | reporter | — | [§ 6.6](#66-toolend), by reference |
+| `compaction.start.trigger` | harness — `PreCompact.trigger` | `unknown` | [§ 6.9](#69-compactionstart) |
+| `compaction.end.close_source` *(a **different** set of three)* | reporter | — | [§ 6.10](#610-compactionend) |
+| `context.sample.used_pct_source` | reporter | — | [§ 6.11](#611-contextsample) |
+| `context.sample.sample_reason` | reporter | — | [§ 6.11](#611-contextsample) |
+| `attention.request.source` | reporter | — | [§ 6.12](#612-attentionrequest) |
+| `attention.request.notification_kind` | reporter — a lookup on `notification_type` | — | [§ 6.12](#612-attentionrequest) |
+| `attention.resolved.resolution` | reporter | — | [§ 6.13](#613-attentionresolved) |
+| `attention.resolved.resolution_source` | reporter | — | [§ 6.13](#613-attentionresolved) |
+| `reporter.heartbeat.degraded` *(`array\<enum\>`)* | reporter | — | [§ 9.3](#93-degradation-counters) |
+
+Three of those rows are decisions a reader would otherwise re-open, so they are settled here:
+
+- **`reporter_platform` is reporter-minted and still carries an unknown member** — the one exception,
+  and it is not a hedge. Its source is Node's `process.platform`, an open set outside this document's
+  control, so `other` is a genuine unknown case rather than a swallowed reporter bug. It is on the
+  reporter side because the harness re-capture obligation below does not reach it: no hook payload
+  carries it, and a harness upgrade cannot move it. An earlier draft listed it as harness-sourced,
+  which would have obliged a re-capture that could never observe it.
+- **`turn.end.api_error_type`'s unknown member is `unrecognised`, not `unknown`.** The harness's own
+  `StopFailure.error` set already contains a literal `unknown` member, so coercing to `unknown` would
+  make *"the API said `unknown`"* and *"we did not recognise what the API said"* the same wire value,
+  and `enum_value_unknown.turn.end.api_error_type` — the counter that is supposed to announce the
+  second — would be read against a field that cannot distinguish them. A distinct coercion member
+  costs one enum value and keeps two different facts apart.
+- **`attention.request.notification_kind` is reporter-minted**, because it is produced by a lookup
+  table in [§ 6.12](#612-attentionrequest) and read from no payload. What is harness-sourced is the
+  `notification_type` that lookup reads; its unrecognised case is carried by the counter
+  `enum_value_unknown.notification_type` rather than by any wire value, because the unrecognised case
+  emits no event at all ([§ 6.12](#612-attentionrequest)).
+
+A value outside a **reporter-minted** set is a reporter bug, not a harness change, and the ingest
+refuses it as `422 invalid_event`. That refusal is deliberate, and it carries a cost that has to be
+paid out loud rather than discovered: because those fields have no unknown member,
 [`docs/VERSIONING.md § Wire compatibility` rule 7](../VERSIONING.md#the-rules) **does not cover
 them** — rule 7 says in terms that "a field that has none is not a closed enum for this purpose".
-**So adding a member to any row above is a rule-4 change: a schema-version bump plus a stated support
-window.** Say it here because [§ 6.9](#69-compactionstart) treats exactly such an addition as routine
+**So adding a member to any reporter-minted row above is a rule-4 change: a schema-version bump plus
+a stated support window** — and that obligation now attaches to every reporter-minted row with no
+unknown member, including the five fields an earlier draft's two lists left off between them.
+Say it here because [§ 6.9](#69-compactionstart) treats exactly such an addition as routine
 ("the reap list gains a row — a mechanical change"), and a new reap row adds both an `abort_reason`
 and a `close_source` member. Seats upgrade independently of the server
 ([`docs/VERSIONING.md § Deploy is not a tag`](../VERSIONING.md#deploy-is-not-a-tag--and-mezzanine-has-two-targets)),
@@ -659,7 +711,16 @@ were captured on **2026-08-23** from **Claude Code 2.1.240** on Linux (`claude -
 every hook in the subscription table below to a command that appends its raw stdin to a capture file
 and then driving real sessions headlessly (`claude -p`) down each path: startup, resume, `/clear`, a
 prompt, a succeeding tool call, two genuinely failing tool calls, a subagent dispatch with its own
-inner tool call, and `/compact`. **56 payloads across 10 hook events.** Two further sources are used
+inner tool call, and `/compact`. **56 payloads across 10 hook events**, of which
+[§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **16** distinct payload shapes that
+every MEASURED row below is read from. **Read the two numbers differently, because only one of them is
+checkable.** The 16 and their 10 hooks are re-derived from the appendix by
+`tools/design/verify-harness-facts.py` on every run and every key of every one is asserted against the
+installed binary. The 56 is provenance for the capture *run*: the raw capture files are not committed
+— they carry a real seat's session ids, working directories and prompt text — so no reviewer and no
+tool can falsify a per-hook count taken over them, and this document therefore states its facts
+against the reproduced 16 rather than against a sample size nobody can check. Committing a sanitized
+capture set would make the 56 checkable too, and is the act that would close this. Two further sources are used
 where a path could not be driven on that seat: the vendor hooks reference, and the installed
 harness binary's own payload schema declarations, which name every hook's fields and every closed
 matcher set verbatim and are therefore a *stronger* source than the reference page for key names.
@@ -715,12 +776,12 @@ reference, the measurement wins and the row says so.
 
 | Fact this design rests on | Verbatim key | State |
 |---|---|---|
-| `session_id`, `transcript_path`, `cwd` on every hook payload | `session_id` | **MEASURED** — present on all 56 captures |
-| `hook_event_name` on every hook payload | `hook_event_name` | **MEASURED** — present on all 56; matched `argv[2]` on all 56 |
+| `session_id`, `transcript_path`, `cwd` on every hook payload | `session_id` | **MEASURED** — present on every one of the **16** payloads [§ 17](#17-appendix--the-captured-harness-payloads) reproduces, and on every payload of the capture run behind them |
+| `hook_event_name` on every hook payload | `hook_event_name` | **MEASURED** — present on all **16** reproduced payloads, and matched `argv[2]` on every payload of the capture run |
 | `prompt_id` — one UUID correlating a prompt with every event until the next prompt | `prompt_id` | **MEASURED** — present on `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `Stop`, `SessionEnd`, `PreCompact`; **absent on `SessionStart`** and absent before the first prompt of a process. This is the turn key [§ 6.4](#64-turnend) uses |
 | `permission_mode` on the tool- and turn-scoped hooks | `permission_mode` | **MEASURED** — e.g. `"acceptEdits"`; read as a label only, never gated on |
 | `tool_input.*` (`.command`, `.file_path`, `.pattern`, `.url`, `.query`, `.description`) | `tool_input` | **MEASURED for `.command`/`.description` (Bash) and `.file_path` (Read/Write)**; `.pattern`/`.url`/`.query` **DOCS-CITED** — the capture seat drove no `Grep`/`Glob`/`WebFetch`/`WebSearch` call and the reference enumerates `tool_input` only for `Bash`. Cost if wrong: those four tools' descriptors are `null` and `payload_key_missing.tool_input.<key>` counts it — a label lost, never an event lost. Closed by one capture per tool |
-| `tool_use_id` present on `PreToolUse`, `PostToolUse` **and** `PostToolUseFailure` | `tool_use_id` | **MEASURED** — identical value across the open/close pair on all 9 captured pairs, so `harness_call_ref` should be present on ~100 % of closes ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) |
+| `tool_use_id` present on `PreToolUse`, `PostToolUse` **and** `PostToolUseFailure` | `tool_use_id` | **MEASURED** — identical value across the open/close pair on every pair [§ 17](#17-appendix--the-captured-harness-payloads) reproduces, and on every pair of the capture run, so `harness_call_ref` should be present on ~100 % of closes ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) |
 | `PostToolUse` fires on a tool call that **succeeded**; a failed one fires **`PostToolUseFailure`** instead | — | **MEASURED** — `Bash: exit 3` and `Read` of a missing path both fired `PostToolUseFailure` and no `PostToolUse`. Note the boundary, which is not obvious: a Bash command that *runs* and exits non-zero **inside** a compound command (`false; echo $?`) exits 0 overall and fires `PostToolUse`. The discriminator is the tool call's own success, not the shell's |
 | `PostToolUseFailure` carries `error` (string) and `is_interrupt` (bool) | `error`, `is_interrupt` | **MEASURED** — `{"error":"Exit code 3","is_interrupt":false}`. `is_interrupt` is the harness's own kill-vs-fail discriminator and [§ 6.6](#66-toolend) uses it |
 | `PostToolUse` / `PostToolUseFailure` carry the harness's own `duration_ms` | `duration_ms` | **MEASURED** — 251 ms, 260 ms, 18 ms. Documented as excluding permission-prompt and hook time; [§ 6.6](#66-toolend) prefers it to the reporter's own clock difference |
@@ -736,13 +797,13 @@ reference, the measurement wins and the row says so.
 | `SubagentStart` / `SubagentStop` carry **no** reference to the parent tool call | `tool_use_id` / `parent_tool_use_id` — **do not exist** | **MEASURED** — `SubagentStart`'s complete key set is `{session_id, transcript_path, cwd, prompt_id, agent_id, agent_type, hook_event_name}`. [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) is built on that, and no longer carries a binding rule that cannot execute |
 | **`Stop` does not fire inside a subagent** — a subagent's completion fires `SubagentStop` only | — | **MEASURED** — a turn that dispatched one subagent produced exactly one `Stop`, after the subagent's `SubagentStop` and after the dispatching call's `PostToolUse`. This was the document's highest-cost unverified fact: if `Stop` *had* fired per subagent, [§ 8.3](#83-the-reap-rules)'s reap would have aborted the parent's own in-flight calls and [§ 6.4](#64-turnend) would have minted a false idle per subagent. [§ 8.3](#83-the-reap-rules) is still `agent_id`-scoped, because the scoping is free and fails safe if this ever changes |
 | The subagent-dispatch tool's `tool_name` is **`"Agent"`** on this build | `tool_name` | **MEASURED** — `{"tool_name":"Agent","tool_input":{"description":…,"prompt":…}}`. The model-facing name is `Task`; the *hook payload* says `Agent`. [§ 6.7](#67-subagentspawn) matches the set `{"Agent","Task"}` and counts which fired, because a design keyed on `"Task"` alone would emit no `subagent.spawn` on this build at all |
-| `Stop` carries `stop_hook_active` (bool), `last_assistant_message`, `background_tasks`, `session_crons` | `stop_hook_active` | **MEASURED** — `false` on all 7 captures; settles what an earlier draft parked as unverified. `background_tasks` is **DOCS-CITED** as distinguishing "session is done" from "session is paused waiting on background work" — [§ 6.4](#64-turnend) reads it |
-| **`StopFailure`** fires instead of `Stop` when a turn ends on an API error, with `error` ∈ `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` | `error`, `error_details` | **DOCS-CITED** (binary enum declaration + reference, 2026-08-23). **Not drivable** — driving it means provoking a real rate-limit or outage. Cost if the shape is wrong: `turn.end` is still emitted from the reap path with `end_reason: "api_error"` and a null `api_error_type`, so *stalled* stays reachable and only the sub-classification is lost. Closed by the first real rate-limited turn on an instrumented seat, which `enum_value_unknown.turn.end.api_error_type` will announce |
-| `Notification` carries `notification_type` (string), `message` (string) and `title` (optional) | `notification_type` | **DOCS-CITED** (binary payload schema, 2026-08-23) — **not drivable headlessly**; a notification needs an interactive surface. Note two things the schema settles: a `message` field **does** exist, and `notification_type` is typed as a plain **string**, not a closed enum — so [§ 6.12](#612-attentionrequest) treats it as harness-sourced with an unknown member, exactly as rule 4 requires. There is **no** `notification_metadata` object on this build, so a notification cannot name a tool call |
-| The `notification_type` values this build emits: `permission_prompt`, `idle_prompt`, `agent_needs_input`, `agent_completed`, `auth_success`, `elicitation_complete`, `elicitation_response`, `worker_permission_prompt`, `push_notification`, `computer_use_enter`, `computer_use_exit`, `quota_auto_resume_fired`, `quota_auto_resume_disabled`, `quota_auto_resume_stale` | — | **DOCS-CITED** (14 emit sites read out of the installed binary, 2026-08-23). Treated as an **open** set: [§ 6.12](#612-attentionrequest) classifies a known subset and coerces everything else, so a value this list misses costs one label, never an event |
+| `Stop` carries `stop_hook_active` (bool), `last_assistant_message`, `background_tasks`, `session_crons` | `stop_hook_active` | **MEASURED** — `false` on the reproduced `Stop` capture and on every `Stop` of the capture run; settles what an earlier draft parked as unverified. `background_tasks` is **DOCS-CITED** as distinguishing "session is done" from "session is paused waiting on background work" — [§ 6.4](#64-turnend) reads it |
+| **`StopFailure`** fires instead of `Stop` when a turn ends on an API error, with `error` ∈ `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` | `error`, `error_details` | **DOCS-CITED** (binary enum declaration + reference, 2026-08-23). **Not drivable** — driving it means provoking a real rate-limit or outage. Cost if the shape is wrong: `turn.end` is still emitted from the reap path with `end_reason: "api_error"` and a null `api_error_type`, so *stalled* stays reachable and only the sub-classification is lost. Closed by the first real rate-limited turn on an instrumented seat, which `enum_value_unknown.turn.end.api_error_type` will announce. The eleven values are the harness's; [§ 6.4](#64-turnend) adds a twelfth, `unrecognised`, as the coercion target, because this set's own `unknown` is a real harness member and the two must not collide ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) |
+| `Notification` carries `notification_type` (string), `message` (string) and `title` (optional) | `notification_type` | **DOCS-CITED** (binary payload schema, 2026-08-23) — **not drivable headlessly**; a notification needs an interactive surface. Note two things the schema settles: a `message` field **does** exist, and `notification_type` is typed as a plain **string**, not a closed enum — so the wire contract is an **open set**: [§ 6.12](#612-attentionrequest) emits nothing for a type it does not recognise and counts it as `enum_value_unknown.notification_type`, rather than coercing it onto a wire value, because the suppression happens before rule 4 could reach it. There is **no** `notification_metadata` object on this build, so a notification cannot name a tool call |
+| The `notification_type` value set this build declares — the **16** members of the `Notification` hook's own matcher metadata; the set itself is owned by [§ 6.12](#612-attentionrequest)'s lookup table and is not restated here | `notification_type` | **DOCS-CITED** (the binary's `Notification` matcher declaration, read 2026-08-23, and re-read on every run of `tools/design/verify-harness-facts.py` — see the enum-source table below). Treated as an **open** set on the wire, because the payload types the field as a plain string: [§ 6.12](#612-attentionrequest) classifies the attention-bearing members and coerces everything else, so a value the declared set misses costs one label, never an event. *An earlier draft transcribed **14** values here, omitting `elicitation_dialog` and `elicitation_url_dialog` — the two the `elicitation` branch depends on — and no guard could see it, because the guard bound key names and not value sets* |
 | `PermissionRequest` fires when a tool call needs approval, carrying `tool_name`, `tool_input` and `permission_suggestions` — **and no `tool_use_id`** | `tool_name` | **DOCS-CITED** (binary payload schema, 2026-08-23) — **not drivable headlessly** (`-p` cannot show a prompt). The missing `tool_use_id` is why [§ 6.12](#612-attentionrequest)'s `call_id` is a sole-open heuristic rather than an exact key; that is a measured absence, not an oversight |
 | `PermissionDenied` fires when **auto mode** denies a tool call, carrying `tool_name`, `tool_input`, `tool_use_id` and `reason` | `tool_use_id`, `reason` | **DOCS-CITED** (reference lifecycle table + binary payload schema + the binary's **call site**, which invokes it only under `decisionReason.classifier === "auto-mode"`, read 2026-08-23). The **auto-mode scoping is the load-bearing part**: a *human* clicking "no" on an interactive prompt does **not** fire it, so [§ 6.13](#613-attentionresolved) carries the interactive path as its own row rather than pretending `denied` covers it |
-| A tool call **refused by the permission layer** fires `PreToolUse` and then **no close hook at all** | — | **MEASURED** — a `Write` blocked under `--permission-mode default` produced `PreToolUse` → `Stop`, with no `PostToolUse`, no `PostToolUseFailure`, no `PermissionDenied` and no `Notification` on this headless seat. The ledger entry therefore survives to the `Stop` reap ([§ 8.3](#83-the-reap-rules)) and closes as `aborted`/`turn_boundary` — correct, and [§ 6.6](#66-toolend) names it so an implementer does not read it as a lost close |
+| A tool call **refused by the permission layer** fires `PreToolUse` and then **no close hook at all** | — | **MEASURED** — a `Write` blocked under `--permission-mode default` produced `PreToolUse` → `Stop`, with no `PostToolUse`, no `PostToolUseFailure`, no `PermissionDenied` and no `Notification` on this headless seat. The ledger entry therefore survives to its scope's turn reap ([§ 8.3](#83-the-reap-rules)) — `Stop` in the main agent, `SubagentStop` inside a subagent, where `Stop` does not fire — and closes as `aborted`/`turn_boundary`. Correct, and [§ 6.6](#66-toolend) names it so an implementer does not read it as a lost close |
 | statusLine payload: `context_window.{used_percentage, total_input_tokens, total_output_tokens, context_window_size, current_usage, remaining_percentage}` | `context_window` | **DOCS-CITED** (binary, 2026-08-23) — **not drivable headlessly**: `claude -p` renders no status line, so no statusLine payload was captured. The binary's own builder computes `total_input_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens` and `used_percentage = round(that / context_window_size × 100)`, clamped to 0…100 — **input-only, output tokens excluded**, which is what makes [§ 6.11](#611-contextsample)'s two branches mean the same thing. `used_percentage` is `null` while `current_usage` is null (early session, and after a `/compact` until the next API call) |
 | statusLine is **event-driven** with a ~300 ms debounce; an in-flight status-line script is **cancelled** when a new trigger arrives; a timed re-render happens only under `refreshInterval` | — | **DOCS-CITED** (reference, 2026-08-23) — why [§ 6.11](#611-contextsample) states a ceiling rather than a reduction ratio, and why statusLine-side counters are a floor ([§ 9.3](#93-degradation-counters)) |
 | hook exit codes: **2 blocks** the operation and feeds stderr to the model; any other non-zero is a non-blocking error; `SessionStart` and `UserPromptSubmit` stdout is added to the model's context | — | **DOCS-CITED** (reference, 2026-08-23) — the mechanism behind P-1 and P-2 ([§ 2.2](#22-rules-that-protect-the-seat)). The per-event sections add that several hooks ignore exit codes and JSON output entirely; P-1 and P-2 are unaffected because they only ever require exit 0 and silence |
@@ -751,6 +812,54 @@ reference, the measurement wins and the row says so.
 | the `Bash` tool's 10-minute timeout ceiling | — | **UNVERIFIED** against the installed build — the 15-minute orphan timeout ([§ 12.5](#125-late-completions-and-orphan-timeouts)) is derived from it and moves with it. Cost if wrong: a long `Bash` call is orphan-closed server-side before it returns, then re-opened by its late close. Closed by reading the installed build's Bash timeout |
 | nginx `client_max_body_size` on the actual deploy host | — | **UNVERIFIED** — the host is not provisioned yet (`docs/PLAN.md` D-08). Cost if wrong: a `413` on every batch over the real limit, retried once at half size ([§ 11.5](#115-retry-and-backoff)), so a tighter limit degrades throughput rather than losing events. Read it at first deploy ([§ 4.4](#44-size-caps-and-their-derivations)) |
 | `tool_response`'s per-tool schema | — | **UNVERIFIED**, and **not needed**: which hook closed the call carries the error fact ([§ 6.6](#66-toolend)) and `PostToolUseFailure.error` carries the detail. Nothing to close |
+
+#### Harness enum value sets are bound to the binary, not transcribed
+
+The table above binds **key names** to the installed build. It did not bind **value sets**, and that
+one rung is where this document's next defect lived: a `notification_type` row transcribed with 14 of
+the build's 16 declared members, omitting exactly the two that [§ 6.12](#612-attentionrequest)'s
+`elicitation` branch rests on, surviving three review rounds because every guard in the design checked
+that a *key* still existed. Correcting the row would have been instance N+1 of the shape
+[decision 27](#15-decisions-taken-revisable-at-review) already names. So the binding is extended one
+rung down instead:
+
+**Every harness-sourced enum's value set is re-derived from the installed binary on every run of
+`tools/design/verify-harness-facts.py`, and every place this document states that set is asserted
+against it.** The table below is that check's input — not a copy of the sets, which would be the
+defect again, but a map from each set to the binary declaration it is read from and the places this
+document states it. Adding a harness-sourced enum without a row here fails
+`tools/design/verify-event-schema.py`, because that tool re-derives the classification table's
+population independently.
+
+| Harness enum set | Binary declaration | This document states it at | Members this reporter adds |
+|---|---|---|---|
+| `SessionStart.source` | `SessionStart.source` | § 6.0 › `SessionStart.source` | — |
+| `SessionStart.source` | `SessionStart.source` | § 6.1 › `source` | `unknown` |
+| `SessionEnd.reason` | `SessionEnd.reason` | § 6.0 › `SessionEnd` | — |
+| `SessionEnd.reason` | `SessionEnd.reason` | § 6.2 › `end_reason` | `inferred_silence` |
+| `PreCompact.trigger` | `PreCompact.trigger` | § 6.0 › `PreCompact.trigger` | — |
+| `PreCompact.trigger` | `PreCompact.trigger` | § 6.9 › `trigger` | `unknown` |
+| `StopFailure.error` | `StopFailure.error` | § 6.0 › `StopFailure` | — |
+| `StopFailure.error` | `StopFailure.error` | § 6.4 › `api_error_type` | `unrecognised` |
+| `Notification.notification_type` | `Notification.notification_type` | § 6.12 › table `notification_type` | — |
+
+**Why four of those sets are stated twice and one is stated once.** A set stated in two places is a
+restatement free to drift, and the ordinary fix is to delete one copy and point at the other. That is
+what was done for `notification_type`: its members carry no per-member provenance, so the fact row
+above now names the *count and the source* and points at [§ 6.12](#612-attentionrequest), which owns
+the set because the lookup needs it member by member. The other four cannot be collapsed that way —
+their [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rows carry a **per-member state**
+(which members were MEASURED in a capture and which are DOCS-CITED from the binary), which the field
+tables do not and should not carry. Deleting either copy would delete a fact. So they keep both
+copies **and a guard**, which is the case where a guard is the right instrument rather than the lazy
+one: the two copies plus the binary must agree on every run, and a hand-edit to either reds.
+
+**What the check reaches, stated so nobody over-reads it.** It asserts that the *declared* value set
+in this build equals the set this document states. It does not assert that every declared member is
+ever *emitted* — a matcher set is what the build will accept and route, and a member with no live emit
+site would still pass. That distinction is why the `notification_type` row above states the declared
+set rather than an emit-site count: the count was the part that could not be checked, and it is the
+part that was wrong.
 
 **The hook set this design subscribes to.** Everything else the harness offers is deliberately not
 wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the seat.
@@ -765,8 +874,8 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
 | `PreToolUse` | open a ledger entry | `tool.start`, plus `subagent.spawn` when `tool_name ∈ {"Agent","Task"}` |
 | `PostToolUse` | close it as succeeded | `tool.end` (`completed`), maybe `subagent.stop`, maybe `attention.resolved` |
 | `PostToolUseFailure` | close it as failed, or as aborted when `is_interrupt` | `tool.end` (`failed` \| `aborted`), maybe `subagent.stop`, maybe `attention.resolved` |
-| `SubagentStart` | bind `agent_id` to the open dispatch call | *(none — a binding, not an event)* |
-| `SubagentStop` | close the bound dispatch call if it is still open | `tool.end`, `subagent.stop` |
+| `SubagentStart` | bind the subagent's `agent_id` to the open dispatch call as its `child_agent_id` | *(none — a binding, not an event)* |
+| `SubagentStop` | reap that subagent's own open calls ([§ 8.3](#83-the-reap-rules)), then close the bound dispatch call if it is still open | `tool.end`(s), `subagent.stop` |
 | `PreCompact` | — | `compaction.start` |
 | `PostCompact` | — | `compaction.end` |
 | `PermissionRequest` | open an attention request, unambiguously | `attention.request` |
@@ -792,10 +901,25 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
    second carve-out is a review-blocking change.
 3. The hook name arrives twice (`argv[2]` and `hook_event_name`). The reporter uses `argv[2]`, and a
    disagreement increments `hook_name_mismatch`. This is a free discriminating check on the assumption
-   that the payload's own labelling is what we think it is. *(It agreed on all 56 captured payloads,
-   so the counter's healthy value is 0 and any non-zero is real.)*
+   that the payload's own labelling is what we think it is. *(It agreed on every payload of the capture
+   run, so the counter's healthy value is 0 and any non-zero is real.)*
 4. **An unrecognised value in a closed-enum field is coerced to that field's unknown member and
-   counted as `enum_value_unknown.<field>`. The raw value never reaches the wire.** This is not
+   counted as `enum_value_unknown.<wire field>`. The raw value never reaches the wire.**
+   **The counter-name grammar, stated once because three different spellings of it appeared in an
+   earlier draft:** every open-ended counter family is `<family>.<wire field>`, and `<wire field>` is
+   the field's **full dotted name** — the `kind` and the `data` key, exactly as
+   [§ 6](#6-event-kinds)'s tables and the enum classification table above name it. So it is
+   `enum_value_unknown.session.start.source` and `value_clamped.turn.end.aborted_call_ids`, never a
+   kind spelled with an underscore and never a bare field name. **One exception exists and it is the
+   only one:** `enum_value_unknown.notification_type` names a *harness payload key* rather than a wire
+   field, because the unrecognised case there suppresses the event entirely
+   ([§ 6.12](#612-attentionrequest)) so no wire field ever carries the value. A second such counter
+   would be a review-blocking change, for the same reason a second carve-out to rule 2 is: an
+   exception nobody can enumerate is a grammar nobody can implement. The same grammar governs
+   `payload_key_missing.<key>` — which names a **payload key**, since that is its subject — and
+   `value_clamped.<wire field>`, `data_truncated.<wire field>`,
+   `notification_not_attention.<type>` and `dispatch_tool_name.<name>`, whose subjects their own rows
+   in [§ 9.3](#93-degradation-counters) name. This is not
    tidiness. The enums in this document are exactly what the ingest validates, so one new harness
    value passed through verbatim makes its event invalid, [§ 12.4](#124-batches-are-atomic) rejects
    all 200 events in its batch, and [§ 11.5](#115-retry-and-backoff)'s poison-pill rule quarantines
@@ -805,8 +929,9 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
    cannot poison an *older* server either. Both ends implement one policy rule:
    [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules) rule 7.
 5. **A numeric value outside its stated bound is clamped to the nearer bound, emitted, and counted
-   `value_clamped.<field>`; an object over its stated serialized cap is reduced by the deterministic
-   rule its own field table states, and counted `data_truncated.<field>`.** This rule exists because
+   `value_clamped.<wire field>`; an object over its stated serialized cap is reduced by the
+   deterministic rule its own field table states, and counted `data_truncated.<wire field>`
+   (the grammar is rule 4's).** This rule exists because
    [§ 12.1](#121-validation-order) step 9 rejects an out-of-bounds integer or an over-cap `data` as
    `422 invalid_event`, [§ 12.4](#124-batches-are-atomic) then rejects all 200 events in the batch,
    and [§ 11.5](#115-retry-and-backoff) quarantines them permanently — so without a producer-side
@@ -917,7 +1042,7 @@ turn was open, so the spool order at a session boundary is: aborted `tool.end`s 
 | `resume` | `SessionEnd(reason: "resume")` |
 | `logout` | `SessionEnd(reason: "logout")` |
 | `prompt_input_exit` | `SessionEnd(reason: "prompt_input_exit")` |
-| `other` | any other `reason`, including one this reporter does not recognise. **This is a common value, not a residue**: a non-interactive (`claude -p`) session ends with `reason: "other"` — MEASURED, 8 of 10 captured `SessionEnd`s. A consumer must not read `other` as a degradation signal |
+| `other` | any other `reason`, including one this reporter does not recognise. **This is a common value, not a residue**: a non-interactive (`claude -p`) session ends with `reason: "other"` — MEASURED, and the majority of the capture run's `SessionEnd`s, one of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces beside the `clear` one. A consumer must not read `other` as a degradation signal |
 | `inferred_silence` | the one **inferred** member: the flusher has seen no event for that session for 90 min |
 
 | `data` field | Type | Null? | Bounds | Example |
@@ -988,9 +1113,9 @@ reason. **This is the event a consumer reads to mint "idle", and the only one.**
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
 | `end_reason` | enum | — | no | `stop_hook` \| `api_error` \| `session_cleared` \| `session_ended` | `"stop_hook"` |
-| `api_error_type` | enum | — | **yes** | `null` unless `end_reason == "api_error"`; then `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` | `null` |
+| `api_error_type` | enum | — | **yes** | `null` unless `end_reason == "api_error"`; then `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` \| `unrecognised` | `null` |
 | `duration_ms` | int | ms | yes | ≥ 0; `null` if no `turn.start` was seen | `41880` |
-| `open_calls_at_end` | int | — | no | 0…64; counted **before** the reap closed them | `0` |
+| `open_calls_at_end` | int | — | no | 0…64; counted **before** the reap closed them, over the same scope the reap used — `(session_id, agent_scope_id ?? "main")` ([§ 8.3](#83-the-reap-rules)) | `0` |
 | `aborted_call_ids` | array\<ULID\> | — | no | 0…64 elements; see the size note below | `[]` |
 | `stop_hook_active` | bool | — | yes | `null` when the payload does not carry it | `false` |
 | `background_tasks_open` | int | — | no | ≥ 0, length of the payload's `background_tasks` array | `0` |
@@ -998,7 +1123,13 @@ reason. **This is the event a consumer reads to mint "idle", and the only one.**
 | `failed_calls` | int | — | no | ≥ 0, calls closed `failed` in this turn | `1` |
 
 `aborted_call_ids` names exactly the calls `open_calls_at_end` counted, so the two never disagree —
-the reap ([§ 8.3](#83-the-reap-rules)) emits their closes immediately before this event.
+the reap ([§ 8.3](#83-the-reap-rules)) emits their closes immediately before this event. **The
+invariant is only evaluable because both are stated over one scope**, and that scope is the reap's,
+not the session's: a `turn.end` is emitted only where no `agent_id` is present
+([§ 8.3](#83-the-reap-rules)), so in practice the scope is `(session_id, "main")` and calls open
+inside a subagent are neither counted here nor named here. They are closed by the `SubagentStop` reap
+under their own scope, and an earlier draft that left this field's scope unstated made the invariant
+above unfalsifiable in exactly the case the two readings differ on.
 (`session_cleared` here is the same boundary `session.end` reports as `clear`: the two enums differ
 because `session.end` passes the harness's own `reason` through verbatim while this field names the
 boundary from the turn's point of view.)
@@ -1018,11 +1149,14 @@ hook distinguish *"session is done"* from *"session is paused waiting for backgr
 it"* ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED). Only its **length**
 transits — the entries name commands, which [§ 1](#1-non-goals) excludes.
 
-**The `aborted_call_ids` size note.** At the 64-call index cap the array is 64 × 26 chars ≈ 1.8 KiB,
-which is inside the 3 KiB `data` cap but not far inside it, and there is no `descriptor` here to
+**The `aborted_call_ids` size note.** At the 64-call index cap the array holds 64 × 26 = 1,664 B of
+ULIDs; serialized as JSON each element also carries two quotes and a comma, so 64 × 29 = 1,856 B
+≈ **1.8 KiB**. (An earlier draft showed the 26 and the 1.8 KiB without the quoting step between them,
+which does not compute: 64 × 26 is 1.6 KiB. The conclusion was right and the shown arithmetic was
+not.) That is inside the 3 KiB `data` cap but not far inside it, and there is no `descriptor` here to
 truncate. It is governed by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5 like
 every other bound: past 64 entries the array is clamped to the 64 oldest and
-`value_clamped.turn_end.aborted_call_ids` is counted. `open_calls_at_end` still carries the true
+`value_clamped.turn.end.aborted_call_ids` is counted. `open_calls_at_end` still carries the true
 count, so the disagreement between the two is itself the signal — and it can only arise on a seat
 that has already tripped `open_call_index_overflow`.
 
@@ -1032,8 +1166,24 @@ that has already tripped `open_call_index_overflow`.
 > state is `unknown`, never `idle` — **except `end_reason == "api_error"`, which is its own rendered
 > state, `stalled`.** A rate-limited or overloaded fleet is a thing an operator acts on, and
 > collapsing it into the same `unknown` a killed subagent produces would hide it. `stalled` carries
-> `api_error_type` so the drill-down can say *which* error, and a seat leaves it on its next
-> `turn.start`. This one constraint is what the kill-vs-complete machinery in
+> `api_error_type` so the drill-down can say *which* error.
+>
+> **`stalled` has a bounded exit, and all three of its exits are wire events this document already
+> emits.** A consumer clears `stalled` on the **first** of: that session's next `turn.start`; that
+> session's `session.end` — including the flusher's 90-minute `inferred_silence` close
+> ([§ 6.2](#62-sessionend)), which is what bounds the state without inventing a second timer; or the
+> seat leaving live state (`stale` at 300 s, `offline` at 900 s). Past a `session.end` with no new
+> turn the seat renders **`unknown`**, never `idle` and never `stalled` — the API refused the last
+> thing this seat tried and nothing since has said otherwise, which is an honest unknown and not a
+> quiet desk. Saying this is not tidiness: the flusher heartbeats every 60 s regardless of session
+> activity ([§ 6.14](#614-reporterheartbeat)), so a `stalled` seat never crosses `stale` or `offline`
+> on its own, and an entry edge with no stated exit would have rendered one transient rate-limit as
+> `stalled` for the rest of the day on a perfectly healthy machine. This document calls that shape a
+> **one-way trapdoor** where it appears for *blocked* ([§ 6.12](#612-attentionrequest)) and gives
+> *blocked* a whole acceptance test for it ([AT-20](#at-20-blocked-has-an-exit)); `stalled` was minted
+> in the same round with the same defect and is bounded here for the same reason.
+>
+> This one constraint is what the kill-vs-complete machinery in
 > [§ 8](#8-call-lifecycle--the-kill-vs-complete-contract) exists to make checkable.
 
 **Why `StopFailure` is subscribed, and what it costs not to be.** The harness fires `StopFailure`,
@@ -1100,9 +1250,13 @@ harness ever starts sending `agent_id` everywhere (constant `subagent`) or stops
 inferred from an environment variable, and **nothing in the pipeline gates on it** — it labels.
 
 **`parent_call_id` is the intern join key, and the harness's `agent_id` never transits.** The
-reporter resolves it locally: `SubagentStart` binds an `agent_id` to the open dispatch call
-([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)), and every later hook carrying that
-`agent_id` stamps that call's `call_id` here. A consumer therefore knows which intern ran which tool
+reporter resolves it locally: `SubagentStart` binds an `agent_id` to the open dispatch call as that
+call's `child_agent_id` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)), and every later
+hook carrying that `agent_id` stamps the bound call's `call_id` here — *and* records the same
+`agent_id` as its own call's `agent_scope_id`, which is what the turn reap keys on
+([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)). The two uses
+are separate index fields on purpose: this one names a **parent**, the reap's names a **scope**.
+A consumer therefore knows which intern ran which tool
 without ever receiving a second opaque identifier, and `agent_scope == "subagent"` with
 `parent_call_id == null` is the honest rendering of "inside a subagent, which one is unresolved" —
 counted as `agent_bind_unresolved`, never guessed.
@@ -1150,9 +1304,13 @@ backstop for a genuinely killed call.
 MEASURED at 2.1.240: a `Write` blocked by permissions fired `PreToolUse` and then **no close hook of
 any kind** — no `PostToolUse`, no `PostToolUseFailure`, no `PermissionDenied`
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Its ledger entry therefore survives to
-the turn's `Stop` reap and closes `aborted` / `turn_boundary`. That is the honest outcome — the call
-never ran — and it is named here so an implementer does not read the missing close as a defect and
-"fix" it by inferring a completion.
+the turn reap **of the scope it was opened in** and closes `aborted` / `turn_boundary`: the `Stop`
+reap in the main agent, and the `SubagentStop` reap inside a subagent, where `Stop` does not fire at
+all ([§ 8.3](#83-the-reap-rules)). Naming the scope matters here rather than being pedantry — a
+refusal inside a subagent is the common case on a fleet running dispatches under approval, and an
+earlier draft's `Stop`-only wording left exactly that call with no close rule until its session ended.
+That is the honest outcome — the call never ran — and it is named here so an implementer does not read
+the missing close as a defect and "fix" it by inferring a completion.
 
 The `SubagentStop` row reports `completed` for a stated reason rather than an unknown one: its
 payload is MEASURED at 2.1.240 and carries `agent_id`, `agent_type`, `agent_transcript_path`,
@@ -1512,7 +1670,7 @@ event and no exit event is not a state, it is a one-way trapdoor.
 |---|---|---|---|---|
 | `request_id` | ULID | no | 26 chars; the join key [§ 6.13](#613-attentionresolved) closes on | `"01K3TB1N2P3Q4R5T6W7X8Y9Z0B"` |
 | `source` | enum | no | `permission_request_hook` \| `notification_hook` | `"permission_request_hook"` |
-| `notification_kind` | enum | no | `permission_required` \| `input_awaited` \| `elicitation` \| `other` | `"permission_required"` |
+| `notification_kind` | enum | no | `permission_required` \| `input_awaited` \| `elicitation` — **reporter-minted**, three members, no unknown member; see below | `"permission_required"` |
 | `call_id` | ULID | yes | the open call the request is for, when exactly one is open; else `null` — see below | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `open_calls` | int | no | 0…64 | `1` |
 
@@ -1556,17 +1714,42 @@ as the reason, and **every suppressed type is counted individually** as
 suppressed, but that no suppression is silent, and that the counters say which types a real fleet
 produces.
 
-**`notification_type` is a harness-sourced open set, so the last row is a coercion, not a hole.**
-The payload types it as a plain string, not a closed enum
-([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), and the 14 values above were read from
-the installed build's emit sites rather than from a published enum — so the list is a snapshot, not a
-contract. An unrecognised type therefore emits nothing and is counted
-`notification_not_attention.<type>` alongside the known non-attention ones, and
+**The table above is this document's one home for the `notification_type` value set, and a guard binds
+it to the binary.** Its sixteen members are the build's own `Notification` matcher declaration, and
+`tools/design/verify-harness-facts.py` re-derives that declaration from the installed binary on every
+run and fails if this table's union differs
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). That binding is not decoration: an
+earlier draft transcribed **14** of the sixteen into [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
+and dropped `elicitation_dialog` and `elicitation_url_dialog` — the only two that produce the
+`elicitation` row above — so the section that used them had a basis the measurement of record denied,
+and three review rounds passed over it because every guard in the design checked *key names* and no
+guard checked a *value set*.
+
+**On the wire the field is still an open set, so the last row is a coercion, not a hole.** The payload
+types `notification_type` as a plain **string**
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)); a matcher declaration says what this
+build routes, not what every future build will send. An unrecognised type therefore emits nothing and
+is counted `notification_not_attention.<type>` alongside the known non-attention ones, and
 `enum_value_unknown.notification_type` counts it separately so "a type we chose not to emit for" and
 "a type we have never seen" are never the same number. A new attention-bearing type would show up as
 a rising `enum_value_unknown.notification_type` on real seats, which is the edit's trigger. **The
 `PermissionRequest` path is still preferred**, because it needs no lookup at all: the hook's identity
 says what it is.
+
+**`notification_kind` is reporter-minted and has no `other` member, because no path could ever emit
+one.** An earlier draft declared `other` as this field's harness-sourced unknown member, and it was
+structurally unreachable: the lookup's last row emits **nothing** for an unrecognised type, so the
+coercion rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4) never gets an event
+to put the coerced value on — the rule-2 carve-out suppresses the event first. A wire member that no
+input can produce is a render branch D2 and D3 would build and never reach, on a quarter of a
+four-member field's surface, so it is deleted rather than documented. Note where the unknown case
+actually lives, since it does have to live somewhere: it is the counter
+`enum_value_unknown.notification_type`, which is a **harness payload key** and not a wire field —
+the one place this document's counter grammar
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4) names a payload key rather than a
+dotted wire field, and it is named there as the single exception for exactly this reason. The field is
+reporter-minted for the same reason: it is produced by the table above, not read from any payload
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)).
 
 **`call_id` is a heuristic here for a measured reason, not for want of trying.** Neither hook names a
 tool call: `PermissionRequest`'s payload carries `tool_name`, `tool_input` and
@@ -1678,7 +1861,7 @@ predicate rather than folding it in here.
 | `open_sessions` | int | — | no | 0…16, **enforced** by the session cap ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | `1` |
 | `open_attention` | int | — | no | 0…16, requests awaiting an `attention.resolved`; one per session, so the session cap bounds it | `0` |
 | `enabled` | bool | — | no | `config.enabled` ([§ 3.1](#31-the-seat-config-file)) | `true` |
-| `degraded` | array\<enum\> | — | no | 0…16 elements, [§ 9.3](#93-degradation-counters) | `["rejected_batches"]` |
+| `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all monotonic since flusher start; reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}` | see below |
@@ -1704,7 +1887,7 @@ statusLine processes it never shares memory with.
 
 **The 1.5 KiB cap has a reduction rule, because "most of them are zero on a healthy seat" is not a
 bound.** [§ 9.3](#93-degradation-counters) defines ~30 named counters plus the open-ended
-`payload_key_missing.<key>`, `enum_value_unknown.<field>`, `value_clamped.<field>`,
+`payload_key_missing.<key>`, `enum_value_unknown.<wire field>`, `value_clamped.<wire field>`,
 `notification_not_attention.<type>` and `dispatch_tool_name.<name>` families. At ~32 B per entry a
 seat with many of them non-zero is at or past 1.5 KiB — and a *degraded* seat is exactly the seat
 where several of these are non-zero at once, so the mechanism that makes a broken seat visible would
@@ -2007,12 +2190,33 @@ record, no process ever rewriting what another may be writing**:
 
 | Record | Fields |
 |---|---|
-| `open` | `call_id`, `session_id`, `tool_name`, `harness_call_ref`, `started_at`, `is_dispatch` (`tool_name ∈ {"Agent","Task"}`), `agent_id` (null until bound) |
+| `open` | `call_id`, `session_id`, `tool_name`, `harness_call_ref`, `started_at`, `is_dispatch` (`tool_name ∈ {"Agent","Task"}`), `agent_scope_id`, `child_agent_id` (null until bound) |
 | `close` | `call_id`, `closed_at`, `close_source` |
-| `bind` | `call_id`, `agent_id` — written by `SubagentStart` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) |
+| `bind` | `call_id`, `child_agent_id` — written by `SubagentStart` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) |
 | `tombstone` | `call_id`, `closed_at` — a reaped entry, retained for late matching |
 | `attention_open` | `request_id`, `session_id`, `opened_at`, `call_id` — an open attention request ([§ 6.12](#612-attentionrequest)) |
 | `attention_close` | `request_id`, `closed_at`, `resolution` |
+
+**`agent_scope_id` and `child_agent_id` are two different facts and must never be one field.** Both
+are `agent_id` values and an earlier draft carried exactly one field for both, which is how a single
+name came to mean two opposite things:
+
+| Field | What it holds | Written by | Read by |
+|---|---|---|---|
+| `agent_scope_id` | the payload `agent_id` **this call's own `PreToolUse` fired under** — `null` in the main agent, the subagent's own id inside a subagent | the `open` record, at `PreToolUse` | the turn reap's scope key ([§ 8.3](#83-the-reap-rules)) |
+| `child_agent_id` | the `agent_id` of the subagent **this dispatch call spawned** — `null` on every non-dispatch call, and on a dispatch call until `SubagentStart` binds it | the `bind` record, at `SubagentStart` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | `SubagentStop`, to name the call it closes; `parent_call_id` resolution ([§ 6.5](#65-toolstart)) |
+
+Read the parent's own dispatch call to see why one field could not carry both. It is opened in the
+**main** agent, so its scope is `null`; it is bound to the **child's** id a moment later. With one
+field, the bind overwrites the scope, and the parent's `Stop` reap — scoped to `"main"`, always, since
+`Stop` carries no `agent_id` at all (MEASURED, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read))
+— then fails to select the one call it most needs to close. The dispatch call would sit open to its
+**60-minute** orphan ceiling ([§ 12.5](#125-late-completions-and-orphan-timeouts)) and
+[§ 8.6](#86-server-side-interpretation-of-open-call-state) would render the seat *working* for that
+hour: the same false-*working* outcome that [§ 15](#15-decisions-taken-revisable-at-review) row 30
+subscribes `StopFailure` to prevent, arriving through the door
+[§ 8.3](#83-the-reap-rules) believes it locked. The mirror case is as bad: a call opened *inside* a
+subagent had nowhere to record the scope it fired under, so the reap key for it was undefined.
 
 The last two are in this journal for the same reason the calls are: an attention request is opened by
 one hook process and resolved by a different one, the flusher needs the open set to fire the 60-minute
@@ -2088,23 +2292,29 @@ declares aborted is closed, in spool order, *ahead of* the triggering event. Eve
 | `SessionEnd` with `reason == "clear"` | every open call of **that** `session_id` | `session_cleared` | `reap_session_boundary` |
 | `SessionEnd` with any other reason | every open call of **that** `session_id` | `session_ended` | `reap_session_boundary` |
 | `SessionStart` with `source == "clear"` | every open call of the **superseded session** ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals) names it) | `session_cleared` | `reap_session_boundary` |
-| `Stop` | every call still open in `(session_id, agent_id ?? "main")` | `turn_boundary` | `reap_turn_boundary` |
-| `StopFailure` | every call still open in `(session_id, agent_id ?? "main")` | `api_error` | `reap_turn_boundary` |
+| `Stop` | every call still open in `(session_id, agent_scope_id ?? "main")` | `turn_boundary` | `reap_turn_boundary` |
+| `StopFailure` | every call still open in `(session_id, agent_scope_id ?? "main")` | `api_error` | `reap_turn_boundary` |
+| `SubagentStop` | every call still open in `(session_id, agent_scope_id)` where `agent_scope_id` equals this payload's `agent_id` — the subagent's **own inner** calls | `turn_boundary` | `reap_turn_boundary` |
 | the session cap evicting a session ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | every open call of the evicted `session_id` | `session_ended` | `reap_session_boundary` |
 | flusher start finding index entries older than its own start time | every such call | `reporter_restart` | `reap_reporter_restart` |
 
 Each reap emits, in order: `tool.end(outcome:"aborted", …)` per call — plus a `subagent.stop` for any
-of them with `is_dispatch: true` — then the triggering event, whose `aborted_call_ids` names them. Each
+of them with `is_dispatch: true` — then the triggering event, whose `aborted_call_ids` names them
+where it has that field. The `SubagentStop` row is the one trigger that emits no `turn.end`
+(a subagent finishing is not the turn ending), so the calls it reaps are named by their own
+`tool.end`s and are counted into the **parent's** later `turn.end` only if they are still open when it
+runs — which, having just been reaped, they are not. Each
 reaped entry becomes a tombstone ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)).
 A reap that ends a session also closes any attention request open in it, emitting
 `attention.resolved(resolution: "session_ended")` after the boundary event — a *blocked* desk whose
 session has ended is not blocked, and `D2-MUST` #5 needs the exit edge to say so.
 
-**`Stop` and `StopFailure` are scoped to `(session_id, agent_id ?? "main")`, not to `session_id`
-alone.** A subagent runs under the **same `session_id` as its parent** — that is why the harness adds
-a separate `agent_id`, and why [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) builds the
-whole subagent binding on it — so `session_id` alone does not separate the two units whose lifecycles
-must not cross. It is MEASURED at 2.1.240 that `Stop` does **not** fire inside a subagent
+**`Stop` and `StopFailure` are scoped to `(session_id, agent_scope_id ?? "main")`, not to `session_id`
+alone, and the scope key is the call's own scope — never the child it spawned.** A subagent runs under
+the **same `session_id` as its parent** — that is why the harness adds a separate `agent_id`, and why
+[§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) builds the whole subagent binding on it —
+so `session_id` alone does not separate the two units whose lifecycles must not cross. It is MEASURED
+at 2.1.240 that `Stop` does **not** fire inside a subagent
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)): a turn dispatching one subagent produced
 exactly one `Stop`. The scoping is kept anyway, because it costs one map key and it fails safe if that
 ever changes. Were `Stop` to start firing per subagent against a `session_id`-only reap, every
@@ -2112,8 +2322,28 @@ subagent completion would abort the **parent's** in-flight calls — including t
 and any sibling parallel calls — and emit a `turn.end`, so a turn dispatching three subagents would
 mint three mid-turn false idles on the busiest seats. That is the defect
 [§ 8.1](#81-the-problem-restated) is written about, arriving through the door this section locks.
-For the same reason `turn.end` is emitted **only** when `agent_id` is absent: a subagent finishing is
-not the turn ending.
+For the same reason `turn.end` is emitted **only** when the triggering payload carries no `agent_id`:
+a subagent finishing is not the turn ending, so the `SubagentStop` row above emits `tool.end`s (and a
+`subagent.stop`) and **no `turn.end`**.
+
+**Why `SubagentStop` reaps at all, which an earlier draft left to the orphan timeout by accident.**
+`Stop` does not fire inside a subagent, so nothing else in this table ever selects a subagent's own
+inner calls: their `agent_scope_id` is the subagent's id, which no `Stop` and no `StopFailure` can
+carry. Without this row a call left open inside a subagent — most importantly a call **refused by the
+permission layer**, which fires `PreToolUse` and then no close hook of any kind (MEASURED,
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) — had no close rule at all before its
+session ended, and the three places this document promises that such a call "survives to the turn's
+reap" ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read),
+[§ 6.6](#66-toolend), [AT-20](#at-20-blocked-has-an-exit)) were false inside a subagent. A subagent's
+completion **is** a turn boundary — of the subagent's turn — so the row reuses `turn_boundary` and
+`reap_turn_boundary` rather than minting new members. That reuse is deliberate and worth its own
+sentence: a new `abort_reason` or `close_source` member is a **rule-4 change**, a schema bump plus a
+stated window ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), and no fact here needs one
+— the boundary being reaped at is genuinely a turn boundary, and `close_source` already says which
+reap ran. Ordering inside the `SubagentStop` invocation: reap the subagent's inner calls **first**,
+then close the bound dispatch call ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)), so
+the inner calls' `tool.end`s precede the parent call's on the wire and a consumer never sees a parent
+close while its children are still open.
 
 **Every rule keys on `session_id`, and that is a correctness requirement, not tidiness.** An earlier
 draft reaped on "any hook carrying a `session_id` different from the index's current one". Two
@@ -2197,12 +2427,12 @@ it.
 is built on.
 
 **The binding, at spawn.** `SubagentStart` fires inside the new subagent carrying its `agent_id`. The
-reporter writes a `bind` record joining that `agent_id` to an open dispatch call, choosing by the
-first of these that applies:
+reporter writes a `bind` record setting an open dispatch call's `child_agent_id` to that `agent_id`,
+choosing by the first of these that applies:
 
 | Situation | Binding | Counter |
 |---|---|---|
-| exactly one open dispatch call in that session has no `agent_id` yet | that call | `agent_bind_sole_unbound` |
+| exactly one open dispatch call in that session has no `child_agent_id` yet | that call | `agent_bind_sole_unbound` |
 | two or more unbound open dispatch calls | **none** — no guess is written | `agent_bind_ambiguous` |
 | no `SubagentStart` payload at all (the hook did not fire, or carried no `agent_id`) | none | `payload_key_missing.agent_id` |
 
@@ -2222,7 +2452,17 @@ not *simultaneous*. `agent_bind_ambiguous` measures how often that happens, and 
 non-trivial is the trigger to revisit this — with a real capture of a parallel dispatch, which is a
 measurement nobody has taken.
 
-**The use, at stop.** `SubagentStop` carries `agent_id` (MEASURED), so it names its call directly:
+**The use, at stop.** `SubagentStop` carries `agent_id` (MEASURED), and the reporter uses it for two
+different lookups in one invocation — first as a **scope** key, then as a **binding** key. Both are
+named here because they read the same payload value against two different index fields
+([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)):
+
+1. **Scope — reap the subagent's own inner calls.** Every open call whose `agent_scope_id` equals this
+   `agent_id` is reaped, `turn_boundary` / `reap_turn_boundary`
+   ([§ 8.3](#83-the-reap-rules)). This runs first, and it is the only rule in the design that ever
+   closes a call opened inside a subagent, because `Stop` does not fire there (MEASURED).
+2. **Binding — close the dispatch call this subagent belongs to**, matching this `agent_id` against
+   `child_agent_id`:
 
 - payload carries an `agent_id` **bound** to an open call → close that call, `close_source:
   "subagent_stop_hook"`, `match: "agent_id"`. Parallel dispatches are handled correctly, which is the
@@ -2242,8 +2482,10 @@ close an arbitrary one of several candidates would be a guess with no observable
 mode this whole section exists to remove.
 
 **What the binding buys downstream.** Every hook firing inside a bound subagent carries that
-`agent_id`, so the reporter stamps the parent Task call's `call_id` onto those events as
-`parent_call_id` ([§ 6.5](#65-toolstart)). The floor can therefore attribute an intern's tool calls to
+`agent_id`; the reporter records it on each such call's `open` record as its `agent_scope_id`, and
+resolves it through `child_agent_id` to stamp the parent Task call's `call_id` onto those events as
+`parent_call_id` ([§ 6.5](#65-toolstart)). One payload value, two index fields, two jobs — the scope
+the call ran under, and the parent it belongs to. The floor can therefore attribute an intern's tool calls to
 the right intern without the harness's opaque `agent_id` ever transiting. Where the binding failed,
 `parent_call_id` is `null` and `agent_bind_unresolved` counts it — an honest unknown, never a guess.
 
@@ -2260,9 +2502,20 @@ The ingest maintains a per-seat **call ledger** derived from the stream. Its rul
 | `tool.end` arriving **before** its `tool.start` (out-of-order batches) | create the entry already closed; a later `tool.start` for it **does not reopen it**, and counts `late_open` |
 | a call open past its **orphan timeout** ([§ 12.5](#125-late-completions-and-orphan-timeouts)) | close it `aborted` / `orphan_timeout`, server-side only — **no wire event is synthesized**, because the wire is what a seat said and the server must not put words in a seat's mouth |
 | `turn.end` with `aborted_call_ids` non-empty | the turn is **not** a clean boundary; `D2-MUST` #1 forbids an idle transition |
-| `turn.end` with `end_reason: "api_error"` | the seat renders **`stalled`**, carrying `api_error_type`; never `idle`, and distinct from `unknown` ([§ 6.4](#64-turnend)) |
+| `turn.end` with `end_reason: "api_error"` | the seat renders **`stalled`**, carrying `api_error_type`; never `idle`, and distinct from `unknown`. `stalled` is **bounded** — it ends on the session's next `turn.start`, on that session's `session.end`, or on the seat leaving live state ([§ 6.4](#64-turnend)) |
 | `turn.end` whose calls all closed `completed` / `failed` | an ordinary finish; `failed` never blocks *idle* ([§ 6.4](#64-turnend)) |
 | a seat with any open call | the seat is **working**, regardless of turn state |
+
+**This ledger is seat-scoped and models no agent scope, deliberately.** `agent_scope_id` and
+`child_agent_id` are reporter-side index fields
+([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) and neither
+transits; the wire carries `agent_scope` and `parent_call_id` as labels
+([§ 6.5](#65-toolstart)) and the server never reaps on them. That division is load-bearing for the
+last row: a call open inside a subagent renders the seat *working*, correctly, and what bounds it is
+the **reporter's** reap running at `SubagentStop` ([§ 8.3](#83-the-reap-rules)) — not a server rule.
+Before that reap row existed, such a call had no reporter-side close at all and this row rendered a
+finished seat *working* until the 60-minute orphan timeout ([§ 12.5](#125-late-completions-and-orphan-timeouts)),
+which is the failure the row looks innocent enough to hide.
 
 ### 8.7 Worked flow — a `/clear` during a subagent's `Bash` call
 
@@ -2274,7 +2527,7 @@ is equally valid and is covered below.
 |---|---|---|---|
 | 1 | `T+00.0s` | `tool.start` | `call_id: A`, `tool_name: "Agent"`, `descriptor: "Agent: probe the ingest"` |
 | 2 | `T+00.0s` | `subagent.spawn` | `call_id: A`, `title: "probe the ingest"`, `subagent_type: "coder"` — the `PreToolUse` payload's `tool_name` is `"Agent"` at 2.1.240 ([§ 6.7](#67-subagentspawn)) |
-| — | `T+00.4s` | *(`SubagentStart`: binds `agent_id` → call `A`; no event)* | |
+| — | `T+00.4s` | *(`SubagentStart`: sets call `A`'s `child_agent_id`; call `A`'s own `agent_scope_id` stays `null` — it was opened in the main agent. No event)* | |
 | 3 | `T+03.2s` | `tool.start` | `call_id: B`, `tool_name: "Bash"`, `descriptor: "Bash: sleep 120"`, `agent_scope: "subagent"`, `parent_call_id: A`, `open_calls_before: 1` |
 | — | `T+18.6s` | *(operator types `/clear`; the harness SIGKILLs call `B`; **no `PostToolUse` and no `PostToolUseFailure` ever fire**)* | |
 | 4 | `T+18.7s` | `tool.end` | `call_id: B`, `outcome: "aborted"`, `abort_reason: "session_cleared"`, `close_source: "reap_session_boundary"`, `match: "reap"` |
@@ -2365,12 +2618,12 @@ statusLine processes reach the flusher through the counter sink
 | `batches_rejected` | permanent-status rejections | seat badge `degraded`; the last status and error code are shown |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
 | `payload_key_missing.<key>` | an expected harness key was absent | `degraded` when > 0 for a key marked required in [§ 6](#6-event-kinds) |
-| `enum_value_unknown.<field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
+| `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
 | `invalid_tool_name` | `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` | `degraded` |
 | `open_call_index_overflow` | > 64 concurrent open calls or tombstones | `degraded` |
 | `open_session_index_overflow` | > 16 concurrent open sessions; the least-recently-active was evicted and reaped ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | `degraded` |
-| `value_clamped.<field>` | a numeric value or array exceeded its stated bound and was clamped ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5) | `degraded` — a clamp means the reporter's own arithmetic left its declared range |
-| `data_truncated.<field>` | an object exceeded its stated serialized cap and was reduced by that field's stated rule | `degraded`; for `counters` the count rides the event as `counters_omitted` |
+| `value_clamped.<wire field>` | a numeric value or array exceeded its stated bound and was clamped ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5) | `degraded` — a clamp means the reporter's own arithmetic left its declared range |
+| `data_truncated.<wire field>` | an object exceeded its stated serialized cap and was reduced by that field's stated rule | `degraded`; for `counters` the count rides the event as `counters_omitted` |
 | `notification_not_attention.<type>` | a `Notification` whose `notification_type` is not an attention type, so no `attention.request` was emitted ([§ 6.12](#612-attentionrequest)) | informational, and the record that the one emission gate in the design is never silent. Also the measurement of which types a real fleet produces |
 | `dispatch_tool_name.<name>` | which `tool_name` the subagent-dispatch hook actually carried — `Agent` at 2.1.240 ([§ 6.7](#67-subagentspawn)) | informational; a change in the distribution means the harness renamed the tool and this document owes an edit |
 | `payload_key_missing.is_interrupt` | `PostToolUseFailure` arrived without `is_interrupt`, so the close defaulted to `failed` ([§ 6.6](#66-toolend)) | `degraded`; an interrupted call would be mislabelled as a failure while this is non-zero |
@@ -2394,8 +2647,61 @@ statusLine processes reach the flusher through the counter sink
 | `quarantine_corrupt_dropped` / `quarantine_rejected_dropped` | a quarantine file hit its cap and stopped accepting writes ([§ 11.1](#111-layout)) | informational; the loss they describe is already counted by `spool_corrupt_lines` / `events_rejected_dropped` |
 | `sanitizer_redactions` / `sanitizer_truncations` | redaction and truncation activity | informational; an implausible rate is worth a look either way |
 
-`data.degraded` carries the enum names of the conditions currently active, so a consumer never has to
-re-derive the badge from raw counters.
+#### `reporter.heartbeat.degraded` — the member set, defined here and nowhere else
+
+`data.degraded` ([§ 6.14](#614-reporterheartbeat)) carries the enum names of the conditions currently
+active, so a consumer never has to re-derive the badge from the raw counters above. **This table is
+the field's value set.** It exists because an earlier draft typed the field `array<enum>`, pointed at
+this section for its members, and this section had no such list — the "Consequence when non-zero"
+column mixes at least seven different vocabularies and none of them was declared to be the enum. A
+wire field whose members are stated nowhere is not implementable: the ingest validates per-kind `data`
+([§ 12.1](#121-validation-order) step 10), so a builder either cannot validate the field or validates
+it against a guessed set, and a guess that misses makes a *degraded* seat's heartbeat a
+`422 invalid_event` — a rejected batch ([§ 12.4](#124-batches-are-atomic)), then a permanent
+quarantine ([§ 11.5](#115-retry-and-backoff)). That is the liveness backstop dying at the moment the
+seat becomes interesting, which is the one thing [§ 9.2](#92-why-this-is-the-structural-backstop) says
+it may never do and [AT-22](#at-22-a-maximally-degraded-seat-still-heartbeats) exists to forbid.
+
+A member is present on a heartbeat when **any** counter in its "Raised by" cell is non-zero at that
+flush. The reporter mints them from the counter sink; nothing here is read from a payload, so this is
+a **reporter-minted** enum with no unknown member and adding a member is a rule-4 change
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)).
+
+**Read the counter table's "Consequence when non-zero" column as severity prose, not as a second
+declaration of this set.** Where it says `degraded`, the table below says *which* member; where it
+says `lossy`, `reporter_behind` or `epoch_reset` it is naming a member here directly; where it says
+`informational` the counter raises no member at all. The **"Raised by" column below is the mapping**,
+and it is the only one — two columns declaring the same set is how this field ended up with its
+members stated nowhere and its two examples spelling one member two different ways.
+
+| Member | Raised by | What a consumer should render |
+|---|---|---|
+| `lossy` | `spool_dropped_events`, `spool_corrupt_lines`, `events_rejected_dropped`, `oversize_event_dropped` | events were discarded and counted; the number is rendered |
+| `batches_rejected` | `batches_rejected` | a batch took a permanent status and was quarantined; the last status and error code are shown |
+| `harness_contract_moved` | `hook_name_mismatch`, `payload_key_missing.<key>` for a key [§ 6](#6-event-kinds) marks required, `payload_key_missing.is_interrupt` | the harness payload has moved under this reporter; this document owes a re-capture |
+| `reporter_behind` | `enum_value_unknown.<wire field>` | the harness has added an enum member this reporter coerces; informational, and the trigger for an edit |
+| `value_clamped` | `value_clamped.<wire field>` | the reporter's own arithmetic left a declared range and was clamped |
+| `counters_omitted` | `data_truncated.counters`, i.e. any flush where `counters_omitted > 0` | too many kinds of trouble to fit 1.5 KiB; the count rides the event as `counters_omitted` |
+| `index_overflow` | `open_call_index_overflow`, `open_session_index_overflow`, `index_fold_truncated` | a seat past the index caps; a harness anomaly worth surfacing |
+| `invalid_tool_name` | `invalid_tool_name` | a `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` |
+| `bad_session_id` | `bad_session_id` | a `session_id` failed its pattern and was sent as `null` |
+| `config_invalid` | `config_invalid` | the config failed runtime validation; the flusher spools and sends nothing |
+| `statusline_degraded` | `wrapped_statusline_failures` | the wrapped status-line command is failing; the seat's own UI is affected |
+| `epoch_reset` | `state_reset` | a new `seq_epoch` was minted and the spool re-sent; **not** `lossy` — nothing was discarded |
+
+**Twelve members, and the array's bound is twelve.** The bound is not a chosen number: the array
+carries at most one of each member, so its ceiling is the size of this table and moves only when this
+table moves. That is the same discipline [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)
+applies to `open_sessions` — a bound with a mechanism behind it rather than an assertion.
+
+**Two things deliberately absent.** `reporter_ahead`, `clock_skew` and `seq_gap` appear in
+[§ 12.7](#127-server-side-counters) as badges the **server** derives; they are not members here,
+because this array is what the *reporter* knows about itself and a reporter cannot observe its own
+skew or its own gaps. And `disabled` is not a member: a seat with `enabled: false` is not degraded, it
+is off, and [§ 6.14](#614-reporterheartbeat)'s `enabled` field is what distinguishes off from broken.
+The `informational` rows above with no member — `statusline_suppressed`, `reap_noop_second_signal`,
+the `agent_bind_*` family and the rest — are counters a drill-down reads, deliberately not badges: a
+badge for every counter is a floor of permanently-yellow desks, which renders the badge meaningless.
 
 **One caveat that must not be discovered later: statusLine-side counters are a floor, not a census.**
 The harness cancels an in-flight status-line script when a new render is triggered, and a cancelled
@@ -2826,8 +3132,22 @@ Cheapest and most-fatal first; **the first failure wins and nothing is ingested*
    256 KiB and aborted past it** — an uncapped inflate is an unbounded allocation from an
    authenticated-but-compromised seat.
 3. Body parses as JSON → else `400 malformed_body`.
-4. `Authorization` present and resolves to an active token → else `401 unauthenticated`.
-5. Rate limits ([§ 12.3](#123-rate-limits)) → else `429`.
+4. `Authorization` present and resolves to an active token → else the **failed-authentication path**:
+   increment `auth_failed_by_ip` for the source IP, then return `429 rate_limited` if that IP is over
+   the 60/hour failed-authentication limit ([§ 12.3](#123-rate-limits)) and `401 unauthenticated`
+   otherwise. **That limit is evaluated here, at step 4, and not with the others at step 5** — it is
+   the one exception to the ordering and it needs to be, because a request that fails this step never
+   reaches step 5. An earlier draft placed it at step 5, where the only requests that could reach it
+   had already authenticated successfully, so a limit whose entire subject is *failed*
+   authentications could never fire: the same defect class [§ 12.3](#123-rate-limits) records fixing
+   in this limit's **key**, arriving a second time through its **placement**. A check that cannot
+   fail is a decoration. What the seat sees is unchanged in the case that matters: a
+   correctly-configured reporter never reaches this path at all, and one holding a dead credential
+   behind a busy NAT takes a retryable `429`, backs off ([§ 11.5](#115-retry-and-backoff)), and then
+   takes the `401` that quarantines its batch — the limit delays that diagnosis by one backoff ladder
+   and never replaces it.
+5. Rate limits ([§ 12.3](#123-rate-limits)) — every limit except the failed-authentication one, which
+   step 4 owns → else `429`.
 6. `schema_version` present on the batch, an integer, and in the accepted set → else
    `400 unsupported_schema_version`.
 7. Batch `install_id`/`seat_id` equal the token's binding → else `403 identity_mismatch`.
@@ -2862,7 +3182,7 @@ for equality and are never used to name a seat. Concretely:
 | Where the refusal happens | Attributed to | Rendered |
 |---|---|---|
 | steps 1–3, before authentication | nothing — the request has no established identity | counted globally as `unattributed_refusals`; **no seat is rendered degraded**, because no seat is known. The reporter still surfaces it locally ([§ 11.5](#115-retry-and-backoff)) |
-| step 4 (`401`) | the presented token's **hash prefix** only | an operator-visible auth-failure count; never the claimed slug |
+| step 4 (`401`, and the `429` the failed-auth limit returns) | the presented token's **hash prefix**, plus the source IP the limit is keyed on | an operator-visible auth-failure count; **no seat is rendered degraded**, because a token that resolves to nothing names no seat |
 | steps 5–11 | the token's bound `(install_id, seat_id)` | that seat renders degraded |
 
 Without this rule, a `400 unsupported_schema_version` at step 6 — which happens *before* the identity
@@ -2938,7 +3258,7 @@ both record this fleet hitting for real.
 | Requests | token binding | **120 / minute** | healthy cadence is 6/min ([§ 11.5](#115-retry-and-backoff)); 120 is 20× headroom — it can only be reached by a spin loop | `429`, `retry_after_s: 30` |
 | Events | token binding | **20,000 / hour** | the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling is ~10,420/day ≈ 434/hour; 20,000 is ~46× headroom, still bounds one runaway seat's storage to ~10 MB/hour, and is the number a full-spool drain is measured against ([§ 11.5](#115-retry-and-backoff)) | `429`, `retry_after_s: 60` |
 | Body size | — | 256 KiB | [§ 4.4](#44-size-caps-and-their-derivations) | `413` |
-| Failed authentications | **source IP** | **60 / hour** | see below | `429` and an operator-visible alert |
+| Failed authentications | **source IP** | **60 / hour** | see below | `429` and an operator-visible alert — **enforced at [§ 12.1](#121-validation-order) step 4**, inside the auth check itself, because a request that fails auth never reaches step 5 where the other limits live |
 
 **On the failed-auth limit, and what it is honestly for.** It bounds log volume, CPU spent on hash
 comparisons, and the noise floor an operator reads — nothing more. **It is not a defence against
@@ -2949,6 +3269,14 @@ accumulates past 1 and the limit never fires. The actual defence against guessin
 limit meaningfully improves. Keying on source IP is what makes the limit describe something real, at
 the cost that seats behind one NAT share a budget — 60/hour is far above the zero failures a healthy
 fleet produces, and a rotation race costs one or two.
+
+**Where it is enforced is part of the fix, not a detail.** The key was corrected once and the limit
+was still unfireable, because [§ 12.1](#121-validation-order) evaluated rate limits at step 5 and a
+request with a bad token terminates at step 4. So the failed-authentication limit is evaluated
+**inside step 4**, and step 5 owns the other three; [AT-6](#at-6-unknown-schema-version-is-refused-loudly)
+case B drives the 61st bad token from one IP and asserts the `429`, with 60 bad tokens from distinct
+IPs as the negative control. Both halves of a limit — what it is keyed on and where it runs — have to
+be right for it to be a check rather than a decoration, and this one got each wrong once.
 
 Separately, and as a **diagnostic rather than a limit**: a presented token that resolves to a
 *revoked* row is counted per token row and alerted on, because that is a real signal with a real
@@ -2994,11 +3322,11 @@ about the store is D2's to decide.
 
 | # | Constraint |
 |---|---|
-| 1 | **Idle may be minted only from `turn.end` with `end_reason == "stop_hook"` and `aborted_call_ids == []`.** Every other turn ending yields `unknown`, never `idle` — **except `end_reason == "api_error"`, which yields the distinct rendered state `stalled`** carrying `api_error_type` ([§ 6.4](#64-turnend)). A `failed` tool call is a closed call and does not block idle; an **interrupted** one closes `aborted` and does ([§ 6.6](#66-toolend)). |
+| 1 | **Idle may be minted only from `turn.end` with `end_reason == "stop_hook"` and `aborted_call_ids == []`.** Every other turn ending yields `unknown`, never `idle` — **except `end_reason == "api_error"`, which yields the distinct rendered state `stalled`** carrying `api_error_type` ([§ 6.4](#64-turnend)). A `failed` tool call is a closed call and does not block idle; an **interrupted** one closes `aborted` and does ([§ 6.6](#66-toolend)). **`stalled` is cleared by the first of that session's next `turn.start`, that session's `session.end` (including the 90-minute `inferred_silence` close), or the seat leaving live state; past a `session.end` with no new turn the seat renders `unknown`.** A state with an entry edge and no exit edge is a one-way trapdoor, which is the same thing constraint 5 forbids for *blocked* ([§ 6.4](#64-turnend)). |
 | 2 | **`stale` (300 s) and `offline` (900 s) are visibly degraded rendered states, never `idle`,** and a seat with `degraded` non-empty renders its badge. |
 | 3 | **Per-event dedup on `(install_id, seat_id, event_id)` with a 10-day window,** and the window must exceed the spool's 8-day residency cap ([§ 10.3](#103-idempotency-and-the-dedup-window)). |
 | 4 | **State transitions are ordered by `(event_time, seq)`, never by arrival order,** `received_at` is the only clock used for liveness, retention and cross-seat comparison, and a repeated `(seq_epoch, seq)` with differing `event_id`s is counted as `seq_collision` rather than silently applied. |
-| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat leaving live state — and never rendered for longer than the 60-minute ceiling without a resolution ([§ 6.13](#613-attentionresolved)). This holds because D1 guarantees `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed` and the rest never open one. D2 needs no second predicate over `notification_kind`. |
+| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat leaving live state — and never rendered for longer than the 60-minute ceiling without a resolution ([§ 6.13](#613-attentionresolved)). This holds because D1 guarantees `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: every member of that field (`permission_required`, `input_awaited`, `elicitation`) *is* a wait on a human, because the gate emits nothing for anything else. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
 
 ### 12.7 Server-side counters
 
@@ -3023,7 +3351,7 @@ because a counter nobody can find is a counter nobody reads.
 | `seq_epoch_change` | a batch arrived under a new `seq_epoch` | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
 | `batches_refused.<error>` | any 4xx refusal, keyed by error code | counted **against the token's binding**; the seat renders degraded ([§ 12.1](#121-validation-order)) |
 | `unattributed_refusals` | a refusal at validation steps 1–3, before any identity is established | global only; **no seat is degraded by it**, because no seat is known ([§ 12.1](#121-validation-order)) |
-| `auth_failed_by_ip` | a token that resolves to nothing | the 60/h limit ([§ 12.3](#123-rate-limits)); log-volume control, not a guessing defence |
+| `auth_failed_by_ip` | a token that resolves to nothing — incremented at [§ 12.1](#121-validation-order) **step 4**, which is also where the limit it feeds is evaluated | the 60/h limit ([§ 12.3](#123-rate-limits)); log-volume control, not a guessing defence. Counted globally and per source IP; it degrades no seat, because the token named none |
 | `revoked_token_presented` | a token that resolves to a revoked row | **operator alert**: a seat is still holding a dead credential and only the server can see it |
 | `clock_skew_ms` | *(a gauge, not a counter)* per batch, `received_at − sent_at` | seat badge `clock_skew` past ±120 s ([§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what)) |
 
@@ -3068,6 +3396,32 @@ seen to fail is not evidence — it is a decoration that reports the harness ran
   does **not** reproduce, because `Stop` is MEASURED not to fire inside a subagent
   ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) — and that is the point of running it:
   a RED that stops reproducing on a harness upgrade is how this test reports that the fact moved.
+- **Case C — a turn that ends on `Stop` with a dispatch call still open.** This is the
+  `(session_id, agent_scope_id)` reap path, and neither case above drives it: both end their turn with
+  a `/clear`, which reaps under `SessionEnd`'s **session-wide** rule
+  ([§ 8.3](#83-the-reap-rules)) and would pass with the turn-scoped rule broken. **Do:** dispatch one
+  subagent that runs `Bash: sleep 120`, and end the turn normally — no `/clear` — so the harness fires
+  `Stop` with the parent's dispatch call `A` still open. **GREEN:** `A` is reaped —
+  `tool.end(outcome:"aborted", abort_reason:"turn_boundary", close_source:"reap_turn_boundary")` and a
+  `subagent.stop` — the `turn.end` names `A` in `aborted_call_ids` with `open_calls_at_end: 1`, and
+  **no idle transition is minted**. Assert `A` closes at the `Stop`, not at its 60-minute orphan
+  ceiling: the server's ledger must show it closed within one flush interval.
+  **RED — the defect this case exists for:** scope the reap on the dispatch call's **bound child**
+  `agent_id` instead of on its own `agent_scope_id` (the single-field index an earlier draft carried).
+  `A.agent_scope_id` becomes the child's id at `SubagentStart`, `Stop` carries no `agent_id` at all so
+  its scope is always `"main"`, and `A` is therefore excluded from the parent's own reap: it sits open
+  for an hour, `aborted_call_ids` is `[]`, `open_calls_at_end` is `0`, and
+  [§ 8.6](#86-server-side-interpretation-of-open-call-state) renders the seat *working* the whole
+  time. That RED reproduces on **every** build — unlike Case B's, it does not depend on a harness fact
+  that might move.
+- **Case D — a permission-refused call inside a subagent is reaped by `SubagentStop`.** Run the
+  subagent under `--permission-mode default` against an operation it will be refused, so its
+  `PreToolUse` fires and **no close hook of any kind** does (MEASURED,
+  [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). **GREEN:** the inner call closes
+  `aborted`/`turn_boundary` with `close_source: "reap_turn_boundary"` at the `SubagentStop`, its
+  `tool.end` precedes the dispatch call's, and **no `turn.end` is emitted for the subagent**.
+  **RED:** remove the `SubagentStop` reap row from [§ 8.3](#83-the-reap-rules) → the inner call has no
+  close rule at all (`Stop` does not fire inside a subagent) and stays open until its session ends.
 
 ### AT-2 sanitizer red fixtures
 
@@ -3153,6 +3507,17 @@ seen to fail is not evidence — it is a decoration that reports the harness ran
   attribute the refusal to the body's claimed identity → seat Y, an innocent seat, renders degraded
   from a batch it never sent. Also assert the negative control: the *same* batch at an accepted
   version returns `202`, so the test discriminates version handling and not batch validity.
+- **Case B — the failed-authentication limit fires where it is placed.** [§ 12.3](#123-rate-limits)
+  bounds failed authentications at 60/hour per source IP, and
+  [§ 12.1](#121-validation-order) evaluates it **inside step 4** rather than with the other limits at
+  step 5. **Do:** send 61 batches from one source IP, each with a *different* unresolvable token.
+  **GREEN:** the first 60 return `401 unauthenticated`; the **61st returns `429 rate_limited`** with
+  `retry_after_s`, `limit` and `window_s` in the body; `auth_failed_by_ip` reads 61 for that IP; and
+  **no seat renders degraded** at any point, because none of the 61 tokens named a seat.
+  **RED:** move the limit back to step 5 → all 61 return `401`, the `429` never appears, and
+  `auth_failed_by_ip` still counts 61 — a counter feeding a limit that cannot fire, which is the
+  shape this case exists to catch. **Negative control:** 60 bad tokens from 60 *distinct* IPs → all
+  `401`, no `429`, so the test measures the IP key and not merely the attempt count.
 
 ### AT-7 staleness alarm — the dark-reporter backstop
 
@@ -3367,6 +3732,18 @@ call ledger turns on.*
   open calls sit to their 15- or 60-minute orphan ceiling, `session.end.turns` under-counts, and the
   desk renders *working* for up to an hour after the agent stopped. That RED is the whole reason the
   hook is subscribed, and it is the same shape as this test's primary RED one hook over.
+  **GREEN — `stalled` also *ends*, which is half of what makes it a state.** Assert all three exits,
+  because an entry edge with no exit is a one-way trapdoor
+  ([§ 6.4](#64-turnend)'s `D2-MUST` #1): (i) submit a new prompt in that session → the `turn.start`
+  clears `stalled` and the seat renders *working*; (ii) on a second seat, leave the session silent
+  → the flusher's 90-minute `inferred_silence` `session.end` ([§ 6.2](#62-sessionend)) clears it and
+  the seat renders **`unknown`**, not `idle` and not `stalled`; (iii) on a third, kill the reporter →
+  the seat renders `stale` then `offline`, never `stalled` underneath.
+  **Second RED — the trapdoor:** give `stalled` the entry edge and no exit rule, then leave the seat
+  heartbeating and idle. Because the flusher heartbeats every 60 s regardless of session activity, the
+  seat never reaches `stale`, and one transient rate-limit at 09:00 renders `stalled` for the rest of
+  the day on a healthy machine. Watch that happen once: it is the same defect
+  [AT-20](#at-20-blocked-has-an-exit) exists to forbid for *blocked*, minted fresh for a second state.
 
 ### AT-20 blocked has an exit
 
@@ -3383,8 +3760,12 @@ call ledger turns on.*
   specified, cannot produce this GREEN on any build: the hook never fires on that path.
 - **GREEN — the human refusal, which is a different edge.** Interactively refuse the prompt, then type
   a new instruction → `resolution: "human_input"`, `resolution_source: "user_prompt_submit"`, and the
-  refused call closes `aborted`/`turn_boundary` on the turn's `Stop` reap with **no** close hook of
-  its own ([§ 6.6](#66-toolend), MEASURED). Asserting this separately is what keeps the `resolution`
+  refused call closes `aborted`/`turn_boundary` on the turn reap of the scope it ran in, with **no**
+  close hook of its own ([§ 6.6](#66-toolend), MEASURED) — the `Stop` reap in the main agent, and the
+  `SubagentStop` reap when the refusal happened inside a subagent
+  ([§ 8.3](#83-the-reap-rules)). **Run it both ways**: a refusal in the main agent and a refusal
+  inside a dispatched subagent, because only the second exercises the rule that `Stop` cannot, and
+  [AT-1](#at-1-kill-vs-complete-the-headline-test) case D is its RED. Asserting this separately is what keeps the `resolution`
   distribution interpretable — a low `denied` share means few *auto-mode* refusals, not few refusals.
 - **GREEN — the ceiling:** with the resolution hooks stubbed out, the request is resolved at 60 min
   with `resolution: "timeout"`, `attention_resolved_by_hook` shows a `false` branch, and the seat is
@@ -3428,11 +3809,31 @@ a decoration.*
   which is correct and is exactly why a separate assertion is needed: the coercion means the fleet
   would otherwise show only a slow rise in `enum_value_unknown.session.start.source` and no failure at
   all.
+- **Third RED — the document half, which is a different guard from the two above.** The two REDs above
+  bind the *reporter* to the fixtures. Nothing there binds **this document's stated value sets** to
+  the build, and that gap is where a `notification_type` row transcribed with 14 of 16 members
+  survived three review rounds. `tools/design/verify-harness-facts.py` re-derives every harness enum's
+  value set from the installed binary on every run and asserts it against each place
+  [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s enum-source table says this document
+  states it. **Run it:** delete `elicitation_url_dialog` from [§ 6.12](#612-attentionrequest)'s lookup
+  table → the tool goes **rc 1**, names the set, the site and the missing member, and no other set's
+  assertion moves. Repeat with an *invented* member added to
+  [§ 6.1](#61-sessionstart)'s `source` row → the same failure from the other direction. A guard that
+  can only see omission is half a guard.
+- **Discriminating control — the extractor must be shown capable of the other answer, or its "every
+  set matches" is a decoration.** The tool aborts rather than reporting clean if its binary extractor
+  cannot discriminate: it asserts that two different declarations resolve to two *different* sets,
+  that every resolved set is non-empty, and that a **fabricated** field name resolves to nothing
+  rather than to a default. An extractor that silently returns the same thing for everything would
+  pass a value-set check over any document ever written.
 - **Discriminating control:** with every fixture and every recognised set intact, the check passes on
   a run where the reporter reads an **extra** key the fixture does not contain, and fails only if a
   key it *reads* is absent. The guard's job is "the reporter's expectations are still met", not
   "the payload is byte-identical to the capture" — the harness adding a field is
   [`docs/VERSIONING.md` rule 3](../VERSIONING.md#the-rules)'s additive case and must not red a seat.
+  Note where that one-directional reach stops and the value-set assertion above takes over: a fixture
+  may omit a key the harness declares, but a value **set** this document states must match the build
+  exactly, because a missing member there is a branch nobody builds.
 
 ### AT-22 a maximally-degraded seat still heartbeats
 
@@ -3442,13 +3843,30 @@ happen ([§ 6.14](#614-reporterheartbeat)).*
 
 - **Build:** a seat driven into a state where **every** counter in [§ 9.3](#93-degradation-counters)
   is non-zero, including twelve distinct `payload_key_missing.<key>` entries, eight
-  `enum_value_unknown.<field>` entries, six `notification_not_attention.<type>` entries and four
-  `value_clamped.<field>` entries — well past what 1.5 KiB can hold.
+  `enum_value_unknown.<wire field>` entries, six `notification_not_attention.<type>` entries and four
+  `value_clamped.<wire field>` entries — well past what 1.5 KiB can hold.
 - **GREEN:** the heartbeat still validates and is accepted `202`; `counters` is ≤ 1.5 KiB;
   `counters_omitted` is > 0 and equals the number of non-zero counters not serialized; the retained
   entries are the always-present delivery counters plus the highest-valued of the rest, ordered by the
   deterministic rule in [§ 6.14](#614-reporterheartbeat) (assert the exact serialization — it is
-  reproducible by construction); `degraded` includes the omission.
+  reproducible by construction).
+- **GREEN — the `degraded` array itself, asserted exactly.** With that state driven, `degraded` equals
+  the exact array `["lossy","batches_rejected","harness_contract_moved","reporter_behind",
+  "value_clamped","counters_omitted","index_overflow","invalid_tool_name","bad_session_id",
+  "config_invalid","statusline_degraded","epoch_reset"]` — every member [§ 9.3](#93-degradation-counters)
+  declares, in that section's order, no duplicates. **`counters_omitted` is a member and must be
+  present**, because the same fixture drove `counters_omitted > 0`: a seat with too many kinds of
+  trouble to report is reporting that fact, and this is the assertion that makes it true rather than
+  intended.
+- **Third RED — the member set is what the ingest validates, so a guess is a poison pill.** Emit
+  `degraded: ["rejected_batches"]` — the plausible transposition of the counter's name, and the exact
+  string an earlier draft's own example carried — and post it. **Assert `422 invalid_event` naming the
+  field**, then [§ 12.4](#124-batches-are-atomic) rejecting all 200 events, then
+  [§ 11.5](#115-retry-and-backoff) quarantining the batch permanently. This is the case the whole test
+  is named for arriving through a *different* field: the heartbeat of a degraded seat dying at the
+  moment the seat becomes interesting. It is unreachable only because [§ 9.3](#93-degradation-counters)
+  declares the member set and both ends validate against the same declaration — which is why a
+  `array<enum>` whose members are stated nowhere is a blocker and not a documentation gap.
 - **RED:** remove the reduction rule and emit every non-zero counter → `data` exceeds 3 KiB, the
   ingest returns `422 invalid_event`, [§ 12.4](#124-batches-are-atomic) rejects the whole batch, and
   [§ 11.5](#115-retry-and-backoff) quarantines it permanently. **The seat's liveness signal dies at
@@ -3495,7 +3913,9 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Context-sample staleness bound | 300 s | **Chosen** — a tolerance, not a freshness guarantee: statusLine is event-driven with no timer, so nothing guarantees a fresh sample and the earlier "5× the 60 s cadence" derivation was arithmetic over a rate that does not exist. Past 300 s `compaction.start` reports `null` rather than a stale percentage | [§ 6.9](#69-compactionstart) |
 | Bucket-deletion grace | 5 s | Derived — 20× P-5's 250 ms hook budget; covers a writer descheduled between deriving its bucket name and its `writeSync`, which is what the hour-roll straddle actually is | [§ 11.1](#111-layout) |
 | Open-session index | 16 open sessions | Chosen — far above the two or three terminals a real seat runs, so reaching it is itself the signal; **enforced** by eviction-and-reap, which is what makes `open_sessions`' 0…16 bound real rather than asserted | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
-| Harness build the MEASURED facts are pinned to | Claude Code **2.1.240** | **Measured** — 56 payloads across 10 hook events captured 2026-08-23 ([§ 17](#17-appendix--the-captured-harness-payloads)). Every MEASURED row in [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) is versioned to it, and a harness minor bump re-runs the capture | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
+| Harness build the MEASURED facts are pinned to | Claude Code **2.1.240** | **Measured** — 56 payloads across 10 hook events captured 2026-08-23, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **16** distinct shapes every MEASURED row is read from. The 16 is re-derived from the appendix by the verifier; the 56 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build, and a harness minor bump re-runs the capture | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
+| `reporter.heartbeat.degraded` length | 12 elements | **Derived** — not chosen: the array carries at most one of each declared member, so its bound *is* the size of [§ 9.3](#93-degradation-counters)'s member table and moves only when that table moves | [§ 9.3](#93-degradation-counters) |
+| Wire enum fields, and how many are classified | **23**, all of them | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session. Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
 | Compaction close timeout | 10 min | Derived — ~10× a typical one-minute compaction | [§ 6.10](#610-compactionend) |
 | Attention resolution ceiling | 60 min | Chosen — reuses the `Task` orphan ceiling so a seat cannot render *blocked* after every call it was blocked on has been reaped; erring long is the safe direction | [§ 6.13](#613-attentionresolved) |
@@ -3544,12 +3964,16 @@ reverse it deliberately rather than discover it later.
 
 Rows carrying a dated **Amended** or **Superseded** note were revised after an adversarial review;
 the original decision is left standing in the row so the change is legible rather than erased. Rows
-27–31 are the third round's, and **row 27 is the one the other four are consequences of.**
+27–31 are the third round's, and **row 27 is the one the other four are consequences of.** Rows
+32–37 are the fourth round's, and **row 35 is the one to read first**: round 3 bound the harness's
+*key names* to the installed binary and built a guard for them, and rows 32, 34 and 36 are all what
+the rung below that — value sets, and the document's own classification tables — cost while nothing
+was checking it.
 
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
 | 1 | **Identity repeats on every event**, with server-enforced equality against the batch header and the token binding | batch-level only, stamped onto events at ingest | an event is the durable, forwardable, quotable unit; ~60 B (12 %) buys unambiguity, and enforced equality makes drift impossible | ~12 % wire overhead. Reversible in one direction only: removing the fields later is a **schema bump** under the policy. **Amended 2026-08-23:** `schema_version` now rides every event on the identical argument — see row 19 |
-| 2 | **`Stop` reaps every open call in its session** as aborted | wait for the orphan timeout and let the server infer | a false idle at a turn boundary is the exact defect this design exists to prevent; waiting 15–60 min to notice defeats it | over-eager aborts on any legitimate call outstanding at `Stop`. **Amended 2026-08-23:** the late-completion override this row leans on now has a path — reaped entries are **tombstoned** for 15 min so a late close rejoins its original `call_id` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)). Before that amendment the late close was synthesized under a fresh id and `late_completion` could never leave zero, so the instrument bounding this decision could not report |
+| 2 | **`Stop` reaps every open call in its turn scope** as aborted | wait for the orphan timeout and let the server infer | a false idle at a turn boundary is the exact defect this design exists to prevent; waiting 15–60 min to notice defeats it | over-eager aborts on any legitimate call outstanding at `Stop`. **Amended 2026-08-23:** the late-completion override this row leans on now has a path — reaped entries are **tombstoned** for 15 min so a late close rejoins its original `call_id` ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)). Before that amendment the late close was synthesized under a fresh id and `late_completion` could never leave zero, so the instrument bounding this decision could not report. **Amended 2026-08-23 (round 4):** "its session" was always shorthand — the rule is scoped to `(session_id, agent_scope_id ?? "main")` and row 32 is why the scope key had to be split out of the binding field before that sentence was true |
 | 3 | **The dispatch tool emits both `tool.start` and `subagent.spawn`** sharing a `call_id` | one `subagent.spawn` and no `tool.start` for the dispatch call | a special case in the call ledger would live in the *one* path the kill-vs-complete requirement is actually about | ~120 B per dispatch, tens of times a day |
 | 4 | **Batches are atomic** — one bad event rejects 200 | per-event partial ingest with a report | a partially-ingested batch under a success status destroys the reporter's only other copy of the data | one malformed event costs ≤ 199 neighbours, bounded by the poison-pill rule. **Amended 2026-08-23:** this is precisely why an unknown `kind` or enum value must never be a validation failure (rows 20, and [§ 12.4](#124-batches-are-atomic)) |
 | 5 | ~~A new event `kind` is compatible; unknown kinds are ignored and counted — **minted in D1** with a pointer saying it might belong in the policy~~ | reject the batch on an unknown kind | — | **Superseded 2026-08-23.** The rule was policy, not mechanic: it governs what any producer and any receiver may do without a bump. It now lives in [`docs/VERSIONING.md § Wire compatibility` rule 7](../VERSIONING.md#the-rules), extended to cover new closed-enum members too, and [§ 5](#5-compatibility--what-this-document-owes-the-policy) carries only the mechanics with a cite. One rule, one home |
@@ -3569,17 +3993,23 @@ the original decision is left standing in the row so the change is legible rathe
 | 19 | **`schema_version` rides every event as well as the batch** | keep it batch-only, or make D2 stamp it onto each event at ingest | the policy's rule 1 says *every event* carries it, and the stored event is what gets replayed, quoted and pasted; a field that tells a reader what the other fields **mean** is the last one to leave the durable unit. Making the store stamp it would put a compliance obligation in another document | ~20 B/event (~4 %). Equality with the batch is enforced, so it cannot drift |
 | 20 | **An unrecognised closed-enum value is coerced to the field's unknown member and counted, at both ends** | pass the harness's value through verbatim and let the ingest validate strictly | verbatim pass-through plus atomic batches means one unannounced harness value (`SessionStart.source: "fork"` was exactly this, and is now a known member) destroys up to 200 good events and quarantines them permanently. Coercion costs one mislabelled field | a genuinely new harness state is rendered as `unknown` until this document is updated — visible in `enum_value_unknown.<field>`, which is the edit's trigger |
 | 21 | **`agent_scope` is labelled from the documented `agent_id` payload field** | keep it permanently `null`, as an earlier draft did on the grounds that any presence-based inference repeats the 30-day outage | the outage was an **undocumented environment variable** with nothing watching it. This is a documented payload field, and it is watched: both branches ride the heartbeat and the predicate-constant alarm fires if it goes constant either way | if the harness starts or stops sending `agent_id` universally, the label is wrong until the alarm fires — which is precisely the instrument the incident lacked |
-| 22 | **`SubagentStart` binds `agent_id` to the open dispatch call; `SubagentStop` closes the call it names** | the earlier narrow rule: close only when exactly one dispatch call is open, otherwise emit nothing | that rule designed a permanent loss into every parallel dispatch, on a flat assertion (with no cite) that `SubagentStop` identifies nothing | **Amended 2026-08-23 (round 3):** `SubagentStop` **does** carry `agent_id` — MEASURED, so the hedge it was parked behind is gone. In the same measurement the binding table's *first* row turned out to be **unreachable**, not merely unverified: `SubagentStart` carries no `tool_use_id` and no `parent_tool_use_id`, so the exact-reference rule could never fire and `agent_bind_ref` — billed as "the measurement that says which binding rule is carrying the fleet" — would have read a structural zero forever. That row and that counter are **deleted** rather than kept-and-hedged. The `sole_open` fallback survives with a stated reason it can still fire: a lost `bind` record after a torn index line |
+| 22 | **`SubagentStart` binds `agent_id` to the open dispatch call; `SubagentStop` closes the call it names** | the earlier narrow rule: close only when exactly one dispatch call is open, otherwise emit nothing | that rule designed a permanent loss into every parallel dispatch, on a flat assertion (with no cite) that `SubagentStop` identifies nothing | **Amended 2026-08-23 (round 3):** `SubagentStop` **does** carry `agent_id` — MEASURED, so the hedge it was parked behind is gone. In the same measurement the binding table's *first* row turned out to be **unreachable**, not merely unverified: `SubagentStart` carries no `tool_use_id` and no `parent_tool_use_id`, so the exact-reference rule could never fire and `agent_bind_ref` — billed as "the measurement that says which binding rule is carrying the fleet" — would have read a structural zero forever. That row and that counter are **deleted** rather than kept-and-hedged. The `sole_open` fallback survives with a stated reason it can still fire: a lost `bind` record after a torn index line. **Amended 2026-08-23 (round 4):** the bound id is now written to a field of its own, `child_agent_id`, and no longer overwrites the call's own scope — see row 32 |
 | 23 | **`parent_call_id` on `tool.start`; the harness's `agent_id` never transits** | put `agent_id` on the wire and let the server do the join | the reporter already holds the binding, so resolving it locally sends a `call_id` the consumer already knows instead of a second opaque identifier — less wire surface, less PII-adjacent data, and an immediately usable join for the drill-down's interns | ~30 B on the highest-volume kind, and `null` where the binding failed (counted as `agent_bind_unresolved`) rather than a guess |
 | 24 | **`compaction.end` carries no post-compaction percentage; `compaction.start`'s comes from the statusLine sample store with an age** | keep both `context_used_pct` fields as specified, or delete both | context percentages exist only in the statusLine payload, so as originally specified both fields were always `null`. The *pre*-compaction number is the interesting one and is available from the sample store; the *post* number is documented as unavailable (`current_usage` is null after a `/compact` until the next API call) and arrives seconds later as an ordinary `context.sample` | one cross-process read in the hook path, bounded by a 300 s staleness rule and reported with `context_used_pct_age_s` |
 | 25 | **Every refusal is attributed to the token's binding; pre-auth refusals are attributed to nothing** | attribute to the batch's claimed `install_id`/`seat_id`, which the earlier draft's worked example did | the schema-version check runs *before* the identity-equality check, so any holder of any valid token could render a colleague's desk degraded by posting a bogus version naming their seat | a `415`/`413`/`400 malformed_body` cannot degrade any seat's badge, because no identity is established yet — it is counted globally and surfaced locally by the reporter instead |
 | 26 | **Sanitizer rule order is part of the contract: paths are rewritten before blobs are redacted, and every fixture carries its rule trace** | keep the earlier order and maintain the fixture table by hand beside the rule table | the blob class `[A-Za-z0-9+/]` matches a long absolute path, so under the old order `Read: /home/…/IngestController.php` sanitized to `‹redacted:blob›.php` — a descriptor that answers nothing. Hand-maintained twins drift, which is how the draft shipped two fixtures no rule could produce | rule numbering moved, so every cross-reference to a rule number had to move with it. The trace column makes the next such change mechanical (AT-2 asserts it) |
-
 | 27 | **Every harness fact carries one of three states — MEASURED / DOCS-CITED / UNVERIFIED — and MEASURED means a captured payload, vendored as a fixture, asserted by `selftest`** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read), [§ 17](#17-appendix--the-captured-harness-payloads), [AT-21](#at-21-the-harness-fact-drift-guard)) | keep hand-transcribing from the vendor reference and fix the errors each review finds | **This is the round-3 class fix, and the evidence for it is the two rounds before it.** Round 1 found two transcribed hook facts wrong. The round-2 fix corrected those two instances — and built new designs on five more transcribed facts, which round 2 found wrong or absent. Per-instance correction had then failed twice, so the defect is not any instance: it is that **nothing bound the transcription to a source and nothing could red when they diverged** — a restatement with neither a pointer nor a guard. Round 3 stopped correcting instances first and landed the binding first. It immediately paid for itself: the capture found a defect no review had — the dispatch tool's payload `tool_name` is `"Agent"`, not `"Task"` (row 28) — and refuted three of round 2's own key-name findings, which a fourth round of transcription would have "fixed" into being wrong | the capture is a snapshot of one build on one OS. A fact that is true at 2.1.240 and false at 2.2.0 is MEASURED-and-wrong, which is why the version pin and the re-capture obligation are part of the rule and `harness_label` rides the wire. The residual is a harness upgrade nobody re-captures — which `harness_label` makes queryable and `payload_key_missing.<key>` makes visible, but only after deployment |
 | 28 | **The subagent-dispatch hook matches `tool_name ∈ {"Agent", "Task"}`, counting which fired** | match `"Task"`, as every prior draft did | the payload says **`"Agent"`** at 2.1.240 (MEASURED). Matching `"Task"` alone would emit no `subagent.spawn` on any current seat, bind no `agent_id`, and render every dispatch as an ordinary tool call — the interns feature reading zero forever, from one transcribed string that no review round caught. Both names are matched because both are live across harness versions; `dispatch_tool_name.<name>` reports which the fleet actually sends | a future third name is missed until the counter's total diverges from the `subagent.spawn` count. That divergence is the observable, and it is cheap |
 | 29 | **The `Notification` hook's emission is gated on `notification_type`; every suppressed type is counted individually** | emit an `attention.request` for every notification, per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 2's never-suppress wording | the documented types include `auth_success`, `agent_completed` and the `quota_auto_resume_*` family — none of which is an agent waiting on a human. Unconditional emission would put a seat into *blocked* every time it **finished** something, which is the false-idle defect mirrored, and `D2-MUST` #5 makes `attention.request` the only source of *blocked*. Rule 2 is right for a *classification* and wrong for a hook that legitimately fires outside this design's subject; what [§ 3.4](#34-why-identity-never-comes-from-the-environment) actually requires is that no suppression is **silent**, and `notification_not_attention.<type>` satisfies that literally | a genuinely attention-bearing type this list misses opens no request until someone reads `enum_value_unknown.notification_type`. Adding a second carve-out to rule 2 is review-blocking, so the exception cannot spread quietly |
 | 30 | **`StopFailure` is subscribed and emits `turn.end` with `end_reason: "api_error"`, which mints `stalled` — a state of its own, not `idle` and not `unknown`** | leave it unsubscribed, as every prior draft did, or fold it into `unknown` | unsubscribed, a rate-limited turn emits **no `turn.end` at all**: no reap, open calls to their orphan ceiling, and a desk rendering *working* for up to an hour — on the busiest seats, because those are the ones that get rate-limited. Folding it into `unknown` would then hide a rate-limited *fleet* behind the same state a killed subagent produces, and a rate-limited fleet is a thing an operator acts on | one more `turn.end.end_reason` member and one more rendered state for D2. `api_error_type` is DOCS-CITED, not MEASURED — provoking a real rate limit was not a cost worth paying — so the sub-classification is the part most likely to need correcting, and `enum_value_unknown.turn.end.api_error_type` is what will say so |
 | 31 | **One bucket-deletion precondition on the shared primitive: `now ≥ bucket_end + grace`, `grace = 5 s`, writers re-derive the bucket name immediately before the `writeSync`, and no hook may drop the current bucket** | keep "a bucket older than the current UTC hour has no living writer", the argument the four append-only trees shared | that argument bounds a hook's **lifetime** and not its **straddle** of the hour boundary: a hook entering at `13:59:59.900` and writing at `14:00:00.050` writes into a bucket the flusher may unlink ≤ 10 s later. One primitive, four trees, four consequences — a lost counter delta (which would have flaked [AT-16](#at-16-the-counter-sink-survives-concurrency)'s exact-equality GREEN and been debugged as flakiness), a lost index record (a false `aborted` blocking *idle*), a lost **event** (breaking [§ 0](#0-overview) item 9 outright), and a cosmetic log gap. Fixing it once at the primitive is the only version of this fix worth making | one extra flush pass of retention per bucket, and a bounded overshoot of the spool size bound when the only over-bound bucket is the current one (`spool_overflow_deferred`) |
+
+| 32 | **The call index carries two `agent_id` fields — `agent_scope_id` (the scope a call was opened in) and `child_agent_id` (the subagent a dispatch call spawned) — and the turn reap keys on the first** | ~~one `agent_id` field, `null` until `SubagentStart` bound it, read by both the binding and the reap~~ | One field could not hold both facts, and the two are *opposites* on the call that matters most. A dispatch call is opened in the main agent (scope `null`) and bound to the child's id a moment later; with one field the bind overwrote the scope, so the parent's own `Stop` — which carries no `agent_id` and therefore always scopes to `"main"` (MEASURED) — excluded the one call it most needed to close. The mirror case was as bad: a call opened *inside* a subagent had nowhere to record its scope, so the reap key for it was undefined, and the three places this document promises a permission-refused call "survives to the turn's reap" were false inside a subagent | **Superseded 2026-08-23 (round 4).** Two index fields instead of one, and one new reap row (row 33). The cost is one more field on every `open` record — ~20 B of a journal that is compacted every flush — against a dispatch call sitting open to its **60-minute** orphan ceiling with the seat rendered *working* the whole time, which is [§ 8.1](#81-the-problem-restated)'s defect reached through [§ 8.3](#83-the-reap-rules)'s own scoping rule. [AT-1](#at-1-kill-vs-complete-the-headline-test) case C is the regression test and its RED reproduces on every build |
+| 33 | **`SubagentStop` reaps the subagent's own open calls, reusing `turn_boundary` / `reap_turn_boundary`** | leave them to the 15/60-minute orphan timeout, as every prior draft did by omission | `Stop` does not fire inside a subagent (MEASURED), so before this row **no rule in the design ever closed a call opened inside one** — the reap table had `SessionEnd`, `SessionStart`, `Stop`, `StopFailure`, session eviction and flusher restart, and every one of them either scopes to `"main"` or ends the whole session. The gap was invisible because it only shows on calls the harness never closes, which is exactly the permission-refused call the design already documents three times. A subagent completing **is** a turn boundary — of the subagent's turn — so no new enum member is needed | one extra index scan per `SubagentStop`, tens of times a day. Reusing the existing `abort_reason` and `close_source` members is deliberate: a new member of either would be a **rule-4 change**, a schema bump plus a stated window ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), and no fact here needs one. If a later round wants to tell a subagent boundary from a main-agent one, `close_source` plus the event's own `agent_scope` already do it |
+| 34 | **`reporter.heartbeat.degraded`'s member set is declared in [§ 9.3](#93-degradation-counters), twelve members, and the array's bound is that count** | ~~`array<enum>`, `0…16 elements`, pointing at [§ 9.3](#93-degradation-counters) for members it did not list~~ | A wire field typed `array<enum>` whose members are stated nowhere is not implementable: the ingest validates per-kind `data`, so a builder validates against a *guess*, and a guess that misses turns a degraded seat's heartbeat into a `422`, a rejected 200-event batch and a permanent quarantine — the liveness backstop dying on the seats that need it. The two examples in the document disagreed with each other (`rejected_batches` against `batches_rejected`), which is what a set with no home always ends in | **Superseded 2026-08-23 (round 4).** The member name follows the counter (`batches_rejected`), and the bound follows the table rather than being chosen. Cost if the twelve are wrong: a genuinely new degradation condition is a rule-4 change like any other reporter-minted member ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). [AT-22](#at-22-a-maximally-degraded-seat-still-heartbeats) asserts the exact array and drives the guessed-member `422` as a RED |
+| 35 | **One enum classification table over a population a tool re-derives, and every harness enum's value set is asserted against the installed binary on every run** | ~~two hand-written lists, each asserting it was "the complete list" of its side~~ | The two lists omitted **five** of the wire's 23 enum fields between them, so those five inherited neither rule 4 nor rule 7 and an editor adding a member to one had no rule to apply. That is [decision 27](#15-decisions-taken-revisable-at-review)'s own shape one rung down: round 3 bound *key names* to the binary and built a guard for them, and left *value sets* transcribed — which is how a `notification_type` row carrying 14 of the build's 16 declared members survived three reviews, omitting exactly the two the `elicitation` branch depends on. Correcting the row would have been instance N+1 | **Superseded 2026-08-23 (round 4).** `tools/design/verify-event-schema.py` re-derives the enum-row population from the field tables and fails on any row missing from the table; `tools/design/verify-harness-facts.py` re-derives each harness enum's value set from the installed binary and asserts every site this document states it at. Cost: two more checks in the gate, and a harness-sourced enum can no longer be added without a row in the enum-source table. The residual is unchanged from row 27 — a build nobody re-runs the tools against |
+| 36 | **`stalled` has three stated exits and `notification_kind` has three members, not four** | ~~`stalled` with an entry edge and one sentence of exit; `notification_kind` carrying `other` as its unknown member~~ | Both were minted in round 3 and both are the shape this document names elsewhere and forbids. `stalled` had an entry edge and no bounded exit — and because the flusher heartbeats every 60 s regardless of session activity, a `stalled` seat never reaches `stale`, so one transient rate-limit rendered `stalled` for the rest of the day. `notification_kind.other` was the opposite defect: a member **no path can emit**, because the lookup's unrecognised row suppresses the event before rule 4 could coerce anything onto it — a render branch D2 and D3 would build and never reach, on a quarter of the field's surface | **Superseded 2026-08-23 (round 4).** `stalled` clears on the next `turn.start`, on `session.end` (including the 90-minute `inferred_silence` close, so the bound needs no new timer), or on the seat leaving live state; past a `session.end` it renders `unknown`. `other` is deleted and the unknown case lives where it actually is — the counter `enum_value_unknown.notification_type`, the one counter in this design named after a payload key rather than a wire field, stated as the single exception to the grammar. Cost: D2 gains one clearing rule and loses one dead branch |
+| 37 | **The failed-authentication rate limit is evaluated inside [§ 12.1](#121-validation-order) step 4** | ~~step 5, with the other three limits~~ | `Validation order` states "the first failure wins": a request whose token resolves to nothing terminates at step 4 and never reaches step 5, so a limit whose entire subject is *failed* authentications was evaluated only on requests that had already authenticated. It could never return the `429` it declared. This is the same defect class [§ 12.3](#123-rate-limits) already congratulates itself for fixing in this limit's **key** — a counter keyed on the presented string never accumulates past 1 — arriving a second time through its **placement** | **Superseded 2026-08-23 (round 4).** One exception to the ordering, stated at both ends (step 4, and the limit's own row). Cost: the auth check now has a side effect and a second exit status, which is why the attribution table gains the `429` explicitly — it degrades no seat, because a token that resolves to nothing names none. [AT-6](#at-6-unknown-schema-version-is-refused-loudly) case B drives the 61st bad token and carries a distinct-IP negative control |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -3631,7 +4061,7 @@ reporter against it. The reporter vendors them as `fixtures/hooks/<HookEventName
 | Harness | **Claude Code 2.1.240** (`claude --version`) |
 | Platform | Linux |
 | Captured | **2026-08-23** |
-| Volume | **56 payloads across 10 hook events** |
+| Volume | **56 payloads across 10 hook events** captured; **16 reproduced below**, one per distinct payload shape, across those same **10** hooks. The 16 and the 10 are re-derived from this appendix by `tools/design/verify-harness-facts.py` on every run and asserted against these numbers; the **56** is provenance for the capture run and is *not* checkable from this repo — see the note under [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s fact table |
 | Method | a project-local `.claude/settings.json` wiring each subscribed hook to a command that appends its raw stdin to a capture file, plus a `statusLine` entry doing the same; sessions then driven headlessly with `claude -p` |
 
 **What was driven, and what could not be.** Driven: `SessionStart` at `startup`, `resume` and
