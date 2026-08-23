@@ -223,13 +223,17 @@ for i in range(1, len(lines) - 1):
 # every capped object inside `data` is dispositioned: a reduction rule, or a named exemption.
 # The caps themselves are READ FROM the field tables — a cap this tool carried as a literal
 # would be one more number free to disagree with the document it is checking.
+# The type is matched ANYWHERE in the row rather than in cell 2: § 6.11's field table carries an
+# extra source-key column, so a position-bound predicate is blind to a capped object added there —
+# to exactly the row this check exists to catch.  Check 6 above was hardened against that same
+# table for the same reason; one population, one predicate shape.
 capped, caps = {}, {}
 for i, line in enumerate(lines, 1):
     if not (line_kind[i - 1] and line.startswith("|")):
         continue
-    f = re.match(r"^\|\s*`([a-z_][a-z0-9_]*)`\s*\|\s*object\s*\|", line)
+    f = re.match(r"^\|\s*`([a-z_][a-z0-9_]*)`\s*\|", line)
     c = re.search(r"≤\s*([\d.]+)\s*(B|KiB)", line)
-    if not f or not c:
+    if not f or not c or not re.search(r"\|\s*object\s*\|", line):
         continue
     capped[f"{line_kind[i - 1]}.{f.group(1)}"] = i
     caps[f.group(1)] = int(float(c.group(1)) * (1024 if c.group(2) == "KiB" else 1))
