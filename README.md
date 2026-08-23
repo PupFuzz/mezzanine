@@ -45,10 +45,14 @@ code; office tiles are CC0. No commercially-licensed assets are vendored here.
 
 ## Branch model
 
-`dev` is the **integration branch** — all work lands there, via squash-merged PRs.
-`main` is the **release branch** and the repo default; PRs into it land as **merge commits**
-to preserve release topology. Both branches are protected: no direct pushes, no force-pushes,
-no deletion, and CI must pass.
+`dev` is the **integration branch** — all work lands there. `main` is the **release branch**
+and the repo default. Both are protected by rulesets: PR required, no direct pushes, no
+force-pushes, no deletion — and each branch permits exactly **one** merge method, so the
+release topology is enforced by the repo rather than remembered by whoever clicks the button.
+
+Which method each branch permits, and everything else about versions — the `VERSION` file,
+release-PR shape, tagging, the two deploy targets, and the wire-compatibility rule between
+`fleet-reporter` and the ingest — is owned by **`docs/VERSIONING.md`** and not restated here.
 
 ## Kanban
 

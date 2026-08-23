@@ -1,0 +1,118 @@
+# auto-tag-version.yml — mint the `v<VERSION>` tag on the commit that released it.
+#
+# WHAT FIRES IT. A push to `main` — i.e. a release PR landing. Nothing else; there is no
+# manual dispatch, because there is no case where a tag should be minted by hand (see
+# docs/VERSIONING.md § The core rules, rule 4).
+#
+# WHAT IT DOES. Reads `VERSION` at the pushed commit, and puts a LIGHTWEIGHT tag `v<VERSION>`
+# on that commit — so the tag's sha IS the merge commit's sha. That is the whole job: it is
+# TAG-ONLY. It publishes no GitHub Release, uploads no artifact, and deploys nothing. A tag
+# is not a deploy (docs/VERSIONING.md § Deploy is not a tag), and this workflow deliberately
+# does not blur that line by doing both.
+#
+# WHY CI OWNS THE TAG. A hand-cut tag is cut from whatever the tagger's local clone happened
+# to hold, at whatever moment they remembered — which is how a tag ends up on the wrong
+# commit, or a release ends up with none at all. Here the tagged commit is `github.sha`: the
+# commit that was actually pushed, not a ref resolved later.
+#
+# THE TWO INTERESTING BEHAVIOURS, both about a tag that ALREADY EXISTS:
+#   * same commit  -> no-op, exit 0. Re-running this job (or a force-re-delivery of the same
+#     push) must not be an error; the desired state is already the actual state.
+#   * DIFFERENT commit -> FAIL LOUD, exit 1. This is not a tagging problem, it is a report:
+#     `main` moved without `VERSION` moving, which means the release PR forgot to bump it.
+#     The remedy is a release PR carrying the bump — never deleting or moving the old tag,
+#     which would silently rewrite what an already-shipped version means. Failing here costs
+#     a red check on an already-merged commit; NOT failing costs a version number that points
+#     at two different trees, and nothing downstream can tell which one it was handed.
+#
+# NO NEW SECRET. The built-in GITHUB_TOKEN pushes the tag, which is why this job needs
+# `contents: write` where every other workflow in this repo is read-only. A push made with
+# GITHUB_TOKEN does not trigger further workflows — fine here, since nothing is chained off
+# the tag; if something ever is, it needs its own trigger rather than a PAT added here.
+
+name: Auto-tag release version
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  # Serialize by branch, and NEVER cancel in flight: a cancelled run is indistinguishable
+  # from a release that was never tagged, and the job is idempotent anyway, so letting each
+  # push's run finish is strictly safer than racing them.
+  group: auto-tag-version-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    # GitHub-hosted, matching the rest of this repo's CI: public repo, free runners, no
+    # self-hosted runner. The whole job is git plus coreutils, both stock on ubuntu-latest.
+    runs-on: ubuntu-latest
+    steps:
+      # Tags are fetched deliberately: the "does this tag already exist, and where?" question
+      # below is answered against the REMOTE's tags, not against an empty local tag namespace
+      # that would answer "no" to everything. `fetch-depth: 0` keeps `rev-parse` able to
+      # resolve any pre-existing tag's commit rather than a shallow stub.
+      - name: Checkout (full history, with tags)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Tag this commit v<VERSION>
+        env:
+          # The pushed commit, taken from the event rather than resolved from a ref that
+          # could have moved between the push and this job starting.
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -f VERSION ]; then
+            echo "::error::VERSION is missing at ${COMMIT_SHA}. It is the single source of truth for the release version (docs/VERSIONING.md § The core rules, rule 1); this job cannot guess one."
+            exit 1
+          fi
+
+          version="$(tr -d '\n' < VERSION)"
+
+          # Validate before using it in a ref name. An empty or malformed VERSION would
+          # otherwise mint a garbage tag (or a tag literally named `v`) and report success —
+          # a wrong-but-plausible tag is worse than a red job, because nothing downstream
+          # ever questions a tag that resolves.
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+            echo "::error::VERSION does not contain a single semver string: '${version}'. Expected e.g. 0.1.0 (one line, trailing newline, nothing else)."
+            exit 1
+          fi
+
+          tag="v${version}"
+          echo "VERSION=${version} -> tag ${tag} on ${COMMIT_SHA}"
+
+          # `^{commit}` dereferences an annotated tag to the commit it points at, so the
+          # comparison below is commit-to-commit whether the existing tag is lightweight or
+          # annotated. `-q --verify` + `|| true` keeps `set -e` from killing the script on
+          # the ordinary "no such tag yet" answer.
+          existing="$(git rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
+
+          if [ -n "$existing" ]; then
+            if [ "$existing" = "$COMMIT_SHA" ]; then
+              echo "${tag} already points at ${COMMIT_SHA} — nothing to do."
+              echo "\`${tag}\` already pointed at \`${COMMIT_SHA}\` — idempotent no-op." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::${tag} already exists at ${existing}, but this push is ${COMMIT_SHA}. main moved without VERSION moving — the release PR did not bump it. Fix it forward with a release PR that bumps VERSION; do NOT delete or move ${tag}."
+            exit 1
+          fi
+
+          # Lightweight on purpose: the tag's sha then equals the merge commit's sha, which
+          # is what docs/VERSIONING.md states and what makes `git rev-parse v0.1.0` answer with
+          # the commit a reader expects. It also needs no committer identity configured.
+          git tag "$tag" "$COMMIT_SHA"
+
+          # A tag that already exists on the remote at another sha is REJECTED here rather
+          # than force-updated — this is the same guard as above, closing the window between
+          # the check and the push if two runs race.
+          git push origin "refs/tags/${tag}"
+
+          echo "Tagged \`${tag}\` at \`${COMMIT_SHA}\`." >> "$GITHUB_STEP_SUMMARY"
