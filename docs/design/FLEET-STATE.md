@@ -2326,7 +2326,7 @@ Emitting a delta per heartbeat would add 1,440/seat/day of pure noise, a 16 % in
 carrying no information. The heartbeat that carries *news* is a different case and does emit — that
 exception set is [§ 6.5](#65-the-fold)'s, named there **once**, closed against the version-bearing one,
 and deliberately not enumerated again here, where a second copy could drift from it.
-Those are **edge-triggered**, single digits per seat-day, and they no more belong in this figure than
+Its members are **edge-triggered**, single digits per seat-day, and no more belong in this figure than
 the sweeper's own `stale` transition does: 8,980 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
 
