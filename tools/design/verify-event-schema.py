@@ -117,13 +117,25 @@ else:
                   for r in cls.group(1).split("\n")
                   if r.startswith("|") and re.search(r"`([^`]*)`", r)}
 
-kind, n_enum = None, 0
+def kinds_by_line(lines):
+    """The event kind each line sits under. § 6's headings are the only declaration of it,
+    and both the enum check and the counter-name check below key on it — so it is derived
+    once here rather than by two walkers free to drift apart."""
+    out, kind = [], None
+    for line in lines:
+        h = re.match(r"^#{2,4}\s+\d+(?:\.\d+)?\s+`([a-z.]+)`", line)
+        if h:
+            kind = h.group(1)
+        elif re.match(r"^#{2,4}\s", line):
+            kind = None
+        out.append(kind)
+    return out
+
+line_kind = kinds_by_line(lines)
+
+n_enum, n_unclassified = 0, 0
 for i, line in enumerate(lines, 1):
-    h = re.match(r"^#{2,4}\s+\d+(?:\.\d+)?\s+`([a-z.]+)`", line)
-    if h:
-        kind = h.group(1)
-    elif re.match(r"^#{2,4}\s", line):
-        kind = None
+    kind = line_kind[i - 1]
     if not line.startswith("|"):
         continue
     if not re.search(r"\|\s*enum\s*\||\|\s*array\\<enum\\>\s*\|", line):
@@ -134,6 +146,7 @@ for i, line in enumerate(lines, 1):
     n_enum += 1
     name, bare = (f"{kind}.{fld.group(1)}" if kind else fld.group(1)), fld.group(1)
     if name not in classified and bare not in classified:
+        n_unclassified += 1
         fail.append(f"L{i}: enum field {name!r} appears in no row of § 6.0's classification "
                     f"table — it inherits neither the rule-4 nor the rule-7 obligation")
 
@@ -142,8 +155,66 @@ for i, line in enumerate(text.splitlines(), 1):
     if re.search(r"\b(TODO|TBD|FIXME|XXX)\b", line):
         fail.append(f"L{i}: placeholder marker: {line.strip()[:100]}")
 
+# ---- 7. counter-name grammar (§ 6.0 rule 4) -----------------------------------
+# Rule 4 states the grammar once — `<family>.<wire field>`, the field's FULL dotted name,
+# "never a kind spelled with an underscore and never a bare field name".  A round that
+# stated the grammar in prose and shipped no check minted a non-conforming counter name in
+# the same commit; a grammar nobody checks is a grammar that decays.  Both populations here
+# are RE-DERIVED every run: the wire fields from § 6's own kind headings and field tables
+# (via kinds_by_line above — the same derivation the enum check uses), and the counter names
+# from every literal in the document.  The wire-field set is a deliberate SUPERSET of the
+# `data` keys: it takes any backticked first cell under a kind heading, so the check is a
+# guard against the shapes rule 4 names — a bare field name, an underscored kind, a
+# non-canonical placeholder — and not a proof that a tail names a `data` key specifically.
+WIRE_FIELD_FAMILIES = ("enum_value_unknown", "value_clamped", "data_truncated")
+GRAMMAR_EXCEPTION = "enum_value_unknown.notification_type"   # the one rule 4 names
+
+wire_fields = set()
+for i, line in enumerate(lines):
+    if line_kind[i] and line.startswith("|"):
+        f = re.search(r"^\|\s*`([a-z_][a-z0-9_]*)`\s*\|", line)
+        if f:
+            wire_fields.add(f"{line_kind[i]}.{f.group(1)}")
+
+n_counter = 0
+_cn = re.compile(r"\b(" + "|".join(WIRE_FIELD_FAMILIES) +
+                 r")\.(<[a-z ]+>|\*|[A-Za-z_][A-Za-z0-9_.]*)")
+for i, line in enumerate(lines, 1):
+    for m in _cn.finditer(line):
+        n_counter += 1
+        fam, tail = m.group(1), m.group(2).rstrip(".")
+        name = f"{fam}.{tail}"
+        if name == GRAMMAR_EXCEPTION or tail in ("*", "<wire field>") or tail in wire_fields:
+            continue
+        why = ("a non-canonical placeholder — rule 4's spelling is `<wire field>`"
+               if tail.startswith("<") else
+               f"{tail!r} is not a dotted wire field any § 6 table declares — rule 4 forbids "
+               f"a bare field name and a kind spelled with an underscore")
+        fail.append(f"L{i}: counter name `{name}` violates § 6.0 rule 4's grammar: {why}")
+
+# ---- 8. no blank line severs a table body -------------------------------------
+# A blank line between two `|`-rows ends the table in GitHub markdown: the row below it
+# becomes a new table's HEADER and every row after it loses its column names.  This has now
+# been hand-deleted in two consecutive rounds and re-minted in the same commit as its own
+# fix, which is what makes it a check rather than a third manual delete.  Legitimate table
+# separations are kept: those are followed by a real header, i.e. a `|---|` delimiter row.
+n_table_breaks = 0
+for i in range(1, len(lines) - 1):
+    if lines[i].strip() or not (lines[i - 1].startswith("|") and lines[i + 1].startswith("|")):
+        continue
+    n_table_breaks += 1
+    nxt = lines[i + 2] if i + 2 < len(lines) else ""
+    if re.match(r"^\|[\s\-:|]+\|\s*$", nxt):
+        continue
+    fail.append(f"L{i + 1}: blank line severs a table body — the row below it is a data row, "
+                f"so it renders as a new table's header and the rows after it lose their "
+                f"column names. A legitimate table separation is followed by a header row "
+                f"plus its `|---|` delimiter")
+
 print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
-      f"enum fields re-derived: {n_enum}, all classified")
+      f"enum fields re-derived: {n_enum}, {n_enum - n_unclassified} classified; "
+      f"counter-name mentions checked: {n_counter} against {len(wire_fields)} wire fields; "
+      f"blank lines between table rows: {n_table_breaks}")
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
     for f in fail:
