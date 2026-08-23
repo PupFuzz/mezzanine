@@ -242,11 +242,12 @@ reporter installed six weeks ago. That needs its own, explicit version.
    point at that declaration; they do not restate it (the same discipline
    `docs/KANBAN.md § The card token` applies to the card grammar, for the same reason).
 3. **Adding an optional field is backward-compatible** and needs no bump: an old ingest
-   ignores it, a new ingest defaults it. Nothing else is. Note the asymmetry with the
-   fail-loud rule below, because it is easy to read as a contradiction: an unknown **field**
-   at a known schema version is ignored, an unknown **version** is refused. Ignoring the
-   field is what makes additive change possible at all; refusing the version is what stops a
-   payload nobody understands from being accepted as if it were understood.
+   ignores it, a new ingest defaults it. Nothing else is, **except the two other additive
+   cases rule 7 names**. Note the asymmetry with the fail-loud rule below, because it is easy
+   to read as a contradiction: an unknown **field** at a known schema version is ignored, an
+   unknown **version** is refused. Ignoring the field is what makes additive change possible
+   at all; refusing the version is what stops a payload nobody understands from being
+   accepted as if it were understood.
 4. **Removing a field, renaming one, changing its type, or changing what an existing field
    MEANS requires a schema-version bump** plus a stated support window. The meaning change is
    the dangerous member of that list and the reason it is named explicitly: it passes every
@@ -260,6 +261,37 @@ reporter installed six weeks ago. That needs its own, explicit version.
    ships `N+1` states, in its notes, that `N-1` leaves the window — and the release that
    actually narrows the accepted set says so as a user-visible change (minor, per
    [§ Bump sizing](#bump-sizing)).
+7. **Additive change is backward-compatible, and the receiver absorbs it rather than
+   refusing it. Two cases, and only these two: a new event `kind`, and a new member of a
+   closed enum field.** Neither needs a schema bump, because neither can break a consumer
+   that never knew about it — they are the `kind`-level and the value-level analogue of
+   rule 3's added optional field. The receiver's obligation is stated as behaviour, because
+   "compatible" is only true if the receiving side actually does this:
+   - **an unknown `kind` is ignored and counted**, never a rejection of the payload
+     carrying it;
+   - **an unrecognised value in a closed enum field is coerced to that field's designated
+     unknown member and counted**, never passed through and never a rejection. A field that
+     has no unknown member is not a closed enum for this purpose — **and adding a member to
+     such a field is therefore a rule-4 change: a bump plus a stated window.** That
+     fall-through is stated rather than left implicit because it is the whole cost of
+     omitting an unknown member, and the omission is sometimes right: a value a *producer*
+     mints out of its own logic (rather than passing through from an upstream system) has no
+     benign unknown case, so an unknown member there would silently absorb a producer bug
+     that should be loud. What must not happen is for such a field to be treated as covered
+     by this rule — under atomic ingest, an upgraded producer sending a new member to a
+     not-yet-upgraded receiver would take a rejection for the whole payload, and independent
+     upgrade is the steady state, not an edge case;
+   - **both counts are surfaced per seat**, so a producer running ahead of its receiver is a
+     visible state rather than a silent one.
+
+   The reason this is a rule and not an implementation detail is the blast radius of the
+   alternative. Payloads are ingested atomically — one invalid event refuses its whole
+   batch — so a receiver that treated an unrecognised kind or enum value as *invalid* would
+   convert a single additive change upstream into the permanent loss of every good event
+   beside it, which is precisely the quiet, unrecoverable failure
+   [§ the failure direction](#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)
+   exists to forbid. **Removing** a kind or an enum member, or changing what either *means*,
+   is rule 4's business and needs a bump like anything else.
 
 ### The failure direction must be safe — reject loudly, never drop quietly
 
