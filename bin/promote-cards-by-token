@@ -1,0 +1,631 @@
+#!/usr/bin/env bash
+# promote-cards-by-token — on a release, move this repo's board cards to the
+# "released" stage, correlating by the `card#<id>` token in the RELEASED RANGE's
+# commit subjects.
+#
+# ⚑ VENDORED, NOT AUTHORED HERE. Everything BELOW THIS HEADER BLOCK is a BYTE-FOR-BYTE
+# copy of `bin/promote-cards-by-token` in PupFuzz/agent-board-framework at commit
+# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27). Only this header was rewritten, and
+# only to state MEZZANINE's facts instead of that repo's. Fix a defect UPSTREAM and re-vendor;
+# a local edit to the body forks a security-sensitive tool away from the copy that has the
+# review history, and nothing here would notice. The upstream repo is private, so the whole
+# tool ships here rather than being fetched at run time — a public CI job cannot clone it.
+#   RE-VENDOR = `sed -n '154,$p' <upstream>/bin/promote-cards-by-token > <this file's body>`,
+#   keeping this header. That the body is unmodified is therefore a one-diff check, which is
+#   the whole reason not one comment inside it was "tidied".
+#   ⚑ READING THE BODY'S COMMENTS: every relative path they cite (`.githooks/…`,
+#   `templates/…`, `plugins/…`) and every `card#NNNN` / `#NNN` they cite resolves in the
+#   UPSTREAM repo — NOT in this one. Do not go looking for those files here. What plays their
+#   role in mezzanine is named in this header: the grammar's in-repo consumer is
+#   `bin/card-token-lint.py`, and the pin on this script's accept-set is
+#   `bin/promote-cards-by-token.selftest.sh`.
+#
+# WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — the card-first correlation gap.
+#   agent-board-toolkit's `promote-released-cards` correlates ONLY on `payload.dl_number` /
+#   `payload.pr_number`. Board 14 is CARD-FIRST: cards are the front door, they carry no
+#   `dl_number`, and this repo mints no DLs — so that mover has NO key to match on here and
+#   its "Released to main" stage would be structurally unreachable. The webhook bridge's own
+#   `merged_to_main` writeback leg is unreachable for the same shape: individual card PRs
+#   squash-merge to `dev`, and the only PR that reaches `main` is the release PR, which names
+#   no cards. The key that DOES exist is the `card#<id>` token already present in the
+#   squash-commit subjects that `dev` carries onto `main`.
+#
+# CARD-TOKEN GRAMMAR — NOT OWNED HERE. The accept-set is owned by the webhook bridge's
+# `GitHubPrCardMoveClassifier::CARD_TOKEN_PATTERN` (prose: agent-board-framework
+# `plugins/coord/docs/BRIDGE-WRITEBACK.md` § The `card#<task-id>` convention, item 2). This
+# comment explains the POSIX-ERE translation; it does not restate the grammar. Four properties
+# are load-bearing: both separated aliases correlate (`card#123` and `card-123`); LEFT-anchored
+# only, no trailing boundary (`card#3054_fix` still correlates); GLUED `card123` correlates at
+# TWO OR MORE digits so that `card2go` still names no card; and near-miss shapes (`card_123`,
+# `card:123`, `card #123`, single-digit glued `card4`) miss but never SILENTLY — they WARN.
+# The bridge spells the two arms with a PCRE branch reset, `(?|[-#](\d+)|(\d{2,}))`, which
+# POSIX ERE has no equivalent for; the two-arm form below is behaviourally identical because
+# the arms are mutually exclusive on the character after `card`, so POSIX leftmost-LONGEST and
+# PCRE leftmost-FIRST cannot disagree. IN THIS REPO the two patterns below are the single
+# in-repo copy of that grammar: `bin/card-token-lint.py` EXTRACTS them from this file at run
+# time rather than restating them, and `bin/promote-cards-by-token.selftest.sh` pins what this
+# script's engine accepts. A widening happens upstream and arrives here by re-vendoring.
+#
+# SAFETY — the properties that make a terminal-stage mover trustworthy:
+#   - POSITIVE-ONLY correlation. The card set is derived from commits REACHABLE in the
+#     released range. Nothing is ever promoted because it is ABSENT from something.
+#   - ANTI-RESURRECTION. A matched card whose CURRENT stage is not in the Shipped-class
+#     source set is SKIPPED and logged, never moved (same semantics as
+#     `promote-released-cards --shipped-stages`), so a Backlog / Won't-Do / already-
+#     Released card carrying a matched token cannot be dragged into a TERMINAL stage.
+#     Unlike the toolkit's, this guard is REQUIRED, not opt-in: this leg exists only
+#     for a board whose released stage is terminal.
+#   - BOARD-SCOPE. `card#<id>` resolves against a GLOBAL task-id space, so a token can
+#     name a card on another board. A resolved card whose `board_id` is not the
+#     configured board is REJECTED and reported loudly — the BRIDGE-WRITEBACK.md
+#     § board-scope-guard invariant, applied to this mover.
+#   - IDEMPOTENT. Re-running over the same range performs no writes and exits 0 (a re-run
+#     over a NON-merge tip performs no writes and re-reports the same loud 4 — the tip does
+#     not become trustworthy by being read twice).
+#   - NEVER SILENT-GREEN. See the exit table below; every degraded state is loud.
+#
+# STRANDED-CARD RESIDUE REPORT — the NEGATIVE COMPLEMENT of the mover, and deliberately
+# NOT a second promoter.
+#   Positive-only correlation has one blind spot BY CONSTRUCTION: a card whose shipped commit
+#   carried no parseable `card#<id>` token is INVISIBLE here — never matched, so never moved,
+#   never counted, never mentioned. Exit 3 fires when a TOKEN names no card; there was no
+#   signal at all for the inverse — a CARD that no token names. (Upstream MEASURED this on its
+#   own board: ~8% of the released population had arrived by hand. No such measurement exists
+#   for board 14 — this repo has never cut a release — so treat the rate here as UNKNOWN,
+#   not as 8%.)
+#   So after the moves, this reads the board and NAMES every card still sitting in a
+#   Shipped-class stage that no token in the range named. Three rules keep it honest:
+#     - IT NEVER PROMOTES. Every promotion decision stays positive-only; this leg performs no
+#       write of any kind. "Absent from the range" is a REPORT, never a move.
+#     - IT NEVER CHANGES THE EXIT CODE, in either direction — not for stranded cards, and not
+#       for its own read failure. Stranded cards are a PRE-EXISTING BOARD CONDITION, not a
+#       failure of this run: this run had no token for them and correctly did not move them,
+#       and reddening the release job would neither fix one nor be actionable at that moment.
+#       A red clearable only by editing history is a red that gets ignored — and it would
+#       corrupt codes 1/3/4, which all mean "this run is degraded, act NOW". Loudness comes
+#       from the register, not the code: the alarm is ALSO written to $GITHUB_STEP_SUMMARY
+#       under Actions, because a stderr line in a GREEN job is invisible in a collapsed log.
+#     - IT NEVER PRINTS A CLEAN BILL IT DID NOT MEASURE. A blind read (0 visible cards), a
+#       short read (pages deliver fewer rows than the board's own meta.total), a page-cap
+#       overrun, an unparseable body or an HTTP error each report UNAVAILABLE — never
+#       "0 stranded". The quiet path prints the census it actually took, so an empty result
+#       is a measurement rather than a silence.
+#   IT CANNOT CLASSIFY, and does not pretend to. A reported card is one of: (a) shipped here
+#   under an untokened subject — it will never promote itself (closure: verify the commit,
+#   then `--cards <id>`); (b) absorbed into a sibling card — same closure, and going forward
+#   the absorbing commit should token EVERY absorbed card, which is what makes it reachable.
+#   (A board-side `absorbed-by` link read by this tool is deliberately NOT the answer: it
+#   would move the trust boundary from reviewed git history to a mutable card field, so
+#   anyone with card-edit rights could point a card at a released sibling and drag it into a
+#   terminal stage.) Or (c) merged to `dev` AFTER this release was cut — expected, and it
+#   promotes on the NEXT release. Skipped entirely under `--cards` (a targeted promote has no
+#   release range, so its complement is not residue) — loudly.
+#   NB MALFORMED token spellings (`cards #N`, `card_N`, single-digit glued `card4`) are a
+#   DIFFERENT gap — the near-miss WARN below, and `bin/card-token-lint.py`, which catches them
+#   at PR time while renaming the branch is still free. This leg is the NO-TOKEN-AT-ALL case.
+#
+# EXIT CODES (distinguishable by design — a silent 0 is the failure this closes).
+# Reported cumulatively (every degraded state prints), exiting on the MOST severe: 1 > 4 > 3.
+# The stranded-card residue report is WARN-ONLY and never participates (see above).
+#   0  healthy: every correlated token resolved, and each match either moved, was
+#      already released, or was deliberately stage-guarded.
+#   1  one or more card moves FAILED (non-2xx / transport error on a write). DIVERGENCE
+#      from `promote-released-cards`, which exits 1 only when NOTHING moved — a green job
+#      with one un-promoted shipped card. Here ANY failed write is non-zero.
+#   2  refusal / fatal precondition, and NOTHING was written: bad config, missing
+#      credentials, host-guard refusal, unreadable board, a missing option argument, or an
+#      un-derivable range (no push-`before` and no release tag; or a `before` sha that is
+#      absent from this checkout or not an ancestor of the head).
+#   3  one or more card tokens matched NO card on the configured board (absent,
+#      archived, or on another board). Deliberately NOT a warning: on this board every
+#      `card#<id>` in a release range is supposed to be a live card here, so an
+#      unresolved one means either a typo'd id (a card that will NEVER be promoted) or
+#      an archived card — both need a human. A ~2-minute check is the right side of
+#      the asymmetry against a silently un-promoted shipped card.
+#   4  INCOMPLETE ref-derivation: the release tip is NOT a merge commit, so a squash/rebase
+#      merge of the release PR may have collapsed the per-PR subjects this correlates on —
+#      the silent-green class `promote-released-cards` also dies on. Whatever tokens the
+#      range DID carry are still resolved and promoted FIRST: correlation is positive-only,
+#      so a truncated range can only MISS cards, never promote a wrong one, and the moves it
+#      can make are correct work worth keeping (a rebase-merged release preserves every
+#      subject yet still has a non-merge tip). 4 then says "…and the set may be SHORT —
+#      verify this release against the board by hand." Unlike 2, writes MAY have happened.
+#      SECOND DIVERGENCE from `promote-released-cards`: this is checked on EVERY non-merge
+#      tip, NEVER gated on the move count. Gating it on `moved == 0` (which this script
+#      shipped with) lets a single surviving token suppress the whole guard — a tip that
+#      collapsed 3 of 4 release subjects moves 1 card and exits 0 with 3 stranded forever.
+#
+# Usage: promote-cards-by-token [--cards LIST] [--base REF] [--head REF] [--dry-run] [--config PATH]
+#   --cards "5101,card#5085"  promote exactly these (ids or tokens); skips git derivation.
+#   --base REF                explicit range base; overrides the derivation below.
+#   --head REF                range head (default HEAD).
+#   --dry-run                 report only, move nothing.
+#   --config PATH             config file (default .release-pr.json).
+#
+# Env: KANBAN_WRITEBACK_TOKEN (required)  — bearer token; its user must be a member of
+#                                           the board WITH move permission.
+#      KANBAN_EXPECTED_HOST   (required)  — the only host the token may be sent to.
+#      KANBAN_API_BASE        (optional)  — overrides `.promote.api_base`; the committed
+#                                           value is a host-scrubbed placeholder.
+#      GITHUB_EVENT_BEFORE    (optional)  — the push event's `before` sha (see below).
+#      GITHUB_STEP_SUMMARY    (optional)  — set by GitHub Actions; the stranded-card alarm is
+#                                           mirrored there so a WARN-only signal is visible on
+#                                           a green job. Unwritable ⇒ ignored, never fatal.
+set -euo pipefail
+
+die() { echo "promote-cards-by-token: $*" >&2; exit 2; }
+# warn_incomplete <lead> — REPORT the incomplete-derivation state (exit 4; see the table
+# above). ONE message for ONE cause so the two call sites (empty token set / end of run)
+# cannot drift. It only prints: the caller picks the exit code, so this can never preempt a
+# more severe one (a failed write) the way an exit-inside-the-branch would.
+warn_incomplete() {
+  echo "promote-cards-by-token: FAILED — $1 the release tip ($HEAD_REF) is NOT a merge commit. A squash/rebase merge of the release PR collapses the per-PR subjects this correlates on, so any card whose token was dropped is silently un-promoted. Verify this release against the board by hand (promote the rest with --cards <ids>), and merge release PRs with a MERGE COMMIT (see the release-pr skill § Merge-button intent)." >&2
+}
+for c in jq curl git; do command -v "$c" >/dev/null || die "$c is required"; done
+
+# in_shipped_stage <stage-id>: true iff the id is in the comma-separated $SHIPPED_STAGES set.
+in_shipped_stage() { case ",$SHIPPED_STAGES," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+
+# host_ok <api_base>: true iff api_base is https:// and its host is $EXPECT_HOST or a
+# subdomain of it. Host is parsed per RFC 3986 — the authority ends at the FIRST of
+# '/', '?' or '#', then userinfo before the last '@' is stripped, then :port — so
+# `https://good@evil/` (→ evil), `https://good.evil/`, and `https://evil#@good.host`
+# are all rejected. The parser MUST agree with curl about where the authority ends.
+# DELIBERATE MIRROR of `promote-released-cards`' host_ok (which is itself a mirror of
+# the toolkit lib's kb_require_https_host, #3570): both are standalone tools that must
+# not source a lib. Keep the copies in sync, INCLUDING the required-var check below.
+# The in-repo pair is no longer kept in sync by THIS COMMENT ALONE: card#5127 bound them
+# mechanically in `.githooks/promote-primitive-drift.selftest.py`, which drives both
+# copies over a hostile-URL battery and fails naming the file that diverges — and which
+# also fails when an UNREGISTERED third copy of the idiom appears anywhere in the tree.
+# The toolkit's copy is cross-repo and stays comment-bound (card#5124 rule 5).
+host_ok() {
+  case "$1" in https://*) ;; *) return 1 ;; esac
+  local h="${1#https://}"; h="${h%%[/?#]*}"; h="${h##*@}"; h="${h%%:*}"
+  [ -n "$h" ] || return 1
+  [ "$h" = "$EXPECT_HOST" ] && return 0
+  case "$h" in *".$EXPECT_HOST") return 0 ;; *) return 1 ;; esac
+}
+
+# merge_commit_tip <ref>: true iff <ref> is a MERGE commit (>=2 parents). A merge-commit
+# release tip means the range still carries every feature commit's subject, so the
+# card-token derivation was COMPLETE; a non-merge tip (the release PR squash/rebase-
+# merged) may have collapsed every per-PR subject into one `release: vX.Y.Z` line that
+# names no card. git failure (unknown ref / shallow graft) ⇒ non-merge (fail-loud-safe);
+# CI checks out fetch-depth:0, so parents are real.
+merge_commit_tip() {
+  local line
+  line="$(git rev-list --parents -n1 "$1" 2>/dev/null)" || return 1
+  [ "$(printf '%s' "$line" | wc -w)" -ge 3 ]
+}
+
+CONFIG=".release-pr.json"; CARDS_IN=""; BASE=""; HEAD_REF=""; DRY=0
+# The value-taking options share ONE arity guard: without it `set -u` aborts on `$2` when
+# such an option is the FINAL argument, and bash's `$2: unbound variable` exits 1 — the code
+# this tool documents as "a card write FAILED". A malformed invocation is a precondition
+# refusal (2), and it must be distinguishable from a half-completed release.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --cards|--base|--head|--config)
+      [ $# -ge 2 ] || die "option '$1' requires an argument. Usage: promote-cards-by-token [--cards LIST] [--base REF] [--head REF] [--dry-run] [--config PATH]"
+      case "$1" in
+        --cards)  CARDS_IN="$2";;
+        --base)   BASE="$2";;
+        --head)   HEAD_REF="$2";;
+        --config) CONFIG="$2";;
+      esac
+      shift 2;;
+    --dry-run) DRY=1; shift;;
+    # Print the header block and STOP at the first non-comment line. Deliberately NOT a
+    # fixed line range, which gets this wrong in BOTH directions as the file moves: the
+    # previous `sed -n '2,90p'` leaked `set -euo pipefail` and three helpers into user-facing
+    # output when the header was 82 lines, and would silently truncate the Env: block now
+    # that it is longer. Pinned by the selftest as a line-count equality, not an excerpt.
+    -h|--help) awk 'NR>1 { if (substr($0,1,1) == "#") print; else exit }' "$0"; exit 0;;
+    *) die "unknown arg '$1'";;
+  esac
+done
+
+# SECURITY: .release-pr.json is security-sensitive — `.promote.api_base` is where the
+# writeback token is sent. A PR editing it to an attacker host would exfiltrate
+# KANBAN_WRITEBACK_TOKEN on the next release run. Treat ANY api_base change in a PR as a
+# CREDENTIAL-SCOPE change and review it as one. Defense: the committed value is a
+# host-scrubbed placeholder, the real base arrives via the repo VARIABLE KANBAN_API_BASE
+# (out-of-band from this PR-editable file), and the host guard below fail-closes on
+# $KANBAN_EXPECTED_HOST (also a repo variable) BEFORE any token leaves the runner.
+[ -f "$CONFIG" ] || die "no $CONFIG in this repo"
+jq -e . "$CONFIG" >/dev/null 2>&1 || die "$CONFIG is not valid JSON — fix it (the release-pr skill and the #225 tag-prefix guard read it too)"
+cfg() { jq -r "$1 // empty" "$CONFIG"; }
+BOARD="$(cfg '.promote.board_id')"
+STAGE="$(cfg '.promote.released_stage_id')"
+SHIPPED_STAGES="$(cfg '.promote.shipped_stage_ids')"
+TAG_FORMAT="$(cfg '.tag_format')"
+[ -n "$TAG_FORMAT" ] || TAG_FORMAT='v{{version}}'
+API="${KANBAN_API_BASE:-}"; [ -n "$API" ] || API="$(cfg '.promote.api_base')"
+[ -n "$BOARD" ] && [ -n "$STAGE" ] && [ -n "$SHIPPED_STAGES" ] && [ -n "$API" ] \
+  || die ".promote.{board_id,released_stage_id,shipped_stage_ids,api_base} are all required in $CONFIG"
+case "$BOARD" in ''|*[!0-9]*) die ".promote.board_id must be numeric (got '$BOARD')";; esac
+case "$STAGE" in ''|*[!0-9]*) die ".promote.released_stage_id must be numeric (got '$STAGE')";; esac
+# The Shipped-class source set is REQUIRED here (see ANTI-RESURRECTION above). A
+# malformed set is a config error, not a silent no-guard — fail loud.
+SHIPPED_STAGES="$(printf '%s' "$SHIPPED_STAGES" | tr -d '[:space:]')"
+case "$SHIPPED_STAGES" in
+  ''|*[!0-9,]*|,*|*,|*,,*) die ".promote.shipped_stage_ids must be a comma-separated list of numeric stage ids (got '$SHIPPED_STAGES')";;
+esac
+in_shipped_stage "$STAGE" && die ".promote.released_stage_id ($STAGE) is also listed in shipped_stage_ids — the released stage can never be its own source; fix $CONFIG"
+API="${API%/}"
+
+TOKEN="${KANBAN_WRITEBACK_TOKEN:-}"
+[ -n "$TOKEN" ] || die "KANBAN_WRITEBACK_TOKEN is not set — set the repo Actions secret (a kanban token whose user is a member of board $BOARD with move permission)"
+# Fail-closed host guard BEFORE any token is sent. The expected host is REQUIRED with NO
+# baked default: this repo's board lives on an operator-run kanban, so there is no host
+# safe to assume. Pin it as a repo/org VARIABLE — out-of-band from the PR-editable
+# $CONFIG, so an attacker's api_base edit cannot also relax the constraint.
+EXPECT_HOST="${KANBAN_EXPECTED_HOST:-}"
+[ -n "$EXPECT_HOST" ] \
+  || die "KANBAN_EXPECTED_HOST must be set to the expected api host before sending the writeback token; refusing to send (set the repo variable KANBAN_EXPECTED_HOST)"
+host_ok "$API" \
+  || die "refusing to send token — api_base '$API' is not https:// on '$EXPECT_HOST' (or a subdomain). Set the repo variable KANBAN_API_BASE to the real base; the committed $CONFIG value is a host-scrubbed placeholder."
+
+# --- derive the shipped card ids ---------------------------------------------
+# The shared card-token grammar (see the header). `grep -o` naturally stops at the first
+# non-digit, which IS the "left-anchored, no trailing boundary" property.
+# Bound to the in-repo authority `_CARD_RE` in kanban-prs-sync.py by
+# .githooks/promote-primitive-drift.selftest.py (card#5127): it EXTRACTS both patterns at run
+# time and compares what each ENGINE accepts (a textual diff is impossible across a PCRE
+# lookahead + re.I and a POSIX-ERE alternation + `grep -i`). Pinned here rather than extracted
+# at run time the way .githooks/card-token-lint.py does — see that guard's docstring for the
+# reasoning.
+CARD_RE='\bcard([-#][0-9]+|[0-9]{2,})'
+# The near-miss probe from the same spec, in POSIX ERE (`\s` → `[[:space:]]`).
+NEAR_MISS_RE='\bcard([_:.]|[[:space:]]#)?[0-9]'
+# numlist: bare integers, leading zeros stripped (keeping >=1 digit), deduped, order-preserving.
+numlist() { grep -oE '[0-9]+' | sed 's/^0*\([0-9]\)/\1/' | awk 'NF && !seen[$0]++'; }
+
+RANGE=""
+if [ -n "$CARDS_IN" ]; then
+  # Explicit input: accept both spellings (`5101` and `card#5101`) — an operator typing
+  # a dispatch input writes bare ids, a copy/paste carries tokens.
+  IDS="$(printf '%s' "$CARDS_IN" | numlist || true)"
+  [ -n "$IDS" ] || die "--cards '$CARDS_IN' contains no card ids"
+  DERIVE_COMPLETE=1
+  RANGE="--cards '$CARDS_IN'"
+else
+  HEAD_REF="${HEAD_REF:-HEAD}"
+  # RANGE BASE — three sources, most-authoritative first. Rationale in the PR body:
+  #  1. $GITHUB_EVENT_BEFORE (push payload `before`) is the sha `main` pointed at BEFORE
+  #     this push. It is MEASURED, not inferred, so `before..after` is exactly the set of
+  #     commits this push added — the definition of "newly released". It is also stable
+  #     across a re-run of the same job (the payload is fixed), which is what makes the
+  #     idempotent re-run re-scan the SAME range.
+  #  2. The previous release TAG reachable from ${HEAD_REF}^ — the fallback for
+  #     workflow_dispatch, which carries no push payload. `^` (not HEAD) so the tag the
+  #     auto-tagger just minted ON this release merge does not collapse the range to empty.
+  #  3. Nothing → REFUSE. NB the failure of an empty base is a SILENT NO-OP, not the
+  #     mass-move `promote-released-cards`' comment claims: git resolves an omitted left
+  #     side to HEAD, so `..HEAD` is `HEAD..HEAD` = EMPTY (verified: `git log --oneline
+  #     ..HEAD` on this repo yields 0 commits against 647 for `git log HEAD`). Falling
+  #     through would therefore print "nothing to do" and exit 0 on a first-ever release
+  #     whose cards all genuinely shipped — a false all-clear, the exact class this tool
+  #     exists to close. Either way the answer is REFUSE; the escape is --base / --cards.
+  #     (The toolkit comment's mass-move rationale is being reported to its owner.)
+  # Deliberately NOT used: the merge's first parent (`HEAD^1`). It is only defined when
+  # the tip IS a merge, it silently narrows to a single commit on a squash tip (the exact
+  # silent-green this tool must not have), and it drops any commit pushed to main between
+  # releases — all three of which (1) gets right for free.
+  if [ -z "$BASE" ]; then
+    gb="${GITHUB_EVENT_BEFORE:-}"
+    case "$gb" in ''|*[!0-9a-fA-F]*) gb="" ;; esac   # absent / not a hex sha
+    case "$gb" in *[!0]*) ;; *) gb="" ;; esac        # all-zero sha = branch creation
+    if [ -n "$gb" ]; then
+      git rev-parse --verify --quiet "${gb}^{commit}" >/dev/null \
+        || die "push-event base '$gb' is not a commit in this checkout (a force-push whose old tip was never fetched, or a shallow clone without fetch-depth:0). Refusing to guess a range — re-run with an explicit --base."
+      # EXISTENCE is not ENOUGH. `before..head` is "what this push added" only when `before`
+      # is an ANCESTOR of the head. After a force-push that rewrote the branch, the old tip
+      # can still be PRESENT in the checkout (reachable from a tag or another branch) yet sit
+      # on a DIVERGED line, and `before..head` then spans the rewrite and re-scans commits
+      # released long ago. Positive-only correlation + the stage guard mean such a range
+      # cannot promote a card that never shipped, so this is a measurement-integrity check,
+      # not a containment one — but it is the check the header and the PR body claim, and a
+      # claim the code does not make true is the defect either way.
+      git merge-base --is-ancestor "$gb" "$HEAD_REF" \
+        || die "push-event base '$gb' exists but is NOT an ancestor of $HEAD_REF — the branch was force-pushed/rewritten, so '$gb..$HEAD_REF' is not the set this push added. Refusing to guess a range — re-run with an explicit --base."
+      BASE="$gb"
+    fi
+  fi
+  if [ -z "$BASE" ]; then
+    case "$TAG_FORMAT" in
+      *'{{version}}') TAG_GLOB="${TAG_FORMAT%'{{version}}'}" ;;
+      *) die "tag_format '$TAG_FORMAT' does not end with {{version}} — cannot derive the release-tag glob (same rule as the #225 tag-prefix guard)";;
+    esac
+    BASE="$(git describe --tags --abbrev=0 --match "${TAG_GLOB}*" "${HEAD_REF}^" 2>/dev/null || true)"
+  fi
+  [ -n "$BASE" ] \
+    || die "no range base — no push-event 'before' sha and no release tag before $HEAD_REF (a first-ever release, or a shallow/tagless clone). With no base the range would be EMPTY and this run would report a false all-clear ('nothing to do') while every genuinely-shipped card stayed un-promoted. Re-run with an explicit --base <ref> or --cards <ids>."
+  RANGE="$BASE..$HEAD_REF"
+  SUBJECTS="$(git log "$RANGE" --format='%s' 2>/dev/null)" \
+    || die "git log $RANGE failed — bad base/head ref"
+  IDS="$(printf '%s\n' "$SUBJECTS" | grep -oiE "$CARD_RE" | numlist || true)"
+  merge_commit_tip "$HEAD_REF" && DERIVE_COMPLETE=1 || DERIVE_COMPLETE=0
+  # Near-miss WARN (DL-201 property 3): a subject whose token LOOKS like a card ref but
+  # does not correlate is an author's silent miss — surface it. Warn-only, matching the
+  # bridge's posture; a near-miss is not evidence that anything shipped.
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    echo "promote-cards-by-token: WARNING — near-miss card token in a released commit subject (does NOT correlate; use card#<id>, card-<id>, or glued card<id> with TWO OR MORE digits — single-digit glued 'card4' does not parse): $line" >&2
+  done <<< "$(printf '%s\n' "$SUBJECTS" | grep -iE "$NEAR_MISS_RE" | grep -viE "$CARD_RE" || true)"
+fi
+
+# --- api seam ----------------------------------------------------------------
+# Set up BEFORE the empty-token exits below: those paths still run the stranded-card
+# residue report, and an EMPTY token set is the case where the residue is MAXIMAL (a range
+# that named nothing left EVERYTHING behind). Exiting there without a board read was the
+# one place this tool could print "nothing to do", exit 0, and be wrong about the board.
+TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
+BODY="$TMPD/resp.json"
+
+# api <METHOD> <url> [json-body] — perform the call, leave the response body at $BODY,
+# print the HTTP status code ('000' on a transport failure).
+# Auth rides a stdin herestring (-H @-) so the bearer token never appears in curl's argv
+# (world-readable via `ps aux` on a multi-user host, #3569). --retry backs off on a
+# TRANSIENT error only (408/429/5xx/timeout/refused) — never a 4xx — so a real 401/404
+# still fails fast; card moves are idempotent, so retrying a PATCH is safe.
+api() {
+  local method="$1" url="$2" data="${3:-}" code
+  local -a args=(-sS --retry 5 --retry-connrefused --retry-max-time 60
+                 -H @- -H "Accept: application/json"
+                 -o "$BODY" -w '%{http_code}' -X "$method")
+  [ -n "$data" ] && args+=(-H "Content-Type: application/json" --data-binary "$data")
+  args+=("$url")
+  : > "$BODY"
+  code="$(curl "${args[@]}" <<<"$(printf 'Authorization: Bearer %s' "$TOKEN")" || true)"
+  printf '%s' "${code:-000}"
+}
+
+# --- stranded-card residue report (see the header section of the same name) --------------
+# BOARD-READ-ONLY, WARN-ONLY, and never part of the exit policy. Nothing below issues a
+# non-GET board call or sets a variable the exit policy reads (its only write of any kind is
+# appending to $GITHUB_STEP_SUMMARY) — that separation is the whole safety argument for adding
+# a negative-side signal to a positive-only mover.
+#
+# THE ONE RESIDUE IT CANNOT SEE, stated because a report's blind spots are part of its
+# contract: a card the TOKEN'S USER cannot see. A per-card visibility restriction hides the
+# row AND shrinks meta.total in step with it, so neither the blind-read guard (which catches
+# only total invisibility) nor the short-read census can detect a partial one. Board
+# membership is the backstop, and it is checked by the preflight on the promoting path only.
+RESIDUE_PAGE_CAP=50
+
+# residue_alarm <text> — one body, two sinks. stderr always; the Actions job summary too when
+# $GITHUB_STEP_SUMMARY is set, because this report is deliberately WARN-only and a stderr line
+# in a GREEN job is effectively invisible in a collapsed step log. Single-sourced so the two
+# surfaces cannot drift, and never fatal: an unwritable summary path must not fail a release.
+residue_alarm() {
+  printf '%s\n' "$1" >&2
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+  { printf '### promote-cards-by-token — stranded-card report\n\n```\n%s\n```\n' "$1" \
+      >> "$GITHUB_STEP_SUMMARY"; } 2>/dev/null || true
+}
+
+# residue_unavailable <why> — the residue could not be MEASURED. Loud, because "nothing was
+# left behind" and "I could not tell" are the same silence otherwise (the 200-but-empty class,
+# RELEASE-AUTOMATION.md § Robustness patterns).
+residue_unavailable() {
+  residue_alarm "promote-cards-by-token: WARNING — stranded-card report UNAVAILABLE ($1). Do NOT read this run as 'nothing was left behind': the residue was NOT measured. (Report-only — this does not change the exit code.)"
+}
+
+# residue_report — page the WHOLE board, census the read, and name every LIVE card of THIS
+# board sitting in a Shipped-class stage whose id no token in $IDS named. Never dies (a
+# `return` on every degraded path), never writes, never touches the exit code.
+residue_report() {
+  local page=1 code data n total='' last_page='' sum_n=0 read_n cards='[]'
+  local named shipped shipped_n rows rows_n
+  while :; do
+    code="$(api GET "$API/tasks/search.json?q=board_id=$BOARD&limit=200&page=$page")"
+    [ "$code" = "200" ] || { residue_unavailable "board $BOARD page $page read returned HTTP $code against $API"; return 0; }
+    data="$(jq -c '.data // []' < "$BODY" 2>/dev/null || true)"
+    [ -n "$data" ] || { residue_unavailable "board $BOARD page $page returned an unparseable body"; return 0; }
+    n="$(printf '%s' "$data" | jq 'length' 2>/dev/null || echo 0)"
+    if [ "$page" -eq 1 ]; then
+      # Same semantics as the toolkit's fetch_whole_board: meta.last_page is a SECONDARY
+      # termination signal, usable only as a POSITIVE integer — the n<200 short-page break is
+      # the primary one, so an absent/0/garbage last_page must fall through to it rather than
+      # break the scan at page 1 on a full page (a silent truncation).
+      total="$(jq -r '.meta.total // empty' < "$BODY" 2>/dev/null || true)"
+      last_page="$(jq -r '.meta.last_page // empty' < "$BODY" 2>/dev/null || true)"
+      case "$total" in ''|*[!0-9]*) total='' ;; esac
+      case "$last_page" in ''|*[!0-9]*) last_page='' ;; esac
+      [ -n "$last_page" ] && [ "$last_page" -lt 1 ] && last_page=''
+    fi
+    # Concatenate via STDIN, never --argjson: a board page can exceed MAX_ARG_STRLEN (~128KB).
+    cards="$(printf '%s\n%s\n' "$cards" "$data" | jq -c -s 'add' 2>/dev/null || true)"
+    [ -n "$cards" ] || { residue_unavailable "board $BOARD page $page could not be merged into the card set"; return 0; }
+    sum_n=$((sum_n + n))
+    [ "$n" -lt 200 ] && break
+    [ -n "$last_page" ] && [ "$page" -ge "$last_page" ] && break
+    page=$((page + 1))
+    if [ "$page" -gt "$RESIDUE_PAGE_CAP" ]; then
+      residue_unavailable "board $BOARD exceeded the ${RESIDUE_PAGE_CAP}-page read cap — the read is TRUNCATED, so an unnamed card could sit past the cut"
+      return 0
+    fi
+  done
+  # Dedup by id — an API that ignores `page=` (same page each loop) or returns overlapping
+  # pages would otherwise inflate the residue with duplicates.
+  cards="$(printf '%s' "$cards" | jq -c 'unique_by(.id)')"
+  read_n="$(printf '%s' "$cards" | jq 'length')"
+  if [ "${read_n:-0}" -eq 0 ]; then
+    residue_unavailable "board $BOARD returned 0 visible cards — a blind read (the token's user is likely not a member of board $BOARD, or this is the wrong instance); refusing to conclude that nothing was left behind"
+    return 0
+  fi
+  # Short-read census: the server delivered fewer rows than it says exist ⇒ an unnamed card
+  # could be in the part that was never read ⇒ report UNAVAILABLE, never "0 stranded".
+  # sum_n >= total with read_n < total is a page-boundary dedup artifact — the read IS
+  # complete (same discrimination as the toolkit's fetch_whole_board).
+  if [ -n "$total" ] && [ "$total" -gt "${read_n:-0}" ] && [ "$sum_n" -lt "$total" ]; then
+    residue_unavailable "board $BOARD reports $total cards but the pages delivered only $sum_n ($read_n distinct) — an INCOMPLETE read"
+    return 0
+  fi
+  # $IDS is the set THIS RUN's range named — the exclusion is by NAMED-set, not by current
+  # stage, so a card whose move failed (already loud, exit 1) is not double-reported here, and
+  # a --dry-run's un-moved matches are not reported as stranded either.
+  named="$(printf '%s\n' "$IDS" | jq -Rsc 'split("\n") | map(select(length > 0))')"
+  # "Shipped-class, live, on THIS board" — defined ONCE, so the census and the residue list
+  # can never diverge. The board_id re-check is boundary validation of the search response,
+  # not paranoia: the query is the only thing scoping it, and a server that ignored `q` would
+  # otherwise let another board's cards be reported as this board's residue.
+  shipped="$(printf '%s' "$cards" | jq -c --arg bd "$BOARD" --arg stages ",$SHIPPED_STAGES," '
+    [ .[]
+      | select((.board_id | tostring) == $bd)
+      | select(((.archived_at // .deleted_at) // null) == null)
+      | select((.workflow_stage_id | tostring) as $s | $stages | contains("," + $s + ",")) ]')"
+  shipped_n="$(printf '%s' "$shipped" | jq 'length')"
+  rows="$(printf '%s' "$shipped" | jq -r --argjson named "$named" '
+    [ .[] | select((.id | tostring) as $i | ($named | index($i)) == null) ]
+    | sort_by(.id)
+    | .[]
+    | "  ! card#\(.id) (stage \(.workflow_stage_id))"
+      + (if ((.title // "") | tostring | length) > 0 then " — \(.title)" else "" end)')"
+  if [ -z "$rows" ]; then
+    echo "promote-cards-by-token: stranded-card report — 0 unnamed: all $shipped_n Shipped-class card(s) (stages $SHIPPED_STAGES) on board $BOARD were named by $RANGE (board read: $read_n card(s))."
+    return 0
+  fi
+  rows_n="$(printf '%s\n' "$rows" | grep -c . || true)"
+  # The list is NEVER truncated and is sorted by id: the residue is meant to be a small,
+  # stable, diffable set that shrinks as it is closed out. Truncating it would re-create the
+  # exact "everything past the cut doesn't exist" miss this report exists to close.
+  residue_alarm "$(printf '%s\n%s\n%s' \
+    "promote-cards-by-token: WARNING — STRANDED-CARD REPORT: $rows_n of $shipped_n Shipped-class card(s) (stages $SHIPPED_STAGES) on board $BOARD were named by NO card#<id> token in $RANGE:" \
+    "$rows" \
+    "  Each is one of: (a) work that shipped under a commit subject carrying no parseable card# token — it will NEVER promote itself (verify the commit, then promote by hand: --cards <ids>); (b) work absorbed into a sibling card whose commit tokens only the sibling — same closure, and token every absorbed card in the absorbing commit from now on; or (c) a card merged to the integration branch AFTER this release was cut — expected, it promotes on the next release. This report cannot tell them apart, promotes nothing, and does NOT change this run's exit code.")"
+}
+
+# maybe_residue_report — the ONE call-shape both call sites use, so the --cards carve-out
+# cannot be applied at one site and forgotten at the other.
+maybe_residue_report() {
+  if [ -n "$CARDS_IN" ]; then
+    echo "promote-cards-by-token: stranded-card report SKIPPED — --cards is a targeted promote, not a release; the Shipped-class residue is not this run's complement."
+    return 0
+  fi
+  residue_report
+}
+
+if [ -z "$IDS" ]; then
+  # An empty token set is the MAXIMAL-residue case, so the report runs here too — before the
+  # incomplete-derivation FAILED line, which stays the last thing an operator reads.
+  if [ "$DERIVE_COMPLETE" = 1 ]; then
+    echo "promote-cards-by-token: no card#<id> tokens in $RANGE — nothing to do."
+    maybe_residue_report
+    exit 0
+  fi
+  maybe_residue_report
+  warn_incomplete "no card#<id> tokens in $RANGE ('no tokens' here is indistinguishable from 'tokens were destroyed') and"
+  exit 4
+fi
+
+# PREFLIGHT — one board read whose ONLY job is to tell "the token cannot see this board"
+# apart from "no card matched". Without it, a token that lost board membership would make
+# every per-id read 404 and the run would look like "all cards archived" instead of
+# "credentials are wrong" (200-but-empty is the classic silent-green — see
+# RELEASE-AUTOMATION.md § Robustness patterns). This is also why this tool does NOT need
+# the toolkit's whole-board paging + short-read census: its correlation key is the card's
+# own id, so an unreadable or incomplete board announces itself per token (exit 3) rather
+# than hiding as an absent payload stamp.
+code="$(api GET "$API/tasks/search.json?q=board_id=$BOARD&limit=1")"
+[ "$code" = "200" ] \
+  || die "board $BOARD preflight read failed (HTTP $code) against $API — check KANBAN_WRITEBACK_TOKEN and the api base."
+nvis="$(jq '(.data // []) | length' < "$BODY" 2>/dev/null || echo 0)"
+[ "${nvis:-0}" -gt 0 ] \
+  || die "board $BOARD returned 0 visible cards — the token's user is likely not a member of board $BOARD (or this is the wrong kanban instance). Refusing to conclude 'nothing to promote' from a blind read."
+
+# --- resolve + move ----------------------------------------------------------
+moved=0; already=0; guarded=0; unmatched=0; failed=0
+for id in $IDS; do
+  code="$(api GET "$API/tasks/$id.json")"
+  case "$code" in
+    200) ;;
+    404) echo "  ? card#$id: no such card — absent or deleted (report: it may have been archived, or the token is a typo)" >&2
+         unmatched=$((unmatched + 1)); continue ;;
+    *)   die "card#$id read failed (HTTP $code) — refusing to continue on a degraded board read (a partial run would leave shipped cards silently un-promoted)." ;;
+  esac
+  cbd="$(jq -r '.data.board_id // empty' < "$BODY")"
+  cur="$(jq -r '.data.workflow_stage_id // empty' < "$BODY")"
+  gone="$(jq -r '(.data.archived_at // .data.deleted_at) // empty' < "$BODY")"
+  # BOARD-SCOPE guard (BRIDGE-WRITEBACK.md § Board-scope guard on the `card#` fallback):
+  # task-ids are global, so a token can name another board's card. Reject loudly; never
+  # let commit text redirect a move across boards.
+  if [ "$cbd" != "$BOARD" ]; then
+    echo "  ? card#$id: on board $cbd, not board $BOARD — REJECTED (a card token must not move an out-of-board card)" >&2
+    unmatched=$((unmatched + 1)); continue
+  fi
+  if [ -n "$gone" ]; then
+    echo "  ? card#$id: archived/deleted ($gone) — not on the board; left alone" >&2
+    unmatched=$((unmatched + 1)); continue
+  fi
+  if [ "$cur" = "$STAGE" ]; then
+    echo "  = card#$id: already released (stage $STAGE)"; already=$((already + 1)); continue
+  fi
+  # ANTI-RESURRECTION. Evaluated AFTER the already-released check so an idempotent re-run
+  # of a genuinely-released card reads as "already released", not as a stage-guarded skip.
+  if ! in_shipped_stage "$cur"; then
+    echo "  ⊘ card#$id: current stage $cur is not a Shipped-class source stage ($SHIPPED_STAGES) — SKIPPED; promotion never resurrects a backlog/declined card into a terminal stage" >&2
+    guarded=$((guarded + 1)); continue
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "  → card#$id: would move $cur → $STAGE"; moved=$((moved + 1)); continue
+  fi
+  # FLAT top-level write body — never a `{"task": {...}}` resource wrapper (kanban
+  # v0.36.0 / DL-219 strict-rejects it). Ratified flat write contract, roundtable #119;
+  # this is the bash authority's shape and the selftest pins it.
+  code="$(api PATCH "$API/tasks/$id.json" "$(jq -nc --argjson s "$STAGE" '{workflow_stage_id: $s}')")"
+  case "$code" in
+    2??) echo "  ✓ card#$id: moved $cur → $STAGE"; moved=$((moved + 1)) ;;
+    *)   echo "  ✗ card#$id: move failed (HTTP $code) — left in place" >&2; failed=$((failed + 1)) ;;
+  esac
+done
+
+echo "promote-cards-by-token: $moved moved, $already already-released, $guarded stage-guarded, $unmatched no-card, $failed failed$([ "$DRY" = 1 ] && printf ' (dry-run)')."
+
+# The negative complement of everything above — read-only, and evaluated BEFORE the exit
+# policy so the FAILED lines that DO carry a code stay the last thing on stderr.
+maybe_residue_report
+
+# --- exit policy (see the EXIT CODES table in the header) --------------------
+# EVERY degraded state PRINTS; the exit code is chosen afterwards, most-severe-first.
+# Exiting inside the first matching branch is the same defect shape this section fixes at the
+# guard level — it lets whichever condition is checked first suppress the others' signal, and
+# an operator reading a red job needs ALL of them, not the one that happened to win.
+#
+# A write failure is ALWAYS non-zero, even when other cards moved: a green job with one
+# un-promoted shipped card is the silent-green class this tool exists to close.
+# (`promote-released-cards` exits 1 only when NOTHING moved; that partial-failure hole is
+# being raised with the toolkit owner.)
+if [ "$failed" -gt 0 ]; then
+  echo "promote-cards-by-token: FAILED — $failed card move(s) errored; those cards are still un-promoted." >&2
+fi
+# Newly promoted NOTHING despite a non-empty token set, from a COMPLETE derivation
+# (explicit --cards, or a MERGE-commit release tip whose range carries every feature
+# subject) ⇒ the tokens are genuinely already-released / stage-guarded ⇒ WARN, exit 0.
+# The idempotent re-run lands here — and must stay quiet-and-0, so this is the ONLY
+# thing keyed on the move count.
+if [ "$moved" = 0 ] && [ "$DERIVE_COMPLETE" = 1 ]; then
+  echo "promote-cards-by-token: WARNING — 0 cards newly promoted (all matches were already released or stage-guarded)." >&2
+fi
+if [ "$unmatched" -gt 0 ]; then
+  echo "promote-cards-by-token: FAILED — $unmatched card token(s) matched no card on board $BOARD (absent, archived, or on another board). Each is a card that will never be promoted; resolve them by hand." >&2
+fi
+# INCOMPLETE DERIVATION — evaluated on EVERY non-merge tip, INDEPENDENT of how many cards
+# moved. This was previously nested inside `if moved == 0`, which meant one surviving token
+# suppressed the guard entirely: a squash tip that kept 1 of 4 subjects moved 1 card and
+# exited 0, stranding the other 3 with no signal at all.
+if [ "$DERIVE_COMPLETE" != 1 ]; then
+  warn_incomplete "$moved card(s) were promoted from $RANGE, but"
+fi
+
+# Exit on the MOST SEVERE state reported above: 1 > 4 > 3. A failed write is a KNOWN
+# stranded card; 4 says the token SET ITSELF may be short, which subsumes 3's per-token miss.
+# The stranded-card residue report is deliberately ABSENT from this ladder (header § Stranded-
+# card residue report): it describes the BOARD's history, not this run's integrity, and
+# smuggling it into 1/3/4 would blunt three codes that mean "act now".
+if [ "$failed" -gt 0 ];        then exit 1; fi
+if [ "$DERIVE_COMPLETE" != 1 ]; then exit 4; fi
+if [ "$unmatched" -gt 0 ];     then exit 3; fi
+exit 0

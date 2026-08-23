@@ -1,0 +1,70 @@
+# card-token-lint.yml — reject card-token spellings the correlators cannot parse, at PR time.
+#
+# WHAT IT DOES. Reads this PR's TITLE and HEAD BRANCH — the two surfaces the kanban webhook
+# bridge parses — and fails if either carries something that LOOKS like a card reference but
+# does not match the accept grammar (`cards #7343`, `card_7343`, single-digit glued `card4`).
+# A PR that names no card at all passes; this is not a "must cite a card" gate.
+#
+# WHY IT EXISTS. An unparseable card token is not an error anywhere downstream: the bridge
+# logs a warning and DROPS the event, which from the board's side is indistinguishable from a
+# PR that legitimately names no card. The card silently stops tracking reality, and somebody
+# moves it by hand weeks later. CI is the first surface where that near-miss can be made loud
+# to the one person who can still fix it for free — the author, before merge, while renaming
+# the branch costs nothing.
+#
+# NEEDS NO KANBAN CREDENTIAL AND NO NETWORK. It is pure text analysis against a grammar
+# extracted from `bin/promote-cards-by-token`, so unlike the promote workflow it is live from
+# the moment this lands — no secret, no variable, no board membership.
+#
+# A SEPARATE WORKFLOW, deliberately, not a step in a future test workflow: this gate reads PR
+# EVENT metadata, so it is meaningful only on `pull_request`, and it must re-run on `edited`,
+# which push-driven test workflows do not subscribe to. A retitle that introduces `cards #N`
+# would otherwise never be re-checked.
+
+name: Card-token lint
+
+on:
+  pull_request:
+    # `edited` is load-bearing: the title is half the linted surface, and it is edited after
+    # the fact far more often than a branch is renamed.
+    types: [opened, edited, reopened, synchronize]
+    # NO `branches:` FILTER, DELIBERATELY. `branches:` and `types:` are INDEPENDENT filters
+    # and the event runs only if BOTH match, so a base-branch allowlist would drop every
+    # event from a STACKED PR (whose base is another feature branch) whatever its activity
+    # type — `edited` included. A stacked PR carries a real title and head ref that the
+    # bridge will parse, so dropping it would let the near-miss this gate exists to catch
+    # reach the bridge with nothing between it and the drop.
+
+permissions:
+  contents: read
+
+jobs:
+  card-token-lint:
+    # GitHub-hosted: public repo, free CI, no self-hosted runner. The lint is Python stdlib
+    # only, so the runner's stock `python3` is the whole dependency — no setup-python step
+    # and no interpreter pin to keep honest.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # The lint's own prove-it-can-fail fixtures run HERE, against THIS checkout. A gate's
+      # verdict is worth something only if the fixtures showing it CAN fail ran against the
+      # same bytes that are about to judge somebody's PR — including § 7, which re-runs the
+      # whole accept corpus against a deliberately wrong grammar and requires it to go red.
+      - name: Self-test (RED fixtures for every near-miss shape + a meta-control)
+        run: python3 bin/card-token-lint.selftest.py
+
+      # Title and branch go through `env:`, NEVER string-interpolated into the shell. A PR
+      # title is attacker-controlled text and `${{ }}` inside `run:` is a script-injection
+      # sink — `${{ github.event.pull_request.title }}` written inline would execute whatever
+      # a fork's PR title contains.
+      - name: Lint this PR's branch name + title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        # `--opt=$VAR`, not `--opt "$VAR"`: a PR titled `--help` (or anything else starting
+        # with `-`) is consumed as an OPTION by the space form and reds the gate with an
+        # argparse usage error that names nothing the author did wrong. Measured, not
+        # theorised. The `=` form takes everything after the first `=` as the value.
+        run: python3 bin/card-token-lint.py --branch="$HEAD_REF" --title="$PR_TITLE"
