@@ -4,7 +4,8 @@
 every PM, solo, and implementation agent rendered as a character at a desk, showing what
 they are actually doing right now — with a drill-down into their tasks and subagents.
 
-> Status: **scaffolding.** Nothing here runs yet.
+> Status: **scaffolding.** No application code yet. The only thing that runs is the kanban
+> automation in `.github/workflows/` — see [Kanban](#kanban) below.
 
 ## What it is
 
@@ -48,3 +49,10 @@ code; office tiles are CC0. No commercially-licensed assets are vendored here.
 `main` is the **release branch** and the repo default; PRs into it land as **merge commits**
 to preserve release topology. Both branches are protected: no direct pushes, no force-pushes,
 no deletion, and CI must pass.
+
+## Kanban
+
+Work is tracked on a kanban board, and PRs move their cards automatically. Put `card-<id>` in
+your branch name and `card#<id>` in your PR title; a PR that names no card is fine. What runs,
+what an operator must configure first, and the failure modes that are silent if they skip it:
+**`docs/KANBAN.md`**.
