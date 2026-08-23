@@ -2605,7 +2605,7 @@ against the pinned test database ([§ 6.2](#62-database-names-pinned-and-publish
 one that must pass first.
 
 **Fixtures.** Every test below drives the fold with **event fixtures** — arrays of wire events in D1's
-exact shape, replayed through the real ingest path into the real store. Five named fixtures are shared:
+exact shape, replayed through the real ingest path into the real store. Six named fixtures are shared:
 
 | Fixture | Contents |
 |---|---|
