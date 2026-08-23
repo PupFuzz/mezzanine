@@ -29,6 +29,7 @@ reopen an entry by talking to its decider.
 | D-11 | Changelog discipline adapted from agent-board-toolkit per kanban-solo's #344 answer, **plus a size gate** they don't have (§ 4) | pm | 2026-08-23 |
 | D-12 | Branch model: `dev` integrates (squash by convention), `main` releases (merge-commit, ruleset-enforced); `card-token-lint` is a required check on both | pm | 2026-08-23 |
 | D-13 | After the P0 designs land, the project **splits to a dedicated Mezzanine agent** running a **sandbox** instance; **prod** is a separate deployment driven by `bin/deploy.sh` (pattern requested from kanban-solo's kanban-board project) | operator | 2026-08-23 |
+| D-14 | Design docs are written to the **standalone-implementer standard** (§ 2, "The bar") — complete enough that an AI agent with no access to this project's conversational history implements from the document alone | operator | 2026-08-23 |
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
@@ -70,6 +71,30 @@ producer, clean boundary, either side deployable alone.
 
 Three design artifacts precede their builds, in strict order, because each is the contract the
 next consumes. Each is a PR into `dev` reviewed like code.
+
+**The bar (D-14): every design doc must be implementable by an AI agent that has ONLY the
+document.** The implementing agent — plan for a capable frontier model (Opus-class) — will not
+have this session's context, the roundtable threads, or the proposal open. Concretely, each
+design doc must carry:
+
+- **Field-level tables** for every wire/store structure: name, type, units, nullability, size
+  bounds, one realistic example value per field — never a prose gesture at "the obvious fields."
+- **Every failure path enumerated** with its required behavior (reject/retry/drop/log) and its
+  observable signal. "Handle errors appropriately" is a defect in a design doc.
+- **Worked examples**: at least one complete example payload/flow per event kind or interaction,
+  including one deliberately-invalid example and what the system must do with it.
+- **Acceptance tests specified, with fixtures** — what to build, what to break, what RED looks
+  like — so seen-to-fail is designed in, not improvised by the implementer.
+- **Stated non-goals** per document, so an implementer cannot drift scope in good faith.
+- **Inlined context**: where a requirement's reason lives in a coordination thread or a measured
+  incident, the doc restates the reason in one or two sentences and cites the source — the cite
+  is provenance, never the only carrier of the requirement.
+- **No unstated defaults**: timeouts, limits, cadences, and retention windows appear as numbers
+  with their derivation, not as adjectives ("short", "frequent", "a while").
+
+A design doc that fails this bar fails review regardless of how right its ideas are — the review
+question is "could a fresh agent build this correctly from the file alone," not "do we, who were
+in the room, understand it."
 
 **D1 — the wire schema (`docs/design/EVENT-SCHEMA.md`).** The keystone; everything downstream is
 shaped by it, and it is the most expensive thing to get wrong because seats upgrade independently
