@@ -1,0 +1,140 @@
+# release-promote-cards.yml — make board 14's "Released to main" stage reachable.
+#
+# WHAT FIRES IT. A push to `main` — i.e. a release PR landing — plus a manual
+# `workflow_dispatch` that is DRY-RUN by default, so an operator can exercise the whole path
+# without moving a card.
+#
+# WHAT IT DOES. `bin/promote-cards-by-token` reads the commit subjects newly reachable on
+# `main`, pulls every `card#<id>` token out of them, and moves those board-14 cards from
+# "Shipped to dev" to "Released to main". Board id and both stage-id sets come from
+# `.release-pr.json`; the API base and the host pin come from repo VARIABLES; the credential
+# comes from a repo SECRET. Nothing about the board is spelled in this file.
+#
+# WHY THE TOKEN MOVER AND NOT THE TOOLKIT'S GENERIC ONE. agent-board-toolkit's
+# `promote-released-cards` correlates on `payload.dl_number` / `payload.pr_number`. Board 14
+# is card-first: its cards carry neither, so that mover would have no key to match on and
+# would report a confident zero. The `card#<id>` token in the squash-commit subjects is the
+# key that exists here. Full reasoning: the mover's own header, and docs/KANBAN.md.
+#
+# ISOLATED IN ITS OWN WORKFLOW ON PURPOSE, so a board hiccup can never block or red the
+# release itself — this job is the last thing in the chain, not a gate on it.
+#
+# ⚠ IT CANNOT WORK UNTIL AN OPERATOR SETS THE SECRET AND THE TWO VARIABLES (docs/KANBAN.md
+# § Operator setup). Until then it FAILS LOUDLY at the preflight below. That is deliberate:
+# the alternative — skipping quietly when a credential is absent — is a release that silently
+# stops promoting and a board that silently stops being true.
+
+name: Promote released cards by card# token
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      cards:
+        description: 'Cards to promote (comma-separated ids or card#<id> tokens). Blank = derive from the released range.'
+        required: false
+        default: ''
+      base:
+        description: 'Explicit range base (a tag or sha). Blank = derive. REQUIRED for the first-ever release — this repo has no release tag yet, and the mover refuses a full-history sweep rather than guessing one.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run — report only, move nothing.'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-promote-cards-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    # GitHub-hosted: this is a public repo with free CI and no self-hosted runner. The mover
+    # is pure bash over git + curl + jq, all three stock on ubuntu-latest, so there is
+    # nothing to install and no interpreter to pin.
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 + tags — the mover derives the released range from git history and
+      # fail-closes on a shallow or tagless clone rather than guessing one.
+      - name: Checkout (full history, with tags)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # The mover's own hermetic acceptance suite: no network, no credential, no board. It
+      # runs HERE, against THIS checkout, because a promote job's guarantees are only worth
+      # something if the fixtures proving they can fail ran against the same bytes that are
+      # about to write to a terminal board stage.
+      - name: Self-test the mover (hermetic — stubbed curl, fixture git repo, no board)
+        run: bash bin/promote-cards-by-token.selftest.sh
+
+      # PREFLIGHT — turn every "not configured yet" into ONE clear ::error:: naming the exact
+      # command that fixes it, instead of the mover's (correct, but less obvious) fail-closed
+      # refusal in the next step. All three checks are emptiness tests on values this job
+      # never prints: no secret value reaches the log, here or anywhere below.
+      # It runs AFTER the self-test on purpose: the self-test needs no credential, so an
+      # unconfigured repo should still get the "is the tool sound?" answer, not just "you
+      # have not set the secret".
+      #
+      # The two VARIABLES are deliberately out-of-band from the PR-editable
+      # `.release-pr.json` (whose api_base is a host-scrubbed placeholder). Both halves are
+      # load-bearing: the expected host must not come from the file being validated (circular,
+      # and worthless), and it must not be a literal in THIS file either — this file is
+      # exactly as PR-editable as that one, so a single PR editing both to a lookalike host
+      # would satisfy the guard and hand over the token. A repo variable takes repo-settings
+      # write, which is outside the code-review plane.
+      - name: Preflight — the secret and the two repo variables must exist
+        env:
+          KANBAN_WRITEBACK_TOKEN: ${{ secrets.KANBAN_WRITEBACK_TOKEN }}
+          KANBAN_API_BASE: ${{ vars.KANBAN_API_BASE }}
+          KANBAN_EXPECTED_HOST: ${{ vars.KANBAN_EXPECTED_HOST }}
+        run: |
+          set -euo pipefail
+          rc=0
+          if [ -z "${KANBAN_WRITEBACK_TOKEN:-}" ]; then
+            echo "::error::secrets.KANBAN_WRITEBACK_TOKEN is not set — refusing to run. Set it with: gh secret set KANBAN_WRITEBACK_TOKEN --repo PupFuzz/mezzanine (a kanban API token whose user is a MEMBER of board 14 WITH move permission; a non-member token reads 0 cards and promotes nothing, silently). See docs/KANBAN.md."
+            rc=1
+          fi
+          if [ -z "${KANBAN_API_BASE:-}" ]; then
+            echo "::error::vars.KANBAN_API_BASE is not set — refusing to promote against the .release-pr.json placeholder host. Set it with: gh variable set KANBAN_API_BASE --repo PupFuzz/mezzanine --body 'https://<kanban-host>/api/v3'"
+            rc=1
+          fi
+          if [ -z "${KANBAN_EXPECTED_HOST:-}" ]; then
+            echo "::error::vars.KANBAN_EXPECTED_HOST is not set — the mover requires it to validate the api host BEFORE the writeback token is sent (there is no baked default). Set it with: gh variable set KANBAN_EXPECTED_HOST --repo PupFuzz/mezzanine --body '<kanban-host>'"
+            rc=1
+          fi
+          exit $rc
+
+      - name: Promote cards named in the released range
+        env:
+          # A kanban API token whose user is a MEMBER of board 14 WITH move permission.
+          # Unset ⇒ the mover exits 2 saying so; it never degrades to a no-op. Never echoed.
+          KANBAN_WRITEBACK_TOKEN: ${{ secrets.KANBAN_WRITEBACK_TOKEN }}
+          # Fail-closed host pin, checked BEFORE the token is sent: the mover refuses unless
+          # api_base is https:// on this host or a subdomain of it, so a redirected or
+          # rewritten api_base cannot exfiltrate the credential to another host.
+          KANBAN_EXPECTED_HOST: ${{ vars.KANBAN_EXPECTED_HOST }}
+          # Overrides `.release-pr.json`'s host-scrubbed placeholder. Changing this variable
+          # is a credential-scope change; review it as one.
+          KANBAN_API_BASE: ${{ vars.KANBAN_API_BASE }}
+          # The push payload's `before` sha — what `main` pointed at BEFORE this push.
+          # MEASURED, not inferred, so `before..after` is exactly what this push released, and
+          # it is stable across a re-run of the same job. Empty on workflow_dispatch, where
+          # the mover falls back to the previous release tag (or to --base).
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          INPUT_CARDS: ${{ github.event.inputs.cards }}
+          INPUT_BASE: ${{ github.event.inputs.base }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "${INPUT_CARDS:-}" ] && args+=(--cards "$INPUT_CARDS")
+          [ -n "${INPUT_BASE:-}" ] && args+=(--base "$INPUT_BASE")
+          [ "${DRY_RUN:-}" = "true" ] && args+=(--dry-run)
+          bin/promote-cards-by-token "${args[@]}"

@@ -21,7 +21,16 @@
 !.env.example
 *.pem
 *-token
+# …but `bin/promote-cards-by-token` is a SCRIPT whose name ends in "-token", not a credential.
+# Without this line `git add -A` drops it silently and the release workflow ships without the
+# tool it runs. Keep the `*-token` rule as-is — it is the one guarding real token FILES — and
+# keep this exception as narrow as it is.
+!bin/promote-cards-by-token
 auth.json
+
+# python bytecode (the selftests import the lint by path)
+__pycache__/
+*.pyc
 
 # editor / os
 .DS_Store
