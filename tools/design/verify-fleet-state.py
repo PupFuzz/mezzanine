@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D2 verification gate: docs/design/FLEET-STATE.md.
 
-Ten guard classes, one per defect class the round-1 review of this document found by hand.
+ELEVEN guard classes, G1-G11, one per defect class a review of this document found by hand.
 Every population below is RE-DERIVED on each run -- from this document's own tables, from the
 JSON blocks it publishes, or from docs/design/EVENT-SCHEMA.md -- and never from a list stored
 here.  A number written into a checker is a number free to disagree with the document it is
@@ -11,8 +11,11 @@ checking, and it survives exactly the pass that falsifies it.
   G2  field table <-> worked examples, both ways  (R1-22: four container objects with no row)
   G3  byte figures re-derived by serialization    (R1-16: "Measured" figures nothing could measure)
   G4  cross-document enum containment + counts    (R1-19: a comment saying "four" over six members)
-  G5  section 12 <-> definition-site agreement    (R1-18, R1-33: a number table that drifted)
-  G6  Appendix A counts + D1 marker coverage      (R1-24: an obligation with no row)
+  G5  section 12 <-> definition-site agreement    (R1-18, R1-33: a number table that drifted;
+                                                   R2-8: and the substring search that could not
+                                                   see it drift, repaired below)
+  G6  Appendix A counts + D1 marker coverage      (R1-24: an obligation with no row; R2-9: and the
+                                                   D1/D2 namespace collision that forgave it)
   G7  feed message-type closure                   (R1-11: `fleet.health` in no table)
   G8  counter closure, with Stored/Exposed        (R1-15: 14 counters with no home)
   G9  fixture arity                               (R1-21: "nine events" against a ten-row trace)
@@ -20,14 +23,18 @@ checking, and it survives exactly the pass that falsifies it.
                                                    corrupts a timeline silently)
   G11 section 10's trace, counted from its table  (R1-21: "one transition row" against two)
 
-Two classes are NOT fully mechanizable and say so in the output rather than reporting a clean
+Three things are NOT fully mechanizable and say so in the output rather than reporting a clean
 over a population they never measured (canon: a clean result over an unnamed population reports
 where the searcher stopped):
 
   * G6's SEMANTIC half.  An obligation D1 addresses to "a consumer" without the `D2` marker --
-    Appendix A row S29 is one -- cannot be found by grep.  The marker half is checked; the
-    semantic half is reported as manual, and FLEET-STATE section 14 item 13 is the request that
-    would close it.
+    Appendix A row S29 is one -- cannot be found by grep.  The marker half is checked; the SIZE
+    of the semantic half is re-derived per row and printed (it is fourteen of twenty-nine, not
+    the one an earlier revision of that paragraph claimed), and FLEET-STATE section 14 item 13 is
+    the request that would close it.
+  * G5's RESIDUE.  Every number G5 matches is then perturbed, and the ones some other value would
+    also have satisfied are printed individually rather than counted as passes.  That list is the
+    honest statement of which section 12 rows this gate is actually holding.
   * G5's "Cited" rows.  This gate checks that a number appears at the D2 section that owns it.
     Whether that number is what D1 actually says is a cross-document claim over prose, and it is
     read by a human.
@@ -49,8 +56,9 @@ d1_raw = D1.read_text()
 
 WORD = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
         "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
-        "fourteen": 14, "eighteen": 18, "twenty-eight": 28, "twenty-nine": 29, "thirty": 30,
-        "thirty-three": 33, "thirty-four": 34}
+        "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+        "twenty-eight": 28, "twenty-nine": 29, "thirty": 30, "thirty-three": 33,
+        "thirty-four": 34}
 
 
 # ---------------------------------------------------------------- helpers ----
@@ -286,6 +294,58 @@ if g2_table and g2_seen:
                     f"different patches under section 8.3.1's shallow merge)")
 
 # ----------------------------- G3. byte figures, re-derived by serialization ---
+# Five of this check's own inputs used to be WRITTEN HERE -- 8940/86400, 8192, and the seat counts
+# 4 / 50 / 200 -- which is the failure mode this file's own docstring names: a change to any
+# component of the 8,940 sum, or to the message bound, left the arithmetic comparing against a
+# constant in the checker while it reported clean.  Each is now re-derived from the section that
+# defines it, on every run, and the sum is re-ADDED from its six named components rather than read
+# off the total the document states for them.
+def g3_input(what, pattern, where, cast=int, group=1):
+    m = re.search(pattern, section_text(where) or "")
+    if not m:
+        fail.append(f"G3 CONTROL: {what} could not be re-derived from section {where} — this "
+                    f"check's own input would then be a number written into the checker, free to "
+                    f"disagree with the document it is checking")
+        return None
+    return cast(m.group(group).replace(",", ""))
+
+
+# the delta volume, re-ADDED from its six components; the stated total is CHECKED, never trusted
+DAY_S = 24 * 60 * 60
+sec83_txt = section_text("83-the-websocket-delta-feed") or ""
+delta_day = None
+m83 = re.search(r"State-changing events per seat-day at the ceiling:\s*(.*?)=\s*\*\*([\d,]+)\*\*",
+                sec83_txt, re.S)
+if not m83:
+    fail.append("G3 CONTROL: section 8.3's delta-volume sum did not parse — the feed traffic "
+                "figures would then rest on a total nothing re-adds")
+else:
+    parts = [int(x.replace(",", "")) for x in re.findall(r"([\d,]+)\s+[a-z]", m83.group(1))]
+    stated = int(m83.group(2).replace(",", ""))
+    if len(parts) < 6:
+        fail.append(f"G3 CONTROL: only {len(parts)} components parsed out of section 8.3's "
+                    f"delta-volume sum; a partial sum would agree with the stated total by luck")
+    elif sum(parts) != stated:
+        fail.append(f"G3: section 8.3 adds {' + '.join(str(p) for p in parts)} = {sum(parts):,} "
+                    f"and states **{stated:,}** — every feed volume, the queue sizing and the "
+                    f"per-client traffic figure descend from this one addition")
+    else:
+        delta_day = sum(parts)
+
+# the message bound, from the sentence that sets it, in bytes
+msg_bound = g3_input("the 8 KiB message bound", r"\*\*Message bound: (\d+) KiB\.\*\*",
+                     "83-the-websocket-delta-feed")
+if msg_bound is not None:
+    msg_bound *= 1024
+# the seat counts the snapshot figures are stated for, from the size table's own row labels
+sec821_txt = section_text("821-the-seat-state-object") or ""
+seat_counts = [int(x) for x in re.findall(r"\| snapshot, (\d+) seats \|", sec821_txt)]
+page_seats = g3_input("the pagination trigger's seat count", r"Past \*\*(\d+) seats\*\*",
+                      "821-the-seat-state-object")
+if len(seat_counts) != 2:
+    fail.append(f"G3 CONTROL: section 8.2.1's size table names {len(seat_counts)} snapshot seat "
+                f"counts, not two — the fleet-snapshot figures cannot be re-derived")
+
 snapshot = next((b for _, b in BLOCKS if isinstance(b, dict) and "installs" in b), None)
 deltas = [b for _, b in BLOCKS if isinstance(b, dict) and b.get("t") == "seat.delta"]
 typ_delta = next((d for d in deltas if "install_id" not in d.get("patch", {})), None)
@@ -312,31 +372,71 @@ else:
         (rf"\| snapshot envelope \| \*\*{e} B\*\*", "snapshot envelope"),
         (rf"\| delta, typical \| \*\*{figs['typical delta']} B\*\*", "typical delta"),
         (rf"\| delta, worst case \| \*\*{wd:,} B\*\*", "worst-case delta"),
-        (rf"\*\*~?{round((e + 4 * tn) / 1000, 1)} KB\*\* typical, \*\*~?{round((e + 4 * wn) / 1000):,} KB\*\* worst",
-         "4-seat snapshot"),
-        (rf"\*\*~{round((e + 50 * tn) / 1000):,} KB\*\* typical, \*\*~{round((e + 50 * wn) / 1000):,} KB\*\* worst",
-         "50-seat snapshot"),
-        (rf"200 seats \(~{round((e + 200 * tn) / 1000):,} KB\)", "pagination trigger"),
-        (rf"\*\*{8192 / wd:.2f}×\*\*", "message-bound ratio"),
-        (rf"\*\*{8192 - wd:,} B\*\* spare", "message-bound headroom"),
         (rf"worst-case delta is {wd:,} B", "worst-case delta, restated at section 8.3"),
         (rf"\*\*{wn:,} B\*\* worst", "worst-case seat object, restated at section 12"),
         (rf"\*\*{tn:,} B\*\* typical", "typical seat object, restated at section 12"),
-        (rf"{8192 / wd:.2f}× the measured worst case", "message-bound ratio at section 12"),
     ]
+    if len(seat_counts) == 2:
+        small, large = seat_counts
+        checks += [
+            (rf"\*\*~?{round((e + small * tn) / 1000, 1)} KB\*\* typical, "
+             rf"\*\*~?{round((e + small * wn) / 1000):,} KB\*\* worst", f"{small}-seat snapshot"),
+            (rf"\*\*~{round((e + large * tn) / 1000):,} KB\*\* typical, "
+             rf"\*\*~{round((e + large * wn) / 1000):,} KB\*\* worst", f"{large}-seat snapshot"),
+        ]
+    if page_seats is not None:
+        checks.append((rf"{page_seats} seats \(~{round((e + page_seats * tn) / 1000):,} KB\)",
+                       "pagination trigger"))
+    if msg_bound is not None:
+        checks += [
+            (rf"\*\*{msg_bound / wd:.2f}×\*\*", "message-bound ratio"),
+            (rf"\*\*{msg_bound - wd:,} B\*\* spare", "message-bound headroom"),
+            (rf"{msg_bound / wd:.2f}× the measured worst case", "message-bound ratio at section 12"),
+        ]
     for pat, what in checks:
         if not re.search(pat, raw):
             fail.append(f"G3: no stated figure matches the {what} — re-derived as "
                         f"{figs} from the published blocks. A figure this gate cannot find is a "
                         f"figure nothing re-measures")
-    # the derived traffic figure: 8,940/day -> msg/s -> KiB/s at 50 seats
-    per_s = 8940 / 86400
-    kib = per_s * 50 * figs["typical delta"] / 1024
-    if not re.search(rf"\*\*~{kib:.1f} KiB/s\*\*", raw):
-        fail.append(f"G3: section 8.3's per-client traffic figure does not match "
-                    f"{per_s * 50:.2f} msg/s × {figs['typical delta']} B = {kib:.2f} KiB/s")
-    if not re.search(rf"~{kib:.1f} KiB/s", section_text("12-every-number-and-where-it-comes-from") or ""):
-        fail.append(f"G3: section 12 does not carry the {kib:.1f} KiB/s traffic figure")
+    # the derived traffic figures, every input re-derived above: the re-added per-seat-day delta
+    # count, a day in seconds, and the fleet size the document states the figure for
+    if delta_day is not None and len(seat_counts) == 2:
+        large = seat_counts[1]
+        per_s = delta_day / DAY_S
+        fleet_s = per_s * large
+        kib = fleet_s * figs["typical delta"] / 1024
+        for pat, what in [
+            (rf"\*\*{delta_day:,}\*\*, i\.e\. \*\*{per_s:.3f} msg/s/seat\*\*", "per-seat delta rate"),
+            (rf"\*\*{fleet_s:.1f} msg/s\*\*", f"{large}-seat feed rate"),
+            (rf"\*\*~{kib:.1f} KiB/s\*\* per connected client", "per-client traffic"),
+            (rf"\({fleet_s:.2f} × {figs['typical delta']} B = "
+             rf"{round(round(fleet_s, 2) * figs['typical delta']):,} B/s\)", "the traffic arithmetic"),
+        ]:
+            if not re.search(pat, sec83_txt):
+                fail.append(f"G3: section 8.3's {what} does not match the value re-derived from "
+                            f"its own inputs — {delta_day:,}/seat/day ÷ {DAY_S:,} s × {large} "
+                            f"seats × {figs['typical delta']} B = {kib:.2f} KiB/s")
+        sec12_txt = section_text("12-every-number-and-where-it-comes-from") or ""
+        for pat, what in [
+            (rf"\*\*{delta_day:,}/seat/day = {per_s:.3f} msg/s/seat\*\*; {fleet_s:.1f} msg/s",
+             "the delta-volume row"),
+            (rf"~{kib:.1f} KiB/s", "the per-client traffic row"),
+        ]:
+            if not re.search(pat, sec12_txt):
+                fail.append(f"G3: section 12's {what} does not carry the re-derived value "
+                            f"({delta_day:,}/seat/day, {per_s:.3f} msg/s/seat, {fleet_s:.1f} msg/s, "
+                            f"{kib:.1f} KiB/s)")
+        # the backpressure queue, sized in seconds of that same fleet rate
+        q = re.search(r"\*\*(\d+) messages or (\d+) KiB[^*]*\*\*",
+                      section_text("85-gaps-reconnect-and-why-state_version-is-not-seq") or "")
+        if not q:
+            fail.append("G3 CONTROL: section 8.5's outbound queue bound did not parse, so the "
+                        "seconds-of-traffic it is sized in rests on nothing")
+        elif not re.search(rf"{q.group(1)} messages is ~{round(int(q.group(1)) / fleet_s)} seconds",
+                           section_text("85-gaps-reconnect-and-why-state_version-is-not-seq")):
+            fail.append(f"G3: section 8.5 sizes its {q.group(1)}-message queue in seconds of the "
+                        f"fleet's ceiling traffic; at the re-derived {fleet_s:.2f} msg/s that is "
+                        f"~{round(int(q.group(1)) / fleet_s)} seconds")
 
 # ------------------- G4. cross-document enum containment, with prose counts ----
 def d1_enum_set(field):
@@ -481,8 +581,65 @@ else:
                                 f"wire. The server badge set is {sorted(srv_set)}")
 
 # --------------------- G5. section 12's numbers vs their definition sites ------
+# What used to be here was `if any(v in target ...)` over the WHOLE text of the cited section,
+# which is not a check at all for a one- or two-digit value: a bare `7` is satisfied by the `7`
+# inside "~70 minutes", and section 12's fold visibility lag was moved 2 s -> 7 s against this
+# gate and it printed ALL D2 CHECKS PASS.  Twenty-four of the fifty rows carry only such values --
+# every ceiling, the whole retention chain, the sweep cadence, the message bound -- so the guard
+# was a coin flip on the digit over the half of the table it exists for.
+#
+# The match is now specific in two independent ways, and the gate MEASURES its own discrimination
+# per number rather than asserting it:
+#
+#   1. The number must appear at the definition site as a WHOLE numeric token -- neither side
+#      alphanumeric, and no digit or decimal group continuing it -- so a digit inside a longer
+#      number can no longer answer for it.  Where section 12's Number cell writes a unit beside
+#      the number ("2 s", "15 min", "5,000 rows"), that unit must also follow the token at the
+#      site across at most a little markdown noise, which is what makes "2-second" and "**2 s**"
+#      both count and "2 seats" not answer for "2 s".
+#   2. Every token that matches is then PERTURBED: the same pattern with every other last digit.
+#      The token counts as DISCRIMINATED only if all nine perturbations fail to match.  One that
+#      an alternative value also satisfies is a number this gate cannot hold, and it is printed
+#      as residue rather than counted as a pass -- because a count of vacuous passes reports
+#      where the searcher stopped, not the state of the table.
+UNIT = r"(?:[A-Za-z][A-Za-z%]*(?:/[A-Za-z]+)*|%)"
+# a number is a standalone quantity, not part of an identifier (SHA-256), a version fragment or a
+# superscript (2**53-1); the leading class is what keeps `256` out of `SHA-256`
+NUMTOK = re.compile(r"(?<![0-9A-Za-z.,\-−⁰¹²³⁴-⁹])"
+                    r"(\d[\d,]*(?:\.\d+)*)"
+                    r"(?![⁰¹²³⁴-⁹])"
+                    r"\s?(" + UNIT + r")?")
+
+
+def site_pattern(num, unit):
+    """A number, as a whole token at its definition site, with its unit if the table gave one."""
+    variants = {num}
+    if "," in num:
+        variants.add(num.replace(",", ""))
+    elif num.isdigit() and len(num) > 3:
+        variants.add(f"{int(num):,}")
+    alt = "|".join(re.escape(v) for v in sorted(variants, key=len, reverse=True))
+    pat = rf"(?<![0-9A-Za-z.,])(?:{alt})(?![0-9])(?![.,]\d)"
+    if unit:
+        # the unit's first three characters, so "min" answers for "minutes" and "sea" for "seats",
+        # across the markdown and hyphenation the document actually uses ("60-second", "**2 s**")
+        pat += r"[\s*_~`\-–—]{0,3}" + re.escape(unit[:3])
+    return pat
+
+
+def perturbations(num):
+    """The same number with a different last digit -- nine wrong values the site must reject."""
+    out = []
+    for d in "0123456789":
+        if d == num[-1]:
+            continue
+        out.append(num[:-1] + d)
+    return out
+
+
 sec12 = section_text("12-every-number-and-where-it-comes-from")
-g5_rows = g5_nums = 0
+g5_rows = g5_nums = g5_unit = g5_disc = g5_skipped = 0
+g5_residue = []
 if not sec12:
     fail.append("G5 CONTROL: section 12 not found")
 else:
@@ -503,20 +660,37 @@ else:
             fail.append(f"G5: section 12 row {c[0]!r} points at {anchors} and no such section "
                         f"exists, so its number has no definition site")
             continue
-        for numtok in re.findall(r"\d[\d,.]*", c[1]):
-            n = numtok.rstrip(".").replace(",", "")
-            if n in ("", "0", "1", "2", "3", "4", "5", "8", "10", "12", "14", "15", "20", "50"):
-                # single- and low-double-digit tokens collide with prose everywhere; they are
-                # checked by the specific guards that own them (G3, G10) rather than by substring
-                variants = [numtok.rstrip(".")]
-            else:
-                variants = {numtok.rstrip("."), n, f"{int(n):,}" if n.isdigit() else n}
+        got = [m.group(1) for m in NUMTOK.finditer(c[1])]
+        # digit runs the extractor deliberately declined to treat as a standalone quantity --
+        # a superscript exponent, an identifier suffix (SHA-256) -- counted so the denominator
+        # this check runs over is printed rather than assumed
+        g5_skipped += max(0, len(re.findall(r"\d[\d,]*(?:\.\d+)*", c[1])) - len(got))
+        for m in NUMTOK.finditer(c[1]):
+            num, unit = m.group(1), m.group(2)
             g5_nums += 1
-            if not any(v in target for v in variants):
-                fail.append(f"G5: section 12 row {c[0]!r} states {numtok!r}, which appears nowhere "
-                            f"in the section it cites ({', '.join(anchors)}) — the table and its "
-                            f"definition site have drifted apart, which is the one failure a "
-                            f"one-table audit exists to prevent")
+            # the unit is a STRENGTHENING of the whole-token match, not a substitute for it: a
+            # definition site is free to write the quantity without its unit (`LIMIT 5000` is
+            # SQL and cannot carry one), so a unit-anchored miss falls back to the whole token
+            # and the row is reported at the weaker tier rather than passed as if it were strong
+            matched = unit if unit and re.search(site_pattern(num, unit), target) else None
+            if unit and matched:
+                g5_unit += 1
+            elif not re.search(site_pattern(num, None), target):
+                fail.append(
+                    f"G5: section 12 row {c[0]!r} states {num!r}"
+                    f"{' ' + unit if unit else ''}, which does not appear as that quantity in the "
+                    f"section it cites ({', '.join(anchors)}) — the table and its definition site "
+                    f"have drifted apart, which is the one failure a one-table audit exists to "
+                    f"prevent")
+                continue
+            # the per-row control: this gate must be able to say NO for this row
+            collide = [p for p in perturbations(num)
+                       if re.search(site_pattern(p, matched), target)]
+            if collide:
+                g5_residue.append(f"{c[0]}: {num}{' ' + unit if unit else ''} at "
+                                  f"{'/'.join(anchors)} — {', '.join(collide[:4])} would match too")
+            else:
+                g5_disc += 1
 
 # ------------------------------- G6. Appendix A, re-derived where it can be ----
 appA = section_text("appendix-a--every-d1-obligation-and-where-it-is-discharged")
@@ -542,14 +716,15 @@ else:
     if not m or WORD.get(m.group(1).lower()) != n_further:
         fail.append(f"G6: Appendix A's heading says {m.group(1) if m else '?'} further "
                     f"obligations and its table has {n_further} rows")
-    m = re.search(r"([\w-]+) of the ([\w-]+) carry the literal marker", appA)
-    if not m:
+    split = re.search(r"\*\*([\w-]+)\*\* of the ([\w-]+) cite a D1 section that carries\s+"
+                      r"the literal marker `D2`; the other \*\*([\w-]+)\*\*", appA, re.S)
+    if not split:
         fail.append("G6: Appendix A no longer states how its population splits into the "
-                    "grep-derivable half and the semantic half, so the tool's coverage of it is "
+                    "marker-derivable half and the semantic half, so the tool's coverage of it is "
                     "not stated where a reader will see it")
-    elif WORD.get(m.group(2).lower()) != n_further:
+    elif WORD.get(split.group(2).lower()) != n_further:
         fail.append(f"G6: Appendix A's marker/semantic split is stated over "
-                    f"{m.group(2)} obligations; the table has {n_further}")
+                    f"{split.group(2)} obligations; the table has {n_further}")
 
     # the marker half, re-derived from D1: every D1 SECTION containing a literal `D2` must be
     # cited by some row of Appendix A.  Sections, not lines: one obligation can span lines and
@@ -582,11 +757,55 @@ else:
     if len(marked) < 5:
         fail.append(f"G6 CONTROL: only {len(marked)} D1 sections carry the `D2` marker — the "
                     f"section walker is broken and this half of the check is vacuous")
-    cited = set(re.findall(r"§\s*(\d+(?:\.\d+)*)", appA.split("### ")[0]))
-    for r in must_rows + further_rows:
-        for s in re.findall(r"§\s*(\d+(?:\.\d+)*)", r):
-            cited.add(s)
-            # a row citing 12.6 discharges the parent's numbered constraints too
+    # `cited` used to be built by matching `§ n` over the WHOLE row, which does not distinguish a
+    # D1 section number from a D2 one -- and Appendix A's "Discharged in" column is nothing but D2
+    # section links.  Eleven `§ 6.4` links to this document's own `#64-ddl` therefore satisfied the
+    # requirement that some row cite D1 § 6.4, so stripping every real D1 § 6.4 citation from the
+    # D1-source column left this gate green.  Same hole for D1 § 8.2 through a D2 `§ 8.2.1` link.
+    # The extraction is now NAMESPACED: a citation counts as a D1 citation only where the document
+    # attributes it to D1, which is exactly three places.
+    def d1_refs(text):
+        """`§ n` written as a bare D1 attribution -- never a `[§ n](#in-doc-anchor)` D2 link."""
+        return set(re.findall(r"§\s*(\d+(?:\.\d+)*)",
+                              re.sub(r"\[[^\]]*\]\([^)]*\)", " ", text)))
+
+    cited = set()
+    # (a) any link into D1 itself, wherever it appears -- the anchor names the section
+    for a in re.findall(r"\]\(EVENT-SCHEMA\.md#(\d+(?:-\d+)*)-", appA):
+        cited.add(a.replace("-", "."))
+    for m in re.finditer(r"D1\s*§\s*(\d+(?:\.\d+)*)", appA):
+        cited.add(m.group(1))          # (b) an explicit "D1 § n" anywhere in the appendix
+    # (c) the D1 SOURCE column of a further-obligations row, and the numbered-constraints table's
+    #     obligation cell where it has already named D1 -- never the Discharged or Tested columns
+    for r in further_rows:
+        c = cells(r)
+        if len(c) >= 2:
+            cited |= d1_refs(c[1])
+    for r in must_rows:
+        c = cells(r)
+        if len(c) >= 2 and "D1" in c[1]:
+            cited |= d1_refs(c[1])
+    if not cited:
+        fail.append("G6 CONTROL: no D1 section citation could be attributed to a D1 column or a "
+                    "`D1 §` attribution in Appendix A — the marker-coverage half is then vacuous")
+
+    # the marker/semantic SPLIT, re-derived per row rather than restated.  The paragraph that
+    # states it claimed twenty-eight and one against a real fourteen-row semantic half, and the
+    # scope of section 14 item 8's closure rests on that number -- so it is a derived figure now.
+    g6_marker = [cells(r)[0] for r in further_rows
+                 if len(cells(r)) >= 2 and (d1_refs(cells(r)[1]) & marked)]
+    g6_semantic = [cells(r)[0] for r in further_rows if cells(r)[0] not in g6_marker]
+    if split:
+        stated = (WORD.get(split.group(1).lower()), WORD.get(split.group(3).lower()))
+        if stated != (len(g6_marker), len(g6_semantic)):
+            fail.append(
+                f"G6: Appendix A states its split as {split.group(1)} marker-derivable / "
+                f"{split.group(3)} semantic; re-derived per row against the D1 sections that "
+                f"actually carry the marker, it is {len(g6_marker)} / {len(g6_semantic)}. The "
+                f"semantic half is the manual remainder section 14 item 8 scopes its closure by, "
+                f"so understating it overstates what this tool covers. Semantic rows: "
+                f"{', '.join(g6_semantic)}")
+
     for sec in sorted(marked):
         if sec in cited:
             continue
@@ -633,7 +852,15 @@ if declared_types and fleet_fields:
 # --------------------------------------------------- G8. counter closure ------
 s71 = section_text("71-d1s-server-side-counters--where-they-live")
 s72 = section_text("72-this-planes-own-counters-and-badges")
-counters = set()
+counters, claims_health = set(), set()
+# the fleet-health surface's own closed list, read from the `counters` row of section 8.2.4
+health_counters = set()
+_hc = re.search(r"^\|\s*`counters`\s*\|[^|]*\|[^|]*\|(.*?)\|[^|]*\|\s*$", sec824 or "", re.M)
+if not _hc:
+    fail.append("G8 CONTROL: section 8.2.4 declares no `counters` member, so every counter that "
+                "names fleet health as its exposure surface would be checked against nothing")
+else:
+    health_counters = set(re.findall(r"`([a-z_][a-z_.<>]*)`", _hc.group(1)))
 if not s71 or not s72:
     fail.append("G8 CONTROL: section 7.1 or 7.2 not found")
 else:
@@ -656,8 +883,29 @@ else:
                             f"stated home is a counter two implementers put in two places")
             if not c[2] or c[2] == "—":
                 fail.append(f"G8: counter {c[0]} states no exposure surface")
+            elif "fleet health" in c[2].lower():
+                claims_health.update(re.findall(r"`([a-z_][a-z_.<>]*)`", c[0]))
             if not re.search(r"seat_counters|global_counters|batches|seat_state|sessions", c[1]):
                 fail.append(f"G8: counter {c[0]}'s Stored cell names no table: {c[1]!r}")
+    # A named surface that does not carry the thing is the same defect as no surface named at all,
+    # one layer down: nine counters declared "fleet health" against a fleet object whose eight
+    # fields were none of them.  Only this surface is checked, because it is the only one with a
+    # closed field list -- "seat detail" returns every `seat_counters` row by construction
+    # (section 8.2.3), and a badge exposure is G4's subject.  The declared list is intersected with
+    # the real counter population so that a prose identifier in the same cell cannot join it.
+    health_counters &= counters
+    if len(health_counters) < 5:
+        fail.append(f"G8 CONTROL: section 8.2.4's `counters` member names {len(health_counters)} "
+                    f"actual counters — too few to be the fleet-health population, so the "
+                    f"membership check below would forgive almost anything")
+    for n in sorted(claims_health):
+        if n not in health_counters:
+            fail.append(
+                f"G8: counter `{n}` names **fleet health** as its exposure surface and section "
+                f"8.2.4's `counters` member does not carry it, so it is readable on no surface "
+                f"this document defines — which is a counter that reads zero forever, by way of a "
+                f"surface instead of a write path")
+
     # D1's own population, re-derived from D1 rather than from a list here
     tbl = re.search(r"### 12\.7 Server-side counters(.*?)\n---", d1_raw, re.S)
     if not tbl:
@@ -680,6 +928,25 @@ else:
                     d2_ctr.add(m.group(2))
         if len(d1_ctr) < 12:
             fail.append(f"G8 CONTROL: only {len(d1_ctr)} counters parsed from D1 section 12.7")
+        # the PROSE count of that population, in both places this document states it.  It said
+        # sixteen against seventeen, because subtracting the one gauge from the seventeen ROWS
+        # misses that the first row carries two counters -- a count of rows is not a count of names.
+        d1_gauges = {m.group(1) for m in
+                     re.finditer(r"^\|\s*`([a-z_][a-z_.<>]*)`[^|]*\|[^|]*gauge", tbl.group(1), re.M)}
+        n_d1_counters = len(d1_ctr - d1_gauges)
+        if not d1_gauges:
+            fail.append("G8 CONTROL: no gauge found in D1 section 12.7, so the counter count below "
+                        "is being taken over a population that still includes one")
+        for pat, where in [(r"defines \*\*(\w+)\*\* counters the ingest", "section 7.1"),
+                           (r"\| The (\w+) server-side counters", "Appendix A row S16")]:
+            m = re.search(pat, raw)
+            if not m:
+                fail.append(f"G8: {where} no longer states how many counters D1 section 12.7 "
+                            f"defines, so its completeness claim is unsized")
+            elif WORD.get(m.group(1).lower()) != n_d1_counters:
+                fail.append(f"G8: {where} says {m.group(1)} counters in D1 section 12.7; the names "
+                            f"parsed out of that table, less the {len(d1_gauges)} gauge(s) "
+                            f"{sorted(d1_gauges)}, give {n_d1_counters}")
         for miss in sorted(d1_ctr - d2_ctr):
             fail.append(f"G8: D1 section 12.7 defines `{miss}` and section 7.1 gives it no row — "
                         f"the counter has no storage, no surface and no badge on this plane")
@@ -774,6 +1041,27 @@ else:
             if WORD.get(word.lower()) != actual:
                 fail.append(f"G11: section 10 claims {word} {what}; its own table has {actual}")
 
+# ---------------- the count of guard classes, which is itself a prose count ----
+# Section 14 item 8 and section 12's status table state how much of this document is tool-checked.
+# They said "ten" against eleven for a whole revision.  A gate that checks every other count in
+# the document and not the count OF ITSELF is the one restatement nobody guards.
+n_toolchecked = sum(1 for r in (table_rows(sec12 or "", r"^\| Check \| What the tool re-derives \| Status \|") or [])
+                    if len(cells(r)) == 3 and cells(r)[2].startswith("**tool-checked**"))
+m = re.search(r"mechanises \*\*(\w+)\*\* guard classes \(G1–G(\d+)\)",
+              section_text("14-open-questions-for-the-review-loop") or "")
+if not n_toolchecked:
+    fail.append("CONTROL: section 12's tool-checked status rows did not parse, so the claim that "
+                "this document is checked cannot be sized")
+elif not m:
+    fail.append("section 14 item 8 no longer states how many guard classes this tool mechanises, "
+                "so the scope of its own closure is unstated")
+else:
+    stated, top = WORD.get(m.group(1).lower()), int(m.group(2))
+    if not (stated == top == n_toolchecked):
+        fail.append(f"section 14 item 8 says {m.group(1)} guard classes G1–G{top}; section 12's "
+                    f"status table marks {n_toolchecked} rows **tool-checked**. The three numbers "
+                    f"are one fact with three homes and they must agree")
+
 # ------------------------------------------------------------------ report ----
 print(f"json blocks parsed: {len(BLOCKS)}; anchors: {len(doc_anchors)}; links: {n_links}")
 print(f"G1  ENUM members re-derived: {len(g1_members)} "
@@ -781,15 +1069,27 @@ print(f"G1  ENUM members re-derived: {len(g1_members)} "
 print(f"G2  wire fields: {len(g2_table)} declared, {len(g2_seen)} in {len(seat_objs)} worked "
       f"seat objects, {len(g2_table ^ g2_seen)} in symmetric difference")
 print(f"G3  byte figures re-serialized: {figs}")
+print(f"    inputs re-derived from the document (none written into this checker): "
+      f"delta volume {delta_day}/seat-day re-added from {len(parts) if m83 else 0} components, "
+      f"message bound {msg_bound} B, snapshot seat counts {seat_counts}, "
+      f"pagination trigger {page_seats} seats, seconds/day {DAY_S}")
 print(f"G4  cross-document enum sets checked: {g4_checked}; server badges: {n_srv}")
-print(f"G5  section 12 rows: {g5_rows}, numbers traced to a definition site: {g5_nums}")
-print(f"G6  Appendix A: {n_must} + {n_further} rows; "
+print(f"G5  section 12 rows: {g5_rows}; numbers traced to a definition site: {g5_nums} "
+      f"({g5_unit} matched with their unit, {g5_nums - g5_unit} as a whole token only); "
+      f"PROVEN discriminating by perturbation: {g5_disc}; residue: {len(g5_residue)}; "
+      f"digit runs not treated as a standalone quantity: {g5_skipped}")
+for r in g5_residue:
+    print(f"    G5 residue — a wrong value this gate would NOT notice · {r}")
+print(f"G6  Appendix A: {n_must} + {n_further} rows "
+      f"({len(g6_marker) if appA else 0} marker-derivable, {len(g6_semantic) if appA else 0} "
+      f"semantic — the manual remainder, re-derived per row, not restated); "
+      f"D1 sections cited from a D1-attributed position: {len(cited) if appA else 0}; "
       f"D1 sections carrying the `D2` marker: {len(marked) if appA else 0} "
       f"(D1's restating sections {sorted(restating) if appA else []} excluded: an acceptance "
       f"test and a decision register restate obligations imposed elsewhere)")
 print(f"G7  feed message types declared: {len(declared_types)}; "
       f"fleet-object fields exempted: {len(fleet_fields)}")
-print(f"G8  counters declared: {len(counters)}")
+print(f"G8  counters declared: {len(counters)}; fleet-health counters declared by section 8.2.4: {len(health_counters)}")
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
