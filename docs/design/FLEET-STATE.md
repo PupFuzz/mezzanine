@@ -1505,18 +1505,19 @@ would freeze the quiet age on every connected client between deltas, which is th
 document exists to prevent.
 
 **Which makes "a heartbeat emits no delta" a statement about the ordinary heartbeat, and the exceptions
-are named here rather than left to collide with the closed list above.** All of a heartbeat's *direct*
-effect on the object is inside the ten — the six `delivery` bookkeeping members and `reporter.uptime_s` —
-so the heartbeat that carries no news moves nothing version-bearing and emits no delta, which is the
-whole of [decision 23](#13-decisions-taken-revisable-at-review) and of the 1,440/seat/day
-[§ 8.3](#83-the-websocket-delta-feed) excludes. But a heartbeat is the **only** carrier of several facts
-that are *not* in the ten, and the closed list means each of them is version-bearing:
+are named here rather than left to collide with the closed list above.** Every heartbeat moves seven
+members of the object **unconditionally** — the six `delivery` bookkeeping members and
+`reporter.uptime_s` — and all seven are inside the ten, so the heartbeat that carries no news moves
+nothing version-bearing and emits no delta, which is the whole of
+[decision 23](#13-decisions-taken-revisable-at-review) and of the 1,440/seat/day
+[§ 8.3](#83-the-websocket-delta-feed) excludes. What a heartbeat moves **conditionally** is a short list
+of facts outside the ten, and the closed list means each of them is version-bearing:
 
 | Moved by a heartbeat, outside the ten | Why a heartbeat is what moves it |
 |---|---|
 | `enabled` | the flag is *only ever* learned from a heartbeat ([§ 4.5](#45-link-states) rule 4), so no other event can move it |
 | `badges` · `badges_since` | D1's twelve `degraded` members ride the heartbeat ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)); a badge onset or clear is a rendered change |
-| `reporter.version` · `reporter.platform` · `reporter.selftest_failed` | the reporter object's other members, carried by nothing else; a reporter upgrade or a failing self-test is exactly what a consumer must be told |
+| `reporter.selftest_failed` | the `selftest` object is a member of the heartbeat's own `data` ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) and of no other event's; a failing self-test is exactly what a consumer must be told |
 | `delivery.seq_epoch` | changes on an epoch reset ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), which a heartbeat can be the first event to carry |
 | `link_state` · `render_state` · `delivery.no_data_since` | derived, not carried: a receipt is what ends `stale`/`offline` and clears `no_data_since`, and `oldest_unsent_age_s` past 300 s is what enters and leaves `catching_up` ([§ 4.5](#45-link-states), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale)) — the excluded members are the *inputs*, and a derived value computed from an excluded input is not itself excluded |
 
@@ -1529,6 +1530,21 @@ population as the sweeper's own `stale` transition, which the figure has never c
 alternative — suppressing them because their carrier is a heartbeat — is a seat whose `enabled` flip or
 `lossy` badge reaches a connected client only on its next unrelated delta, which on a quiet desk is the
 false-idle class again in another costume.
+
+**`reporter.version` and `reporter.platform` are deliberately absent from that table, because no event
+carries them.** Both are **batch-envelope** fields — [D1 § 4.2](EVENT-SCHEMA.md#42-batch-envelope-fields)
+declares `reporter_version` and `reporter_platform` non-null on **every** batch of every kind — and
+neither appears in any event's `data`, the heartbeat's
+([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) included. That is why [§ 6.4](#64-ddl) stores them
+on `batches` while `events` carries only a `batch_ref`, and the fold reads them exactly as
+[§ 7.2](#72-this-planes-own-counters-and-badges) already reads the `clock_skew_ms` gauge: the `batches`
+column of the batch the event it is applying arrived in, latest into `seat_state`. The **fold** is the
+writer and not the ingest, because both members sit outside the ten and are therefore version-bearing,
+and a version-bearing field is written by one of the three writers named above. The edge is real and does
+emit a delta — but it rides **the first event of any kind whose batch carries the new value**, which on a
+busy seat is an ordinary hook event and only on a quiet one a heartbeat. An implementer who went looking
+for a `version` member on `reporter.heartbeat`'s `data` to compare would find none, and would write a
+rule that can never fire.
 
 **Why excluding them costs a consumer nothing, which is the load-bearing half.** Every quantity this
 document says is *rendered* from one of the ten is rendered from a value that cannot be moving at the
@@ -2025,7 +2041,7 @@ snapshot repeats per seat and the delta patches.
 | `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
-| `reporter` | object | no | **never null**, as `activity` above; every member is null before the first heartbeat | see below |
+| `reporter` | object | no | **never null**, as `activity` above; `uptime_s` and `selftest_failed` are null before the first heartbeat, `version` and `platform` before the seat's first **batch** — they ride the batch envelope, not any event ([§ 6.5](#65-the-fold)) | see below |
 | `reporter.version` | semver | **yes** | ≤ 24 B | `"0.1.0"` |
 | `reporter.platform` | enum | **yes** | D1's 4 members | `"linux"` |
 | `reporter.uptime_s` | int | **yes** | ≥ 0 — the flusher-restart discriminator | `401150` |
@@ -2271,9 +2287,9 @@ members and `reporter.uptime_s` — moves no version-bearing member ([§ 6.5](#6
 delta, and the client's ages come from
 `server_time` plus each seat's stored timestamps ([§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)).
 Emitting a delta per heartbeat would add 1,440/seat/day of pure noise, a 16 % increase in feed traffic
-carrying no information. The heartbeat that carries *news* is a different case and does emit: an
-`enabled` flip, a badge onset or clear, a reporter upgrade, an epoch reset, or the link-state edge a
-receipt itself causes — [§ 6.5](#65-the-fold) names that set, closed, against the version-bearing one.
+carrying no information. The heartbeat that carries *news* is a different case and does emit — that
+exception set is [§ 6.5](#65-the-fold)'s, named there **once**, closed against the version-bearing one,
+and deliberately not enumerated again here, where a second copy could drift from it.
 Those are **edge-triggered**, single digits per seat-day, and they no more belong in this figure than
 the sweeper's own `stale` transition does: 8,940 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
@@ -3224,7 +3240,7 @@ review can reverse it deliberately rather than discover it later.
 | 20 | **Orphan ceilings are measured from `received_at`; the attention ceiling from `event_time`** | one clock for both | A timeout is a claim about how long *we* waited, so a skewed seat must not expire its calls early — but the attention ceiling competes with a reporter-side timer on the seat's clock, and using a different basis would make the server win every race on a skewed seat | the two clocks differ by the skew, which is bounded and badged at ±120 s; both choices are stated per ceiling in [§ 4.7](#47-which-clock-each-ceiling-is-measured-from) rather than inherited |
 | 21 | **The ceiling is materialized on the row at open time** | compute it in the sweeper's `WHERE` clause from a constant | An indexed range scan instead of a full scan, and — the real reason — **changing a constant later does not retroactively re-date history**, so `late_completion` stays interpretable across the change | one column per bounded fact |
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
-| 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: the heartbeat that flips `enabled`, raises or clears a badge, upgrades the reporter, resets the epoch or ends a `stale` does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
+| 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
 | 25 | **The task-title merge is specified; the producers of tiers 1 and 2 are not** | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
