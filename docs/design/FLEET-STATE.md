@@ -137,7 +137,7 @@ individually restartable without losing or double-applying anything.
 |---|---|---|---|---|
 | **ingest** | HTTP request (PHP-FPM) | per batch | validate per [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order), write `events` + `batches`, the seat's **`head_event_id`**, and — only where it is still `NULL`, i.e. on the seat's first-ever event — the **seed of `fold_cursor_received_at`** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)), all in one transaction, return `202` | the reporter spools and retries ([D1 § 11.5](EVENT-SCHEMA.md#115-retry-and-backoff)); nothing is lost until a seat's 8-day residency cap |
 | **fold** | long-lived daemon (`mezzanine:fold`), supervised | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
-| **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
+| **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, and publish the `seat.retired` message and the delta ([§ 4.10](#410-retirement-is-a-rendered-state)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 
@@ -464,7 +464,7 @@ must never reach it.
 | `session_cleared` | `turn_killed_by_clear` |
 | `session_ended` | `turn_ended_with_session` |
 | `api_error`, with `stalled_cleared_by = "left_live"` ([§ 4.5](#45-link-states)) | `stalled_left_live` |
-| `api_error`, with **any other** `stalled_cleared_by` — `session_end`, `server_offline` (quiescence closed the session under it, [§ 4.6](#46-every-open-fact-has-a-ceiling)), `turn_start`, or none recorded | `stalled_session_ended` |
+| `api_error`, with **any other** `stalled_cleared_by` — `session_end`, `turn_start`, or none recorded | `stalled_session_ended` |
 | `server_session_close` — the server closed the turn because its session closed ([§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)) or the seat went offline ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | `session_closed_turn_open` |
 | *(no turn record at all — rule 5, not this function)* | `no_data_yet` |
 
@@ -483,16 +483,19 @@ which is why `sessions.last_turn_end_reason` carries the server-side member `ser
 
 **And the converse property is bought explicitly, because it is the one an earlier draft lost.** The
 table must be total over `L`'s *declared* domain — the five `last_turn_end_reason` members crossed with
-`stalled_cleared_by`'s four members and null — not merely over the combinations today's paths happen to
+`stalled_cleared_by`'s three members and null — not merely over the combinations today's paths happen to
 reach, because an input no row selects is exactly as broken as a row no input reaches and is harder to
 see. Three of the five end reasons select a row regardless of `stalled_cleared_by`; `stop_hook` splits
 on the aborted count and its clean half never arrives here at all (rule 4 fires first); and
 `api_error`'s two rows are written as *`left_live`* and *anything else*, a catch-all rather than an
-enumeration, so a fifth `stalled_cleared_by` member added later cannot silently fall through. The
-combination that found this — `api_error` with `stalled_cleared_by` null, reached when offline
-quiescence closes a session over a rate-limited turn — is now covered twice over: quiescence records
-`server_offline` ([§ 4.6](#46-every-open-fact-has-a-ceiling)) **and** the catch-all row would have
-caught it anyway.
+enumeration, so a fourth `stalled_cleared_by` member added later cannot silently fall through. The
+combination that found this — `api_error` with `stalled_cleared_by` null, reached when a session is
+closed under a rate-limited turn by something that recorded no clearer — is now covered twice over:
+[§ 4.5](#45-link-states)'s leaving-live clear fires at `stale` **or** `offline` and so records
+`left_live` on every seat that goes quiet, before [§ 4.6](#46-every-open-fact-has-a-ceiling)'s
+quiescence can close the session under it, **and** the catch-all row would have caught the null anyway.
+The catch-all is what makes the second cover real rather than a restatement of the first: it is the row
+that holds if the ordering argument is ever wrong.
 
 `unknown` is a single state with seven reasons rather than seven states, because the *rendering* is one
 glyph ("we do not know what this seat is doing") and the *diagnosis* belongs in the drill-down. Seven
@@ -568,10 +571,16 @@ instrument that says so.
 | **exit** | that session's next `turn.start` — `stalled_cleared_by := turn_start` |
 | **exit** | that session's `session.end` — **including** the flusher's 90-minute `inferred_silence` close ([D1 § 6.2](EVENT-SCHEMA.md#62-sessionend)) — `stalled_cleared_by := session_end`, after which the seat is `unknown` (`stalled_session_ended`), **never `idle`** |
 | **exit** | `link_state` reaches **`stale` or `offline`** — the sweeper clears `stalled_since` at that boundary, `stalled_cleared_by := left_live`, counting `left_live_cleared_stalls`; the seat is then `unknown` (`stalled_left_live`) ([§ 4.5](#45-link-states)). The two values, not "leaves `live`": a `disabled` seat is still reporting and its rate limit is still real |
-| **exit** | the server's offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) — `stalled_cleared_by := server_offline`, after which the seat is `unknown` (`stalled_session_ended`), the same reading as the `session_end` exit because that is what quiescence did to the session |
 
-Three of the four exits are D1's ([D1 § 6.4](EVENT-SCHEMA.md#64-turnend) states them); the fourth,
-offline quiescence, is this document's backstop under them. `stalled` is per **session**, not per seat: a seat running two
+**Three exits, and offline quiescence is deliberately not a fourth.** All three are D1's
+([D1 § 6.4](EVENT-SCHEMA.md#64-turnend) states them). An earlier draft added a fourth,
+`stalled_cleared_by: server_offline`, written by [§ 4.6](#46-every-open-fact-has-a-ceiling)'s offline
+quiescence as a backstop under the other three — and it was a member no path could select, because
+the third exit fires at **`stale` or `offline`** and so has *by construction* already cleared the flag
+before any seat can reach quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling) states that precedence
+where quiescence is defined). A backstop under a rule that cannot be got past is not a backstop; it is
+a second write-site for one fact, and two write-sites recording *different* clearers for one physical
+event is how a drill-down comes to disagree with itself. `stalled` is per **session**, not per seat: a seat running two
 terminals can have one rate-limited session and one healthy one, and the derivation's precedence takes
 `stalled` if any session of the seat is stalled — because a rate-limited fleet is a thing an operator
 acts on and hiding it behind a second healthy session would be the same collapse D1 refuses when it
@@ -636,7 +645,11 @@ a later derivation reports for a turn that ended long before the seat went quiet
 one-shot record of *who cleared it*; a rule that can run twice must say which write wins, and here the
 first one does. Both writes record a
 transition `cause` of `staleness_sweep`, which is the same cause the `stale` and `offline` renders
-themselves carry: one rule, one cause value. Both are D1 clauses —
+themselves carry: one rule, one cause value. **And this rule is the only write-site for either fact:**
+because its trigger is `stale` *or* `offline`, a seat cannot reach
+[§ 4.6](#46-every-open-fact-has-a-ceiling)'s offline quiescence without having passed through it first,
+so quiescence neither re-clears `stalled_since` nor re-resolves an attention request
+([§ 4.6](#46-every-open-fact-has-a-ceiling) states that precedence and the members it deletes). Both are D1 clauses —
 `D2-MUST` #1's *"or the seat leaving live state"* and `D2-MUST` #5's *"or leaving live"* — and **neither
 is discharged by the render precedence alone**: masking would leave the fact standing, and a seat that
 returns at 400 s would re-render a claim whose evidence is five minutes old. `idle` is deliberately not
@@ -667,10 +680,10 @@ makes the derived state incapable of a one-way trapdoor — the defect D1 names 
 | open call, dispatch (`Agent`/`Task`) | **60 min** | [D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts) | offline quiescence |
 | open turn | closed when its session closes | this document's rule, [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own) | offline quiescence |
 | open session | `session.end`, incl. the flusher's 90-minute `inferred_silence` | [D1 § 6.2](EVENT-SCHEMA.md#62-sessionend) | offline quiescence |
-| open attention request | **60 min** after its `attention.request` `event_time`, or the seat reaching `stale` (300 s) or `offline` (900 s), whichever is first | `D2-MUST` #5; [§ 4.5](#45-link-states) | offline quiescence |
-| `stalled` flag | next `turn.start` / that session's `session.end` / the seat reaching `stale` (300 s) or `offline` (900 s) | [D1 § 6.4](EVENT-SCHEMA.md#64-turnend); [§ 4.5](#45-link-states) | offline quiescence |
+| open attention request | **60 min** after its `attention.request` `event_time`, or the seat reaching `stale` (300 s) or `offline` (900 s), whichever is first | `D2-MUST` #5; [§ 4.5](#45-link-states) | **none needed** — the leaving-live edge in its own ceiling *is* the backstop, and it fires strictly before quiescence ([§ 4.5](#45-link-states)) |
+| `stalled` flag | next `turn.start` / that session's `session.end` / the seat reaching `stale` (300 s) or `offline` (900 s) | [D1 § 6.4](EVENT-SCHEMA.md#64-turnend); [§ 4.5](#45-link-states) | **none needed** — same reason |
 | open compaction (`sessions.compaction_open_since`) | `compaction.end`, its session closing, or **15 min** after the `compaction.start` receipt — the ordinary orphan ceiling reused, because a compaction is a harness operation of the same order as a tool call and `PostCompact` is one of D1's un-driven hook stubs | this document's rule | offline quiescence |
-| **everything above** | — | — | **offline quiescence at 900 s** |
+| **everything above** | — | — | **offline quiescence at 900 s** — except the two rows whose own ceiling already carries the leaving-live edge, which quiescence can never get in front of |
 
 **Offline quiescence** (transition `cause: offline_quiesce`). When a seat crosses the `offline`
 threshold, the sweeper closes its open facts:
@@ -678,20 +691,32 @@ every open call becomes `aborted` / `seat_offline` / `close_source: server_offli
 recorded as ended without a `turn.end` (`turn_close_source: server_offline`,
 `last_turn_end_reason: server_session_close`, so the derivation lands on
 `unknown` / `session_closed_turn_open` rather than on a null `L`), an open compaction is closed
-(`compaction_open_since := NULL`, counting `compaction_ceiling_closed`), every open attention request
-resolves `seat_offline`, **every `stalled_since` still set is cleared with
-`stalled_cleared_by: server_offline`**, and every open session is marked `ended_at` with
-`closed_by: server_offline`. Nothing is synthesized onto the wire
+(`compaction_open_since := NULL`, counting `compaction_ceiling_closed`), and every open session is
+marked `ended_at` with `closed_by: server_offline`. Nothing is synthesized onto the wire
 ([§ 4.8](#48-what-may-never-mint-a-state)); these are ledger writes only.
 
-**The `stalled_since` clear is not an afterthought in that list**, and leaving it out was a real hole
-rather than a tidiness one: the table above names offline quiescence as `stalled`'s backstop, and the
-`S` fact of [§ 4.3](#43-the-derivation-function) is *(`stalled_since` set **and** `ended_at` null)*, so
-marking the session ended would have made `S` false through its second term while leaving
-`stalled_cleared_by` null. `unknown_reason_for(L)` reads that column, so the seat would have arrived at
-rule 6 with an input no row selected — the converse of an unreachable member, and the defect
-[§ 4.3](#43-the-derivation-function)'s totality claim exists to forbid. Closing the fact, rather than
-letting a second term close it, is also what makes the ledger say *who* cleared it.
+**Quiescence never touches the `stalled` flag or an open attention request, and that is a precedence
+statement rather than an omission.** Reaching `offline` means the seat's `link_state` has *first become*
+`stale` **or** `offline`, which is exactly [§ 4.5](#45-link-states)'s leaving-live trigger — so by the
+time quiescence can see the seat, the leaving-live clear has already run and recorded
+`stalled_cleared_by: left_live` and `resolution: seat_left_live` / `resolution_source: server_left_live`.
+On the ordinary path it ran ~40 sweep passes earlier, at 300 s; on the one-pass jump — a seat silent for
+more than 900 s between two passes, which takes `offline` directly — it runs in **this** pass, ahead of
+quiescence, which is why [§ 2.1](#21-processes)'s job list is an execution order and states the
+leaving-live clears before offline quiescence. Either way quiescence finds `stalled_since` null and no
+open request, so a `server_offline` clearer and a `seat_offline` resolution are values no path can
+select; they were declared once and are deleted rather than kept as unreachable
+[§ 6.4](#64-ddl) members. **One fact, one write-site, on the earlier edge** — the alternative is two
+sweeper jobs racing to record different clearers for one physical event, which
+[§ 4.3](#43-the-derivation-function)'s reason table would then read as two different diagnoses.
+
+The clear itself is still load-bearing, and [§ 4.5](#45-link-states) is where it earns its keep: the `S`
+fact of [§ 4.3](#43-the-derivation-function) is *(`stalled_since` set **and** `ended_at` null)*, so a
+quiescence that merely marked the session ended would make `S` false through its second term while
+leaving `stalled_cleared_by` null, and `unknown_reason_for(L)` would read that column and reach rule 6
+with an input carrying no record of *who* cleared the stall. The leaving-live clear is what stops that
+happening, and [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits)'s second RED is the test that
+narrowing it back to the `stale` edge alone re-opens it.
 
 Why quiesce at all, when the render already shows `offline`? Because a seat that comes back must not
 inherit an hour-old open call as *current work*, and because the facts feed counters and the drill-down.
@@ -866,7 +891,7 @@ can only say `no`.
 | `call_closed_by_wire` | a call closed by a `tool.end` / by a server orphan or quiescence | per call close — ~1,000–3,000/seat/day | **≥ 5 % server-closed across ≥ 1,000 in 24 h** is the alarm direction here (not constancy): server closes should be rare | drive a fixture with the reap disabled → the share jumps; the healthy fixture keeps it near zero. This is the server-side twin of D1's `late_completion` signal |
 | `attention_resolved_by_wire` | resolved by an `attention.resolved` / by the server ceiling | per resolution — 0–50/seat/day | **any** server-ceiling resolution in 24 h is surfaced; constant-server over ≥ 10 alarms | stub the resolution events → ceiling branch; ordinary approval → wire branch |
 | `ingest_receiving` | any batch received fleet-wide in the last 300 s / none | per sweep pass, fleet-wide | **constant-`false` for 2 consecutive passes** alarms | stop the ingest → `false` within 300 s; a single live seat → `true`. This is the predicate that separates "every seat died" from "our pipe is broken", and without it a fleet-wide ingest outage renders as 40 independently-stale desks |
-| `fold_current` | `fold_lag_ms ≤ 60,000` / `>`, with `fold_lag_ms` **computed** from the cursor and head columns per [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation), never read from a stored lag | per sweep pass, per seat | **constant-`false` for 2 consecutive passes** alarms | pause the fold daemon → `false` within one pass; resume → `true`. This control is only reachable because the sweeper and the fold are different processes and the lag's basis is written by the ingest — a lag the fold wrote would freeze with it |
+| `fold_current` | `fold_lag_ms ≤ 60,000` / `>`, with `fold_lag_ms` **computed** from the cursor and head columns per [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation), never read from a stored lag | per sweep pass, per seat | **constant-`false` for 2 consecutive passes** alarms | pause the fold daemon → `false` within one pass; resume → `true`. This control is only reachable because the sweeper and the fold are different processes and the lag's basis is a **timestamp two processes write** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation): the ingest seeds `fold_cursor_received_at`, the fold advances it), not a number the fold maintains — a stored lag the fold wrote would freeze with it |
 
 **On the thresholds.** They are chosen the way D1 chooses its own and carry the same obligation: each
 criterion is reachable by its predicate's own evaluation rate — the rule D1 states as "a threshold above
@@ -1101,9 +1126,11 @@ CREATE TABLE sessions (
   last_turn_tool_calls    SMALLINT UNSIGNED NULL,
   last_turn_failed_calls  SMALLINT UNSIGNED NULL,
   stalled_since DATETIME(3) NULL,
-  stalled_cleared_by ENUM('turn_start','session_end','left_live',
-                          'server_offline') NULL,   -- one member per exit of § 4.4's `stalled`
-                                                    -- block; the fourth is § 4.6's quiescence
+  stalled_cleared_by ENUM('turn_start','session_end','left_live') NULL,
+                                    -- one member per exit of § 4.4's `stalled` block, which has
+                                    -- THREE.  A fourth, 'server_offline', was declared for § 4.6's
+                                    -- offline quiescence and deleted: the third exit fires at
+                                    -- `stale` OR `offline`, so quiescence can never be the clearer.
   api_error_type ENUM('rate_limit','overloaded','server_error','authentication_failed',
                       'billing_error','invalid_request','model_not_found','max_output_tokens',
                       'oauth_org_not_allowed','account_on_hold','unknown','unrecognised') NULL,
@@ -1181,9 +1208,9 @@ CREATE TABLE attention_requests (
   ceiling_at    DATETIME(3) NOT NULL,        -- opened_at + 60 min, materialized
   resolved_at   DATETIME(3) NULL,
   resolution    ENUM('granted','denied','human_input','session_ended','timeout',
-                     'server_ceiling','seat_offline','seat_left_live') NULL,
+                     'server_ceiling','seat_left_live') NULL,
   resolution_source ENUM('permission_denied_hook','call_close','user_prompt_submit','session_end',
-                         'timeout','server_ceiling','server_offline','server_left_live') NULL,
+                         'timeout','server_ceiling','server_left_live') NULL,
   waited_ms     BIGINT UNSIGNED NULL,
   applied_event_time DATETIME(3) NOT NULL,
   applied_seq_epoch  CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -1194,10 +1221,15 @@ CREATE TABLE attention_requests (
 ) ENGINE=InnoDB;
 -- notification_kind has THREE members and no `other`. D1 § 6.12 deletes the fourth as
 -- structurally unreachable; a render branch for it would be a branch nobody can ever reach.
--- THREE members of resolution and THREE of resolution_source are SERVER-side vocabulary and never
+-- TWO members of resolution and TWO of resolution_source are SERVER-side vocabulary and never
 -- appear on the wire, enumerated for the same reason the calls block enumerates its six:
---   resolution        adds  server_ceiling, seat_offline, seat_left_live
---   resolution_source adds  server_ceiling, server_offline, server_left_live
+--   resolution        adds  server_ceiling, seat_left_live
+--   resolution_source adds  server_ceiling, server_left_live
+-- 'seat_offline' / 'server_offline' were a third pair, written by § 4.6's offline quiescence, and
+-- are deleted for the same reason as stalled_cleared_by's fourth member: § 4.5's leaving-live rule
+-- fires at `stale` OR `offline` and has already resolved every open request before quiescence runs.
+-- ('server_offline' survives on calls.close_source and sessions.closed_by, which quiescence DOES
+--  write -- a 60-min dispatch call is still open at 900 s.)
 -- D1's sets (§ 6.13) are granted | denied | human_input | session_ended | timeout, and
 -- permission_denied_hook | call_close | user_prompt_submit | session_end | timeout.
 
@@ -1373,11 +1405,46 @@ loop:
        recompute derive_activity() + link_state + render_state
        if any VERSION-BEARING field changed (the set is named below): state_version += 1
        if render_state changed:                    INSERT seat_state_transitions
-       UPDATE seat_state SET fold_cursor_event_id    = last row's id,
-                             fold_cursor_received_at = last row's received_at, ...
+       if rows is non-empty:
+         UPDATE seat_state SET fold_cursor_event_id    = last row's id,
+                               fold_cursor_received_at = last row's received_at, ...
+       else if NOT EXISTS (SELECT 1 FROM events WHERE seat_ref = ? AND id > cursor):
+         -- the unfolded window was PURGED out from under the cursor (§ 6.7).  Advance to the
+         -- head or this seat re-claims every pass forever and never folds again; see below.
+         UPDATE seat_state SET fold_cursor_event_id    = head_event_id,
+                               fold_cursor_received_at = server_now, ...
+         fold_window_purged += 1                 -- § 7.2; the skip is counted, never silent
+       -- else: rows exist but are all inside the 2 s visibility lag.  Do NOT advance; wait.
      COMMIT
      if state_version changed: enqueue a delta (§ 8.3)
 ```
+
+**The empty read has two causes and they need opposite handling, which is why the branch is in the
+loop above rather than left to an implementer.** The claim's predicate is `fold_cursor_event_id <
+head_event_id`, and the read under it is filtered twice — by `id > cursor` and by the 2 s visibility
+lag. A seat can therefore satisfy the claim and read **zero rows** two ways. *Everything above the
+cursor is younger than 2 s*: the events are still coming, and advancing the cursor would skip them, so
+the pass must do nothing and let the next one have them. *Everything above the cursor has been purged*
+— the fold was down longer than [§ 6.7](#67-retention-and-purge)'s 14-day retention, or a
+`mezzanine:rebuild --since` left the cursor below a window that has since aged out — and here doing
+nothing is the defect: the claim still matches, the read still returns nothing, and the seat is
+re-claimed on **every** pass forever, never advancing, permanently frozen while `fold_lag_ms` grows
+without bound. That is [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s frozen fold arriving
+one seat at a time, and it would badge and alarm correctly while being unfixable by waiting. The
+`NOT EXISTS` above is the discriminator between the two, and counting `fold_window_purged`
+([§ 7.2](#72-this-planes-own-counters-and-badges)) is what makes the skip visible rather than silent:
+the events those passes would have folded are **gone**, so the seat's state is honest but shorter, the
+same admission `rebuild_truncated` makes.
+
+**`state_version` and the delta are a per-writer rule, not a property of this loop.** The pseudocode
+above is the fold's execution of it, but the rule is: *any* process that changes a version-bearing
+field bumps `state_version` and enqueues a delta in the same transaction. This document has three such
+writers — the fold above; the **sweeper**, whose every pass recomputes `link_state` and `render_state`
+for every seat ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)); and `mezzanine:retire`
+([§ 4.10](#410-retirement-is-a-rendered-state)), which states its own bump and publish. The sweeper is
+named explicitly because its `live → stale` transition is the **only** delta a permanently quiet desk
+will ever get, and leaving that one to be inferred from a rule written inside the fold's loop would
+leave exactly the seat this document exists to make legible depending on an implementer's reading.
 
 **The version-bearing field set, stated as a subtraction rather than left as "any field".** An earlier
 draft's rule was *any field of the [§ 8.2.1](#821-the-seat-state-object) object*, and that rule is
@@ -1397,6 +1464,18 @@ members**:
 | `reporter.uptime_s` | moves on every heartbeat by construction; it is the flusher-restart discriminator, read server-side from `events` ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)), not from a client's copy |
 | `derivation.computed_at` · `derivation.cursor_event_id` | move on every fold pass that applies anything, including passes that change no fact |
 | `derivation.fold_lag_ms` | is **computed at read time** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) and therefore changes between any two reads; a version keyed on it would advance with the clock |
+
+**The subtraction is the whole of it, and `activity.*` is on the version-bearing side.** The list above
+is closed: every other member of the [§ 8.2.1](#821-the-seat-state-object) object is version-bearing,
+and the three activity members are named here because they are the ones a reader is most tempted to
+file as bookkeeping. Any event of [§ 3.2](#32-the-activity-event-set)'s activity set moves
+`activity.last_event_time`, `activity.last_received_at` and `activity.last_kind`, so **every activity
+event emits a delta, whether or not it changes the rendered state** — including the ones whose whole
+effect is a drill-down detail, such as the `subagent.stop` at [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end)'s
+E6. That is not a concession: it is what [§ 8.3](#83-the-websocket-delta-feed)'s **8,940**/seat-day
+already counts (all 120 subagent events among them), and the alternative — excluding `activity.*` —
+would freeze the quiet age on every connected client between deltas, which is the false-idle class this
+document exists to prevent.
 
 **Why excluding them costs a consumer nothing, which is the load-bearing half.** Every quantity this
 document says is *rendered* from one of the ten is rendered from a value that cannot be moving at the
@@ -1696,10 +1775,11 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `attention_ceiling_expired` | `seat_counters` | seat detail | the sweeper resolved an attention request at its 60-minute ceiling | rising ⇒ `attention.resolved` events are being lost; the `attention_resolved_by_wire` predicate is the alarm |
 | `attention_ceiling_overridden` | `seat_counters` | seat detail | an `attention.resolved` arrived after a `server_ceiling` resolution and relabelled it | rising ⇒ the ceiling is firing too early, i.e. resolutions are merely slow, not lost |
 | `attention_request_duplicate_server` | `seat_counters` | seat detail | a second `attention.request` arrived while one was open for that session | D1 counts the reporter-side case; this is the server's independent observation of the same thing, and the two disagreeing means one of them is wrong |
-| `offline_quiesced_calls` / `offline_quiesced_sessions` / `offline_quiesced_attention` | `seat_counters` | seat detail | facts closed by offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | a spike means a seat left abruptly with work open |
-| `left_live_cleared_stalls` / `left_live_resolved_attention` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag or resolved an attention request at the `stale` boundary ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while blocked or rate-limited, which is a different story from either state ending properly |
+| `offline_quiesced_calls` / `offline_quiesced_sessions` | `seat_counters` | seat detail | facts closed by offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)). There is no `offline_quiesced_attention` twin: an open attention request is resolved by the leaving-live clear before quiescence sees it, and `left_live_resolved_attention` below is the counter that carries it | a spike means a seat left abruptly with work open |
+| `left_live_cleared_stalls` / `left_live_resolved_attention` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag or resolved an attention request at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while blocked or rate-limited, which is a different story from either state ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
+| `fold_window_purged` | `seat_counters` | seat detail | the fold found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge and advanced the cursor to the head rather than re-claiming the seat forever ([§ 6.5](#65-the-fold)) | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `feed_resync_required` | `global_counters` | fleet health | a connection was closed for backpressure or a version mismatch | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
@@ -2402,7 +2482,7 @@ count depends on it: this is a **fresh seat with no prior events**, so its `acti
 collapse takes `link_state` whenever it is not `live` — the same reading
 [§ 6.4](#64-ddl)'s `seats` comment states in words, *"a provisioned-but-silent seat renders
 `offline`/`no_data_yet` rather than being invisible"*. `state_version` is `0`. E0 therefore mints a
-transition of its own, and the versions below run 1…9 rather than from an arbitrary base.
+transition of its own, and the versions below run 1…10 rather than from an arbitrary base.
 
 | # | Wire event | Facts after applying | `activity_state` | `link_state` | `render_state` | `state_version` | Delta? |
 |---|---|---|---|---|---|---|---|
@@ -2414,10 +2494,10 @@ transition of its own, and the versions below run 1…9 rather than from an arbi
 | — | *(the operator types `/clear`; the harness SIGKILLs `B`; **no `PostToolUse` and no `PostToolUseFailure` ever fire**)* | — | — | — | — | — | — |
 | E4 | `tool.end` `B` — `aborted` / `session_cleared` / `reap_session_boundary` / `match: reap` | call `B` closed `aborted`; `open_calls = 1` | `working` | `live` | `working` | 5 | yes — `action` reverts to `A` |
 | E5 | `tool.end` `A` — `aborted` / `session_cleared` | call `A` closed `aborted`; `open_calls = 0`; `subagents` empties; **`T` still true** | `working` | `live` | `working` | 6 | yes — `action` becomes `null` |
-| E6 | `subagent.stop` `A` — `aborted` / `session_cleared` | the dispatch projection records the stop's outcome | `working` | `live` | `working` | — | **no** — the event moves the cursor, `derivation.computed_at` and the delivery bookkeeping, and **no version-bearing field** of the [§ 8.2.1](#821-the-seat-state-object) object ([§ 6.5](#65-the-fold)); the detail lands in the drill-down |
-| E7 | `turn.end` — `session_cleared`, `open_calls_at_end: 2`, `aborted_call_ids: [B, A]` | `T := false`; `L := {end_reason: session_cleared, aborted_count: 2}` | **`unknown`** (`turn_killed_by_clear`) | `live` | **`unknown`** | 7 | yes — **transition row 2 of 2**, `working → unknown` |
-| E8 | `session.end` — `clear`, `aborted_calls: 2` | session closed, `closed_by: wire`; no open session | `unknown` (`turn_killed_by_clear`) | `live` | `unknown` | 8 | yes — `session` becomes `null` |
-| E9 | `session.start` — `clear`, new `session_id`, `previous_session_id` = the old one | new session open, no turn, no calls | `unknown` (`L` is still E7's record — `L` is seat-scoped, [§ 4.3](#43-the-derivation-function)) | `live` | `unknown` | 9 | yes — `session` becomes the new one |
+| E6 | `subagent.stop` `A` — `aborted` / `session_cleared` | the dispatch projection records the stop's outcome | `working` | `live` | `working` | 7 | yes — `subagent.stop` is in [§ 3.2](#32-the-activity-event-set)'s activity set, so `activity.last_kind` moves from `"tool.end"` to `"subagent.stop"` and both activity timestamps advance; none of the three is among [§ 6.5](#65-the-fold)'s ten excluded members, so this is a version-bearing change like any other. The rendered state does not move — a delta is not a transition — and the stop's own detail lands in the drill-down |
+| E7 | `turn.end` — `session_cleared`, `open_calls_at_end: 2`, `aborted_call_ids: [B, A]` | `T := false`; `L := {end_reason: session_cleared, aborted_count: 2}` | **`unknown`** (`turn_killed_by_clear`) | `live` | **`unknown`** | 8 | yes — **transition row 2 of 2**, `working → unknown` |
+| E8 | `session.end` — `clear`, `aborted_calls: 2` | session closed, `closed_by: wire`; no open session | `unknown` (`turn_killed_by_clear`) | `live` | `unknown` | 9 | yes — `session` becomes `null` |
+| E9 | `session.start` — `clear`, new `session_id`, `previous_session_id` = the old one | new session open, no turn, no calls | `unknown` (`L` is still E7's record — `L` is seat-scoped, [§ 4.3](#43-the-derivation-function)) | `live` | `unknown` | 10 | yes — `session` becomes the new one |
 
 **What the derivation never does here, and why each is structurally impossible rather than merely
 avoided:**
@@ -2445,7 +2525,7 @@ avoided:**
 `SessionStart` invocation instead; the wire is the same sequence of kinds, so the fold's inputs are the
 same and the state path is identical. AT-D2-2 runs both orders.
 
-**Ten events, nine deltas, two transition rows.** Both counts are re-derived from the table above by
+**Ten events, ten deltas, two transition rows.** All three counts are re-derived from the table above by
 `tools/design/verify-fleet-state.py` rather than restated by hand. A client watching this desk sees it
 work, sees the action change four times, and sees it fall to `unknown` — and never sees it go idle. The floor shows no
 idle animation, which is the entire requirement, made checkable at the state layer exactly as D1 made it
@@ -2580,33 +2660,41 @@ and the gate on trusting the derived signal at all.*
   ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest)); if it fails, the gate has been lost upstream and
   every seat is about to render `blocked` on `auth_success`.
 
-### AT-D2-6 stalled is a state with four exits
+### AT-D2-6 stalled is a state with three exits
 
 - **Build:** a fixture whose `turn.end` carries `end_reason: api_error`, `api_error_type: rate_limit`.
 - **GREEN:** `activity_state == "stalled"`, and the seat object's **`api_error_type` field**
   ([§ 8.2.1](#821-the-seat-state-object)) reads `"rate_limit"` — assert the wire field, not the
   `sessions` column, because `D2-MUST` #1 requires the type to reach the consumer and a column the
-  snapshot does not serialize discharges nothing. Then, on four separate seats: (i) the session's next
+  snapshot does not serialize discharges nothing. Then, on three separate seats: (i) the session's next
   `turn.start` clears it → `working`; (ii) the flusher's 90-minute `session.end(inferred_silence)`
   clears it → **`unknown` (`stalled_session_ended`), not `idle`**; (iii) the seat stops reporting → at
   300 s the sweeper clears the flag (`stalled_cleared_by: left_live`, `left_live_cleared_stalls == 1`)
   and the seat renders `stale`, with `activity_state == "unknown"` / `stalled_left_live` underneath —
-  and on resuming at 400 s it does **not** return to `stalled`; (iv) the seat goes fully quiet → offline
-  quiescence at 900 s closes the session under it, clearing the flag with
-  `stalled_cleared_by: server_offline` — assert the **cleared column and the derived reason**, not
-  merely that the session closed: the seat must read `activity_state == "unknown"` /
-  `stalled_session_ended` under a `render_state` of `offline`, because a quiescence that ended the
-  session without recording who cleared the stall would leave `unknown_reason_for(L)` with an input
-  no row selects ([§ 4.3](#43-the-derivation-function)).
+  and on resuming at 400 s it does **not** return to `stalled`.
+- **GREEN — the one-pass jump, which is where the third exit's `or offline` term is bought:** a fourth
+  seat goes fully quiet and the fixture withholds the sweeper for >900 s, so its first pass takes the
+  seat from `live` **straight to `offline`** with no pass in which rule 3 matched. Assert that the
+  leaving-live clear still fired in that pass — `stalled_cleared_by == "left_live"`,
+  `left_live_cleared_stalls == 1`, `activity_state == "unknown"` / `stalled_left_live` under a
+  `render_state` of `offline` — and that offline quiescence, running **after** it in the same pass
+  ([§ 2.1](#21-processes)'s job order), found `stalled_since` already null and wrote no
+  `stalled_cleared_by` of its own. There is no `server_offline` clearer to assert, and asserting one
+  would be asserting a value no path produces ([§ 4.6](#46-every-open-fact-has-a-ceiling)).
 - **RED:** give `stalled` the entry edge and no exit rule, then leave the seat heartbeating and quiet.
   Because the flusher heartbeats every 60 s regardless of session activity, the seat never reaches
   `stale` and one transient rate limit at 09:00 renders `stalled` for the rest of the day on a healthy
   machine. Watch that once.
-- **Second RED — the unrecorded clear:** have offline quiescence mark the session `ended_at` **without**
-  setting `stalled_cleared_by`, and re-run exit (iv). `S` goes false through its second term, so the
-  derivation reaches rule 6 with `{end_reason: api_error, stalled_cleared_by: null}` and the reason
-  table selects nothing. Assert the seat's `unknown_reason` is a **declared member**, not null and not
-  a default: this is the shape a totality claim is worth nothing without a test for.
+- **Second RED — narrow the clear back to the `stale` edge:** drop the `or offline` term from
+  [§ 4.5](#45-link-states)'s trigger, so the leaving-live clear fires on rule 3 only, and re-run the
+  one-pass jump. No pass ever matched rule 3, so nothing clears the flag; quiescence then marks the
+  session `ended_at` and `S` goes false through its second term with `stalled_cleared_by` still null.
+  The derivation reaches rule 6 with `{end_reason: api_error, stalled_cleared_by: null}`, the catch-all
+  row selects **`stalled_session_ended`**, and the seat reports *its session ended* for a seat that in
+  fact went silent — while `left_live_cleared_stalls` stays `0`. Assert the reason is
+  `stalled_left_live` and the counter is `1`: what the `or offline` term buys is not totality (the
+  catch-all row already has that) but the **correct recorded clearer**, and this is the only test that
+  can tell the two apart.
 - **Discriminating control:** a `turn.end(stop_hook, [])` on the same seat → `idle`, so the test measures
   `api_error` and not the presence of a turn ending.
 
@@ -2895,9 +2983,12 @@ and the gate on trusting the derived signal at all.*
   ([§ 2.1](#21-processes)) — not by writing the columns directly, because the command *is* the
   mechanism under test; then advance the clock past 14 days.
 - **GREEN:** connected clients receive `seat.retired`; the next snapshot carries the seat with
-  `render_state: "retired"` and a populated `retired` object, and `link_state` / `activity_state` still
-  carry what the seat was doing when it was retired; `fleet.seats_total` still counts it. Past 14 days
-  the seat is absent from the snapshot **and the row is still in `seats`** — assert both, because the
+  `render_state: "retired"` and a populated `retired` object, and at **that** snapshot `link_state` /
+  `activity_state` still carry what the seat was doing when it was retired; `fleet.seats_total` still
+  counts it. Past 14 days the axes have kept deriving underneath — `link_state` has reached `offline`
+  and the render is **still** `retired`, because `retired` short-circuits above both axes
+  ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 4.2](#42-render-precedence)) — and the seat is
+  absent from the snapshot **while its row is still in `seats`**: assert both, because the
   disappearance must be a read filter and not a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)).
 - **RED — the vanishing desk:** drop retired seats from the snapshot query at `retired_at` → a browser
   that reloads sees a seat that existed a second ago simply gone, which is the "vanishing between two
@@ -3232,11 +3323,11 @@ manual sweep of fourteen rows and the tool says so in its output rather than rep
 
 | # | Obligation | Discharged in | Tested by |
 |---|---|---|---|
-| **1** | *(D1 § 12.6, restated at § 6.4; the worked flow that exercises it is D1 § 8.7, replayed at [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end))* **Idle only from `turn.end(stop_hook, aborted_call_ids == [])`**; every other ending is `unknown`, except `api_error` → `stalled` carrying `api_error_type`; `failed` does not block idle, `interrupted` does; `stalled` clears on the next `turn.start`, that session's `session.end` (incl. `inferred_silence`), or leaving live, and then renders `unknown` | [§ 4.3](#43-the-derivation-function) rule 4 (the only idle rule), [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `stalled` (all four exits, each recording `stalled_cleared_by`), [§ 4.5](#45-link-states) (leaving live **clears** the flag at 300 s — a sweeper rule, not a render mask, so a returning seat cannot re-assert it), [§ 8.2.1](#821-the-seat-state-object) (`api_error_type` is a **wire field**, not only a `sessions` column), [§ 4.8](#48-what-may-never-mint-a-state), [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-four-exits) |
+| **1** | *(D1 § 12.6, restated at § 6.4; the worked flow that exercises it is D1 § 8.7, replayed at [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end))* **Idle only from `turn.end(stop_hook, aborted_call_ids == [])`**; every other ending is `unknown`, except `api_error` → `stalled` carrying `api_error_type`; `failed` does not block idle, `interrupted` does; `stalled` clears on the next `turn.start`, that session's `session.end` (incl. `inferred_silence`), or leaving live, and then renders `unknown` | [§ 4.3](#43-the-derivation-function) rule 4 (the only idle rule), [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `stalled` (all three exits, each recording `stalled_cleared_by`), [§ 4.5](#45-link-states) (leaving live **clears** the flag at 300 s — a sweeper rule, not a render mask, so a returning seat cannot re-assert it), [§ 8.2.1](#821-the-seat-state-object) (`api_error_type` is a **wire field**, not only a `sessions` column), [§ 4.8](#48-what-may-never-mint-a-state), [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits) |
 | **2** | **`stale` (300 s) and `offline` (900 s) are visibly degraded rendered states, never `idle`**, and a seat with `degraded` non-empty renders its badge | [§ 4.2](#42-render-precedence) (short-circuits above the activity axis), [§ 4.5](#45-link-states), [§ 7.3](#73-how-the-reporters-own-counters-are-handled) | [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle) |
 | **3** | **Per-event dedup on `(install_id, seat_id, event_id)`, 10-day window, exceeding the 8-day spool residency** | [§ 6.4](#64-ddl) `events.uq_dedup`, [§ 6.7](#67-retention-and-purge) (the chain, and why retention is the window's real floor) | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) |
 | **4** | **Transitions ordered by `(event_time, seq)`, never arrival order; `received_at` the only clock for liveness, retention and cross-seat comparison; a repeated `(seq_epoch, seq)` with differing `event_id`s counted as `seq_collision`, not silently applied** | [§ 6.5](#65-the-fold) (the LWW comparator, with `seq_epoch` inserted — a refinement, filed at [§ 14](#14-open-questions-for-the-review-loop) item 4), [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), [§ 6.7](#67-retention-and-purge), [§ 7.1](#71-d1s-server-side-counters--where-they-live) | [AT-D2-11](#at-d2-11-out-of-order-batches-converge), [AT-D2-18](#at-d2-18-seq-gaps-collisions-and-epoch-resets-are-visible) |
-| **5** | *(D1 § 12.6, stated in full at D1 § 6.13 with its resolution edges)* **Blocked only from `attention.request`, cleared only by its matching `attention.resolved` (by `request_id`), the session ending, or leaving live — never longer than the 60-minute ceiling; no second predicate over `notification_kind` is needed or wanted** | [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `blocked` (all five exits), [§ 4.5](#45-link-states) (leaving live **resolves** the request at 300 s with `seat_left_live`, so the clause is discharged by clearing the fact and not by masking it), [§ 4.3](#43-the-derivation-function) (precedence rule 1), [§ 6.4](#64-ddl) (`notification_kind` has three members and no `other`) | [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost) |
+| **5** | *(D1 § 12.6, stated in full at D1 § 6.13 with its resolution edges)* **Blocked only from `attention.request`, cleared only by its matching `attention.resolved` (by `request_id`), the session ending, or leaving live — never longer than the 60-minute ceiling; no second predicate over `notification_kind` is needed or wanted** | [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `blocked` (all four exits — offline quiescence is not a fifth: [§ 4.5](#45-link-states)'s leaving-live resolve fires at `stale` **or** `offline` and has always run first), [§ 4.5](#45-link-states) (leaving live **resolves** the request at 300 s with `seat_left_live`, so the clause is discharged by clearing the fact and not by masking it), [§ 4.3](#43-the-derivation-function) (precedence rule 1), [§ 6.4](#64-ddl) (`notification_kind` has three members and no `other`) | [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost) |
 
 ### The twenty-nine further obligations
 
@@ -3244,7 +3335,7 @@ manual sweep of fourteen rows and the tool says so in its output rather than rep
 |---|---|---|---|
 | S1 | § 1 non-goals | D2 owns the storage schema, retention and state model; D1 says what arrives and what it means | [§ 1.1](#11-what-this-document-owns), [§ 1.3](#13-the-boundary-stated-as-a-rule) |
 | S2 | § 2.3, § 10.2 | The `(seq_epoch, seq)` ordering key is load-bearing; a collision is counted and badged, never assumed away | [§ 6.5](#65-the-fold), [§ 7.1](#71-d1s-server-side-counters--where-they-live) |
-| S3 | § 6.4, § 8.6 | `stalled` is a rendered state of its own, carrying `api_error_type` for the drill-down — never folded into `unknown` | [§ 4.4](#44-activity-states-every-entry-and-exit-edge), [§ 8.2.1](#821-the-seat-state-object) (the `api_error_type` **field row**, in the worked snapshot, asserted by [AT-D2-6](#at-d2-6-stalled-is-a-state-with-four-exits) against the wire object) |
+| S3 | § 6.4, § 8.6 | `stalled` is a rendered state of its own, carrying `api_error_type` for the drill-down — never folded into `unknown` | [§ 4.4](#44-activity-states-every-entry-and-exit-edge), [§ 8.2.1](#821-the-seat-state-object) (the `api_error_type` **field row**, in the worked snapshot, asserted by [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits) against the wire object) |
 | S4 | § 6.12, decision 36 | `notification_kind` has three members and no `other`; D2 must not build a render branch nothing can reach | [§ 6.4](#64-ddl) (the `ENUM` is three members), [§ 4.4](#44-activity-states-every-entry-and-exit-edge) |
 | S5 | § 8.2 | A `lifo_tool_name` match can swap two concurrent same-tool calls' ids and durations but never counts or outcomes, so the idle rule is unaffected — and the match quality must stay legible | [§ 4.8](#48-what-may-never-mint-a-state), [§ 6.4](#64-ddl) (`calls.match_kind` stored and rendered) |
 | S6 | § 8.3 | A reap that ends a session emits `attention.resolved(session_ended)` **after** the boundary event; D2 needs that exit edge | [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `blocked` exits |
@@ -3301,7 +3392,7 @@ everything from step 3 onward.
 | 1 | migrations: `installs`, `seats`, `events`, `batches` | the ingest can write and the dedup key holds — [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) |
 | 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens` | schema only |
 | 3 | `project()` — the per-kind projections, with the LWW comparator | [AT-D2-11](#at-d2-11-out-of-order-batches-converge) |
-| 4 | `derive_activity()` + link states + `render_state` | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), **[AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle)** — the gate on trusting the derived signal at all — [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-four-exits) |
+| 4 | `derive_activity()` + link states + `render_state` | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), **[AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle)** — the gate on trusting the derived signal at all — [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits) |
 | 5 | `mezzanine:fold` — cursor, transaction, claim, visibility lag, poison rule | [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart), [AT-D2-10](#at-d2-10-rebuild-equals-fold), [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) |
 | 6 | `mezzanine:rebuild` | [AT-D2-10](#at-d2-10-rebuild-equals-fold) |
 | 7 | `mezzanine:sweep` — the seven time-derived jobs [§ 2.1](#21-processes) lists, which is their one home | [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle), [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy), [AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
