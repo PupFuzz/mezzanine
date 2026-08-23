@@ -557,7 +557,8 @@ recording `resolution: "server_ceiling"`, `resolution_source: "server_ceiling"`,
 `attention_ceiling_expired`, and writing a transition row with `cause: attention_ceiling` — the cause
 value exists so the drill-down can say *the server cleared this*, which is exactly the distinction a
 `staleness_sweep` or a `wire_event` cause would lose. An `attention.resolved` that arrives afterwards **overrides the label**
-(the resolution and `waited_ms` become the reporter's) and **never re-opens `blocked`** — an observation
+(the resolution and `waited_ms` become the reporter's, counting `attention_ceiling_overridden`,
+[§ 7.2](#72-this-planes-own-counters-and-badges)) and **never re-opens `blocked`** — an observation
 overrides an inference, which is D1's own rule for late completions
 ([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)), applied to the state D1 hands
 this document. A rising `attention_ceiling_expired` means resolutions are being lost, and that is the
@@ -688,6 +689,11 @@ makes the derived state incapable of a one-way trapdoor — the defect D1 names 
 | `stalled` flag | next `turn.start` / that session's `session.end` / the seat reaching `stale` (300 s) or `offline` (900 s) | [D1 § 6.4](EVENT-SCHEMA.md#64-turnend); [§ 4.5](#45-link-states) | **none needed** — same reason |
 | open compaction (`sessions.compaction_open_since`) | `compaction.end`, its session closing, or **15 min** after the `compaction.start` receipt — the ordinary orphan ceiling reused, because a compaction is a harness operation of the same order as a tool call and `PostCompact` is one of D1's un-driven hook stubs | this document's rule | offline quiescence |
 | **everything above** | — | — | **offline quiescence at 900 s** — except the two rows whose own ceiling already carries the leaving-live edge, which quiescence can never get in front of |
+
+Each of the call ceilings above is the sweeper's own write at the call's materialized
+`orphan_due_at` ([§ 6.4](#64-ddl)), counting `server_orphan_closes`
+([§ 7.2](#72-this-planes-own-counters-and-badges)), which is what makes a fleet losing its `tool.end`s
+legible as a rising count rather than as calls that quietly stop being open.
 
 **Offline quiescence** (transition `cause: offline_quiesce`). When a seat crosses the `offline`
 threshold, the sweeper closes its open facts:
@@ -1972,6 +1978,11 @@ All four endpoints require authentication ([§ 9](#9-read-side-authentication)).
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the nine fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 
+Every snapshot this plane answers counts `snapshot_served`
+([§ 7.2](#72-this-planes-own-counters-and-badges)); the refusal path and its `snapshot_denied` twin are
+[§ 9](#9-read-side-authentication)'s, and the pair read together is what tells a fleet-health reader
+that a read plane refusing everything is refusing rather than idle.
+
 `/api/fleet/health` is a **different endpoint from D1's `/api/ingest/health`** and the two are never
 merged: one answers "which schema versions does the ingest accept" to a seat holding an ingest token,
 the other answers "is the aggregation plane telling the truth right now" to a reader. Merging them would
@@ -2521,7 +2532,7 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 | Surface | Credential | Notes |
 |---|---|---|
 | the floor, the drill-down, the WebSocket handshake, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the websocket handshake **and** the REST snapshot |
-| REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401` plus `token_wrong_surface` and an operator alert |
+| REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
 | the WebSocket, from a machine consumer | **not supported** | see below |
 
 **The live feed is browser-only, and that is a decision with a cost.** A long-lived socket authenticated

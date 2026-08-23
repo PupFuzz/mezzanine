@@ -851,6 +851,14 @@ if declared_types and fleet_fields:
                         f"section 8.3's table, which declares {sorted(declared_types)} — a message "
                         f"an acceptance test requires and the contract does not declare")
 
+# The document's WRITING idiom for a counter, in the two word orders it actually uses: the verb
+# before the name (`counting \`x\``) and the name before the verb (`\`x\` increments`, `\`x\` is
+# counted`).  ONE definition, used by BOTH directions of G8 below.  A second copy would let the two
+# drift, and the reverse direction's whole point is that it asks the SAME question as the forward
+# one -- "is there a rule that writes this?" -- of a population the forward one cannot see.
+WRITER_RE = (r"(?:counting|counts|increments|counted)\s+`{name}`"
+             r"|`{name}`(?:\s+is)?\s+(?:counted|incremented|increments)")
+
 # --------------------------------------------------- G8. counter closure ------
 s71 = section_text("71-d1s-server-side-counters--where-they-live")
 s72 = section_text("72-this-planes-own-counters-and-badges")
@@ -958,8 +966,8 @@ else:
             fail.append(f"G8: section 7.1 carries `{extra}`, which D1 section 12.7 does not "
                         f"define; this plane's own counters belong in section 7.2")
     # every counter MENTIONED with a counting verb must be declared in one of the two tables
-    for m in re.finditer(r"(?:counting|counts|increments|counted)\s+`([a-z_][a-z_]*)`", raw):
-        tok, line = m.group(1), raw[:m.start()].count("\n") + 1
+    for m in re.finditer(WRITER_RE.format(name="([a-z_][a-z_]*)"), raw):
+        tok, line = m.group(1) or m.group(2), raw[:m.start()].count("\n") + 1
         if tok not in counters and not any(tok.startswith(c) for c in counters):
             fail.append(f"L{line}: G8: `{tok}` is written as a counter and has no row in section "
                         f"7.1 or 7.2 — it has no storage, no exposure surface and nothing that "
@@ -972,16 +980,29 @@ else:
     # document's OWN counter population, so every name it declares must be named again by the rule
     # that writes it, somewhere outside the declaring table.  Section 7.1's names are D1's, written
     # by the ingest, whose rules this document does not restate -- so only 7.2 is checked this way.
-    outside = raw.replace(s72, "\n", 1)
+    # Section 11 is excised alongside 7.2: an acceptance test ASSERTS that a rule increments a
+    # counter, which is not the same thing as a rule that increments it, and a counter whose only
+    # mention in the whole document is a test is a counter no implementer is ever told to write.
+    outside, excised = raw, True
+    # Each excision is measured on its OWN, not by one length test over both: section 11 is an
+    # order of magnitude longer than section 7.2, so a combined threshold reports whichever
+    # excision it likes when either fails -- a control that names the wrong cause is a control
+    # that sends the next reader to the wrong place.
+    for txt, what, why in ((s72, "section 7.2", "read the declaring table as its own writer"),
+                           (section_text("11-acceptance-tests"), "section 11",
+                            "read an acceptance test's assertion as a rule")):
+        shorter = outside.replace(txt or "\x00", "\n", 1)
+        if not txt or len(shorter) >= len(outside):
+            excised = False
+            fail.append(f"G8 CONTROL: {what}'s text did not excise from the document, so the "
+                        f"writer check below would {why}")
+        outside = shorter
     if not d2_own:
         fail.append("G8 CONTROL: no section 7.2 counter names parsed, so the writer check below "
                     "would run over an empty population")
-    elif len(outside) >= len(raw):
-        fail.append("G8 CONTROL: section 7.2's text did not excise from the document, so the "
-                    "writer check below would read the declaring table as its own writer")
-    else:
+    elif excised:   # a failed excision already failed above; do not also run the check on it
         for n in sorted(d2_own):
-            if not re.search(r"`" + re.escape(n) + r"`", outside):
+            if not re.search(WRITER_RE.format(name=re.escape(n)), outside):
                 fail.append(f"G8: section 7.2 declares `{n}` and no rule outside that table names "
                             f"it — a counter with a row, a storage table and an exposure surface "
                             f"that nothing increments, which reads zero forever and so reports "
@@ -1116,8 +1137,9 @@ print(f"G6  Appendix A: {n_must} + {n_further} rows "
 print(f"G7  feed message types declared: {len(declared_types)}; "
       f"fleet-object fields exempted: {len(fleet_fields)}")
 print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
-      f"checked for a writing rule outside that table); fleet-health counters declared by "
-      f"section 8.2.4: {len(health_counters)}")
+      f"checked for a rule that WRITES it — the document's counting-verb idiom, in either word "
+      f"order — outside that table and outside section 11's tests); fleet-health counters "
+      f"declared by section 8.2.4: {len(health_counters)}")
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
