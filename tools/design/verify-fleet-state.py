@@ -17,7 +17,9 @@ checking, and it survives exactly the pass that falsifies it.
   G6  Appendix A counts + D1 marker coverage      (R1-24: an obligation with no row; R2-9: and the
                                                    D1/D2 namespace collision that forgave it)
   G7  feed message-type closure                   (R1-11: `fleet.health` in no table)
-  G8  counter closure, with Stored/Exposed        (R1-15: 14 counters with no home)
+  G8  counter closure, with Stored/Exposed, BOTH  (R1-15: 14 counters with no home; and the
+      directions                                   mirror direction, a section 7.2 row no rule
+                                                   writes, which the forward check could not see)
   G9  fixture arity                               (R1-21: "nine events" against a ten-row trace)
   G10 retention chain 8 < 10 < 14                 (regression guard on the one number D1 says
                                                    corrupts a timeline silently)
@@ -852,7 +854,7 @@ if declared_types and fleet_fields:
 # --------------------------------------------------- G8. counter closure ------
 s71 = section_text("71-d1s-server-side-counters--where-they-live")
 s72 = section_text("72-this-planes-own-counters-and-badges")
-counters, claims_health = set(), set()
+counters, claims_health, d2_own = set(), set(), set()
 # the fleet-health surface's own closed list, read from the `counters` row of section 8.2.4
 health_counters = set()
 _hc = re.search(r"^\|\s*`counters`\s*\|[^|]*\|[^|]*\|(.*?)\|[^|]*\|\s*$", sec824 or "", re.M)
@@ -876,6 +878,8 @@ else:
                 continue
             for n in re.findall(r"`([a-z_][a-z_.<>]*)`", c[0]):
                 counters.add(n)
+                if sec == "7.2":
+                    d2_own.add(n)
             if not c[1] or c[1] == "—":
                 fail.append(f"G8: counter {c[0]} states no storage table. Section 7.1 declares "
                             f"that these sections answer where each counter is stored, which "
@@ -960,6 +964,28 @@ else:
             fail.append(f"L{line}: G8: `{tok}` is written as a counter and has no row in section "
                         f"7.1 or 7.2 — it has no storage, no exposure surface and nothing that "
                         f"would ever read it")
+    # ...and the SAME CHECK THE OTHER WAY, because one direction is half a guard.  The pass above
+    # catches a WRITER WITH NO ROW; it cannot see a ROW WITH NO WRITER, which is how a counter
+    # deleted from this plane's rules can survive in section 7.2 as a name nothing increments --
+    # measured: re-adding `offline_quiesced_attention` to that table passed the forward check
+    # untouched, raising `counters declared` from 39 to 40 and nothing else.  Section 7.2 is this
+    # document's OWN counter population, so every name it declares must be named again by the rule
+    # that writes it, somewhere outside the declaring table.  Section 7.1's names are D1's, written
+    # by the ingest, whose rules this document does not restate -- so only 7.2 is checked this way.
+    outside = raw.replace(s72, "\n", 1)
+    if not d2_own:
+        fail.append("G8 CONTROL: no section 7.2 counter names parsed, so the writer check below "
+                    "would run over an empty population")
+    elif len(outside) >= len(raw):
+        fail.append("G8 CONTROL: section 7.2's text did not excise from the document, so the "
+                    "writer check below would read the declaring table as its own writer")
+    else:
+        for n in sorted(d2_own):
+            if not re.search(r"`" + re.escape(n) + r"`", outside):
+                fail.append(f"G8: section 7.2 declares `{n}` and no rule outside that table names "
+                            f"it — a counter with a row, a storage table and an exposure surface "
+                            f"that nothing increments, which reads zero forever and so reports "
+                            f"that the rule it instruments never fired")
 
 # --------------------------------------------------- G9. fixture arity --------
 sec11 = section_text("11-acceptance-tests")
@@ -1089,7 +1115,9 @@ print(f"G6  Appendix A: {n_must} + {n_further} rows "
       f"test and a decision register restate obligations imposed elsewhere)")
 print(f"G7  feed message types declared: {len(declared_types)}; "
       f"fleet-object fields exempted: {len(fleet_fields)}")
-print(f"G8  counters declared: {len(counters)}; fleet-health counters declared by section 8.2.4: {len(health_counters)}")
+print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
+      f"checked for a writing rule outside that table); fleet-health counters declared by "
+      f"section 8.2.4: {len(health_counters)}")
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")

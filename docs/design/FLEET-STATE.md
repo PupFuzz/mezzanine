@@ -184,7 +184,7 @@ basis two different processes write**, never stored as a number the fold itself 
 | Quantity | Definition | Threshold | Consequence |
 |---|---|---|---|
 | `fold_lag_ms` | `0` when `fold_cursor_event_id >= head_event_id`; otherwise `server_now − fold_cursor_received_at`. **The second branch is total, and that is bought at the write site rather than patched at the read one** — see the NULL boundary below. All three operands are columns of the seat's own `seat_state` row: the **ingest** writes `head_event_id` and seeds `fold_cursor_received_at`, the **fold** advances `fold_cursor_event_id` / `fold_cursor_received_at` | — | rides every seat object |
-| `fold_lag` badge | per seat | **> 60 s** | seat badges `fold_lag`; D3 must not present the seat's activity state as current |
+| `fold_lag` badge | per seat | **> 60 s** | seat badges `fold_lag`, counting `fold_lag_alarm_entered` once per lag episode ([§ 7.2](#72-this-planes-own-counters-and-badges)); D3 must not present the seat's activity state as current |
 | `fleet.fold = "lagging"` | fleet-wide, over the population [§ 8.2.4](#824-the-fleet-health-object) names once | **any** seat past **60 s** | the fleet object says derivation is behind; no banner |
 | `fleet.fold = "stalled"` | fleet-wide, same population | **any** seat past **300 s** | fleet health is degraded; D3 shows a fleet banner |
 
@@ -645,8 +645,12 @@ a later derivation reports for a turn that ended long before the seat went quiet
 one-shot record of *who cleared it*; a rule that can run twice must say which write wins, and here the
 first one does. Both writes record a
 transition `cause` of `staleness_sweep`, which is the same cause the `stale` and `offline` renders
-themselves carry: one rule, one cause value. **And this rule is the only write-site for either fact:**
-because its trigger is `stale` *or* `offline`, a seat cannot reach
+themselves carry: one rule, one cause value. **And this rule is the only write-site either fact has on
+the quiescence edge** — [§ 4.4](#44-activity-states-every-entry-and-exit-edge)'s exit tables name the
+others, and every one of them belongs to a seat that is still reporting: `turn_start` and `session_end`
+for `stalled_cleared_by`, and `attention.resolved`, the session close and the 60-minute server ceiling
+for an open request. What no path reaches is a **second** write on the way out of `live`:
+because this rule's trigger is `stale` *or* `offline`, a seat cannot reach
 [§ 4.6](#46-every-open-fact-has-a-ceiling)'s offline quiescence without having passed through it first,
 so quiescence neither re-clears `stalled_since` nor re-resolves an attention request
 ([§ 4.6](#46-every-open-fact-has-a-ceiling) states that precedence and the members it deletes). Both are D1 clauses —
@@ -687,12 +691,13 @@ makes the derived state incapable of a one-way trapdoor — the defect D1 names 
 
 **Offline quiescence** (transition `cause: offline_quiesce`). When a seat crosses the `offline`
 threshold, the sweeper closes its open facts:
-every open call becomes `aborted` / `seat_offline` / `close_source: server_offline`, an open turn is
-recorded as ended without a `turn.end` (`turn_close_source: server_offline`,
-`last_turn_end_reason: server_session_close`, so the derivation lands on
-`unknown` / `session_closed_turn_open` rather than on a null `L`), an open compaction is closed
-(`compaction_open_since := NULL`, counting `compaction_ceiling_closed`), and every open session is
-marked `ended_at` with `closed_by: server_offline`. Nothing is synthesized onto the wire
+every open call becomes `aborted` / `seat_offline` / `close_source: server_offline`, counting
+`offline_quiesced_calls`; an open turn is recorded as ended without a `turn.end`
+(`turn_close_source: server_offline`, `last_turn_end_reason: server_session_close`, so the derivation
+lands on `unknown` / `session_closed_turn_open` rather than on a null `L`); an open compaction is closed
+(`compaction_open_since := NULL`, counting `compaction_ceiling_closed`); and every open session is
+marked `ended_at` with `closed_by: server_offline`, counting `offline_quiesced_sessions`. Nothing is
+synthesized onto the wire
 ([§ 4.8](#48-what-may-never-mint-a-state)); these are ledger writes only.
 
 **Quiescence never touches the `stalled` flag or an open attention request, and that is a precedence
@@ -706,8 +711,10 @@ quiescence, which is why [§ 2.1](#21-processes)'s job list is an execution orde
 leaving-live clears before offline quiescence. Either way quiescence finds `stalled_since` null and no
 open request, so a `server_offline` clearer and a `seat_offline` resolution are values no path can
 select; they were declared once and are deleted rather than kept as unreachable
-[§ 6.4](#64-ddl) members. **One fact, one write-site, on the earlier edge** — the alternative is two
-sweeper jobs racing to record different clearers for one physical event, which
+[§ 6.4](#64-ddl) members. **One quiet seat, one write-site, on the earlier edge** — the wire's own
+exits keep theirs ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)); what is refused is a second
+*sweeper* write for the one physical event of a seat going quiet, the alternative being two
+sweeper jobs racing to record different clearers for it, which
 [§ 4.3](#43-the-derivation-function)'s reason table would then read as two different diagnoses.
 
 The clear itself is still load-bearing, and [§ 4.5](#45-link-states) is where it earns its keep: the `S`
@@ -740,8 +747,11 @@ gap it exposes:
   closes the turn **server-side** when its session closes by any means, recording
   `turn_close_source: "session_close"` **and a turn record of
   `last_turn_end_reason: "server_session_close"` with `last_turn_aborted_count` set to the number of
-  calls still open at the close** — without which `L` would stay null, rule 5 would fire and
-  `session_closed_turn_open` would be a member no path can select. It therefore derives
+  calls still open at the close** (each of those calls the server closes itself —
+  `abort_reason: session_close`, `close_source: server_session_close` — counting
+  `session_close_orphans`, [§ 7.2](#72-this-planes-own-counters-and-badges)) — without which `L` would
+  stay null, rule 5 would fire and `session_closed_turn_open` would be a member no path can
+  select. It therefore derives
   `unknown` / `session_closed_turn_open` — never `idle`, because no `turn.end(stop_hook, [])` was ever
   observed. Filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-review-loop), item 1.
 - A dead flusher emits nothing at all, and that seat is `stale` at 300 s — long before the turn's
@@ -1408,13 +1418,30 @@ loop:
        if rows is non-empty:
          UPDATE seat_state SET fold_cursor_event_id    = last row's id,
                                fold_cursor_received_at = last row's received_at, ...
-       else if NOT EXISTS (SELECT 1 FROM events WHERE seat_ref = ? AND id > cursor):
-         -- the unfolded window was PURGED out from under the cursor (§ 6.7).  Advance to the
-         -- head or this seat re-claims every pass forever and never folds again; see below.
-         UPDATE seat_state SET fold_cursor_event_id    = head_event_id,
-                               fold_cursor_received_at = server_now, ...
-         fold_window_purged += 1                 -- § 7.2; the skip is counted, never silent
-       -- else: rows exist but are all inside the 2 s visibility lag.  Do NOT advance; wait.
+       else:
+         H, window_empty = SELECT head_event_id,                  -- ONE statement, so the bound H
+                                  NOT EXISTS (SELECT 1 FROM events   -- and the emptiness proof come
+                                               WHERE seat_ref = ? AND id > cursor)  -- from ONE snapshot
+                             FROM seat_state WHERE seat_ref = ?
+         if window_empty:
+           -- the unfolded window was PURGED out from under the cursor (§ 6.7).  Advance, or this
+           -- seat re-claims every pass forever and never folds again; see below.  Advance to H --
+           -- the head the proof covers -- and NEVER to `head_event_id` re-read at UPDATE time: that
+           -- column is the INGEST's (§ 2.1, written in the same transaction as its events), so a
+           -- commit landing between the proof and the write would put the cursor on the id of an
+           -- event this pass never folded and never will, stranding it and every lower id of its
+           -- batch while `fold_lag_ms` reads 0 because the cursor is at the head.  The guard below
+           -- is what makes that interleaving harmless, rather than a lock held across the loop's
+           -- per-seat COMMITs: head still H => no ingest committed since the proof => (cursor, H]
+           -- is still empty; head moved => zero rows match, nothing advances, and the next pass
+           -- folds the new rows through the branch above.  Same class of race as the visibility
+           -- lag, and bought the same way -- at the write site, not left to an implementer.
+           UPDATE seat_state SET fold_cursor_event_id    = H,
+                                 fold_cursor_received_at = server_now, ...
+            WHERE seat_ref = ? AND head_event_id = H
+           if that UPDATE matched a row:
+             fold_window_purged += 1             -- § 7.2; the skip is counted, never silent
+         -- else: rows exist but are all inside the 2 s visibility lag.  Do NOT advance; wait.
      COMMIT
      if state_version changed: enqueue a delta (§ 8.3)
 ```
@@ -1449,7 +1476,7 @@ leave exactly the seat this document exists to make legible depending on an impl
 **The version-bearing field set, stated as a subtraction rather than left as "any field".** An earlier
 draft's rule was *any field of the [§ 8.2.1](#821-the-seat-state-object) object*, and that rule is
 incompatible with [decision 23](#13-decisions-taken-revisable-at-review) and with
-[§ 8.3](#83-the-websocket-delta-feed)'s *"a `reporter.heartbeat` … emits no delta"*: a heartbeat moves
+[§ 8.3](#83-the-websocket-delta-feed)'s *"an ordinary `reporter.heartbeat` … emits no delta"*: a heartbeat moves
 `delivery.last_receipt_at` and `delivery.last_heartbeat_at`, which **are** fields of that object, so the
 literal rule mints 1,440 deltas/seat/day that the volume figures explicitly exclude. Worse, every fold
 pass moves `derivation.computed_at` and `derivation.cursor_event_id`, and `derivation.fold_lag_ms` is
@@ -1476,6 +1503,32 @@ E6. That is not a concession: it is what [§ 8.3](#83-the-websocket-delta-feed)'
 already counts (all 120 subagent events among them), and the alternative — excluding `activity.*` —
 would freeze the quiet age on every connected client between deltas, which is the false-idle class this
 document exists to prevent.
+
+**Which makes "a heartbeat emits no delta" a statement about the ordinary heartbeat, and the exceptions
+are named here rather than left to collide with the closed list above.** All of a heartbeat's *direct*
+effect on the object is inside the ten — the six `delivery` bookkeeping members and `reporter.uptime_s` —
+so the heartbeat that carries no news moves nothing version-bearing and emits no delta, which is the
+whole of [decision 23](#13-decisions-taken-revisable-at-review) and of the 1,440/seat/day
+[§ 8.3](#83-the-websocket-delta-feed) excludes. But a heartbeat is the **only** carrier of several facts
+that are *not* in the ten, and the closed list means each of them is version-bearing:
+
+| Moved by a heartbeat, outside the ten | Why a heartbeat is what moves it |
+|---|---|
+| `enabled` | the flag is *only ever* learned from a heartbeat ([§ 4.5](#45-link-states) rule 4), so no other event can move it |
+| `badges` · `badges_since` | D1's twelve `degraded` members ride the heartbeat ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)); a badge onset or clear is a rendered change |
+| `reporter.version` · `reporter.platform` · `reporter.selftest_failed` | the reporter object's other members, carried by nothing else; a reporter upgrade or a failing self-test is exactly what a consumer must be told |
+| `delivery.seq_epoch` | changes on an epoch reset ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), which a heartbeat can be the first event to carry |
+| `link_state` · `render_state` · `delivery.no_data_since` | derived, not carried: a receipt is what ends `stale`/`offline` and clears `no_data_since`, and `oldest_unsent_age_s` past 300 s is what enters and leaves `catching_up` ([§ 4.5](#45-link-states), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale)) — the excluded members are the *inputs*, and a derived value computed from an excluded input is not itself excluded |
+
+Every row of that table is **edge-triggered**: it emits on the heartbeat that *changes* the fact and on
+no other, so the population is transitions per seat-day — single digits — and not the 1,440. That is why
+the rule is stated as *the heartbeat that moves nothing but bookkeeping emits no delta* rather than as
+*heartbeats emit no delta*, and why [§ 8.3](#83-the-websocket-delta-feed)'s 8,940 is unchanged by it:
+that figure counts state-changing **events**, and these edges belong to the same handful-per-day
+population as the sweeper's own `stale` transition, which the figure has never counted either. The
+alternative — suppressing them because their carrier is a heartbeat — is a seat whose `enabled` flip or
+`lossy` badge reaches a connected client only on its next unrelated delta, which on a quiet desk is the
+false-idle class again in another costume.
 
 **Why excluding them costs a consumer nothing, which is the load-bearing half.** Every quantity this
 document says is *rendered* from one of the ten is rendered from a value that cannot be moving at the
@@ -1542,6 +1595,10 @@ right. The residual is stated rather than hidden: this is a bound, not a proof �
 would need a commit-ordered column, which MySQL does not offer — and
 [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) is the test that drives
 two overlapping same-seat ingest transactions against a live fold rather than reasoning about them. The
+lag covers the advance that *reads* rows; the purged-window branch above advances without reading any,
+so it buys the same property the other way — a cursor write guarded on the head its emptiness proof
+covered, which an interleaved commit turns into a no-op instead of a skip, and which the second case of
+that same test drives. The
 cost is that derivation is at least 2 s behind the wire, which is inside the fold's own ≤ 1 s poll plus
 one pass and two orders of magnitude below the 60 s `fold_lag` badge.
 
@@ -1578,8 +1635,8 @@ projections, resets its cursor — `fold_cursor_event_id` to `0` and `fold_curso
 `received_at` of the oldest event it is about to replay, never to `NULL`, so
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s lag stays computable and honest for the
 length of the run — and replays `events` in `id` order through the identical `project()`
-path used by the live fold. **The command shares the fold's code, not a copy of it** — a rebuild that
-runs different code is a rebuild that proves nothing.
+path used by the live fold, counting `state_rebuilds`. **The command shares the fold's code, not a copy
+of it** — a rebuild that runs different code is a rebuild that proves nothing.
 
 This exists for three reasons, in order of weight: it is the recovery path after a `derivation_error`;
 it is the migration path when a projection gains a column; and it is the **strongest available test of
@@ -1779,7 +1836,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `left_live_cleared_stalls` / `left_live_resolved_attention` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag or resolved an attention request at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while blocked or rate-limited, which is a different story from either state ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
-| `fold_window_purged` | `seat_counters` | seat detail | the fold found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge and advanced the cursor to the head rather than re-claiming the seat forever ([§ 6.5](#65-the-fold)) | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
+| `fold_window_purged` | `seat_counters` | seat detail | the fold found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge and advanced the cursor to the head its own emptiness proof covered, rather than re-claiming the seat forever ([§ 6.5](#65-the-fold)); the guarded write means a pass that loses the race to an ingest advances nothing and counts nothing | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `feed_resync_required` | `global_counters` | fleet health | a connection was closed for backpressure or a version mismatch | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
@@ -2209,11 +2266,17 @@ outbound rate at **4 msg/s** regardless of what the seat does.
 attention = **8,940**, i.e. **0.103 msg/s/seat** before coalescing. For a 50-seat fleet that is
 **5.2 msg/s** and, at the measured 323 B typical delta, **~1.6 KiB/s** per connected client
 (5.17 × 323 B = 1,670 B/s). Heartbeats are **not** in that number and must not
-be: a `reporter.heartbeat` moves only `delivery` bookkeeping members, none of which is version-bearing
-([§ 6.5](#65-the-fold)), so it emits no delta — the client's ages come from
+be: an **ordinary** `reporter.heartbeat` — one that moves nothing but the six `delivery` bookkeeping
+members and `reporter.uptime_s` — moves no version-bearing member ([§ 6.5](#65-the-fold)), so it emits no
+delta, and the client's ages come from
 `server_time` plus each seat's stored timestamps ([§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)).
 Emitting a delta per heartbeat would add 1,440/seat/day of pure noise, a 16 % increase in feed traffic
-carrying no information.
+carrying no information. The heartbeat that carries *news* is a different case and does emit: an
+`enabled` flip, a badge onset or clear, a reporter upgrade, an epoch reset, or the link-state edge a
+receipt itself causes — [§ 6.5](#65-the-fold) names that set, closed, against the version-bearing one.
+Those are **edge-triggered**, single digits per seat-day, and they no more belong in this figure than
+the sweeper's own `stale` transition does: 8,940 counts state-changing **events**, and both classes sit
+outside it, which is why it stands unchanged.
 
 **Message bound: 8 KiB.** The worst-case delta is 6,112 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
@@ -2977,6 +3040,31 @@ and the gate on trusting the derived signal at all.*
 - **Discriminating control:** the same fixture delivered serially, with the lag in place → zero
   difference from the control run, so the test is known to be capable of reporting "no loss".
 
+**The purged-window branch, driven with the same interleaving.** The case above cannot reach
+[§ 6.5](#65-the-fold)'s purge branch — it has no purged window — so that branch gets its own case here
+rather than being left untested against the concurrency its own trigger implies: it fires when a fold
+restarts against a **live, actively ingesting** fleet — the fold was down longer than
+[§ 6.7](#67-retention-and-purge)'s 14-day retention, or a `mezzanine:rebuild --since` left the cursor
+below a window that has since aged out.
+
+- **Build:** one seat whose entire unfolded window has been purged, so `fold_cursor_event_id <
+  head_event_id` with no event above the cursor; then, with the fold paused **between** its emptiness
+  proof and its cursor write, commit an ordinary ingest batch for that seat (which writes its events and
+  raises `head_event_id` in one transaction, [§ 2.1](#21-processes)). Drive it 20 times, as above.
+- **GREEN:** the cursor never lands above an unfolded event. Either the guarded write matched — cursor =
+  **H**, the head the proof covered, `fold_window_purged` +1 — or the interleaved commit moved the head,
+  the write matched no row, nothing advanced and `fold_window_purged` did not move; and in **both** cases
+  the next pass folds the interleaved batch and the seat's final state equals a control run in which the
+  same batch arrived after the purge branch completed. Assert the applied **event set**, as above.
+- **RED — write the head instead of the proven bound:** restore `fold_cursor_event_id = head_event_id`
+  with no `AND head_event_id = H` guard and run the same 20 iterations → a pass that loses the race
+  writes the cursor to the interleaved batch's head, and that batch is **never folded**: no counter
+  moves, no badge fires, `fold_lag_ms` reads 0 because the cursor is at the head. The same silence the
+  visibility-lag RED produces, arriving through the other branch.
+- **Discriminating control:** the same purged-window fixture with **no** concurrent ingest → the cursor
+  advances to `H` on the first pass, `fold_window_purged` = 1, and the seat leaves the claim, so the test
+  is known to be capable of reporting "the branch did its job".
+
 ### AT-D2-23 a retired seat is rendered, not disappeared
 
 - **Build:** a folded seat with history; retire it by running **`mezzanine:retire`**
@@ -3052,7 +3140,7 @@ document.
 | Feed message bound | 8 KiB | **Chosen** — 1.34× the measured worst case, so a conforming message cannot breach it and a future field addition that would breaks a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Delta coalescing tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds one seat at 4 msg/s | [§ 8.3](#83-the-websocket-delta-feed) |
-| Delta volume | **8,940/seat/day = 0.103 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention. Heartbeats are excluded and that exclusion is a design rule, not an omission | [§ 8.3](#83-the-websocket-delta-feed) |
+| Delta volume | **8,940/seat/day = 0.103 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed heartbeat | 15 s, dead at 45 s | **Derived** — the same assert-and-alarm shape as D1's 60 s/300 s heartbeat pair, scaled to a channel whose round trip is milliseconds; 3× is the same multiple D1's flusher-lock staleness uses against its own cadence | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed outbound queue | 256 messages / 512 KiB | **Derived** — 256 messages is ~49 s of a 50-seat fleet's ceiling traffic: long enough that an ordinary hiccup drains, short enough that a wedged client is noticed within a minute | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
 | `fleet.sweep = stalled` | 60 s | **Derived** — four sweep passes at the 15 s cadence: one missed pass is a hiccup, four is a dead daemon, and the fleet object needs a threshold it can render ([§ 8.2.4](#824-the-fleet-health-object)) | [§ 2.2](#22-fail-posture-per-path) |
@@ -3119,7 +3207,7 @@ review can reverse it deliberately rather than discover it later.
 | 3 | **`blocked` outranks `working`** | `working` outranks `blocked` | A permission prompt fires for a call that is already open, so both facts are true at once and **D1 states no precedence**. Under the alternative, *blocked* is unreachable on the exact path that produces it, and `docs/PLAN.md § 7`'s required state never renders | a seat with an open call and a stale unresolved attention request renders `blocked` rather than `working` — bounded by the 60-minute ceiling, and `attention_ceiling_expired` measures how often it happens |
 | 4 | **Derivation is asynchronous, behind a per-seat cursor** | derive inside the ingest transaction | [D1 § 4.6](EVENT-SCHEMA.md#46-successful-response) already decided it: `202` means accepted for asynchronous processing. Synchronous derivation also puts a fold bug on the ingest's critical path, where it becomes a `5xx` for a seat whose data is fine | fold lag, which is why `fold_lag_ms` is a first-class rendered quantity and [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) exists |
 | 5 | **Per-seat fold cursors, not one global cursor** | one global cursor over `events.id` | A global cursor makes one unprojectable event freeze the whole fleet's derivation — "one bad batch wedges the stream", which D1 refuses in the spool for the same reason | eight cursors to advance instead of one, and a `SKIP LOCKED` claim; the parallelism is free rather than a cost |
-| 6 | **Visit in `events.id` order behind a 2 s visibility lag, apply with `(event_time, seq_epoch, seq)` last-write-wins** | order the cursor by `(seq_epoch, seq)` | `seq` can have permanent holes ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over it can wait forever for an event that will never arrive. `events.id` is **not** gapless and the cursor does not need it to be — what it needs is that no row at or below it becomes visible afterwards, which the lag buys ([§ 6.5](#65-the-fold)) | three `applied_*` columns on every projection row (~40 B), and derivation is ≥ 2 s behind the wire |
+| 6 | **Visit in `events.id` order behind a 2 s visibility lag, apply with `(event_time, seq_epoch, seq)` last-write-wins** | order the cursor by `(seq_epoch, seq)` | `seq` can have permanent holes ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over it can wait forever for an event that will never arrive. `events.id` is **not** gapless and the cursor does not need it to be — what it needs is that no row at or below it becomes visible afterwards, which the lag buys for the reading advance and a guarded write buys for the purged-window one ([§ 6.5](#65-the-fold)) | three `applied_*` columns on every projection row (~40 B), and derivation is ≥ 2 s behind the wire |
 | 7 | **The comparator includes `seq_epoch`** | `(event_time, seq)` exactly as `D2-MUST` #4 words it | `seq` restarts at a new epoch, so the literal two-part key is not a total order across a reset. The three-part key reduces to it whenever the epoch is constant, which is every comparison but one | none functionally; it is a wording divergence from D1 and is filed as such ([§ 14](#14-open-questions-for-the-review-loop) item 4) rather than left to be discovered |
 | 8 | **The feed's ordering key is a server-minted `state_version`, not `(seq_epoch, seq)`** | order deltas by the wire key | State transitions are also minted by rules with **no wire event** — orphan closes, staleness, ceilings, quiescence. Those carry no `seq` and there is no honest value to invent. A `seq`-ordered feed could not sequence precisely the transitions that fire when a seat goes quiet | two ordering keys in the system, which is why [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states the division explicitly and the snapshot carries the wire key as provenance |
 | 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
@@ -3136,7 +3224,7 @@ review can reverse it deliberately rather than discover it later.
 | 20 | **Orphan ceilings are measured from `received_at`; the attention ceiling from `event_time`** | one clock for both | A timeout is a claim about how long *we* waited, so a skewed seat must not expire its calls early — but the attention ceiling competes with a reporter-side timer on the seat's clock, and using a different basis would make the server win every race on a skewed seat | the two clocks differ by the skew, which is bounded and badged at ±120 s; both choices are stated per ceiling in [§ 4.7](#47-which-clock-each-ceiling-is-measured-from) rather than inherited |
 | 21 | **The ceiling is materialized on the row at open time** | compute it in the sweeper's `WHERE` clause from a constant | An indexed range scan instead of a full scan, and — the real reason — **changing a constant later does not retroactively re-date history**, so `late_completion` stays interpretable across the change | one column per bounded fact |
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
-| 23 | **Heartbeats emit no delta**, which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)) | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
+| 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: the heartbeat that flips `enabled`, raises or clears a badge, upgrades the reporter, resets the epoch or ends a `stale` does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
 | 25 | **The task-title merge is specified; the producers of tiers 1 and 2 are not** | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
