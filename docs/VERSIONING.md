@@ -83,13 +83,22 @@ correlates on).
 protection either). "Wait for CI" in the release flow below is therefore a *process*
 obligation with nothing mechanical behind it. Do not read a green-looking merge button as CI
 having passed.
+>
+> ⚠ **Updated 2026-08-23:** `card-token-lint` **is** now a required status check on both
+> branches, so that one check is mechanically enforced. Everything else in CI still is not —
+> a workflow that is added later is not automatically required, and a required check that
+> never runs (a path-filtered workflow producing no run at all) reads as *pending*, not
+> *passed*. Re-read this section whenever a workflow is added.
 
-> ⚠ **The back-merge rule (core rule 5) is not currently satisfiable, and this is an open
-> operator decision, not an oversight.** `dev` allows `squash` only, so a
-> `sync/main-to-dev-post-v<version>` PR cannot be merged as a merge commit today. Resolving
-> it needs a repo-settings change — a bypass actor scoped to the sync branch, or adding
-> `merge` to `dev`'s allowed methods and keeping squash-for-features as convention — and it
-> must be resolved **before the first release**, not discovered during one.
+> ✅ **Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`.** It was briefly
+> squash-only, which made core rule 5 unsatisfiable: a `sync/main-to-dev-post-v<version>` PR
+> could not land as a merge commit, so `main`'s tip would never have become an ancestor of
+> `dev` and every subsequent release PR's three-dot diff would have re-shown the previous
+> `VERSION` bump. A ruleset cannot scope allowed methods by *head* branch, so the choice was
+> "allow both on `dev`" or "a bypass actor for the sync branch"; allowing both is simpler and
+> its failure mode is cosmetic (a feature PR merged with the wrong button), whereas a bypass
+> actor is a standing hole. **Squash for feature PRs is therefore convention here, not
+> enforcement — the enforced half is that `main` takes merge commits only.**
 
 ---
 
