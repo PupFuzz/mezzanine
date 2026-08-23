@@ -22,7 +22,7 @@ motion on the floor is driven by a real event. Nothing is canned status theater.
 | Plane | What it does | Where it runs |
 |---|---|---|
 | **Telemetry** | `fleet-reporter`, a Claude Code hook bundle, POSTs turn/tool/session events | every agent machine (Linux + Windows) |
-| **Aggregation** | fleet-state store + live feed, merged with coordination and board events | the webhook bridge |
+| **Aggregation** | fleet-state store + live feed, merged with coordination and board events | this repo (D-10) |
 | **Presentation** | Laravel app serving a Pixi.js office floor over websockets, behind MFA | this repo |
 
 Telemetry is **programmatic end to end** — the harness fires the hooks and the reporter
