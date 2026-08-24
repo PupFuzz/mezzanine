@@ -151,7 +151,7 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | # | Computed | From | Why it is presentation and not state |
 |---|---|---|---|
 | 1 | **`clock_offset_ms`** = `server_time − browser_now` | every REST response and every feed message ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) | D2 **requires** it: "the browser's own clock is never used for an age either… it is the layer nobody controls" |
-| 2 | **Ages** — "no data for 4m 12s", "quiet for 38s" | a D2 timestamp minus the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
+| 2 | **Ages** — *nothing done for 4m 12s*, *no data for 4m 12s*, *this state is 117 s behind*: the three of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s table and no fourth | a D2 timestamp minus the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
 | 3 | **Desk slot** | `(install_id, seat_id)` and the map's slot count ([§ 3.2](#32-the-desk-slot-function)) | A layout function of identity. It reads no state field, so it cannot change when a seat's state does |
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
@@ -173,15 +173,14 @@ subscription set and the render points made explicit:
 
 ```
  1. authenticate (session + MFA) and open the socket
- 2. SUBSCRIBE to private-fleet.<install> for every install the client intends to render;
-    on a cold start that set is unknown, so step 2 runs again after step 4  (see § 2.3)
+ 2. ADMIT(I) step a -- SUBSCRIBE -- for every install I the client already knows of;
+    on a cold start that set is EMPTY, which is why step 6 exists  (see § 2.3)
  3. BUFFER every seat.delta from this moment
  4. GET /api/fleet/snapshot            -> installs[], each seat with its own state_version
  5. render the world as delivered      -> NO animation fires on this render (§ 6.5)
- 6. subscribe to any install seen in step 4 and not yet subscribed; buffer as in step 3
- 6b. iff step 6 subscribed to anything: RE-FETCH the snapshot for those installs.
-     Their channels were closed for the whole of steps 3-5, so a delta emitted for them
-     in that window was never RECEIVED and is in no buffer to drain  (see below, § 14 item 14)
+ 6. ADMIT every install seen in step 4 and not yet subscribed -- in full, a/b/c below.
+    Its channel was closed for the whole of steps 3-5, so a delta emitted for it in that
+    window was never RECEIVED and is in no buffer to drain  (see below, § 14 item 14)
  7. DRAIN the buffer: discard any delta whose state_version <= that seat's snapshot version,
     apply the rest in ascending order
  8. steady state: apply deltas as they arrive, iff delta.state_version == local + 1
@@ -192,30 +191,61 @@ subscription set and the render points made explicit:
 10. reconnect                          -> re-run from step 1
 ```
 
-**Subscribing before fetching is what closes the window** — for every install the client already
-knows about — and the reason is D2's: a state change during the snapshot query is in the buffer, and
-the per-seat `state_version` is the watermark that says whether it is already included.
+**ADMIT — the one ordering that closes the missed-delta window, for an install entering the rendered
+set at ANY time.** It is stated once, here, and cited from every place an install enters that set
+([§ 2.2](#22-connect-snapshot-deltas) step 6, [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)
+row 3, [§ 4.1](#41-the-lobby--the-building-summary), [§ 4.4](#44-routes-and-what-each-one-fetches)) —
+because the same three lines owed at four call-sites is three chances to write two of them and a
+fourth call-site minted without any:
 
-**On a cold start there are no such installs, and that is a second window
-[D2 § 8.4](FLEET-STATE.md#84-snapshot-then-deltas) does not close.** Step 2 subscribes to the set the
-client intends to render; on a cold start that set is **empty**, so steps 3–5 run with no channel open
-at all and a `seat.delta` emitted in that round trip is not buffered-and-discarded — it is **never
-received**. The watermark cannot help, because it filters a buffer rather than recovering a message
-nobody was subscribed for. The ordinary convergence still applies — that seat's next delta arrives at
-`local + 2`, the gap is detected, and [§ 9](#9-failure-paths-and-their-observables) F2 resyncs it — but
-a seat whose only change fell inside the window and which then goes quiet (a `seat.retired`, a
-`/clear` landing at `unknown`, a seat that just went `offline`) holds its pre-change state until the
-next full snapshot. That is this section's own stated failure, arriving through the door it claimed to
-have shut: *the desk that changed in that window stays wrong until something else changes it — which
-on a quiet desk is never.*
+```
+ADMIT(install_id):
+  a. SUBSCRIBE to private-fleet.<install_id>, and BUFFER every seat.delta on it
+     from this moment
+  b. FETCH  GET /api/fleet/snapshot  -- D2 § 8.2 publishes exactly ONE snapshot
+     endpoint, fleet-wide, with NO per-install parameter, and § 1.2 forbids this
+     document from minting one; the client reads that install's rows out of the
+     whole-fleet response and leaves every other install's held state alone
+  c. DRAIN  that install's buffered deltas: discard any whose state_version is <=
+     the version its seat came back with at (b), apply the rest in ascending order
+```
 
-**Step 6b closes it**, at the cost of one extra snapshot on a cold start and none afterwards: every
-install first subscribed at step 6 is re-fetched and drained against its own per-seat watermarks, which
-is step 7's rule applied to a population step 4 could not have covered. Step 6 exists at all because
-the *first* snapshot is also how the client learns which installs exist — see
+**Why the order and not the other one.** (a) strictly precedes (b), so a `seat.delta` emitted during
+(b)'s round trip is *received and buffered* rather than lost — the loss the reverse order produces is
+unrecoverable, because a watermark filters a buffer and cannot recover a message nobody was subscribed
+for. (c)'s per-seat watermark is what makes (a)'s buffer safe to apply: a change already inside (b)'s
+response is discarded rather than applied twice. That is D2's own reasoning
+([D2 § 8.4](FLEET-STATE.md#84-snapshot-then-deltas)), lifted out of the connect sequence so that it
+binds an install admitted at second 0 and an install admitted at minute 40 identically.
+
+**ADMIT's fetch is not a poll and is not budgeted like one.** It is one fetch per install *admitted*,
+which is one fetch per install *ever*, on a population that changes when an operator provisions an
+install. In particular it is **not** subject to [§ 4.1](#41-the-lobby--the-building-summary)'s
+one-fetch-per-distinct-`(N, M)` rule, which governs the *discrepancy* fetch that discovers an install;
+reading the two as one budget is what would leave a discovered install subscribed-to and never
+drained.
+
+**On a cold start step 2 admits nothing, and that is the window
+[D2 § 8.4](FLEET-STATE.md#84-snapshot-then-deltas) does not close.** Step 2 runs ADMIT (a) over the
+installs the client already knows of; on a cold start that set is **empty**, so steps 3–5 run with no
+channel open at all and a `seat.delta` emitted in that round trip is not buffered-and-discarded — it is
+**never received**. The watermark cannot help, because it filters a buffer rather than recovering a
+message nobody was subscribed for. The ordinary convergence still applies — that seat's next delta
+arrives at `local + 2`, the gap is detected, and [§ 9](#9-failure-paths-and-their-observables) F2
+resyncs it — but a seat whose only change fell inside the window and which then goes quiet (a
+`seat.retired`, a `/clear` landing at `unknown`, a seat that just went `offline`) holds its pre-change
+state until the next full snapshot. That is this section's own stated failure, arriving through the
+door it claimed to have shut: *the desk that changed in that window stays wrong until something else
+changes it — which on a quiet desk is never.*
+
+**Step 6 closes it, because step 6 is ADMIT in full** — (b) and (c) as much as (a) — at the cost of one
+extra snapshot on a cold start and none afterwards. Step 4's snapshot cannot serve as step 6's,
+because it was answered before those channels existed; ADMIT (b) is a *second* fetch, and (c) drains
+each newly-subscribed install's buffer against the versions that second fetch returned. Step 6 exists
+at all because the *first* snapshot is also how the client learns which installs exist — see
 [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) — and
 [§ 14](#14-open-questions-for-the-review-loop) item 14 asks D2 for the installs list or bootstrap
-channel that would make step 2 complete on a cold start and retire 6b entirely.
+channel that would make step 2 complete on a cold start and reduce step 6 to a no-op.
 
 **The client never applies a delta to a seat whose current version it does not know**, which is the
 whole content of step 8's third branch and is what keeps a shallow-merge patch
@@ -233,8 +263,8 @@ connected client has never seen. **This document adds no message. It fetches.**
 | Case | What the client does | Why this and not the alternative |
 |---|---|---|
 | A `seat.delta` names a seat the client does not hold | Buffer deltas for that `(install_id, seat_id)`; `GET /api/fleet/seats/{install}/{seat}` — the endpoint D2 already publishes, which returns the **whole** seat object plus `detail`; insert it; drain the buffer against the fetched `state_version` exactly as [§ 2.2](#22-connect-snapshot-deltas) step 7 does | Applying the patch alone would insert a seat object with holes — no `render_state` on a patch that changed only `context`, no `seat_id` on one that did not. A desk drawn from a partial object is a desk whose missing fields render as *nothing is happening*, which is the one reading this product exists to remove. The fetch costs one request per new seat, ever |
-| A `seat.delta` is emitted on a channel the client is not subscribed to | **The client never receives it — which is a loss, not a non-event.** Nothing is buffered and nothing is discarded: the change is simply absent from this client's world until a full object for that seat arrives. It is reachable in exactly one window — the cold-start round trip of [§ 2.2](#22-connect-snapshot-deltas) steps 3–5, before step 6 has subscribed — and **step 6b's re-fetch is what closes it**. It is also why an **install** entering the population is invisible until a snapshot | Recording this row as *cannot happen* was the error: what cannot happen is the **receive**; the state change it would have carried very much can, and calling the loss a non-event is how it stayed unclosed |
-| An install exists that the client has no channel for | It appears at the **next full snapshot**, and the client fetches one **as soon as the counts disagree**: `fleet.seats_total` rides every `feed.heartbeat` ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)), so a newly-provisioned install raises it within 15 s on any channel the client already holds, [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check renders the disagreement, and the one snapshot fetch it triggers discovers the install. A reconnect and the lobby's refresh control are the other two paths. The lobby carries a **`membership as of HH:MM:SS`** readout beside the fleet counts either way, so the age of the *membership* picture is visible separately from the age of the *state* picture | Polling the snapshot on a timer would invent a cadence D2 does not state and would fetch ~91 KB ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) at 50 seats) on a schedule to answer a question that changes when an operator provisions an install. **The discrepancy fetch is not that poll**: it is one fetch per *distinct* disagreement, driven by a number the wire already sends every 15 s, and it fires only when the client can already prove it is wrong — which is the same evidence it renders. [§ 14](#14-open-questions-for-the-review-loop) item 2 still asks D2 for the membership message that would close it properly |
+| A `seat.delta` is emitted on a channel the client is not subscribed to | **The client never receives it — which is a loss, not a non-event.** Nothing is buffered and nothing is discarded: the change is simply absent from this client's world until a full object for that seat arrives. It is reachable in exactly one window — the round trip between an install entering the rendered set and ADMIT (a) subscribing for it, which on a cold start is [§ 2.2](#22-connect-snapshot-deltas) steps 3–5 — and **ADMIT (b)+(c) is what closes it**, on a cold start and mid-session alike. It is also why an **install** entering the population is invisible until a snapshot | Recording this row as *cannot happen* was the error: what cannot happen is the **receive**; the state change it would have carried very much can, and calling the loss a non-event is how it stayed unclosed |
+| An install exists that the client has no channel for | It appears at the **next full snapshot**, and the client fetches one **as soon as the counts disagree**: `fleet.seats_total` rides every `feed.heartbeat` ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)), so a newly-provisioned install raises it within 15 s on any channel the client already holds, [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check renders the disagreement, and the one snapshot fetch it triggers **discovers** the install. **Discovery is not admission, and the difference is the whole of this row:** an install the client has fetched once and never subscribed to is a floor of frozen desks reading `live`. So the client then runs **[§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`** for it — subscribe, re-fetch, drain — exactly as step 6 does for an install discovered at connect time, and ADMIT (b)'s fetch is outside the discrepancy trigger's per-`(N, M)` budget. Until (c) completes, the install's desks render from the discovery snapshot and the lobby's *membership as of* stamp is what dates them. A reconnect and the lobby's refresh control are the other two paths, and both reach ADMIT the same way. The lobby carries a **`membership as of HH:MM:SS`** readout beside the fleet counts either way, so the age of the *membership* picture is visible separately from the age of the *state* picture | Polling the snapshot on a timer would invent a cadence D2 does not state and would fetch ~91 KB ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) at 50 seats) on a schedule to answer a question that changes when an operator provisions an install. **The discrepancy fetch is not that poll**: it is one fetch per *distinct* disagreement, driven by a number the wire already sends every 15 s, and it fires only when the client can already prove it is wrong — which is the same evidence it renders. [§ 14](#14-open-questions-for-the-review-loop) item 2 still asks D2 for the membership message that would close it properly |
 | A seat the client holds is **absent** from a fresh snapshot | Remove it — but **only on a snapshot apply, never on a delta or a poll**, and write one line into the lobby's event log naming the seat and the reason (*retired more than 14 days ago*, [D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)) | A removal driven by a delta would be a removal driven by an absence, which is the inference this whole design refuses. The only honest removal is a fresh, complete population telling the client the seat is no longer in it |
 
 ### 2.4 The clock, and every age on the page
@@ -246,9 +276,19 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
 
 - Ages re-render **every 1 s**, which is the unit the smallest age is rendered in: slower would show a
   second that has already passed, faster would repaint for nothing.
-- An age is rendered from the field D2 assigns to it and no other: the **receipt age** from
-  `delivery.last_receipt_at`, the **quiet age** from `activity.last_received_at`, the **derivation
-  lag** from `derivation.fold_lag_ms`. Their differences are the point
+- An age is rendered from the field D2 assigns to it and no other, **and each has exactly one rendered
+  form, stated here so that no second surface mints a second string for one fact**:
+
+  | Age | Field | The string, verbatim | Where it may appear |
+  |---|---|---|---|
+  | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
+  | **receipt age** | `delivery.last_receipt_at` | ***no data for 4m 12s*** | the drill-down's transport block **only**, under that block's *as of* stamp, never ticked ([§ 5.1](#51-the-desk)'s `dark-only`) |
+  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | desk and drill-down, under a stamp, never ticked ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
+
+  **One rendered string on this page looks like an age and is not:** a `stale`/`offline` desk's
+  ***no data since 14:18***, which is `delivery.no_data_since` rendered as a **timestamp**
+  ([§ 5.1](#51-the-desk)). It is version-bearing where the receipt age is not, which is exactly why the
+  desk carries it and not the age. Their differences are the point
   ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)); collapsing
   them into one "last seen" would destroy exactly the distinction the product is for. **Which surface
   may render which of the three is not a free choice**, because only one of them is refreshed by the
@@ -266,12 +306,41 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
 `delivery.last_receipt_at`, `delivery.last_heartbeat_at`, `delivery.last_seq`,
 `delivery.clock_skew_ms`, `delivery.spool_lag_events`, `delivery.oldest_unsent_age_s`,
 `reporter.uptime_s`, `derivation.computed_at`, `derivation.cursor_event_id` and
-`derivation.fold_lag_ms`. A delta is emitted only when a version-bearing field changes, and its
-`patch` carries only version-bearing members, so **a client's copy of the ten is frozen at whatever
-the last full object delivered** — on a busy `live` seat, for the life of the connection. D2 states
-the consequence as a constraint on this layer, in that same section: *"Every quantity this document
-says is rendered from one of the ten is rendered from a value that cannot be moving at the moment it
-is read."*
+`derivation.fold_lag_ms`. **D2 states the two consequences of that split itself, and this document
+carries them rather than paraphrasing them** ([D2 § 6.5](FLEET-STATE.md#65-the-fold)): the ten *"**ride
+the object** on every snapshot and every detail response and are simply never a **reason** to emit"*;
+and *"when a delta is emitted for something else, its `patch` carries the changed members of the
+version-bearing set — **except that [§ 8.3.1]'s shallow merge replaces a nested object whole**, so a
+patch that touches `delivery.no_data_since` necessarily re-sends the rest of `delivery` with it, which
+refreshes the bookkeeping members for free"*.
+
+So a client's copy of the ten is **not** unconditionally frozen, and saying it was — as an earlier
+revision of this paragraph did — contradicted the frozen section this rule rests on. What is true is
+narrower and is what the markers below encode: **no delta ever carries one of the ten for its own
+sake**, so no rendered value among them may be *ticked*; a value among them moves only when a whole
+object arrives that carries it — a snapshot, a detail fetch, a resync, or (for a nested object alone)
+a patch that touched a version-bearing sibling under the same key. D2 states the consequence as a
+constraint on this layer, in that same section: *"Every quantity this document says is rendered from
+one of the ten is rendered from a value that cannot be moving at the moment it is read."*
+
+**The stamp rule, stated once and cited rather than repeated** (by
+[§ 4.3](#43-the-desk-drill-down-panel) and [§ 5.2](#52-the-drill-down), which are the two surfaces that
+render a stamped block):
+
+> **A block's *as of HH:MM:SS* stamp is the `server_time` of whatever delivered the values the block is
+> currently showing** — a fetch, a snapshot apply, a resync, or a delta whose shallow merge re-sent
+> that nested object whole. The stamp advances **with** the values and never independently of them,
+> and the block re-renders when it advances.
+
+That is the rule the alternative readings both get wrong. If the stamp did **not** advance on a
+whole-object patch, the panel would render a value that just moved under a stamp naming an older fetch
+— a stamped lie on the one block whose whole job is to date its numbers. If the client instead
+*discarded* bookkeeping members arriving in a patch, it would be throwing away the freshest copy it
+will ever be sent and holding an older one under the same stamp. The stamp follows the bytes.
+`reporter.uptime_s` is the sibling that makes this concrete: `reporter.version`, `.platform` and
+`.selftest_failed` are version-bearing, so a patch that moves any of them re-sends `uptime_s` with them
+under the shallow merge — and the reporter block's stamp advances to that delta's `server_time`, which
+is exactly what makes the re-sent `uptime_s` honest to render.
 
 Two markers carry that rule. **Every row of [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field)
 whose source is one of the ten carries one of them**, and `tools/design/verify-floor.py` reds when one
@@ -453,7 +522,7 @@ route of its own, because closing it must not cost a re-subscribe.
 | floor list | `installs[].install_id` from the snapshot, ascending | one row per floor, the row being the link to the floor |
 | per-floor state summary | the seat objects the client holds for that install ([§ 2.1](#21-the-seven-client-computed-values-closed) row 5) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
 | fleet totals | `fleet.seats_total`, `fleet.seats_live` | *4 seats · 4 live*, read from the wire and **never recounted** |
-| the discrepancy check | the two above | when `Σ floors ≠ fleet.seats_total` the lobby renders the disagreement — *the client holds N of M seats — refreshing* when N < M, and *the client holds N seats; the fleet reports M — refreshing* when N > M, which is reachable: a seat retired more than 14 days ago leaves `seats_total` at once while [§ 3.5](#35-retirement-and-the-only-removal) keeps its desk until a snapshot apply. It triggers **one snapshot fetch per distinct (N, M) observation**: a disagreement still standing after that fetch is rendered and **not** re-fetched, so a discrepancy the snapshot cannot resolve costs one request rather than one every 15 s. It never silently picks a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)), and it is how a new install is discovered ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [decision 9](#13-decisions-taken-revisable-at-review)) |
+| the discrepancy check | the two above | when `Σ floors ≠ fleet.seats_total` the lobby renders the disagreement — *the client holds N of M seats — refreshing* when N < M, and *the client holds N seats; the fleet reports M — refreshing* when N > M, which is reachable: a seat retired more than 14 days ago leaves `seats_total` at once while [§ 3.5](#35-retirement-and-the-only-removal) keeps its desk until a snapshot apply. It triggers **one snapshot fetch per distinct (N, M) observation**: a disagreement still standing after that fetch is rendered and **not** re-fetched, so a discrepancy the snapshot cannot resolve costs one request rather than one every 15 s. It never silently picks a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)), and it is how a new install is **discovered** — every install that fetch discovers is then **admitted** by [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`, whose own fetch is **not** counted against the per-`(N, M)` budget above, because that budget exists to bound a *disagreement* and ADMIT is bounded by the install set instead ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [decision 9](#13-decisions-taken-revisable-at-review)) |
 | membership age | the time of the last full snapshot | *membership as of 14:23:14* ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
 | store / derivation / sweep | `fleet.db`, `fleet.fold`, `fleet.sweep`, `fleet.max_fold_lag_ms`, `fleet.sweep_last_run_at`, `fleet.ingest_last_receipt_at` | three separate indicators, never one aggregate — [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object): "no aggregate rolls three health facts into one… D3 may compose a banner from these three; the wire keeps them apart" |
 | feed status | the client's own connection state ([§ 9](#9-failure-paths-and-their-observables)) | *live* · *polling (feed down)* · *reconnecting* · *reload required*, with the resync count beside it |
@@ -491,13 +560,16 @@ Opened by selecting a desk; closes to the floor; does not change the subscriptio
 those.** A delta's `patch` carries the changed members of the version-bearing set
 ([D2 § 6.5](FLEET-STATE.md#65-the-fold)), so the ten bookkeeping members named in
 [§ 2.4](#24-the-clock-and-every-age-on-the-page) are **not** patched by the feed. They are rendered
-from the open-fetch response, under one ***as of HH:MM:SS*** stamp per block, and they change only
-when a fresh object replaces them: a re-fetch (the panel's refresh control, a re-open, or a resync of
-that seat), a snapshot apply, or — for `delivery` alone — a delta that moves one of its two
-version-bearing members (`no_data_since`, `seq_epoch`), because the shallow merge replaces a nested
-object whole and re-sends the rest of `delivery` with it
-([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)). Nothing refreshes `derivation`, whose three members
-are all among the ten. **None of the ten is ever ticked as an age.** This document states no polling
+from the open-fetch response, under one ***as of HH:MM:SS*** stamp per block — [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s
+**stamp rule**, which this section cites rather than restates. They change only when a fresh object
+carrying them arrives: a re-fetch (the panel's refresh control, a re-open, or a resync of that seat), a
+snapshot apply, or a delta whose shallow merge re-sends their nested object whole — which is
+`delivery` when a delta moves one of its two version-bearing members (`no_data_since`, `seq_epoch`),
+and `reporter` when a delta moves `version`, `platform` or `selftest_failed`
+([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)). **No delta ever refreshes `derivation`** — all three
+of its members are among the ten, so it has no version-bearing sibling to ride, and it is the one
+block that moves on a snapshot or a fetch and on nothing else. **None of the ten is ever ticked as an
+age**, on any block, however it arrived. This document states no polling
 cadence for the panel — inventing one would be inventing a cadence D2 does not state
 ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)) — it states the
 stamp instead, so a reader can always see which moment those numbers describe.
@@ -513,7 +585,7 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | **recent activity** | the timeline, newest first: `kind`, the seat-clock `event_time`, the receipt time, and the per-kind detail this document renders ([§ 5.2](#52-the-drill-down)) | the timeline endpoint |
 | **transport** — **`fetch-fresh`**, one *as of* stamp | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
 | **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id` — and the *this state is N s behind* line when the `fold_lag` badge is up, the badge being what drives the treatment ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) | `derivation.*` |
-| **reporter** | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** under the same stamp | `reporter.*`, `enabled` |
+| **reporter** — **`fetch-fresh`**, one *as of* stamp | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** and is **re-sent under the shallow merge** whenever one of the first three moves, so the block's stamp advances with it ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule) rather than dating a fetch the value has already outlived | `reporter.*`, `enabled` |
 | **badges** | every member of `badges[]`, each with its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
 | **retirement** | when `retired` is non-null: at, by, reason | `retired.*` |
@@ -523,7 +595,7 @@ stamp instead, so a reader can always see which moment those numbers describe.
 
 | Route | Fetches on entry | Subscribes |
 |---|---|---|
-| `/` (lobby) | `GET /api/fleet/snapshot` | every install in the snapshot |
+| `/` (lobby) | `GET /api/fleet/snapshot` | **`ADMIT`** ([§ 2.2](#22-connect-snapshot-deltas)) for every install in the snapshot not already admitted — never a bare subscribe, because a subscribe with no re-fetch behind it leaves the install's own admission window open |
 | `/floor/{install_id}` | nothing new — the snapshot already holds it | as above; the floor renders one install's seats from the same map |
 | `/floor/{install_id}/{seat_id}` (drill-down open) | the seat detail and the timeline | unchanged |
 
@@ -584,7 +656,7 @@ one, so the two documents can be read side by side.
 | badge cluster | `badges`, `badges_since` | `["lossy"]` | empty ⇒ nothing rendered, and `badges_since` is then null; a badge appearing is animation [A11](#62-the-animation-table--the-closed-set). `badges_since` is the **cluster's** oldest onset ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), never a per-badge stamp ([§ 7.2](#72-badges-every-member-has-a-render)) |
 | the *reporting disabled* treatment | `enabled` | `true` | `null` before the first heartbeat, which is not the same as `false` and does not render as off |
 | *no data since …* | `delivery.no_data_since` | `null` | non-null only when `link_state ∈ {stale, offline}`; then the desk's label reads *no data since 14:18* rather than a bare glyph ([D2 § 4.5](FLEET-STATE.md#45-link-states)) |
-| the receipt age, and why a live desk carries none | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | **`dark-only`** — one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten, so a held copy freezes on a live seat ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). The *no data for N* readout is the row above, built from the version-bearing `delivery.no_data_since` on a `stale`/`offline` desk; no other desk renders a receipt age, and the raw value is **`fetch-fresh`** in the drill-down ([§ 5.2](#52-the-drill-down)) |
+| the receipt age, and why a live desk carries none | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | **`dark-only`** — one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten, so a held copy freezes on a live seat ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). **The two rendered forms are different strings on different surfaces and neither is the other's shorthand:** the **desk** of a `stale`/`offline` seat renders ***no data since 14:18*** — a timestamp, from the version-bearing `delivery.no_data_since`, the row above — and the ***no data for N*** **age** form is rendered **only** in the drill-down's transport block, from this field, under that block's *as of* stamp and never ticked. No desk renders a receipt age in either form, and no surface renders both forms of one fact at once |
 | the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
 | the last thing the seat did, and when it says it did it | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
@@ -602,7 +674,7 @@ Everything in [§ 5.1](#51-the-desk), at full fidelity, plus:
 | spool state | `delivery.spool_lag_events`, `delivery.oldest_unsent_age_s` | `0`, `null` | **`fetch-fresh`** — both are of the ten; `link_state == "catching_up"` is the delivered consequence and is what the desk renders |
 | wire provenance | `delivery.seq_epoch`, `delivery.last_seq`, `state_version`, `derivation.cursor_event_id`, `derivation.computed_at` | `"01K3T0000A5N7M2X9V4B6D0FGH"`, `48211`, `48219`, `9912837` | the correlation D2 provides for exactly this panel ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)). `state_version` and `seq_epoch` are version-bearing and patch live; `last_seq`, `cursor_event_id` and `computed_at` are of the ten and are **`fetch-fresh`**, which is why the panel stamps the block rather than the line |
 | session block | `session.session_id`, `session.started_at`, `session.source`, `session.project_label`, `session.harness_label` | `"a7f2c918-…"`, `"clear"`, `"mezzanine"`, `"claude-code/2.1.240"` | `session` null ⇒ *no session open*, which is a fact, not a blank |
-| reporter block | `reporter.version`, `reporter.platform`, `reporter.uptime_s`, `reporter.selftest_failed` | `"0.1.0"`, `"linux"`, `401150`, `[]` | a non-empty `selftest_failed` is rendered as a list of named checks, up to its bound of 8 ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). `uptime_s` is of the ten and is **`fetch-fresh`** — it is the flusher-restart discriminator, so a stale copy would mis-date a restart; `version`, `platform` and `selftest_failed` are version-bearing and patch live |
+| reporter block | `reporter.version`, `reporter.platform`, `reporter.uptime_s`, `reporter.selftest_failed` | `"0.1.0"`, `"linux"`, `401150`, `[]` | a non-empty `selftest_failed` is rendered as a list of named checks, up to its bound of 8 ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). `uptime_s` is of the ten and is **`fetch-fresh`** — it is the flusher-restart discriminator, so a stale copy would mis-date a restart; `version`, `platform` and `selftest_failed` are version-bearing and patch live. **They share a nested object, so the shallow merge re-sends `uptime_s` with any of the three** ([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)): the value moves, and the block's stamp advances to that delta's `server_time` under [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule. It is still never *ticked* — a `fetch-fresh` value moves when an object carrying it arrives, and at no other moment |
 | counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | **`fetch-fresh`** by construction — `detail` exists only on the fetch ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) and no delta carries it. The reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them, per [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) — never as *now* |
 | the intern list, uncapped | `detail`'s full open-call list | — | [§ 8](#8-interns--subagent-rendering-and-the-cap). **The selection is stated rather than left to the reader:** the intern list is the subset of that list whose `agent_scope == "subagent"` — equivalently, the calls carrying a `parent_call_id` — which is the **intern join** D2 stores those two labels for ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state): *"stored for the intern join and never gate anything"*). What D2 forbids there is a **scope-dependent state rule**; choosing which rows a panel lists is not one, and no pose, currency label or badge reads either field. [§ 14](#14-open-questions-for-the-review-loop) item 1 names this as the reading it took, because *"the open call list in full"* could equally have meant every open call, and the panel that listed every one would call a seat's own `Bash` call an intern |
 | the recent-activity timeline | the timeline endpoint | — | see the rule below |
@@ -742,9 +814,11 @@ this document's own headline test unsatisfiable:
   thinking, attention and replay loops, and the three states whose held render carries no motion at all
   (`idle`, `stalled`, `unknown`). A held render has **no causing message** — it is entered whenever the
   object the client holds says so, and that object may have arrived by delta, by snapshot, by resync or
-  by fetch — so its log row carries the **`state_version` of the object it is held by**. A held render
+  by fetch — so its log row carries the **`state_version` of the object it is held by**, and it writes
+  **two** rows, one on entry and one on exit ([§ 11](#11-acceptance-tests)). A held render
   is not exempt from the honesty principle: it is held by a delivered field, and the log records which
-  field, which value and which version.
+  field, which value and which version — on the way in, and again on the way out, against the object
+  that ended the hold.
 
 **Why the split, and not four more words in one column.** [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)
 rule 2 makes a `working` desk run a loop for as long as it is `working`, and
@@ -768,7 +842,7 @@ it carries the same fact.
 |---|---|---|---|---|---|---|---|---|
 | **A1** | `edge` | `arrive` — the character walks in and sits | desk | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value leaves `offline` | on arrival at the desk | the character is simply present | the seat has not left `offline` |
 | **A2** | `edge` | `depart` — the character stands and walks out, leaving the chair empty | desk | `render_state` | a delta whose new `render_state` is `offline` | at the door | the chair is empty and labelled | the seat is still reporting |
-| **A3** | `held` | `work` — typing at the keyboard, 4 fps loop | desk | `render_state` | `render_state == "working"` | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
+| **A3** | `held` | `work` — typing at the keyboard, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
 | **A4** | `held` | `think` — leaning back, watching the monitor, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
 | **A6** | `held` | `idle` — the chair turns from the desk, the monitor dims. **No loop.** | desk | `render_state` | `render_state == "idle"` | when it is not | identical — this state has no motion by design | the seat has not cleanly finished a turn |
@@ -849,7 +923,7 @@ distinct render. The order below is the fixed order the lobby's per-floor summar
 | `render_state` | Desk | Label line | Animation | Never |
 |---|---|---|---|---|
 | `working` | character at the keyboard | the action's descriptor | A3, or A4 when the turn is open with no call | rendered without its currency treatment when the seat is not `live` |
-| `idle` | chair turned, monitor dimmed, character present | *finished — quiet for 4m 12s* | A6 (none) | rendered as absent. Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
+| `idle` | chair turned, monitor dimmed, character present | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 (none) | rendered as absent. Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | `blocked` | raised hand, marker above the desk | *waiting on a human since 14:31 (seat clock)* | A7 | shown as working, whatever `open_calls` says ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function): `blocked` outranks `working`) |
 | `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
@@ -1257,18 +1331,26 @@ required and none of these tests needs one, which is deliberate: they gate the c
 the state layer's honesty is already gated by D2's own twenty-three.
 
 **The animation log is the instrument, and it is a build requirement, not a test fixture.** The
-renderer **must** record, for every animation it starts and every held render it enters, a row of
-`(animation_id, install_id, seat_id, class, cause, motion)`. The three variable fields take their
-meaning from the row's class in [§ 6.2](#62-the-animation-table--the-closed-set):
+renderer **must** record, for every animation it starts, every held render it enters and every held
+render it leaves, a row of
+`(animation_id, install_id, seat_id, class, phase, cause, motion, at)`. The four variable fields take
+their meaning from the row's **class** and, on a `held` row, from its **phase** — because a held
+render's entry and its exit are opposite facts and a schema that gave them one shape made this
+document's own headline test unsatisfiable on every exit row:
 
-| Field | On an `edge` row | On a `held` row |
-|---|---|---|
-| `class` | `edge` | `held` |
-| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it |
-| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the three states with no motion by design (`idle`, `stalled`, `unknown`), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion |
+| Field | On an `edge` row | On a `held` row, `phase: entered` | On a `held` row, `phase: left` |
+|---|---|---|---|
+| `class` | `edge` | `held` | `held` |
+| `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
+| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
+| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the three states with no motion by design (`idle`, `stalled`, `unknown`), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
+| `at` | the **corrected server-clock instant** the row was written ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, applied) — the client's own record of when it drew this, labelled as the client's own and rendered on no screen | as `edge` | as `edge` |
 
-A **held** row is written when the render is **entered and when it is left**, so the log records which
-states a desk held and for how long. **Why `motion: false` rather than no row at all:** a loop that was
+A **held** row is written when the render is **entered** and again when it is **left**, so the log
+records which states a desk held and for how long — and *for how long* is
+`left.at − entered.at` for the matching `(animation_id, install_id, seat_id)` pair, which is why `at`
+is on the row at all. A version pair cannot answer it: `state_version` counts changes, not seconds.
+**Why `motion: false` rather than no row at all:** a loop that was
 stopped by a currency treatment and a render that was never entered are the same absence in a log that
 records only starts, and they are opposite facts — the first is [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)
 working, the second is a desk that never reached the state. A renderer that cannot produce this log
@@ -1278,12 +1360,12 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 
 | Fixture | Contents |
 |---|---|
-| `fx-snapshot-4` | [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot, extended to the four `aimla` seats of [§ 3.2](#32-the-desk-slot-function)'s worked assignment |
+| `fx-snapshot-4` | [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot, extended to the four `aimla` seats of [§ 3.2](#32-the-desk-slot-function)'s worked assignment. **All four are `link_state: "live"`**, because D2's own `fleet` block in that snapshot reads `"seats_total": 4, "seats_live": 4` and [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object) defines `seats_live` as `link_state == "live"` — so a non-live seat here would contradict the fixture's own fleet object. The three D2 does not publish are stated here rather than left to the builder, because [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s control asserts an **exact** log over all four: `aimla-pm` is D2's published seat verbatim (`working`, `open_calls: 1`, `open_turn: true`, one subagent); **`aimla-impl-1`** is `working` with `open_calls: 1`, `open_turn: true`, `subagents: []`; **`aimla-impl-2`** is `idle` with `open_calls: 0`, `open_turn: false`, `action: null`; **`aimla-review`** is `blocked` with `open_calls: 0`, `open_turn: false`. All four carry `badges: []`, `enabled: true`, a non-null `context` and a non-null `session`; every `activity_state` equals its `render_state`. **No desk in this fixture renders a receipt age** — that readout is `dark-only` ([§ 5.1](#51-the-desk)) and every seat here is `live` |
 | `fx-clear-trace` | `fx-snapshot-4`, then the **ten** deltas of [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to `aimla-pm`, in order, in **both** hook orders D2 runs |
 | `fx-degraded` | one seat per non-`live` render: `catching_up` (with `oldest_unsent_age_s` = 4,000), `stale`, `offline`, `disabled`, `retired`, plus a `live` seat badged `fold_lag` with `derivation.fold_lag_ms` = 117,000 |
 | `fx-interns` | one seat whose `subagents` goes 0 → 8 → 8-with-`subagents_open`-9, including one element with `title: null` |
 | `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
-| `fx-membership` | a delta for a seat absent from `fx-snapshot-4`; and a later snapshot missing a seat that was present |
+| `fx-membership` | **three legs.** (a) a delta for a seat absent from `fx-snapshot-4`; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on that install's channel **during** the ADMIT (b) round trip, at `state_version` one above what (b) returns |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped |
 | `fx-refusals` | the four responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, a `fleet.health` with `db: "down"`, and a `fleet.reload` |
 | `fx-nulls` | **two** seats, because the **36** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat; all three nullable `reporter.*`. The two together cover all 36, and neither covers them alone |
@@ -1299,9 +1381,17 @@ all.*
   [§ 6.2](#62-the-animation-table--the-closed-set); **every `edge` row has a non-null `cause`** that is
   one of the four causing messages, and for each edge row the driving field named by that table appears
   in the causing delta's `changed[]` (or the row's driver is a message type, and the cause is a message
-  of that type); **every `held` row's `cause` is a `state_version` the client holds for that seat**, and
-  in that object the fact its [§ 6.2](#62-the-animation-table--the-closed-set) row names has the value
-  its hold condition states. **The `changed[]` clause binds `edge` rows only**, because a held render
+  of that type); **every `held` row's `cause` is a `state_version` the client holds for that seat**,
+  and the two phases are asserted in **opposite** directions, which is what makes both satisfiable on a
+  correct client: in a `phase: entered` row's object the fact its
+  [§ 6.2](#62-the-animation-table--the-closed-set) row names **has** the value its hold condition
+  states, and in a `phase: left` row's object it **does not** — an exit row whose object still
+  satisfies the hold condition is a render the client stopped drawing while the wire still said to draw
+  it. Every `entered` row has at most one matching `left` row for its
+  `(animation_id, install_id, seat_id)`, `left.at > entered.at`, and every `left` row's `motion` is
+  `false`. A predicate that asserted the hold condition on **both** phases would fail a correct client
+  on `fx-clear-trace`, where A4 is entered at E0 and left at E1: at E1 `open_calls` is 1, so A4's
+  condition is false in exactly the object that ended it. **The `changed[]` clause binds `edge` rows only**, because a held render
   hands off on whatever fact its condition reads and that is not always its own driver: in
   `fx-clear-trace`, A4 gives way to A3 at **E1** when `open_calls` becomes 1 while `render_state` never
   leaves `working`, and E1's `changed[]` is `{action, subagents, open_calls}`
@@ -1319,11 +1409,11 @@ all.*
   change that looks like a feature — and assert that the loop's frame interval is constant across every
   seat and every fixture. A rate that varies is a quantity the wire never sent.
 - **Discriminating control:** a fixture with **no** deltas at all (`fx-snapshot-4` alone, then silence)
-  → the log carries **no `edge` row at all**, and carries **exactly** the `held` rows
-  [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the states the snapshot delivered —
-  including one A3 row for the `working` seat of
-  [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s object — each with that seat's `state_version` as
-  its cause. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
+  → the log carries **no `edge` row at all**, **no `phase: left` row at all** (nothing ended, because
+  nothing arrived), and carries **exactly** the `held` `entered` rows
+  [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the four states the fixture delivers —
+  **A3 for `aimla-pm` and `aimla-impl-1`, A6 for `aimla-impl-2`, A7 for `aimla-review`**, four rows and
+  no fifth — each with that seat's `state_version` as its cause. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
   would pass the GREEN, and a client that fired arrivals on the snapshot would pass it too.
 
 ### AT-D3-2 the `/clear` trace shows no idle anywhere
@@ -1342,8 +1432,10 @@ all.*
   work was **killed**. That is the false idle, arriving through the render layer after D1 and D2 both
   removed it from theirs.
 - **Discriminating control:** `fx-snapshot-4`'s ordinary seat driven to a clean `turn.end` **does**
-  render `idle` and does log an **A6 `held` row** (`motion: false` — A6 has no motion by design), so the
-  test measures the trace and not the absence of an idle render.
+  render `idle` and does log an **A6 `held` `entered` row** (`motion: false` — A6 has no motion by
+  design), preceded by the **A3 `left` row** whose cause is that same `turn.end` delta's
+  `state_version`, so the test measures the trace and not the absence of an idle render. Name the seat:
+  `aimla-impl-1`, whose `fx-snapshot-4` state is `working`.
 
 ### AT-D3-3 identity is stable across a restart
 
@@ -1388,8 +1480,10 @@ all.*
   *no data since …* built from `delivery.no_data_since`; `disabled` renders a present character with the
   monitor off and is **not** the `offline` render; the `fold_lag` seat renders its pose with the hatched
   overlay, the *117 s behind* line, and **no motion** — assert the animation log's `held` row for that
-  seat carries **`motion: false`**, which says the render was entered and drawn static; asserting the
-  absence of a row instead would pass a client that never rendered the seat at all.
+  seat with **`phase: entered`** carries **`motion: false`**, which says the render was entered and
+  drawn static; asserting the absence of a row instead would pass a client that never rendered the seat
+  at all, and asserting it over *every* `held` row instead would be satisfied for free by the exit
+  rows, whose `motion` is `false` by definition.
 - **RED — render the axis, not the collapse:** switch the desk on `activity_state` instead of
   `render_state` → the `stale` and `offline` seats render `idle` (their activity state is preserved
   underneath), which is `D2-MUST` #2 broken at the last layer after two documents held it.
@@ -1461,14 +1555,31 @@ all.*
 - **Build:** a run in which the subscribe is followed by a **forced 500 ms delay** before the snapshot
   response, with two deltas delivered inside that window — one below the snapshot's watermark for its
   seat, one above.
+- **Build — the mid-session half:** `fx-membership` leg (c), with the same forced 500 ms delay on
+  ADMIT (b)'s response. This half exists because [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT` claims
+  the window is closed for an install entering the rendered set **at any time**, and a test that only
+  ever admitted installs at connect time would leave the *at any time* half unexercised — which is
+  precisely the half a client can get wrong without any test noticing.
 - **GREEN:** the client's final seat map equals the server fixture's exactly; the below-watermark delta
   is **discarded** and the above-watermark one **applied**; the snapshot render fires **no `edge`-class
-  animation** — assert the log gains **no `edge` row** across the snapshot apply, while the `held` rows
-  the delivered states require **are** present, carrying the snapshot object's `state_version` as their
-  cause ([§ 6.5](#65-a-snapshot-never-animates)); running the scenario 100 times yields 100 identical
+  animation** — assert the log gains **no `edge` row** across the snapshot apply, while the
+  `held` `entered` rows the delivered states require **are** present, carrying the snapshot object's
+  `state_version` as their cause ([§ 6.5](#65-a-snapshot-never-animates)); running the scenario 100 times yields 100 identical
   results.
+- **GREEN — the mid-session half:** the client **subscribes** to `private-fleet.aimla-win` before
+  issuing ADMIT (b), the delta emitted inside (b)'s window is **applied** at (c) rather than lost, and
+  `aimla-win/win-1`'s rendered desk equals the fixture's post-delta object — not (b)'s object. Assert
+  the **subscription** was opened, not merely that the desks appeared: a client that fetched and
+  rendered without subscribing passes every render assertion on the first frame and is wrong forever
+  after.
 - **RED — order:** fetch the snapshot before subscribing → the delta made in the window is in neither,
   and on a quiet desk the divergence is permanent.
+- **RED — discovery without admission:** render the discovered install from the discrepancy fetch and
+  **never subscribe** to its channel → every desk on that floor holds its discovery-snapshot state for
+  the life of the connection while `link_state` reads `live` off a frozen object, and no second
+  discrepancy can fire because the counts now agree. Watch this one: it is a whole floor of
+  [D2 § 8.4](FLEET-STATE.md#84-snapshot-then-deltas)'s *"permanently and invisibly wrong about one
+  desk"*, and it is invisible to every assertion that only reads the first frame.
 - **Second RED — no watermark:** apply every buffered delta → construct the visible case D2 names, a
   patch that clears `action` followed by a snapshot that already has it cleared and then a newer delta
   that sets it.
@@ -1478,13 +1589,24 @@ all.*
 ### AT-D3-10 ages come from the server clock
 
 - **Build:** `fx-snapshot-4`, with the harness's browser clock set **+3 h** from the fixture's
-  `server_time`.
-- **GREEN:** every rendered age matches the age computed from `server_time` — the receipt age reads
-  seconds, not three hours; `clock_offset_ms` is applied to every readout; and every seat-clock
+  `server_time`, **and the drill-down opened on `aimla-pm`**. The drill-down is part of the build
+  rather than an afterthought: every seat in `fx-snapshot-4` is `live`, so **no desk on that floor
+  renders a receipt age at all** ([§ 5.1](#51-the-desk)'s `dark-only` marker), and the transport
+  block's *both ages under one* as of *stamp* is the only surface on which the receipt half of this
+  test's claim is observable.
+- **GREEN:** every rendered age matches the age computed from `server_time` — **on the floor**, every
+  desk's quiet age (*nothing done for N*) reads seconds, not three hours; **in the open drill-down**,
+  the transport block's receipt age likewise reads seconds and carries its *as of* stamp;
+  `clock_offset_ms` is applied to every readout; and every seat-clock
   timestamp (`action.started_at`, `context.sampled_at`, `activity.last_event_time`,
   `session.started_at`) renders as a labelled seat-clock claim and **not** as an age.
-- **RED:** compute ages from `Date.now()` → every desk reads *no data for 3h* on a fleet that is
-  reporting normally, and the operator is sent to look at a healthy fleet.
+- **RED:** compute ages from `Date.now()` → **every desk on the floor reads *nothing done for 3h*** on
+  a fleet that is reporting normally, and the open panel's receipt age reads *no data for 3h* beside a
+  stamp naming a fetch three hours in its own past. The observable is named on the readout the fixture
+  actually produces: an earlier revision of this RED named a desk receipt age, which
+  [§ 5.1](#51-the-desk)'s `dark-only` marker had already removed from every desk in this fixture — so
+  the failure it claimed to watch could not have appeared, and a RED nobody can see is the decoration
+  [§ 11](#11-acceptance-tests)'s preamble refuses.
 - **Second RED:** render `action.started_at` as an elapsed time → a seat skewed by +10 minutes shows a
   call that started in the future ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)).
 - **Discriminating control:** the same fixture with the browser clock correct → identical output, so the
@@ -1524,12 +1646,19 @@ all.*
 ### AT-D3-13 every state is legible without motion
 
 - **Build:** render `fx-snapshot-4`, `fx-degraded` and a seat in each remaining `render_state` member
-  under `prefers-reduced-motion: reduce`; capture a static image of each desk.
+  under `prefers-reduced-motion: reduce`; capture a static image of each desk. **The remainder is
+  named rather than left to be worked out**, because *"each remaining member"* is only checkable
+  against a stated partition: `fx-snapshot-4` delivers `working`, `idle` and `blocked`; `fx-degraded`
+  delivers `catching_up`, `stale`, `offline`, `disabled` and `retired`; so the seats this test adds are
+  **`stalled`** (with an `api_error_type` of `rate_limit`) and **`unknown`** (with an `unknown_reason`
+  of `turn_killed_by_clear`) — two, and the ten are covered.
 - **GREEN:** all **ten** `render_state` members are pairwise distinguishable from the static images
   alone, and each carries its label line; every animation row's reduced-motion form is what appears;
-  the log gains **no `edge` row**, and every `held` row it carries reads **`motion: false`** — which is
-  the assertion that the reduced-motion form was *selected*, where an empty log would equally have
-  reported a renderer that drew nothing at all.
+  the log gains **no `edge` row**, and every `held` row with **`phase: entered`** reads
+  **`motion: false`** — which is the assertion that the reduced-motion form was *selected*, where an
+  empty log would equally have reported a renderer that drew nothing at all. The phase scope is
+  load-bearing rather than pedantic: a `left` row's `motion` is `false` by definition, so a predicate
+  over *every* `held` row is satisfied in part by rows that prove nothing about reduced motion.
 - **RED:** distinguish `working` from `idle` by motion alone — the same pose, one animated — and the two
   become one desk in a screenshot, which is how most of this floor will be reviewed and how all of it
   will be read by anyone who has motion disabled.
@@ -1713,7 +1842,7 @@ review can reverse it deliberately rather than discover it later.
 | 6 | **The desk slot is a pure hash function of `(install_id, seat_id)`** ([§ 3.2](#32-the-desk-slot-function)) | sorted order; arrival order; a server-assigned slot | Sorted order shifts the whole floor when a seat is provisioned; arrival order is not a function of the rendered set, so two browsers disagree; a server slot is a field this document may not mint. The hash gives every client the same answer with no stored state at all | an arrival can displace an incumbent on a collision — bounded to the chain, rendered as a move, and with its frequency stated as `N/S` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
 | 7 | **A desk move is an event and is animated as one** | re-lay the floor silently on the next render | The rule that governs everything else on this floor is that nothing moves without a cause. A silent re-layout would be the one exception, on the one occasion an operator is most likely to think they misread the screen | one more animation row, and one more thing that can be got wrong |
 | 8 | **An unknown seat in a delta is FETCHED, never patched** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) | apply the patch as an insert; or ignore the delta until the next snapshot | A patch is a shallow merge over an object the client may not hold, so the insert would be a seat object with holes, and a hole renders as *nothing is happening*. Ignoring it leaves a live seat invisible until a reconnect | one HTTP request per newly-seen seat, ever. [§ 14](#14-open-questions-for-the-review-loop) item 2 is the membership message that would remove even that |
-| 9 | **Install membership is snapshot-only, and the snapshot that discovers one is triggered by a rendered disagreement, never by a timer** ([§ 4.1](#41-the-lobby--the-building-summary), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) | poll the snapshot on a timer; or leave discovery to a reconnect and the manual refresh alone | A discovery poll invents a cadence D2 does not state and fetches the whole fleet on a schedule. But `fleet.seats_total` already rides every heartbeat, so the client can **prove** its population is short within 15 s — and a floor that renders *the client holds 3 of 4 seats* and then does nothing about it is a floor that reports a defect it could have fixed with one request. Rendering *membership as of HH:MM:SS* keeps the staleness visible in the meantime | one snapshot fetch per distinct disagreement — bounded by how often the fleet's own count moves, not by a clock. An earlier draft of this row said a new install stays invisible until a reconnect or a manual refresh; that was contradicted by the discrepancy check two sections away, and the check is the half worth keeping |
+| 9 | **Install membership is snapshot-only; the snapshot that discovers one is triggered by a rendered disagreement, never by a timer; and a discovered install is then ADMITTED rather than merely rendered** ([§ 4.1](#41-the-lobby--the-building-summary), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`) | poll the snapshot on a timer; or leave discovery to a reconnect and the manual refresh alone | A discovery poll invents a cadence D2 does not state and fetches the whole fleet on a schedule. But `fleet.seats_total` already rides every heartbeat, so the client can **prove** its population is short within 15 s — and a floor that renders *the client holds 3 of 4 seats* and then does nothing about it is a floor that reports a defect it could have fixed with one request. Rendering *membership as of HH:MM:SS* keeps the staleness visible in the meantime | one snapshot fetch per distinct disagreement, **plus one ADMIT fetch per install ever admitted** — bounded by how often the fleet's own count moves and by how often an install is provisioned, not by a clock. An earlier draft of this row said a new install stays invisible until a reconnect or a manual refresh; that was contradicted by the discrepancy check two sections away, and the check is the half worth keeping. A later draft made the discrepancy fetch the discovery path and stopped there — **discovery without a subscription is a one-frame photograph**, and the per-distinct-`(N, M)` rule guaranteed there was no second chance at one, which is why the subscribe-then-fetch-then-drain ordering is now a named primitive every entry path cites rather than three steps living inside the connect sequence |
 | 10 | **The removal of a desk happens only on a snapshot apply** | remove on `render_state: "retired"`, or on any signal | A removal driven by an absence is the inference this design refuses everywhere else. Only a fresh, complete population can honestly say a seat is no longer in it | a seat retired more than 14 days ago lingers until the next snapshot. It renders as `retired` throughout, which is true |
 | 11 | **The subagent array cap stays at 8** ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | raise it to 15, the largest value the 8 KiB bound admits | The drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table, where 15 stools is D2's "a list, not a desk" at a smaller number; and the 2,080 B of spare is the margin the next field addition needs | a fleet that routinely runs more than 8 concurrent dispatches reads *+N more* on the floor and opens the panel for the detail. Both halves of what would change this are measurable after P3 |
 | 12 | **`prefers-reduced-motion` is a first-class rendering with its own column** | disable animation and accept that some states collapse | Two states distinguished only by motion are one state in a screenshot and one state to any viewer with motion disabled — and screenshots are how most of this floor will be reviewed | every animation row owes a static form, which is one more column to keep true and is checked by [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) |
@@ -1724,7 +1853,7 @@ review can reverse it deliberately rather than discover it later.
 | 17 | **Provenance is a build gate, not a document** | keep `ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the socket, since an authorized handshake opened it | D2 refuses machine tokens on the socket precisely because an open connection has no revocation story — and the browser's session has the same property, which D2 does not address ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
-| 20 | **The animation table carries two classes — `edge` and `held` — and the log records both, under different causality rules** ([§ 6.2](#62-the-animation-table--the-closed-set), [§ 11](#11-acceptance-tests)) | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and one more field in the log, and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy |
+| 20 | **The animation table carries two classes — `edge` and `held`; the log records both under different causality rules; and a `held` render writes an `entered` row and a `left` row, each with its own `cause` rule** ([§ 6.2](#62-the-animation-table--the-closed-set), [§ 11](#11-acceptance-tests)) | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and three more fields in the log (`phase`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in all six fields, from which *for how long* was unrecoverable |
 
 ---
 
@@ -1927,11 +2056,19 @@ reason to leave two readings live.
     **Blocks:** nothing permanently — the next delta for that seat trips the gap detector and
     [§ 9](#9-failure-paths-and-their-observables) F2 resyncs it — but a seat that changes inside the
     window and then goes quiet holds its pre-change state until a full snapshot, which is D2 § 8.4's
-    own named failure. **In the meantime:** [§ 2.2](#22-connect-snapshot-deltas) **step 6b** — one
-    extra snapshot fetch on a cold start, covering exactly the installs first subscribed at step 6,
-    drained against their own per-seat watermarks. **Closes it:** an installs-list endpoint the client
-    can call before subscribing, or a fleet-wide bootstrap channel it can subscribe to without knowing
-    any install id — either makes step 2 complete on a cold start and retires 6b.
+    own named failure. **The window is not cold-start-only**, which is why the remedy below is a
+    primitive rather than a step: an install provisioned while a client is connected enters the
+    rendered set mid-session and has exactly the same unsubscribed round trip in front of it.
+    **In the meantime:** [§ 2.2](#22-connect-snapshot-deltas)'s **`ADMIT`** — subscribe, re-fetch,
+    drain — run at step 6 over exactly the installs step 2 could not know about, at the cost of one
+    extra snapshot on a cold start and none afterwards. The same primitive is what admits an install
+    discovered mid-session by [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy fetch, so the
+    cold-start window and the mid-session one are closed by one rule rather than two.
+    **Closes it:** an installs-list endpoint the client can call before subscribing, or a fleet-wide
+    bootstrap channel it can subscribe to without knowing any install id — either makes step 2 complete
+    on a cold start and reduces step 6 to a no-op. **Neither retires `ADMIT` itself**, which is the
+    half worth stating: an install provisioned while a client is connected enters the rendered set
+    mid-session however step 2 is fixed, and that is the call-site D2 § 8.4 never had.
 
 ---
 
