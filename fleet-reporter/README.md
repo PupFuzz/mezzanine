@@ -69,6 +69,43 @@ listed here so a reviewer can find them without reading the file.
 | Rule 6's rejoin separator on Windows | `/` for `~`, `.` and root-relative tokens (D1's own `~/…/design/…` output), `\` for a `X:` root (D1's own named root prefix) |
 | Order of `attention.resolved` vs `turn.start` on `UserPromptSubmit` | resolution first, matching every close-before-trigger ordering in § 8.3 |
 
+## Decisions a maintainer should not silently reverse
+
+**Latency is measured and printed; it is asserted only under `FLEET_REPORTER_PERF=1`.**
+D1 § 2.2 derives P-5's 250 ms budget against "Node cold start on a modern machine is 30-60 ms
+and dominates". On the machines this was built on, the interpreter's own start-up is 195-207 ms,
+so an *absolute* assertion is red regardless of what this code contains — a check pinned red by
+the interpreter discriminates nothing.
+
+The obvious repair — subtract a node baseline and assert the difference — was **tried and
+measured not to work**. With baseline and reporter samples interleaved so both see the same
+contemporaneous load:
+
+| Condition | attributable **median** | attributable **p99 difference** |
+|---|---|---|
+| idle | 53 ms | 75 ms |
+| six busy cores | 82 ms | **−1070 ms** |
+| six busy cores, repeat | 163 ms | **+520 ms** |
+
+Identical code. The p99 difference is noise outright; the median is the better statistic and
+still triples under load, which would cross the ~190 ms headroom on a busy CI runner. An
+assertion that reds under load is worse than no assertion: it teaches the next maintainer to
+re-run until green, or to loosen the bound until it stops complaining.
+
+So the default suite run prints both figures and asserts neither, and the gate lives in a
+dedicated non-concurrent perf run (`FLEET_REPORTER_PERF=1`, run as its own CI step). **If you
+find this failing, do not raise the bound** — either the machine is loaded, in which case the
+number is not about the code, or the reporter genuinely regressed, in which case the fix is in
+the reporter. What is *always* asserted, because neither is load-sensitive, is that every hook
+exits 0 and prints nothing on stdout, on every adverse path.
+
+**`redactSecrets` has two independent legs and both are guarded.** Known VALUES the process
+holds, and known SHAPES (`CRED_PREFIX_RE`). A shape list is permanently one credential format
+behind — it does not match a bare 32-character hex string — so the value leg is the only guard
+for a secret with no recognisable prefix, and § 5 of the suite tests it *in isolation* with a
+control proving the shape leg cannot see the value. Every configured secret is registered
+(`registerConfigSecrets`), including `proxy_url` userinfo, rather than only the seat token.
+
 ## What is NOT built here
 
 The ingest endpoint, the server-side call ledger, orphan timeouts, staleness and the predicate

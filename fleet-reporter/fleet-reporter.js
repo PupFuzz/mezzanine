@@ -278,6 +278,32 @@ function loadConfig(p) {
  * whose silence means nothing unless it has been seen to speak. */
 let SECRET_VALUES = [];
 function registerSecret(v) { if (typeof v === 'string' && v.length >= 8 && !SECRET_VALUES.includes(v)) SECRET_VALUES.push(v); }
+
+/* EVERY SECRET THE CONFIG HOLDS, not just the one with a recognisable shape.
+ *
+ * The two legs of `redactSecrets` are not redundant and this is the case that separates them.
+ * `CRED_PREFIX_RE` recognises credentials by SHAPE, and a shape list is permanently one format
+ * behind — it does not match a bare 32-character hex string, which is exactly what a proxy
+ * password or a harness token looks like. For those, the KNOWN-VALUE leg is the only guard.
+ *
+ * A `proxy_url` is `https://user:password@host:port` and the password is an arbitrary string
+ * with no prefix; § 3.1 types the key as a URL and constrains nothing inside it. It is a
+ * credential this process holds in memory, so by § 20's test — can a secret VALUE reach an
+ * output stream, a log, or a traceback — it is registered here rather than enumerated at each
+ * sink, because the next sink has not been written yet. */
+function registerConfigSecrets(cfg) {
+  if (!cfg) return;
+  registerSecret(cfg.token);
+  for (const key of ['proxy_url', 'ingest_url']) {
+    const raw = cfg[key];
+    if (typeof raw !== 'string') continue;
+    try {
+      const u = new URL(raw);
+      if (u.password) registerSecret(decodeURIComponent(u.password));
+      if (u.username) registerSecret(decodeURIComponent(u.username));
+    } catch (e) { /* not a parseable URL: config validation reports it on its own surface */ }
+  }
+}
 const CRED_PREFIX_RE = /\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;
 function redactSecrets(s) {
   let out = String(s);
@@ -1544,7 +1570,7 @@ function hookMain(hookName) {
   const cp = configPath();
   const { config, errors } = loadConfig(cp);
   if (!config) return;                                   // nothing to spool to, and nothing to say
-  registerSecret(config.token);
+  registerConfigSecrets(config);
   const spool = config.spool_dir;
   if (errors.length) { count('config_invalid'); logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`); }
   if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook', atMs); return; }
@@ -1587,7 +1613,7 @@ function statuslineMain() {
   const { config, errors } = loadConfig(cp);
   const raw = readStdin();
   if (!config) { return; }
-  registerSecret(config.token);
+  registerConfigSecrets(config);
   const spool = config.spool_dir;
   if (errors.length) count('config_invalid');
 
@@ -2248,7 +2274,7 @@ async function flusherMain() {
   const cp = configPath();
   const { config, errors } = loadConfig(cp);
   if (!config || !config.spool_dir) { return; }
-  registerSecret(config.token);
+  registerConfigSecrets(config);
   const spool = config.spool_dir;
   ensureDir(spool);
   const atStart = now();
@@ -2669,7 +2695,7 @@ function runSelftestChecks(config, cp) {
 function selftestMain() {
   const cp = configPath();
   const { config } = loadConfig(cp);
-  if (config) registerSecret(config.token);
+  registerConfigSecrets(config);   // null-guarded internally
   const { results, detail } = runSelftestChecks(config, cp);
   const report = { reporter_version: REPORTER_VERSION, schema_version: SCHEMA_VERSION, checks: {}, detail };
   for (const c of SELFTEST_CHECKS) report.checks[c] = results[c] === true ? 'pass' : 'fail';

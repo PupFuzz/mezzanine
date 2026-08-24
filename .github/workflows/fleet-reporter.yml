@@ -70,5 +70,15 @@ jobs:
           PY
 
       # The acceptance suite: RED plants for every safety property, then the real reporter.
+      # Latency is MEASURED here and asserted in the step below, not this one — see
+      # fleet-reporter/README.md § Decisions for the measurements behind that split.
       - name: Acceptance suite (hermetic — TLS stub on loopback, no credential, no network)
         run: python3 fleet-reporter/fleet-reporter.selftest.py
+
+      # THE LATENCY GATE, ON ITS OWN, SEQUENTIALLY. P-5 is a real requirement and it does have a
+      # gate — it just cannot share a run with anything else, because the measurement is
+      # load-sensitive enough that a concurrent step turns it into a coin flip. Running it as a
+      # separate step on an otherwise-idle job is what makes its verdict mean something. It
+      # re-runs the whole suite, which is cheap relative to being unable to trust the number.
+      - name: Latency gate (P-5, asserted — runs alone so the measurement is about the code)
+        run: FLEET_REPORTER_PERF=1 python3 fleet-reporter/fleet-reporter.selftest.py
