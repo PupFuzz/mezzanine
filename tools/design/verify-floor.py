@@ -15,7 +15,9 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G4  section 12 <-> definition site            each number as a whole token at the section it cites,
                                                then PERTURBED to prove the match can fail there
   G5  acceptance-test closure                   fixture <-> test both ways; every test has a RED;
-                                               AT ids contiguous from 1
+                                               AT ids contiguous from 1; the build order gates every
+                                               artifact a test reads; the animation-log schema's two
+                                               homes; the episode walk's own episode and row counts
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
   G7  state and badge render closure            a D2 enum member with no render, or a render for a
                                                member D2 does not declare
@@ -618,6 +620,59 @@ else:
         fail.append(f"G5: section 11 says {m3.group(1)} fields take their meaning from the row's "
                     f"class and the table below it has {len(log_table)} rows — one fact, two homes, "
                     f"and this is the count that read `four` against five rows for a whole revision")
+
+# G5, fourth half: THE EPISODE WALK AND THE SENTENCE THAT COUNTS IT.  Section 11 walks
+# `fx-clear-trace` delta by delta and names each held render's entry and exit as an (A_n, episode N)
+# pair, then states in prose how many episodes and how many rows that walk yields.  The two are one
+# fact with two homes and the prose read `six`/`eleven` over a table yielding five and nine -- a
+# figure that survived the pass that falsified it, because nothing re-computed it.  Both figures are
+# re-derived here FROM THE TABLE'S OWN PAIRS, so the next edit to the walk moves the count with it.
+# The walk table is INDENTED under a list item, so `table_rows`'s `startswith("|")` cannot read it --
+# which is exactly why nothing had ever read it.  Found by structure, tolerant of the indent.
+walk_rows = None
+for _i, _l in enumerate(lines):
+    if re.match(r"^\s*\| At \| The facts that moved \| Episodes \|", _l):
+        walk_rows, _j = [], _i + 2
+        while _j < len(lines) and lines[_j].lstrip().startswith("|"):
+            walk_rows.append(lines[_j].strip())
+            _j += 1
+        break
+if not walk_rows:
+    fail.append("G5 CONTROL: section 11's `fx-clear-trace` episode walk did not parse — the count "
+                "sentence beside it would have nothing to disagree with, which is the state it was "
+                "in when it read `six`/`eleven` over a five-episode, nine-row table")
+else:
+    entered, left = set(), set()
+    for r in walk_rows:
+        c = cells(r)
+        ep_cell = c[2] if len(c) > 2 else ""
+        for aid, phase_, ep in re.findall(r"(A\d+)\s+\*\*(entered|left)\*\*\s+\(episode\s+(\d+)\)",
+                                          ep_cell):
+            (entered if phase_ == "entered" else left).add((aid, int(ep)))
+    if not entered:
+        fail.append("G5 CONTROL: the episode walk parsed but names no `entered` episode — the pair "
+                    "recognizer is broken and both figures below would be re-derived as zero")
+    orphan = sorted(left - entered)
+    for o in orphan:
+        fail.append(f"G5: the episode walk gives {o[0]} episode {o[1]} a `left` row with no `entered` "
+                    f"row before it. Section 11's own predicate is that a `left` row's `episode_id` "
+                    f"must match an `entered` row that precedes it, and the walk is the fixture that "
+                    f"predicate is asserted against")
+    n_ep, n_rows = len(entered), len(entered) + len(left)
+    m_cnt = re.search(prose(r"\*\*([A-Za-z-]+) `held` episodes, ([A-Za-z-]+) `held` rows\*\*"), raw)
+    if not m_cnt:
+        fail.append("G5 CONTROL: section 11 no longer states how many held episodes and rows its "
+                    "episode walk yields, so the walk's own arithmetic has no stated home to check")
+    else:
+        said_ep, said_rows = NUM.get(m_cnt.group(1).lower()), NUM.get(m_cnt.group(2).lower())
+        if said_ep != n_ep or said_rows != n_rows:
+            fail.append(
+                f"G5: section 11 says {m_cnt.group(1)} `held` episodes and {m_cnt.group(2)} `held` "
+                f"rows, and the episode walk above it yields {WORD.get(n_ep, n_ep)} episodes "
+                f"({sorted(entered)}) and {WORD.get(n_rows, n_rows)} rows "
+                f"({len(entered)} entered + {len(left)} left). One fact, two homes — and this is the "
+                f"pair that read six and eleven over a table yielding five and nine, because the "
+                f"sentence was written once and never re-derived from the walk it describes")
 
 fx_rows = table_rows(raw, r"^\| Fixture \| Contents \|")
 fx_declared = set()
