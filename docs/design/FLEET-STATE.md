@@ -699,7 +699,9 @@ legible as a rising count rather than as calls that quietly stop being open.
 threshold, the sweeper closes its open facts:
 every open call becomes `aborted` / `seat_offline` / `close_source: server_offline`, counting
 `offline_quiesced_calls`; an open turn is recorded as ended without a `turn.end`
-(`turn_close_source: server_offline`, `last_turn_end_reason: server_session_close`, so the derivation
+(`turn_close_source: server_offline`, `last_turn_end_reason: server_session_close`,
+`last_turn_aborted_count: 0` — the calls were closed by the step before this one and counted there,
+so this turn close aborts none of its own — so the derivation
 lands on `unknown` / `session_closed_turn_open` rather than on a null `L`); an open compaction is closed
 (`compaction_open_since := NULL`, counting `compaction_ceiling_closed`); and every open session is
 marked `ended_at` with `closed_by: server_offline`, counting `offline_quiesced_sessions`. Nothing is
@@ -1574,6 +1576,17 @@ busy seat is an ordinary hook event and only on a quiet one a heartbeat. An impl
 for a `version` member on `reporter.heartbeat`'s `data` to compare would find none, and would write a
 rule that can never fire.
 
+**Where their bytes are counted, which moving them out of the exception table left unstated.** Neither
+member adds a **message** to [§ 8.3](#83-the-websocket-delta-feed)'s 8,980: that figure counts
+state-changing *events*, and a version or platform edge carries no event of its own — it rides the
+first event of any kind whose batch carries the new value, which is an event that sum has already
+counted. What the two add is **bytes to a delta that was going to be sent anyway**, and those bytes
+are already measured rather than unaccounted: both sit inside the `reporter` object of
+[§ 8.3.2](#832-worked-worst-case-delta)'s worked block, so they are inside the worst-case delta
+[§ 12](#12-every-number-and-where-it-comes-from) traces to that block and inside the typical delta
+whenever an edge moves them. Nothing in the accounting has to change for them, which is the answer —
+not that they are free, but that they were never outside the figures.
+
 **Why excluding them costs a consumer nothing, which is the load-bearing half.** Every quantity this
 document says is *rendered* from one of the ten is rendered from a value that cannot be moving at the
 moment it is read. "No data for N" is rendered only on a `stale` or `offline` seat
@@ -1992,9 +2005,11 @@ All four endpoints require authentication ([§ 9](#9-read-side-authentication)).
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the nine fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 
 Every snapshot this plane answers counts `snapshot_served`
-([§ 7.2](#72-this-planes-own-counters-and-badges)); the refusal path and its `snapshot_denied` twin are
-[§ 9](#9-read-side-authentication)'s, and the pair read together is what tells a fleet-health reader
-that a read plane refusing everything is refusing rather than idle.
+([§ 7.2](#72-this-planes-own-counters-and-badges)); the refusal path is
+[§ 9](#9-read-side-authentication)'s and the rule its `snapshot_denied` twin obeys — zero seat data in
+the body, the row left untouched, one shape for all three refusal causes — is written out at
+[§ 8.6](#86-a-deliberately-invalid-exchange). The pair read together is what tells a fleet-health
+reader that a read plane refusing everything is refusing rather than idle.
 
 `/api/fleet/health` is a **different endpoint from D1's `/api/ingest/health`** and the two are never
 merged: one answers "which schema versions does the ingest accept" to a seat holding an ingest token,
@@ -2563,7 +2578,7 @@ re-authorization, not just opening a port.
 | Property | Value | Derivation |
 |---|---|---|
 | Token entropy and storage | 32 CSPRNG bytes → 43 base64url chars; SHA-256 stored, plaintext never | [D1 § 3.3](EVENT-SCHEMA.md#33-authentication-and-the-identity-binding-rule), cited |
-| Prefix | `mzr_` | greppable and distinct from the ingest's `mzn_`; the distinction is what makes `token_wrong_surface` detectable rather than a mystery `401`. **This document mints a credential prefix D1's sanitizer does not know**: [D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 3's known-prefix regex enumerates `mzn_` and not `mzr_`, so a read token pasted into a descriptor would not be redacted by that rule. Reachability is low — D1 § 7.1's descriptor allowlist runs first, and a read token has no reason to be near a seat — but [§ 1.3](#13-the-boundary-stated-as-a-rule) obliges the sentence that adds the rule to file the gap, and it is [§ 14](#14-open-questions-for-the-review-loop) item 11 |
+| Prefix | `mzr_` | greppable and distinct from the ingest's `mzn_`; the distinction is what makes `token_wrong_surface` detectable rather than a mystery `401`. This document mints a credential prefix D1's sanitizer did not know, which [§ 14](#14-open-questions-for-the-review-loop) item 11 filed and D1 has since closed: [D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 3's known-prefix regex now enumerates `mzr_` beside `mzn_`, so a read token pasted into a descriptor is redacted by that rule. Reachability was low either way — D1 § 7.1's descriptor allowlist runs first, and a read token has no reason to be near a seat — but [§ 1.3](#13-the-boundary-stated-as-a-rule) obliges the sentence that adds a rule on top of a D1 fact to file the gap rather than work around it, and filing it is what got it fixed |
 | Expiry | **90 days** | long enough that rotation is quarterly rather than constant, short enough that a forgotten token dies. Multiple tokens may be active, so rotation is issue-then-revoke with no overlap window to specify |
 | Revocation | checked **per request**, never cached | a revoked credential that keeps working for a cache TTL is a revocation that did not happen. One indexed lookup per request, at a consumer rate of ≤ 1/min |
 | Rate limit, token | **120 req/min** | the same ceiling D1 sets for a seat's ingest requests, reused so the fleet has one request-rate number; the watchdog's real cadence is ~1/min, so this is ~120× headroom and can only be reached by a loop |
@@ -3233,7 +3248,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | **Feed message-type closure** | every `t` value named anywhere against [§ 8.3](#83-the-websocket-delta-feed)'s table | **tool-checked** |
 | **Counter closure** | every counter named in prose or an AT against [§ 7.1](#71-d1s-server-side-counters--where-they-live) / [§ 7.2](#72-this-planes-own-counters-and-badges), including the `Stored` and `Exposed` columns; that a counter naming **fleet health** as its surface is carried by [§ 8.2.4](#824-the-fleet-health-object)'s `counters` member, because a surface that does not carry the thing is no surface; D1 § 12.7's population against § 7.1; and the **count** of that population as this document states it in prose | **tool-checked** |
 | **[§ 12](#12-every-number-and-where-it-comes-from) ↔ definition site** | each row's number as a **whole numeric token** at the section it cites, with its unit beside it where this table gives one; then the same match **perturbed** to prove it can fail for that row | **tool-checked**, with its own residue printed — not "checked" flatly, because an earlier version of this check was a substring search over the whole cited section and could not see a two-digit value change at all. Numbers for which some other value would also have matched — one- and two-digit values in sections full of them — are listed individually on every run rather than counted as passes |
-| **Appendix A** | its three stated counts against its own row counts; the marker/semantic **split** re-derived per row; and every D1 section containing a literal `D2` against the sections Appendix A cites **from a D1-attributed position only** — the D1-source column, an explicit `D1 §`, or a link into D1, never the "Discharged in" column, whose `§ n` links are this document's own sections and once satisfied the requirement by collision | **tool-checked**, with a stated limit: the tool cannot re-derive a **semantic** obligation D1 addresses to a consumer without the marker (row S29 is one), so it checks the marker population, re-derives the size of the semantic half (fourteen rows) and reports that sweep as manual |
+| **Appendix A** | its three stated counts against its own row counts; the **split** between the rows D1's obligation markers reach and the manual residue, re-derived per row; every D1 section containing a literal `D2` against the sections Appendix A cites **from a D1-attributed position only** — the D1-source column, an explicit `D1 §`, or a link into D1, never the "Discharged in" column, whose `§ n` links are this document's own sections and once satisfied the requirement by collision; and, since [§ 14](#14-open-questions-for-the-review-loop) item 13 landed, that no D1 section mentions D2 **without marking which sentence is the obligation** — the S29 shape, which a section-level check reported clean over | **tool-checked**, with a stated limit: a row whose D1-source column names no section number cannot be reached by any marker convention, so the tool re-derives that residue per run and prints it by name rather than folding it into a pass count |
 | **Fixture arity** | a fixture described as "§ N's *k* events" against § N's own row count | **tool-checked** |
 | **Retention chain** `8 < 10 < 14` | the three numbers extracted from their one home each, as an inequality | **tool-checked** |
 | **§ 10's trace** | delta count and transition count re-derived from the table's own columns | **tool-checked** |
@@ -3299,24 +3314,35 @@ review can reverse it deliberately rather than discover it later.
 ## 14. Open questions for the review loop
 
 Each names what it blocks, what this document does in the meantime, and what would close it. Items 1,
-2, 4, 5, 10, 11 and 12 are **D1 amendment needs**: this document does not edit D1
-([§ 1.3](#13-the-boundary-stated-as-a-rule)), so they are written here as requests. In every one of the
-seven, D2 states a well-defined rule of its own and says which reading it took — an amendment need is
-never a reason to leave two readings live.
+2, 4, 5, 10, 11 and 12 were **D1 amendment needs**: this document does not edit D1
+([§ 1.3](#13-the-boundary-stated-as-a-rule)), so they were written here as requests. In every one of
+the seven, D2 stated a well-defined rule of its own and said which reading it took — an amendment need
+is never a reason to leave two readings live.
 
-1. **⇢ D1 — does the flusher's `inferred_silence` `session.end` carry a `turn.end`?**
+**All seven, and item 13's marker convention, were ruled on and landed in D1 (card#7521); each is
+closed below with the D1 anchor its amendment landed at.** Where D2 had stated a reading, the
+amendment adopted that reading, so no rule in this document moved — what changed is that the second
+reading is gone from D1 rather than merely unused here. Items 3, 6, 7 and 9 remain open and are not
+D1's: they need an operator answer, a proposal document, or D3.
+
+1. **✅ CLOSED — the flusher's `inferred_silence` `session.end` carries no `turn.end`.**
    D1 § 6.0's kind table lists `turn.end` as hook-emitted, and § 6.2's turn-closing reap is on the
-   `SessionEnd` **hook** path. The flusher's 90-minute close is neither. **Blocks:** nothing — this
-   document closes the turn server-side and derives `unknown` / `session_closed_turn_open`
-   ([§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)). **Closes it:** one sentence in D1 § 6.2 either
-   way. If the flusher does emit one, the server close becomes a harmless no-op through the same
-   idempotent upsert.
+   `SessionEnd` **hook** path; the flusher's 90-minute close is neither, and
+   [D1 § 6.2](EVENT-SCHEMA.md#62-sessionend) now says so outright — the flusher holds no call index
+   to walk and observes no turn ending, so the server closes the turn. **Closed at** D1 § 6.2, the
+   paragraph beginning *"The flusher's 90-minute `inferred_silence` close is not that path"*, which
+   points back at [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own). The ruling's reason is the one
+   this item offered: a hook-path exception on the flusher buys nothing the idempotent server close
+   does not already provide. Nothing in this document changes.
 
-2. **⇢ D1 — which clock does the orphan timeout run on?**
-   § 8.6 says "record `started_at = event_time`" and § 12.5 gives the ceilings, but neither says whether
-   the 15/60-minute clock is the seat's or the server's. On a seat skewed +10 minutes the two readings
-   differ by the whole ordinary ceiling. **Blocks:** nothing — [§ 4.7](#47-which-clock-each-ceiling-is-measured-from)
-   uses `received_at` and states why. **Closes it:** a clock named on D1 § 12.5's row.
+2. **✅ CLOSED — the orphan timeout runs on the server's `received_at`.**
+   D1 § 8.6 says "record `started_at = event_time`" and § 12.5 gives the ceilings; neither said whose
+   clock the 15/60-minute ceiling ran on, and on a seat skewed +10 minutes the two readings differ by
+   the whole ordinary ceiling. **Closed at** [D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts):
+   both ceiling rows now name the clock and the paragraph below the table states the reason this
+   document gave — `started_at = event_time` is right for a *duration* and wrong for a *ceiling*,
+   because seat clock skew must not move a server ceiling. It matches
+   [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), so no rule here moves.
 
 3. **⇢ Review / operator — the proposal's three-tier status fallback, and who designs the board and
    GitHub producers.**
@@ -3326,19 +3352,24 @@ never a reason to leave two readings live.
    task title — a floor built today shows telemetry-derived titles only. **Closes it:** the proposal's
    text, plus a ruling on whether the two producers are a D2 addendum or their own card.
 
-4. **⇢ D1 — `D2-MUST` #4's ordering key across a `seq_epoch` change.**
-   The key is written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key is not
-   total across a reset. This document uses `(event_time, seq_epoch, seq)`, which reduces to D1's
-   whenever the epoch is constant ([§ 6.5](#65-the-fold)). **Blocks:** nothing. **Closes it:** adding
-   `seq_epoch` to the key in D1 § 12.6 row 4, or a statement that the tie is not worth ordering.
+4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
+   The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was
+   not total across a reset. **Closed at** [D1 § 12.6](EVENT-SCHEMA.md#126-the-five-d2-must-constraints)
+   row 4, which now reads `(event_time, seq_epoch, seq)` and states that it reduces to the old key
+   whenever the epoch is constant; D1 § 10.2's out-of-order row moved with it, so the key has one
+   spelling in D1 rather than two. This document's comparator ([§ 6.5](#65-the-fold)) is now the
+   literal reading of the constraint rather than a refinement of it.
 
-5. **⇢ D1 — is `reporter.heartbeat.degraded` meant to be sticky?**
-   Its members are raised by counters that are monotonic since flusher start, so one dropped event
-   badges `lossy` for the life of that flusher. This document renders it as "since reporter start" with
-   `uptime_s` beside it ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)). **Blocks:** nothing.
-   **Closes it:** either a confirmation that sticky-until-restart is intended, or a windowed variant
-   (a `degraded_since` per member, or counters reported as deltas) — the second is a wire change and
-   therefore a D1 decision, not a D2 one.
+5. **✅ CLOSED — sticky-until-restart is intended, and the consumer clause is now D1's.**
+   Its members are raised by counters monotonic since flusher start, so one dropped event badges
+   `lossy` for the life of that flusher. **Closed at**
+   [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters), the paragraph beginning *"Membership is
+   sticky until the flusher restarts"*: the windowed variant (a `degraded_since` per member, or
+   counters as deltas) was weighed and rejected as a wire change that would cost the property the
+   stickiness buys — a badge that clears itself cannot be told from one that never fired. D1 now
+   carries the rendering clause this document had been applying alone: a consumer renders every
+   member with `uptime_s` beside it. **No wire change**, and
+   [§ 7.3](#73-how-the-reporters-own-counters-are-handled) is unchanged.
 
 6. **⇢ Operator — backups for the store, and where the sandbox's MySQL lives.**
    [§ 6.10](#610-durability-posture) argues that backups are an operational choice rather than a
@@ -3371,17 +3402,17 @@ never a reason to leave two readings live.
    re-planted red before this sentence was rewritten. A check that has been watched failing is
    evidence; a check *described* as having been is not.
 
-   **Two things remain open, and neither is small enough to leave implicit.** First, the obligation
-   table's *semantic* population: **fourteen** of Appendix A's twenty-nine rows cite D1 sections that
-   carry no `D2` marker, so they are not re-derivable by grep — the tool now re-derives that split per
-   row and prints it, rather than the paragraph asserting it. Second, the
-   [§ 12](#12-every-number-and-where-it-comes-from) check prints a **residue**: the numbers for which
-   some other value would also have matched at the definition site, mostly one- and two-digit values
-   in sections that are full of them. The residue is printed on every run instead of being folded into
-   a pass count, because a count of vacuous passes reports where the searcher stopped. **Closes the
-   first:** a marker convention in D1 (a `D2:` prefix on every consumer obligation), which is item 13.
-   **Closes the second:** nothing cheap — it is a property of prose, and it is stated so a reader
-   knows which rows the gate is holding.
+   **Two things were left open here, and one of them has since closed.** First, the obligation
+   table's *semantic* population: **fourteen** of Appendix A's twenty-nine rows cited D1 sections that
+   carried no `D2` marker, so they were not re-derivable by grep. **That is closed** — item 13's
+   marker convention landed in D1 § 1 and was applied at every position this appendix cites, the tool
+   derives the split from those obligation markers, and the manual remainder is **one row**, printed
+   per run. Second, the [§ 12](#12-every-number-and-where-it-comes-from) check prints a **residue**:
+   the numbers for which some other value would also have matched at the definition site, mostly one-
+   and two-digit values in sections that are full of them. The residue is printed on every run instead
+   of being folded into a pass count, because a count of vacuous passes reports where the searcher
+   stopped. **That one stays open:** nothing cheap closes it — it is a property of prose, and it is
+   stated so a reader knows which rows the gate is holding.
 
 9. **⇢ Review — the `subagents` cap of 8.**
    It is a rendering judgement made in a state document because it bounds the wire object
@@ -3394,41 +3425,54 @@ never a reason to leave two readings live.
    the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 
-10. **⇢ D1 — does a clean turn's `idle` survive its session's `session.end`?**
-    D1 § 6.4 states the idle rule as a property of the `turn.end` and says nothing about what a later
-    `session.end` does to the state it minted. Both readings are defensible and they differ on the most
-    ordinary path there is — a seat that finishes and the operator types `/exit`. **This document says
-    it survives** ([§ 4.3](#43-the-derivation-function), decision 34): the session end changes no fact
-    the idle rule reads. **Blocks:** nothing. **Closes it:** one clause on D1 § 6.4's idle rule.
+10. **✅ CLOSED — a clean turn's `idle` survives its session's `session.end`.**
+    D1 § 6.4 stated the idle rule as a property of the `turn.end` and said nothing about what a later
+    `session.end` did to the state it minted. Both readings were defensible and they differ on the
+    most ordinary path there is — a seat that finishes and the operator types `/exit`. **Closed at**
+    [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), inside the `D2-MUST` #1 block: the idle rule reads two
+    facts off the `turn.end` and a `session.end` falsifies neither, so the state survives. D1 also
+    distinguishes it from the `stalled` exits in the same block, which clear a refused state rather
+    than a finished turn — the reading collision this item did not name. Matches
+    [§ 4.3](#43-the-derivation-function) decision 34.
 
-11. **⇢ D1 — add `mzr_` to the § 7.3 rule 3 credential regex.**
+11. **✅ CLOSED — `mzr_` is in D1 § 7.3 rule 3's regex.**
     This document mints a second Mezzanine credential prefix for the read plane
-    ([§ 9](#9-read-side-authentication)); D1's known-prefix sanitizer enumerates `mzn_` only, so a read
-    token appearing in a descriptor would pass that rule unredacted. Reachability is low (D1 § 7.1's
-    allowlist runs first) and this is filed rather than worked around because
-    [§ 1.3](#13-the-boundary-stated-as-a-rule) requires the sentence that adds a rule on top of a D1
-    fact to file the gap. **Blocks:** nothing. **Closes it:** four characters in one regex.
+    ([§ 9](#9-read-side-authentication)); D1's known-prefix sanitizer enumerated `mzn_` only, so a
+    read token appearing in a descriptor would have passed that rule unredacted. **Closed at**
+    [D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 3, and the rule-7
+    backstop paragraph that enumerated `mzn_` alone moved with it — a fix in the pattern and a
+    restatement of it left stale would have been the same defect twice. Reachability was low either
+    way (D1 § 7.1's allowlist runs first); it was filed rather than worked around because
+    [§ 1.3](#13-the-boundary-stated-as-a-rule) requires it, and filing it is what got it fixed.
 
-12. **⇢ D1 — `seq_gap` raises `lossy` in § 12.7 and § 10.2, and is declared not a member in § 9.3.**
-    § 9.3's member table is "the field's value set" and its closing note says `seq_gap` is a
-    server-derived badge that is **not** a member; § 12.7's `seq_gap` row says "seat badge `lossy`" and
-    § 10.2 says the server "renders the seat `lossy`". They cannot both hold. **This document takes
-    § 9.3's reading** and raises its own `seq_gap` badge, never writing into D1's array
-    ([§ 7.1](#71-d1s-server-side-counters--where-they-live), decision 36), because a server-raised
-    `lossy` with `spool_dropped_events == 0` beside it is a badge contradicting the number § 9.3 says
-    must be rendered with it. § 12.7's `seq_collision` and `batches_refused.<error>` rows say "renders
-    degraded", which § 9.3 defines as severity prose needing a named member, and neither has one.
-    **Blocks:** nothing. **Closes it:** § 12.7's consequence column naming members of § 9.3's set, or a
-    sentence saying the server's badges are a separate vocabulary.
+12. **✅ CLOSED — the server's badges are a separate vocabulary, stated once in D1 § 12.7.**
+    § 9.3's member table is "the field's value set" and its closing note said `seq_gap` is a
+    server-derived badge that is **not** a member; § 12.7's `seq_gap` row said "seat badge `lossy`"
+    and § 10.2 said the server "renders the seat `lossy`". They could not both hold. The ruling took
+    § 9.3's reading, which is this document's ([§ 7.1](#71-d1s-server-side-counters--where-they-live),
+    decision 36). **Closed at** [D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) — and by the
+    **second** of the two closes this item offered, not the first: rather than re-word the `seq_gap`
+    row alone, D1's § 12.7 preamble now states as a class that every badge that table names belongs
+    to the server's own vocabulary and none is a member of § 9.3's array. That disposes of the
+    `seq_collision` and `batches_refused.<error>` rows this item flagged in the same breath, which a
+    row-by-row fix would have left standing. The `seq_gap` row and D1 § 10.2's two bullets were
+    re-worded under it.
 
-13. **⇢ D1 — a marker convention for consumer obligations.**
-    [Appendix A](#appendix-a--every-d1-obligation-and-where-it-is-discharged) is re-derivable by tool
-    only for the obligations D1 spells `D2`; S29 is one it addresses to "a consumer" instead, and it
-    was missed by exactly the grep that finds the others — its D1 section carries the marker
-    elsewhere, which is why a section-level coverage check stayed green over it.
-    **Blocks:** the **fourteen-row** semantic half of the obligation table, which stays a manual
-    sweep. **Closes it:** a `D2:` prefix, or a "constraining D2" note, on every consumer-addressed
-    rule in D1 — on the *obligation*, not merely somewhere in its section.
+13. **✅ CLOSED — D1 § 1 declares the marker convention, and the tool now derives the split from it.**
+    [Appendix A](#appendix-a--every-d1-obligation-and-where-it-is-discharged) used to be re-derivable
+    by tool only for the obligations D1 spelled `D2` anywhere in their section; S29 is one D1
+    addresses to "a consumer" instead, and it was missed by exactly the grep that finds the others —
+    its D1 section carries the marker elsewhere, which is why a section-level coverage check stayed
+    green over it. **Closed at** [D1 § 1](EVENT-SCHEMA.md#1-non-goals), the storage-schema row:
+    `D2-MUST` for the five numbered constraints, and a **`D2:`** prefix or a *constraining D2* note
+    for every other consumer-addressed obligation, **on the obligation sentence rather than somewhere
+    in its section** — applied across D1 at every position this appendix cites.
+    `tools/design/verify-fleet-state.py` now derives the split from those obligation markers instead
+    of from any mention of D2, **and fails on a section that mentions D2 without marking which
+    sentence is the obligation** — the S29 shape itself, which the old derivation reported clean
+    over. The manual sweep is **one row**, not fourteen: **S25**, whose D1-source column names a
+    decision-register row rather than a section number, so no marker convention in D1 can reach it.
+    The tool prints that residue per row on every run rather than folding it into a pass count.
 
 ---
 
@@ -3441,25 +3485,29 @@ enumerated here, because an obligation a downstream document did not notice is i
 one it declined. The two counts above and the two tables' row counts are checked against each other by
 `tools/design/verify-fleet-state.py`, so a row added to a table and not to a sentence reds the gate.
 
-**The population has two halves and only one is machine-derivable, which is stated because the
-difference is where the last miss was.** **Fifteen** of the twenty-nine cite a D1 section that carries
-the literal marker `D2`; the other **fourteen** cite sections that contain no `D2` anywhere, and those
-obligations were found by reading D1 rather than by grepping it. Both counts are re-derived by
-`tools/design/verify-fleet-state.py` on every run — from D1's own marker sections and from this table's
-D1-source column — rather than counted by hand, because an earlier revision of this paragraph claimed
-twenty-eight and one, and the manual remainder it understated by thirteen rows is the whole basis of
-[§ 14](#14-open-questions-for-the-review-loop) item 8's scope of closure.
+**The population had two halves and only one was machine-derivable; D1's marker convention has since
+collapsed the gap, and the remainder is stated because that is where the last miss was.**
+**Twenty-eight** of the twenty-nine cite a D1 section carrying a marker on the obligation sentence
+itself — `D2-MUST`, a `D2:` prefix, or a *constraining D2* note, the convention
+[D1 § 1](EVENT-SCHEMA.md#1-non-goals) declares; the remaining **one** is S25, whose D1-source column
+names a decision-register row rather than a section number, so no marker anywhere in D1 can reach it.
+Both counts are re-derived by `tools/design/verify-fleet-state.py` on every run — from D1's own
+obligation markers and from this table's D1-source column — rather than counted by hand, because an
+earlier revision of this paragraph claimed twenty-eight and one *against a real fourteen-row manual
+half*, and it was that understatement, not the sweep, that
+[§ 14](#14-open-questions-for-the-review-loop) item 8 scoped its closure by. The figure is twenty-eight
+and one again now; the difference is that a tool derives it and prints the remaining row by name.
 
-**What the tool checks is the coverage direction, which is not the same property**, and saying so is
-the point: it verifies that every D1 section carrying the marker is cited by some row below, from a
-position this document attributes to D1 — never from the "Discharged in" column, whose `§ n` links are
-D2's own sections and which used to satisfy the requirement by collision. It does **not** verify that a
-row was findable by grep. **S29 is the case that shows the gap.** Its obligation line carries no marker
-— D1 § 6.2 addresses it to "a consumer" — even though § 6.2 elsewhere carries one, so the grep that
-finds the others walked past it three times while the section-level check stayed green.
-[§ 14](#14-open-questions-for-the-review-loop) item 13 asks D1 for a marker convention on the
-*obligation* rather than the section, which is what would close it; until then the semantic half is a
-manual sweep of fourteen rows and the tool says so in its output rather than reporting a clean over it.
+**The tool checks two directions now, and they are different properties.** The first is coverage: every
+D1 section carrying the marker is cited by some row below, from a position this document attributes to
+D1 — never from the "Discharged in" column, whose `§ n` links are D2's own sections and which used to
+satisfy the requirement by collision. The second is the convention itself: a D1 section that mentions
+D2 **without marking which sentence is the obligation** is now a failure. **S29 is why the second one
+exists.** Its obligation line carried no marker — D1 § 6.2 addresses it to "a consumer" — even though
+§ 6.2 elsewhere carried one, so the grep that finds the others walked past it three times while a
+section-level check stayed green over it; coverage was satisfied by a different row citing the same
+section. That shape now reds. What is left is the one row no marker can reach, S25, which the tool
+prints by name on every run rather than reporting a clean over it.
 
 ### The five numbered constraints
 
@@ -3505,20 +3553,33 @@ manual sweep of fourteen rows and the tool says so in its output rather than rep
 | S28 | § 9.3, § 11.3 | `spool_dropped_events` badges the seat `lossy` **and the number is rendered** — a loss is never a badge alone | [§ 7.3](#73-how-the-reporters-own-counters-are-handled) (badges render with their counter value and `uptime_s`), [§ 7.1](#71-d1s-server-side-counters--where-they-live) (no server counter writes `lossy`, so the rendered number always belongs to the badge beside it) |
 | S29 | § 6.2 | **A consumer must not read `end_reason: "other"` as a degradation signal** — it is "a common value, not a residue", the majority of D1's own capture run, and what a non-interactive `claude -p` session ends with | [§ 6.4](#64-ddl) (`sessions.end_reason` carries `other` as an ordinary member), [§ 4.8](#48-what-may-never-mint-a-state) (the explicit row: no badge, no degradation, no rule reads it), [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule) (a `clean_turn_then_exit` with `end_reason: other` leaves `badges` empty and moves no counter) |
 
-**Nothing in D1 addressed to D2 is undischarged.** Four obligations are discharged with a stated
-divergence rather than literally, and each is filed as a D1 amendment need in
-[§ 14](#14-open-questions-for-the-review-loop) rather than absorbed silently:
+**Nothing in D1 addressed to D2 is undischarged.** Four obligations were discharged with a stated
+divergence rather than literally, and each was filed as a D1 amendment need in
+[§ 14](#14-open-questions-for-the-review-loop) rather than absorbed silently. **All four divergences
+are now closed at the D1 end (card#7521): D1 says what this document said, so these are discharged
+literally and the notes below record what moved rather than a live gap.**
 
-1. `D2-MUST` #4's ordering key gains `seq_epoch` ([§ 6.5](#65-the-fold)) — item 4.
+1. `D2-MUST` #4's ordering key **now reads `(event_time, seq_epoch, seq)` in D1**
+   ([D1 § 12.6](EVENT-SCHEMA.md#126-the-five-d2-must-constraints) row 4), so
+   [§ 6.5](#65-the-fold)'s comparator is the literal constraint and no longer a refinement of it —
+   item 4, closed.
 2. S7's ledger gains server-side closes D1 does not enumerate
-   ([§ 4.6](#46-every-open-fact-has-a-ceiling)) — items 1 and 2.
+   ([§ 4.6](#46-every-open-fact-has-a-ceiling)). The two facts that made those closes ambiguous are
+   settled in D1: the flusher's `inferred_silence` close emits no `turn.end`
+   ([D1 § 6.2](EVENT-SCHEMA.md#62-sessionend)) and the orphan ceilings run on `received_at`
+   ([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)) — items 1 and 2, closed.
+   The closes themselves remain this plane's, which is [§ 1.1](#11-what-this-document-owns)'s
+   division and never was a divergence.
 3. `D2-MUST` #1's *"leaving live"* clause is discharged for `stalled` by **clearing the fact at the
-   `stale` boundary**, not by masking the render ([§ 4.5](#45-link-states)); the same clause's silence
-   about whether a clean `idle` survives a `session.end` is item 10, where this document states its
-   reading.
-4. S13's *"seat `lossy`"* is discharged by this plane's own `seq_gap` badge, because D1 § 9.3 and
-   D1 § 12.7 disagree about whether `seq_gap` is a `degraded` member at all
-   ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) — item 12.
+   `stale` boundary**, not by masking the render ([§ 4.5](#45-link-states)). The same clause's
+   silence about whether a clean `idle` survives a `session.end` is **filled**: D1 § 6.4 now states
+   that it does, which is this document's reading ([§ 4.3](#43-the-derivation-function), decision 34)
+   — item 10, closed.
+4. S13's *"seat `lossy`"* is discharged by this plane's own `seq_gap` badge. **D1 § 9.3 and § 12.7 no
+   longer disagree**: D1 § 12.7 states as a class that the badges it names are the server's own
+   vocabulary and never members of § 9.3's array, so this plane's separate badge
+   ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) is what D1 now asks for — item 12,
+   closed.
 
 ---
 
