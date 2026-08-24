@@ -305,7 +305,7 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
   | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
   | **receipt age** | `delivery.last_receipt_at` | ***no data for 11m*** | the **desk**, under the **`dark-only`** marker below, which owns which desks may draw it and why it may tick; and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**). The form's exemplar is 11m rather than the 4m 12s the rows above use, because 4m 12s is inside no state the first surface named here can be in ([D2 § 4.5](FLEET-STATE.md#45-link-states): `stale` begins at 300 s) |
   | **action elapsed** | `action.started_received_at` | ***running for 2m 05s*** | desk and drill-down, wherever the open action is drawn; version-bearing, so it ticks. **Both ends are the server clock**, which is what makes it the one honest duration over an action ([§ 5.1](#51-the-desk)) — `action.started_at` is the seat's own claim and is rendered as a labelled timestamp beside it, never subtracted from anything |
-  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | the **desk**, but only while the `fold_lag` badge is up, as a line carrying its own inline *as of* stamp ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)); and the drill-down's derivation block, under that block's stamp. **`fetch-fresh`** on both, so never ticked on either |
+  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | **`fetch-fresh`**, so never ticked on any surface — and *which* surfaces is [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s to say, not this table's. This row fixes the string; that section owns where it appears and under what condition |
 
   **Two rendered figures look like a fifth row and are neither.** *(a)* A **currency label's
   parenthetical** — *was: working (last event 12:47, seat clock)* — carries a labelled seat-clock
@@ -668,7 +668,7 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | **interns** | the subagent list — from the **detail** response, uncapped ([§ 8](#8-interns--subagent-rendering-and-the-cap)) | `detail`, `subagents_open` |
 | **recent activity** | the timeline, newest first: `kind`, the seat-clock `event_time`, the receipt time, and the per-kind detail this document renders ([§ 5.2](#52-the-drill-down)) | the timeline endpoint |
 | **transport** — **`fetch-fresh`**, one *as of* stamp | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
-| **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id` — and the *this state is N s behind* line when the `fold_lag` badge is up, the badge being what drives the treatment ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) | `derivation.*` |
+| **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id`, and the *this state is N s behind* line on the terms [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) states — this cell names the block's contents and leaves the render rule where it is owned | `derivation.*` |
 | **reporter** — **`fetch-fresh`**, one *as of* stamp | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** and is **re-sent under the shallow merge** whenever one of the first three moves, so the block's stamp advances with it ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule) rather than dating a fetch the value has already outlived | `reporter.*`, `enabled` |
 | **badges** | every member of `badges[]`, each with its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
@@ -744,7 +744,7 @@ one, so the two documents can be read side by side.
 | the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
 | the last thing the seat did, and when it says it did it | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
-| the *this state is N s behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | the **treatment** — badge, hatched overlay, motion stops — is driven by the `fold_lag` **badge**, which is version-bearing, so a fold that has stopped still announces itself ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) whether or not the number moved. The **number** is one of the ten and is **`fetch-fresh`**: on the desk it is drawn **only while that badge is up**, on a line carrying its own inline *as of* stamp, and it is **never ticked** — [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns that render and this row cites it. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) but it is computed at read time, so a held copy is a number that stopped when the fold did — which is why the badge and not the number decides the treatment |
+| the *this state is N s behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns this render — the four things it draws, the two surfaces it draws them on, and why the **badge** and not the number decides the treatment — and this row states none of it a second time. What is this table's own is the **source**: the treatment reads `badges`, which is version-bearing and therefore delivered, and the number is `derivation.fold_lag_ms`, one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten and therefore **`fetch-fresh`**. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | the retirement plate | `retired.at`, `retired.by`, `retired.reason` | `null` | present for 14 days after retirement ([§ 3.5](#35-retirement-and-the-only-removal)) |
 
 ### 5.2 The drill-down
@@ -1166,7 +1166,7 @@ The rendering rule:
 | `link_state == "live"`, no `fold_lag` | its activity render | as the pose | full colour, motion permitted |
 | `catching_up` | the replay render (A15) | in the label only, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
 | `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
-| badged `fold_lag` | its activity render, **with a hatched overlay and the lag line** — *this state is N s behind — as of HH:MM:SS*, the one stamped line on the desk ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) | as the pose, explicitly labelled *N s behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
+| badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N s behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
 | `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | in the label only, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
 
@@ -1192,13 +1192,19 @@ degradation that can present as a healthy floor: receipts keep arriving, so the 
 every desk shows what it was doing when derivation stopped. Three renders, and they are obligations D2
 places on this document by name:
 
-1. **Per seat**, the **`fold_lag` badge** — which D2 raises past 60 s of `derivation.fold_lag_ms`:
-   the badge, the hatched overlay, the line *this state is N s behind — as of HH:MM:SS*, and **motion
-   stops** — "D3 must not present the seat's activity state as current". **This section is where that
-   line renders, and it is the only place in this document that says so**: the number is
-   `fetch-fresh`, so the desk's line carries its own inline stamp rather than borrowing a block's
-   ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule), and the same number appears again
-   in the drill-down's derivation block under that block's stamp
+1. **Per seat**, the **`fold_lag` badge** — which D2 raises past 60 s of `derivation.fold_lag_ms`.
+   **This section owns the fold-lag render, and every other site in this document points at it rather
+   than restating it** — [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration table for the
+   string, [§ 5.1](#51-the-desk) and [§ 4.3](#43-the-desk-drill-down-panel) for the two surfaces'
+   source rows, [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) for the currency
+   treatment, [§ 7.2](#72-badges-every-member-has-a-render) for the badge's own line. **The whole
+   render, in one place, is four things and no others:** the **badge**, a **hatched overlay**, the
+   **line** *this state is N s behind — as of HH:MM:SS*, and **motion stops** — "D3 must not present
+   the seat's activity state as current". It renders on **two surfaces and no others**: the **desk**,
+   and only while the badge is up, the line carrying its own inline stamp because the number is
+   `fetch-fresh` and there is no block on the desk whose stamp it could borrow
+   ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule); and the **drill-down's derivation
+   block**, where the same number appears under that block's stamp
    ([§ 4.3](#43-the-desk-drill-down-panel)). Two surfaces, one owner, one string. **The treatment is driven by
    the badge and never by a held `fold_lag_ms`**, and that is the whole of why this degradation cannot
    present as a healthy floor *here*: the fold is the delta emitter, so when it stops, a client's copy
@@ -2344,9 +2350,9 @@ reason to leave two readings live.
     product, on the **desk**; the drill-down still has it. **In the meantime:**
     [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s two markers, whose table owns what each
     permits rather than this item restating it: the receipt age is `dark-only`, and every other
-    rendered value among the ten is `fetch-fresh` (stamped *as of*, never ticked). The `fold_lag` **treatment** is driven off the badge, which is version-bearing, so the
-    degradation still announces itself even though its number does not move
-    ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)). **Closes it:** any one of —
+    rendered value among the ten is `fetch-fresh` (stamped *as of*, never ticked). The `fold_lag` render is
+    [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s, including why the degradation
+    still announces itself when its number does not move. **Closes it:** any one of —
     making `delivery.last_receipt_at` version-bearing on a coarse edge (it moves on every receipt, so
     the edge would have to be a bucket rather than the value); a periodic per-seat refresh message; or
     a stated snapshot cadence a client may rely on. The first is the one that would let a live desk
