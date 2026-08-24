@@ -23,10 +23,12 @@ it, and what it must never draw.
    and both read surfaces; [D1](EVENT-SCHEMA.md) owns the wire. This document owns everything after a
    JSON object reaches a browser. Where a fact belongs to D2 it is **cited by section**, never copied.
 2. **The client derives no state.** Every rendered fact is a field of a D2 object, named in
-   [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field). The six things the client computes
-   for itself are enumerated as a **closed list** in [§ 2.1](#21-the-six-client-computed-values-closed),
+   [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field). The seven things the client computes
+   for itself are enumerated as a **closed list** in [§ 2.1](#21-the-seven-client-computed-values-closed),
    and every one of them is presentation — a clock offset, an age, a desk position, an animation
-   selection, a per-floor count over the objects it already holds, and a sort order. A client-side
+   selection, a per-floor count over the objects it already holds, a sort order, and the client's own
+   narration of what it did and saw ([§ 5.5](#55-the-clients-own-narration)), which is labelled as the
+   client's own everywhere it renders. A client-side
    state machine over activity facts is forbidden, and so is re-deriving `render_state`
    ([D2 § 4.1](FLEET-STATE.md#41-two-axes-and-a-badge-set): "a precedence re-implemented in JavaScript
    is a second copy free to drift").
@@ -97,7 +99,7 @@ it, and what it must never draw.
 | The client protocol as the browser runs it, and the closed list of client-computed values | [§ 2](#2-the-client-end-to-end) |
 | Identity: seat → desk, install → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--floor) |
 | The three screens — lobby, floor, drill-down — and what each fetches | [§ 4](#4-the-screens) |
-| The render map: every rendered fact, its D2 field, its example value, its null render | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
+| The render map: every rendered fact, its D2 field, its example value, its null render — and the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)) | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
 | The honesty principle and the closed animation table | [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
 | Degraded rendering, per state and per badge | [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) |
 | Subagent rendering and the array cap | [§ 8](#8-interns--subagent-rendering-and-the-cap) |
@@ -138,10 +140,13 @@ does not paraphrase it.** Two corollaries bind an implementer:
 
 ## 2. The client, end to end
 
-### 2.1 The six client-computed values, closed
+### 2.1 The seven client-computed values, closed
 
 Everything the client computes for itself, and nothing else. The list is closed so that a reviewer can
-check a candidate computation against it rather than against a feeling.
+check a candidate computation against it rather than against a feeling. **Rows 1–6 are computations
+about a seat; row 7 is the client narrating itself**, and it is on the list because a list that
+enumerated only the seat-facing six left the whole status strip — the feed verdict, the *live* claim,
+the resync counter, the event log — outside the rule that exists to catch exactly that class.
 
 | # | Computed | From | Why it is presentation and not state |
 |---|---|---|---|
@@ -151,6 +156,7 @@ check a candidate computation against it rather than against a feeling.
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
 | 6 | **Sort orders** | floors by `install_id` ascending; desks by slot; timeline as served | Deterministic ordering of received objects |
+| 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the lobby event log, the *membership as of* stamp, the overflow determination, and [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup | the client's own connection state, its own request outcomes, and the seat set it holds ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
 
 **Forbidden, named because each is a computation an implementer would otherwise reach for:** deriving
 `render_state` from the two axes; inferring `idle`, `busy` or "gone" from the absence of deltas;
@@ -173,6 +179,9 @@ subscription set and the render points made explicit:
  4. GET /api/fleet/snapshot            -> installs[], each seat with its own state_version
  5. render the world as delivered      -> NO animation fires on this render (§ 6.5)
  6. subscribe to any install seen in step 4 and not yet subscribed; buffer as in step 3
+ 6b. iff step 6 subscribed to anything: RE-FETCH the snapshot for those installs.
+     Their channels were closed for the whole of steps 3-5, so a delta emitted for them
+     in that window was never RECEIVED and is in no buffer to drain  (see below, § 14 item 14)
  7. DRAIN the buffer: discard any delta whose state_version <= that seat's snapshot version,
     apply the rest in ascending order
  8. steady state: apply deltas as they arrive, iff delta.state_version == local + 1
@@ -183,10 +192,30 @@ subscription set and the render points made explicit:
 10. reconnect                          -> re-run from step 1
 ```
 
-**Subscribing before fetching is what closes the window**, and the reason is D2's:
-a state change during the snapshot query is in the buffer, and the per-seat `state_version` is the
-watermark that says whether it is already included. Step 6 exists because the *first* snapshot is also
-how the client learns which installs exist — see [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold).
+**Subscribing before fetching is what closes the window** — for every install the client already
+knows about — and the reason is D2's: a state change during the snapshot query is in the buffer, and
+the per-seat `state_version` is the watermark that says whether it is already included.
+
+**On a cold start there are no such installs, and that is a second window
+[D2 § 8.4](FLEET-STATE.md#84-snapshot-then-deltas) does not close.** Step 2 subscribes to the set the
+client intends to render; on a cold start that set is **empty**, so steps 3–5 run with no channel open
+at all and a `seat.delta` emitted in that round trip is not buffered-and-discarded — it is **never
+received**. The watermark cannot help, because it filters a buffer rather than recovering a message
+nobody was subscribed for. The ordinary convergence still applies — that seat's next delta arrives at
+`local + 2`, the gap is detected, and [§ 9](#9-failure-paths-and-their-observables) F2 resyncs it — but
+a seat whose only change fell inside the window and which then goes quiet (a `seat.retired`, a
+`/clear` landing at `unknown`, a seat that just went `offline`) holds its pre-change state until the
+next full snapshot. That is this section's own stated failure, arriving through the door it claimed to
+have shut: *the desk that changed in that window stays wrong until something else changes it — which
+on a quiet desk is never.*
+
+**Step 6b closes it**, at the cost of one extra snapshot on a cold start and none afterwards: every
+install first subscribed at step 6 is re-fetched and drained against its own per-seat watermarks, which
+is step 7's rule applied to a population step 4 could not have covered. Step 6 exists at all because
+the *first* snapshot is also how the client learns which installs exist — see
+[§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) — and
+[§ 14](#14-open-questions-for-the-review-loop) item 14 asks D2 for the installs list or bootstrap
+channel that would make step 2 complete on a cold start and retire 6b entirely.
 
 **The client never applies a delta to a seat whose current version it does not know**, which is the
 whole content of step 8's third branch and is what keeps a shallow-merge patch
@@ -204,8 +233,8 @@ connected client has never seen. **This document adds no message. It fetches.**
 | Case | What the client does | Why this and not the alternative |
 |---|---|---|
 | A `seat.delta` names a seat the client does not hold | Buffer deltas for that `(install_id, seat_id)`; `GET /api/fleet/seats/{install}/{seat}` — the endpoint D2 already publishes, which returns the **whole** seat object plus `detail`; insert it; drain the buffer against the fetched `state_version` exactly as [§ 2.2](#22-connect-snapshot-deltas) step 7 does | Applying the patch alone would insert a seat object with holes — no `render_state` on a patch that changed only `context`, no `seat_id` on one that did not. A desk drawn from a partial object is a desk whose missing fields render as *nothing is happening*, which is the one reading this product exists to remove. The fetch costs one request per new seat, ever |
-| A `seat.delta` arrives on a channel the client is not subscribed to | Cannot happen — the client receives only what it subscribed to. This is why an **install** entering the population is invisible until a snapshot | — |
-| An install exists that the client has no channel for | It appears at the **next full snapshot** — on reconnect, or on the operator pressing the lobby's refresh control. The lobby therefore carries a **`membership as of HH:MM:SS`** readout ([§ 4.1](#41-the-lobby--the-building-summary)) beside the fleet counts, so the age of the *membership* picture is visible separately from the age of the *state* picture | Polling the snapshot on a timer to discover installs would invent a cadence D2 does not state and would fetch ~91 KB ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) at 50 seats) to answer a question that changes when an operator provisions an install. Making the staleness visible costs one line of text and no requests, and [§ 14](#14-open-questions-for-the-review-loop) item 2 asks D2 for the membership message that would close it properly |
+| A `seat.delta` is emitted on a channel the client is not subscribed to | **The client never receives it — which is a loss, not a non-event.** Nothing is buffered and nothing is discarded: the change is simply absent from this client's world until a full object for that seat arrives. It is reachable in exactly one window — the cold-start round trip of [§ 2.2](#22-connect-snapshot-deltas) steps 3–5, before step 6 has subscribed — and **step 6b's re-fetch is what closes it**. It is also why an **install** entering the population is invisible until a snapshot | Recording this row as *cannot happen* was the error: what cannot happen is the **receive**; the state change it would have carried very much can, and calling the loss a non-event is how it stayed unclosed |
+| An install exists that the client has no channel for | It appears at the **next full snapshot**, and the client fetches one **as soon as the counts disagree**: `fleet.seats_total` rides every `feed.heartbeat` ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)), so a newly-provisioned install raises it within 15 s on any channel the client already holds, [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check renders the disagreement, and the one snapshot fetch it triggers discovers the install. A reconnect and the lobby's refresh control are the other two paths. The lobby carries a **`membership as of HH:MM:SS`** readout beside the fleet counts either way, so the age of the *membership* picture is visible separately from the age of the *state* picture | Polling the snapshot on a timer would invent a cadence D2 does not state and would fetch ~91 KB ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) at 50 seats) on a schedule to answer a question that changes when an operator provisions an install. **The discrepancy fetch is not that poll**: it is one fetch per *distinct* disagreement, driven by a number the wire already sends every 15 s, and it fires only when the client can already prove it is wrong — which is the same evidence it renders. [§ 14](#14-open-questions-for-the-review-loop) item 2 still asks D2 for the membership message that would close it properly |
 | A seat the client holds is **absent** from a fresh snapshot | Remove it — but **only on a snapshot apply, never on a delta or a poll**, and write one line into the lobby's event log naming the seat and the reason (*retired more than 14 days ago*, [D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)) | A removal driven by a delta would be a removal driven by an absence, which is the inference this whole design refuses. The only honest removal is a fresh, complete population telling the client the seat is no longer in it |
 
 ### 2.4 The clock, and every age on the page
@@ -221,13 +250,48 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
   `delivery.last_receipt_at`, the **quiet age** from `activity.last_received_at`, the **derivation
   lag** from `derivation.fold_lag_ms`. Their differences are the point
   ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)); collapsing
-  them into one "last seen" would destroy exactly the distinction the product is for.
+  them into one "last seen" would destroy exactly the distinction the product is for. **Which surface
+  may render which of the three is not a free choice**, because only one of them is refreshed by the
+  feed — the rule is below, and it is D2's.
 - A **seat-clock** timestamp — `action.started_at`, `context.sampled_at`, `activity.last_event_time`,
   `session.started_at` — is rendered **as the seat's own claim**, prefixed *seat clock*, and never as
   an age. D2 forbids the age reading directly
   ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by), citing
   [D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what)), and the seat's
   `delivery.clock_skew_ms` is rendered beside it in the drill-down whenever it is non-null.
+
+**Ten fields the feed never re-sends, and the two markers every render of one must carry.**
+[D2 § 6.5](FLEET-STATE.md#65-the-fold) states the version-bearing field set as a **subtraction**: the
+[§ 8.2.1](FLEET-STATE.md#821-the-seat-state-object) object *less ten bookkeeping members* —
+`delivery.last_receipt_at`, `delivery.last_heartbeat_at`, `delivery.last_seq`,
+`delivery.clock_skew_ms`, `delivery.spool_lag_events`, `delivery.oldest_unsent_age_s`,
+`reporter.uptime_s`, `derivation.computed_at`, `derivation.cursor_event_id` and
+`derivation.fold_lag_ms`. A delta is emitted only when a version-bearing field changes, and its
+`patch` carries only version-bearing members, so **a client's copy of the ten is frozen at whatever
+the last full object delivered** — on a busy `live` seat, for the life of the connection. D2 states
+the consequence as a constraint on this layer, in that same section: *"Every quantity this document
+says is rendered from one of the ten is rendered from a value that cannot be moving at the moment it
+is read."*
+
+Two markers carry that rule. **Every row of [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field)
+whose source is one of the ten carries one of them**, and `tools/design/verify-floor.py` reds when one
+does not:
+
+| Marker | What it permits | Why the value it renders is honest |
+|---|---|---|
+| **`fetch-fresh`** | rendered only from a response that has **just answered** — the snapshot apply, the drill-down's seat-detail fetch ([§ 4.3](#43-the-desk-drill-down-panel)), a resync fetch, or `fleet.health` / `feed.heartbeat` for the fleet object — stamped *as of HH:MM:SS*, and **never ticked as an age** between fetches | these are exactly the surfaces D2 names for the ten: *"served fresh by [§ 8.2.3], the snapshot and [§ 8.2.4] rather than held by a client between deltas"*. The stamp is what keeps the value a reading of a moment rather than a claim about now |
+| **`dark-only`** | rendered only on a `stale` or `offline` seat | D2's own carve-out: such a seat *"by definition is receiving nothing, so its `last_receipt_at` is frozen"* at the server too, and the **transition** into `stale`/`offline` moves `render_state` and `delivery.no_data_since`, both version-bearing — so the client is told, and the age it then renders is exact rather than merely old |
+
+**What that costs, stated rather than hidden.** A `live` desk renders **no receipt age**. The fact one
+would carry — *this pipe is alive* — is carried instead by `link_state`, which is version-bearing and
+therefore delivered, and by [§ 5.5](#55-the-clients-own-narration)'s feed status for the client's own
+half of it. The two-age divergence D2 § 3.3 calls the product is rendered in the **drill-down**, where
+both values are `fetch-fresh` under one stamp, so their difference is a difference between two values
+read at the same moment. The alternative — a receipt age ticked from a held value on a live desk —
+renders *no data for 41m* on a seat that is heartbeating perfectly, which is this document's own sin
+inverted: a healthy desk drawn dark, on every quiet seat, for as long as the socket stays up.
+[§ 14](#14-open-questions-for-the-review-loop) item 12 asks D2 for the delivery or refresh story that
+would let a live desk carry the receipt age honestly.
 
 ### 2.5 What re-renders, and when
 
@@ -362,7 +426,7 @@ is **rendered, not disappeared**:
 | `render_state: "retired"` | the desk stays in its slot, cleared: no character, chair pushed in, the nameplate marked **retired** |
 | `retired.at` / `.by` / `.reason` | rendered on the desk's label line and in full in the drill-down: *retired 2026-08-20 09:11 by aimla-pm — host decommissioned* |
 | `link_state` / `activity_state` underneath | still rendered in the drill-down, labelled *at retirement, and since* — D2 keeps deriving them and `retired` short-circuits only the **render** ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) |
-| the `seat.retired` message | the desk transitions immediately, with the reason; the delta that follows (or precedes) is idempotent |
+| the `seat.retired` message | the desk transitions immediately, with the reason and the time — the two its payload carries ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): `install_id`, `seat_id`, `reason`, `at`, and **no `by`**). The **operator** appears when the delta carrying `retired.by` lands, whichever of the two arrives first; both are idempotent ([§ 2.5](#25-what-re-renders-and-when), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained)) |
 | 14 days later | the seat leaves the snapshot by D2's read filter, and [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s last row removes the desk **on a snapshot apply only**, with a log line |
 
 **A desk never vanishes between two refreshes** — the rule
@@ -384,9 +448,9 @@ route of its own, because closing it must not cost a re-subscribe.
 | Element | Source | Rendered as |
 |---|---|---|
 | floor list | `installs[].install_id` from the snapshot, ascending | one row per floor, the row being the link to the floor |
-| per-floor state summary | the seat objects the client holds for that install ([§ 2.1](#21-the-six-client-computed-values-closed) row 5) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
+| per-floor state summary | the seat objects the client holds for that install ([§ 2.1](#21-the-seven-client-computed-values-closed) row 5) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
 | fleet totals | `fleet.seats_total`, `fleet.seats_live` | *4 seats · 4 live*, read from the wire and **never recounted** |
-| the discrepancy check | the two above | when `Σ floors ≠ fleet.seats_total`, the lobby renders *the client holds N of M seats — refreshing*, and triggers one snapshot fetch. It never silently picks a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)) |
+| the discrepancy check | the two above | when `Σ floors ≠ fleet.seats_total` the lobby renders the disagreement — *the client holds N of M seats — refreshing* when N < M, and *the client holds N seats; the fleet reports M — refreshing* when N > M, which is reachable: a seat retired more than 14 days ago leaves `seats_total` at once while [§ 3.5](#35-retirement-and-the-only-removal) keeps its desk until a snapshot apply. It triggers **one snapshot fetch per distinct (N, M) observation**: a disagreement still standing after that fetch is rendered and **not** re-fetched, so a discrepancy the snapshot cannot resolve costs one request rather than one every 15 s. It never silently picks a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)), and it is how a new install is discovered ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [decision 9](#13-decisions-taken-revisable-at-review)) |
 | membership age | the time of the last full snapshot | *membership as of 14:23:14* ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
 | store / derivation / sweep | `fleet.db`, `fleet.fold`, `fleet.sweep`, `fleet.max_fold_lag_ms`, `fleet.sweep_last_run_at`, `fleet.ingest_last_receipt_at` | three separate indicators, never one aggregate — [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object): "no aggregate rolls three health facts into one… D3 may compose a banner from these three; the wire keeps them apart" |
 | feed status | the client's own connection state ([§ 9](#9-failure-paths-and-their-observables)) | *live* · *polling (feed down)* · *reconnecting* · *reload required*, with the resync count beside it |
@@ -420,7 +484,21 @@ Opened by selecting a desk; closes to the floor; does not change the subscriptio
 - `GET /api/fleet/seats/{install_id}/{seat_id}/timeline?limit=50` — the recent-activity window
   ([D2 § 8.2](FLEET-STATE.md#82-rest)), paginated with `before` on scroll, `limit` never above 200.
 
-While the panel is open, deltas for that seat patch it live, exactly as they patch the desk.
+**While the panel is open, deltas for that seat patch it live — the version-bearing members, and only
+those.** A delta's `patch` carries the changed members of the version-bearing set
+([D2 § 6.5](FLEET-STATE.md#65-the-fold)), so the ten bookkeeping members named in
+[§ 2.4](#24-the-clock-and-every-age-on-the-page) are **not** patched by the feed. They are rendered
+from the open-fetch response, under one ***as of HH:MM:SS*** stamp per block, and they change only
+when a fresh object replaces them: a re-fetch (the panel's refresh control, a re-open, or a resync of
+that seat), a snapshot apply, or — for `delivery` alone — a delta that moves one of its two
+version-bearing members (`no_data_since`, `seq_epoch`), because the shallow merge replaces a nested
+object whole and re-sends the rest of `delivery` with it
+([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)). Nothing refreshes `derivation`, whose three members
+are all among the ten. **None of the ten is ever ticked as an age.** This document states no polling
+cadence for the panel — inventing one would be inventing a cadence D2 does not state
+([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)) — it states the
+stamp instead, so a reader can always see which moment those numbers describe.
+[§ 14](#14-open-questions-for-the-review-loop) item 12 is the amendment that would retire the stamp.
 
 | Panel section | Contents | Source |
 |---|---|---|
@@ -430,10 +508,10 @@ While the panel is open, deltas for that seat patch it live, exactly as they pat
 | **context gauge** | the bar, the percentage to one decimal, `used_tokens / total_tokens` when non-null, the sample's own age, and `context.source` (`harness` or `computed`, never mixed — [D1 § 6.11](EVENT-SCHEMA.md#611-contextsample)) | `context.*` |
 | **interns** | the subagent list — from the **detail** response, uncapped ([§ 8](#8-interns--subagent-rendering-and-the-cap)) | `detail`, `subagents_open` |
 | **recent activity** | the timeline, newest first: `kind`, the seat-clock `event_time`, the receipt time, and the per-kind detail this document renders ([§ 5.2](#52-the-drill-down)) | the timeline endpoint |
-| **transport** | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
-| **derivation** | `computed_at`, `fold_lag_ms`, `cursor_event_id` — and the *this state is N s behind* line when the badge is up | `derivation.*` |
-| **reporter** | `version`, `platform`, `uptime_s`, `selftest_failed`, `enabled` | `reporter.*`, `enabled` |
-| **badges** | every member of `badges[]`, each with its meaning, its counter value from `detail`, and *since reporter start* framing for D1's array ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
+| **transport** — **`fetch-fresh`**, one *as of* stamp | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
+| **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id` — and the *this state is N s behind* line when the `fold_lag` badge is up, the badge being what drives the treatment ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) | `derivation.*` |
+| **reporter** | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** under the same stamp | `reporter.*`, `enabled` |
+| **badges** | every member of `badges[]`, each with its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
 | **retirement** | when `retired` is non-null: at, by, reason | `retired.*` |
 | **raw** | `state_version` and the applied `(seq_epoch, last_seq)`, so a rendered state can be correlated with the wire | `state_version`, `delivery.*` |
@@ -491,7 +569,7 @@ one, so the two documents can be read side by side.
 | the monitor's content — what the seat is doing right now | `action.tool_name`, `action.descriptor` | `"Bash"`, `"Bash: composer test"` | `action` is null when no call is open: the monitor shows the desk's state line instead, never a stale last action |
 | the action's start, as the seat's claim | `action.started_at` | `"2026-08-23T14:23:09.882Z"` | rendered *seat clock*, never as an age ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) |
 | the action's elapsed time | `action.started_received_at` | `"2026-08-23T14:23:14.201Z"` | the basis of the only honest elapsed time, because both ends are the server clock |
-| the intern join key, and the *this is a subagent's call* marker | `action.call_id`, `action.agent_scope`, `action.parent_call_id` | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"`, `"main"`, `null` | labels only — D2 forbids gating anything on them ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)) |
+| the intern join key, and the *this is a subagent's call* marker | `action.call_id`, `action.agent_scope`, `action.parent_call_id` | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"`, `"main"`, `null` | labels, and **the intern join is what they are stored for** — what [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) forbids is a **state rule** gated on them ("a scope-dependent state rule"; "stored for the intern join and never gate anything"). So no pose, currency label or badge reads them, and [§ 5.2](#52-the-drill-down)'s intern list selects on them, which is the join D2 names |
 | the open-call count, when it exceeds 1 | `open_calls` | `1` | never null; `0` renders nothing rather than a zero |
 | the *thinking* pose — a turn open with no call | `open_turn` | `true` | never null; read **with** `open_calls`, and both are D2's facts, not an inference ([§ 6.2](#62-the-animation-table--the-closed-set) row A4) |
 | the side table's stools | `subagents`, `subagents[].title`, `subagents[].subagent_type`, `subagents[].started_at`, `subagents[].call_id` | `"draft the D1 event schema"`, `"coder"` | a null `title` renders **untitled** and never an invented one ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
@@ -500,14 +578,14 @@ one, so the two documents can be read side by side.
 | the context gauge | `context.used_pct` | `73.2` | `context` null ⇒ the gauge renders as *not reported*, **never as 0 %** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) |
 | the gauge's numerals and its own age | `context.used_tokens`, `context.total_tokens`, `context.source`, `context.sampled_at`, `context.sampled_received_at` | `146401`, `200000`, `"harness"` | tokens are nullable; the bar still renders from `used_pct`, which is not |
 | the model label | `model_label` | `"claude-opus-5"` | null ⇒ omitted |
-| badge cluster | `badges`, `badges_since` | `["lossy"]` | empty ⇒ nothing rendered; a badge appearing is animation [A11](#62-the-animation-table--the-closed-set) ([§ 7.2](#72-badges-every-member-has-a-render)) |
+| badge cluster | `badges`, `badges_since` | `["lossy"]` | empty ⇒ nothing rendered, and `badges_since` is then null; a badge appearing is animation [A11](#62-the-animation-table--the-closed-set). `badges_since` is the **cluster's** oldest onset ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), never a per-badge stamp ([§ 7.2](#72-badges-every-member-has-a-render)) |
 | the *reporting disabled* treatment | `enabled` | `true` | `null` before the first heartbeat, which is not the same as `false` and does not render as off |
 | *no data since …* | `delivery.no_data_since` | `null` | non-null only when `link_state ∈ {stale, offline}`; then the desk's label reads *no data since 14:18* rather than a bare glyph ([D2 § 4.5](FLEET-STATE.md#45-link-states)) |
-| the receipt age | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | drives the *no data for N* readout |
-| the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*; it and the row above are rendered as **two** readouts, because their divergence is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
+| the receipt age, and why a live desk carries none | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | **`dark-only`** — one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten, so a held copy freezes on a live seat ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). The *no data for N* readout is the row above, built from the version-bearing `delivery.no_data_since` on a `stale`/`offline` desk; no other desk renders a receipt age, and the raw value is **`fetch-fresh`** in the drill-down ([§ 5.2](#52-the-drill-down)) |
+| the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
 | the last thing the seat did, and when it says it did it | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
-| the *replaying history* treatment | `delivery.oldest_unsent_age_s` | `null` | `> 300` is what made `link_state` `catching_up` ([D2 § 4.5](FLEET-STATE.md#45-link-states)); the desk renders the drain, not the work |
-| the *derivation is N s behind* label | `derivation.fold_lag_ms` | `117` | never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)); the label appears at the `fold_lag` badge and the pose stops being read as current |
+| the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
+| the *this state is N s behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | the **treatment** — badge, hatched overlay, motion stops — is driven by the `fold_lag` **badge**, which is version-bearing, so a fold that has stopped still announces itself ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)). The **number** is one of the ten and is **`fetch-fresh`**: it is rendered with its stamp, never ticked, and never on the desk. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) but it is computed at read time, so a held copy is a number that stopped when the fold did |
 | the retirement plate | `retired.at`, `retired.by`, `retired.reason` | `null` | present for 14 days after retirement ([§ 3.5](#35-retirement-and-the-only-removal)) |
 
 ### 5.2 The drill-down
@@ -516,24 +594,38 @@ Everything in [§ 5.1](#51-the-desk), at full fidelity, plus:
 
 | Rendered element | Source | Example | Rule |
 |---|---|---|---|
-| heartbeat freshness | `delivery.last_heartbeat_at` | `"2026-08-23T14:23:00.412Z"` | rendered beside the receipt age, because a heartbeat-only seat is the case the two readings separate ([AT-D2-4](FLEET-STATE.md#at-d2-4-a-heartbeat-only-seat-never-looks-busy)) |
-| clock skew | `delivery.clock_skew_ms` | `412` | rendered whenever non-null, beside **every** seat-clock timestamp in the panel, so a narrative time is never read as an absolute one |
-| spool state | `delivery.spool_lag_events`, `delivery.oldest_unsent_age_s` | `0`, `null` | — |
-| wire provenance | `delivery.seq_epoch`, `delivery.last_seq`, `state_version`, `derivation.cursor_event_id`, `derivation.computed_at` | `"01K3T0000A5N7M2X9V4B6D0FGH"`, `48211`, `48219`, `9912837` | the correlation D2 provides for exactly this panel ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)) |
+| heartbeat freshness | `delivery.last_heartbeat_at` | `"2026-08-23T14:23:00.412Z"` | **`fetch-fresh`** — rendered beside the receipt age under the panel's one *as of* stamp, because a heartbeat-only seat is the case the two readings separate ([AT-D2-4](FLEET-STATE.md#at-d2-4-a-heartbeat-only-seat-never-looks-busy)) |
+| clock skew | `delivery.clock_skew_ms` | `412` | **`fetch-fresh`**; rendered whenever non-null, beside **every** seat-clock timestamp in the panel, so a narrative time is never read as an absolute one. The `clock_skew` **badge** past ±120 s is version-bearing and is what carries the condition onto the desk ([§ 7.2](#72-badges-every-member-has-a-render)) |
+| spool state | `delivery.spool_lag_events`, `delivery.oldest_unsent_age_s` | `0`, `null` | **`fetch-fresh`** — both are of the ten; `link_state == "catching_up"` is the delivered consequence and is what the desk renders |
+| wire provenance | `delivery.seq_epoch`, `delivery.last_seq`, `state_version`, `derivation.cursor_event_id`, `derivation.computed_at` | `"01K3T0000A5N7M2X9V4B6D0FGH"`, `48211`, `48219`, `9912837` | the correlation D2 provides for exactly this panel ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)). `state_version` and `seq_epoch` are version-bearing and patch live; `last_seq`, `cursor_event_id` and `computed_at` are of the ten and are **`fetch-fresh`**, which is why the panel stamps the block rather than the line |
 | session block | `session.session_id`, `session.started_at`, `session.source`, `session.project_label`, `session.harness_label` | `"a7f2c918-…"`, `"clear"`, `"mezzanine"`, `"claude-code/2.1.240"` | `session` null ⇒ *no session open*, which is a fact, not a blank |
-| reporter block | `reporter.version`, `reporter.platform`, `reporter.uptime_s`, `reporter.selftest_failed` | `"0.1.0"`, `"linux"`, `401150`, `[]` | a non-empty `selftest_failed` is rendered as a list of named checks, up to its bound of 8 ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) |
-| counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | the reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them, per [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) — never as *now* |
-| the intern list, uncapped | `detail`'s full open-call list | — | [§ 8](#8-interns--subagent-rendering-and-the-cap) |
+| reporter block | `reporter.version`, `reporter.platform`, `reporter.uptime_s`, `reporter.selftest_failed` | `"0.1.0"`, `"linux"`, `401150`, `[]` | a non-empty `selftest_failed` is rendered as a list of named checks, up to its bound of 8 ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). `uptime_s` is of the ten and is **`fetch-fresh`** — it is the flusher-restart discriminator, so a stale copy would mis-date a restart; `version`, `platform` and `selftest_failed` are version-bearing and patch live |
+| counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | **`fetch-fresh`** by construction — `detail` exists only on the fetch ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) and no delta carries it. The reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them, per [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) — never as *now* |
+| the intern list, uncapped | `detail`'s full open-call list | — | [§ 8](#8-interns--subagent-rendering-and-the-cap). **The selection is stated rather than left to the reader:** the intern list is the subset of that list whose `agent_scope == "subagent"` — equivalently, the calls carrying a `parent_call_id` — which is the **intern join** D2 stores those two labels for ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state): *"stored for the intern join and never gate anything"*). What D2 forbids there is a **scope-dependent state rule**; choosing which rows a panel lists is not one, and no pose, currency label or badge reads either field. [§ 14](#14-open-questions-for-the-review-loop) item 1 names this as the reading it took, because *"the open call list in full"* could equally have meant every open call, and the panel that listed every one would call a seat's own `Bash` call an intern |
 | the recent-activity timeline | the timeline endpoint | — | see the rule below |
 | the task reference as a link | `task.ref` | `"card#7338"` | rendered as a link **only** when a base URL is configured for that reference shape (`card#N` and `<repo>#N` are the two shapes [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) declares); with no configured base it renders as plain text. A guessed URL is a link that goes somewhere wrong, which is worse than no link — [§ 14](#14-open-questions-for-the-review-loop) item 3 |
 
 **The timeline renders only fields that provably exist.** [D2 § 8.2](FLEET-STATE.md#82-rest) declares
 the endpoint, its parameters and its ordering, and describes its rows as "the seat's renderable events"
-without a field table or a kind list. So this document renders, per row, **only D1's common per-event
-fields** — `kind`, `event_time` (seat clock, labelled), `received_at` (server clock, the basis of the
-row's age) — which [D1 § 4.3](EVENT-SCHEMA.md#43-common-per-event-fields) declares on every event of
-every kind and [D2 § 6.4](FLEET-STATE.md#64-ddl) stores verbatim, plus the `data` members this document
-already renders elsewhere for that kind where the response carries them. **It renders no per-kind
+without a field table or a kind list. So this document renders, per row, only fields something upstream
+**declares** on a stored event:
+
+- `kind` and `event_time` (seat clock, labelled) — [D1 § 4.3](EVENT-SCHEMA.md#43-common-per-event-fields)
+  declares both on **every event of every kind**, and [D2 § 6.4](FLEET-STATE.md#64-ddl) stores them
+  verbatim.
+- `received_at` (server clock, the basis of the row's age) — **D2's field, not D1's.**
+  [D1 § 4.3](EVENT-SCHEMA.md#43-common-per-event-fields)'s common-field table declares `event_id`,
+  `schema_version`, `kind`, `event_time`, `seq`, `install_id`, `seat_id`, `session_id`, `data` and
+  `oversize`, and **no `received_at`** — a seat cannot stamp a server clock, which is the whole of why
+  [D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) calls it *"server
+  clock, recorded at ingest"* and makes it authoritative for *"every relative age the UI renders"*. It
+  is [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `events.received_at`, `NOT NULL` on every row of the table
+  this endpoint reads. Attributing it to D1's common fields — as an earlier revision of this paragraph
+  did — would have rested the timeline's only age on a guarantee D1 cannot give, which is exactly the
+  provability this paragraph exists to assert.
+
+Plus the `data` members this document already renders elsewhere for that kind, where the response
+carries them. **It renders no per-kind
 detail the response is not specified to carry**, and it renders an empty window as *no activity in this
 window* rather than as an empty panel. [§ 14](#14-open-questions-for-the-review-loop) item 1 asks D2 for
 the field table and the renderable-kind set; until it answers, the timeline is a true list of what the
@@ -564,6 +656,41 @@ seat did and when, and nothing is guessed onto it.
   explicitly **unrecognised** glyph carrying the raw string, and the desk is treated as
   not-current — never mapped to the nearest known member and never defaulted to a healthy-looking one
   ([§ 9](#9-failure-paths-and-their-observables), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised)).
+  **"The client does not know" is a membership test against a set this document publishes, and all six
+  sets are published here**: `render_state` and `unknown_reason` in [§ 7.1](#71-the-render-per-state),
+  the 18 badges in [§ 7.2](#72-badges-every-member-has-a-render), and `link_state`, `activity_state`
+  and `api_error_type` in [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable).
+  A rule whose known-set lived nowhere would be a rule an implementer could only guess at, and the
+  first thing it would guess wrong is the member this document forgot to list.
+  **`api_error_type` is rendered verbatim *and* membership-tested, which is not a contradiction**: the
+  line carries the raw string either way ([§ 5.1](#51-the-desk)), and membership decides only whether
+  it carries its plain-language sentence or the **unrecognised** marker beside the raw value. Reading
+  the two rules as alternatives is what would make one of them dead.
+
+### 5.5 The client's own narration
+
+[§ 2.1](#21-the-seven-client-computed-values-closed) row 7 is the one rendered surface whose facts are
+not D2's, so [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field)'s rule — *every rendered
+fact names the D2 field it comes from* — cannot be the one that holds it. It gets its own, and the rule
+is stricter rather than looser: **a narration line states what the client did or saw, is labelled as
+the client's own, and never becomes a fact about a seat.**
+
+| Rendered narration | The client's own record | Rule |
+|---|---|---|
+| feed status — *live* · *polling (feed down)* · *reconnecting* · *reload required* | the time since the last message of any kind on the socket, against [§ 9](#9-failure-paths-and-their-observables) F1's 45 s | a statement about **this client's connection**, never about a seat. Whatever it reads, every desk keeps its last delivered state and its currency label still comes from `link_state` ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
+| the ***live*** claim | a feed message newer than 45 s **and** a REST response newer than the last `401` ([decision 18](#13-decisions-taken-revisable-at-review)) | three inputs, all the client's own. It is the most consequential label on the page and it is deliberately conservative: erring toward *not live* is the correct direction for this product ([§ 9](#9-failure-paths-and-their-observables) F7) |
+| ***resyncs: N*** | the number of [§ 9](#9-failure-paths-and-their-observables) F2 resyncs this client has issued since it loaded | a count of **this client's own requests**, labelled as one. It is not a seat field and not D2's `feed_gap_detected`, which is the server's count of the same events and is on no read surface this document renders |
+| the lobby event log, **200 lines** | membership changes, resyncs, reconnects, removals and F9's unrecognised values — newest first, one line each, carrying the moment **the client** saw it | text only, capped at 200 ([§ 12](#12-every-number-and-where-it-comes-from)). It is a narration and not a history: D2's own surfaces hold the durable record ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)) |
+| ***membership as of HH:MM:SS*** | the moment of the last full snapshot **apply** | the age of the *membership* picture, rendered separately from the age of the *state* picture ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
+| ***the client holds N of M seats — refreshing*** | the per-floor counts it holds, against `fleet.seats_total` | the only narration line that names a wire number, and it names it **as the wire's**: [§ 4.1](#41-the-lobby--the-building-summary) renders the disagreement rather than picking a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)) |
+| ***floor map is short N desks*** | the rendered seat count against `S`, the map's own slot count ([§ 3.2](#32-the-desk-slot-function)) | a fact about the map and this client's layout, not about any seat ([§ 9](#9-failure-paths-and-their-observables) F13) |
+
+**None of these is a state, and none of them may become one.** A narration line never drives a desk's
+pose, a currency label, a badge or an animation — the only effect the client's own connection state has
+on a desk is [§ 9](#9-failure-paths-and-their-observables) F1's, which is *none*, beyond the ages
+continuing to tick from the timestamps the client already holds. That is the same boundary
+[§ 2.1](#21-the-seven-client-computed-values-closed) draws between presentation and state, applied to
+the one surface where the client is allowed to talk about itself.
 
 ---
 
@@ -590,32 +717,68 @@ Three consequences, stated because the rule alone leaves each of them arguable:
    tokens, tool calls or throughput would be rendering a quantity nothing sent.
 3. **An edge-triggered animation fires once, from a delta the client applied**, and never from a
    snapshot, a poll, a re-render, a resync or the 1 s age tick
-   ([§ 6.5](#65-a-snapshot-never-animates)).
+   ([§ 6.5](#65-a-snapshot-never-animates)). A **held** render is a different class and takes a
+   different rule: it is entered whenever the object the client holds says so — including on a
+   snapshot, a resync or a per-seat fetch — because it is held by a delivered field rather than
+   started by a message. What [§ 6.5](#65-a-snapshot-never-animates) forbids is an **edge** animation
+   on a snapshot; a `working` desk that stopped typing after every reconnect would be the same lie in
+   the other direction ([§ 6.2](#62-the-animation-table--the-closed-set)).
 
 ### 6.2 The animation table — the closed set
 
-**Every animation, its driver, and what its absence means.** "Edge" is the exact condition on an
-applied delta; "reduced-motion form" is what replaces the motion under
-[§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation), and it carries the same fact.
+**Every animation, its class, its driver, and what its absence means.** The table carries **two
+classes**, and the split is load-bearing rather than descriptive — one schema over both is what made
+this document's own headline test unsatisfiable:
 
-| # | Animation | Where | Driving fact (D2) | Edge that starts it | Ends | Reduced-motion form | Its absence means |
-|---|---|---|---|---|---|---|---|
-| **A1** | `arrive` — the character walks in and sits | desk | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value leaves `offline` | on arrival at the desk | the character is simply present | the seat has not left `offline` |
-| **A2** | `depart` — the character stands and walks out, leaving the chair empty | desk | `render_state` | a delta whose new `render_state` is `offline` | at the door | the chair is empty and labelled | the seat is still reporting |
-| **A3** | `work` — typing at the keyboard, 4 fps loop | desk | `render_state` | `render_state == "working"` | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
-| **A4** | `think` — leaning back, watching the monitor, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
-| **A5** | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
-| **A6** | `idle` — the chair turns from the desk, the monitor dims. **No loop.** | desk | `render_state` | `render_state == "idle"` | when it is not | identical — this state has no motion by design | the seat has not cleanly finished a turn |
-| **A7** | `attention` — a raised hand and a marker above the desk, 4 fps loop | desk | `render_state` | `render_state == "blocked"` | when it is not | a static raised-hand pose and the marker | no `attention.request` is open ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
-| **A8** | `stalled` — head in hands, static, with the `api_error_type` line | desk | `render_state`, `api_error_type` | `render_state == "stalled"` | when it is not | identical | no `turn.end(api_error)` is standing |
-| **A9** | `unknown` — a question marker over an occupied desk | desk | `render_state`, `unknown_reason` | `render_state == "unknown"` | when it is not | identical | the seat's last turn record supports a positive reading |
-| **A10** | `intern-arrive` / `intern-leave` — a stool at the side table fills or empties | side table | `subagents` | a delta whose `changed[]` contains `subagents` and whose array gains or loses a `call_id` | on arrival / at the door | the stool is simply occupied or empty | the subagent set did not change |
-| **A11** | `badge-raise` — a badge appears with a single 250 ms fade | desk | `badges` | a delta whose `changed[]` contains `badges` and whose array gains a member | after one tick | the badge is simply present | no new badge |
-| **A12** | `gauge` — the context bar eases to its new value over 250 ms | desk, drill-down | `context.used_pct` | a delta whose `changed[]` contains `context` | at the new value | the bar jumps to the value | no new sample; **the bar never drifts between samples** |
-| **A13** | `retire` — the desk clears, the chair pushes in, the plate is stamped | desk | `render_state`, `seat.retired` | `render_state == "retired"`, or the `seat.retired` message | when the plate is set | the desk is simply cleared and stamped | the seat is not retired |
-| **A14** | `feed-pulse` — a one-frame pulse on the feed indicator | status strip | `feed.heartbeat` | each `feed.heartbeat` message received | after one frame | a *last message HH:MM:SS* readout that updates instead | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables)) |
-| **A15** | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state`, `delivery.oldest_unsent_age_s` | `render_state == "catching_up"` | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
-| **A16** | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) | on arrival | the desk appears in its new slot on the next render | no arrival collided |
+- **`edge`** — fires **once**, caused by a wire message the client applied: a `seat.delta`, a
+  `feed.heartbeat`, a `seat.retired`, or the seat-set change of
+  [A16](#62-the-animation-table--the-closed-set). An edge animation **has a causing message**, and its
+  row in the animation log ([§ 11](#11-acceptance-tests)) carries that message's id. An edge animation
+  with no causing message is the defect the honesty principle exists to refuse.
+- **`held`** — a render **held** for exactly as long as a delivered field has a value: the working,
+  thinking, attention and replay loops, and the three states whose held render carries no motion at all
+  (`idle`, `stalled`, `unknown`). A held render has **no causing message** — it is entered whenever the
+  object the client holds says so, and that object may have arrived by delta, by snapshot, by resync or
+  by fetch — so its log row carries the **`state_version` of the object it is held by**. A held render
+  is not exempt from the honesty principle: it is held by a delivered field, and the log records which
+  field, which value and which version.
+
+**Why the split, and not four more words in one column.** [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)
+rule 2 makes a `working` desk run a loop for as long as it is `working`, and
+[D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot — the one
+[`fx-snapshot-4`](#11-acceptance-tests) is built from — delivers a `working` seat. So a correct client
+starts a loop on a snapshot apply, where there is no causing message to record; under one schema the
+log's totality rule ("every row has a non-null cause") and [§ 6.5](#65-a-snapshot-never-animates)'s
+"a snapshot fires nothing" contradicted each other on the headline fixture, and the implementer's two
+escapes were both worse than the defect: suppress held renders on snapshots and the floor goes
+**static after every reconnect** — which [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)
+and [decision 3](#13-decisions-taken-revisable-at-review) make a *lie*, because a still floor **is** a
+still fleet — or stop logging held renders and [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded)'s
+*motion stopped* assertion loses its instrument. Edge animations keep the strict rule; held renders get
+the rule that is true of them.
+
+"Edge that starts it, or the fact it is held by" is the exact condition; "reduced-motion form" is what
+replaces the motion under [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation), and
+it carries the same fact.
+
+| # | Class | Animation | Where | Driving fact (D2) | Edge that starts it, or the fact it is held by | Ends | Reduced-motion form | Its absence means |
+|---|---|---|---|---|---|---|---|---|
+| **A1** | `edge` | `arrive` — the character walks in and sits | desk | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value leaves `offline` | on arrival at the desk | the character is simply present | the seat has not left `offline` |
+| **A2** | `edge` | `depart` — the character stands and walks out, leaving the chair empty | desk | `render_state` | a delta whose new `render_state` is `offline` | at the door | the chair is empty and labelled | the seat is still reporting |
+| **A3** | `held` | `work` — typing at the keyboard, 4 fps loop | desk | `render_state` | `render_state == "working"` | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
+| **A4** | `held` | `think` — leaning back, watching the monitor, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
+| **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
+| **A6** | `held` | `idle` — the chair turns from the desk, the monitor dims. **No loop.** | desk | `render_state` | `render_state == "idle"` | when it is not | identical — this state has no motion by design | the seat has not cleanly finished a turn |
+| **A7** | `held` | `attention` — a raised hand and a marker above the desk, 4 fps loop | desk | `render_state` | `render_state == "blocked"` | when it is not | a static raised-hand pose and the marker | no `attention.request` is open ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
+| **A8** | `held` | `stalled` — head in hands, static, with the `api_error_type` line | desk | `render_state`, `api_error_type` | `render_state == "stalled"` | when it is not | identical | no `turn.end(api_error)` is standing |
+| **A9** | `held` | `unknown` — a question marker over an occupied desk | desk | `render_state`, `unknown_reason` | `render_state == "unknown"` | when it is not | identical | the seat's last turn record supports a positive reading |
+| **A10** | `edge` | `intern-arrive` / `intern-leave` — a stool at the side table fills or empties | side table | `subagents` | a delta whose `changed[]` contains `subagents` and whose array gains or loses a `call_id` | on arrival / at the door | the stool is simply occupied or empty | the subagent set did not change |
+| **A11** | `edge` | `badge-raise` — a badge appears with a single 250 ms fade | desk | `badges` | a delta whose `changed[]` contains `badges` and whose array gains a member | after one tick | the badge is simply present | no new badge |
+| **A12** | `edge` | `gauge` — the context bar eases to its new value over 250 ms | desk, drill-down | `context.used_pct` | a delta whose `changed[]` contains `context` | at the new value | the bar jumps to the value | no new sample; **the bar never drifts between samples** |
+| **A13** | `edge` | `retire` — the desk clears, the chair pushes in, the plate is stamped | desk | `render_state`, `seat.retired` | `render_state == "retired"`, or the `seat.retired` message | when the plate is set | the desk is simply cleared and stamped | the seat is not retired |
+| **A14** | `edge` | `feed-pulse` — a one-frame pulse on the feed indicator | status strip | `feed.heartbeat` | each `feed.heartbeat` message received | after one frame | a *last message HH:MM:SS* readout that updates instead | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables)) |
+| **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
+| **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) | on arrival | the desk appears in its new slot on the next render | no arrival collided |
 
 **A14 is the only thing on the page that moves unconditionally, and it is driven by a message.** That is
 deliberate: the one always-moving element is the one whose motion *is* the claim that the feed is alive,
@@ -656,11 +819,20 @@ most of it will be reviewed.
 ### 6.5 A snapshot never animates
 
 A snapshot, a poll response, a resync fetch, a per-seat insert and a reconnect all render the world **as
-delivered**, with no edge-triggered animation. Their arrival is not a claim that anything happened to
-any seat — it is a claim about what the client knows. Animating them would put an arrival at every desk
-on every reconnect, and a fleet that appeared to walk back in every time the network hiccupped would
-have made the floor's motion meaningless in exactly one afternoon.
-[AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) asserts it.
+delivered**, with **no `edge`-class animation** ([§ 6.2](#62-the-animation-table--the-closed-set)).
+Their arrival is not a claim that anything happened to any seat — it is a claim about what the client
+knows. Animating them would put an arrival at every desk on every reconnect, and a fleet that appeared
+to walk back in every time the network hiccupped would have made the floor's motion meaningless in
+exactly one afternoon. [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) asserts it.
+
+**What a snapshot does do is render the states it delivers, held renders included, and that is not an
+exception to the rule above but the other half of it.** A snapshot carrying a `working` seat renders a
+working desk, loop and all: the loop is held by a delivered field, not started by a message, so its
+animation-log row carries that object's `state_version` rather than a causing message
+([§ 11](#11-acceptance-tests)). The rule is *no edge animation on a snapshot*, never *no motion after
+a snapshot* — the second would make the floor go still on every reconnect, and
+[§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) is explicit that a still
+floor is read as a still fleet.
 
 ---
 
@@ -680,7 +852,7 @@ distinct render. The order below is the fixed order the lobby's per-floor summar
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
 | `catching_up` | character present, replay marker, desaturated | *replaying history — last event 3h 12m ago (seat clock)* | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
 | `stale` | **empty chair**, desk dimmed | *no data since 14:18* — the seat has been silent past 300 s | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
-| `offline` | empty chair, desk dark | *no data since 13:52* — silent past 900 s | none (A2 played on the way in) | removed from the floor |
+| `offline` | empty chair, desk dark | *no data since 13:52* — silent past 900 s. **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` — the line reads ***no data yet*** instead ([§ 3.4](#34-a-new-seats-first-appearance)), never *no data since null* | none (A2 played on the way in) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) |
 | `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
 
@@ -714,7 +886,7 @@ badge a consumer does not draw is a condition the fleet reports and nobody sees.
 | `reporter_behind` | D1 | badge cluster | *the harness has an enum member this reporter coerces* |
 | `value_clamped` | D1 | badge cluster | *a reported value left its declared range and was clamped* |
 | `counters_omitted` | D1 | badge cluster | *N counters did not fit the heartbeat* |
-| `index_overflow` | D1 | badge cluster | *the seat passed its open-call or open-session index cap* |
+| `index_overflow` | D1 | badge cluster | *the seat passed its open-call or open-session index cap, or skipped history when its index journal tail was truncated at 8 MiB* — [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) raises this badge from **three** counters (`open_call_index_overflow`, `open_session_index_overflow`, `index_fold_truncated`) and the line names all three cases, because the third is a seat whose own history is short rather than one that is merely busy |
 | `invalid_tool_name` | D1 | badge cluster | *a tool name failed its pattern and was sent as `INVALID_TOOL_NAME`* |
 | `bad_session_id` | D1 | badge cluster | *a session id failed its pattern and was sent as null* |
 | `config_invalid` | D1 | badge cluster, **and the desk is treated as not-current** | *the reporter's config failed validation; it is spooling and sending nothing* |
@@ -730,9 +902,25 @@ badge a consumer does not draw is a condition the fleet reports and nobody sees.
 **D1's twelve are rendered *since reporter start*, never as *now*.**
 [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) states why: they are raised by
 counters monotonic since flusher start, so one dropped event at 09:00 badges `lossy` for the rest of
-that flusher's life. The panel renders each with `badges_since`, the counter's value, and
-`reporter.uptime_s` — a sticky badge drawn as a current condition would make a seat that had one bad
-minute look permanently broken. D2's own seven are current conditions and are drawn as such.
+that flusher's life. The panel renders each with **the counter's value and `reporter.uptime_s`** — a
+sticky badge drawn as a current condition would make a seat that had one bad minute look permanently
+broken. D2's own seven are current conditions and are drawn as such.
+
+**`badges_since` is one line for the whole cluster, not a stamp per badge.**
+[D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares it as *"when the **oldest**
+currently-present badge first appeared"*, and
+[D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) item 0 spells out the misuse
+in advance: the server keeps a per-badge map `seat_state.badge_first_seen`, *"`badges_since` = the
+minimum of the values"*, and *"one timestamp for D1's whole twelve-member array … cannot answer 'when
+did **this** badge appear', which is the only question `badges_since` is asked"*. So the cluster
+carries **one** line — *oldest badge since 09:14* — and **no badge is stamped with an onset the wire
+did not give it**. Stamping each member with `badges_since` would date a `fold_lag` that started
+thirty seconds ago to the sticky `lossy` that has been up all day: a misdated degradation, on the one
+panel whose job is to date degradations. `badge_first_seen` is a stored column
+([D2 § 6.4](FLEET-STATE.md#64-ddl)) and appears in neither
+[§ 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object nor
+[§ 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)'s enumerated `detail` members;
+[§ 14](#14-open-questions-for-the-review-loop) item 13 asks D2 to put it on one.
 
 ### 7.3 Currency labels: what a non-`live` desk may claim
 
@@ -747,14 +935,22 @@ The rendering rule:
 | `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
 | badged `fold_lag` | its activity render, **with a hatched overlay and the lag line** | as the pose, explicitly labelled *N s behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
+| `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | in the label only, as *was: working (…)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
 
-**`config_invalid` is this document's own addition to D2's four, and it is named as one.** D2 lists
-`catching_up`, `stale`, `offline` and `fold_lag`; `config_invalid` is a D1 badge meaning the reporter
-"keeps spooling and sends nothing" ([D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)), so everything
-on that desk is by construction older than the badge — the same reading the other four get, arriving
-through the reporter instead of through the transport or the fold. It is an addition on top of a D2
-rule, so [§ 1.3](#13-the-boundary-stated-as-a-rule) obliges the sentence that adds it; it needs no
-amendment from D2, because it constrains only what this document renders.
+**`config_invalid` and `disabled` are this document's own additions to D2's four, and both are named
+as ones.** [D2 § 3.4](FLEET-STATE.md#34-what-this-rule-forbids-concretely) lists `catching_up`,
+`stale`, `offline` and `fold_lag`. `config_invalid` is a D1 badge meaning the reporter "keeps spooling
+and sends nothing" ([D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)), and `disabled` is
+[D2 § 4.5](FLEET-STATE.md#45-link-states) rule 4's seat whose reporting is switched off — it still
+heartbeats, which is the only way the flag is ever learned, and it sends no activity event at all. On
+both, everything under the label is by construction older than the condition — the same reading D2's
+four get, arriving through the reporter instead of through the transport or the fold. Both are
+additions on top of a D2 rule, so [§ 1.3](#13-the-boundary-stated-as-a-rule) obliges the sentence that
+adds them; neither needs an amendment from D2, because both constrain only what this document renders.
+Leaving `disabled` out was a real hole rather than a tidy omission: it is a `link_state` member, so a
+desk could have rendered a `disabled` seat's last known activity as current, which is
+[D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s *off must not look like gone* failing in the
+other direction.
 
 ### 7.4 The frozen fold is the one that could look healthy
 
@@ -763,9 +959,16 @@ degradation that can present as a healthy floor: receipts keep arriving, so the 
 every desk shows what it was doing when derivation stopped. Three renders, and they are obligations D2
 places on this document by name:
 
-1. **Per seat**, past 60 s of `derivation.fold_lag_ms`: the `fold_lag` badge, the hatched overlay, the
-   line *this state is N s behind*, and **motion stops** — "D3 must not present the seat's activity
-   state as current".
+1. **Per seat**, the **`fold_lag` badge** — which D2 raises past 60 s of `derivation.fold_lag_ms`:
+   the badge, the hatched overlay, the line *this state is N s behind — as of HH:MM:SS*, and **motion
+   stops** — "D3 must not present the seat's activity state as current". **The treatment is driven by
+   the badge and never by a held `fold_lag_ms`**, and that is the whole of why this degradation cannot
+   present as a healthy floor *here*: the fold is the delta emitter, so when it stops, a client's copy
+   of the lag freezes at the value it had and can never cross 60 s — while `badges` **is**
+   version-bearing and the sweeper delivers it ([D2 § 6.5](FLEET-STATE.md#65-the-fold)). A floor that
+   drove this treatment off the number would render the badge beside the line *this state is 0 s
+   behind*. The number itself is **`fetch-fresh`** and carries the stamp of the fetch that produced it
+   ([§ 2.4](#24-the-clock-and-every-age-on-the-page)).
 2. **Fleet-wide**, `fleet.fold == "lagging"`: the derivation indicator changes, no banner.
 3. **Fleet-wide**, `fleet.fold == "stalled"` — any seat past 300 s: **a fleet banner** — D2's words — reading *derivation is
    behind: these desks show what seats were doing N minutes ago*, with `fleet.max_fold_lag_ms` in it.
@@ -784,6 +987,73 @@ places on this document by name:
 - **Guessed.** An unrecognised member renders as unrecognised
   ([§ 5.4](#54-what-is-never-rendered)).
 
+### 7.6 The three remaining member sets, published so membership is testable
+
+[§ 5.4](#54-what-is-never-rendered)'s unrecognised-member rule and
+[§ 9](#9-failure-paths-and-their-observables) F9 are **membership tests**, and a membership test needs a
+published set: *"a member the client does not know"* is unimplementable against a set that lives
+nowhere, and the first member an implementer would guess wrong is the one this document forgot to list.
+[§ 7.1](#71-the-render-per-state) publishes `render_state` (10) and `unknown_reason` (7);
+[§ 7.2](#72-badges-every-member-has-a-render) publishes the 18 badges. The remaining three are here.
+`tools/design/verify-floor.py` re-derives all six sets from upstream — five from D2, and
+`api_error_type` from D1 § 6.4, which is where D2 sources it — and set-differences each against its
+table here **in both directions**, so a member D2 gains with no row here, and a row here for a member
+no input can select, both red the gate.
+
+**`link_state` — five members**, the ordered cascade of
+[D2 § 4.5](FLEET-STATE.md#45-link-states), bounded at these five by
+[D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object). It is the field the desk's **currency
+treatment** is switched on ([§ 5.1](#51-the-desk)):
+
+| `link_state` | What it says about the seat | Currency treatment |
+|---|---|---|
+| `live` | receipt within 300 s, enabled, not draining | none — the pose may be read as *now* ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) row 1) |
+| `catching_up` | the spool is draining: `oldest_unsent_age_s > 300` | the replay render, desaturated, activity state in the label only ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
+| `stale` | silent past 300 s | empty chair, dimmed, *no data since …* ([§ 7.1](#71-the-render-per-state)) |
+| `offline` | silent past 900 s, or never reported | empty chair, dark, *no data since …* / *no data yet* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)) |
+| `disabled` | `enabled == false` — reporting switched off, still heartbeating | *reporting disabled*, monitor off, motion stops ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
+
+**`activity_state` — five members**, bounded by [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)
+and given their entry and exit edges by [D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge).
+The desk never switches on this field — it switches on `render_state`, which collapses transport over
+activity ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) — so what each member owes is a render
+**under a currency label** when the seat is not `live`:
+
+| `activity_state` | What it says the seat is doing | Rendered as |
+|---|---|---|
+| `working` | a turn is open, or a call is | the working render when `render_state` agrees; otherwise *was: working (…)* under the label ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
+| `idle` | a turn ended cleanly — a **positive observation**, never a silence | the idle render, or *was: idle (…)* under the label |
+| `blocked` | an `attention.request` is open | the attention render, or *was: blocked (…)* under the label |
+| `stalled` | the last turn ended on an API error | the stalled render with its `api_error_type` line, or *was: stalled (…)* under the label |
+| `unknown` | the last turn record supports no positive reading | the unknown render with its `unknown_reason` sentence ([§ 7.1](#71-the-render-per-state)), or *was: unknown (…)* under the label |
+
+**`api_error_type` — twelve members**, [D1 § 6.4](EVENT-SCHEMA.md#64-turnend)'s set, which
+[D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) cites as *"D1 § 6.4's 12 members"* without
+repeating them. Non-null **only** when `activity_state == "stalled"`. The line on a `stalled` desk
+renders **the raw value verbatim** ([§ 5.1](#51-the-desk)); this table adds the plain-language phrase
+beside it, and a value **not** in this table renders the raw string with the **unrecognised** marker and
+the desk is treated as not-current ([§ 5.4](#54-what-is-never-rendered)):
+
+| `api_error_type` | The line beside the raw value |
+|---|---|
+| `rate_limit` | *rate limit* |
+| `overloaded` | *the API was overloaded* |
+| `server_error` | *the API returned a server error* |
+| `authentication_failed` | *authentication failed* |
+| `billing_error` | *a billing error* |
+| `invalid_request` | *the request was rejected as invalid* |
+| `model_not_found` | *the model was not found* |
+| `max_output_tokens` | *the turn hit its output-token ceiling* |
+| `oauth_org_not_allowed` | *this organisation is not permitted* |
+| `account_on_hold` | *the account is on hold* |
+| `unknown` | *the harness reported the error as unknown* — a **real harness member**, not a residue |
+| `unrecognised` | *this reporter did not recognise the harness's error member* — D1's coercion target, and the reason `unknown` above cannot double as one ([D1 § 6.4](EVENT-SCHEMA.md#64-turnend)) |
+
+The last two rows are one distinction and it is worth the two lines: *the harness does not know what
+went wrong* and *the reporter has never heard of what the harness said* are different facts about
+different components, and D1 minted a twelfth member precisely so a consumer would not have to collapse
+them.
+
 ---
 
 ## 8. Interns — subagent rendering, and the cap
@@ -799,7 +1069,7 @@ and D2's, and this document adds only pixels:
 | the intern's type | `subagents[].subagent_type` | a small tag beside the label, e.g. `coder` |
 | how long it has been running | `subagents[].started_at` | a seat-clock claim, labelled; the drill-down carries it in full |
 | **+N more** | `subagents_open` minus the array's length | appears only when positive. The count is the wire's, never `subagents.length` |
-| the full list | the seat-detail response's uncapped open-call list ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) | the drill-down's intern list is **not** `subagents[]` and is not capped at 8 |
+| the full list | the seat-detail response's uncapped open-call list ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)), **selected on `agent_scope == "subagent"` / a non-null `parent_call_id`** — the intern join those labels are stored for ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)), never a state rule gated on them | the drill-down's intern list is **not** `subagents[]`, is not capped at 8, and is not the seat's own open calls either ([§ 5.2](#52-the-drill-down), [§ 14](#14-open-questions-for-the-review-loop) item 1) |
 | arrival and departure | `subagents` in a delta's `changed[]` | animation [A10](#62-the-animation-table--the-closed-set) |
 
 ### 8.1 The cap stays at 8 — the arithmetic, and the reason
@@ -855,7 +1125,7 @@ indistinguishable from a fleet that has gone home.
 
 | # | Failure | Detected by | User-visible observable | Recovery | Never |
 |---|---|---|---|---|---|
-| F1 | **Feed silent** | no message of any kind for **45 s** ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): 3 heartbeat intervals) | the status strip reads **feed down — polling**, [A14](#62-the-animation-table--the-closed-set)'s pulse has stopped, every desk keeps its last state and **every age keeps growing** | poll `GET /api/fleet/snapshot` every **10 s** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) and attempt reconnect | claiming *live*. A dashboard that silently degrades from live to polled is one whose age nobody can trust |
+| F1 | **Feed silent** | no message of any kind for **45 s** ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): 3 heartbeat intervals) | the status strip reads **feed down — polling**, [A14](#62-the-animation-table--the-closed-set)'s pulse has stopped, every desk keeps its last state and **its quiet age keeps growing** — an age is the corrected server clock minus a timestamp the client holds, so it ticks whether or not anything arrives, which is the point. The `fetch-fresh` values of [§ 2.4](#24-the-clock-and-every-age-on-the-page) do **not** tick: each 10 s poll **re-stamps** them | poll `GET /api/fleet/snapshot` every **10 s** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) and attempt reconnect | claiming *live*. A dashboard that silently degrades from live to polled is one whose age nobody can trust |
 | F2 | **Delta gap** — `state_version` jumped | `delta.state_version > local + 1` | no desk-level effect; the status strip's **resyncs: N** increments and the lobby log records the seat | `GET /api/fleet/seats/{i}/{s}?resync_from=<last applied>`, apply, continue. The parameter is required: it is the **only** write path for D2's `feed_gap_detected` counter ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)) | applying the delta anyway. A silently divergent desk is permanently wrong on a quiet seat |
 | F3 | **Connection closed `resync_required`** — backpressure | the close frame ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)) | **reconnecting** in the status strip; the floor keeps rendering with growing ages | re-run [§ 2.2](#22-connect-snapshot-deltas) from step 1 | blanking the floor while reconnecting |
 | F4 | **Snapshot `503 fleet_unavailable`** | the status code and body ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) | a full-width statement: **fleet state is unavailable — the store could not be read at 14:23:14**, over a floor that keeps its last state and is labelled *last known good*. On a cold start there is no floor to keep, and the screen says so in words | retry the snapshot with backoff; the socket stays open and will carry `fleet.health` | **an empty office.** This is [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange)'s forbidden outcome at the render layer |
@@ -910,10 +1180,27 @@ licence nobody recorded, which is the only way an incompatible asset ever ships.
 
 **Gate 2 — no vendored character art.** The character sprites are **generated**, not vendored
 ([§ 10.2](#102-characters-the-munder-difflin-port)), so the assertion the gate makes is an **absence**:
-there is no raster or vector image file under the character tree at all. This is the mechanised form of
-*"the upstream's commercial tilesets are never vendored"* — a denylist of file hashes could only refuse
-the copies someone thought to enumerate, while an empty tree refuses every copy, including the one
-nobody anticipated.
+this is the mechanised form of *"the upstream's commercial tilesets are never vendored"*. A denylist
+can only refuse the copies someone thought to enumerate — and *"no raster or vector image file"* is a
+denylist wearing a description, because the tree is **not** empty (it holds the ported source and
+`LINEAGE.md`, [§ 10.2](#102-characters-the-munder-difflin-port)), so the gate must **classify** files,
+and every classifier written as a list of image extensions passes a `.webp`, an `.avif`, a sprite sheet
+named `.dat`, and base64 image data inside a `.ts`. So the gate is an **allowlist**, in two clauses,
+and it fails on anything neither clause admits:
+
+1. **File types.** Every file under the character tree carries one of **`.ts`, `.js`, `.md`** — the
+   ported generator's source and its lineage file, and nothing else. Any other extension fails the
+   build, named. An allowlist refuses the format nobody anticipated; that is the property the
+   empty-tree argument was reaching for and the extension denylist gave away.
+2. **Embedded bytes.** No file in that tree carries a `data:image/` URI or a single base64-shaped
+   literal longer than **1,024 B**. Clause 1 cannot see image bytes pasted *inside* a file it admits,
+   and that is the one route an implementer taking the shortcut would actually take.
+
+**The residue is named rather than implied.** Neither clause can refuse a generator that *fetches*
+upstream art at run time — nothing that inspects a tree can. That is refused by the lineage file's
+*what was deliberately not taken and why* ([§ 10.2](#102-characters-the-munder-difflin-port)) and by
+review, and it is said here so nobody reads Gate 2 as a proof that no upstream pixel can reach the
+screen.
 
 **The licence allowlist is closed: `CC0-1.0` and `MIT`.** Anything else — `CC-BY-*`, `CC-BY-SA-*`,
 any `-NC` or `-ND` term, "free for personal use", or an asset with no stated licence — is refused by
@@ -967,13 +1254,22 @@ required and none of these tests needs one, which is deliberate: they gate the c
 the state layer's honesty is already gated by D2's own twenty-three.
 
 **The animation log is the instrument, and it is a build requirement, not a test fixture.** The
-renderer **must** record, for every animation it starts, a row of
-`(animation_id, install_id, seat_id, cause)`, where `cause` is the id of the wire message that caused it
-— a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of
-[A16](#62-the-animation-table--the-closed-set). **An animation started with no cause writes `null`**,
-which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail. A renderer that
-cannot produce this log cannot be shown to obey the honesty principle, and the principle is the
-product's headline claim.
+renderer **must** record, for every animation it starts and every held render it enters, a row of
+`(animation_id, install_id, seat_id, class, cause, motion)`. The three variable fields take their
+meaning from the row's class in [§ 6.2](#62-the-animation-table--the-closed-set):
+
+| Field | On an `edge` row | On a `held` row |
+|---|---|---|
+| `class` | `edge` | `held` |
+| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it |
+| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the three states with no motion by design (`idle`, `stalled`, `unknown`), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion |
+
+A **held** row is written when the render is **entered and when it is left**, so the log records which
+states a desk held and for how long. **Why `motion: false` rather than no row at all:** a loop that was
+stopped by a currency treatment and a render that was never entered are the same absence in a log that
+records only starts, and they are opposite facts — the first is [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)
+working, the second is a desk that never reached the state. A renderer that cannot produce this log
+cannot be shown to obey the honesty principle, and the principle is the product's headline claim.
 
 **Fixtures.** Nine, shared by the tests below:
 
@@ -987,7 +1283,7 @@ product's headline claim.
 | `fx-membership` | a delta for a seat absent from `fx-snapshot-4`; and a later snapshot missing a seat that was present |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped |
 | `fx-refusals` | the four responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, a `fleet.health` with `db: "down"`, and a `fleet.reload` |
-| `fx-nulls` | one seat with **every** nullable member of [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) null — no `task`, no `context`, no `action`, no `session`, `model_label` null, `enabled` null, `subagents` empty |
+| `fx-nulls` | **two** seats, because the **36** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat; all three nullable `reporter.*`. The two together cover all 36, and neither covers them alone |
 
 ### AT-D3-1 no animation without its event
 
@@ -996,20 +1292,36 @@ all.*
 
 - **Build:** replay `fx-snapshot-4`, `fx-clear-trace`, `fx-degraded` and `fx-interns` end to end;
   collect the animation log.
-- **GREEN:** **every** row of the log has a non-null `cause`; every `animation_id` in the log is a row
-  of [§ 6.2](#62-the-animation-table--the-closed-set); and for each row the driving field named by that
-  table appears in the causing delta's `changed[]` (or the row's driver is a message type, and the
-  cause is a message of that type).
+- **GREEN:** every `animation_id` in the log is a row of
+  [§ 6.2](#62-the-animation-table--the-closed-set); **every `edge` row has a non-null `cause`** that is
+  one of the four causing messages, and for each edge row the driving field named by that table appears
+  in the causing delta's `changed[]` (or the row's driver is a message type, and the cause is a message
+  of that type); **every `held` row's `cause` is a `state_version` the client holds for that seat**, and
+  in that object the fact its [§ 6.2](#62-the-animation-table--the-closed-set) row names has the value
+  its hold condition states. **The `changed[]` clause binds `edge` rows only**, because a held render
+  hands off on whatever fact its condition reads and that is not always its own driver: in
+  `fx-clear-trace`, A4 gives way to A3 at **E1** when `open_calls` becomes 1 while `render_state` never
+  leaves `working`, and E1's `changed[]` is `{action, subagents, open_calls}`
+  ([D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end),
+  [D2 § 8.3.1](FLEET-STATE.md#831-worked-delta): `changed` is the patch's keys). A predicate demanding
+  `render_state` in that delta would fail a correct client on the fixture it replays.
 - **RED:** add an ambient idle-breathing loop to the character sprite — the single most natural thing to
-  add to a pixel-art office — and re-run. The log gains rows with `cause: null` and the test fails.
+  add to a pixel-art office — and re-run. The log gains rows whose `animation_id` has no row in
+  [§ 6.2](#62-the-animation-table--the-closed-set) at all, and whose `cause` is `null` under either
+  class's rule — there is no message that caused it and no delivered field holding it — and the test
+  fails twice over.
   **Watch that once**: it is the whole difference between a floor that reports state and a floor that
   performs it.
 - **Second RED:** drive the working loop's frame rate from `open_calls` — a "busier seats type faster"
   change that looks like a feature — and assert that the loop's frame interval is constant across every
   seat and every fixture. A rate that varies is a quantity the wire never sent.
 - **Discriminating control:** a fixture with **no** deltas at all (`fx-snapshot-4` alone, then silence)
-  → the log is empty. Without this control, a log-writing bug that recorded nothing would pass the
-  GREEN.
+  → the log carries **no `edge` row at all**, and carries **exactly** the `held` rows
+  [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the states the snapshot delivered —
+  including one A3 row for the `working` seat of
+  [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s object — each with that seat's `state_version` as
+  its cause. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
+  would pass the GREEN, and a client that fired arrivals on the snapshot would pass it too.
 
 ### AT-D3-2 the `/clear` trace shows no idle anywhere
 
@@ -1027,7 +1339,8 @@ all.*
   work was **killed**. That is the false idle, arriving through the render layer after D1 and D2 both
   removed it from theirs.
 - **Discriminating control:** `fx-snapshot-4`'s ordinary seat driven to a clean `turn.end` **does**
-  render `idle` and does log A6, so the test measures the trace and not the absence of an idle render.
+  render `idle` and does log an **A6 `held` row** (`motion: false` — A6 has no motion by design), so the
+  test measures the trace and not the absence of an idle render.
 
 ### AT-D3-3 identity is stable across a restart
 
@@ -1071,8 +1384,9 @@ all.*
   activity state appears **only** under a *was:* label; `stale` and `offline` render an empty chair with
   *no data since …* built from `delivery.no_data_since`; `disabled` renders a present character with the
   monitor off and is **not** the `offline` render; the `fold_lag` seat renders its pose with the hatched
-  overlay, the *117 s behind* line, and **no motion** — assert the animation log has no loop row for
-  that seat.
+  overlay, the *117 s behind* line, and **no motion** — assert the animation log's `held` row for that
+  seat carries **`motion: false`**, which says the render was entered and drawn static; asserting the
+  absence of a row instead would pass a client that never rendered the seat at all.
 - **RED — render the axis, not the collapse:** switch the desk on `activity_state` instead of
   `render_state` → the `stale` and `offline` seats render `idle` (their activity state is preserved
   underneath), which is `D2-MUST` #2 broken at the last layer after two documents held it.
@@ -1089,8 +1403,11 @@ all.*
   for 60 s more.
 - **GREEN:** at 45 s of silence the status strip reads **feed down — polling**, [A14](#62-the-animation-table--the-closed-set)'s
   pulse has stopped, a `GET /api/fleet/snapshot` is issued and repeats every 10 s, and **every desk's
-  age readouts have continued to grow throughout** — assert the rendered age strings, not the internal
-  timestamps.
+  quiet-age readout has continued to grow throughout** — assert the rendered age strings, not the
+  internal timestamps. Assert also that the drill-down's `fetch-fresh` block is **re-stamped** by each
+  poll rather than ticked ([§ 2.4](#24-the-clock-and-every-age-on-the-page)): a transport block whose
+  numbers moved between two polls would be rendering a value nothing delivered, which is the same
+  defect as a frozen age wearing the opposite face.
 - **RED — the frozen page:** stop the age tick when the feed stops → the floor freezes with every age at
   the value it held when the socket died, which is the most convincing lie this UI can tell: it looks
   exactly like a fleet where nothing has happened.
@@ -1142,9 +1459,11 @@ all.*
   response, with two deltas delivered inside that window — one below the snapshot's watermark for its
   seat, one above.
 - **GREEN:** the client's final seat map equals the server fixture's exactly; the below-watermark delta
-  is **discarded** and the above-watermark one **applied**; the snapshot render fires **no** animation
-  (assert the animation log is empty across the snapshot apply); running the scenario 100 times yields
-  100 identical results.
+  is **discarded** and the above-watermark one **applied**; the snapshot render fires **no `edge`-class
+  animation** — assert the log gains **no `edge` row** across the snapshot apply, while the `held` rows
+  the delivered states require **are** present, carrying the snapshot object's `state_version` as their
+  cause ([§ 6.5](#65-a-snapshot-never-animates)); running the scenario 100 times yields 100 identical
+  results.
 - **RED — order:** fetch the snapshot before subscribing → the delta made in the window is in neither,
   and on a quiet desk the divergence is permanent.
 - **Second RED — no watermark:** apply every buffered delta → construct the visible case D2 names, a
@@ -1189,7 +1508,11 @@ all.*
   file names the upstream repository, the commit and the MIT notice.
 - **RED — the unlisted asset:** add a tile with no row → Gate 1 fails naming the path. **Second RED —
   the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256 check fails.
-  **Third RED — the vendored character:** drop any `.png` into the character tree → Gate 2 fails.
+  **Third RED — the vendored character, both clauses:** drop a `sprites.webp` into the character tree
+  — a format an image-extension *denylist* would not have listed → Gate 2 clause 1 fails naming the
+  path; then paste a 40 KB base64 PNG into `characters/atlas.ts`, a file clause 1 admits → clause 2
+  fails on the embedded literal. Both halves are watched, because the first is what an earlier draft of
+  this gate reduced to and the second is the shortcut that draft left open.
   **Fourth RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
   fails.
 - **Discriminating control:** the clean tree passes all four, so the gates are known to be capable of
@@ -1201,7 +1524,9 @@ all.*
   under `prefers-reduced-motion: reduce`; capture a static image of each desk.
 - **GREEN:** all **ten** `render_state` members are pairwise distinguishable from the static images
   alone, and each carries its label line; every animation row's reduced-motion form is what appears;
-  the animation log is empty.
+  the log gains **no `edge` row**, and every `held` row it carries reads **`motion: false`** — which is
+  the assertion that the reduced-motion form was *selected*, where an empty log would equally have
+  reported a renderer that drew nothing at all.
 - **RED:** distinguish `working` from `idle` by motion alone — the same pose, one animated — and the two
   become one desk in a screenshot, which is how most of this floor will be reviewed and how all of it
   will be read by anyone who has motion disabled.
@@ -1214,8 +1539,11 @@ all.*
 - **GREEN:** the context gauge reads **not reported** and the bar is absent — **not** 0 %; there is no
   task chip; the monitor shows the state line rather than a blank; `session` renders *no session open*;
   `model_label` is omitted rather than empty; the intern table is absent rather than showing zero
-  stools; and a `null` `counters` object on the health view reads **unreadable** rather than a column of
-  zeros.
+  stools; a `null` `counters` object on the health view reads **unreadable** rather than a column of
+  zeros; and on `nulls-b`, whose `delivery.no_data_since` is null on an `offline` desk, the label reads
+  ***no data yet*** rather than *no data since null* ([§ 7.1](#71-the-render-per-state),
+  [§ 3.4](#34-a-new-seats-first-appearance)) — which is the render an implementer building the
+  [§ 7.1](#71-the-render-per-state) switch from its `offline` row alone would get wrong.
 - **RED:** coalesce nulls to zero anywhere on the page → a seat that has never reported a context sample
   renders a full, empty gauge reading 0 %, which is a measurement the wire never made. This is
   `docs/KANBAN.md § G-1`'s clean zero with a progress bar around it.
@@ -1225,27 +1553,48 @@ all.*
 ### AT-D3-15 the lobby never invents a count
 
 - **Build:** `fx-snapshot-4`, then drop one seat from the client's map without a snapshot (simulating a
-  missed insert).
+  missed insert) — the **N < M** direction. Then, from the intact fixture, deliver a `feed.heartbeat`
+  whose `fleet.seats_total` is one **lower** than the seats the client holds — the **N > M** direction,
+  reachable whenever a seat retired more than 14 days ago leaves `seats_total` at once while
+  [§ 3.5](#35-retirement-and-the-only-removal) keeps its desk until a snapshot apply — and then a
+  second, identical heartbeat.
 - **GREEN:** the fleet counts render `fleet.seats_total` / `fleet.seats_live` verbatim; the per-floor
   summary is labelled as a count of held seats; when the two disagree the lobby renders *the client
   holds 3 of 4 seats — refreshing* and issues one snapshot fetch, after which they agree.
+- **GREEN — the other direction:** on N > M the lobby renders *the client holds 4 seats; the fleet
+  reports 3 — refreshing* and issues one fetch; the **second** identical heartbeat issues **no** fetch,
+  because the trigger is one fetch per *distinct* (N, M) observation and not a poll
+  ([§ 4.1](#41-the-lobby--the-building-summary), [decision 9](#13-decisions-taken-revisable-at-review)).
+  A test built only on N < M would leave the wording *N of M* — which reads as a subset — unexercised on
+  the direction where it is false.
 - **RED:** compute the fleet counts by counting desks → the lobby confidently reports 3 seats on a
   4-seat fleet, and the missing desk is invisible precisely because the count agrees with the floor.
 - **Discriminating control:** the intact fixture renders no discrepancy notice and issues no fetch.
 
 ### AT-D3-16 retirement is rendered, and the removal is explained
 
-- **Build:** `fx-degraded`'s retired seat; then deliver `seat.retired` for a live seat; then a later
+- **Build:** `fx-degraded`'s retired seat; then deliver `seat.retired` for a live seat **alone**, with
+  the delta carrying `retired.*` held back until after it — the message-first order
+  [§ 2.5](#25-what-re-renders-and-when) says the client may see; then deliver that delta; then a later
   snapshot that omits the retired seat entirely.
-- **GREEN:** on the message, the desk clears in place with the plate, the reason, the operator and the
-  time, and the drill-down still shows what the seat was doing and what its transport did afterwards;
-  the desk is **still present** in the snapshot for 14 days; when a snapshot finally omits it, the desk
-  is removed **and the lobby log carries a line naming the seat and the reason**.
+- **GREEN — on the message alone:** the desk clears in place with the plate, the **reason** and the
+  **time**, both of which the message carries, and with **no operator name** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)'s
+  payload for `seat.retired` is `install_id`, `seat_id`, `reason`, `at`, and carries no `by`, so a name
+  on the plate at that moment would be a name the wire never sent ([§ 5.1](#51-the-desk)).
+- **GREEN — on the delta:** `retired.by` lands and the plate gains the operator; the result is
+  identical in either arrival order and applying both twice changes nothing
+  ([§ 2.5](#25-what-re-renders-and-when)); the drill-down still shows what the seat was doing and what
+  its transport did afterwards; the desk is **still present** in the snapshot for 14 days; when a
+  snapshot finally omits it, the desk is removed **and the lobby log carries a line naming the seat and
+  the reason**.
 - **RED — the vanishing desk:** remove the desk when `render_state` becomes `retired` → a desk that
   existed a second ago is simply gone, with no rendered state that says why
   ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)).
 - **Second RED — the removal on a delta:** remove a desk on any signal other than a snapshot apply →
   a missed delta or a resync can delete a live seat from the floor.
+- **Third RED — the invented operator:** fill the plate's operator on the message-only render — from a
+  default, from the fleet's operator, or from whatever the field last held — → a retirement attributed
+  to a person the wire never named, on the one plate whose whole content is *who did this and why*.
 
 ### AT-D3-17 a seat the client does not hold is fetched, never patched
 
@@ -1307,7 +1656,9 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | The worked slot assignment | 0 · 2 · 3 · 7 | **Measured** — FNV-1a-32 of the four keys, mod 12, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
 | Collision chance per arrival | `N/S` = **1 in 3** on the shipped map | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
 | Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. Re-derived once the tileset is chosen and a desk's rendered width is a measured number rather than a design intent | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
-| Lobby event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history | [§ 4.1](#41-the-lobby--the-building-summary) |
+| Gate 2's embedded-literal bound | **1,024 B** | **Chosen** — above any legitimate base64 literal in generator source (a seed table, a palette) and far below the smallest useful sprite sheet, so clause 2 cannot fire on the port and cannot miss a vendored sheet. **What re-derives it:** the longest literal the port actually contains, measurable the moment the port lands ([§ 14](#14-open-questions-for-the-review-loop) item 7) | [§ 10.1](#101-the-manifest-and-the-two-gates) |
+| D2 § 8.2.1's nullable members | **36** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
+| Lobby event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
 
 **One figure rests on an intent rather than a measurement and says so at its definition:** the 1,280 ×
 800 viewport floor, which cannot be derived until the tileset is chosen and a desk has a rendered width
@@ -1324,12 +1675,13 @@ belongs in its own round.
 |---|---|---|
 | **G1 animation totality** | every animation id named anywhere in this document against [§ 6.2](#62-the-animation-table--the-closed-set)'s rows, both directions; and every row's driving fact against the fields and message types D2 declares | **tool-checked** |
 | **G2 source-field closure** | every field named in a source column of [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field), [§ 6.2](#62-the-animation-table--the-closed-set) or [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) against [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table and § 8.2.4's fleet object, plus the **residue** — D2 fields this document renders nowhere — printed rather than counted as a pass | **tool-checked** |
-| **G3 cap arithmetic** | 6,112 / 8,192 / 263 / 2,080 / 7 / 15 / 7,953 / 8,216 / 24 re-computed from the two inputs, and the three inputs checked against their statements in D2 | **tool-checked** |
+| **G3 cap arithmetic** | 6,112 / 8,192 / 263 / 2,080 / 7 / 15 / 7,953 / 8,216 / 24 re-computed from the **three** inputs (worst case, bound, per-element), and those three checked for **presence in D2** — anywhere in D2, not at a named statement, which is the narrower claim the tool can actually make and is why "is a Cited number true at its D2 home" stays on the hand-verified rows below | **tool-checked** |
 | **G4 § 12 ↔ definition site** | each row's number as a whole numeric token at the section it cites, then **perturbed** to prove the match can fail for that row; the residue — numbers some other value would also have matched — printed individually | **tool-checked**, with its residue printed |
 | **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates | **tool-checked** |
-| **G6 Appendix A** | its stated counts against its row counts, and every D2 section carrying the literal `D3` against the sections Appendix A cites from a D2-attributed position | **tool-checked**, with a stated limit: an obligation D2 addresses to "a consumer" without the marker is not grep-derivable, so the tool reports the marker population and names the manual remainder |
-| **G7 state and badge render closure** | D2's `render_state`, `link_state`, `activity_state` and `unknown_reason` members and the 18 badges, **re-derived from D2** and set-differenced against this document's render tables in both directions — a member with no render, and a render for a member that does not exist | **tool-checked** |
+| **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
+| **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
+| **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one: each must carry **`fetch-fresh`** or **`dark-only`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)), and this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk | **tool-checked**, with a stated limit: it reads the render tables and the panel table, so a bookkeeping member reintroduced in **prose** is outside it, and the tool prints those mentions as named residue |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every animation has an event, never that the floor is legible |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -1350,7 +1702,7 @@ review can reverse it deliberately rather than discover it later.
 
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
-| 1 | **The client derives no state; the six things it computes are enumerated as a closed list** ([§ 2.1](#21-the-six-client-computed-values-closed)) | let the client compute what it needs and rely on review to catch the rest | A closed list is checkable against a candidate computation; "only presentation" is not. D2 already refuses a re-derived `render_state` for the same reason — a second copy of a precedence is free to drift, and the first thing it drifts on is `stale`-vs-`idle` | a genuinely-presentational computation someone wants is a review conversation instead of a commit. That is the cost, and it is the point |
+| 1 | **The client derives no state; the seven things it computes are enumerated as a closed list** ([§ 2.1](#21-the-seven-client-computed-values-closed)) | let the client compute what it needs and rely on review to catch the rest | A closed list is checkable against a candidate computation; "only presentation" is not. D2 already refuses a re-derived `render_state` for the same reason — a second copy of a precedence is free to drift, and the first thing it drifts on is `stale`-vs-`idle` | a genuinely-presentational computation someone wants is a review conversation instead of a commit. That is the cost, and it is the point |
 | 2 | **The animation table is closed, and an animation without a row is a defect** ([§ 6.2](#62-the-animation-table--the-closed-set)) | state the honesty principle as a principle and trust it | A principle nobody can fail is a principle nobody keeps. A closed table plus the animation log makes the rule a test ([AT-D3-1](#at-d3-1-no-animation-without-its-event)) rather than an intention | every new effect costs a table row and a driving field. A flourish with no field is exactly what is being refused |
 | 3 | **No ambient life at all** — no breathing, blinking, NPCs or moving scenery | permit decorative motion that carries no state | Motion is the floor's vocabulary. A viewer cannot tell decorative motion from state-bearing motion at a glance, which is the range this screen is read at, so decoration would spend the vocabulary on nothing | a still floor looks still. That is accepted: a still floor **is** a still fleet, which is the reading we want |
 | 4 | **A state-held loop is permitted, at a fixed rate that encodes nothing** | fire an animation only on edges, never hold one | A `working` desk must look different from an `idle` one at a glance and across a room, and a pose alone is weaker at distance than a pose that moves. The rate is pinned to the coalescing tick so the loop cannot claim more than the feed can carry | a loop is running while the underlying claim is bounded only by D2's ceilings. That is why every loop stops the moment its state's currency is in doubt ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
@@ -1358,7 +1710,7 @@ review can reverse it deliberately rather than discover it later.
 | 6 | **The desk slot is a pure hash function of `(install_id, seat_id)`** ([§ 3.2](#32-the-desk-slot-function)) | sorted order; arrival order; a server-assigned slot | Sorted order shifts the whole floor when a seat is provisioned; arrival order is not a function of the rendered set, so two browsers disagree; a server slot is a field this document may not mint. The hash gives every client the same answer with no stored state at all | an arrival can displace an incumbent on a collision — bounded to the chain, rendered as a move, and with its frequency stated as `N/S` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
 | 7 | **A desk move is an event and is animated as one** | re-lay the floor silently on the next render | The rule that governs everything else on this floor is that nothing moves without a cause. A silent re-layout would be the one exception, on the one occasion an operator is most likely to think they misread the screen | one more animation row, and one more thing that can be got wrong |
 | 8 | **An unknown seat in a delta is FETCHED, never patched** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) | apply the patch as an insert; or ignore the delta until the next snapshot | A patch is a shallow merge over an object the client may not hold, so the insert would be a seat object with holes, and a hole renders as *nothing is happening*. Ignoring it leaves a live seat invisible until a reconnect | one HTTP request per newly-seen seat, ever. [§ 14](#14-open-questions-for-the-review-loop) item 2 is the membership message that would remove even that |
-| 9 | **Install membership is snapshot-only, and its age is rendered** | poll the snapshot on a timer to discover installs | A discovery poll invents a cadence D2 does not state and fetches the whole fleet to answer a question that changes when an operator provisions an install. Rendering *membership as of HH:MM:SS* makes the staleness visible for one line of text and no requests | a new install is invisible until a reconnect or a manual refresh, and the readout is what stops that being a surprise |
+| 9 | **Install membership is snapshot-only, and the snapshot that discovers one is triggered by a rendered disagreement, never by a timer** ([§ 4.1](#41-the-lobby--the-building-summary), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) | poll the snapshot on a timer; or leave discovery to a reconnect and the manual refresh alone | A discovery poll invents a cadence D2 does not state and fetches the whole fleet on a schedule. But `fleet.seats_total` already rides every heartbeat, so the client can **prove** its population is short within 15 s — and a floor that renders *the client holds 3 of 4 seats* and then does nothing about it is a floor that reports a defect it could have fixed with one request. Rendering *membership as of HH:MM:SS* keeps the staleness visible in the meantime | one snapshot fetch per distinct disagreement — bounded by how often the fleet's own count moves, not by a clock. An earlier draft of this row said a new install stays invisible until a reconnect or a manual refresh; that was contradicted by the discrepancy check two sections away, and the check is the half worth keeping |
 | 10 | **The removal of a desk happens only on a snapshot apply** | remove on `render_state: "retired"`, or on any signal | A removal driven by an absence is the inference this design refuses everywhere else. Only a fresh, complete population can honestly say a seat is no longer in it | a seat retired more than 14 days ago lingers until the next snapshot. It renders as `retired` throughout, which is true |
 | 11 | **The subagent array cap stays at 8** ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | raise it to 15, the largest value the 8 KiB bound admits | The drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table, where 15 stools is D2's "a list, not a desk" at a smaller number; and the 2,080 B of spare is the margin the next field addition needs | a fleet that routinely runs more than 8 concurrent dispatches reads *+N more* on the floor and opens the panel for the detail. Both halves of what would change this are measurable after P3 |
 | 12 | **`prefers-reduced-motion` is a first-class rendering with its own column** | disable animation and accept that some states collapse | Two states distinguished only by motion are one state in a screenshot and one state to any viewer with motion disabled — and screenshots are how most of this floor will be reviewed | every animation row owes a static form, which is one more column to keep true and is checked by [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) |
@@ -1368,6 +1720,7 @@ review can reverse it deliberately rather than discover it later.
 | 16 | **Character art is generated from the seat key, never vendored** ([§ 10.2](#102-characters-the-munder-difflin-port)) | vendor a sprite sheet and map seats onto it | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets. Generating also makes a seat's appearance a function of its identity, so it survives reloads with no stored state — the same property the desk slot has | the generator must be ported before any character renders, and Gate 2 refuses the shortcut ([§ 10.1](#101-the-manifest-and-the-two-gates)) |
 | 17 | **Provenance is a build gate, not a document** | keep `ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the socket, since an authorized handshake opened it | D2 refuses machine tokens on the socket precisely because an open connection has no revocation story — and the browser's session has the same property, which D2 does not address ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
+| 20 | **The animation table carries two classes — `edge` and `held` — and the log records both, under different causality rules** ([§ 6.2](#62-the-animation-table--the-closed-set), [§ 11](#11-acceptance-tests)) | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and one more field in the log, and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
 
 ---
@@ -1375,7 +1728,7 @@ review can reverse it deliberately rather than discover it later.
 ## 14. Open questions for the review loop
 
 Each names what it blocks, what this document does in the meantime, and what would close it. Items 1, 2,
-5, 9 and 10 are **D2 amendment needs**: this document does not edit D2
+5, 9, 10, 12, 13 and 14 are **D2 amendment needs**: this document does not edit D2
 ([§ 1.3](#13-the-boundary-stated-as-a-rule)), so they are written here as requests. In every one, D3
 states a well-defined rule of its own and says which reading it took — an amendment need is never a
 reason to leave two readings live.
@@ -1387,11 +1740,23 @@ reason to leave two readings live.
    ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)). **These are one gap, not two** — one
    fix (field tables for the drill-down's read surfaces) discharges both, and filing them separately
    would be filing one class twice. **Blocks:** the fidelity of the drill-down, not its existence.
-   **In the meantime:** the timeline renders only [D1 § 4.3](EVENT-SCHEMA.md#43-common-per-event-fields)'s
-   common per-event fields, which every event carries and D2 stores verbatim, and the detail-dependent
-   panel sections render *unavailable* when the response does not carry them
-   ([§ 5.2](#52-the-drill-down), [§ 9](#9-failure-paths-and-their-observables) F11). **Closes it:** two
-   field tables in D2 § 8.2, in the shape § 8.2.1 already uses.
+   **In the meantime:** the timeline renders `kind` and `event_time` — the
+   [D1 § 4.3](EVENT-SCHEMA.md#43-common-per-event-fields) common fields every event of every kind
+   carries — plus **`received_at`, which is D2's own field and not D1's**: D1 § 4.3's table declares
+   `event_id`, `schema_version`, `kind`, `event_time`, `seq`, `install_id`, `seat_id`, `session_id`,
+   `data` and `oversize` and **no `received_at`**, because a seat cannot stamp a server clock. It is
+   [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `events.received_at`, stored `NOT NULL` on every row this
+   endpoint reads. The detail-dependent panel sections render *unavailable* when the response does not
+   carry them ([§ 5.2](#52-the-drill-down), [§ 9](#9-failure-paths-and-their-observables) F11).
+   **The reading this document took**, stated because this section's own preamble requires it:
+   `detail`'s *"open call list in full"* is read as **every open call of the seat**, and the
+   drill-down's intern list is the subset carrying `agent_scope == "subagent"` / a non-null
+   `parent_call_id` — the intern join [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) stores
+   those labels for, never a state rule gated on them. If the field table answers otherwise, the list's
+   selection predicate changes and nothing else in this document does.
+   **Closes it:** two field tables in D2 § 8.2, in the shape § 8.2.1 already uses — the timeline's
+   naming **`received_at`** explicitly, since it is the basis of every row's age and only D2 can
+   promise it on that response; `detail`'s naming its members and the per-call fields each carries.
 
 2. **⇢ D2 — the feed has no message for a seat or an install entering the population.**
    [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)'s message table has `seat.delta`,
@@ -1465,17 +1830,33 @@ reason to leave two readings live.
    **uncapped** detail response, so the array's only consumer is the floor's side table. Nothing in D2
    changes; the item is answered, not amended.
 
-9. **⇢ D2 — no compaction fact reaches a consumer.**
-   D2 stores `sessions.compaction_open_since`, gives it a 15-minute ceiling and a counter, and states
-   that a compacting seat's quiet 40 seconds is answered "in the drill-down"
-   ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)) — but the fact appears in neither
-   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object nor
-   [§ 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)'s enumerated detail members, so the drill-down
-   has nothing to render it from. **Blocks:** answering *why is this desk quiet right now* for the one
-   quiet case D2 says is explicable. **In the meantime:** no compaction render on the floor or the
-   panel; the timeline shows `compaction.start` / `compaction.end` as events like any other, which is
-   the after-the-fact reading rather than the current one. **Closes it:** a `compacting` boolean or a
-   `compaction_open_since` on the seat object, or naming compaction among the detail members.
+9. **⇢ D2 — six drill-down explanations D2 addresses to this document have no field on any read
+   surface.** This is **one class, filed once**: D2 stores each fact and says the drill-down renders or
+   answers it, and none of them appears in
+   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object or in
+   [§ 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)'s enumerated `detail` members, so the panel
+   has nothing to render them from. Filing them separately would be filing one class six times; the
+   fix is one edit to the same two tables.
+
+   | The fact | Where D2 states the obligation | What it would answer |
+   |---|---|---|
+   | `sessions.compaction_open_since` | [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state): a compacting seat's quiet 40 s is *"still visible in the drill-down"* | *why is this desk quiet right now* — the one quiet case D2 says is explicable |
+   | `calls.synthesized` | [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state): the flag *"is stored and rendered in the drill-down, so the anomaly is a visible flag rather than an absorbed one"* | a close that had no open — an anomaly the ledger absorbed |
+   | `calls.match` (`lifo_tool_name`) | [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state): *"`match` is stored and rendered in the drill-down so an approximate attribution is legible as one"* | whether this call's id and duration are exact or a LIFO guess |
+   | `duration_ms` / `duration_source` | [§ 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from): *"durations rendered in the drill-down"* come from the event's own `duration_ms`, else `event_time` arithmetic, *"with `duration_source`"* | whether a rendered duration was measured or reconstructed |
+   | `calls.close_source` | [§ 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end): `reap_session_boundary` exists *"so the drill-down can say the clear killed these, not these ended"* | whether a call ended or was killed |
+   | `attention_requests.resolution` / `.resolution_source` | [§ 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge): the `server_ceiling` cause value *"exists so the drill-down can say the server cleared this"* | whether a *blocked* seat was answered or timed out |
+
+   **Blocks:** the drill-down's whole *why* half — every one of these is an anomaly or an
+   approximation that D2 deliberately kept visible rather than absorbing, and a panel that cannot show
+   them re-absorbs them at the last layer. **It is the same gap as item 1**, seen from the other end:
+   `detail` has no field table, so *"the open call list in full"* neither promises nor forbids any of
+   the per-call flags above. **In the meantime:** none of the six is rendered, and this document
+   renders no guess in their place; the timeline shows `compaction.start` / `compaction.end` as events
+   like any other, which is the after-the-fact reading rather than the current one, and the intern and
+   action lines carry no exactness qualifier at all rather than implying one they cannot check.
+   **Closes it:** naming the six among § 8.2.3's `detail` members (and `compacting` or
+   `compaction_open_since` on the seat object, which is the only one the **floor** would use).
 
 10. **⇢ D2 — `fleet.reload.reason` has no declared vocabulary.**
     [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)'s table gives the message a `reason` payload
@@ -1494,22 +1875,84 @@ reason to leave two readings live.
     **Closes it:** a review ruling on whether the field is worth it; the alternative is that the moves
     are rare enough to be a curiosity, which the first month of a real floor answers.
 
+12. **⇢ D2 — the ten bookkeeping members have no delivery or refresh story, and two of the three ages
+    are among them.**
+    [D2 § 6.5](FLEET-STATE.md#65-the-fold) excludes ten members from the version-bearing set — the six
+    `delivery` bookkeeping fields, `reporter.uptime_s`, and all three of `derivation` — so no delta
+    ever carries them for their own sake, and a client's copy is frozen at the last full object it
+    received. D2 states the consequence as a rule on this layer (*"every quantity … rendered from one
+    of the ten is rendered from a value that cannot be moving at the moment it is read"*) and points at
+    the fetch surfaces, but the two facts a floor most wants per seat live there: the **receipt age**
+    (`delivery.last_receipt_at`) and the **fold lag** (`derivation.fold_lag_ms`). `derivation` is the
+    sharper half — all three of its members are excluded, so the object is in **no** patch ever, while
+    `delivery` is at least re-sent whole whenever `no_data_since` or `seq_epoch` moves
+    ([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)'s shallow merge). **Blocks:** the two-age divergence
+    [D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) calls the
+    product, on the **desk**; the drill-down still has it. **In the meantime:**
+    [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s two markers — the receipt age is `dark-only`
+    (rendered on `stale`/`offline` from the version-bearing `delivery.no_data_since`, and on no other
+    desk), and every other rendered value among the ten is `fetch-fresh` (stamped *as of*, never
+    ticked). The `fold_lag` **treatment** is driven off the badge, which is version-bearing, so the
+    degradation still announces itself even though its number does not move
+    ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)). **Closes it:** any one of —
+    making `delivery.last_receipt_at` version-bearing on a coarse edge (it moves on every receipt, so
+    the edge would have to be a bucket rather than the value); a periodic per-seat refresh message; or
+    a stated snapshot cadence a client may rely on. The first is the one that would let a live desk
+    render its receipt age, which is the reading operators will expect.
+
+13. **⇢ D2 — `badge_first_seen` is stored and reaches no consumer, so no badge can be dated.**
+    [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) item 0 keeps
+    `seat_state.badge_first_seen`, a per-badge map, and derives `badges_since` as *the minimum of the
+    values* — then says in terms that one timestamp *"cannot answer 'when did **this** badge appear',
+    which is the only question `badges_since` is asked"*. The map is a column
+    ([D2 § 6.4](FLEET-STATE.md#64-ddl)) and appears on neither read surface. **Blocks:** dating an
+    individual badge — a `fold_lag` that began thirty seconds ago, on a seat whose sticky `lossy` has
+    been up all day, has no onset a consumer can render. **In the meantime:** the panel carries **one**
+    cluster-scoped line, *oldest badge since HH:MM*, and stamps no individual badge
+    ([§ 7.2](#72-badges-every-member-has-a-render)); a per-badge *since* would be a misdated
+    degradation on the panel whose job is to date degradations. **Closes it:** `badge_first_seen` among
+    [§ 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)'s `detail` members — the drill-down is where
+    the per-badge line renders, so it need not ride the snapshot.
+
+14. **⇢ D2 — a cold-start client cannot subscribe before it fetches, because it does not yet know what
+    to subscribe to.**
+    [D2 § 8.4](FLEET-STATE.md#84-snapshot-then-deltas) step 1 is *"connects, subscribes to
+    private-fleet.<install>"* and the whole protocol's closure property rests on that being done
+    first — but the install set is learned from the snapshot, so on a cold start steps 2–4 run with no
+    channel open, and a delta emitted for a not-yet-known install in that window is **never received**
+    rather than buffered-and-discarded. The per-seat watermark cannot recover it: it filters a buffer.
+    **Blocks:** nothing permanently — the next delta for that seat trips the gap detector and
+    [§ 9](#9-failure-paths-and-their-observables) F2 resyncs it — but a seat that changes inside the
+    window and then goes quiet holds its pre-change state until a full snapshot, which is D2 § 8.4's
+    own named failure. **In the meantime:** [§ 2.2](#22-connect-snapshot-deltas) **step 6b** — one
+    extra snapshot fetch on a cold start, covering exactly the installs first subscribed at step 6,
+    drained against their own per-seat watermarks. **Closes it:** an installs-list endpoint the client
+    can call before subscribing, or a fleet-wide bootstrap channel it can subscribe to without knowing
+    any install id — either makes step 2 complete on a cold start and retires 6b.
+
 ---
 
 ## Appendix A — every obligation addressed to this document
 
-[D2](FLEET-STATE.md) addresses this document in **twenty-eight** places — a `D3` mention, a "renders"
-that names an obligation rather than a pixel, a rule only the render layer can keep. [D1](EVENT-SCHEMA.md)
-addresses it in **eight** more, directly or through its "constraining D2/D3" clause. All of them are
+[D2](FLEET-STATE.md) addresses this document in **thirty-eight** places — a `D3` mention, a "renders"
+that names an obligation rather than a pixel, a "the drill-down can say", a rule only the render layer
+can keep. [D1](EVENT-SCHEMA.md) addresses it in **eleven** more, directly or through its
+"constraining D2/D3" clause. All of them are
 enumerated here, because an obligation a downstream document did not notice is indistinguishable from
 one it declined. The two counts above and the two tables' row counts are checked against each other by
 `tools/design/verify-floor.py`, so a row added to a table and not to a sentence reds the gate.
 
-**The population has two halves and only one is machine-derivable**, exactly as D2 found for its own:
-the obligations whose D2 section carries the literal marker `D3` are re-derivable by grep, and the rest
-— a "renders" clause, a field whose whole purpose is a rendering rule — were found by reading D2. The
-tool checks the marker half's coverage and prints the size of the remainder rather than reporting a
-clean over it.
+**The population has two halves and only one is machine-derivable**, exactly as D2 found for its own.
+The mechanised half is no longer the literal `D3` alone — that recognizer reported clean while
+[D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and
+[§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) placed three render obligations this document
+neither listed nor discharged, because those sections say *"rendered in the drill-down"* and never say
+`D3`. It is now `D3` **plus the render-directed phrasings D2 and D1 actually use** — *rendered in the
+drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as
+quiet* — over **both** upstream documents. The rest — a "renders" clause in none of those forms, a
+field whose whole purpose is a rendering rule — were found by reading. The tool checks the mechanised
+half's coverage in both documents and prints the remainder **row by row** rather than reporting a clean
+over it.
 
 ### The obligations D2 places on this document
 
@@ -1518,7 +1961,7 @@ clean over it.
 | T1 | § 1.2 | Everything rendered is D3's — desks, floors, sprites, animation, the identity→desk mapping; where D1 or D2 says "renders" it is naming an obligation, not a pixel | [§ 1.1](#11-what-this-document-owns), [§ 3](#3-identity-seat--desk-install--floor), [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field), [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
 | T2 | § 2.3 | A seat badged `fold_lag`: **D3 must not present the seat's activity state as current** | [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim), [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
 | T3 | § 2.3 | `fleet.fold = "stalled"`: **D3 shows a fleet banner** | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy), [§ 5.3](#53-the-fleet-on-both-screens) |
-| T4 | § 4.1 | D3 renders `render_state` and may use the components for the drill-down; it **never re-derives the collapse** | [§ 2.1](#21-the-six-client-computed-values-closed), [§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
+| T4 | § 4.1 | D3 renders `render_state` and may use the components for the drill-down; it **never re-derives the collapse** | [§ 2.1](#21-the-seven-client-computed-values-closed), [§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
 | T5 | § 4.3 | `unknown` is one glyph with seven reasons; the diagnosis belongs in the drill-down, not in six more top-level states | [§ 7.1](#71-the-render-per-state) |
 | T6 | § 8.2 | The timeline endpoint is D3's recent-activity window: newest first, `limit` ≤ 200, default 50 | [§ 4.3](#43-the-desk-drill-down-panel), [§ 5.2](#52-the-drill-down) |
 | T7 | § 8.2.4 | D3 may compose a banner from `db`, `fold` and `sweep`; the wire keeps them apart and no aggregate rolls them into one | [§ 5.3](#53-the-fleet-on-both-screens), [§ 4.1](#41-the-lobby--the-building-summary) |
@@ -1543,6 +1986,16 @@ clean over it.
 | T26 | § 8.3.1 | `patch` is a shallow merge — a nested object is replaced whole — and `changed[]` is what a client uses to decide **what to animate** | [§ 2.2](#22-connect-snapshot-deltas), [§ 6.2](#62-the-animation-table--the-closed-set) |
 | T27 | § 4.2 | `render_state`'s ten members, and `retired` short-circuiting above both axes | [§ 7.1](#71-the-render-per-state), [§ 3.5](#35-retirement-and-the-only-removal) |
 | T28 | § 8.2.3 | The seat-detail response "is the drill-down's source" and carries the open call list **in full, not capped at 8** | [§ 4.3](#43-the-desk-drill-down-panel), [§ 8](#8-interns--subagent-rendering-and-the-cap) |
+| T29 | § 3.1 | A seat that only heartbeats is quiet and **renders as quiet**: its receipt age near zero, its activity age growing without bound, "both on the wire, separately, so no consumer has to guess which one it is holding" | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down) — the quiet half is version-bearing and rides the desk; the receipt half is one of § 6.5's ten, so it is `dark-only` on the desk and `fetch-fresh` in the panel ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
+| T30 | § 4.4 | `resolution` / `resolution_source` carry `server_ceiling` — the value "exists so the drill-down can say *the server cleared this*" | [§ 14](#14-open-questions-for-the-review-loop) item 9 — on no read surface; this document renders nothing in its place rather than implying the request was answered |
+| T31 | § 4.7 | "Durations **rendered in the drill-down**": the event's own `duration_ms`, else `event_time` arithmetic, **with `duration_source`** | [§ 14](#14-open-questions-for-the-review-loop) item 9 — neither field is on a read surface, so [§ 5.2](#52-the-drill-down) renders no duration it cannot source and no qualifier it cannot check |
+| T32 | § 4.8 | A `tool.end` whose `match` is `synthesized` — a close with no open: the flag "is stored and **rendered in the drill-down**, so the anomaly is a visible flag rather than an absorbed one" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
+| T33 | § 4.8 | A `tool.end` whose `match` is `lifo_tool_name`: "`match` is stored and **rendered in the drill-down** so an approximate attribution is legible as one" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
+| T34 | § 4.8 | A compacting seat mints no activity state, and its quiet 40 s is "still visible in the drill-down" | [§ 14](#14-open-questions-for-the-review-loop) item 9; [§ 7.1](#71-the-render-per-state) has no compaction state, which is the other half of the same rule |
+| T35 | § 4.8 | `agent_scope` and `parent_call_id` are **labels**, "stored for the intern join and never gate anything" — what is forbidden is a scope-dependent **state rule** | [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down), [§ 8](#8-interns--subagent-rendering-and-the-cap): the intern list selects on them, and no pose, currency label or badge reads them |
+| T36 | § 6.5 | The **ten** non-version-bearing members: "every quantity this document says is *rendered* from one of the ten is rendered from a value that cannot be moving at the moment it is read" — the raw skew, spool depth, cursor and fold lag are "served fresh by § 8.2.3, the snapshot and § 8.2.4 rather than held by a client between deltas" | [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `fetch-fresh` / `dark-only` markers, applied in [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down), [§ 4.3](#43-the-desk-drill-down-panel) and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy); [§ 14](#14-open-questions-for-the-review-loop) item 12 |
+| T37 | § 6.7 | A provisioned seat that has never reported "**must render, not vanish**"; a retired seat drops out of the read surfaces by a query filter and not a deletion | [§ 3.4](#34-a-new-seats-first-appearance), [§ 3.5](#35-retirement-and-the-only-removal), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) |
+| T38 | § 10 | `close_source: reap_session_boundary` exists "so the drill-down can say *the clear killed these*, not *these ended*" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
 
 ### The obligations D1 addresses to the render layer
 
@@ -1556,13 +2009,28 @@ clean over it.
 | U6 | § 6.11 | `used_pct_source` keeps the harness and computed branches distinguishable rather than silently averaged | [§ 4.3](#43-the-desk-drill-down-panel), [§ 5.1](#51-the-desk) |
 | U7 | § 9.3 | The `degraded` array is the badge source so a consumer never re-derives badges from raw counters; `lossy`'s **number is rendered** beside it | [§ 7.2](#72-badges-every-member-has-a-render) |
 | U8 | § 10.1 | Never render a seat's timestamp as an absolute clock; the seat's clock is its own claim | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) |
+| U9 | § 1 | The scope boundary D1 draws: **"Anything rendered — D3"** | [§ 1.1](#11-what-this-document-owns), [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) |
+| U10 | § 6.12 | `notification_kind` has exactly **three** members and no `other`, "so a render branch over a fourth is neither owed nor wanted" — a wire member no input can produce is a branch D2 and D3 would build and never reach | [§ 5.4](#54-what-is-never-rendered): this document renders no `notification_kind` at all — an attention request reaches the floor only as `blocked` ([§ 7.1](#71-the-render-per-state)), whose entry and exit D2 owns — and [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes the sets it *does* branch over, so an unreachable branch here is a set-difference failure rather than a reading |
+| U11 | § 6.4 | `D2-MUST` #1's rendering half: `stalled` carries `api_error_type` "so the drill-down can say *which* error" — and D1 mints a **twelfth** member, `unrecognised`, precisely so the harness's own `unknown` is not overloaded as the coercion target | [§ 7.1](#71-the-render-per-state)'s `stalled` row, [§ 5.1](#51-the-desk), and [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable), which publishes all twelve with the two-way distinction spelled out |
 
-**Nothing addressed to this document is undischarged.** Five obligations are discharged with a stated
-gap in the upstream contract rather than by a rendering alone, and each is filed in
-[§ 14](#14-open-questions-for-the-review-loop) rather than absorbed silently: T6's timeline has no field
-table (item 1); T28's `detail` has none either (item 1, the same class); the membership case T24's
-"never vanishes" implies has no message (item 2); T23's MFA gate has no rule for an expiring session on
-an open socket (item 5); and D2 § 4.8's compaction explanation has no field to render (item 9).
+**Nothing addressed to this document is undischarged.** **Thirteen** of the thirty-eight are
+discharged with a stated gap in the upstream contract rather than by a rendering alone, and every one
+is filed in [§ 14](#14-open-questions-for-the-review-loop) rather than absorbed silently: T6's timeline
+has no field table and T28's `detail` has none either (item 1, one class filed once); the membership
+case T24's "never vanishes" implies has no message (item 2); T23's MFA gate has no rule for an expiring
+session on an open socket (item 5); T30, T31, T32, T33, T34 and T38 are six drill-down explanations D2
+names and no read surface carries (item 9, one class filed once); T29's receipt age and T36's fold lag
+are among the ten members no delta carries (item 12); and T20's per-badge *since* has only a
+cluster-scoped minimum to render (item 13).
+
+**That share is larger than an earlier revision of this appendix reported, and D2 did not change.**
+The population was derived by grepping D2 for the literal `D3`, and the three render obligations in
+[D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and
+[§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) say *"rendered in the drill-down"* instead — so
+a table that claimed to enumerate *all of them* was clean over a population its own recognizer could
+not see. The recognizer now reads the phrasings upstream actually uses
+([§ 12](#12-every-number-and-where-it-comes-from)'s G6 row), over both documents, and what it still
+cannot reach is printed row by row on every run rather than counted.
 
 ---
 
@@ -1575,7 +2043,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | Order | Artifact | Gate |
 |---|---|---|
 | 0 | `ATTRIBUTION.md`, the asset manifest, and both provenance gates | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** RED on each of its four planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the character generator port + `resources/characters/LINEAGE.md` (card #7340) | renders in a plain browser from the seat key alone; the lineage file is complete; Gate 2 holds |
+| 1 | the character generator port + `resources/characters/LINEAGE.md` (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; the lineage file is complete; both clauses of Gate 2 hold |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | the log records a cause for every animation, and **[AT-D3-1](#at-d3-1-no-animation-without-its-event)**'s discriminating control passes — a harness that records nothing must not be able to report clean |
 | 3 | the client protocol: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas), [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat), [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) |
 | 4 | the clock offset and every age readout ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) |

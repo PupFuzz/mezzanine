@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D3 verification gate: docs/design/FLOOR.md.
 
-EIGHT guard classes, G1-G8, one per defect class this document can carry that a reader will not
+NINE guard classes, G1-G9, one per defect class this document can carry that a reader will not
 reliably catch.  Every population below is RE-DERIVED on each run -- from this document's own
 tables, or from docs/design/FLEET-STATE.md (D2) and docs/design/EVENT-SCHEMA.md (D1) -- and never
 from a list stored here.  A number or a member list written into a checker is one free to disagree
@@ -20,14 +20,21 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G7  state and badge render closure            a D2 enum member with no render, or a render for a
                                                member D2 does not declare
   G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key
+  G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
+                                               bearing members without `fetch-fresh` / `dark-only`
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
 searcher stopped):
 
-  * G6's SEMANTIC half.  An obligation D2 addresses to the render layer without the literal `D3`
-    marker -- a "renders" clause, a field whose whole purpose is a rendering rule -- cannot be found
-    by grep.  The marker half is checked; the SIZE of the semantic half is re-derived and printed.
+  * G6's SEMANTIC half.  The mechanized recognizer is NOT the literal `D3` alone -- that reported
+    clean while D2 section 4.7 and section 4.8 placed three render obligations on this document, in
+    the words "rendered in the drill-down".  It is `D3` plus the render-directed phrasings the two
+    upstream documents actually use, over BOTH of them.  An obligation phrased in none of those forms
+    is still not grep-derivable, so the rows resting on no marker section are printed ROW BY ROW.
+  * G9's PROSE half.  G9 reads the render tables and the panel table, where a source column names a
+    field.  A bookkeeping member reintroduced in prose is outside that population, so the count of
+    prose mentions is printed as named residue rather than folded into a pass.
   * G4's RESIDUE.  Every number G4 matches is then perturbed, and the ones some other value would
     also have satisfied are printed individually rather than counted as passes.  That list is the
     honest statement of which section 12 rows this gate is actually holding.
@@ -53,7 +60,11 @@ d1_raw = D1.read_text()
 WORD = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
         8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen",
         14: "fourteen", 15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen",
-        19: "nineteen", 20: "twenty", 28: "twenty-eight", 29: "twenty-nine"}
+        19: "nineteen", 20: "twenty", 21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
+        24: "twenty-four", 25: "twenty-five", 26: "twenty-six", 27: "twenty-seven",
+        28: "twenty-eight", 29: "twenty-nine", 30: "thirty", 31: "thirty-one", 32: "thirty-two",
+        33: "thirty-three", 34: "thirty-four", 35: "thirty-five", 36: "thirty-six",
+        37: "thirty-seven", 38: "thirty-eight", 39: "thirty-nine", 40: "forty"}
 NUM = {v: k for k, v in WORD.items()}
 
 
@@ -108,6 +119,7 @@ def heading_index(text):
 HEADS = heading_index(raw)
 BY_ANCHOR = {h[2]: h for h in HEADS}
 D2_HEADS = heading_index(d2_raw)
+D1_HEADS = heading_index(d1_raw)
 
 
 def section_text(anchor, src_lines=None, index=None):
@@ -246,9 +258,22 @@ if "detail" not in d2_detail:
 ALLOWED = (d2_fields | d2_msgs | d2_detail
            | d2_fleet | {"fleet." + f for f in d2_fleet})
 
+
+def base_field(t):
+    """`badges[]` and `badges` name one field.  A trailing `[]` is D2's OWN array notation -- its
+    § 8.2.1 table writes `subagents[].title` -- so stripping it here is reading D2's spelling, not
+    widening the check: `banana[]` still resolves to `banana` and still fails."""
+    return t[:-2] if t.endswith("[]") else t
+
+
+def declared(t):
+    return t in ALLOWED or base_field(t) in ALLOWED
+
 # ------------------------------------- G1. animation totality, both directions ---
-anim_rows = table_rows(raw, r"^\| # \| Animation \| Where \| Driving fact \(D2\) \|")
-anim_ids, anim_drivers, g1_bad, driverless = set(), {}, [], 0
+ANIM_HEADER = r"^\| # \| Class \| Animation \| Where \| Driving fact \(D2\) \|"
+ANIM_DRIVER_COL = 4
+anim_rows = table_rows(raw, ANIM_HEADER)
+anim_ids, anim_drivers, g1_bad, driverless, anim_class = set(), {}, [], 0, {}
 if not anim_rows:
     fail.append("G1 CONTROL: section 6.2's animation table did not parse — the closed set this "
                 "document's headline claim rests on would be unread, and every animation would "
@@ -260,13 +285,14 @@ else:
         if not m:
             continue
         anim_ids.add(m.group(1))
-        toks = field_tokens(c[3]) if len(c) > 3 else set()
+        anim_class[m.group(1)] = c[1].strip("`") if len(c) > 1 else ""
+        toks = field_tokens(c[ANIM_DRIVER_COL]) if len(c) > ANIM_DRIVER_COL else set()
         anim_drivers[m.group(1)] = toks
         if not toks:
             driverless += 1
             continue
         for t in toks:
-            if t not in ALLOWED:
+            if not declared(t):
                 g1_bad.append(t)
                 fail.append(
                     f"G1: animation {m.group(1)}'s driving fact `{t}` is not a field D2 § 8.2.1 "
@@ -275,6 +301,15 @@ else:
                     f"animation with no event wearing a field name")
     if len(anim_ids) < 10:
         fail.append(f"G1 CONTROL: only {len(anim_ids)} animation rows parsed from section 6.2")
+    bad_class = sorted(a for a, k in anim_class.items() if k not in ("edge", "held"))
+    for a in bad_class:
+        fail.append(f"G1: animation {a}'s Class cell reads `{anim_class[a]}`, which is neither `edge` "
+                    f"nor `held` — the log's causality rule is selected by that cell, so a row "
+                    f"outside the two classes is a row whose animation-log contract is undefined")
+    if not bad_class and len({k for k in anim_class.values()}) < 2:
+        fail.append("G1 CONTROL: section 6.2's rows are all one class — the split the log's two "
+                    "causality rules rest on would be unexercised, and every held render would be "
+                    "checked against the edge rule or none")
     if driverless > 1:
         fail.append(f"G1: {driverless} animation rows name no wire field or message at all. Exactly "
                     f"one may (A16, whose driver is the rendered seat set); a second is an "
@@ -303,7 +338,8 @@ SOURCE_TABLES = [
     (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1"),
     (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2"),
     (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3"),
-    (r"^\| # \| Animation \| Where \| Driving fact \(D2\) \|", 3, "6.2"),
+    (ANIM_HEADER, ANIM_DRIVER_COL, "6.2"),
+    (r"^\| Panel section \| Contents \| Source \|", 2, "4.3"),
 ]
 for header, col, where in SOURCE_TABLES:
     rows = table_rows(raw, header)
@@ -317,8 +353,8 @@ for header, col, where in SOURCE_TABLES:
             continue
         for t in field_tokens(c[col]):
             g2_checked += 1
-            g2_seen.add(t)
-            if t not in ALLOWED:
+            g2_seen.add(base_field(t))
+            if not declared(t):
                 fail.append(
                     f"G2: section {where} renders a fact whose source is `{t}`, which D2 declares "
                     f"nowhere — not in § 8.2.1's seat object, § 8.2.4's fleet object, § 8.2.3's "
@@ -368,7 +404,7 @@ else:
                                    ("bytes over the bound", g3["over"], want_over)):
             if stated != want:
                 fail.append(f"G3: section 8.1 states {name} = {stated:,}; re-derived from its own "
-                            f"two inputs ({g3['worst']:,} B worst case, {g3['bound']:,} B bound, "
+                            f"three inputs ({g3['worst']:,} B worst case, {g3['bound']:,} B bound, "
                             f"{g3['elem']:,} B per element) it is {want:,}")
         if want_breach <= g3["bound"]:
             fail.append("G3: the cap one past the stated maximum does NOT breach the bound, so the "
@@ -493,19 +529,24 @@ elif NUM.get(m.group(1)) != n_u:
     fail.append(f"G6: Appendix A says D1 addresses it in {m.group(1)} more places and its table "
                 f"has {n_u} rows")
 
-cited_d2 = set()
-for r in t_rows:
-    c = cells(r)
-    if len(c) < 2:
-        continue
-    for s in re.findall(r"§\s*(\d+(?:\.\d+)*)", c[1]):
-        cited_d2.add(s)
+def cited_sections(rows):
+    out = set()
+    for r in rows:
+        c = cells(r)
+        if len(c) < 2:
+            continue
+        for s in re.findall(r"§\s*(\d+(?:\.\d+)*)", c[1]):
+            out.add(s)
+    return out
 
 
-def d2_section_of(line_no):
-    """The numbered D2 section a line falls in; None for a section with no number."""
+cited_d2, cited_d1 = cited_sections(t_rows), cited_sections(u_rows)
+
+
+def numbered_section_of(heads, line_no):
+    """The numbered section a line falls in; None for a section with no number."""
     best = None
-    for h in D2_HEADS:
+    for h in heads:
         if h[3] <= line_no < h[4]:
             m = re.match(r"^(\d+(?:\.\d+)*)\.?\s", h[1])
             if m:
@@ -513,22 +554,63 @@ def d2_section_of(line_no):
     return best
 
 
-RESTATING = {"13", "14"}   # 14 IS cited (item 9); 13 is a decisions register that restates
-marked = set()
-for i, line in enumerate(d2_lines):
-    if "D3" not in line:
-        continue
-    s = d2_section_of(i)
-    if s is None or s == "13":
-        continue
-    marked.add(s)
+# THE RECOGNIZER.  `D3` alone is not it, and reporting that it was is how three render obligations
+# reached review undischarged: D2 § 4.7 and § 4.8 address this document in the words "rendered in the
+# drill-down" and never say `D3`, so a grep for the marker was clean over them.  A marker this check
+# cannot see is an obligation this check does not hold, so the population is the phrasings the two
+# upstream documents ACTUALLY use for a render-directed clause -- re-derived over both of them, never
+# stored as a section list here.
+MARKERS = [r"\bD3\b", r"rendered in the drill-down", r"the drill-down can say",
+           r"visible in the drill-down", r"\bmust render\b", r"renders as quiet"]
+# A decisions register RESTATES obligations that are stated where they belong; requiring a citation of
+# it would file one obligation twice.  Nothing else is exempt -- D2 § 14 IS cited, at item 9.
+RESTATING = {"D2": {"13"}, "D1": {"15"}}
+
+
+def marked_sections(src_lines, heads, which):
+    out = set()
+    for i, line in enumerate(src_lines):
+        if not any(re.search(p, line) for p in MARKERS):
+            continue
+        s = numbered_section_of(heads, i)
+        if s is None or s in RESTATING[which]:
+            continue
+        out.add(s)
+    return out
+
+
+marked = marked_sections(d2_lines, D2_HEADS, "D2")
+marked_d1 = marked_sections(d1_raw.split("\n"), D1_HEADS, "D1")
+if len(marked) < 10 or len(marked_d1) < 3:
+    fail.append(f"G6 CONTROL: the recognizer found {len(marked)} marked D2 sections and "
+                f"{len(marked_d1)} marked D1 sections — it has stopped matching, and a coverage "
+                f"check over an empty marker population reports clean over both documents")
 uncovered = sorted(marked - cited_d2)
 for s in uncovered:
-    fail.append(f"G6: D2 § {s} carries the literal `D3` marker and no row of Appendix A cites it "
+    fail.append(f"G6: D2 § {s} carries a render-directed marker and no row of Appendix A cites it "
                 f"from a D2-attributed position — an obligation this document did not notice is "
                 f"indistinguishable from one it declined")
-semantic = n_t - len([r for r in t_rows
-                      if any(x in marked for x in re.findall(r"§\s*(\d+(?:\.\d+)*)", cells(r)[1]))])
+uncovered_d1 = sorted(marked_d1 - cited_d1)
+for s in uncovered_d1:
+    fail.append(f"G6: D1 § {s} carries a render-directed marker and no row of Appendix A's D1 table "
+                f"cites it — the same hole as the D2 half, on the document nobody thought to grep")
+
+
+def semantic_remainder(rows, marks):
+    """Rows resting on no marker section: the half found by reading, printed rather than counted."""
+    out = []
+    for r in rows:
+        c = cells(r)
+        if len(c) < 2:
+            continue
+        if not any(x in marks for x in re.findall(r"§\s*(\d+(?:\.\d+)*)", c[1])):
+            out.append(f"{c[0]} ({c[1]})")
+    return out
+
+
+semantic_rows = semantic_remainder(t_rows, marked)
+semantic_rows_d1 = semantic_remainder(u_rows, marked_d1)
+semantic = len(semantic_rows)
 
 # -------------------------------- G7. state and badge render closure, from D2 ----
 def enum_members(field):
@@ -566,28 +648,60 @@ if len(badge_m) != 18:
     fail.append(f"G7 CONTROL: {len(badge_m)} badges parsed from D2 § 8.3.2's worst-case block, not "
                 f"the 18 § 8.2.1 bounds the array at")
 
+def rendered_members(header_re):
+    out = set()
+    for r in table_rows(raw, header_re) or []:
+        m2 = re.match(r"^\|\s*`([a-z_]+)`\s*\|", r)
+        if m2:
+            out.add(m2.group(1))
+    return out
+
+
 state_rows = table_rows(raw, r"^\| `render_state` \| Desk \| Label line \|") or []
-state_rendered = set()
-for r in state_rows:
-    m2 = re.match(r"^\|\s*`([a-z_]+)`\s*\|", r)
-    if m2:
-        state_rendered.add(m2.group(1))
-ur_rendered = set()
-for r in table_rows(raw, r"^\| `unknown_reason` \| Sentence \|") or []:
-    m2 = re.match(r"^\|\s*`([a-z_]+)`\s*\|", r)
-    if m2:
-        ur_rendered.add(m2.group(1))
-badge_rendered = set()
-for r in table_rows(raw, r"^\| Badge \| Origin \| Rendered on the desk \|") or []:
-    m2 = re.match(r"^\|\s*`([a-z_]+)`\s*\|", r)
-    if m2:
-        badge_rendered.add(m2.group(1))
-if not state_rows or not ur_rendered or not badge_rendered:
-    fail.append("G7 CONTROL: one of this document's render tables did not parse (state, "
-                "unknown_reason, badges) — the set difference would be clean because it was empty")
+state_rendered = rendered_members(r"^\| `render_state` \| Desk \| Label line \|")
+ur_rendered = rendered_members(r"^\| `unknown_reason` \| Sentence \|")
+badge_rendered = rendered_members(r"^\| Badge \| Origin \| Rendered on the desk \|")
+# The three sets section 5.4's unrecognised-member rule tests against and section 7.6 publishes.  An
+# earlier revision of section 12 and of tools/design/README.md claimed link_state and activity_state
+# closure that this file did not implement -- the claim was the whole of the check, and `disabled` was
+# missing from section 7.3 underneath it.
+link_rendered = rendered_members(
+    r"^\| `link_state` \| What it says about the seat \| Currency treatment \|")
+act_rendered = rendered_members(
+    r"^\| `activity_state` \| What it says the seat is doing \| Rendered as \|")
+aet_rendered = rendered_members(r"^\| `api_error_type` \| The line beside the raw value \|")
+
+# `api_error_type`'s members live in D1, not D2: D2 § 8.2.1 cites "D1 § 6.4's 12 members" without
+# repeating them, so this is the one set re-derived from D1 -- and D2's own count is the control.
+d1_by_anchor = {h[2]: h for h in D1_HEADS}
+sec_d1_64 = section_text("64-turnend", d1_raw.split("\n"), d1_by_anchor)
+aet_m = set()
+m_aet = re.search(r"^\|\s*`api_error_type`\s*\|(.*)$", sec_d1_64 or "", re.M)
+if not m_aet:
+    fail.append("G7 CONTROL: D1 § 6.4's `api_error_type` row did not parse — the twelve members "
+                "section 7.6 publishes would be compared against an empty set")
+else:
+    aet_m = set(re.findall(r"`([a-z_]+)`", m_aet.group(1))) - {"null"}
+m_cnt = re.search(r"D1 § 6\.4's (\d+) members", sec_821 or "")
+if m_cnt and aet_m and int(m_cnt.group(1)) != len(aet_m):
+    fail.append(f"G7: D2 § 8.2.1 sources `api_error_type` to \"D1 § 6.4's {m_cnt.group(1)} members\" "
+                f"and D1 § 6.4 declares {len(aet_m)} — two documents disagree about the size of one "
+                f"set, and this document publishes it")
+elif not m_cnt:
+    fail.append("G7 CONTROL: D2 § 8.2.1 no longer states how many `api_error_type` members D1 § 6.4 "
+                "declares — the cross-check on the one set re-derived from D1 is gone")
+
+if not state_rows or not ur_rendered or not badge_rendered or not link_rendered or not act_rendered \
+        or not aet_rendered:
+    fail.append("G7 CONTROL: one of this document's render tables did not parse (render_state, "
+                "unknown_reason, badges, link_state, activity_state, api_error_type) — the set "
+                "difference would be clean because it was empty")
 for name, declared, rendered in (("render_state", render_m, state_rendered),
                                  ("unknown_reason", ur_m, ur_rendered),
-                                 ("badge", badge_m, badge_rendered)):
+                                 ("badge", badge_m, badge_rendered),
+                                 ("link_state", link_m, link_rendered),
+                                 ("activity_state", act_m, act_rendered),
+                                 ("api_error_type", aet_m, aet_rendered)):
     if not declared or not rendered:
         continue
     for x in sorted(declared - rendered):
@@ -674,6 +788,85 @@ else:
             fail.append("G8: section 3.3 says the arriving seat takes the slot, but it does not "
                         "sort lower in the (h, seat_id) order the function uses")
 
+# --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
+# G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
+# why G2 was clean over a receipt age that freezes on every live desk: a field-existence check cannot
+# see a DELIVERY contract.  D2 § 6.5 excludes these ten from the version-bearing set, so no delta ever
+# carries them for their own sake, and D2 states the consequence as a rule on the render layer -- every
+# quantity rendered from one of them must be one that cannot be moving as it is read.  This document
+# carries that rule as two markers; every render row sourcing one of the ten must carry one.
+sec_65 = section_text("65-the-fold", d2_lines, d2_by_anchor)
+ten = set()
+rows = table_rows(sec_65 or "", r"^\| Not version-bearing \| Why it moves")
+if not rows:
+    fail.append("G9 CONTROL: D2 § 6.5's non-version-bearing table did not parse — every render row "
+                "below would be checked against an empty exclusion set and report clean over the "
+                "whole class")
+else:
+    for r in rows:
+        c = cells(r)
+        ten |= {t for t in re.findall(r"`([a-z_.]+)`", c[0]) if "." in t}
+if rows and len(ten) != 10:
+    fail.append(f"G9: D2 § 6.5 now excludes {len(ten)} members from the version-bearing set, not the "
+                f"ten this document's § 2.4 names and marks — {sorted(ten)}. The exclusion list moved "
+                f"upstream and this document's freshness rule did not move with it")
+leaf_of = {t.rsplit(".", 1)[-1]: t for t in ten}
+MARKED_FRESH = ("fetch-fresh", "dark-only")
+# (header, detection column, label).  `None` means detect over the whole row: § 4.3's panel table
+# names the members by their LEAF names in its contents cell, not as dotted paths in a source column.
+G9_TABLES = [
+    (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1"),
+    (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2"),
+    (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3"),
+    (ANIM_HEADER, ANIM_DRIVER_COL, "6.2"),
+    (r"^\| Panel section \| Contents \| Source \|", None, "4.3"),
+]
+g9_rows = g9_hits = 0
+for header, col, where in G9_TABLES:
+    trows = table_rows(raw, header)
+    if not trows:
+        fail.append(f"G9 CONTROL: the table of section {where} did not parse — every bookkeeping "
+                    f"member it renders would go unmarked and unchecked")
+        continue
+    for r in trows:
+        c = cells(r)
+        g9_rows += 1
+        scope = r if col is None else (c[col] if len(c) > col else "")
+        hits = {t for t in re.findall(r"`([a-z_.]+)`", scope) if t in ten}
+        hits |= {leaf_of[t] for t in re.findall(r"`([a-z_]+)`", scope) if t in leaf_of}
+        if not hits:
+            continue
+        g9_hits += 1
+        if any(mk in r for mk in MARKED_FRESH):
+            continue
+        fail.append(
+            f"G9: section {where} renders from {sorted(hits)}, which D2 § 6.5 excludes from the "
+            f"version-bearing set, and the row carries neither `fetch-fresh` nor `dark-only`. No "
+            f"delta ever carries that member for its own sake, so a client's copy freezes at the "
+            f"last full object it received — an age ticked from it reads *no data for N* on a seat "
+            f"that is reporting perfectly")
+if ten and not g9_hits:
+    fail.append("G9 CONTROL: no render row names one of D2 § 6.5's ten — the detector is broken, and "
+                "a delivery-contract check that finds nothing to check reports clean over the class "
+                "it exists for")
+if not re.search(r"FLEET-STATE\.md#65-the-fold", raw):
+    fail.append("G9: this document renders values D2 § 6.5 excludes from the feed and cites § 6.5 "
+                "nowhere — the section that decides whether a rendered fact is deliverable is not a "
+                "section a render map may leave uncited")
+# RESIDUE, printed rather than folded into a pass: G9 reads table rows whose columns name a field.
+# A bookkeeping member reintroduced in PROSE is outside that population.
+table_lines = set()
+for header, col, where in G9_TABLES:
+    for r in table_rows(raw, header) or []:
+        table_lines.add(r)
+g9_prose = []
+for i, line in enumerate(lines, 1):
+    if line in table_lines or line.startswith("|"):
+        continue
+    hit = sorted({t for t in re.findall(r"`([a-z_.]+)`", line) if t in ten})
+    if hit:
+        g9_prose.append((i, hit[0]))
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -695,18 +888,34 @@ for r in g4_residue:
     print(f"    G4 residue — a wrong value this gate would NOT notice · {r}")
 print(f"G5  acceptance tests: {len(at_ids)}; fixtures declared {len(fx_declared)}, used "
       f"{len(fx_used)}, symmetric difference {len(fx_declared ^ fx_used)}")
-print(f"G6  Appendix A: {n_t} D2 rows + {n_u} D1 rows; D2 sections carrying the `D3` marker: "
-      f"{len(marked)} ({sorted(marked)}), uncovered {len(uncovered)}; "
-      f"rows resting on a marker section: {n_t - semantic}, SEMANTIC remainder {semantic} "
-      f"(found by reading D2, not by grepping it — the manual half)")
-print(f"G7  render closure: {len(state_rendered)}/{len(render_m)} render_state, "
-      f"{len(ur_rendered)}/{len(ur_m)} unknown_reason, {len(badge_rendered)}/{len(badge_m)} badges")
+print(f"G6  Appendix A: {n_t} D2 rows + {n_u} D1 rows; render-directed markers found in "
+      f"{len(marked)} D2 sections ({sorted(marked)}) and {len(marked_d1)} D1 sections "
+      f"({sorted(marked_d1)}); uncovered {len(uncovered)} D2 / {len(uncovered_d1)} D1; "
+      f"rows resting on a marker section: {n_t - semantic}, SEMANTIC remainder "
+      f"{semantic} D2 + {len(semantic_rows_d1)} D1 — printed row by row below, because a count is "
+      f"not a verification of the half no recognizer reaches")
+for r in semantic_rows:
+    print(f"    G6 semantic remainder — a D2 obligation found by READING, not by the recognizer · {r}")
+for r in semantic_rows_d1:
+    print(f"    G6 semantic remainder — a D1 obligation found by READING, not by the recognizer · {r}")
+print(f"G7  render closure, both directions: {len(state_rendered)}/{len(render_m)} render_state, "
+      f"{len(ur_rendered)}/{len(ur_m)} unknown_reason, {len(badge_rendered)}/{len(badge_m)} badges, "
+      f"{len(link_rendered)}/{len(link_m)} link_state, {len(act_rendered)}/{len(act_m)} "
+      f"activity_state, {len(aet_rendered)}/{len(aet_m)} api_error_type (the last from D1 § 6.4)")
 print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair")
+print(f"G9  D2 § 6.5's non-version-bearing members re-derived: {len(ten)}; render rows scanned "
+      f"{g9_rows}, rows sourcing one of the ten {g9_hits}, all marked `fetch-fresh` or `dark-only`")
+print(f"    G9 residue — prose mentions of the ten outside the render tables this check reads: "
+      f"{len(g9_prose)} (including § 2.4's own definition site). This check holds the TABLES; a "
+      f"held-and-ticked value reintroduced in a sentence is read by a human")
+for ln, f in g9_prose[:12]:
+    print(f"    G9 residue — prose mention, unchecked by this gate · L{ln}: `{f}`")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
-      "D2 addresses to the render layer without the literal `D3` marker cannot be found by grep, "
-      "and the count above is its size, not its verification. (b) whether a `Cited` number matches "
-      "what D2 says, as opposed to appearing at its D3 home. (c) whether any of this renders "
-      "legibly, which is a review question and not a checkable one.")
+      "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
+      "by grep; the rows above are its members, printed rather than counted, and naming them is not "
+      "verifying them. (b) whether a `Cited` number matches what D2 says, as opposed to appearing at "
+      "its D3 home. (c) G9's prose residue, above. (d) whether any of this renders legibly, which is "
+      "a review question and not a checkable one.")
 
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
