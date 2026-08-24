@@ -125,7 +125,7 @@ it, and what it must never draw.
 ### 1.3 The boundary, stated as a rule
 
 **A fact has one home. If [D2](FLEET-STATE.md) states it, this document cites it by section number and
-does not paraphrase it.** Two corollaries bind an implementer:
+does not paraphrase it.** Three corollaries bind an implementer:
 
 1. **No rendered fact without a named field.** Every row of
    [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) names the D2 field it reads. A number
@@ -135,6 +135,15 @@ does not paraphrase it.** Two corollaries bind an implementer:
    an entry in [§ 14](#14-open-questions-for-the-review-loop) plus a stated interim rendering — never a
    guessed endpoint, a guessed field or a hopeful default. This document **never edits D2**: an
    amendment is a request, not an edit.
+3. **A quotation is verbatim in its words and this document's in its emphasis.** Every span inside
+   quotation marks is [D1](EVENT-SCHEMA.md)'s or [D2](FLEET-STATE.md)'s own wording, with an ellipsis
+   marking anything elided; **bold and italic inside a quotation are this document's**, added to point
+   at the clause that binds the render layer, and are never a claim that the source emphasised it. The
+   convention is stated here once because the alternative is an *emphasis added* note on each of the
+   dozens of quotations in this file, and a note repeated dozens of times is a note that will be
+   omitted from the next one. Where a span is accurate in substance but is **not** a verbatim quote it
+   says so at the site — [Appendix A](#appendix-a--every-obligation-addressed-to-this-document) U9 is
+   the one such case.
 
 ---
 
@@ -1293,7 +1302,7 @@ and D2's, and this document adds only pixels:
 ### 8.1 The cap stays at 8 — the arithmetic, and the reason
 
 [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9 hands this decision to D3: *"It
-is a rendering judgement made in a state document because it bounds the wire object. If D3 wants a
+is a rendering judgement made in a state document because it bounds the wire object… If D3 wants a
 different number the cap moves… Closes it: D3's drill-down design."* **This document keeps 8.**
 
 **The arithmetic, from D2's own measured figures** ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object),
@@ -2091,7 +2100,12 @@ belongs in its own round.
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every animation has an event, never that the floor is legible |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
-**What the tool deliberately does not do.** It does not render anything, it does not check prose for
+**What the tool deliberately does not do.** It does not check that a **quotation is verbatim at its
+source** — every span inside quotation marks in this document is **hand-verified** against
+[D1](EVENT-SCHEMA.md) or [D2](FLEET-STATE.md), under [§ 1.3](#13-the-boundary-stated-as-a-rule)
+corollary 3, and mechanising that check is a named gap rather than an oversight: it needs a recognizer
+for which spans are quotations at all, and this document's quotation marks also carry rendered
+strings, enum values and self-quotes. It does not render anything, it does not check prose for
 meaning, and it does not verify that the client behaves as specified — that is
 [§ 11](#11-acceptance-tests)'s job, at build time, against code that does not exist yet. Where a guard
 class could not be mechanised without building the client, the tool implements the nearest checkable
@@ -2421,7 +2435,7 @@ over it.
 | T28 | § 8.2.3 | The seat-detail response "is the drill-down's source" and carries the open call list **in full, not capped at 8** | [§ 4.3](#43-the-desk-drill-down-panel), [§ 8](#8-interns--subagent-rendering-and-the-cap) |
 | T29 | § 3.1 | A seat that only heartbeats is quiet and **renders as quiet**: its receipt age near zero, its activity age growing without bound, "**Both are** on the wire, separately, so no consumer has to guess which one it is holding" | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down) — the quiet half is version-bearing and rides the desk; the receipt half is one of § 6.5's ten, so it is `dark-only` on the desk and `fetch-fresh` in the panel. **The obligation's own seat is `live`**, which is where that split costs something and where it is said plainly: a heartbeat-only desk carries the quiet age alone and its receipt age is read in the panel, under a stamp; `dark-only` puts the age on the desk only once the seat has gone `stale` or `offline`, and [§ 14](#14-open-questions-for-the-review-loop) item 12 is the amendment that would close the `live` half |
 | T30 | § 4.4 | `resolution` / `resolution_source` carry `server_ceiling` — the value "exists so the drill-down can say *the server cleared this*" | [§ 14](#14-open-questions-for-the-review-loop) item 9 — on no read surface; this document renders nothing in its place rather than implying the request was answered |
-| T31 | § 4.7 | "Durations **rendered in the drill-down**": the event's own `duration_ms`, else `event_time` arithmetic, **with `duration_source`** | [§ 14](#14-open-questions-for-the-review-loop) item 9 — neither field is on a read surface, so [§ 5.2](#52-the-drill-down) renders no duration it cannot source and no qualifier it cannot check |
+| T31 | § 4.7 | "durations **rendered in the drill-down**": the event's own `duration_ms`, else `event_time` arithmetic, **with `duration_source`** | [§ 14](#14-open-questions-for-the-review-loop) item 9 — neither field is on a read surface, so [§ 5.2](#52-the-drill-down) renders no duration it cannot source and no qualifier it cannot check |
 | T32 | § 4.8 | A `tool.end` whose `match` is `synthesized` — a close with no open: the flag "is stored and **rendered in the drill-down**, so the anomaly is a visible flag rather than an absorbed one" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
 | T33 | § 4.8 | A `tool.end` whose `match` is `lifo_tool_name`: "`match` is stored and **rendered in the drill-down** so an approximate attribution is legible as one" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
 | T34 | § 4.8 | A compacting seat mints no activity state, and its quiet 40 s is "still visible in the drill-down" | [§ 14](#14-open-questions-for-the-review-loop) item 9; [§ 7.1](#71-the-render-per-state) has no compaction state, which is the other half of the same rule |
