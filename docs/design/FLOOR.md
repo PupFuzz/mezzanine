@@ -160,7 +160,7 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | # | Computed | From | Why it is presentation and not state |
 |---|---|---|---|
 | 1 | **`clock_offset_ms`** = `server_time − browser_now` | every REST response and every feed message ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) | D2 **requires** it: "the browser's own clock is never used for an age either… it is the layer nobody controls" |
-| 2 | **Durations** — *nothing done for 4m 12s*, *no data for 4m 12s*, *running for 2m 05s*, *this state is 117 s behind*: the **four** of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s table and no fifth. A currency label's parenthetical is **not** a fifth — it carries a labelled seat-clock timestamp, not a duration — and neither is the fleet banner's `fleet.max_fold_lag_ms`, which is fleet-scoped and D2's own wording ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | a D2 timestamp minus the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
+| 2 | **Durations** — *nothing done for 4m 12s*, *no data for 4m 12s*, *running for 2m 05s*: **three** of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four, and no fourth on this list. Its fourth row, *this state is 117 s behind*, is deliberately **not** here: `derivation.fold_lag_ms` (**`named-not-rendered`** — this row names the member and draws nothing from it; [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns its render) is a duration **D2 computes at read time and sends**, and formatting a delivered number into a string is not computing one. Nor is a currency label's parenthetical, which carries a labelled seat-clock timestamp rather than a duration, nor the fleet banner's `fleet.max_fold_lag_ms` | a D2 timestamp subtracted from the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
 | 3 | **Desk slot** | `(install_id, seat_id)` and the map's slot count ([§ 3.2](#32-the-desk-slot-function)) | A layout function of identity. It reads no state field, so it cannot change when a seat's state does |
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
@@ -292,10 +292,15 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
 
 - Ages re-render **every 1 s**, which is the unit the smallest age is rendered in: slower would show a
   second that has already passed, faster would repaint for nothing.
-- An age is rendered from the field D2 assigns to it and no other, **and each has exactly one rendered
-  form, stated here so that no second surface mints a second string for one fact**:
+- A **duration** is rendered from the field D2 assigns to it and no other, **and each has exactly one
+  rendered form, stated here so that no second surface mints a second string for one fact**. **Three
+  of the four the client computes** — the corrected clock minus a timestamp the wire carries — and
+  they are [§ 2.1](#21-the-seven-client-computed-values-closed) row 2's closed list. **The fourth it
+  does not:** `derivation.fold_lag_ms` is a duration D2 computes at read time and sends, so this
+  document only formats it, and it is on this table because the table's job is to fix **one rendered
+  form per fact**, which binds a delivered duration exactly as it binds a computed one:
 
-  | Age | Field | The string, verbatim | Where it may appear |
+  | Duration | Field | The string, verbatim | Where it may appear |
   |---|---|---|---|
   | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
   | **receipt age** | `delivery.last_receipt_at` | ***no data for 4m 12s*** | the **`stale`/`offline` desk** — and no other desk — where it **ticks**, because such a seat is receiving nothing so the value it is measured from is frozen at the server too ([§ 5.1](#51-the-desk)'s **`dark-only`**); and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**) |
@@ -303,7 +308,7 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
   | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | the **desk**, but only while the `fold_lag` badge is up, as a line carrying its own inline *as of* stamp ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)); and the drill-down's derivation block, under that block's stamp. **`fetch-fresh`** on both, so never ticked on either |
 
   **Two rendered figures look like a fifth row and are neither.** *(a)* A **currency label's
-  parenthetical** — *was: working (last event 11:14, seat clock)* — carries a labelled seat-clock
+  parenthetical** — *was: working (last event 12:47, seat clock)* — carries a labelled seat-clock
   **timestamp**, not a duration ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim),
   [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)); an earlier
   revision wrote *(3h 12m ago)* there, which subtracted a seat clock from the server's and is exactly
@@ -632,7 +637,9 @@ and `reporter` when a delta moves `version`, `platform` or `selftest_failed`
 ([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)). **No delta ever refreshes `derivation`** — all three
 of its members are among the ten, so it has no version-bearing sibling to ride, and it is the one
 block that moves on a snapshot or a fetch and on nothing else. **None of the ten is ever ticked as an
-age**, on any block, however it arrived. This document states no polling
+age on any block of this panel**, however it arrived — the one desk render that does tick is
+`delivery.last_receipt_at` under [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `dark-only`
+marker, which is a rule about the **desk** of a dark seat and not about this panel. This document states no polling
 cadence for the panel — inventing one would be inventing a cadence D2 does not state
 ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)) — it states the
 stamp instead, so a reader can always see which moment those numbers describe.
@@ -1062,7 +1069,7 @@ distinct render. The order below is the fixed order the lobby's per-floor summar
 | `blocked` | raised hand, marker above the desk | *waiting on a human since 14:31 (seat clock)* | A7 | shown as working, whatever `open_calls` says ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function): `blocked` outranks `working`) |
 | `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
-| `catching_up` | character present, replay marker, desaturated | *replaying history — last event 11:14 (seat clock)* — a labelled seat-clock **timestamp**, because the only quantity that would make it a duration is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
+| `catching_up` | character present, replay marker, desaturated | *replaying history — last event 12:47 (seat clock)* — a labelled seat-clock **timestamp**, because the only quantity that would make it a duration is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
 | `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 41m* — the seat has been silent past 300 s: the timestamp from the version-bearing `delivery.no_data_since`, the ticking age from `delivery.last_receipt_at` under [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
 | `offline` | empty chair, desk dark | *no data since 13:52 — no data for 2h 06m* — silent past 900 s, the same pair as `stale` above (**`dark-only`** for the age). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none (A2 played on the way in) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) |
@@ -1143,11 +1150,11 @@ The rendering rule:
 | Condition | The desk shows | The activity state | Treatment |
 |---|---|---|---|
 | `link_state == "live"`, no `fold_lag` | its activity render | as the pose | full colour, motion permitted |
-| `catching_up` | the replay render (A15) | in the label only, as *was: working (last event 11:14, seat clock)* | desaturated, no working loop |
+| `catching_up` | the replay render (A15) | in the label only, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
 | `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
 | badged `fold_lag` | its activity render, **with a hatched overlay and the lag line** — *this state is N s behind — as of HH:MM:SS*, the one stamped line on the desk ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) | as the pose, explicitly labelled *N s behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
-| `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | in the label only, as *was: working (last event 11:14, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
+| `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | in the label only, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
 
 **`config_invalid` and `disabled` are this document's own additions to D2's four, and both are named
 as ones.** [D2 § 3.4](FLEET-STATE.md#34-what-this-rule-forbids-concretely) lists `catching_up`,
@@ -1241,7 +1248,7 @@ and given their entry and exit edges by [D2 § 4.4](FLEET-STATE.md#44-activity-s
 The desk never switches on this field — it switches on `render_state`, which collapses transport over
 activity ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) — so what each member owes is a render
 **under a currency label** when the seat is not `live`. **The *was:* form's parenthetical is
-`activity.last_event_time` as a labelled seat-clock timestamp — *(last event 11:14, seat clock)* — and
+`activity.last_event_time` as a labelled seat-clock timestamp — *(last event 12:47, seat clock)* — and
 never an elapsed time**, because the only elapsed time it could carry is a seat clock subtracted from
 the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)); it is written *(…)* in the rows below
 so the form is stated once rather than five times:
