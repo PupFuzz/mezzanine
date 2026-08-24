@@ -99,7 +99,7 @@ it, and what it must never draw.
 | The client protocol as the browser runs it, and the closed list of client-computed values | [§ 2](#2-the-client-end-to-end) |
 | Identity: seat → desk, install → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--floor) |
 | The three screens — lobby, floor, drill-down — and what each fetches | [§ 4](#4-the-screens) |
-| The render map: every rendered fact, its D2 field, its example value, its null render — and the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)) | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
+| The render map: every rendered fact, its D2 field and its example value; **the null render for every one of [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s 36 nullable members, in one table** ([§ 5.6](#56-the-null-render-for-every-nullable-member)); and the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)) | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
 | The honesty principle and the closed animation table | [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
 | Degraded rendering, per state and per badge | [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) |
 | Subagent rendering and the array cap | [§ 8](#8-interns--subagent-rendering-and-the-cap) |
@@ -766,6 +766,75 @@ on a desk is [§ 9](#9-failure-paths-and-their-observables) F1's, which is *none
 continuing to tick from the timestamps the client already holds. That is the same boundary
 [§ 2.1](#21-the-seven-client-computed-values-closed) draws between presentation and state, applied to
 the one surface where the client is allowed to talk about itself.
+
+### 5.6 The null render, for every nullable member
+
+[Decision 13](#13-decisions-taken-revisable-at-review) — *a null is rendered as **not reported**, never
+as a zero* — is a rule an implementer can only obey against a **stated** behaviour per member, and
+[§ 1.1](#11-what-this-document-owns) claims this document carries one for every rendered fact. It is
+here, in one table, rather than distributed across [§ 5.1](#51-the-desk)'s and
+[§ 5.2](#52-the-drill-down)'s rule cells, because a null render written into whichever row happened to
+name the member is a null render that is stated for some members and silently absent for the rest —
+which is what an earlier revision of this document did for two dozen of them, including the one age a
+live desk ticks.
+
+**The population is [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s own `Null? yes` column,
+all 36 of it**, re-derived by `tools/design/verify-floor.py` on every run and set-differenced against
+this table **in both directions** (G10): a member D2 marks nullable with no row here, and a row here
+for a member D2 does not mark nullable, both red the gate. That is the same closure
+[§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) gives the six enum
+sets, applied to the one property every one of those members has.
+
+**The default, so that the table states departures rather than repeating itself:** a null renders as
+**the absence it is** — the element is simply not drawn — and where the element's own space is drawn
+unconditionally, it reads ***not reported***. A null is never a zero, never a placeholder, never the
+last non-null value the client held, and never a value derived from a different field standing in for
+it.
+
+| D2 member | What renders when it is null |
+|---|---|
+| `unknown_reason` | the *why we do not know* line is not drawn. Null on every seat whose `activity_state` is not `unknown`, which is the ordinary case |
+| `api_error_type` | the rate-limit line is not drawn, and the `stalled` desk carries its pose and label without one. Null on every seat that is not `stalled` |
+| `action` | no monitor content: the monitor shows the desk's **state line**, never a stale last action ([§ 5.1](#51-the-desk)) |
+| `action.descriptor` | the monitor shows `action.tool_name` alone. **Never a descriptor synthesized from the tool name** — *"Bash"* and *"Bash: composer test"* are different claims, and only one of them was sent |
+| `action.agent_scope` | no *this is a subagent's call* marker, and the call is **not** admitted to the drill-down's intern list, which selects on this field ([§ 5.2](#52-the-drill-down)). Never defaulted to `main`: a defaulted scope would move a call between the seat's own list and the intern list on a field the wire left empty |
+| `action.parent_call_id` | no parent is named. The call is not drawn as an intern on the strength of a missing field |
+| `subagents[].title` | **untitled**, with the `call_id` in the drill-down — the honest orphan D1 § 6.8 and D2 § 8.2.1 both refuse to paper over ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
+| `subagents[].subagent_type` | the type tag beside the label is not drawn. The stool and its label are unaffected |
+| `task` | **no task chip at all**, never a placeholder title ([§ 5.1](#51-the-desk)) |
+| `task.ref` | the title renders with **no link and no reference text** — not an empty link, not *(no reference)*. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the base-URL question, which is a different absence |
+| `context` | the gauge reads ***not reported*** and **the bar is absent** — not a bar at 0 % ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like), [decision 13](#13-decisions-taken-revisable-at-review)) |
+| `context.used_tokens` | the numerals read *not reported*; **the bar still renders**, because `used_pct` is not nullable ([§ 5.1](#51-the-desk)) |
+| `context.total_tokens` | as above, and **no percentage is recomputed** from the token pair to stand in for `used_pct` |
+| `model_label` | omitted entirely — no label, no *(unknown model)* ([§ 5.1](#51-the-desk)) |
+| `session` | the session block reads ***no session open***, which is a fact and not a blank ([§ 5.2](#52-the-drill-down)) |
+| `session.started_at` | the block renders without a start line. **Never the seat's first-seen time**, which is a client fact standing in for a seat's |
+| `session.source` | no source tag. Never defaulted to `startup`: *we were not told how this session began* and *it began at startup* are different facts ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) |
+| `session.project_label` | the line is omitted. Never `install_id` in its place |
+| `session.harness_label` | the line is omitted. Never `reporter.version` in its place |
+| `activity.last_event_time` | the seat-clock line beside the last kind is not drawn |
+| `activity.last_received_at` | **the quiet age is not drawn, and the desk reads *nothing done yet*** — never *nothing done for 0s*, which would claim a measurement at this instant. **This is the reachable case the whole rule is for**: [§ 3.4](#34-a-new-seats-first-appearance)'s provisioned-never-reported seat, and [D2 § 3.1](FLEET-STATE.md#31-the-rule) rule 4's heartbeat-only seat — *"A seat that only heartbeats is quiet, and renders as quiet"* — which is `live`, so its receipt age is `dark-only` and **the quiet age is the only age its desk carries** ([§ 5.1](#51-the-desk), Appendix A T29) |
+| `activity.last_kind` | the *last thing the seat did* line is not drawn. Never *(unknown)*, which is a `render_state` member's word for a different fact |
+| `delivery.last_receipt_at` | the drill-down's transport block renders the receipt age as ***no data yet***, under the block's *as of* stamp. Nothing changes on the desk, because no desk renders a receipt age ([§ 5.1](#51-the-desk)'s `dark-only`). This is the never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline` from |
+| `delivery.last_heartbeat_at` | the heartbeat-freshness line reads *not reported* |
+| `delivery.no_data_since` | on a `stale`/`offline` desk the label reads ***no data yet*** rather than *no data since null* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)); on a `live` desk it is null by construction and the line is not drawn at all |
+| `delivery.clock_skew_ms` | not rendered, and **no seat-clock timestamp gains a skew note** ([§ 5.2](#52-the-drill-down): *rendered whenever non-null*). Never 0, which would claim the two clocks were measured to agree |
+| `delivery.spool_lag_events` | the spool line reads *not reported*. **Never 0** — an unmeasured spool and an empty one are opposite facts |
+| `delivery.oldest_unsent_age_s` | *not reported*, never 0. The `catching_up` treatment is driven by `link_state` either way ([§ 5.1](#51-the-desk)) |
+| `delivery.seq_epoch` | the wire-provenance line omits it. Never a zero-ULID and never the previous epoch |
+| `delivery.last_seq` | *not reported*, never 0 |
+| `badges_since` | no *oldest badge since* line. It is null exactly when `badges` is empty, and an empty cluster renders nothing ([§ 5.1](#51-the-desk), [§ 7.2](#72-badges-every-member-has-a-render)) |
+| `enabled` | **the *reporting disabled* treatment is not applied.** Null is *before the first heartbeat* and is not `false`; rendering the two alike would be [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s *off must not look like gone* failing on the third value ([§ 5.1](#51-the-desk)) |
+| `reporter.version` | *not reported*. Never the last version the client held — the flusher may have restarted into a different one, which is the fact `uptime_s` exists to discriminate |
+| `reporter.platform` | *not reported*. Never inferred from anything else on the object |
+| `reporter.uptime_s` | *not reported*, never 0. The ***since reporter start*** framing beside D1's twelve badges ([§ 7.2](#72-badges-every-member-has-a-render), [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled)) then reads *since reporter start — uptime not reported*, because the counters are still monotonic-since-start and only the **length** of that window is unknown |
+| `retired` | no retirement plate on the desk and no retirement block in the panel. The seat is not retired ([§ 3.5](#35-retirement-and-the-only-removal)) |
+
+**Two of these are the same fact wearing two markers, and that is not a contradiction.**
+`delivery.last_receipt_at` and `delivery.no_data_since` are both null on a provisioned-never-reported
+seat, and both render *no data yet* — on different surfaces, from different fields, under different
+delivery rules ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). The desk's line is the
+version-bearing one and is therefore delivered; the panel's is `fetch-fresh` and carries a stamp.
 
 ---
 
@@ -1668,14 +1737,32 @@ all.*
 ### AT-D3-14 a null is never drawn as a zero
 
 - **Build:** render `fx-nulls`.
-- **GREEN:** the context gauge reads **not reported** and the bar is absent — **not** 0 %; there is no
-  task chip; the monitor shows the state line rather than a blank; `session` renders *no session open*;
-  `model_label` is omitted rather than empty; the intern table is absent rather than showing zero
-  stools; a `null` `counters` object on the health view reads **unreadable** rather than a column of
-  zeros; and on `nulls-b`, whose `delivery.no_data_since` is null on an `offline` desk, the label reads
-  ***no data yet*** rather than *no data since null* ([§ 7.1](#71-the-render-per-state),
-  [§ 3.4](#34-a-new-seats-first-appearance)) — which is the render an implementer building the
-  [§ 7.1](#71-the-render-per-state) switch from its `offline` row alone would get wrong.
+- **GREEN — `nulls-a`, the containers:** the context gauge reads **not reported** and the bar is
+  absent — **not** 0 %; there is no task chip; the monitor shows the state line rather than a blank;
+  `session` renders *no session open*; `model_label` is omitted rather than empty; the intern table is
+  absent rather than showing zero stools; a `null` `counters` object on the health view reads
+  **unreadable** rather than a column of zeros; and `retired` being null draws no plate.
+- **GREEN — `nulls-b`, the members, asserted against [§ 5.6](#56-the-null-render-for-every-nullable-member)
+  row by row:** for **every** member `nulls-b` sets null, the rendered output is that member's § 5.6
+  cell — not a zero, not a placeholder, not a value borrowed from a sibling field. The fixture was
+  built to name that population and the assertion now follows it, rather than sampling eight of the
+  thirty-six and reporting clean over the rest. The ones worth naming because an implementer's
+  obvious default is wrong on each:
+  - `activity.last_received_at` null → the desk reads ***nothing done yet***, **not** *nothing done for
+    0s*. This is the one age a `live` desk carries ([§ 5.1](#51-the-desk)), and `nulls-b`'s seat is
+    exactly [D2 § 3.1](FLEET-STATE.md#31-the-rule) rule 4's heartbeat-only seat, so a client that
+    coalesced it to zero would render *nothing done for 0s* on a seat that has never done anything —
+    the clean zero, on the only readout left.
+  - `delivery.no_data_since` null on an `offline` desk → ***no data yet*** rather than *no data since
+    null* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)) — the render
+    an implementer building the § 7.1 switch from its `offline` row alone would get wrong.
+  - `delivery.last_receipt_at` null → the open panel's transport block reads ***no data yet***, not a
+    receipt age of zero and not an empty cell.
+  - `delivery.spool_lag_events` / `.last_seq` / `.clock_skew_ms` / `reporter.uptime_s` null → *not
+    reported* on each, **never 0** — four separate chances to draw a measurement nobody made.
+  - `action.descriptor` null → the monitor shows `action.tool_name` alone, never a descriptor
+    synthesized from it.
+  - `session.source` null → no source tag, never a defaulted `startup`.
 - **RED:** coalesce nulls to zero anywhere on the page → a seat that has never reported a context sample
   renders a full, empty gauge reading 0 %, which is a measurement the wire never made. This is
   `docs/KANBAN.md § G-1`'s clean zero with a progress bar around it.
@@ -1814,6 +1901,7 @@ belongs in its own round.
 | **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one: each must carry **`fetch-fresh`** or **`dark-only`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)), and this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk | **tool-checked**, with a stated limit: it reads the render tables and the panel table, so a bookkeeping member reintroduced in **prose** is outside it, and the tool prints those mentions as named residue |
+| **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 36 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every animation has an event, never that the floor is legible |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -1846,7 +1934,7 @@ review can reverse it deliberately rather than discover it later.
 | 10 | **The removal of a desk happens only on a snapshot apply** | remove on `render_state: "retired"`, or on any signal | A removal driven by an absence is the inference this design refuses everywhere else. Only a fresh, complete population can honestly say a seat is no longer in it | a seat retired more than 14 days ago lingers until the next snapshot. It renders as `retired` throughout, which is true |
 | 11 | **The subagent array cap stays at 8** ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | raise it to 15, the largest value the 8 KiB bound admits | The drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table, where 15 stools is D2's "a list, not a desk" at a smaller number; and the 2,080 B of spare is the margin the next field addition needs | a fleet that routinely runs more than 8 concurrent dispatches reads *+N more* on the floor and opens the panel for the detail. Both halves of what would change this are measurable after P3 |
 | 12 | **`prefers-reduced-motion` is a first-class rendering with its own column** | disable animation and accept that some states collapse | Two states distinguished only by motion are one state in a screenshot and one state to any viewer with motion disabled — and screenshots are how most of this floor will be reviewed | every animation row owes a static form, which is one more column to keep true and is checked by [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) |
-| 13 | **A null is rendered as *not reported*, never as a zero** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) | coalesce nulls to sensible defaults so the layout never shifts | A zeroed gauge is a measurement the wire never made; a placeholder task title is a claim nobody sent. `docs/KANBAN.md § G-1`'s clean zero is the same defect one layer out | the layout must accommodate absent elements, which is a design constraint on the desk rather than a rendering convenience |
+| 13 | **A null is rendered as *not reported*, never as a zero** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)), and **[§ 5.6](#56-the-null-render-for-every-nullable-member) states the behaviour per member for all 36** rather than leaving the rule to be applied by guess | coalesce nulls to sensible defaults so the layout never shifts; or state the rule and leave each member's rendering to the implementer | A zeroed gauge is a measurement the wire never made; a placeholder task title is a claim nobody sent. `docs/KANBAN.md § G-1`'s clean zero is the same defect one layer out | the layout must accommodate absent elements, which is a design constraint on the desk rather than a rendering convenience — and 36 stated null renders are 36 more cells a change must keep true, which is what G10 is for. **The per-member table is the half that was missing**: the headline rule was stated and certified from R1, while two dozen members it governs had no stated behaviour, so the implementer reaching for the obvious default would have written the very zero it forbids |
 | 14 | **The floor requires 1,280 × 800 and falls back to a list, not a scaled floor** | scale the map to the viewport | A floor whose nameplates and badges are unreadable shows state without letting anyone read it, which is worse than the honest list of the same facts | small viewports get no floor. The list carries every fact, and the number is re-derived once a desk has a measured width |
 | 15 | **No framework, renderer or bundler is specified** | pin the stack so the implementer has one less decision | None of this document's properties depends on one, and a spec that pinned a stack would expire with it. What *is* pinned is the asset pipeline, because that is where a licence violation enters | two implementers could make different stack choices. Neither can make different **honesty** choices, which is what this document is for |
 | 16 | **Character art is generated from the seat key, never vendored** ([§ 10.2](#102-characters-the-munder-difflin-port)) | vendor a sprite sheet and map seats onto it | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets. Generating also makes a seat's appearance a function of its identity, so it survives reloads with no stored state — the same property the desk slot has | the generator must be ported before any character renders, and Gate 2 refuses the shortcut ([§ 10.1](#101-the-manifest-and-the-two-gates)) |

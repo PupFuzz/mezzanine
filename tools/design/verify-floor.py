@@ -22,6 +22,9 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`
+  G10 null-render closure, both directions      a member D2 section 8.2.1 marks `Null? yes` with no
+                                               stated null render, or a null render for a member D2
+                                               does not mark nullable
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -876,6 +879,63 @@ for i, line in enumerate(lines, 1):
     if hit:
         g9_prose.append((i, hit[0]))
 
+# ------------------------- G10. null-render closure, re-derived from D2 § 8.2.1 ----
+# Decision 13 ("a null is rendered as *not reported*, never as a zero") is unobeyable without a stated
+# behaviour PER MEMBER, and section 1.1 claims this document carries one for every rendered fact.  The
+# population is D2's own `Null? yes` column -- re-derived here, never stored -- and section 5.6 is the
+# one home for the answers.  An earlier revision distributed them across whichever section 5 row
+# happened to name the member, which stated them for a third of the population and silently omitted the
+# rest, including `activity.last_received_at`: the only age a `live` desk carries, null on the
+# heartbeat-only seat D2 § 3.1 rule 4 puts on the wire.
+d2_nullable = set()
+rows = table_rows(sec_821 or "", r"^\| Field \| Type \| Null\? \| Bounds \| Example \|")
+if not rows:
+    fail.append("G10 CONTROL: D2 § 8.2.1's field table did not parse for the Null? column — the "
+                "null-render population would be empty and every member would report covered")
+else:
+    for r in rows:
+        c = cells(r)
+        if len(c) < 3:
+            continue
+        m = re.match(r"^`([A-Za-z_][\w.\[\]]*)`$", c[0])
+        if m and c[2].replace("*", "").strip().lower() == "yes":
+            d2_nullable.add(m.group(1))
+    if len(d2_nullable) < 20:
+        fail.append(f"G10 CONTROL: only {len(d2_nullable)} nullable members parsed from D2 § 8.2.1's "
+                    f"Null? column — the extractor is reading the wrong column or the wrong table")
+
+null_rendered = set()
+nr_rows = table_rows(raw, r"^\| D2 member \| What renders when it is null \|")
+if nr_rows is None:
+    fail.append("G10 CONTROL: section 5.6's null-render table did not parse — the claim that every "
+                "nullable member has a stated null render would rest on nothing at all")
+else:
+    for r in nr_rows:
+        m = re.match(r"^\|\s*`([A-Za-z_][\w.\[\]]*)`\s*\|", r)
+        if m:
+            null_rendered.add(m.group(1))
+    if len(null_rendered) != len(nr_rows):
+        fail.append(f"G10: section 5.6 has {len(nr_rows)} rows and {len(null_rendered)} parse as a "
+                    f"backticked D2 member in the first column — a row whose subject cannot be read "
+                    f"is a null render bound to no member")
+if d2_nullable and null_rendered:
+    for x in sorted(d2_nullable - null_rendered):
+        fail.append(f"G10: D2 § 8.2.1 marks `{x}` `Null? yes` and section 5.6 states no null render "
+                    f"for it. Decision 13's rule is unobeyable on that member, and the implementer "
+                    f"who reaches for the obvious default writes the zero decision 13 forbids")
+    for x in sorted(null_rendered - d2_nullable):
+        fail.append(f"G10: section 5.6 states a null render for `{x}`, which D2 § 8.2.1 does not mark "
+                    f"nullable — a render branch no input can select, and if D2 stopped marking it "
+                    f"nullable the row is now describing a case that cannot arrive")
+# The count section 12 publishes is the same fact with a second home.
+m = re.search(r"\| D2 § 8\.2\.1's nullable members \| \*\*(\d+)\*\* \|", sec12)
+if not m:
+    fail.append("G10 CONTROL: section 12 no longer publishes the nullable-member count, so the "
+                "size of this population has no stated home to disagree with")
+elif d2_nullable and int(m.group(1)) != len(d2_nullable):
+    fail.append(f"G10: section 12 states {m.group(1)} nullable members and D2 § 8.2.1 marks "
+                f"{len(d2_nullable)} — and `fx-nulls`' two-seat split is sized from that number")
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -912,6 +972,9 @@ print(f"G7  render closure, both directions: {len(state_rendered)}/{len(render_m
       f"{len(link_rendered)}/{len(link_m)} link_state, {len(act_rendered)}/{len(act_m)} "
       f"activity_state, {len(aet_rendered)}/{len(aet_m)} api_error_type (the last from D1 § 6.4)")
 print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair")
+print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nullable, "
+      f"{len(null_rendered)} given a null render by section 5.6, "
+      f"{len(d2_nullable ^ null_rendered)} in symmetric difference")
 print(f"G9  D2 § 6.5's non-version-bearing members re-derived: {len(ten)}; render rows scanned "
       f"{g9_rows}, rows sourcing one of the ten {g9_hits}, all marked `fetch-fresh` or `dark-only`")
 print(f"    G9 residue — prose mentions of the ten outside the render tables this check reads: "
