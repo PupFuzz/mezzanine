@@ -121,7 +121,7 @@ non-browser consumers (the watchdog). Merge rules for the three sources (telemet
 live *action*; GitHub/board events supply the human-readable *task title*; the three-tier status
 fallback from the proposal).
 
-Status: **in review** — drafted; the adversarial review loop runs before the PR opens.
+Status: **merged 2026-08-23** (PR #8).
 
 **D3 — floor UI spec (`docs/design/FLOOR.md`).** Screens: lobby (building summary), floor, desk
 drill-down panel (current task linked to card/thread, recent-activity timeline, context gauge,
@@ -130,7 +130,7 @@ Identity mapping: how a seat becomes a desk and an install becomes a floor, stab
 restarts. The honesty principle from the proposal binds every animation: driven by a real event,
 or absent.
 
-Status: **not started** — gated on D2 reaching draft (it has).
+Status: **in review** — drafted; the adversarial review loop runs before merge.
 
 ## 3. Work breakdown
 
@@ -141,7 +141,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 |---|---|---|---|
 | **P0 design** | D1 event schema (new card) | — | review + the kill-vs-complete test is *specified* |
 | | D2 fleet-state + feed (new card) | D1 | review; snapshot+delta contract explicit |
-| | D3 floor UI spec (new card) | D2 draft | review; identity mapping defined |
+| | D3 floor UI spec (card#7457) | D2 draft | review; identity mapping defined |
 | **P1 telemetry** | `fleet-reporter` core: spool + flusher (#7335) | D1 | hermetic selftest; **never blocks the agent**; survives server down; sanitizer has RED fixtures |
 | | installer, Linux + **Windows validated** (#7336) | #7335 | real install on a Windows seat before anything trusts the signal |
 | | kill-vs-idle proof (#7337) | #7335 | the D1-specified test, run for real against a `/clear` |
