@@ -1089,7 +1089,7 @@ distinct render. The order below is the fixed order the lobby's per-floor summar
 | `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
 | `catching_up` | character present, replay marker, desaturated | *replaying history — last event 12:47 (seat clock)* — a labelled seat-clock **timestamp**, because the only quantity that would make it a duration is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
-| `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 11m* — **the worked label line for this state, derived from [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** marker rather than restating it**, read at a corrected clock of **14:29**: the timestamp is the version-bearing `delivery.no_data_since` and the ticking age is `delivery.last_receipt_at`. The age is inside this state's own window and not merely large — [D2 § 4.5](FLEET-STATE.md#45-link-states) puts `stale` past 300 s and `offline` past 900 s, so a worked 41m here would have been an `offline` seat wearing the `stale` row's label | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
+| `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 11m* — **the worked label line for this state**, derived from [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** marker rather than restating it, read at a corrected clock of **14:29**: the timestamp is the version-bearing `delivery.no_data_since` and the ticking age is `delivery.last_receipt_at`. The age is inside this state's own window and not merely large — [D2 § 4.5](FLEET-STATE.md#45-link-states) puts `stale` past 300 s and `offline` past 900 s, so a worked 41m here would have been an `offline` seat wearing the `stale` row's label | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
 | `offline` | empty chair, desk dark | *no data since 12:23 — no data for 2h 06m* — the same worked pair for this state, at the same **14:29** so the two rows describe one moment rather than two, silent past 900 s (**`dark-only`** for the age, [§ 2.4](#24-the-clock-and-every-age-on-the-page)). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none (A2 played on the way in) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) |
 | `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
@@ -1546,7 +1546,11 @@ enforced over one.** Three populations, none of them written into the tool:
 
 1. **A test with two halves does not pick one: it splits, and each half is named at its own step in
    Appendix B's Gate cell** — with the drill-down as the case this rule was first written for, and
-   six more found once the check stopped being drill-down-shaped. A gate on an artifact that does not
+   **six more, enumerated in [Appendix B](#appendix-b--what-an-implementer-builds-from-this)'s note on
+   order**, found once the check stopped being drill-down-shaped: five resolved by splitting and one
+   by re-gating. The count is stated as its enumeration's length rather than beside it, because a
+   summary figure that disagrees with the list under it is the defect this document has already
+   shipped twice. A gate on an artifact that does not
    exist yet is a gate an implementer either skips or satisfies by building out of order — and out of
    order is the one thing Appendix B exists to prevent. Where no half of a test is observable before
    its artifact, the test is **re-gated** rather than split, and says so.
@@ -1637,6 +1641,14 @@ all.*
 
 - **Build — the instrument half:** replay `fx-snapshot-4` alone, then silence; collect the animation
   log. **Reads:** the **animation log**.
+- **GREEN — the instrument half, and it is a discriminating control:** on that fixture
+  → the log carries **no `edge` row at all**, **no `phase: left` row at all** (nothing ended, because
+  nothing arrived), and carries **exactly** the `held` `entered` rows
+  [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the four states the fixture delivers —
+  **A3 for `aimla-pm` and `aimla-impl-1`, A6 for `aimla-impl-2`, A7 for `aimla-review`**, four rows and
+  no fifth — each with that seat's `state_version` as its cause and each opening a **distinct**
+  `episode_id`, four ids and no repetition. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
+  would pass the GREEN, and a client that fired arrivals on the snapshot would pass it too.
 - **Build — the closed-set half:** replay `fx-snapshot-4`, `fx-clear-trace`, `fx-degraded` and
   `fx-interns` end to end; collect the animation log. **Reads:** the **animation log**, the
   **animation set**.
@@ -1701,14 +1713,6 @@ all.*
 - **Second RED:** drive the working loop's frame rate from `open_calls` — a "busier seats type faster"
   change that looks like a feature — and assert that the loop's frame interval is constant across every
   seat and every fixture. A rate that varies is a quantity the wire never sent.
-- **GREEN — the instrument half, and it is a discriminating control:** on that fixture
-  → the log carries **no `edge` row at all**, **no `phase: left` row at all** (nothing ended, because
-  nothing arrived), and carries **exactly** the `held` `entered` rows
-  [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the four states the fixture delivers —
-  **A3 for `aimla-pm` and `aimla-impl-1`, A6 for `aimla-impl-2`, A7 for `aimla-review`**, four rows and
-  no fifth — each with that seat's `state_version` as its cause and each opening a **distinct**
-  `episode_id`, four ids and no repetition. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
-  would pass the GREEN, and a client that fired arrivals on the snapshot would pass it too.
 
 ### AT-D3-2 the `/clear` trace shows no idle anywhere
 
@@ -1855,6 +1859,10 @@ resync itself, and the line the record gains, are the protocol's and are observa
   **status strip**.
 - **GREEN — the strip half:** the **resyncs: N** readout increments by exactly one, and the lobby
   renders the same record at step 9.
+- **RED — the strip half:** increment the counter on every applied delta rather than on every resync
+  the client issued → the readout stops being a count of **this client's own requests**
+  ([§ 5.5](#55-the-clients-own-narration)) and becomes a traffic meter that never reads zero on a
+  healthy feed, which is the one reading it exists to make possible.
 - **RED:** apply deltas unconditionally → the desk diverges silently and stays wrong until something
   else changes it, which on a quiet seat is never. Assert the divergence field by field against the
   fixture's final object; a test that only checked "no error was thrown" passes here.
@@ -1998,6 +2006,10 @@ created — and an empty character tree satisfies Gate 2's absence clause for fr
   ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**.
 - **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
   notice.
+- **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
+  the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
+  upstream commit nobody recorded is a port nobody can tell from a fork
+  ([§ 10.2](#102-characters-the-munder-difflin-port)).
 - **RED — the unlisted asset:** add a tile with no row → Gate 1 fails naming the path. **Second RED —
   the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256 check fails.
   **Third RED — the vendored character, both clauses:** drop a `sprites.webp` into the character tree
@@ -2655,7 +2667,9 @@ This table carries the build order and the gates; the rule over them is § 11's 
 here. What this note records is what the rule found once it was enforced over **every** artifact
 rather than over the drill-down alone. Three tests once asserted drill-down content while this table
 gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — and each was split. Widening
-the check to every artifact this table names then found **five more**, none of them about the panel:
+the check to every artifact this table names then found **six more, none of them about the panel —
+five resolved by splitting and one by re-gating**, and here they are, so the figure is the list's
+length rather than a claim beside it:
 [AT-D3-1](#at-d3-1-no-animation-without-its-event) split into an instrument half (step 2, the log
 alone) and a closed-set half (step 6); [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) into a
 protocol half (3) and a strip half (8), because *resyncs: N* is a status-strip readout;
@@ -2665,7 +2679,8 @@ and render halves (6), because *no `edge` row* and *without an arrival animation
 animation set and a floor with no animations satisfies both for free; and
 [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) into a manifest half (0) and a lineage half (1),
 because the lineage file is step 1's artifact.
-[AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) was **re-gated** from 5 to 6 rather than
+That is the five. The sixth,
+[AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), was **re-gated** from 5 to 6 rather than
 split: its whole claim is that no state is carried by motion alone, and there is no half of that
 observable before there is any motion. Three tests asserting the client's **event record** at steps 3
 and 8 are a different case and not the same defect: the record is the client protocol's artifact and

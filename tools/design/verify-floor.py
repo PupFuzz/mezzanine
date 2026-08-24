@@ -650,7 +650,6 @@ else:
                             f"stated moment")
                 continue
             need = max((artifact_step[a] for a in arts), default=0)
-            late = max(artifact_step[a] for a in arts) if arts else 0
             for st in sorted(gates):
                 if st < need:
                     blocking = sorted(a for a in arts if artifact_step[a] > st)
@@ -665,8 +664,7 @@ else:
                         f"with each half named at its own step in the Gate cell. Being co-gated later "
                         f"as well does not discharge this gate — that is what an unqualified mention "
                         f"means")
-            _ = late
-        g5_halves += 1
+        g5_halves += len(halves)
         # the recognizer half, KEPT as a failure: prose naming the panel with no half declaring it
         if dd_step is not None and re.search(r"drill-down|\bpanel\b", body) \
                 and not any(artifact_step.get(a, -1) >= dd_step for arts in halves.values() for a in arts):
@@ -1419,12 +1417,14 @@ if not re.search(r"FLEET-STATE\.md#65-the-fold", raw):
 # a table row outside the column map naming one of the ten was printed and passed.  That is the same
 # stored-denominator defect one level out -- a render table added in section 7 or section 9 would be
 # announced and admitted -- so the rule is inverted.  Outside the render map nothing is RENDERED from
-# one of the ten, so the only legal states for such a row are: it carries a marker (it is part of the
-# marker vocabulary itself -- section 2.4's marker table, section 12's G9 row), or it carries
-# `named-not-rendered`, the document's own token for a row that NAMES a member without rendering a
-# quantity from it (a fixture's contents, an upstream derivation rule quoted, an obligation restated).
-# Neither ⇒ red.  The exempted rows are still printed, because an exemption nobody can see is a
-# silence with extra steps.
+# one of the ten, so the ONE legal state for such a row is `named-not-rendered`, the document's own
+# token for a row that NAMES a member without rendering a quantity from it (a fixture's contents, an
+# upstream derivation rule quoted, an obligation restated).  A MARKER in such a row no longer exempts
+# it: that was a bare token-presence test, and it admitted section 7.1's two desk renders of the
+# receipt age on the strength of the string `dark-only` appearing somewhere in the line.  The two rows
+# that genuinely DISCUSS a marker rather than obey one are recognised by ROLE, immediately below.
+# Every exempted row is still printed WITH THE GROUND IT STANDS ON, because an exemption nobody can
+# see is a silence with extra steps.
 EXEMPT = "named-not-rendered"
 
 # THE TWO ROWS THAT MAY CARRY A MARKER WITHOUT RENDERING FROM ONE OF THE TEN, and they are found by
@@ -1455,7 +1455,7 @@ for _start, _header, _rows in DOC_TABLES:
         if _is_guard:
             g9_gatedoc_lines.add(_ln)
         c = cells(r)
-        if c and _norm_key(c[0]) in {m.replace("-", "") for m in MARKED_FRESH} | set(MARKED_FRESH):
+        if c and _norm_key(c[0]) in set(MARKED_FRESH):
             g9_vocab_lines.add(_ln)
 if not g9_vocab_lines:
     fail.append("G9 CONTROL: no table row in this document has one of the two markers as its key "
