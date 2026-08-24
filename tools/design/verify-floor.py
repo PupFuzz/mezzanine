@@ -532,6 +532,56 @@ else:
             fail.append(f"G5: `{h[1]}` states no RED. A test never seen to fail is not evidence; "
                         f"it is a decoration that reports the harness ran")
 
+# G5, second half: AN AT IS GATED AT OR AFTER THE STEP THAT BUILDS WHAT IT READS.
+# Three tests at once asserted drill-down content while Appendix B gated them 5, 6 and 2 steps before
+# the drill-down is built (AT-D3-6 at step 8, AT-D3-10 at step 4, AT-D3-14 at step 5).  A gate on an
+# artifact that does not exist yet is a gate an implementer either skips or satisfies by building out
+# of order, and three copies of one shape is a class rather than three slips.  BOTH populations are
+# re-derived: the AT set from the headings, and the drill-down's own step from the Appendix B row whose
+# artifact names it -- so renumbering Appendix B moves this check with it.
+appB = table_rows(raw, r"^\| Order \| Artifact \| Gate \|") or []
+if not appB:
+    fail.append("G5 CONTROL: Appendix B's build-order table did not parse — every acceptance test's "
+                "gate step would be unread and the ordering rule below would be vacuous")
+else:
+    step_of, dd_step = {}, None
+    for r in appB:
+        c = cells(r)
+        if len(c) < 3 or not c[0].isdigit():
+            continue
+        n = int(c[0])
+        if "drill-down" in c[1]:
+            dd_step = n if dd_step is None else min(dd_step, n)
+        for a in set(re.findall(r"AT-D3-\d+", c[2])):
+            step_of.setdefault(a, []).append(n)
+    if dd_step is None:
+        fail.append("G5 CONTROL: no Appendix B row names the drill-down as its artifact, so the step "
+                    "that builds it is unknown and every panel-asserting test would pass this rule")
+    if len(step_of) < 15:
+        fail.append(f"G5 CONTROL: only {len(step_of)} acceptance tests are cited by an Appendix B row "
+                    f"— the gate-cell parse is broken and the ordering rule reads an empty population")
+    for h in at_heads:
+        name = re.match(r"(AT-D3-\d+)", h[1]).group(1)
+        body = "\n".join(lines[h[3]:h[4]])
+        if name not in step_of:
+            fail.append(f"G5: `{name}` is gated by no Appendix B row — a test nothing schedules is a "
+                        f"test an implementer has no moment to run, and Appendix B claims to be the "
+                        f"whole of what is built")
+            continue
+        if dd_step is not None and re.search(r"drill-down|\bpanel\b", body) \
+                and max(step_of[name]) < dd_step:
+            fail.append(
+                f"G5: `{name}` asserts drill-down or panel content and Appendix B gates it no later "
+                f"than step {max(step_of[name])}, while the drill-down is built at step {dd_step}. "
+                f"§ 11 states the rule: a test that reads the panel declares the drill-down in its "
+                f"Build and is gated at or after the step that builds it. A gate on an artifact that "
+                f"does not exist yet is one an implementer skips or satisfies by building out of "
+                f"order — and if the test has a floor half too, it SPLITS, with each half named at "
+                f"its own step")
+    for a in sorted(step_of):
+        if int(a.rsplit("-", 1)[1]) not in at_ids:
+            fail.append(f"G5: Appendix B gates `{a}`, which is not an acceptance test in this document")
+
 fx_rows = table_rows(raw, r"^\| Fixture \| Contents \|")
 fx_declared = set()
 if not fx_rows:
