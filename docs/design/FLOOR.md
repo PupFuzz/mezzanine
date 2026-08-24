@@ -1320,6 +1320,20 @@ them.
 A dispatched subagent is an **intern at the side table** beside its seat's desk. The mapping is D1's
 and D2's, and this document adds only pixels:
 
+**The side table is the DESK's, and the uncapped intern list is the PANEL's — two artifacts, two
+sources, two build steps, and this paragraph is the one place that says which is which.** The side
+table renders `subagents[]`, a member of the seat object every desk already holds
+([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), so it is built with the desk's render map at
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) **step 5** — its two rows are
+[§ 5.1](#51-the-desk)'s, and [A10](#62-the-animation-table--the-closed-set) animates it with the rest
+of the animation set at step 6. The drill-down's intern list renders the seat-detail response's
+uncapped open-call list, which [D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response) calls *"the
+drill-down's source"* and puts on the panel's fetch alone, so it is built with the drill-down at
+**step 10**. That split is not bookkeeping: it is the whole of [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)'s
+reason for keeping the cap at 8. An earlier revision of Appendix B named *the side table* at step 10,
+which put two [§ 5.1](#51-the-desk) rows and one [§ 6.2](#62-the-animation-table--the-closed-set) row
+four steps after the tables that carry them.
+
 | Rendered | Source | Rule |
 |---|---|---|
 | one stool per open subagent | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | the array is a **reduction**, not the truth |
@@ -2535,12 +2549,12 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | the log records a cause for every animation, and **[AT-D3-1](#at-d3-1-no-animation-without-its-event)**'s discriminating control passes — a harness that records nothing must not be able to report clean |
 | 3 | the client protocol: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — **and the client's own event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas), [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat), [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) |
 | 4 | the clock offset and every age readout ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
-| 5 | the desk: the render map and the ten state renders ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state)) | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
+| 5 | the desk: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
 | 6 | the animation set ([§ 6.2](#62-the-animation-table--the-closed-set)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all |
 | 7 | the floor: the map, the slot function, overflow (card #7341) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
 | 8 | the failure renders and the status strip ([§ 9](#9-failure-paths-and-their-observables)) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised) |
 | 9 | the lobby ([§ 4.1](#41-the-lobby--the-building-summary)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
-| 10 | the drill-down and the side table (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained), and the **panel halves** of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s), [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) ([§ 11](#11-acceptance-tests)'s ordering rule) |
+| 10 | the drill-down, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained), and the **panel halves** of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s), [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) ([§ 11](#11-acceptance-tests)'s ordering rule) |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),
