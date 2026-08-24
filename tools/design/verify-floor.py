@@ -584,6 +584,43 @@ else:
         if int(a.rsplit("-", 1)[1]) not in at_ids:
             fail.append(f"G5: Appendix B gates `{a}`, which is not an acceptance test in this document")
 
+# G5, second half (b): THE RECORD IS NOT THE LOBBY'S, AND THE WORDING IS WHAT MAKES THAT CHECKABLE.
+# The client's event log is written by the client protocol at Appendix B step 3; the lobby, at step 9,
+# renders it.  Calling it "the lobby log" names the RENDERER where the ARTIFACT is meant, and that is
+# what gated three acceptance tests six steps after the thing they read.  The class has been re-minted
+# twice -- fixed in three tests, then found in five more sites, then in three beyond those -- so the
+# wording is guarded rather than re-swept by hand a fourth time.  A site may QUOTE the wrong name (this
+# document has to, to forbid it), and this document marks a quoted wording with emphasis, so an
+# occurrence is legal exactly when it is emphasised and a defect when it is used bare.
+# Written wrap-tolerant BY HAND rather than through `prose()`: `prose` rewrites every literal space
+# as `\s+`, including one INSIDE a character class, which turns `[- ]` into `[-\s+]` — a class that
+# matches ONE whitespace character where a wrapped phrase has three. The plant that broke the phrase
+# over a line break passed against the first version of this check for exactly that reason. `prose`
+# is right for the twelve patterns that use it, none of which contains a class with a space in it.
+LOBBY_LOG = re.compile(r"(?:the\s+)?lobby(?:'s)?\s+(?:event[-\s]+)?log", re.I)
+lobby_log_quoted = 0
+for m in LOBBY_LOG.finditer(raw):
+    ln = raw[:m.start()].count("\n") + 1
+    before, after = raw[max(0, m.start() - 1):m.start()], raw[m.end():m.end() + 1]
+    before2 = raw[max(0, m.start() - 2):m.start() - 1]
+    # SINGLE-asterisk emphasis only: this document's mark for a wording it is quoting rather than
+    # using.  `**bold**` is how it stresses a wording it MEANS, so admitting bold here would leave the
+    # forbidden name one keystroke of emphasis away from legal.
+    if before == "*" and after == "*" and before2 != "*":
+        lobby_log_quoted += 1
+        continue
+    fail.append(
+        f"L{ln}: `{m.group(0)}` names the LOBBY as the client event log's home. The record is the "
+        f"client protocol's artifact, written as the client acts (section 5.5); the lobby at Appendix "
+        f"B step 9 is one renderer of it, and the protocol builds it at step 3. Naming the renderer "
+        f"where the artifact is meant is what gated three acceptance tests on a screen built six "
+        f"steps after the thing they read — and it has been re-minted twice since. Where this "
+        f"document must QUOTE the wrong name in order to forbid it, it emphasises it")
+if not lobby_log_quoted:
+    fail.append("G5 CONTROL: the phrase this check forbids appears nowhere at all, not even in the "
+                "emphasised form section 11 uses to forbid it — so the recognizer has stopped "
+                "matching and every bare use of it would now pass")
+
 # G5, third half: THE ANIMATION-LOG SCHEMA HAS TWO HOMES IN SECTION 11 -- the row tuple and the
 # per-class field table -- and it is now on its THIRD revision (single row -> edge/held -> phase ->
 # episode_id).  Every one of those revisions widened the tuple, and the prose beside the table counts
