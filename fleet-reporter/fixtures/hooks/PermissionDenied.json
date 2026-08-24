@@ -1,0 +1,17 @@
+{
+  "_source": "docs-cited-stub",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000009",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000009.jsonl",
+      "cwd": "/home/agent/proj",
+      "hook_event_name": "PermissionDenied",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "<never read>"
+      },
+      "tool_use_id": "toolu_01FIXTURE0000000009",
+      "reason": "auto-mode denial"
+    }
+  ]
+}

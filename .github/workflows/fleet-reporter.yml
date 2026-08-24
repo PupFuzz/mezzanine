@@ -1,0 +1,74 @@
+# fleet-reporter.yml — run the reporter's hermetic acceptance suite on every change to it.
+#
+# WHY IT EXISTS. `fleet-reporter.js` runs inside every hook fire on every agent machine in the
+# fleet, and its three failure directions are all quiet: it blocks or crashes the seat (a hook
+# exiting 2 is the harness's BLOCK signal, and hook stdout on SessionStart is injected into the
+# MODEL'S context), it loses events without counting them (indistinguishable from a quiet seat,
+# which is exactly what the floor renders when the fleet is calm), or it leaks a credential.
+# None of those announces itself in review.
+#
+# WHY IT CAN RUN ON A PUBLIC RUNNER. The suite is hermetic: no network, no credential, no board.
+# Its ingest is a TLS stub on 127.0.0.1 with a throwaway self-signed certificate, trusted
+# through the reporter's own `ca_file` key — so the transport path is exercised with certificate
+# verification ON, not proven by turning it off.
+#
+# THE SUITE IS RED-FIRST BY CONSTRUCTION, which is what makes a green run here mean anything:
+# every safety property is driven against a deliberately defective copy of the reporter that
+# MUST fail, and a plant whose anchor no longer matches raises rather than passing. A refactor
+# that silently moves a planted line turns the job red instead of turning a RED into a GREEN.
+
+name: fleet-reporter acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'fleet-reporter/**'
+      - '.github/workflows/fleet-reporter.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'fleet-reporter/**'
+      - '.github/workflows/fleet-reporter.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # NO setup-node STEP, deliberately, matching how card-token-lint.yml treats python3: the
+      # runner's stock `node` is the whole dependency, so there is no third-party action pin to
+      # keep honest. The reporter targets Node >= 18 (D1 § 0) and uses no API newer than that,
+      # and the suite's latency block measures the interpreter's own baseline on whatever
+      # runner it lands on rather than assuming one — so a runner image bump moves the measured
+      # baseline and the assertion with it, instead of silently invalidating a hard-coded number.
+      - name: Record the interpreter the suite will measure against
+        run: node --version && python3 --version && openssl version
+
+      # The reporter's OWN install-time checks, run first and separately: they need no fixtures
+      # from the suite, so an unconfigured checkout should still get the "is the sanitizer
+      # sound, do the vendored fixtures still match what the code reads?" answer on its own.
+      # It exits non-zero here because no config and no ingest are present, which is correct and
+      # is why its verdict is read per check rather than from the exit code.
+      - name: Reporter selftest (per-check verdicts; the two network checks are unprobed here)
+        run: |
+          node fleet-reporter/fleet-reporter.js selftest > selftest.json || true
+          python3 - <<'PY'
+          import json, sys
+          r = json.load(open('selftest.json'))
+          offline = ['sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys']
+          bad = [c for c in offline if r['checks'][c] != 'pass']
+          for c, v in r['checks'].items():
+              print(f"  {c}: {v}")
+          if bad:
+              print(f"::error::offline selftest checks failed: {bad}")
+              sys.exit(1)
+          PY
+
+      # The acceptance suite: RED plants for every safety property, then the real reporter.
+      - name: Acceptance suite (hermetic — TLS stub on loopback, no credential, no network)
+        run: python3 fleet-reporter/fleet-reporter.selftest.py
