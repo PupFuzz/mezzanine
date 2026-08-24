@@ -696,20 +696,22 @@ if not state_rows or not ur_rendered or not badge_rendered or not link_rendered 
     fail.append("G7 CONTROL: one of this document's render tables did not parse (render_state, "
                 "unknown_reason, badges, link_state, activity_state, api_error_type) — the set "
                 "difference would be clean because it was empty")
-for name, declared, rendered in (("render_state", render_m, state_rendered),
-                                 ("unknown_reason", ur_m, ur_rendered),
-                                 ("badge", badge_m, badge_rendered),
-                                 ("link_state", link_m, link_rendered),
-                                 ("activity_state", act_m, act_rendered),
-                                 ("api_error_type", aet_m, aet_rendered)):
+for name, src, declared, rendered in (("render_state", "D2", render_m, state_rendered),
+                                      ("unknown_reason", "D2", ur_m, ur_rendered),
+                                      ("badge", "D2", badge_m, badge_rendered),
+                                      ("link_state", "D2", link_m, link_rendered),
+                                      ("activity_state", "D2", act_m, act_rendered),
+                                      ("api_error_type", "D1 § 6.4", aet_m, aet_rendered)):
     if not declared or not rendered:
         continue
     for x in sorted(declared - rendered):
-        fail.append(f"G7: `{x}` is a {name} D2 can produce and this document gives it no render — "
-                    f"a member with no render is a condition the fleet reports and nobody sees")
+        fail.append(f"G7: `{x}` is a `{name}` member {src} can produce and this document gives it no "
+                    f"render — a member with no render is a condition the fleet reports and nobody "
+                    f"sees, and section 5.4's unrecognised-member rule would demote every seat "
+                    f"carrying it")
     for x in sorted(rendered - declared):
-        fail.append(f"G7: `{x}` is rendered here as a {name} and D2 declares no such member — a "
-                    f"render branch no input can reach")
+        fail.append(f"G7: `{x}` is rendered here as a `{name}` member and {src} declares no such "
+                    f"member — a render branch no input can reach")
 
 # ------------------------------------------ G8. the desk-slot worked example ----
 def fnv1a32(s):
@@ -833,7 +835,14 @@ for header, col, where in G9_TABLES:
         g9_rows += 1
         scope = r if col is None else (c[col] if len(c) > col else "")
         hits = {t for t in re.findall(r"`([a-z_.]+)`", scope) if t in ten}
-        hits |= {leaf_of[t] for t in re.findall(r"`([a-z_]+)`", scope) if t in leaf_of}
+        # A member named INSIDE a compound span -- `(seq_epoch, last_seq)` -- is still a member this
+        # row renders, and matching only whole spans let exactly that one through unmarked.
+        for span in re.findall(r"`([^`]+)`", scope):
+            for tok in re.split(r"[^a-z_.]+", span):
+                if tok in ten:
+                    hits.add(tok)
+                elif tok in leaf_of:
+                    hits.add(leaf_of[tok])
         if not hits:
             continue
         g9_hits += 1

@@ -514,7 +514,7 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | **badges** | every member of `badges[]`, each with its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
 | **retirement** | when `retired` is non-null: at, by, reason | `retired.*` |
-| **raw** | `state_version` and the applied `(seq_epoch, last_seq)`, so a rendered state can be correlated with the wire | `state_version`, `delivery.*` |
+| **raw** | `state_version` and the applied `seq_epoch` / `last_seq`, so a rendered state can be correlated with the wire. `state_version` and `seq_epoch` are version-bearing; `last_seq` is one of the ten and is **`fetch-fresh`** under the transport block's stamp | `state_version`, `delivery.*` |
 
 ### 4.4 Routes, and what each one fetches
 
