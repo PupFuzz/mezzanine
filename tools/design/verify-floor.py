@@ -1073,22 +1073,31 @@ else:
         fail.append(f"G9 CONTROL: D2 § 6.5's carve-out names `{m_dark.group(1)}`, which is not one of "
                     f"the ten it excludes — the carve-out and the exclusion list have diverged")
 # THE COLUMN MAP -- and it is deliberately NOT the population any more.  The population is every
-# table `all_tables` finds; this list only says WHICH COLUMN of a render table names the source, which
-# is a fact about a table's shape and cannot be derived from the ten.  `None` means detect over the
-# whole row: § 4.3's panel table names the members by their LEAF names in its contents cell, not as
-# dotted paths in a source column, and § 5.5's narration table has no source column at all.
+# table `all_tables` finds; this list only says WHICH COLUMN of a render table names the source and
+# WHETHER that table renders on the DESK -- two facts about a table's shape, neither of which can be
+# derived from the ten.  `None` means detect over the whole row: § 4.3's panel table names the members
+# by their LEAF names in its contents cell, not as dotted paths in a source column, § 5.5's narration
+# table has no source column at all, and § 7.1's per-state table spreads its renders across its Desk,
+# Label line and Never columns.
+#
+# The DESK flag is what makes `dark-only` mean something.  `dark-only` is a permission to render one
+# member ON THE DESK; a desk table sourcing that member and marking it `fetch-fresh` would be claiming
+# the drill-down's rule on the desk's surface.  § 5.1 and § 7.1 are the two desk render tables, and
+# § 7.1 was outside this map entirely until it was found rendering the receipt age with nothing but a
+# bare `dark-only` TOKEN standing between it and any marker at all.
 #
 # The map being incomplete is now a FAILURE rather than a silence -- see the § 5 control below.  That
 # is the whole repair: a stored list that under-reads is not wrong in a way anything can see, and this
 # one under-read for two revisions while the document claimed the opposite.
 G9_TABLES = [
-    (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1"),
-    (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2"),
-    (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3"),
-    (r"^\| Rendered narration \| The client's own record \| Rule \|", None, "5.5"),
-    (r"^\| D2 member \| What renders when it is null \|", 0, "5.6"),
-    (ANIM_HEADER, ANIM_DRIVER_COL, "6.2"),
-    (r"^\| Panel section \| Contents \| Source \|", None, "4.3"),
+    (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1", True),
+    (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2", False),
+    (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3", False),
+    (r"^\| Rendered narration \| The client's own record \| Rule \|", None, "5.5", False),
+    (r"^\| D2 member \| What renders when it is null \|", 0, "5.6", False),
+    (ANIM_HEADER, ANIM_DRIVER_COL, "6.2", False),
+    (r"^\| Panel section \| Contents \| Source \|", None, "4.3", False),
+    (r"^\| `render_state` \| Desk \| Label line \| Animation \| Never \|", None, "7.1", True),
 ]
 DOC_TABLES = all_tables(lines)
 if len(DOC_TABLES) < 25:
@@ -1097,7 +1106,7 @@ if len(DOC_TABLES) < 25:
 
 
 def g9_map_entry(header_line):
-    for k, (hdr, _col, _where) in enumerate(G9_TABLES):
+    for k, (hdr, _col, _where, _desk) in enumerate(G9_TABLES):
         if re.search(hdr, header_line):
             return k
     return None
@@ -1121,7 +1130,13 @@ for _start, _header, _rows in DOC_TABLES:
 
 g9_rows = g9_hits = 0
 g9_covered = set()
-g9_pop_rows = set()
+# The population is keyed by POSITION -- the LINE NUMBER of each row -- and not by the row's text.
+# Keying on the text made membership a property of the BYTES: a row byte-identical to a mapped table's
+# row, pasted into a table this map has no column for, tested as `in` the population and was skipped by
+# the outside-the-map rule below without ever having been checked by the inside-the-map rule either.
+# The escape needs no ill intent to open: two tables that render one member with one wording is the
+# ordinary way a document restates itself, which is the class this whole pass exists to close.
+g9_pop_lines = set()
 g9_matched = set()
 
 
@@ -1144,11 +1159,12 @@ for _start, _header, _rows in DOC_TABLES:
     if k is None:
         continue
     g9_matched.add(k)
-    _hdr, col, where = G9_TABLES[k]
-    for r in _rows:
+    _hdr, col, where, is_desk = G9_TABLES[k]
+    for _j, r in enumerate(_rows):
         c = cells(r)
         g9_rows += 1
-        g9_pop_rows.add(r)
+        # `all_tables` yields the header's 0-based index; the data rows start two lines below it.
+        g9_pop_lines.add(_start + 3 + _j)
         scope = r if col is None else (c[col] if len(c) > col else "")
         hits = g9_hits_in(scope)
         if not hits:
@@ -1176,14 +1192,14 @@ for _start, _header, _rows in DOC_TABLES:
                 f"`{DARK_MEMBER}` and to no other member — the carve-out is that a stale or offline "
                 f"seat is receiving nothing, so THAT value is frozen at the server too. A row marking "
                 f"any other of the ten `dark-only` claims a freshness guarantee D2 gives one member")
-        if where == "5.1" and DARK_MEMBER in hits and "dark-only" not in present:
+        if is_desk and DARK_MEMBER in hits and "dark-only" not in present:
             fail.append(
-                f"G9: section 5.1 is the DESK's render map and this row sources `{DARK_MEMBER}` "
+                f"G9: section {where} renders on the DESK and this row sources `{DARK_MEMBER}` "
                 f"without `dark-only`. On the desk that member is renderable only on a stale or "
                 f"offline seat; marking it `fetch-fresh` here would claim the desk renders it from a "
                 f"response that has just answered, which is the drill-down's rule and not this "
                 f"table's — and it is the substitution a row-scoped marker test could not see")
-for k, (_hdr, _col, where) in enumerate(G9_TABLES):
+for k, (_hdr, _col, where, _desk) in enumerate(G9_TABLES):
     if k not in g9_matched:
         fail.append(f"G9 CONTROL: the table of section {where} did not parse — every bookkeeping "
                     f"member it renders would go unmarked and unchecked")
@@ -1218,9 +1234,49 @@ if not re.search(r"FLEET-STATE\.md#65-the-fold", raw):
 # Neither ⇒ red.  The exempted rows are still printed, because an exemption nobody can see is a
 # silence with extra steps.
 EXEMPT = "named-not-rendered"
+
+# THE TWO ROWS THAT MAY CARRY A MARKER WITHOUT RENDERING FROM ONE OF THE TEN, and they are found by
+# their ROLE rather than by the token they happen to contain.  A marker token in a row used to exempt
+# that row outright, which made the outside-the-map rule a BARE TOKEN-PRESENCE TEST: any row anywhere
+# could name one of the ten and buy its way past by writing `fetch-fresh` somewhere in its prose, and
+# a row could name the marker for a SURFACE IT DOES NOT RENDER ON and be admitted for it.  Two rows
+# genuinely do define or describe the vocabulary rather than use it, and both are derivable:
+#
+#   (a) THE MARKER'S OWN DEFINITION ROW -- a row of the table whose KEY CELL IS the marker.  That is
+#       section 2.4's marker table today; if it moves section, this finds it there, because what is
+#       being recognised is the row's subject and not its address.
+#   (b) THE GATE'S OWN DESCRIPTION ROW -- a row of section 12's guard-class table, the table in which
+#       this file's checks are written down.  Found by that table's own header, for the same reason.
+#
+# Everything else outside the render map has exactly one legal state: `named-not-rendered`, the
+# document's own token for a row that NAMES a member and draws no quantity from it.
+def _norm_key(cell_text):
+    return re.sub(r"[`*_ ]", "", cell_text).strip().lower()
+
+
+GUARD_TABLE_HEADER = r"^\| Check \| What the tool re-derives \| Status \|"
+g9_vocab_lines, g9_gatedoc_lines = set(), set()
+for _start, _header, _rows in DOC_TABLES:
+    _is_guard = re.search(GUARD_TABLE_HEADER, _header) is not None
+    for _j, r in enumerate(_rows):
+        _ln = _start + 3 + _j
+        if _is_guard:
+            g9_gatedoc_lines.add(_ln)
+        c = cells(r)
+        if c and _norm_key(c[0]) in {m.replace("-", "") for m in MARKED_FRESH} | set(MARKED_FRESH):
+            g9_vocab_lines.add(_ln)
+if not g9_vocab_lines:
+    fail.append("G9 CONTROL: no table row in this document has one of the two markers as its key "
+                "cell, so section 2.4's marker table — the row that DEFINES what `fetch-fresh` and "
+                "`dark-only` permit — was not found. The vocabulary exemption below would then be "
+                "granted to nothing, or, worse, the definition row itself would red")
+if not g9_gatedoc_lines:
+    fail.append("G9 CONTROL: section 12's guard-class table did not parse, so the row in which this "
+                "gate is written down could not be told apart from a render row")
+
 g9_prose, g9_exempt = [], []
 for i, line in enumerate(lines, 1):
-    if line in g9_pop_rows:
+    if i in g9_pop_lines:
         continue
     hit = sorted(g9_hits_in(line))
     if not hit:
@@ -1228,16 +1284,25 @@ for i, line in enumerate(lines, 1):
     if not line.startswith("|"):
         g9_prose.append((i, hit[0]))
         continue
-    if EXEMPT in line or any(mk in line for mk in MARKED_FRESH):
-        g9_exempt.append((i, hit[0], EXEMPT in line))
+    if EXEMPT in line:
+        g9_exempt.append((i, hit[0], EXEMPT))
+        continue
+    if i in g9_vocab_lines:
+        g9_exempt.append((i, hit[0], "marker definition"))
+        continue
+    if i in g9_gatedoc_lines:
+        g9_exempt.append((i, hit[0], "this gate's own description"))
         continue
     fail.append(
         f"G9: L{i} is a TABLE ROW outside this document's render map and it names `{hit[0]}`, one of "
-        f"D2 § 6.5's ten, carrying neither a delivery marker nor `{EXEMPT}`. Either the row renders a "
-        f"quantity from a member no delta re-sends — in which case it owes `fetch-fresh` or "
-        f"`dark-only` and this table owes a column in G9's map — or it only NAMES the member, in "
-        f"which case it says so with `{EXEMPT}`. Leaving it unsaid is how a new table enters the "
-        f"document with the delivery contract unenforced on it, which is what section 5.6 did")
+        f"D2 § 6.5's ten, without declaring `{EXEMPT}` — and it is neither the marker's own "
+        f"definition row nor a row of section 12's guard-class table, the only two rows entitled to "
+        f"discuss a marker rather than obey one. Either the row renders a quantity from a member no "
+        f"delta re-sends — in which case it owes `fetch-fresh` or `dark-only` AND this table owes a "
+        f"column in G9's map, so the marker is checked against the member instead of merely being "
+        f"present — or it only NAMES the member, in which case it says so with `{EXEMPT}`. Writing a "
+        f"marker into the prose of an unmapped row buys neither: that was a token-presence test, and "
+        f"it admitted section 7.1's two desk renders of the receipt age unchecked")
 if not g9_exempt:
     fail.append(f"G9 CONTROL: no table row outside the render map names one of the ten at all — this "
                 f"document quotes D2's exclusion list, its fixtures set those members and Appendix A "
@@ -1342,19 +1407,21 @@ print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nu
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")
 print(f"G9  D2 § 6.5's non-version-bearing members re-derived: {len(ten)}; markdown tables found by "
       f"structure {len(DOC_TABLES)}, of which {len(g9_matched)} are render tables with a column in "
-      f"the map; render rows scanned {g9_rows}, rows sourcing one of the ten {g9_hits}, all marked "
-      f"`fetch-fresh` or `dark-only`")
+      f"the map ({sum(1 for t in G9_TABLES if t[3])} of them DESK tables, where `dark-only` is the "
+      f"marker in force); render rows scanned {g9_rows}, rows sourcing one of the ten {g9_hits}, "
+      f"every one marked legally FOR THE MEMBER IT SOURCES")
 print(f"    G9 residue — PROSE mentions of the ten: {len(g9_prose)} (including § 2.4's own "
       f"definition site). PRINTED IN FULL, never capped: an earlier revision printed the first 12 of "
       f"19 and the count beside it, so the list looked complete on the pass that hid seven of it")
 for ln, f in g9_prose:
     print(f"    G9 residue — prose mention, unchecked by this gate · L{ln}: `{f}`")
 print(f"    G9 table rows outside the render map: {len(g9_exempt)}, every one of them accounted for "
-      f"and listed below — a row here that carried neither a marker nor `{EXEMPT}` is a FAILURE "
-      f"above, not an entry in this list")
+      f"and listed below WITH THE GROUND IT STANDS ON — a row here that declared no `{EXEMPT}` and is "
+      f"neither the marker's definition row nor a row of section 12's guard-class table is a FAILURE "
+      f"above, not an entry in this list. Vocabulary rows found by role: {len(g9_vocab_lines)} "
+      f"marker-definition, {len(g9_gatedoc_lines)} guard-class")
 for ln, f, ex in g9_exempt:
-    print(f"    G9 outside the render map, {'declared `' + EXEMPT + '`' if ex else 'marker vocabulary'}"
-          f" · L{ln}: `{f}`")
+    print(f"    G9 outside the render map, {ex} · L{ln}: `{f}`")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "
