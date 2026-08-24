@@ -30,6 +30,7 @@ reopen an entry by talking to its decider.
 | D-12 | Branch model: `dev` integrates (squash by convention), `main` releases (merge-commit, ruleset-enforced); `card-token-lint` is a required check on both | pm | 2026-08-23 |
 | D-13 | After the P0 designs land, the project **splits to a dedicated Mezzanine agent** running a **sandbox** instance; **prod** is a separate deployment driven by `bin/deploy.sh` (pattern requested from kanban-solo's kanban-board project) | operator | 2026-08-23 |
 | D-14 | Design docs are written to the **standalone-implementer standard** (§ 2, "The bar") — complete enough that an AI agent with no access to this project's conversational history implements from the document alone | operator | 2026-08-23 |
+| D-15 | The fleet-state store is **MySQL on a dedicated DB host**; provisioning it is a deployment task downstream of D2's schema, owned by the Mezzanine build agent (D-13) | operator | 2026-08-23 |
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
@@ -111,6 +112,8 @@ artifact fills in the fields). Hard requirements it must satisfy:
 - event kinds: session start/end, turn start/end, tool start/end (name + descriptor), subagent
   spawn/stop (with task title), compaction, context %, and a reporter heartbeat.
 
+Status: **merged 2026-08-23** (PR #7).
+
 **D2 — fleet-state model + feed contract (`docs/design/FLEET-STATE.md`).** What the store keeps
 (per-seat current state + a short activity window, keyed by install/seat), retention, and what
 the browser receives: **snapshot-on-connect, deltas after**, over Reverb; the REST snapshot for
@@ -118,12 +121,16 @@ non-browser consumers (the watchdog). Merge rules for the three sources (telemet
 live *action*; GitHub/board events supply the human-readable *task title*; the three-tier status
 fallback from the proposal).
 
+Status: **in review** — drafted; the adversarial review loop runs before the PR opens.
+
 **D3 — floor UI spec (`docs/design/FLOOR.md`).** Screens: lobby (building summary), floor, desk
 drill-down panel (current task linked to card/thread, recent-activity timeline, context gauge,
 subagents as interns at a side table — their titles from the Task dispatch, programmatic).
 Identity mapping: how a seat becomes a desk and an install becomes a floor, stable across
 restarts. The honesty principle from the proposal binds every animation: driven by a real event,
 or absent.
+
+Status: **not started** — gated on D2 reaching draft (it has).
 
 ## 3. Work breakdown
 
@@ -141,6 +148,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **websocket handshake**, and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
 | | fleet-state store + Reverb feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
+| | MySQL provisioning on the dedicated DB host (new card, D-15) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse a hostile export before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
