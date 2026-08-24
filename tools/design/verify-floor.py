@@ -152,13 +152,18 @@ def cells(row):
 
 
 def table_rows(text, header_re):
-    """Data rows of the first table in `text` whose header line matches."""
+    """Data rows of the first table in `text` whose header line matches.
+
+    INDENT-TOLERANT, and that is not a nicety: a markdown table nested under a list item is indented,
+    and a `^\\|` test reads every one of its rows as prose.  This file's own header patterns are
+    `^\\|`-anchored, so both the header test and the row walk normalise with `lstrip()` and the rows
+    are returned LEFT-STRIPPED -- every caller's `^\\|` regex then reads an indented row unchanged."""
     src = text.split("\n")
     for i, line in enumerate(src):
-        if re.search(header_re, line):
+        if re.search(header_re, line.lstrip()):
             out, j = [], i + 2
-            while j < len(src) and src[j].startswith("|"):
-                out.append(src[j])
+            while j < len(src) and src[j].lstrip().startswith("|"):
+                out.append(src[j].lstrip())
                 j += 1
             return out
     return None
@@ -175,15 +180,25 @@ def all_tables(src_lines):
     one does not.  Both halves of that sentence were false, and no check could say so.
 
     Unlike `table_rows`, this finds EVERY table, not the first whose header matches -- so a second
-    table sharing a header shape is read rather than silently skipped."""
+    table sharing a header shape is read rather than silently skipped.
+
+    INDENT-TOLERANT for the same reason `table_rows` is, and it is the same stored-population defect
+    one shape further in: a `^\\|` test does not under-read a LIST of tables, it under-reads the
+    STRUCTURE, so a render table indented under a list item left this gate's population without
+    reddening anything -- while this document already authors indented tables (section 2.4's duration
+    table, section 11's episode walk).  The tuple still keys by POSITION -- `i` is the header's 0-based
+    index in the UNMODIFIED source, so `_start + 3 + _j` is still the 1-based line of row `_j` -- and
+    only the TEXT handed on is left-stripped, because every header pattern and row regex here is
+    `^\\|`-anchored."""
     out, i, n = [], 0, len(src_lines)
     while i < n - 1:
-        if src_lines[i].startswith("|") and re.match(r"^\|[\s\-:|]+\|\s*$", src_lines[i + 1]):
+        cur = src_lines[i].lstrip()
+        if cur.startswith("|") and re.match(r"^\|[\s\-:|]+\|\s*$", src_lines[i + 1].lstrip()):
             j, rows = i + 2, []
-            while j < n and src_lines[j].startswith("|"):
-                rows.append(src_lines[j])
+            while j < n and src_lines[j].lstrip().startswith("|"):
+                rows.append(src_lines[j].lstrip())
                 j += 1
-            out.append((i, src_lines[i], rows))
+            out.append((i, cur, rows))
             i = j
         else:
             i += 1
@@ -695,7 +710,7 @@ else:
 # matches ONE whitespace character where a wrapped phrase has three. The plant that broke the phrase
 # over a line break passed against the first version of this check for exactly that reason. `prose`
 # is right for the twelve patterns that use it, none of which contains a class with a space in it.
-LOBBY_LOG = re.compile(r"(?:the\s+)?lobby(?:'s)?\s+(?:event[-\s]+)?log", re.I)
+LOBBY_LOG = re.compile(r"(?:the\s+)?lobby(?:['\u2019]s)?\s+(?:event[-\s]+)?log", re.I)
 lobby_log_quoted = 0
 for m in LOBBY_LOG.finditer(raw):
     ln = raw[:m.start()].count("\n") + 1
@@ -762,8 +777,11 @@ else:
 # fact with two homes and the prose read `six`/`eleven` over a table yielding five and nine -- a
 # figure that survived the pass that falsified it, because nothing re-computed it.  Both figures are
 # re-derived here FROM THE TABLE'S OWN PAIRS, so the next edit to the walk moves the count with it.
-# The walk table is INDENTED under a list item, so `table_rows`'s `startswith("|")` cannot read it --
-# which is exactly why nothing had ever read it.  Found by structure, tolerant of the indent.
+# The walk table is INDENTED under a list item, which is exactly why nothing had ever read it: every
+# table parser in this file tested `startswith("|")` and read an indented row as prose.  `table_rows`
+# and `all_tables` are indent-tolerant now, so this table is in the document-wide population too; it is
+# still found HERE by its own header, because this check needs the walk's ROW ORDER and reads it from
+# `lines` directly rather than through a population keyed by header shape.
 walk_rows = None
 for _i, _l in enumerate(lines):
     if re.match(r"^\s*\| At \| The facts that moved \| Episodes \|", _l):
@@ -777,22 +795,42 @@ if not walk_rows:
                 "sentence beside it would have nothing to disagree with, which is the state it was "
                 "in when it read `six`/`eleven` over a five-episode, nine-row table")
 else:
-    entered, left = set(), set()
-    for r in walk_rows:
+    # ORDERED, because the predicate section 11 states and section 12's G5 row promises is a
+    # positional one: a `left` row's `episode_id` matches an `entered` row THAT PRECEDES IT.  A
+    # set difference is position-free -- it sees an id present and calls the pair matched -- so a
+    # walk whose exit was written above its own entry satisfied it, and the failure message below
+    # went on saying "with no `entered` row before it" over a check that had never looked at
+    # `before`.  Both halves are asserted now: the id must exist, and its `entered` must be at an
+    # EARLIER ROW.  The counts below stay set-derived, which is what they always were.
+    entered_seq, left_seq = [], []
+    for _ri, r in enumerate(walk_rows):
         c = cells(r)
         ep_cell = c[2] if len(c) > 2 else ""
         for aid, phase_, ep in re.findall(r"(A\d+)\s+\*\*(entered|left)\*\*\s+\(episode\s+(\d+)\)",
                                           ep_cell):
-            (entered if phase_ == "entered" else left).add((aid, int(ep)))
+            (entered_seq if phase_ == "entered" else left_seq).append(((aid, int(ep)), _ri))
+    entered, left = {k for k, _ in entered_seq}, {k for k, _ in left_seq}
     if not entered:
         fail.append("G5 CONTROL: the episode walk parsed but names no `entered` episode — the pair "
                     "recognizer is broken and both figures below would be re-derived as zero")
+    entered_at = {}
+    for k, _ri in entered_seq:
+        entered_at.setdefault(k, _ri)
     orphan = sorted(left - entered)
     for o in orphan:
         fail.append(f"G5: the episode walk gives {o[0]} episode {o[1]} a `left` row with no `entered` "
-                    f"row before it. Section 11's own predicate is that a `left` row's `episode_id` "
-                    f"must match an `entered` row that precedes it, and the walk is the fixture that "
-                    f"predicate is asserted against")
+                    f"row anywhere in the walk. Section 11's own predicate is that a `left` row's "
+                    f"`episode_id` must match an `entered` row that precedes it, and the walk is the "
+                    f"fixture that predicate is asserted against")
+    for k, _ri in sorted(left_seq, key=lambda kv: kv[1]):
+        if k in entered_at and entered_at[k] >= _ri:
+            fail.append(f"G5: the episode walk gives {k[0]} episode {k[1]} a `left` row at walk row "
+                        f"{_ri + 1} and its `entered` row is at walk row {entered_at[k] + 1} — not "
+                        f"BEFORE it. Section 11's predicate is positional: a `left` row's "
+                        f"`episode_id` must match an `entered` row that PRECEDES it, so an episode "
+                        f"that is left where it has not yet been entered falsifies the fixture the "
+                        f"predicate is asserted against, and the id-only check this replaced could "
+                        f"not see it — a set difference has no positions in it")
     n_ep, n_rows = len(entered), len(entered) + len(left)
     m_cnt = re.search(prose(r"\*\*([A-Za-z-]+) `held` episodes, ([A-Za-z-]+) `held` rows\*\*"), raw)
     if not m_cnt:
@@ -1473,7 +1511,7 @@ for i, line in enumerate(lines, 1):
     hit = sorted(g9_hits_in(line))
     if not hit:
         continue
-    if not line.startswith("|"):
+    if not line.lstrip().startswith("|"):
         g9_prose.append((i, hit[0]))
         continue
     if EXEMPT in line:

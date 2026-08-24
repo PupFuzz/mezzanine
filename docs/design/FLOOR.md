@@ -160,7 +160,7 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | # | Computed | From | Why it is presentation and not state |
 |---|---|---|---|
 | 1 | **`clock_offset_ms`** = `server_time − browser_now` | every REST response and every feed message ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) | D2 **requires** it: "the browser's own clock is never used for an age either… it is the layer nobody controls" |
-| 2 | **Durations** — *nothing done for 4m 12s*, *no data for 4m 12s*, *running for 2m 05s*: **three** of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four, and no fourth on this list. Its fourth row, *this state is 117 s behind*, is deliberately **not** here: `derivation.fold_lag_ms` (**`named-not-rendered`** — this row names the member and draws nothing from it; [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns its render) is a duration **D2 computes at read time and sends**, and formatting a delivered number into a string is not computing one. Nor is a currency label's parenthetical, which carries a labelled seat-clock timestamp rather than a duration, nor the fleet banner's `fleet.max_fold_lag_ms` | a D2 timestamp subtracted from the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
+| 2 | **Durations** — *nothing done for 4m 12s*, *no data for 11m*, *running for 2m 05s*: **three** of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four, and no fourth on this list. Its fourth row, *this state is 117 s behind*, is deliberately **not** here: `derivation.fold_lag_ms` (**`named-not-rendered`** — this row names the member and draws nothing from it; [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns its render) is a duration **D2 computes at read time and sends**, and formatting a delivered number into a string is not computing one. Nor is a currency label's parenthetical, which carries a labelled seat-clock timestamp rather than a duration, nor the fleet banner's `fleet.max_fold_lag_ms` | a D2 timestamp subtracted from the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
 | 3 | **Desk slot** | `(install_id, seat_id)` and the map's slot count ([§ 3.2](#32-the-desk-slot-function)) | A layout function of identity. It reads no state field, so it cannot change when a seat's state does |
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
@@ -303,9 +303,9 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
   | Duration | Field | The string, verbatim | Where it may appear |
   |---|---|---|---|
   | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
-  | **receipt age** | `delivery.last_receipt_at` | ***no data for 11m*** | the **desk**, under the **`dark-only`** marker below, which owns which desks may draw it and why it may tick; and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**). The form's exemplar is 11m rather than the 4m 12s the rows above use, because 4m 12s is inside no state the first surface named here can be in ([D2 § 4.5](FLEET-STATE.md#45-link-states): `stale` begins at 300 s) |
+  | **receipt age** | `delivery.last_receipt_at` | ***no data for 11m*** | the **desk**, under the **`dark-only`** marker below, which owns which desks may draw it and why it may tick; and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**). The form's exemplar is 11m rather than the 4m 12s the rows above use, because 4m 12s is inside no state the first surface named here can be in ([D2 § 4.5](FLEET-STATE.md#45-link-states): `stale` begins at 300 s). **`named-not-rendered`** — this row fixes the string and draws no value from the member; the two markers it names are pointers to the rule below, and it is the render-map rows that draw it that carry them |
   | **action elapsed** | `action.started_received_at` | ***running for 2m 05s*** | desk and drill-down, wherever the open action is drawn; version-bearing, so it ticks. **Both ends are the server clock**, which is what makes it the one honest duration over an action ([§ 5.1](#51-the-desk)) — `action.started_at` is the seat's own claim and is rendered as a labelled timestamp beside it, never subtracted from anything |
-  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | **`fetch-fresh`**, so never ticked on any surface — and *which* surfaces is [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s to say, not this table's. This row fixes the string; that section owns where it appears and under what condition |
+  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | **`fetch-fresh`**, so never ticked on any surface — and *which* surfaces is [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s to say, not this table's. This row fixes the string; that section owns where it appears and under what condition. **`named-not-rendered`** — this row draws no value from the member either, for the same reason: the marker it names is the one the render-map row that draws it carries |
 
   **Two rendered figures look like a fifth row and are neither.** *(a)* A **currency label's
   parenthetical** — *was: working (last event 12:47, seat clock)* — carries a labelled seat-clock
@@ -416,7 +416,8 @@ that member and may not substitute the drill-down's `fetch-fresh` for it:
 | **`fetch-fresh`** | rendered only from a response that has **just answered** — the snapshot apply, the drill-down's seat-detail fetch ([§ 4.3](#43-the-desk-drill-down-panel)), a resync fetch, or `fleet.health` / `feed.heartbeat` for the fleet object — stamped *as of HH:MM:SS*, and **never ticked as an age** between fetches | these are exactly the surfaces D2 names for the ten: *"served fresh by [§ 8.2.3], the snapshot and [§ 8.2.4] rather than held by a client between deltas"*. The stamp is what keeps the value a reading of a moment rather than a claim about now |
 | **`dark-only`** | **This row is the document's one statement of the dark-desk receipt age; every other site points here and none of them restates it.** `delivery.last_receipt_at` renders **on the desk of a `stale` or `offline` seat, on no other desk and in no other state**, as the receipt age in [the duration table above](#24-the-clock-and-every-age-on-the-page)'s one form, **ticking**, beside the *since* timestamp of the same instant. A `live` desk therefore renders **no receipt age at all** — the cost that buys is stated below. [§ 7.1](#71-the-render-per-state)'s `stale` and `offline` rows carry the worked label line for each of the two states, derived from this row, and are the only site in this document that carries values for it | D2's own carve-out: such a seat *"by definition is receiving nothing, so its `last_receipt_at` is frozen"* at the server too, and the **transition** into `stale`/`offline` moves `render_state` and `delivery.no_data_since`, both version-bearing — so the client is told, and the age it then renders is exact rather than merely old |
 
-**A third token, and it is deliberately not a marker.** A table row elsewhere in this document may
+**A third token, and it is deliberately not a marker.** A table row outside the render map — the
+duration table **above** included, which fixes a string and draws no value from any member — may
 *name* one of the ten without rendering any quantity from it: a fixture's contents
 ([§ 11](#11-acceptance-tests)), an upstream derivation rule quoted
 ([§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)), an obligation
@@ -1065,10 +1066,9 @@ exactly one afternoon. [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-delta
 
 **What a snapshot does do is render the states it delivers, held renders included, and that is not an
 exception to the rule above but the other half of it.** A snapshot carrying a `working` seat renders a
-working desk, loop and all: the loop is held by a delivered field, not started by a message, so its
-animation-log row carries that object's `state_version` rather than a causing message
-([§ 11](#11-acceptance-tests)). The rule is *no edge animation on a snapshot*, never *no motion after
-a snapshot* — the second would make the floor go still on every reconnect, and
+working desk, loop and all: the loop is held by a delivered field, not started by a message
+([§ 11](#11-acceptance-tests) states what the animation log records for it). The rule is *no edge
+animation on a snapshot*, never *no motion after a snapshot* — the second would make the floor go still on every reconnect, and
 [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) is explicit that a still
 floor is read as a still fleet.
 
@@ -1203,14 +1203,22 @@ places on this document by name:
    string, [§ 5.1](#51-the-desk) and [§ 4.3](#43-the-desk-drill-down-panel) for the two surfaces'
    source rows, [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) for the currency
    treatment, [§ 7.2](#72-badges-every-member-has-a-render) for the badge's own line. **The whole
-   render, in one place, is four things and no others:** the **badge**, a **hatched overlay**, the
-   **line** *this state is N s behind — as of HH:MM:SS*, and **motion stops** — "D3 must not present
-   the seat's activity state as current". It renders on **two surfaces and no others**: the **desk**,
-   and only while the badge is up, the line carrying its own inline stamp because the number is
-   `fetch-fresh` and there is no block on the desk whose stamp it could borrow
+   treatment, in one place, is four things and no others:** the **badge**, a **hatched overlay**, the
+   **lag line** *this state is N s behind — as of HH:MM:SS*, and **motion stops** — "D3 must not
+   present the seat's activity state as current". **That line renders on two surfaces and no
+   others**: the **desk**, and only while the badge is up, the line carrying its own inline stamp
+   because the number is `fetch-fresh` and there is no block on the desk whose stamp it could borrow
    ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule); and the **drill-down's derivation
    block**, where the same number appears under that block's stamp
-   ([§ 4.3](#43-the-desk-drill-down-panel)). Two surfaces, one owner, one string. **The treatment is driven by
+   ([§ 4.3](#43-the-desk-drill-down-panel)). Two surfaces, one owner, one string — **and all three of
+   those totals are counted over the lag line**, which is what this section owns.
+   **[§ 7.2](#72-badges-every-member-has-a-render)'s `fold_lag` row is therefore not a third surface
+   for that line, and its wording is not a second string for it:** what that row's drill-down-line
+   column carries — *this state is N s behind the events that produced it* — is the **badge's own**
+   render, the sentence every badge in that table gets in the **badge cluster**, and it takes no
+   *as of* stamp because it states the badge's condition rather than dating a number. Two facts, two
+   owners, two strings: the badge's line is [§ 7.2](#72-badges-every-member-has-a-render)'s and the
+   lag line is this section's, and neither is a restatement of the other. **The treatment is driven by
    the badge and never by a held `fold_lag_ms`**, and that is the whole of why this degradation cannot
    present as a healthy floor *here*: the fold is the delta emitter, so when it stops, a client's copy
    of the lag freezes at the value it had and can never cross 60 s — while `badges` **is**
@@ -1546,14 +1554,18 @@ enforced over one.** Three populations, none of them written into the tool:
 
 1. **A test with two halves does not pick one: it splits, and each half is named at its own step in
    Appendix B's Gate cell** — with the drill-down as the case this rule was first written for, and
-   **six more, enumerated in [Appendix B](#appendix-b--what-an-implementer-builds-from-this)'s note on
-   order**, found once the check stopped being drill-down-shaped: five resolved by splitting and one
-   by re-gating. The count is stated as its enumeration's length rather than beside it, because a
+   **eight more, enumerated in [Appendix B](#appendix-b--what-an-implementer-builds-from-this)'s note
+   on order**, found once the check stopped being drill-down-shaped, and they took **three**
+   mechanisms: five resolved by splitting, one by re-gating, and two by **moving the artifact** to the
+   step that actually builds it — because a gate stands on nothing either when the test reaches ahead
+   of the build order or when the build order files the artifact in the wrong row. The count is stated
+   as its enumeration's length rather than beside it, because a
    summary figure that disagrees with the list under it is the defect this document has already
    shipped twice. A gate on an artifact that does not
    exist yet is a gate an implementer either skips or satisfies by building out of order — and out of
    order is the one thing Appendix B exists to prevent. Where no half of a test is observable before
-   its artifact, the test is **re-gated** rather than split, and says so.
+   its artifact, the test is **re-gated** rather than split, and says so; and where the artifact is
+   the thing in the wrong row, the **artifact moves** and neither the test nor its gate changes.
 2. **The build-order consequence of the record's ownership** — which is
    [§ 5.5](#55-the-clients-own-narration)'s to state and this corollary's to apply. Because the record
    is the client protocol's artifact and the lobby merely renders it, a protocol test may assert a line
@@ -1993,19 +2005,22 @@ observable on **no** surface built before step 10.*
 
 *Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the manifest
 half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 0, the lineage half at
-step 1. The gates themselves are step 0 and must exist before any asset does; the **lineage file** is
-step 1's artifact, so a lineage assertion at step 0 asserts the contents of a file no step has yet
-created — and an empty character tree satisfies Gate 2's absence clause for free.*
+step 1. The gates themselves are step 0 and must exist before any asset does; the **lineage file**
+and the **character tree** are step 1's artifacts, so a lineage assertion at step 0 asserts the contents of a
+file no step has yet created — and an empty character tree satisfies Gate 2's absence clause for
+free, which is why that clause is asserted by the half that has a tree to read.*
 
 - **Build — the manifest half:** run the asset gates against the repository
   ([§ 10.1](#101-the-manifest-and-the-two-gates)). **Reads:** the **provenance gates**.
 - **GREEN — the manifest half:** every asset file has an `ATTRIBUTION.md` row; every row's SHA-256
-  matches its file; every licence identifier is in the allowlist; the character tree contains **no**
-  image file.
+  matches its file; every licence identifier is in the allowlist.
 - **Build — the lineage half:** run the same gates once the port has landed
-  ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**.
+  ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
+  **character tree**.
 - **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
-  notice.
+  notice; and the **character tree** the port has just written contains **no** image file — Gate 2's
+  absence clause, asserted here rather than at step 0, where a tree that does not exist yet satisfies
+  it for free.
 - **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
   the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
   upstream commit nobody recorded is a port nobody can tell from a fork
@@ -2644,7 +2659,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | Order | Artifact | Gate |
 |---|---|---|
 | 0 | `ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the **character generator port** and its **lineage file**, `resources/characters/LINEAGE.md` (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; both clauses of Gate 2 hold; and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, which is the half of that test with a file to read |
+| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; both clauses of Gate 2 hold; and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, which is the half of that test with a file to read |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
 | 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
 | 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
@@ -2667,9 +2682,9 @@ This table carries the build order and the gates; the rule over them is § 11's 
 here. What this note records is what the rule found once it was enforced over **every** artifact
 rather than over the drill-down alone. Three tests once asserted drill-down content while this table
 gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — and each was split. Widening
-the check to every artifact this table names then found **six more, none of them about the panel —
-five resolved by splitting and one by re-gating**, and here they are, so the figure is the list's
-length rather than a claim beside it:
+the check to every artifact this table names then found **eight more, none of them about the panel —
+five resolved by splitting, one by re-gating and two by relocating the artifact they read**, and here
+they are, so the figure is the list's length rather than a claim beside it:
 [AT-D3-1](#at-d3-1-no-animation-without-its-event) split into an instrument half (step 2, the log
 alone) and a closed-set half (step 6); [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) into a
 protocol half (3) and a strip half (8), because *resyncs: N* is a status-strip readout;
@@ -2682,7 +2697,18 @@ because the lineage file is step 1's artifact.
 That is the five. The sixth,
 [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), was **re-gated** from 5 to 6 rather than
 split: its whole claim is that no state is carried by motion alone, and there is no half of that
-observable before there is any motion. Three tests asserting the client's **event record** at steps 3
+observable before there is any motion.
+**The seventh and eighth were neither, because neither test was the defect:**
+[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere), gated at step 6, and
+[AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s **desk half**, gated at step 5, both read the
+desk's **side table**, and an earlier revision of this table built the side table at step 10 with the
+drill-down. Splitting either would have split a claim that is one claim, and re-gating them to 10
+would have stood two desk assertions behind the panel; what was in the wrong place was the artifact,
+so the **side table** moved to step 5 — the step that renders the desk — and step 10 kept the
+drill-down's **uncapped intern list**. [§ 8](#8-interns--subagent-rendering-and-the-cap) owns that
+split and states why it is not bookkeeping. That is the third mechanism, and it is the one to reach
+for when a test reads the right artifact at the right moment and this table has that artifact in the
+wrong row. Three tests asserting the client's **event record** at steps 3
 and 8 are a different case and not the same defect: the record is the client protocol's artifact and
 step 3 builds it; the lobby at step 9 is its renderer.
 
