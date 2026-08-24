@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D3 verification gate: docs/design/FLOOR.md.
 
-NINE guard classes, G1-G9, one per defect class this document can carry that a reader will not
+TEN guard classes, G1-G10, one per defect class this document can carry that a reader will not
 reliably catch.  Every population below is RE-DERIVED on each run -- from this document's own
 tables, or from docs/design/FLEET-STATE.md (D2) and docs/design/EVENT-SCHEMA.md (D1) -- and never
 from a list stored here.  A number or a member list written into a checker is one free to disagree
@@ -163,6 +163,18 @@ FIELDISH = re.compile(r"^[a-z_][a-z0-9_]*(\[\])?(\.[a-z_][a-z0-9_]*(\[\])?)*$")
 # `(?![\w,.])` on both sides, which rejected every value that happened to end a sentence and so
 # reported "the number is not at its definition site" for numbers that were.
 WHOLE = r"(?<!\w)(?<!\d,)(?<!\d\.)%s(?!\w)(?![.,]\d)"
+
+
+def prose(pattern):
+    """Make a multi-word pattern tolerant of the line wraps prose actually contains.
+
+    A markdown TABLE row is one line by construction and cannot wrap, so a `^\\|`-anchored pattern is
+    structurally safe.  PROSE is not: D1 § 12.2 places a render obligation in the words "readable in
+    its\\ndrill-down", and D2 § 6.5 grants the `dark-only` carve-out in the words "so its
+    `last_receipt_at`\\nis frozen".  A line-scoped or space-literal pattern reads neither.  Every
+    multi-word pattern matched against document prose in this file goes through here, so the next
+    re-flow of an upstream paragraph cannot quietly un-find what this gate is holding."""
+    return pattern.replace(" ", r"\s+")
 
 
 def field_tokens(cell):
@@ -518,14 +530,14 @@ if not t_rows or not u_rows:
     fail.append("G6 CONTROL: Appendix A's obligation tables did not parse — the coverage claim "
                 "would be a sentence with nothing behind it")
 n_t, n_u = len(t_rows), len(u_rows)
-m = re.search(r"addresses this document in \*\*([a-z-]+)\*\* places", appA)
+m = re.search(prose(r"addresses this document in \*\*([a-z-]+)\*\* places"), appA)
 if not m:
     fail.append("G6: Appendix A no longer states how many places D2 addresses this document, so "
                 "the size of its own population is unstated")
 elif NUM.get(m.group(1)) != n_t:
     fail.append(f"G6: Appendix A says D2 addresses this document in {m.group(1)} places and its "
                 f"table has {n_t} rows. The two are one fact with two homes")
-m = re.search(r"addresses it in \*\*([a-z-]+)\*\* more", appA)
+m = re.search(prose(r"addresses it in \*\*([a-z-]+)\*\* more"), appA)
 if not m:
     fail.append("G6: Appendix A no longer states how many D1 obligations it carries")
 elif NUM.get(m.group(1)) != n_u:
@@ -572,7 +584,7 @@ MARKERS = [r"\bD3\b", r"rendered in the drill-down", r"the drill-down can say",
 # undischarged.  Adding the phrase to the list above, on its own, would have changed NOTHING: the
 # check would still have been clean over it.  Six of the seven phrases contain a space and are
 # therefore wrap-vulnerable; today only one of them actually wraps, which is luck and not a property.
-MARKER_RE = [re.compile(p.replace(" ", r"\s+")) for p in MARKERS]
+MARKER_RE = [re.compile(prose(p)) for p in MARKERS]
 # A decisions register RESTATES obligations that are stated where they belong; requiring a citation of
 # it would file one obligation twice.  Nothing else is exempt -- D2 § 14 IS cited, at item 9.
 RESTATING = {"D2": {"13"}, "D1": {"15"}}
@@ -656,7 +668,7 @@ if len(ur_m) != 7:
 
 # The LONGEST `badges` array D2 publishes: § 8.2.2's snapshot carries one member and § 8.3.2's
 # worst-case block carries all eighteen, so taking the first match reads the wrong population.
-cands = re.findall(r'"badges": \[(.*?)\]', d2_raw, re.S)
+cands = re.findall(prose(r'"badges": \[(.*?)\]'), d2_raw, re.S)
 badge_m = set(re.findall(r'"([a-z_]+)"', max(cands, key=len))) if cands else set()
 if len(badge_m) != 18:
     fail.append(f"G7 CONTROL: {len(badge_m)} badges parsed from D2 § 8.3.2's worst-case block, not "
@@ -696,7 +708,7 @@ if not m_aet:
                 "section 7.6 publishes would be compared against an empty set")
 else:
     aet_m = set(re.findall(r"`([a-z_]+)`", m_aet.group(1))) - {"null"}
-m_cnt = re.search(r"D1 § 6\.4's (\d+) members", sec_821 or "")
+m_cnt = re.search(prose(r"D1 § 6\.4's (\d+) members"), sec_821 or "")
 if m_cnt and aet_m and int(m_cnt.group(1)) != len(aet_m):
     fail.append(f"G7: D2 § 8.2.1 sources `api_error_type` to \"D1 § 6.4's {m_cnt.group(1)} members\" "
                 f"and D1 § 6.4 declares {len(aet_m)} — two documents disagree about the size of one "
@@ -710,22 +722,120 @@ if not state_rows or not ur_rendered or not badge_rendered or not link_rendered 
     fail.append("G7 CONTROL: one of this document's render tables did not parse (render_state, "
                 "unknown_reason, badges, link_state, activity_state, api_error_type) — the set "
                 "difference would be clean because it was empty")
-for name, src, declared, rendered in (("render_state", "D2", render_m, state_rendered),
-                                      ("unknown_reason", "D2", ur_m, ur_rendered),
-                                      ("badge", "D2", badge_m, badge_rendered),
-                                      ("link_state", "D2", link_m, link_rendered),
-                                      ("activity_state", "D2", act_m, act_rendered),
-                                      ("api_error_type", "D1 § 6.4", aet_m, aet_rendered)):
-    if not declared or not rendered:
+# `declared_set`, not `declared`: the module-level `declared()` predicate is defined above and this
+# loop used to SHADOW it, so any check added after G7 that asked whether a token is a D2 field got a
+# set where it expected a function.  Renaming here fixes it at the binding rather than at each caller.
+for name, src, declared_set, rendered in (("render_state", "D2", render_m, state_rendered),
+                                          ("unknown_reason", "D2", ur_m, ur_rendered),
+                                          ("badge", "D2", badge_m, badge_rendered),
+                                          ("link_state", "D2", link_m, link_rendered),
+                                          ("activity_state", "D2", act_m, act_rendered),
+                                          ("api_error_type", "D1 § 6.4", aet_m, aet_rendered)):
+    if not declared_set or not rendered:
         continue
-    for x in sorted(declared - rendered):
+    for x in sorted(declared_set - rendered):
         fail.append(f"G7: `{x}` is a `{name}` member {src} can produce and this document gives it no "
                     f"render — a member with no render is a condition the fleet reports and nobody "
                     f"sees, and section 5.4's unrecognised-member rule would demote every seat "
                     f"carrying it")
-    for x in sorted(rendered - declared):
+    for x in sorted(rendered - declared_set):
         fail.append(f"G7: `{x}` is rendered here as a `{name}` member and {src} declares no such "
                     f"member — a render branch no input can reach")
+
+# ------------------ G2, second half: the section 7 tables (MAJOR 3's population) ----
+# Section 12's G2 row claimed "section 5, section 6.2 OR SECTION 7" and SOURCE_TABLES above is five
+# headers, none of them in section 7 -- so a fabricated D2 field planted in section 7.1's state table,
+# section 7.2's badge table or section 7.6's member tables left the gate GREEN, while the same
+# fabrication in section 5.1 RED.  The claim was the whole of the check.
+#
+# Section 7's cells are PROSE about renders, not source columns, so their backticked tokens are a
+# mixture: D2 fields, D2 field LEAVES (D2's own shorthand -- section 8.2.1 writes `delivery.last_receipt_at`
+# and section 7.1 writes `last_receipt_at`), enum MEMBER VALUES (`working`, `lossy`, `rate_limit`), D1
+# COUNTER names (section 7.2's index_overflow row cites three by name) and D1 EVENT KINDS
+# (`attention.request`).  Every one of those five classes is re-derivable upstream, so the check is a
+# classifier rather than a narrower claim: a token in none of the five is a field this document
+# invented.  This runs after G7 because it needs G7's six member sets.
+d1_counters, d1_kinds = set(), set()
+sec_d1_93 = section_text("93-degradation-counters", d1_raw.split("\n"), d1_by_anchor)
+crows = table_rows(sec_d1_93 or "", r"^\| Counter \| Meaning \| Consequence when non-zero \|")
+if not crows:
+    fail.append("G2 CONTROL: D1 section 9.3's counter table did not parse — every counter name the "
+                "badge rows of section 7.2 cite would read as an invented field")
+else:
+    for r in crows:
+        for t in re.findall(r"`([a-z_.<>]+)`", cells(r)[0]):
+            t = re.sub(r"\.<[^>]*>$", "", t)
+            d1_counters.add(t)
+            d1_counters.add(t.split(".")[0])
+    if len(d1_counters) < 20:
+        fail.append(f"G2 CONTROL: only {len(d1_counters)} D1 counter names parsed from section 9.3")
+for h in D1_HEADS:
+    m = re.match(r"^6\.\d+\s+`([a-z]+\.[a-z_]+)`", h[1])
+    if m:
+        d1_kinds.add(m.group(1))
+m = re.search(prose(r"the (\d+) currently-defined kinds are listed"), d1_raw)
+if not m:
+    fail.append("G2 CONTROL: D1 no longer states how many event kinds it defines — the kind "
+                "population would have no cross-check")
+elif int(m.group(1)) != len(d1_kinds):
+    fail.append(f"G2: D1 says it defines {m.group(1)} event kinds and section 6's headings declare "
+                f"{len(d1_kinds)} — two homes for one set")
+
+enum_values = set()
+for s in (render_m, ur_m, badge_m, link_m, act_m, aet_m):
+    enum_values |= s
+leaves = {t.rsplit(".", 1)[-1] for t in d2_fields if "." in t}
+if not enum_values or not leaves:
+    fail.append("G2 CONTROL: the enum-member or field-leaf vocabulary is empty, so every prose token "
+                "in section 7 would fail as an invented field and the check would be unreadable")
+
+S7_TABLES = [
+    (r"^\| `render_state` \| Desk \| Label line \|", "7.1 render_state"),
+    (r"^\| `unknown_reason` \| Sentence \|", "7.1 unknown_reason"),
+    (r"^\| Badge \| Origin \| Rendered on the desk \|", "7.2 badges"),
+    (r"^\| Condition \| The desk shows \| The activity state \| Treatment \|", "7.3 currency"),
+    (r"^\| `link_state` \| What it says about the seat \| Currency treatment \|", "7.6 link_state"),
+    (r"^\| `activity_state` \| What it says the seat is doing \| Rendered as \|", "7.6 activity_state"),
+    (r"^\| `api_error_type` \| The line beside the raw value \|", "7.6 api_error_type"),
+]
+g2_s7_checked = 0
+for header, where in S7_TABLES:
+    trows = table_rows(raw, header)
+    if not trows:
+        fail.append(f"G2 CONTROL: the table of section {where} did not parse — every field it names "
+                    f"would go unchecked, which is exactly the hole this half was added to close")
+        continue
+    for r in trows:
+        c = cells(r)
+        for cell in c[1:]:                       # column 0 is the member name; G7 owns that, both ways
+            for t in re.findall(r"`([^`]+)`", cell):
+                if not FIELDISH.match(t):
+                    continue
+                g2_s7_checked += 1
+                if declared(t) or t in leaves or t in enum_values or t in d1_counters \
+                        or t in d1_kinds:
+                    continue
+                fail.append(
+                    f"G2: section {where} names `{t}`, which is not a field D2 declares, not the leaf "
+                    f"of one, not a member of any of the six enum sets this document publishes, not a "
+                    f"D1 section 9.3 counter and not a D1 event kind. A rendered fact with no field is "
+                    f"a fact the client invented, and section 7 is where an invented one is least "
+                    f"likely to be noticed by a reader")
+# CONTROL, and deliberately NOT a token-count threshold.  Three of the seven tables above name no
+# field at all in their prose columns today, which is a property of the document and not of the
+# extractor, so a count floor would either be met vacuously or fire on a correct document.  The
+# control that means something is a CAPABILITY test, evaluated on every run: feed the classifier the
+# exact shape of the defect this half exists to catch and require it to reject it.  A check that
+# cannot fail is a decoration, and this one proves it can, every time it runs.
+_probe = "context.burn_rate"
+if declared(_probe) or _probe in leaves or _probe in enum_values or _probe in d1_counters \
+        or _probe in d1_kinds:
+    fail.append(f"G2 CONTROL: the section 7 classifier ACCEPTS the fabricated field `{_probe}` — one "
+                f"of its five vocabularies has widened to admit anything, so this half would report "
+                f"clean over an invented D2 field, which is the exact defect it was added for")
+if g2_s7_checked < 15:
+    fail.append(f"G2 CONTROL: only {g2_s7_checked} tokens extracted from section 7's tables, against "
+                f"{len(S7_TABLES)} tables that all parsed — the cell walk is reading the wrong columns")
 
 # ------------------------------------------ G8. the desk-slot worked example ----
 def fnv1a32(s):
@@ -736,12 +846,12 @@ def fnv1a32(s):
 
 
 sec32 = section_text("32-the-desk-slot-function") or ""
-m = re.search(r"offset basis (\d+), prime (\d+)", sec32)
+m = re.search(prose(r"offset basis (\d+), prime (\d+)"), sec32)
 if not m or (int(m.group(1)), int(m.group(2))) != (2166136261, 16777619):
     fail.append("G8 CONTROL: section 3.2's FNV-1a constants did not parse or do not match the "
                 "function this check implements — the worked example would be checked against a "
                 "different hash than the document specifies")
-m = re.search(r"the shipped `aimla` map, S = (\d+)", sec32)
+m = re.search(prose(r"the shipped `aimla` map, S = (\d+)"), sec32)
 S = int(m.group(1)) if m else 0
 if not S:
     fail.append("G8 CONTROL: section 3.2's slot count did not parse")
@@ -780,7 +890,7 @@ if S and parsed:
                         f"{got_slot} after {got_probes}")
 
 sec33 = section_text("33-collision-displacement-and-why-a-desk-move-is-itself-an-event") or ""
-m = re.search(r"provisioning `([^`]+)` \(h = (\d+),\s*h mod (\d+) = \*\*(\d+)\*\*\)", sec33)
+m = re.search(prose(r"provisioning `([^`]+)` \(h = (\d+),\s*h mod (\d+) = \*\*(\d+)\*\*\)"), sec33)
 if not m:
     fail.append("G8 CONTROL: section 3.3's collision example did not parse — the one worked case "
                 "of the displacement rule would be unchecked")
@@ -790,7 +900,7 @@ else:
     if h != int(m.group(2)) or h % mod_s != mod_v:
         fail.append(f"G8: section 3.3's collision example states h(`{key}`) = {m.group(2)} mod "
                     f"{mod_s} = {mod_v}; re-computed it is {h} mod {mod_s} = {h % mod_s}")
-    m2 = re.search(r"collides with `([^`]+)` \(h = (\d+), slot (\d+)\)", sec33)
+    m2 = re.search(prose(r"collides with `([^`]+)` \(h = (\d+), slot (\d+)\)"), sec33)
     if not m2:
         fail.append("G8 CONTROL: section 3.3 names no incumbent for the collision")
     else:
@@ -828,6 +938,21 @@ if rows and len(ten) != 10:
                 f"upstream and this document's freshness rule did not move with it")
 leaf_of = {t.rsplit(".", 1)[-1]: t for t in ten}
 MARKED_FRESH = ("fetch-fresh", "dark-only")
+# WHICH member `dark-only` belongs to, re-derived from D2 § 6.5's own carve-out sentence rather than
+# written in here: "...is rendered only on a `stale` or `offline` seat -- a seat that by definition is
+# receiving nothing, so its `last_receipt_at` is frozen".  The marker is a permission granted to ONE
+# member, and a checker holding its own copy of that fact is a checker free to disagree with D2.
+DARK_MEMBER = None
+m_dark = re.search(prose(r"so its `([a-z_.]+)` is frozen"), sec_65 or "")
+if not m_dark:
+    fail.append("G9 CONTROL: D2 § 6.5's carve-out sentence did not parse, so which member "
+                "`dark-only` is granted to is unknown — the marker would then be accepted on any of "
+                "the ten and the per-member half of this check would be vacuous")
+else:
+    DARK_MEMBER = leaf_of.get(m_dark.group(1), m_dark.group(1))
+    if DARK_MEMBER not in ten:
+        fail.append(f"G9 CONTROL: D2 § 6.5's carve-out names `{m_dark.group(1)}`, which is not one of "
+                    f"the ten it excludes — the carve-out and the exclusion list have diverged")
 # (header, detection column, label).  `None` means detect over the whole row: § 4.3's panel table
 # names the members by their LEAF names in its contents cell, not as dotted paths in a source column.
 G9_TABLES = [
@@ -838,6 +963,7 @@ G9_TABLES = [
     (r"^\| Panel section \| Contents \| Source \|", None, "4.3"),
 ]
 g9_rows = g9_hits = 0
+g9_covered = set()
 for header, col, where in G9_TABLES:
     trows = table_rows(raw, header)
     if not trows:
@@ -860,18 +986,51 @@ for header, col, where in G9_TABLES:
         if not hits:
             continue
         g9_hits += 1
-        if any(mk in r for mk in MARKED_FRESH):
-            continue
-        fail.append(
-            f"G9: section {where} renders from {sorted(hits)}, which D2 § 6.5 excludes from the "
-            f"version-bearing set, and the row carries neither `fetch-fresh` nor `dark-only`. No "
-            f"delta ever carries that member for its own sake, so a client's copy freezes at the "
-            f"last full object it received — an age ticked from it reads *no data for N* on a seat "
-            f"that is reporting perfectly")
+        g9_covered |= hits
+        present = {mk for mk in MARKED_FRESH if mk in r}
+        # PER MEMBER, not per row.  The row-scoped test asked only whether SOME marker appeared
+        # anywhere in the row, so section 5.1's receipt-age row -- the one row this whole guard was
+        # built for -- stayed GREEN with `dark-only` deleted, because the same row also says the raw
+        # value is `fetch-fresh` IN THE DRILL-DOWN.  One member's marker for a different surface
+        # satisfied the test for the member whose desk rule had just been removed.
+        for m_ in sorted(hits):
+            legal = {"fetch-fresh", "dark-only"} if m_ == DARK_MEMBER else {"fetch-fresh"}
+            if not (present & legal):
+                fail.append(
+                    f"G9: section {where} renders from `{m_}`, which D2 § 6.5 excludes from the "
+                    f"version-bearing set, and the row carries none of {sorted(legal)}. No "
+                    f"delta ever carries that member for its own sake, so a client's copy freezes at "
+                    f"the last full object it received — an age ticked from it reads *no data for N* "
+                    f"on a seat that is reporting perfectly")
+        if "dark-only" in present and DARK_MEMBER not in hits:
+            fail.append(
+                f"G9: section {where} carries `dark-only`, which D2 § 6.5's own carve-out grants to "
+                f"`{DARK_MEMBER}` and to no other member — the carve-out is that a stale or offline "
+                f"seat is receiving nothing, so THAT value is frozen at the server too. A row marking "
+                f"any other of the ten `dark-only` claims a freshness guarantee D2 gives one member")
+        if where == "5.1" and DARK_MEMBER in hits and "dark-only" not in present:
+            fail.append(
+                f"G9: section 5.1 is the DESK's render map and this row sources `{DARK_MEMBER}` "
+                f"without `dark-only`. On the desk that member is renderable only on a stale or "
+                f"offline seat; marking it `fetch-fresh` here would claim the desk renders it from a "
+                f"response that has just answered, which is the drill-down's rule and not this "
+                f"table's — and it is the substitution a row-scoped marker test could not see")
 if ten and not g9_hits:
     fail.append("G9 CONTROL: no render row names one of D2 § 6.5's ten — the detector is broken, and "
                 "a delivery-contract check that finds nothing to check reports clean over the class "
                 "it exists for")
+# PER-MEMBER COVERAGE, and it closes a hole a plant found rather than a hole a reader did.  The count
+# check above ("§ 6.5 now excludes N members, not the ten") sees a member REMOVED upstream.  It cannot
+# see one SUBSTITUTED: rename `reporter.uptime_s` in D2's exclusion table and the set is still ten, the
+# renamed member is sourced by no row so nothing is checked, and this document goes on marking a name
+# D2 no longer excludes.  Requiring every member of the ten to be sourced by at least one row makes
+# the substitution loud -- and it is a true invariant of this document, which renders all ten.
+g9_unsourced = sorted(ten - g9_covered)
+for m_ in g9_unsourced:
+    fail.append(f"G9: `{m_}` is one of D2 § 6.5's ten and NO row of the tables this check reads "
+                f"sources it. Either this document dropped a render it used to carry, or the member "
+                f"was renamed upstream and this document is still marking the old name — in which "
+                f"case every marker naming it is governing a member D2 no longer excludes")
 if not re.search(r"FLEET-STATE\.md#65-the-fold", raw):
     fail.append("G9: this document renders values D2 § 6.5 excludes from the feed and cites § 6.5 "
                 "nowhere — the section that decides whether a rendered fact is deliverable is not a "
@@ -882,13 +1041,29 @@ table_lines = set()
 for header, col, where in G9_TABLES:
     for r in table_rows(raw, header) or []:
         table_lines.add(r)
-g9_prose = []
+# TWO residue classes, not one.  The declared limit used to read "a bookkeeping member reintroduced in
+# PROSE is outside it" -- while the filter below skipped EVERY line beginning with `|`, not merely the
+# rows of the five tables this check reads.  So a table row in section 7.1, section 7.6, section 11 or
+# Appendix A naming one of the ten appeared in NO residue at all and was invisible to the stated limit
+# as well as to the check.  The unchecked population is prose PLUS those rows, and both are printed.
+g9_prose, g9_table_residue = [], []
 for i, line in enumerate(lines, 1):
-    if line in table_lines or line.startswith("|"):
+    if line in table_lines:
         continue
-    hit = sorted({t for t in re.findall(r"`([a-z_.]+)`", line) if t in ten})
-    if hit:
-        g9_prose.append((i, hit[0]))
+    # LEAF names too.  G9's own detector resolves `last_receipt_at` to `delivery.last_receipt_at`
+    # via leaf_of, so a residue that matched only the dotted spelling under-reported its own unchecked
+    # population -- and D2's shorthand IS the leaf, which is what section 7.1's offline row uses.
+    hit = set()
+    for span in re.findall(r"`([^`]+)`", line):
+        for tok in re.split(r"[^a-z_.]+", span):
+            if tok in ten:
+                hit.add(tok)
+            elif tok in leaf_of:
+                hit.add(leaf_of[tok])
+    hit = sorted(hit)
+    if not hit:
+        continue
+    (g9_table_residue if line.startswith("|") else g9_prose).append((i, hit[0]))
 
 # ------------------------- G10. null-render closure, re-derived from D2 § 8.2.1 ----
 # Decision 13 ("a null is rendered as *not reported*, never as a zero") is unobeyable without a stated
@@ -988,11 +1163,16 @@ print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nu
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")
 print(f"G9  D2 § 6.5's non-version-bearing members re-derived: {len(ten)}; render rows scanned "
       f"{g9_rows}, rows sourcing one of the ten {g9_hits}, all marked `fetch-fresh` or `dark-only`")
-print(f"    G9 residue — prose mentions of the ten outside the render tables this check reads: "
-      f"{len(g9_prose)} (including § 2.4's own definition site). This check holds the TABLES; a "
-      f"held-and-ticked value reintroduced in a sentence is read by a human")
+print(f"    G9 residue A — PROSE mentions of the ten: {len(g9_prose)} (including § 2.4's own "
+      f"definition site)")
 for ln, f in g9_prose[:12]:
-    print(f"    G9 residue — prose mention, unchecked by this gate · L{ln}: `{f}`")
+    print(f"    G9 residue A — prose mention, unchecked by this gate · L{ln}: `{f}`")
+print(f"    G9 residue B — TABLE ROWS naming one of the ten that are OUTSIDE the "
+      f"{len(G9_TABLES)} tables this check reads: {len(g9_table_residue)}. This class used to appear "
+      f"in no residue at all, because the filter skipped every line starting with `|` while the "
+      f"stated limit said only \"prose\"")
+for ln, f in g9_table_residue[:12]:
+    print(f"    G9 residue B — table row outside this check's population · L{ln}: `{f}`")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "
