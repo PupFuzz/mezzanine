@@ -1401,6 +1401,37 @@ if not g9_exempt:
                 f"restates the obligations over them, so an empty set here means the detector stopped "
                 f"matching and the class above would be vacuously clean")
 
+# G9, THE RULE'S OWN SCOPE.  Section 2.4 states the marker rule and ENUMERATES the tables it holds
+# over.  That sentence is a second home for this gate's column map, and it is the home that went false:
+# it named five tables while section 5.6 sat outside the gate with six unmarked ten-sourcing rows, and
+# it named seven while section 7.1 rendered the receipt age on the desk unchecked.  A prose list nobody
+# re-derives is a claim that survives the change that falsifies it, so the two are set-differenced here
+# in BOTH directions.  Neither side is stored: the map is the map above, the list is read out of the
+# document.
+sec_24 = section_text("24-the-clock-and-every-age-on-the-page") or ""
+_i = sec_24.find("Every row of the render map")
+_j = sec_24.find("reds when one", _i) if _i >= 0 else -1
+if _i < 0 or _j < 0:
+    fail.append("G9 CONTROL: section 2.4's marker-rule sentence — the one that enumerates the tables "
+                "the rule holds over — did not parse. That sentence is the rule's own statement of "
+                "its scope, and it is the half that has gone false twice; unparsed, it would agree "
+                "with this gate's column map by never being read")
+else:
+    claimed = set(re.findall(r"\[§ (\d+(?:\.\d+)?)\]", sec_24[_i:_j]))
+    mapped = {t[2] for t in G9_TABLES}
+    if not claimed:
+        fail.append("G9 CONTROL: section 2.4's marker-rule sentence names no section at all, so its "
+                    "scope claim is empty and would set-difference clean against any map")
+    for w in sorted(mapped - claimed):
+        fail.append(f"G9: this gate holds the marker rule over section {w}'s table and section 2.4's "
+                    f"marker-rule sentence does not name it. The rule and the population it runs over "
+                    f"are one fact with two homes, and the prose home is the one that has gone false "
+                    f"twice — first over section 5.6, then over section 7.1")
+    for w in sorted(claimed - mapped):
+        fail.append(f"G9: section 2.4 claims the marker rule holds over section {w} and this gate has "
+                    f"no column map for that table, so nothing enforces it there. A rule stated over "
+                    f"a table the gate cannot read is the exact shape section 5.6 shipped in")
+
 # ------------------------- G10. null-render closure, re-derived from D2 § 8.2.1 ----
 # Decision 13 ("a null is rendered as *not reported*, never as a zero") is unobeyable without a stated
 # behaviour PER MEMBER, and section 1.1 claims this document carries one for every rendered fact.  The
