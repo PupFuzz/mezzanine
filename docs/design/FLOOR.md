@@ -909,14 +909,17 @@ this document's own headline test unsatisfiable:
 - **`edge`** — fires **once**, caused by a wire message the client applied: a `seat.delta`, a
   `feed.heartbeat`, a `seat.retired`, or the seat-set change of
   [A16](#62-the-animation-table--the-closed-set). An edge animation **has a causing message**, and its
-  row in the animation log ([§ 11](#11-acceptance-tests)) carries that message's id. An edge animation
+  row in the animation log ([§ 11](#11-acceptance-tests)) carries that message's id. Its episode is
+  **one row long** — an instant has no exit. An edge animation
   with no causing message is the defect the honesty principle exists to refuse.
 - **`held`** — a render **held** for exactly as long as a delivered field has a value: the working,
   thinking, attention and replay loops, and the three states whose held render carries no motion at all
   (`idle`, `stalled`, `unknown`). A held render has **no causing message** — it is entered whenever the
   object the client holds says so, and that object may have arrived by delta, by snapshot, by resync or
   by fetch — so its log row carries the **`state_version` of the object it is held by**, and it writes
-  **two** rows, one on entry and one on exit ([§ 11](#11-acceptance-tests)). A held render
+  **two** rows, one on entry and one on exit, **both carrying the same `episode_id`** — which is what
+  pairs them, because one render may be entered and left more than once on one seat
+  ([§ 11](#11-acceptance-tests)). A held render
   is not exempt from the honesty principle: it is held by a delivered field, and the log records which
   field, which value and which version — on the way in, and again on the way out, against the object
   that ended the hold.
@@ -1464,13 +1467,25 @@ the state layer's honesty is already gated by D2's own twenty-three.
 **The animation log is the instrument, and it is a build requirement, not a test fixture.** The
 renderer **must** record, for every animation it starts, every held render it enters and every held
 render it leaves, a row of
-`(animation_id, install_id, seat_id, class, phase, cause, motion, at)`. The four variable fields take
-their meaning from the row's **class** and, on a `held` row, from its **phase** — because a held
-render's entry and its exit are opposite facts and a schema that gave them one shape made this
-document's own headline test unsatisfiable on every exit row:
+`(animation_id, episode_id, install_id, seat_id, class, phase, cause, motion, at)`. The six fields
+below take their meaning from the row's **class** and, on a `held` row, from its **phase** — because a
+held render's entry and its exit are opposite facts and a schema that gave them one shape made this
+document's own headline test unsatisfiable on every exit row.
+
+**`episode_id` is what pairs an exit with its entry, and it is the third revision of this schema
+because the first two had nothing that could.** An **episode** is one continuous run of one render on
+one seat: the renderer mints a fresh `episode_id` each time it starts an animation or enters a held
+render, and writes that same id on the `left` row that ends it. `(animation_id, install_id, seat_id)`
+is **not** unique per episode and never was — on this document's own headline fixture,
+`fx-clear-trace`, A4 is entered **twice** on `aimla-pm` (the walk is below), so that triple names two
+entries and two exits with nothing to say which pairs with which. Two properties follow and are
+asserted in [AT-D3-1](#at-d3-1-no-animation-without-its-event): an `episode_id` appears on **at most
+one** `entered` row and **at most one** `left` row, and a `left` row's `episode_id` **must** match an
+`entered` row that precedes it.
 
 | Field | On an `edge` row | On a `held` row, `phase: entered` | On a `held` row, `phase: left` |
 |---|---|---|---|
+| `episode_id` | a fresh id, unique to this firing — an edge animation is an instant, so its episode is one row long and no `left` row ever carries this id | a fresh id, minted on entry | **the entering row's id**, repeated — this is the only field the two rows of one episode share by construction, and it is what makes *for how long* recoverable |
 | `class` | `edge` | `held` | `held` |
 | `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
 | `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
@@ -1479,8 +1494,13 @@ document's own headline test unsatisfiable on every exit row:
 
 A **held** row is written when the render is **entered** and again when it is **left**, so the log
 records which states a desk held and for how long — and *for how long* is
-`left.at − entered.at` for the matching `(animation_id, install_id, seat_id)` pair, which is why `at`
-is on the row at all. A version pair cannot answer it: `state_version` counts changes, not seconds.
+`left.at − entered.at` **for the two rows sharing an `episode_id`**, which is why `at` is on the row
+at all. A version pair cannot answer it: `state_version` counts changes, not seconds. Neither can the
+`(animation_id, install_id, seat_id)` triple an earlier revision paired on: a desk that enters,
+leaves and re-enters one render — which `fx-clear-trace` does to A4 twice over — writes two entries
+and two exits under one triple, and *for how long* over that set is a question with two answers and no
+way to choose. The episode is the unit the question is asked about, so the episode is what the log
+identifies.
 **Why `motion: false` rather than no row at all:** a loop that was
 stopped by a currency treatment and a render that was never entered are the same absence in a log that
 records only starts, and they are opposite facts — the first is [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)
@@ -1518,11 +1538,38 @@ all.*
   [§ 6.2](#62-the-animation-table--the-closed-set) row names **has** the value its hold condition
   states, and in a `phase: left` row's object it **does not** — an exit row whose object still
   satisfies the hold condition is a render the client stopped drawing while the wire still said to draw
-  it. Every `entered` row has at most one matching `left` row for its
-  `(animation_id, install_id, seat_id)`, `left.at > entered.at`, and every `left` row's `motion` is
-  `false`. A predicate that asserted the hold condition on **both** phases would fail a correct client
-  on `fx-clear-trace`, where A4 is entered at E0 and left at E1: at E1 `open_calls` is 1, so A4's
-  condition is false in exactly the object that ended it. **The `changed[]` clause binds `edge` rows only**, because a held render
+  it. **The pairing is over `episode_id`, not over `(animation_id, install_id, seat_id)`:** every
+  `episode_id` appears on at most one `entered` row and at most one `left` row; every `left` row's
+  `episode_id` matches an `entered` row earlier in the log for the same `animation_id`, `install_id`
+  and `seat_id`; `left.at > entered.at` for that pair; and every `left` row's `motion` is `false`. The
+  triple cannot carry this predicate, and `fx-clear-trace` is where it breaks rather than a case
+  imagined for the rule — the walk is below, and A4 has **two** episodes on `aimla-pm` in it, so the
+  triple names two entries and two exits with nothing to say which ended which. A predicate that
+  asserted the hold condition on **both** phases would also fail a correct client on that fixture: A4's
+  first episode is left at E1, where `open_calls` is 1, so A4's condition is false in exactly the
+  object that ended it.
+
+  **The `fx-clear-trace` episode walk, re-derived from [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s
+  own facts column and carried to E9 rather than stopped at the first hand-off.** `aimla-pm` enters
+  the trace from `fx-snapshot-4` at `working` with `open_calls: 1`, and each delta below carries the
+  facts D2's table states after applying it:
+
+  | At | The facts that moved | Episodes |
+  |---|---|---|
+  | snapshot apply | `working`, `open_calls: 1`, `open_turn: true` | A3 **entered** (episode 1) — cause is the snapshot object's `state_version` |
+  | E0 `turn.start` | `T := true`; no call is open, so `open_calls: 0` | A3 **left** (episode 1); A4 **entered** (episode 1) |
+  | E1 `tool.start` A | `open_calls: 1` | A4 **left** (episode 1); A3 **entered** (episode 2) |
+  | E2 · E3 · E4 | `open_calls` 1 → 2 → 1, `render_state` never leaves `working` | no episode boundary: A3's condition holds throughout |
+  | E5 `tool.end` A | `open_calls: 0`, **`T` still true** | A3 **left** (episode 2); A4 **entered** (episode 2) |
+  | E6 `subagent.stop` | a version-bearing change that moves neither fact A4 reads | no episode boundary |
+  | E7 `turn.end` | `T := false`; `render_state` → `unknown` | A4 **left** (episode 2); A9 **entered** (episode 1) |
+  | E8 · E9 | still `unknown` | no episode boundary; A9 is still held when the fixture ends, so it has **no** `left` row |
+
+  **Six `held` episodes, eleven `held` rows** — A3 twice, A4 twice, A9 once and unclosed — and the
+  count is the point: under the old triple, A3's two exits and A4's two exits were four rows over two
+  keys. A9's missing `left` row is not a defect but the other half of the rule: an episode still held
+  when the log ends is an episode with no exit, which is why the predicate is *at most one* `left` row
+  per episode and not *exactly one*. **The `changed[]` clause binds `edge` rows only**, because a held render
   hands off on whatever fact its condition reads and that is not always its own driver: in
   `fx-clear-trace`, A4 gives way to A3 at **E1** when `open_calls` becomes 1 while `render_state` never
   leaves `working`, and E1's `changed[]` is `{action, subagents, open_calls}`
@@ -1544,7 +1591,8 @@ all.*
   nothing arrived), and carries **exactly** the `held` `entered` rows
   [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the four states the fixture delivers —
   **A3 for `aimla-pm` and `aimla-impl-1`, A6 for `aimla-impl-2`, A7 for `aimla-review`**, four rows and
-  no fifth — each with that seat's `state_version` as its cause. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
+  no fifth — each with that seat's `state_version` as its cause and each opening a **distinct**
+  `episode_id`, four ids and no repetition. The control is two-sided on purpose: without it a log-writing bug that recorded nothing
   would pass the GREEN, and a client that fired arrivals on the snapshot would pass it too.
 
 ### AT-D3-2 the `/clear` trace shows no idle anywhere
@@ -1557,15 +1605,19 @@ all.*
 - **GREEN:** the desk renders `working` from E0 through E6, `unknown` from E7 onward, and **never
   `idle` at any version**; the animation log contains **no** `idle` row (A6) and no `depart` (A2); the
   side table gains an intern at E1 (title-less), gains its title at E2, and empties at E5; `action`
-  changes four times, which is four A5 rows and no more.
+  changes four times — at E1, E3, E4 and E5 — which is four A5 rows and no more, each an `edge` row
+  with its own one-row episode and no `left` row, because an edge animation is an instant.
 - **RED — the inferred finish:** add a *finished* render when `open_calls` reaches 0 — which the E5→E7
   window makes true while the turn is still open — and the desk animates a completion for a seat whose
   work was **killed**. That is the false idle, arriving through the render layer after D1 and D2 both
   removed it from theirs.
 - **Discriminating control:** `fx-snapshot-4`'s ordinary seat driven to a clean `turn.end` **does**
   render `idle` and does log an **A6 `held` `entered` row** (`motion: false` — A6 has no motion by
-  design), preceded by the **A3 `left` row** whose cause is that same `turn.end` delta's
-  `state_version`, so the test measures the trace and not the absence of an idle render. Name the seat:
+  design, opening a fresh `episode_id`), preceded by the **A3 `left` row** whose cause is that same
+  `turn.end` delta's `state_version` and whose `episode_id` is the one A3's `entered` row opened at
+  the snapshot apply — assert the pairing, not merely that both rows exist, because two rows in the
+  right order with unrelated episodes is a log that cannot say the loop this seat was running is the
+  loop that stopped. So the test measures the trace and not the absence of an idle render. Name the seat:
   `aimla-impl-1`, whose `fx-snapshot-4` state is `working`.
 
 ### AT-D3-3 identity is stable across a restart
@@ -1615,8 +1667,8 @@ all.*
   monitor off and is **not** the `offline` render; the `fold_lag` seat renders its pose with the hatched
   overlay, the *117 s behind* line **carrying its own *as of* stamp** — advance the harness clock and
   assert the number has **not** moved, because it is `fetch-fresh` and nothing has delivered a new
-  one ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) — and **no motion** — assert the animation log's `held` row for that
-  seat with **`phase: entered`** carries **`motion: false`**, which says the render was entered and
+  one ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) — and **no motion** — assert that the `entered` row of that seat's
+  `held` episode carries **`motion: false`**, which says the render was entered and
   drawn static; asserting the absence of a row instead would pass a client that never rendered the seat
   at all, and asserting it over *every* `held` row instead would be satisfied for free by the exit
   rows, whose `motion` is `false` by definition.
@@ -1709,8 +1761,9 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
 - **GREEN:** the client's final seat map equals the server fixture's exactly; the below-watermark delta
   is **discarded** and the above-watermark one **applied**; the snapshot render fires **no `edge`-class
   animation** — assert the log gains **no `edge` row** across the snapshot apply, while the
-  `held` `entered` rows the delivered states require **are** present, carrying the snapshot object's
-  `state_version` as their cause ([§ 6.5](#65-a-snapshot-never-animates)); running the scenario 100 times yields 100 identical
+  `held` `entered` rows the delivered states require **are** present, each opening a fresh
+  `episode_id` and carrying the snapshot object's
+  `state_version` as its cause ([§ 6.5](#65-a-snapshot-never-animates)); running the scenario 100 times yields 100 identical
   results.
 - **GREEN — the mid-session half:** the client **subscribes** to `private-fleet.aimla-win` before
   issuing ADMIT (b), the delta emitted inside (b)'s window is **applied** at (c) rather than lost, and
@@ -1997,7 +2050,7 @@ belongs in its own round.
 | **G2 source-field closure** | **Two halves, and the row names the tables rather than the section numbers, because a section number is what let this row over-claim for two revisions.** *(a)* every field named in the source column of [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down), [§ 5.3](#53-the-fleet-on-both-screens), [§ 6.2](#62-the-animation-table--the-closed-set)'s driver column and [§ 4.3](#43-the-desk-drill-down-panel)'s panel table, against [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table, § 8.2.4's fleet object, § 8.2.3's `detail` and § 8.3's message types. *(b)* every backticked field-shaped token in the prose columns of **[§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s seven tables** — § 7.1's two, § 7.2's badges, § 7.3's currency table and § 7.6's three — classified against five re-derived vocabularies: a D2 field, the **leaf** of one, a member of any of the six enum sets this document publishes, a [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) counter name, or one of D1's 14 event kinds. A token in none of the five is a field this document invented. Half (b) exists because half (a)'s five tables contain **no § 7 table**, so a fabricated D2 field planted in § 7.1, § 7.2 or § 7.6 left this gate green while the same fabrication in § 5.1 red it. Its control is a **capability test rather than a token count** — the classifier is fed a fabricated field on every run and must reject it — because three of the seven tables name no field at all today, which is a property of the document and would make a count floor either vacuous or wrong. Plus the **residue** — D2 fields this document renders nowhere — printed rather than counted as a pass | **tool-checked** |
 | **G3 cap arithmetic** | 6,112 / 8,192 / 263 / 2,080 / 7 / 15 / 7,953 / 8,216 / 24 re-computed from the **three** inputs (worst case, bound, per-element), and those three checked for **presence in D2** — anywhere in D2, not at a named statement, which is the narrower claim the tool can actually make and is why "is a Cited number true at its D2 home" stays on the hand-verified rows below | **tool-checked** |
 | **G4 § 12 ↔ definition site** | each row's number as a whole numeric token at the section it cites, then **perturbed** to prove the match can fail for that row; the residue — numbers some other value would also have matched — printed individually | **tool-checked**, with its residue printed |
-| **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates. **Plus the build-order half:** every test is gated by at least one [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row and every row gates a test that exists, and a test whose body reads the **drill-down or the panel** is gated at or after the step that builds it — with **both** populations re-derived, the test set from the headings and the drill-down's own step from the Appendix B row whose artifact names it, so renumbering the build order moves the check with it rather than leaving a stored `10` behind | **tool-checked** |
+| **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates. **Plus the build-order half:** every test is gated by at least one [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row and every row gates a test that exists, and a test whose body reads the **drill-down or the panel** is gated at or after the step that builds it — with **both** populations re-derived, the test set from the headings and the drill-down's own step from the Appendix B row whose artifact names it, so renumbering the build order moves the check with it rather than leaving a stored `10` behind. **Plus the log-schema half:** [§ 11](#11-acceptance-tests)'s animation-log row tuple against the per-class field table beside it, and that table's row count against the number the prose states — one schema, two homes, three revisions so far, and the count read `four` against five rows for a whole revision | **tool-checked** |
 | **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*, *readable in its drill-down*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged. **Each phrase is matched wrap-tolerantly, across line breaks**, and that is the load-bearing half rather than a nicety: the scan was line-scoped, [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) is typeset with its phrase broken over a wrap, and adding the phrase to a line-scoped list would have left the check clean over it exactly as before | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
 | **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
@@ -2042,7 +2095,7 @@ review can reverse it deliberately rather than discover it later.
 | 17 | **Provenance is a build gate, not a document** | keep `ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the socket, since an authorized handshake opened it | D2 refuses machine tokens on the socket precisely because an open connection has no revocation story — and the browser's session has the same property, which D2 does not address ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
-| 20 | **The animation table carries two classes — `edge` and `held`; the log records both under different causality rules; and a `held` render writes an `entered` row and a `left` row, each with its own `cause` rule** ([§ 6.2](#62-the-animation-table--the-closed-set), [§ 11](#11-acceptance-tests)) | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and three more fields in the log (`phase`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in all six fields, from which *for how long* was unrecoverable |
+| 20 | **The animation table carries two classes — `edge` and `held`; the log records both under different causality rules; and a `held` render writes an `entered` row and a `left` row, each with its own `cause` rule, the two paired by an `episode_id` rather than by the animation and seat** ([§ 6.2](#62-the-animation-table--the-closed-set), [§ 11](#11-acceptance-tests)) | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and four more fields in the log (`phase`, `episode_id`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in every field, from which *for how long* was unrecoverable. **`episode_id` is the third such widening and the one that ends the sequence**, because it is the first to give the log an identity for the thing the questions are actually asked about. Each of the first two — the class split, then `phase` — fixed the shape of a row while leaving the log keyed on `(animation_id, install_id, seat_id)`, a triple that is not unique per episode on this document's own headline fixture: `fx-clear-trace` enters A4 twice on one seat, so *which exit ended which entry* and *for how long* had no answer the log could give. Adding a fourth field to the row was cheaper than the alternative on offer, which was to declare the fixture out of scope for the pairing predicate and leave the headline test asserting less than it claims |
 
 ---
 

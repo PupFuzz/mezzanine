@@ -582,6 +582,43 @@ else:
         if int(a.rsplit("-", 1)[1]) not in at_ids:
             fail.append(f"G5: Appendix B gates `{a}`, which is not an acceptance test in this document")
 
+# G5, third half: THE ANIMATION-LOG SCHEMA HAS TWO HOMES IN SECTION 11 -- the row tuple and the
+# per-class field table -- and it is now on its THIRD revision (single row -> edge/held -> phase ->
+# episode_id).  Every one of those revisions widened the tuple, and the prose beside the table counts
+# the table's rows.  A count and a list are one fact with two homes, and the count was left reading
+# "four" against a five-row table for a whole revision.  Both directions are checked here so the next
+# widening cannot land in one home only.
+m_tuple = re.search(r"`\((animation_id[^`)]*)\)`", raw)
+if not m_tuple:
+    fail.append("G5 CONTROL: section 11's animation-log row tuple did not parse — the schema's two "
+                "homes could not be compared and this check would report clean over both")
+else:
+    log_tuple = [t.strip() for t in m_tuple.group(1).split(",") if t.strip()]
+    log_rows = table_rows(raw, r"^\| Field \| On an `edge` row \|") or []
+    log_table = []
+    for r in log_rows:
+        m2 = re.match(r"^\|\s*`([a-z_]+)`\s*\|", r)
+        if m2:
+            log_table.append(m2.group(1))
+    if not log_table:
+        fail.append("G5 CONTROL: section 11's per-class log field table did not parse")
+    for f_ in log_table:
+        if f_ not in log_tuple:
+            fail.append(f"G5: section 11's log field table gives `{f_}` a per-class meaning and the "
+                        f"row tuple beside it does not carry that field — the schema has two homes "
+                        f"and a revision landed in one of them")
+    if len(log_tuple) < 6:
+        fail.append(f"G5 CONTROL: only {len(log_tuple)} fields parsed from the log row tuple")
+    m3 = re.search(prose(r"The ([a-z-]+) fields below take their meaning"), raw)
+    if not m3:
+        fail.append("G5 CONTROL: section 11 no longer states how many of the log's fields take their "
+                    "meaning from the row's class, so the field table's size has no stated home to "
+                    "disagree with")
+    elif log_table and NUM.get(m3.group(1)) != len(log_table):
+        fail.append(f"G5: section 11 says {m3.group(1)} fields take their meaning from the row's "
+                    f"class and the table below it has {len(log_table)} rows — one fact, two homes, "
+                    f"and this is the count that read `four` against five rows for a whole revision")
+
 fx_rows = table_rows(raw, r"^\| Fixture \| Contents \|")
 fx_declared = set()
 if not fx_rows:
