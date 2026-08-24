@@ -564,21 +564,32 @@ def numbered_section_of(heads, line_no):
 # upstream documents ACTUALLY use for a render-directed clause -- re-derived over both of them, never
 # stored as a section list here.
 MARKERS = [r"\bD3\b", r"rendered in the drill-down", r"the drill-down can say",
-           r"visible in the drill-down", r"\bmust render\b", r"renders as quiet"]
+           r"visible in the drill-down", r"\bmust render\b", r"renders as quiet",
+           r"readable in its drill-down"]
+# WRAP TOLERANCE, and it is the root cause rather than a nicety.  The recognizer used to scan LINE BY
+# LINE, so a marker phrase broken across a line wrap matched nothing -- and D1 § 12.2 is typeset
+# `...readable in its\ndrill-down`, which is exactly how its render obligation reached review
+# undischarged.  Adding the phrase to the list above, on its own, would have changed NOTHING: the
+# check would still have been clean over it.  Six of the seven phrases contain a space and are
+# therefore wrap-vulnerable; today only one of them actually wraps, which is luck and not a property.
+MARKER_RE = [re.compile(p.replace(" ", r"\s+")) for p in MARKERS]
 # A decisions register RESTATES obligations that are stated where they belong; requiring a citation of
 # it would file one obligation twice.  Nothing else is exempt -- D2 § 14 IS cited, at item 9.
 RESTATING = {"D2": {"13"}, "D1": {"15"}}
 
 
 def marked_sections(src_lines, heads, which):
+    """Scan the whole document, not line by line -- see MARKER_RE.  Matching over the joined text and
+    mapping each match's offset back to a line keeps the attribution exact (a marker in § 8.2.1 marks
+    § 8.2.1, not § 8) while making a wrapped phrase visible."""
     out = set()
-    for i, line in enumerate(src_lines):
-        if not any(re.search(p, line) for p in MARKERS):
-            continue
-        s = numbered_section_of(heads, i)
-        if s is None or s in RESTATING[which]:
-            continue
-        out.add(s)
+    text = "\n".join(src_lines)
+    for rx in MARKER_RE:
+        for m in rx.finditer(text):
+            s = numbered_section_of(heads, text.count("\n", 0, m.start()))
+            if s is None or s in RESTATING[which]:
+                continue
+            out.add(s)
     return out
 
 

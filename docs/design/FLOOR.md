@@ -1027,7 +1027,7 @@ badge a consumer does not draw is a condition the fleet reports and nobody sees.
 | Badge | Origin | Rendered on the desk | Drill-down line |
 |---|---|---|---|
 | `lossy` | D1 | badge cluster | *events discarded: N* — **the number is always beside it**, per [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) and D2 S28: a loss is never a badge alone |
-| `batches_rejected` | D1 | badge cluster | *N batches refused — last status and error code* |
+| `batches_rejected` | D1 | badge cluster | *N batches refused — last status and error code*, the count read from `detail`'s `seat_counters` rows for `batches_refused.<error>` ([D2 § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live), which raises **no** server-side badge for them precisely because this one already exists). [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) also requires the **received and accepted schema versions** to be *readable in its drill-down*; neither is on any read surface, so the panel reads *the refused schema versions are not reported* rather than inventing them ([§ 14](#14-open-questions-for-the-review-loop) item 9, Appendix A U12) |
 | `harness_contract_moved` | D1 | badge cluster | *the harness payload moved under this reporter* |
 | `reporter_behind` | D1 | badge cluster | *the harness has an enum member this reporter coerces* |
 | `value_clamped` | D1 | badge cluster | *a reported value left its declared range and was clamped* |
@@ -1897,7 +1897,7 @@ belongs in its own round.
 | **G3 cap arithmetic** | 6,112 / 8,192 / 263 / 2,080 / 7 / 15 / 7,953 / 8,216 / 24 re-computed from the **three** inputs (worst case, bound, per-element), and those three checked for **presence in D2** — anywhere in D2, not at a named statement, which is the narrower claim the tool can actually make and is why "is a Cited number true at its D2 home" stays on the hand-verified rows below | **tool-checked** |
 | **G4 § 12 ↔ definition site** | each row's number as a whole numeric token at the section it cites, then **perturbed** to prove the match can fail for that row; the residue — numbers some other value would also have matched — printed individually | **tool-checked**, with its residue printed |
 | **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates | **tool-checked** |
-| **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
+| **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*, *readable in its drill-down*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged. **Each phrase is matched wrap-tolerantly, across line breaks**, and that is the load-bearing half rather than a nicety: the scan was line-scoped, [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) is typeset with its phrase broken over a wrap, and adding the phrase to a line-scoped list would have left the check clean over it exactly as before | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
 | **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one: each must carry **`fetch-fresh`** or **`dark-only`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)), and this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk | **tool-checked**, with a stated limit: it reads the render tables and the panel table, so a bookkeeping member reintroduced in **prose** is outside it, and the tool prints those mentions as named residue |
@@ -2050,9 +2050,9 @@ reason to leave two readings live.
    **uncapped** detail response, so the array's only consumer is the floor's side table. Nothing in D2
    changes; the item is answered, not amended.
 
-9. **⇢ D2 — six drill-down explanations D2 addresses to this document have no field on any read
-   surface.** This is **one class, filed once**: D2 stores each fact and says the drill-down renders or
-   answers it, and none of them appears in
+9. **⇢ D2 — seven drill-down explanations D2 and D1 address to this document have no field on any
+   read surface.** This is **one class, filed once**: upstream states each fact and says the drill-down
+   renders or answers it, and none of them appears in
    [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object or in
    [§ 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)'s enumerated `detail` members, so the panel
    has nothing to render them from. Filing them separately would be filing one class six times; the
@@ -2066,17 +2066,29 @@ reason to leave two readings live.
    | `duration_ms` / `duration_source` | [§ 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from): *"durations rendered in the drill-down"* come from the event's own `duration_ms`, else `event_time` arithmetic, *"with `duration_source`"* | whether a rendered duration was measured or reconstructed |
    | `calls.close_source` | [§ 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end): `reap_session_boundary` exists *"so the drill-down can say the clear killed these, not these ended"* | whether a call ended or was killed |
    | `attention_requests.resolution` / `.resolution_source` | [§ 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge): the `server_ceiling` cause value *"exists so the drill-down can say the server cleared this"* | whether a *blocked* seat was answered or timed out |
+   | the refused batch's `received_version` / `accepted_versions` | **[D1 § 12.2](EVENT-SCHEMA.md#122-error-responses)**, as required behaviour: the versions are *"readable in its drill-down"* | *which schema version this seat sent, and which this ingest accepts* — the one fact that tells an operator whether a refusing seat needs a reporter upgrade or the ingest needs an edit |
+
+   **The seventh is D1's obligation and D2's fix**, which is why it is here and not in a table of its
+   own: D1 places the render duty, D2 owns every read surface a panel can read, and
+   `received_version` / `accepted_versions` appear **nowhere in D2** — not as a stored column, not as a
+   `detail` member, not on the `batches_refused.<error>` counter rows that do reach the panel
+   ([D2 § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)). So this one needs D2 to
+   **store** the pair and not merely to tabulate what it already has, which is the one respect in which
+   it is a heavier ask than its six neighbours, and it is said here rather than buried in a count.
 
    **Blocks:** the drill-down's whole *why* half — every one of these is an anomaly or an
-   approximation that D2 deliberately kept visible rather than absorbing, and a panel that cannot show
-   them re-absorbs them at the last layer. **It is the same gap as item 1**, seen from the other end:
-   `detail` has no field table, so *"the open call list in full"* neither promises nor forbids any of
-   the per-call flags above. **In the meantime:** none of the six is rendered, and this document
-   renders no guess in their place; the timeline shows `compaction.start` / `compaction.end` as events
+   approximation that upstream deliberately kept visible rather than absorbing, and a panel that cannot
+   show them re-absorbs them at the last layer. **It is the same gap as item 1**, seen from the other
+   end: `detail` has no field table, so *"the open call list in full"* neither promises nor forbids any
+   of the per-call flags above. **In the meantime:** none of the seven is rendered, and this document
+   renders no guess in their place — the refusal panel reads *the refused schema versions are not
+   reported* ([§ 7.2](#72-badges-every-member-has-a-render)); the timeline shows `compaction.start` / `compaction.end` as events
    like any other, which is the after-the-fact reading rather than the current one, and the intern and
    action lines carry no exactness qualifier at all rather than implying one they cannot check.
-   **Closes it:** naming the six among § 8.2.3's `detail` members (and `compacting` or
-   `compaction_open_since` on the seat object, which is the only one the **floor** would use).
+   **Closes it:** naming the seven among § 8.2.3's `detail` members (and `compacting` or
+   `compaction_open_since` on the seat object, which is the only one the **floor** would use) — with
+   the schema-version pair needing a stored home in [D2 § 6.4](FLEET-STATE.md#64-ddl) first, on the
+   `batches` row the refusal already writes.
 
 10. **⇢ D2 — `fleet.reload.reason` has no declared vocabulary.**
     [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)'s table gives the message a `reason` payload
@@ -2164,7 +2176,7 @@ reason to leave two readings live.
 
 [D2](FLEET-STATE.md) addresses this document in **thirty-eight** places — a `D3` mention, a "renders"
 that names an obligation rather than a pixel, a "the drill-down can say", a rule only the render layer
-can keep. [D1](EVENT-SCHEMA.md) addresses it in **eleven** more, directly or through its
+can keep. [D1](EVENT-SCHEMA.md) addresses it in **twelve** more, directly or through its
 "constraining D2/D3" clause. All of them are
 enumerated here, because an obligation a downstream document did not notice is indistinguishable from
 one it declined. The two counts above and the two tables' row counts are checked against each other by
@@ -2177,7 +2189,12 @@ The mechanised half is no longer the literal `D3` alone — that recognizer repo
 neither listed nor discharged, because those sections say *"rendered in the drill-down"* and never say
 `D3`. It is now `D3` **plus the render-directed phrasings D2 and D1 actually use** — *rendered in the
 drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as
-quiet* — over **both** upstream documents. The rest — a "renders" clause in none of those forms, a
+quiet*, *readable in its drill-down* — over **both** upstream documents, and matched **across line
+wraps**. The wrap half is what actually found the last one: [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses)
+places a render obligation in the words *"readable in its drill-down"* with the phrase broken over a
+line break, so a line-scoped recognizer reported clean over it **whether or not the phrase was in the
+list** — the list was the visible gap and the line scope was the reason widening it would not have
+helped. The rest — a "renders" clause in none of those forms, a
 field whose whole purpose is a rendering rule — were found by reading. The tool checks the mechanised
 half's coverage in both documents and prints the remainder **row by row** rather than reporting a clean
 over it.
@@ -2239,6 +2256,7 @@ over it.
 | U8 | § 10.1 | Never render a seat's timestamp as an absolute clock; the seat's clock is its own claim | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) |
 | U9 | § 1 | The scope boundary D1 draws: **"Anything rendered — D3"** | [§ 1.1](#11-what-this-document-owns), [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) |
 | U10 | § 6.12 | `notification_kind` has exactly **three** members and no `other`, "so a render branch over a fourth is neither owed nor wanted" — a wire member no input can produce is a branch D2 and D3 would build and never reach | [§ 5.4](#54-what-is-never-rendered): this document renders no `notification_kind` at all — an attention request reaches the floor only as `blocked` ([§ 7.1](#71-the-render-per-state)), whose entry and exit D2 owns — and [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes the sets it *does* branch over, so an unreachable branch here is a set-difference failure rather than a reading |
+| U12 | § 12.2 | The schema-version refusal, stated as **required behaviour and not merely a status code**: the seat *"renders **visibly degraded** on the floor with the received and accepted versions **readable in its drill-down**"* | Half is rendered and half is filed, and the split is stated rather than blurred. **The visibly-degraded half:** [§ 7.2](#72-badges-every-member-has-a-render)'s `batches_rejected` badge is on the desk's cluster and its count is in the panel — a badge is D1's visible degradation for a *past* refusal, not a currency treatment, so [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) is deliberately not widened for it ([§ 5.4](#54-what-is-never-rendered): the desk still renders `render_state`). **The version pair:** `received_version` and `accepted_versions` appear in D1's refusal body and **nowhere in D2 at all**, so no read surface carries them and this document renders no guess in their place — [§ 14](#14-open-questions-for-the-review-loop) item 9 carries it as the seventh member of that class |
 | U11 | § 6.4 | `D2-MUST` #1's rendering half: `stalled` carries `api_error_type` "so the drill-down can say *which* error" — and D1 mints a **twelfth** member, `unrecognised`, precisely so the harness's own `unknown` is not overloaded as the coercion target | [§ 7.1](#71-the-render-per-state)'s `stalled` row, [§ 5.1](#51-the-desk), and [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable), which publishes all twelve with the two-way distinction spelled out |
 
 **Nothing addressed to this document is undischarged.** **Thirteen** of the thirty-eight are
@@ -2246,8 +2264,8 @@ discharged with a stated gap in the upstream contract rather than by a rendering
 is filed in [§ 14](#14-open-questions-for-the-review-loop) rather than absorbed silently: T6's timeline
 has no field table and T28's `detail` has none either (item 1, one class filed once); the membership
 case T24's "never vanishes" implies has no message (item 2); T23's MFA gate has no rule for an expiring
-session on an open socket (item 5); T30, T31, T32, T33, T34 and T38 are six drill-down explanations D2
-names and no read surface carries (item 9, one class filed once); T29's receipt age and T36's fold lag
+session on an open socket (item 5); T30, T31, T32, T33, T34 and T38 — **and U12**, which is D1's — are seven drill-down
+explanations upstream names and no read surface carries (item 9, one class filed once); T29's receipt age and T36's fold lag
 are among the ten members no delta carries (item 12); and T20's per-badge *since* has only a
 cluster-scoped minimum to render (item 13).
 
