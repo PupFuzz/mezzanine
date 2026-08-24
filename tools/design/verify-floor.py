@@ -534,52 +534,152 @@ else:
             fail.append(f"G5: `{h[1]}` states no RED. A test never seen to fail is not evidence; "
                         f"it is a decoration that reports the harness ran")
 
-# G5, second half: AN AT IS GATED AT OR AFTER THE STEP THAT BUILDS WHAT IT READS.
-# Three tests at once asserted drill-down content while Appendix B gated them 5, 6 and 2 steps before
-# the drill-down is built (AT-D3-6 at step 8, AT-D3-10 at step 4, AT-D3-14 at step 5).  A gate on an
-# artifact that does not exist yet is a gate an implementer either skips or satisfies by building out
-# of order, and three copies of one shape is a class rather than three slips.  BOTH populations are
-# re-derived: the AT set from the headings, and the drill-down's own step from the Appendix B row whose
-# artifact names it -- so renumbering Appendix B moves this check with it.
+# G5, second half: AN AT IS GATED AT OR AFTER THE STEP THAT BUILDS EVERY ARTIFACT ITS GREEN READS.
+# Section 11 states the rule over EVERY artifact.  The check used to hold it over ONE -- the drill-down
+# -- by grepping each test body for "drill-down|panel", so a test reading the status strip five steps
+# early, or the desk render two steps early, was outside it; and it compared against MAX(gate steps), so
+# a test co-gated at the artifact's own step satisfied the rule while an EARLIER unqualified gate on the
+# same test still stood on nothing.  Both are closed here, and the population is now three things, all
+# re-derived:
+#
+#   THE ARTIFACT -> STEP MAP, from Appendix B's own Artifact cells: every BOLD span in an Artifact cell
+#   is an artifact this document names, and its row is the step that builds it.  Nothing is written
+#   here, so renaming or renumbering an artifact moves the check with it.  A name appearing in two rows
+#   reds -- an artifact built at two steps has no step.
+#
+#   WHAT EACH TEST READS, from the test's own Build bullets: a `**Reads:**` clause naming artifacts by
+#   those same names.  This is a JUDGEMENT -- whether a GREEN sentence reads the desk or merely stands
+#   on it is not decidable by grep -- so the judgement lives in the document, where a reviewer can
+#   disagree with it, and the tool holds the arithmetic over it.  Section 11 already required exactly
+#   this for the drill-down ("declares the drill-down in its Build"); this is that rule over every
+#   artifact.  A test with no Reads clause reds rather than passing.
+#
+#   WHICH HALF EACH GATE GATES, from the Appendix B Gate cell's own qualifier: `AT-D3-6 (floor half)`
+#   gates that half alone; an UNQUALIFIED mention gates the WHOLE test, every half of it.  That is what
+#   makes co-gating stop masking: the row-10 mention of a split test is qualified, so it discharges the
+#   panel half and leaves the floor half's step-8 mention to be checked on its own artifacts.
 appB = table_rows(raw, r"^\| Order \| Artifact \| Gate \|") or []
+step_of, artifact_step, g5_unread, g5_halves = {}, {}, [], 0
 if not appB:
     fail.append("G5 CONTROL: Appendix B's build-order table did not parse — every acceptance test's "
                 "gate step would be unread and the ordering rule below would be vacuous")
 else:
-    step_of, dd_step = {}, None
+    dd_step, artifact_dupe = None, []    # step_of: AT -> [(step, half-or-None)]
     for r in appB:
         c = cells(r)
         if len(c) < 3 or not c[0].isdigit():
             continue
         n = int(c[0])
+        for a in re.findall(r"\*\*([^*]+)\*\*", c[1]):
+            key = re.sub(r"[`\s]+", " ", a).strip().lower()
+            if key in artifact_step and artifact_step[key] != n:
+                artifact_dupe.append((key, artifact_step[key], n))
+            artifact_step[key] = n
         if "drill-down" in c[1]:
             dd_step = n if dd_step is None else min(dd_step, n)
-        for a in set(re.findall(r"AT-D3-\d+", c[2])):
-            step_of.setdefault(a, []).append(n)
+        for m in re.finditer(r"\[(AT-D3-\d+)\]\([^)]*\)", c[2]):
+            tail = c[2][m.end():m.end() + 40]
+            q = re.match(r"[\s*]*\(([^)]*?)\s+half\)", tail)
+            step_of.setdefault(m.group(1), []).append((n, q.group(1).strip().lower() if q else None))
+    for k, a_, b_ in artifact_dupe:
+        fail.append(f"G5: Appendix B names the artifact `{k}` at step {a_} and again at step {b_}. An "
+                    f"artifact built at two steps has no step, and every test that reads it would be "
+                    f"checked against whichever row this parse saw last")
     if dd_step is None:
         fail.append("G5 CONTROL: no Appendix B row names the drill-down as its artifact, so the step "
                     "that builds it is unknown and every panel-asserting test would pass this rule")
+    if len(artifact_step) < 10:
+        fail.append(f"G5 CONTROL: only {len(artifact_step)} artifact names parsed out of Appendix B's "
+                    f"Artifact cells — the map every test is checked against is nearly empty, and an "
+                    f"empty map passes every test")
     if len(step_of) < 15:
         fail.append(f"G5 CONTROL: only {len(step_of)} acceptance tests are cited by an Appendix B row "
                     f"— the gate-cell parse is broken and the ordering rule reads an empty population")
+
+    BUILD_RE = re.compile(r"^- \*\*Build(?:\s*—\s*the\s+(.+?)\s+half[^:*]*)?:\*\*", re.M)
     for h in at_heads:
         name = re.match(r"(AT-D3-\d+)", h[1]).group(1)
         body = "\n".join(lines[h[3]:h[4]])
+        # every Build bullet, its half name, and the artifacts its `Reads:` clause declares
+        halves = {}
+        marks = list(BUILD_RE.finditer(body))
+        if not marks:
+            fail.append(f"G5 CONTROL: `{name}` has no **Build** bullet, so what it reads cannot be "
+                        f"declared and the build-order rule is vacuous on it")
+        for k, m in enumerate(marks):
+            seg = body[m.end(): marks[k + 1].start() if k + 1 < len(marks) else len(body)]
+            seg = seg.split("\n- **")[0]
+            half = (m.group(1) or "").strip().lower() or None
+            mr = re.search(r"\*\*Reads:\*\*(.*)", seg, re.S)
+            if not mr:
+                fail.append(
+                    f"G5: `{name}`'s Build bullet"
+                    f"{' for the ' + half + ' half' if half else ''} declares no **Reads:** clause. "
+                    f"Section 11's rule is over every artifact a GREEN reads, and which artifacts "
+                    f"those are is a reading of the prose that no gate can make for the document — so "
+                    f"the test states them, by Appendix B's own artifact names, and this gate holds "
+                    f"the arithmetic. A test that declares nothing would otherwise be gated anywhere")
+                halves.setdefault(half, set())
+                continue
+            names = {re.sub(r"[`\s]+", " ", a).strip().lower()
+                     for a in re.findall(r"\*\*([^*]+)\*\*", mr.group(1))}
+            for a in sorted(names - set(artifact_step)):
+                fail.append(f"G5: `{name}` declares that it reads `{a}`, which no Appendix B Artifact "
+                            f"cell names. Either the artifact is built by no step — in which case "
+                            f"nothing schedules it — or the name has drifted from the one Appendix B "
+                            f"uses, and a name that matches nothing is checked against nothing")
+            halves.setdefault(half, set()).update(names & set(artifact_step))
         if name not in step_of:
             fail.append(f"G5: `{name}` is gated by no Appendix B row — a test nothing schedules is a "
                         f"test an implementer has no moment to run, and Appendix B claims to be the "
                         f"whole of what is built")
             continue
+        declared_halves = set(halves) - {None}
+        for st, q in step_of[name]:
+            if q is not None and q not in declared_halves:
+                fail.append(f"G5: Appendix B step {st} gates `{name}`'s *{q} half* and the test "
+                            f"declares no Build bullet for a half of that name (it declares "
+                            f"{sorted(declared_halves) or 'none'}). A qualifier naming a half that "
+                            f"does not exist gates nothing at all, which reads exactly like a gate")
+        for half, arts in halves.items():
+            # an UNQUALIFIED mention gates every half; a qualified one gates its own
+            gates = [st for st, q in step_of[name] if q is None or q == half]
+            if not gates:
+                fail.append(f"G5: `{name}`'s *{half} half* is gated by no Appendix B row — the test is "
+                            f"split and only some of its halves are scheduled, so the rest run at no "
+                            f"stated moment")
+                continue
+            need = max((artifact_step[a] for a in arts), default=0)
+            late = max(artifact_step[a] for a in arts) if arts else 0
+            for st in sorted(gates):
+                if st < need:
+                    blocking = sorted(a for a in arts if artifact_step[a] > st)
+                    fail.append(
+                        f"G5: Appendix B step {st} gates "
+                        f"{'`' + name + '`' if half is None else '`' + name + '`s *' + half + ' half*'}"
+                        f", which declares it reads {blocking} — built at "
+                        f"{[artifact_step[a] for a in blocking]}. Section 11: a test is gated at or "
+                        f"after the step that builds EVERY artifact its GREEN reads. A gate on an "
+                        f"artifact that does not exist yet is one an implementer skips or satisfies "
+                        f"by building out of order; if the test has an earlier half too, it SPLITS, "
+                        f"with each half named at its own step in the Gate cell. Being co-gated later "
+                        f"as well does not discharge this gate — that is what an unqualified mention "
+                        f"means")
+            _ = late
+        g5_halves += 1
+        # the recognizer half, KEPT as a failure: prose naming the panel with no half declaring it
         if dd_step is not None and re.search(r"drill-down|\bpanel\b", body) \
-                and max(step_of[name]) < dd_step:
+                and not any(artifact_step.get(a, -1) >= dd_step for arts in halves.values() for a in arts):
             fail.append(
-                f"G5: `{name}` asserts drill-down or panel content and Appendix B gates it no later "
-                f"than step {max(step_of[name])}, while the drill-down is built at step {dd_step}. "
-                f"§ 11 states the rule: a test that reads the panel declares the drill-down in its "
-                f"Build and is gated at or after the step that builds it. A gate on an artifact that "
-                f"does not exist yet is one an implementer skips or satisfies by building out of "
-                f"order — and if the test has a floor half too, it SPLITS, with each half named at "
-                f"its own step")
+                f"G5: `{name}`'s body names the drill-down or the panel and no half of it declares an "
+                f"artifact built at or after step {dd_step}, where the drill-down is built. Either the "
+                f"test reads the panel — in which case the half that does says so in its **Reads:** "
+                f"clause and is gated there — or the mention is not a reading and the body should not "
+                f"suggest it is")
+        for a in sorted({re.sub(r"[`\s]+", " ", x).strip().lower()
+                         for x in re.findall(r"\*\*([^*]+)\*\*", body)} & set(artifact_step)):
+            if not any(a in arts for arts in halves.values()):
+                g5_unread.append((name, a))
     for a in sorted(step_of):
         if int(a.rsplit("-", 1)[1]) not in at_ids:
             fail.append(f"G5: Appendix B gates `{a}`, which is not an acceptance test in this document")
@@ -1509,7 +1609,16 @@ print(f"G4  section 12 rows: {g4_rows}; numbers traced to a definition site: {g4
 for r in g4_residue:
     print(f"    G4 residue — a wrong value this gate would NOT notice · {r}")
 print(f"G5  acceptance tests: {len(at_ids)}; fixtures declared {len(fx_declared)}, used "
-      f"{len(fx_used)}, symmetric difference {len(fx_declared ^ fx_used)}")
+      f"{len(fx_used)}, symmetric difference {len(fx_declared ^ fx_used)}; build order: "
+      f"{len(artifact_step)} artifacts re-derived from Appendix B's Artifact cells, "
+      f"{sum(len(v) for v in step_of.values())} gate mentions over {g5_halves} declared test halves, "
+      f"every half checked against EVERY artifact it declares and at EVERY step that gates it")
+print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Reads:` clause does not "
+      f"declare: {len(g5_unread)}. Printed in full, never capped: naming an artifact is not reading "
+      f"one, so these are not failures — but the gap between what a body names and what it declares "
+      f"is where an undeclared read hides, and a count would hide it again")
+for _n, _a in g5_unread:
+    print(f"    G5 residue — named but not declared as read · {_n}: `{_a}`")
 print(f"G6  Appendix A: {n_t} D2 rows + {n_u} D1 rows; render-directed markers found in "
       f"{len(marked)} D2 sections ({sorted(marked)}) and {len(marked_d1)} D1 sections "
       f"({sorted(marked_d1)}); uncovered {len(uncovered)} D2 / {len(uncovered_d1)} D1; "

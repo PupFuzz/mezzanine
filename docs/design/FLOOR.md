@@ -1520,18 +1520,36 @@ the repository cannot honour.
 Each test names **what to build, what to break to make it RED, and what GREEN asserts.** A test never
 seen to fail is not evidence; it is a decoration that reports the harness ran.
 
-**A test is gated at or after the step that builds every artifact its GREEN reads**
-([Appendix B](#appendix-b--what-an-implementer-builds-from-this) is the build order, and its rows are
-where each test's step is stated). Two corollaries, because both were got wrong here and each was got
-wrong three times, which makes them a rule rather than six corrections:
+**A test is gated at or after the step that builds every artifact its GREEN reads. This section owns
+that rule; [Appendix B](#appendix-b--what-an-implementer-builds-from-this) is the build order it runs
+over and states no version of it, and [§ 12](#12-every-number-and-where-it-comes-from)'s G5 row
+describes the gate rather than restating the rule.** It is scoped to the **GREEN** deliberately: a RED
+plants a defect and a discriminating control proves the gate can report clean, and both may reach for
+an artifact the GREEN does not depend on — it is the GREEN that has to be *true* at the step, so it is
+the GREEN that fixes the step.
 
-1. **A test that asserts drill-down or panel content declares the drill-down in its Build and is
-   gated at or after the step that builds it.** A gate on an artifact that does not exist yet is a
-   gate an implementer either skips or satisfies by building out of order — and out of order is the
-   one thing Appendix B exists to prevent. A test with a floor half **and** a panel half does not pick
-   one: it **splits**, and each half is named at its own step in Appendix B's Gate cell.
-   `tools/design/verify-floor.py` reds on a test that reads the panel and is gated only before it,
-   deriving both the test set and the drill-down's own step rather than holding a copy of either.
+**How the rule is made checkable, because for two revisions it was stated over every artifact and
+enforced over one.** Three populations, none of them written into the tool:
+
+- **The artifacts, and the step that builds each,** are the **bold** names in Appendix B's own Artifact
+  cells. An artifact named at two steps has no step and reds.
+- **What a test reads** is declared by the test, in a **`Reads:`** clause on each of its `Build`
+  bullets, naming artifacts by those same names. Whether a GREEN sentence *reads* the desk or merely
+  stands on it is a reading of prose, not a grep — so the reading lives here, where a reviewer can
+  disagree with it, and the gate holds the arithmetic over it. A test that declares nothing reds; a
+  test that declares a name Appendix B does not use reds.
+- **Which half a gate gates** is the qualifier in Appendix B's Gate cell: `AT-D3-6 (floor half)` gates
+  that half alone, and an **unqualified** mention gates the **whole** test — every half of it. That is
+  what stops a late gate from covering for an early one: being listed again at step 10 does not
+  discharge a step-3 mention, because an unqualified step-3 mention claims the whole test is runnable
+  at step 3.
+
+1. **A test with two halves does not pick one: it splits, and each half is named at its own step in
+   Appendix B's Gate cell** — with the drill-down as the case this rule was first written for, and
+   six more found once the check stopped being drill-down-shaped. A gate on an artifact that does not
+   exist yet is a gate an implementer either skips or satisfies by building out of order — and out of
+   order is the one thing Appendix B exists to prevent. Where no half of a test is observable before
+   its artifact, the test is **re-gated** rather than split, and says so.
 2. **The build-order consequence of the record's ownership** — which is
    [§ 5.5](#55-the-clients-own-narration)'s to state and this corollary's to apply. Because the record
    is the client protocol's artifact and the lobby merely renders it, a protocol test may assert a line
@@ -1617,9 +1635,12 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 *The honesty principle, mechanised. This is the headline test and the gate on trusting the floor at
 all.*
 
-- **Build:** replay `fx-snapshot-4`, `fx-clear-trace`, `fx-degraded` and `fx-interns` end to end;
-  collect the animation log.
-- **GREEN:** every `animation_id` in the log is a row of
+- **Build — the instrument half:** replay `fx-snapshot-4` alone, then silence; collect the animation
+  log. **Reads:** the **animation log**.
+- **Build — the closed-set half:** replay `fx-snapshot-4`, `fx-clear-trace`, `fx-degraded` and
+  `fx-interns` end to end; collect the animation log. **Reads:** the **animation log**, the
+  **animation set**.
+- **GREEN — the closed-set half:** every `animation_id` in the log is a row of
   [§ 6.2](#62-the-animation-table--the-closed-set); **every `edge` row has a non-null `cause`** that is
   one of the four causing messages, and for each edge row the driving field named by that table appears
   in the causing delta's `changed[]` (or the row's driver is a message type, and the cause is a message
@@ -1680,7 +1701,7 @@ all.*
 - **Second RED:** drive the working loop's frame rate from `open_calls` — a "busier seats type faster"
   change that looks like a feature — and assert that the loop's frame interval is constant across every
   seat and every fixture. A rate that varies is a quantity the wire never sent.
-- **Discriminating control:** a fixture with **no** deltas at all (`fx-snapshot-4` alone, then silence)
+- **GREEN — the instrument half, and it is a discriminating control:** on that fixture
   → the log carries **no `edge` row at all**, **no `phase: left` row at all** (nothing ended, because
   nothing arrived), and carries **exactly** the `held` `entered` rows
   [§ 6.2](#62-the-animation-table--the-closed-set) predicts for the four states the fixture delivers —
@@ -1695,7 +1716,8 @@ all.*
 ([AT-D2-2](FLEET-STATE.md#at-d2-2-the-clear-trace-mints-no-idle)).*
 
 - **Build:** replay `fx-clear-trace`, both hook orders, capturing the rendered `render_state` and the
-  animation log at every applied delta.
+  animation log at every applied delta. **Reads:** the **desk render**, the **side table**, the
+  **animation log**, the **animation set**.
 - **GREEN:** the desk renders `working` from E0 through E6, `unknown` from E7 onward, and **never
   `idle` at any version**; the animation log contains **no** `idle` row (A6) and no `depart` (A2); the
   side table gains an intern at E1 (title-less), gains its title at E2, and empties at E5; `action`
@@ -1718,7 +1740,8 @@ all.*
 
 - **Build:** apply `fx-snapshot-4`; record every desk's slot. Discard the client entirely and apply the
   same snapshot again (a reload). Then apply it in **reverse seat order**, and again with the seats
-  shuffled.
+  shuffled. **Reads:** the **floor layout**, the **desk render**, the **animation set**, the
+  **animation log**.
 - **GREEN:** the four assignments of [§ 3.2](#32-the-desk-slot-function)'s worked table, identically, in
   all four runs — slot is a function of the key and not of arrival order, delivery order or session.
 - **GREEN — an arrival that collides:** replay `fx-collision` → `aimla-impl-4` takes slot 0,
@@ -1735,7 +1758,9 @@ all.*
 
 ### AT-D3-4 the subagent cap boundary
 
-- **Build:** replay `fx-interns`.
+- **Build:** replay `fx-interns`, and open the drill-down against a stubbed detail response carrying
+  nine open dispatch calls. **Reads:** the **side table**, the **drill-down**, the **uncapped intern
+  list**.
 - **GREEN:** at 8 elements, 8 stools and **no** *+N more* tag; at `subagents_open: 9` with 8 elements,
   8 stools **and** a *+1 more* tag whose number comes from `subagents_open − 8`; the drill-down, opened
   against a stubbed detail response carrying 9 open dispatch calls, lists **9**. The element with
@@ -1750,7 +1775,12 @@ all.*
 
 ### AT-D3-5 a degraded seat is visibly degraded
 
-- **Build:** replay `fx-degraded`; capture each desk's render and the animation log.
+- **Build:** replay `fx-degraded`; capture each desk's render and the animation log. The judgement
+  worth stating is what this test does *not* read: every assertion below is that a render was entered
+  and drawn *static*, which is exactly what a desk with no loops in it produces, so the test measures
+  something real at step 5 and does not read the animation set. Its discriminating control names
+  motion, and [§ 11](#11-acceptance-tests)'s ordering rule is scoped to the **GREEN**, for the reason
+  that section gives. **Reads:** the **desk render**, the **animation log**.
 - **GREEN:** all six desks are pairwise distinguishable by pose/glyph **and** by label line, per
   [§ 7.1](#71-the-render-per-state); the `catching_up` desk renders the replay treatment and its
   activity state appears **only** under a *was:* label; `stale` and `offline` render an empty chair with
@@ -1782,7 +1812,8 @@ all.*
 at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the panel half at step 10.*
 
 - **Build — the floor half:** apply `fx-snapshot-4`, deliver heartbeats for 60 s of simulated time,
-  then deliver nothing for 60 s more.
+  then deliver nothing for 60 s more. **Reads:** the **status strip**, the **age readout**, the
+  **animation set** ([A14](#62-the-animation-table--the-closed-set)'s pulse).
 - **GREEN — the floor half:** at 45 s of silence the status strip reads **feed down — polling**,
   [A14](#62-the-animation-table--the-closed-set)'s
   pulse has stopped, a `GET /api/fleet/snapshot` is issued and repeats every 10 s, and **every desk's
@@ -1790,7 +1821,8 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
   internal timestamps.
 - **Build — the panel half:** the same run **with the drill-down open on `aimla-pm`**. It is a second
   half rather than a line in the first because the panel does not exist until step 10, and a test
-  gated at step 8 that read it would be a gate on an artifact nobody has built.
+  gated at step 8 that read it would be a gate on an artifact nobody has built. **Reads:** the
+  **drill-down**.
 - **GREEN — the panel half:** the drill-down's `fetch-fresh` blocks are **re-stamped** by each poll
   rather than ticked ([§ 2.4](#24-the-clock-and-every-age-on-the-page)): a transport block whose
   numbers moved between two polls would be rendering a value nothing delivered, which is the same
@@ -1805,15 +1837,24 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
 
 ### AT-D3-7 a delta gap resyncs exactly one seat
 
-- **Build:** replay `fx-gap`.
-- **GREEN:** the client detects `state_version` jumping by 2, issues **exactly one**
+*Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the protocol
+half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 3, the strip half at step
+8. The **resyncs: N** readout is a status-strip rendering and the strip is not built until step 8; the
+resync itself, and the line the record gains, are the protocol's and are observable at step 3.*
+
+- **Build — the protocol half:** replay `fx-gap`. **Reads:** the **client protocol**, the **client's
+  event record**.
+- **GREEN — the protocol half:** the client detects `state_version` jumping by 2, issues **exactly one**
   `GET /api/fleet/seats/aimla/aimla-pm?resync_from=<its last applied version>` — assert the query
   parameter is present and carries the last **applied** version, because it is the only write path for
   D2's `feed_gap_detected` counter ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq))
-  — converges to the served object, and **no other seat is refetched**; the resync counter in the status
-  strip increments by one and **the client's event log** records it — the record the protocol layer
-  writes, which is this step's artifact; the lobby renders it at step 9
+  — converges to the served object, and **no other seat is refetched**; **the client's event log**
+  records it — the record the protocol layer writes, which is this step's artifact
   ([§ 5.5](#55-the-clients-own-narration), [§ 11](#11-acceptance-tests)).
+- **Build — the strip half:** the same fixture, with the status strip rendered. **Reads:** the
+  **status strip**.
+- **GREEN — the strip half:** the **resyncs: N** readout increments by exactly one, and the lobby
+  renders the same record at step 9.
 - **RED:** apply deltas unconditionally → the desk diverges silently and stays wrong until something
   else changes it, which on a quiet seat is never. Assert the divergence field by field against the
   fixture's final object; a test that only checked "no error was thrown" passes here.
@@ -1826,7 +1867,7 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
 ### AT-D3-8 a refusal is never an empty office
 
 - **Build:** replay `fx-refusals`, each response in a separate run, both on a cold start and on a client
-  already holding `fx-snapshot-4`.
+  already holding `fx-snapshot-4`. **Reads:** the **failure renders**, the **floor layout**.
 - **GREEN:** `503` renders the store-unavailable statement — on a warm client over a floor labelled
   *last known good*, on a cold one as words; `401` renders the sign-in prompt with the floor beneath
   dimmed and labelled *not live since HH:MM:SS*, **and the client closes the socket**; `db: "down"`
@@ -1844,27 +1885,37 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
 
 *The client's half of [AT-D2-7](FLEET-STATE.md#at-d2-7-snapshot-then-deltas-has-no-window).*
 
-- **Build:** a run in which the subscribe is followed by a **forced 500 ms delay** before the snapshot
-  response, with two deltas delivered inside that window — one below the snapshot's watermark for its
-  seat, one above.
-- **Build — the mid-session half:** `fx-membership` leg (c), with the same forced 500 ms delay on
-  ADMIT (b)'s response. This half exists because [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT` claims
-  the window is closed for an install entering the rendered set **at any time**, and a test that only
-  ever admitted installs at connect time would leave the *at any time* half unexercised — which is
-  precisely the half a client can get wrong without any test noticing.
-- **GREEN:** the client's final seat map equals the server fixture's exactly; the below-watermark delta
-  is **discarded** and the above-watermark one **applied**; the snapshot render fires **no `edge`-class
-  animation** — assert the log gains **no `edge` row** across the snapshot apply, while the
-  `held` `entered` rows the delivered states require **are** present, each opening a fresh
-  `episode_id` and carrying the snapshot object's
-  `state_version` as its cause ([§ 6.5](#65-a-snapshot-never-animates)); running the scenario 100 times yields 100 identical
-  results.
-- **GREEN — the mid-session half:** the client **subscribes** to `private-fleet.aimla-win` before
-  issuing ADMIT (b), the delta emitted inside (b)'s window is **applied** at (c) rather than lost, and
-  `aimla-win/win-1`'s rendered desk equals the fixture's post-delta object — not (b)'s object. Assert
-  the **subscription** was opened, not merely that the desks appeared: a client that fetched and
-  rendered without subscribing passes every render assertion on the first frame and is wrong forever
-  after.
+*Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the protocol
+half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 3, the render half at step
+6. The watermark and the subscription are observable in the seat map the protocol holds; **no `edge`
+row** and **the held `entered` rows the delivered states require** are claims about the animation set,
+which does not exist until step 6, and a floor with no animations in it satisfies *no edge row* for
+free.*
+
+- **Build — the protocol half:** a run in which the subscribe is followed by a **forced 500 ms delay**
+  before the snapshot response, with two deltas delivered inside that window — one below the snapshot's
+  watermark for its seat, one above. **Reads:** the **client protocol**.
+- **Build — the protocol half, mid-session leg:** `fx-membership` leg (c), with the same forced 500 ms
+  delay on ADMIT (b)'s response. This leg exists because [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`
+  claims the window is closed for an install entering the rendered set **at any time**, and a test that
+  only ever admitted installs at connect time would leave the *at any time* half unexercised — which is
+  precisely the half a client can get wrong without any test noticing. **Reads:** the **client
+  protocol**.
+- **GREEN — the protocol half:** the client's final seat map equals the server fixture's exactly; the
+  below-watermark delta is **discarded** and the above-watermark one **applied**; running the scenario
+  100 times yields 100 identical results. On the mid-session leg the client **subscribes** to
+  `private-fleet.aimla-win` before issuing ADMIT (b), and the delta emitted inside (b)'s window is
+  **applied** at (c) rather than lost. Assert the **subscription** was opened, not merely that the seat
+  map filled: a client that fetched without subscribing passes every assertion on the first frame and
+  is wrong forever after.
+- **Build — the render half:** both runs above, replayed with the desk and the animation set in place
+  and the animation log collected. **Reads:** the **desk render**, the **animation set**, the
+  **animation log**.
+- **GREEN — the render half:** the snapshot render fires **no `edge`-class animation** — assert the log
+  gains **no `edge` row** across the snapshot apply, while the `held` `entered` rows the delivered
+  states require **are** present, each opening a fresh `episode_id` and carrying the snapshot object's
+  `state_version` as its cause ([§ 6.5](#65-a-snapshot-never-animates)); and `aimla-win/win-1`'s
+  **rendered desk** equals the fixture's post-delta object — not (b)'s object.
 - **RED — order:** fetch the snapshot before subscribing → the delta made in the window is in neither,
   and on a quiet desk the divergence is permanent.
 - **RED — discovery without admission:** render the discovered install from the discrepancy fetch and
@@ -1887,7 +1938,9 @@ The split is the whole point here rather than bookkeeping: the receipt half of t
 observable on **no** surface built before step 10.*
 
 - **Build — the floor half:** `fx-snapshot-4`, with the harness's browser clock set **+3 h** from the
-  fixture's `server_time`.
+  fixture's `server_time`. **Reads:** the **age readout** — every assertion below is about a rendered
+  age string and the offset behind it, which is what step 4 builds; *desk* names where the string sits,
+  not the artifact it reads.
 - **GREEN — the floor half:** every rendered age matches the age computed from `server_time` — every
   desk's quiet age (*nothing done for N*) reads seconds, not three hours; `clock_offset_ms` is applied
   to every readout; and every seat-clock timestamp (`action.started_at`, `context.sampled_at`,
@@ -1897,7 +1950,7 @@ observable on **no** surface built before step 10.*
   on `aimla-pm`**. Every seat in `fx-snapshot-4` is `live`, so **no desk on that floor renders a
   receipt age at all** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `dark-only` marker) — the transport block's *both ages
   under one* as of *stamp* is the only surface the receipt half is observable on, and it is built at
-  step 10.
+  step 10. **Reads:** the **drill-down**.
 - **GREEN — the panel half:** the transport block's receipt age likewise reads seconds, not three
   hours, and carries its *as of* stamp.
 - **RED:** compute ages from `Date.now()` → **every desk on the floor reads *nothing done for 3h*** on
@@ -1916,7 +1969,8 @@ observable on **no** surface built before step 10.*
 ### AT-D3-11 an unrecognised member renders as unrecognised
 
 - **Build:** deliver a delta whose `render_state` is `"pondering"`, one whose `badges` contains
-  `"quantum_flux"`, and one whose `unknown_reason` is `"reasons"`.
+  `"quantum_flux"`, and one whose `unknown_reason` is `"reasons"`. **Reads:** the **desk render**, the
+  **failure renders**, the **client's event record**.
 - **GREEN:** each renders the **unrecognised** glyph or badge carrying the raw string; the desk is
   treated as not-current; **the client's event log** records each distinct value **once**
   ([§ 5.5](#55-the-clients-own-narration): the record, not the lobby's rendering of it); nothing crashes and no
@@ -1929,10 +1983,21 @@ observable on **no** surface built before step 10.*
 
 ### AT-D3-12 asset provenance gates bite
 
-- **Build:** run the asset gates against the repository ([§ 10.1](#101-the-manifest-and-the-two-gates)).
-- **GREEN:** every asset file has an `ATTRIBUTION.md` row; every row's SHA-256 matches its file; every
-  licence identifier is in the allowlist; the character tree contains **no** image file; the lineage
-  file names the upstream repository, the commit and the MIT notice.
+*Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the manifest
+half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 0, the lineage half at
+step 1. The gates themselves are step 0 and must exist before any asset does; the **lineage file** is
+step 1's artifact, so a lineage assertion at step 0 asserts the contents of a file no step has yet
+created — and an empty character tree satisfies Gate 2's absence clause for free.*
+
+- **Build — the manifest half:** run the asset gates against the repository
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)). **Reads:** the **provenance gates**.
+- **GREEN — the manifest half:** every asset file has an `ATTRIBUTION.md` row; every row's SHA-256
+  matches its file; every licence identifier is in the allowlist; the character tree contains **no**
+  image file.
+- **Build — the lineage half:** run the same gates once the port has landed
+  ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**.
+- **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
+  notice.
 - **RED — the unlisted asset:** add a tile with no row → Gate 1 fails naming the path. **Second RED —
   the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256 check fails.
   **Third RED — the vendored character, both clauses:** drop a `sprites.webp` into the character tree
@@ -1947,13 +2012,20 @@ observable on **no** surface built before step 10.*
 
 ### AT-D3-13 every state is legible without motion
 
+*Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) **step 6**, not step 5, and
+the reason is the test's own claim rather than bookkeeping: this test asserts that no state is carried
+by motion alone, and before the **animation set** exists there is no motion for any state to be
+carried by — every desk is static, so the assertion is satisfied by a floor nobody has finished
+building. It is not split, because no half of it is observable earlier.*
+
 - **Build:** render `fx-snapshot-4`, `fx-degraded` and a seat in each remaining `render_state` member
   under `prefers-reduced-motion: reduce`; capture a static image of each desk. **The remainder is
   named rather than left to be worked out**, because *"each remaining member"* is only checkable
   against a stated partition: `fx-snapshot-4` delivers `working`, `idle` and `blocked`; `fx-degraded`
   delivers `catching_up`, `stale`, `offline`, `disabled` and `retired`; so the seats this test adds are
   **`stalled`** (with an `api_error_type` of `rate_limit`) and **`unknown`** (with an `unknown_reason`
-  of `turn_killed_by_clear`) — two, and the ten are covered.
+  of `turn_killed_by_clear`) — two, and the ten are covered. **Reads:** the **desk render**, the
+  **animation set**, the **animation log**.
 - **GREEN:** all **ten** `render_state` members are pairwise distinguishable from the static images
   alone, and each carries its label line; every animation row's reduced-motion form is what appears;
   the log gains **no `edge` row**, and every `held` row with **`phase: entered`** reads
@@ -1974,9 +2046,11 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 5, the p
 Every assertion below is labelled with the half it belongs to, because the thirty-six members split
 across the two surfaces and a single list read as though the desk could show them all.*
 
-- **Build — the desk half:** render `fx-nulls` on the floor.
+- **Build — the desk half:** render `fx-nulls` on the floor. **Reads:** the **desk render**, the
+  **side table**.
 - **Build — the panel half:** the same fixture with the drill-down opened on each of the two seats,
-  plus the operator health view for the `counters` assertion.
+  plus the operator health view for the `counters` assertion. **Reads:** the **drill-down**, the
+  **uncapped intern list**.
 - **GREEN — `nulls-a`, the containers, desk half:** the context gauge reads **not reported** and the
   bar is absent — **not** 0 %; there is no task chip; the monitor shows the state line rather than a
   blank; `model_label` is omitted rather than empty; the side table shows no stools rather than zero
@@ -2023,7 +2097,7 @@ across the two surfaces and a single list read as though the desk could show the
   whose `fleet.seats_total` is one **lower** than the seats the client holds — the **N > M** direction,
   reachable whenever a seat retired more than 14 days ago leaves `seats_total` at once while
   [§ 3.5](#35-retirement-and-the-only-removal) keeps its desk until a snapshot apply — and then a
-  second, identical heartbeat.
+  second, identical heartbeat. **Reads:** the **lobby**.
 - **GREEN:** the fleet counts render `fleet.seats_total` / `fleet.seats_live` verbatim; the per-floor
   summary is labelled as a count of held seats; when the two disagree the lobby renders *the client
   holds 3 of 4 seats — refreshing* and issues one snapshot fetch, after which they agree.
@@ -2042,7 +2116,8 @@ across the two surfaces and a single list read as though the desk could show the
 - **Build:** `fx-degraded`'s retired seat; then deliver `seat.retired` for a live seat **alone**, with
   the delta carrying `retired.*` held back until after it — the message-first order
   [§ 2.5](#25-what-re-renders-and-when) says the client may see; then deliver that delta; then a later
-  snapshot that omits the retired seat entirely.
+  snapshot that omits the retired seat entirely. **Reads:** the **desk render**, the **animation set**,
+  the **drill-down**, the **client's event record**.
 - **GREEN — on the message alone:** the desk clears in place with the plate, the **reason** and the
   **time**, both of which the message carries, and with **no operator name** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)'s
   payload for `seat.retired` is `install_id`, `seat_id`, `reason`, `at`, and carries no `by`, so a name
@@ -2068,13 +2143,25 @@ across the two surfaces and a single list read as though the desk could show the
 
 ### AT-D3-17 a seat the client does not hold is fetched, never patched
 
-- **Build:** replay `fx-membership`.
-- **GREEN:** the delta for the unknown seat triggers exactly one
+*Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the protocol
+half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 3, the render half at
+step 6. *The inserted desk renders **without** an arrival animation* is an assertion about the
+**animation set**, and before step 6 there is no arrival animation to withhold — while the fetch, the
+buffering and the line the record gains are the protocol's and are observable at step 3.*
+
+- **Build — the protocol half:** replay `fx-membership`. **Reads:** the **client protocol**, the
+  **client's event record**.
+- **GREEN — the protocol half:** the delta for the unknown seat triggers exactly one
   `GET /api/fleet/seats/{install}/{seat}`; deltas for that seat received while the fetch is in flight
-  are buffered and drained against the fetched `state_version`; the inserted desk renders **without** an
-  arrival animation ([§ 3.4](#34-a-new-seats-first-appearance)); **the client's event log** records
+  are buffered and drained against the fetched `state_version`; **the client's event log** records
   *seat added to the floor* ([§ 5.5](#55-the-clients-own-narration): the record is this step's
   artifact, the lobby is its renderer at step 9).
+- **Build — the render half:** the same fixture, replayed with the desk and the animation set in
+  place and the animation log collected. **Reads:** the **desk render**, the **animation set**, the
+  **animation log**.
+- **GREEN — the render half:** the inserted desk renders **without** an arrival animation
+  ([§ 3.4](#34-a-new-seats-first-appearance)) — assert the log gains no
+  [A1](#62-the-animation-table--the-closed-set) row for that seat.
 - **RED:** apply the patch to an empty object → the desk renders from a partial seat object: no
   `render_state`, so it draws as the client's default, which is a desk showing a state the server never
   reported. Assert the **rendered** desk, not the internal object.
@@ -2148,7 +2235,7 @@ belongs in its own round.
 | **G2 source-field closure** | **Two halves, and the row names the tables rather than the section numbers, because a section number is what let this row over-claim for two revisions.** *(a)* every field named in the source column of [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down), [§ 5.3](#53-the-fleet-on-both-screens), [§ 6.2](#62-the-animation-table--the-closed-set)'s driver column and [§ 4.3](#43-the-desk-drill-down-panel)'s panel table, against [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table, § 8.2.4's fleet object, § 8.2.3's `detail` and § 8.3's message types. *(b)* every backticked field-shaped token in the prose columns of **[§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s seven tables** — § 7.1's two, § 7.2's badges, § 7.3's currency table and § 7.6's three — classified against five re-derived vocabularies: a D2 field, the **leaf** of one, a member of any of the six enum sets this document publishes, a [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) counter name, or one of D1's 14 event kinds. A token in none of the five is a field this document invented. Half (b) exists because half (a)'s five tables contain **no § 7 table**, so a fabricated D2 field planted in § 7.1, § 7.2 or § 7.6 left this gate green while the same fabrication in § 5.1 red it. Its control is a **capability test rather than a token count** — the classifier is fed a fabricated field on every run and must reject it — because three of the seven tables name no field at all today, which is a property of the document and would make a count floor either vacuous or wrong. Plus the **residue** — D2 fields this document renders nowhere — printed rather than counted as a pass | **tool-checked** |
 | **G3 cap arithmetic** | 6,112 / 8,192 / 263 / 2,080 / 7 / 15 / 7,953 / 8,216 / 24 re-computed from the **three** inputs (worst case, bound, per-element), and those three checked for **presence in D2** — anywhere in D2, not at a named statement, which is the narrower claim the tool can actually make and is why "is a Cited number true at its D2 home" stays on the hand-verified rows below | **tool-checked** |
 | **G4 § 12 ↔ definition site** | each row's number as a whole numeric token at the section it cites, then **perturbed** to prove the match can fail for that row; the residue — numbers some other value would also have matched — printed individually | **tool-checked**, with its residue printed |
-| **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates. **Plus the build-order half:** every test is gated by at least one [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row and every row gates a test that exists, and a test whose body reads the **drill-down or the panel** is gated at or after the step that builds it — with **both** populations re-derived, the test set from the headings and the drill-down's own step from the Appendix B row whose artifact names it, so renumbering the build order moves the check with it rather than leaving a stored `10` behind. **Plus the record's name:** the phrase *the lobby log* reds wherever it is **used** rather than quoted — the record is the client protocol's artifact ([§ 5.5](#55-the-clients-own-narration)) and the lobby is one renderer of it, so naming the renderer is what gates a test on a screen built six steps after the thing it reads; a wording this document must quote in order to forbid is marked with emphasis, and the recognizer is wrap-tolerant because a phrase broken over a line break is how the last one hid. **Plus the log-schema half:** [§ 11](#11-acceptance-tests)'s animation-log row tuple against the per-class field table beside it, and that table's row count against the number the prose states — one schema, two homes, three revisions so far, and the count read `four` against five rows for a whole revision. **Plus the episode-walk half:** the `fx-clear-trace` walk's own `(A_n, episode N)` pairs re-added into an episode count and a row count and checked against the sentence beneath it, in both directions, plus a `left` pair with no `entered` pair before it — the walk is indented under a list item, which is why nothing had read it while the sentence beside it said *six* and *eleven* over a table yielding five and nine | **tool-checked** |
+| **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates. **Plus the build-order half:** every test is gated by at least one [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row, every row gates a test that exists, and **every declared half of every test is gated at or after the step that builds every artifact that half declares it reads** ([§ 11](#11-acceptance-tests) owns the rule; this row describes the gate). **Three** populations re-derived, none stored: the artifact→step map from Appendix B's own bold Artifact names, what each test reads from its `Reads:` clauses, and which half a gate gates from the Gate cell's own qualifier — so renumbering the build order, renaming an artifact or re-splitting a test all move the check with them rather than leaving a stored `10` behind. **An unqualified gate mention gates every half**, which is what stops a step-10 co-gating from discharging a step-3 mention on the same test — the hole a `max()` over the gate steps left open. Residue printed in full: an artifact a test's body emphasises and its `Reads:` clause does not declare. **Plus the record's name:** the phrase *the lobby log* reds wherever it is **used** rather than quoted — the record is the client protocol's artifact ([§ 5.5](#55-the-clients-own-narration)) and the lobby is one renderer of it, so naming the renderer is what gates a test on a screen built six steps after the thing it reads; a wording this document must quote in order to forbid is marked with emphasis, and the recognizer is wrap-tolerant because a phrase broken over a line break is how the last one hid. **Plus the log-schema half:** [§ 11](#11-acceptance-tests)'s animation-log row tuple against the per-class field table beside it, and that table's row count against the number the prose states — one schema, two homes, three revisions so far, and the count read `four` against five rows for a whole revision. **Plus the episode-walk half:** the `fx-clear-trace` walk's own `(A_n, episode N)` pairs re-added into an episode count and a row count and checked against the sentence beneath it, in both directions, plus a `left` pair with no `entered` pair before it — the walk is indented under a list item, which is why nothing had read it while the sentence beside it said *six* and *eleven* over a table yielding five and nine | **tool-checked** |
 | **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*, *readable in its drill-down*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged. **Each phrase is matched wrap-tolerantly, across line breaks**, and that is the load-bearing half rather than a nicety: the scan was line-scoped, [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) is typeset with its phrase broken over a wrap, and adding the phrase to a line-scoped list would have left the check clean over it exactly as before | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
 | **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
@@ -2544,17 +2631,17 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 
 | Order | Artifact | Gate |
 |---|---|---|
-| 0 | `ATTRIBUTION.md`, the asset manifest, and both provenance gates | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** RED on each of its four planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the character generator port + `resources/characters/LINEAGE.md` (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; the lineage file is complete; both clauses of Gate 2 hold |
-| 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | the log records a cause for every animation, and **[AT-D3-1](#at-d3-1-no-animation-without-its-event)**'s discriminating control passes — a harness that records nothing must not be able to report clean |
-| 3 | the client protocol: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — **and the client's own event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas), [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat), [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) |
-| 4 | the clock offset and every age readout ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
-| 5 | the desk: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
-| 6 | the animation set ([§ 6.2](#62-the-animation-table--the-closed-set)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all |
-| 7 | the floor: the map, the slot function, overflow (card #7341) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
-| 8 | the failure renders and the status strip ([§ 9](#9-failure-paths-and-their-observables)) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised) |
-| 9 | the lobby ([§ 4.1](#41-the-lobby--the-building-summary)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
-| 10 | the drill-down, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained), and the **panel halves** of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s), [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) ([§ 11](#11-acceptance-tests)'s ordering rule) |
+| 0 | `ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
+| 1 | the **character generator port** and its **lineage file**, `resources/characters/LINEAGE.md` (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; both clauses of Gate 2 hold; and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, which is the half of that test with a file to read |
+| 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
+| 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
+| 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
+| 5 | the **desk render**: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
+| 6 | the **animation set** ([§ 6.2](#62-the-animation-table--the-closed-set)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(closed-set half)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all — plus [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), whose whole claim is about motion and is unobservable before there is any, and the render halves of [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(render half)** and [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(render half)** |
+| 7 | the **floor layout**: the map, the slot function, overflow (card #7341) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
+| 8 | the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised), and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** |
+| 9 | the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
+| 10 | the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),
@@ -2564,13 +2651,25 @@ because the failure render is the one a dashboard is judged by and the one nobod
 accident).
 
 **A note on order, and it is the rule [§ 11](#11-acceptance-tests) states rather than a preference.**
-Three tests once asserted drill-down content while this table gated them at steps 4, 5 and 8 — a gate
-on an artifact built at step 10. Each is now **split**, with its floor half at its original step and
-its panel half here at step 10, and `tools/design/verify-floor.py` reds on any test that reads the
-panel and is gated only before it, re-deriving both the test set and this table's own drill-down step
-rather than holding a copy of either. Three tests asserting the client's **event log** at steps 3 and
-8 are a different case and not the same defect: the record is the client protocol's artifact and step
-3 builds it; the lobby at step 9 is its renderer.
+This table carries the build order and the gates; the rule over them is § 11's and is not restated
+here. What this note records is what the rule found once it was enforced over **every** artifact
+rather than over the drill-down alone. Three tests once asserted drill-down content while this table
+gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — and each was split. Widening
+the check to every artifact this table names then found **five more**, none of them about the panel:
+[AT-D3-1](#at-d3-1-no-animation-without-its-event) split into an instrument half (step 2, the log
+alone) and a closed-set half (step 6); [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) into a
+protocol half (3) and a strip half (8), because *resyncs: N* is a status-strip readout;
+[AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) and
+[AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) into protocol halves (3)
+and render halves (6), because *no `edge` row* and *without an arrival animation* are claims about the
+animation set and a floor with no animations satisfies both for free; and
+[AT-D3-12](#at-d3-12-asset-provenance-gates-bite) into a manifest half (0) and a lineage half (1),
+because the lineage file is step 1's artifact.
+[AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) was **re-gated** from 5 to 6 rather than
+split: its whole claim is that no state is carried by motion alone, and there is no half of that
+observable before there is any motion. Three tests asserting the client's **event record** at steps 3
+and 8 are a different case and not the same defect: the record is the client protocol's artifact and
+step 3 builds it; the lobby at step 9 is its renderer.
 
 **A second note on order.** Steps 2 and 6 are separable and must stay so: the animation log is an
 instrument of the renderer, not of the test suite. If it were built inside the harness, a renderer could start an
