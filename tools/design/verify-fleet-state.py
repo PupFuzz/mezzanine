@@ -14,7 +14,7 @@ checking, and it survives exactly the pass that falsifies it.
   G5  section 12 <-> definition-site agreement    (R1-18, R1-33: a number table that drifted;
                                                    R2-8: and the substring search that could not
                                                    see it drift, repaired below)
-  G6  Appendix A counts + D1 marker coverage      (R1-24: an obligation with no row; R2-9: and the
+  G6  Appendix A counts + D1 obligation markers   (R1-24: an obligation with no row; R2-9: and the
                                                    D1/D2 namespace collision that forgave it)
   G7  feed message-type closure                   (R1-11: `fleet.health` in no table)
   G8  counter closure, with Stored/Exposed, BOTH  (R1-15: 14 counters with no home; and the
@@ -29,11 +29,14 @@ Three things are NOT fully mechanizable and say so in the output rather than rep
 over a population they never measured (canon: a clean result over an unnamed population reports
 where the searcher stopped):
 
-  * G6's SEMANTIC half.  An obligation D1 addresses to "a consumer" without the `D2` marker --
-    Appendix A row S29 is one -- cannot be found by grep.  The marker half is checked; the SIZE
-    of the semantic half is re-derived per row and printed (it is fourteen of twenty-nine, not
-    the one an earlier revision of that paragraph claimed), and FLEET-STATE section 14 item 13 is
-    the request that would close it.
+  * G6's MANUAL RESIDUE.  D1 section 1 now marks the obligation SENTENCE -- `D2-MUST`, a `D2:`
+    prefix, or a "constraining D2" note -- so the split is re-derived from those markers rather
+    than from any mention of D2 in a section, and a section that mentions D2 without marking an
+    obligation is now a failure rather than a silent pass (that gap is what let row S29 be walked
+    past three times).  What is left is the row whose D1-source column names no section number at
+    all: no marker in D1 can reach it, so it is printed per row and read by a human.  The size is
+    re-derived every run and printed even at zero -- never written down here, because a count in
+    a comment is a number free to disagree with the document.
   * G5's RESIDUE.  Every number G5 matches is then perturbed, and the ones some other value would
     also have satisfied are printed individually rather than counted as passes.  That list is the
     honest statement of which section 12 rows this gate is actually holding.
@@ -301,7 +304,10 @@ if g2_table and g2_seen:
 # component of the 8,940 sum, or to the message bound, left the arithmetic comparing against a
 # constant in the checker while it reported clean.  Each is now re-derived from the section that
 # defines it, on every run, and the sum is re-ADDED from its six named components rather than read
-# off the total the document states for them.
+# off the total the document states for them.  The component COUNT is not written here either --
+# it is re-derived from the sum's own operand structure below and printed at runtime, because a
+# count in a comment is a number free to disagree with the document while the check reports clean.
+# (It said "six" against a seven-operand sum for exactly that reason.)
 def g3_input(what, pattern, where, cast=int, group=1):
     m = re.search(pattern, section_text(where) or "")
     if not m:
@@ -312,7 +318,7 @@ def g3_input(what, pattern, where, cast=int, group=1):
     return cast(m.group(group).replace(",", ""))
 
 
-# the delta volume, re-ADDED from its six components; the stated total is CHECKED, never trusted
+# the delta volume, re-ADDED from its components; the stated total is CHECKED, never trusted
 DAY_S = 24 * 60 * 60
 sec83_txt = section_text("83-the-websocket-delta-feed") or ""
 delta_day = None
@@ -324,9 +330,17 @@ if not m83:
 else:
     parts = [int(x.replace(",", "")) for x in re.findall(r"([\d,]+)\s+[a-z]", m83.group(1))]
     stated = int(m83.group(2).replace(",", ""))
-    if len(parts) < 6:
-        fail.append(f"G3 CONTROL: only {len(parts)} components parsed out of section 8.3's "
-                    f"delta-volume sum; a partial sum would agree with the stated total by luck")
+    # The floor is RE-DERIVED, not pinned.  A literal here (it was `< 6` against a seven-operand
+    # sum) is a stored denominator: it goes on passing after the document grows a component, which
+    # is the one change it exists to catch.  The expected operand count comes from the sum's own
+    # arithmetic -- one more than the number of `+` signs -- which is an independent reading of the
+    # same text from the value extraction above, so a regex that silently matches a SUBSET now
+    # disagrees with the expression it was extracted from instead of clearing a low bar.
+    n_operands = m83.group(1).count("+") + 1
+    if len(parts) != n_operands:
+        fail.append(f"G3 CONTROL: section 8.3's delta-volume sum has {n_operands} operands and "
+                    f"{len(parts)} parsed as values; a partial sum would agree with the stated "
+                    f"total by luck, so the extraction is not trusted while the two disagree")
     elif sum(parts) != stated:
         fail.append(f"G3: section 8.3 adds {' + '.join(str(p) for p in parts)} = {sum(parts):,} "
                     f"and states **{stated:,}** — every feed volume, the queue sizing and the "
@@ -718,11 +732,17 @@ else:
     if not m or WORD.get(m.group(1).lower()) != n_further:
         fail.append(f"G6: Appendix A's heading says {m.group(1) if m else '?'} further "
                     f"obligations and its table has {n_further} rows")
-    split = re.search(r"\*\*([\w-]+)\*\* of the ([\w-]+) cite a D1 section that carries\s+"
-                      r"the literal marker `D2`; the other \*\*([\w-]+)\*\*", appA, re.S)
+    # The sentence this reads MOVED when D1's marker convention changed from "the literal marker
+    # `D2` anywhere in the section" to a marker on the obligation sentence (section 14 item 13), so
+    # the pattern moved with it.  Its force is unchanged and is the point of the check: the
+    # document must STATE its split in prose, the population it states it over must equal the
+    # table's row count, and both figures must equal the per-row re-derivation below.
+    split = re.search(r"\*\*([\w-]+)\*\* of the ([\w-]+) cite a D1 section carrying a marker on "
+                      r"the\s+obligation\s+sentence\s+itself[\s\S]*?the remaining \*\*([\w-]+)\*\*",
+                      appA, re.S)
     if not split:
         fail.append("G6: Appendix A no longer states how its population splits into the "
-                    "marker-derivable half and the semantic half, so the tool's coverage of it is "
+                    "marker-derivable half and the manual residue, so the tool's coverage of it is "
                     "not stated where a reader will see it")
     elif WORD.get(split.group(2).lower()) != n_further:
         fail.append(f"G6: Appendix A's marker/semantic split is stated over "
@@ -744,21 +764,53 @@ else:
         fail.append(f"G6 CONTROL: expected D1 to carry an acceptance-test section and a decision "
                     f"register; the heading walker found {sorted(restating)}. The obligation "
                     f"population cannot be partitioned into normative and restating halves")
-    marked = set()
-    for i, line in enumerate(d1_lines):
-        if "D2" not in line:
-            continue
+    # Two populations, and the difference between them IS section 14 item 13.  `marked` is every
+    # D1 section that MENTIONS D2 anywhere -- the old, section-level reading, kept because the
+    # coverage direction below is stated over it.  `obligation_marked` is every section carrying a
+    # marker ON AN OBLIGATION SENTENCE, which is the convention D1 section 1 now declares:
+    # `D2-MUST` for the five numbered constraints, a `D2:` prefix or a "constraining D2" note for
+    # every other consumer-addressed rule.  S29 is why the two are not the same check: D1 section
+    # 6.2 mentioned D2 elsewhere, so a section-level derivation called that row derivable while the
+    # obligation itself carried nothing a grep could find.
+    OBLIGATION_MARKER = re.compile(r"`D2-MUST`|\bD2:|constraining D2")
+
+    def owning_section(i):
         owner = None
         for h in d1_heads:
             if h[3] <= i < h[4]:
                 num = re.match(r"^(\d+(?:\.\d+)*)", h[1])
                 if num:
                     owner = num.group(1)
-        if owner and owner.split(".")[0] not in restating:
-            marked.add(owner)
+        return owner if owner and owner.split(".")[0] not in restating else None
+
+    marked, obligation_marked = set(), set()
+    for i, line in enumerate(d1_lines):
+        if "D2" not in line:
+            continue
+        owner = owning_section(i)
+        if not owner:
+            continue
+        marked.add(owner)
+        if OBLIGATION_MARKER.search(line):
+            obligation_marked.add(owner)
     if len(marked) < 5:
         fail.append(f"G6 CONTROL: only {len(marked)} D1 sections carry the `D2` marker — the "
                     f"section walker is broken and this half of the check is vacuous")
+    if not obligation_marked:
+        fail.append("G6 CONTROL: no D1 section carries an obligation-level marker — D1 section 1's "
+                    "convention is either gone or spelled differently, and the split below would "
+                    "then report every row as manual residue for the wrong reason")
+    # The convention is stated as a rule over D1, so it is checked as one: a section that names D2
+    # without marking WHICH sentence is the obligation is the S29 shape, and the coverage check
+    # underneath cannot see it -- section 6.2 was cited, so it stayed green over a row nothing
+    # could grep.  This is the check that closes item 13, and it is strictly stronger than the
+    # coverage direction: it fails on a marker that goes missing from a section that still has
+    # other D2 prose, which is exactly the case the old derivation reported clean over.
+    for sec in sorted(marked - obligation_marked):
+        fail.append(f"G6: D1 § {sec} mentions D2 but marks no obligation sentence — D1 § 1's "
+                    f"convention requires `D2-MUST`, a `D2:` prefix or a \"constraining D2\" note "
+                    f"on the obligation ITSELF. A section-level mention is what let S29 be walked "
+                    f"past three times while a section-level check stayed green")
     # `cited` used to be built by matching `§ n` over the WHOLE row, which does not distinguish a
     # D1 section number from a D2 one -- and Appendix A's "Discharged in" column is nothing but D2
     # section links.  Eleven `§ 6.4` links to this document's own `#64-ddl` therefore satisfied the
@@ -795,7 +847,7 @@ else:
     # states it claimed twenty-eight and one against a real fourteen-row semantic half, and the
     # scope of section 14 item 8's closure rests on that number -- so it is a derived figure now.
     g6_marker = [cells(r)[0] for r in further_rows
-                 if len(cells(r)) >= 2 and (d1_refs(cells(r)[1]) & marked)]
+                 if len(cells(r)) >= 2 and (d1_refs(cells(r)[1]) & obligation_marked)]
     g6_semantic = [cells(r)[0] for r in further_rows if cells(r)[0] not in g6_marker]
     if split:
         stated = (WORD.get(split.group(1).lower()), WORD.get(split.group(3).lower()))
@@ -803,7 +855,8 @@ else:
             fail.append(
                 f"G6: Appendix A states its split as {split.group(1)} marker-derivable / "
                 f"{split.group(3)} semantic; re-derived per row against the D1 sections that "
-                f"actually carry the marker, it is {len(g6_marker)} / {len(g6_semantic)}. The "
+                f"carry a marker ON AN OBLIGATION SENTENCE, it is {len(g6_marker)} / "
+                f"{len(g6_semantic)}. The "
                 f"semantic half is the manual remainder section 14 item 8 scopes its closure by, "
                 f"so understating it overstates what this tool covers. Semantic rows: "
                 f"{', '.join(g6_semantic)}")
@@ -1129,11 +1182,22 @@ for r in g5_residue:
     print(f"    G5 residue — a wrong value this gate would NOT notice · {r}")
 print(f"G6  Appendix A: {n_must} + {n_further} rows "
       f"({len(g6_marker) if appA else 0} marker-derivable, {len(g6_semantic) if appA else 0} "
-      f"semantic — the manual remainder, re-derived per row, not restated); "
+      f"manual residue — re-derived per row from D1's obligation markers, not restated); "
       f"D1 sections cited from a D1-attributed position: {len(cited) if appA else 0}; "
-      f"D1 sections carrying the `D2` marker: {len(marked) if appA else 0} "
+      f"D1 sections mentioning D2: {len(marked) if appA else 0}, of which carrying a marker on an "
+      f"obligation sentence: {len(obligation_marked) if appA else 0} "
       f"(D1's restating sections {sorted(restating) if appA else []} excluded: an acceptance "
       f"test and a decision register restate obligations imposed elsewhere)")
+# The residue is PRINTED, never folded into the pass count, for the same reason G5's is: a count
+# of rows a tool did not check reports where the searcher stopped.  It is printed even at zero,
+# so "no residue" is a measurement someone made rather than a line that vanished.
+if appA:
+    print(f"    G6 manual residue — rows no marker can reach: "
+          f"{', '.join(g6_semantic) if g6_semantic else 'none'}")
+    for row in g6_semantic:
+        src = next((cells(r)[1] for r in further_rows if cells(r)[0] == row), "?")
+        print(f"    G6 residue · {row} cites {src!r} — no D1 section number, so no marker in D1 "
+              f"can make this row derivable; it is read by a human or its source column moves")
 print(f"G7  feed message types declared: {len(declared_types)}; "
       f"fleet-object fields exempted: {len(fleet_fields)}")
 print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
@@ -1143,9 +1207,10 @@ print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
-print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — a D1 "
-      "obligation addressed to \"a consumer\" with no `D2` marker cannot be found by grep, and "
-      "row S29 is a found instance; FLEET-STATE § 14 item 13 is the request that would close it. "
+print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's manual residue, printed "
+      "above — a row whose D1-source column names no section number cannot be reached by any "
+      "marker convention, so it stays a human read; D1 § 1's `D2:` convention (§ 14 item 13) "
+      "closed the rest of what used to be a fourteen-row semantic half. "
       "(b) whether a `Cited` number matches what D1 says, as opposed to appearing at its D2 home. "
       "(c) every MySQL behavioural claim, which needs a provisioned host.")
 
