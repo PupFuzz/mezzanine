@@ -1211,10 +1211,13 @@ no input can select, both red the gate.
 **`link_state` — five members**, the member set of
 [D2 § 4.5](FLEET-STATE.md#45-link-states)'s cascade, bounded at these five by
 [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object). It is the field the desk's **currency
-treatment** is switched on ([§ 5.1](#51-the-desk)). **The rows below are in render order, which is
-not the cascade's evaluation order** — D2 evaluates `offline`, `offline`, `stale`, `disabled`,
-`catching_up`, `live`, first match wins, and calling this table *ordered* invited a reading it does not
-carry. The **set** is what this table publishes; the **order** is D2's and is not restated here:
+treatment** is switched on ([§ 5.1](#51-the-desk)). **The rows below carry no order at all, and that
+is stated rather than left to be assumed** — there is no *render order* for this field: nothing in
+this document iterates `link_state`, the way [§ 7.1](#71-the-render-per-state)'s fixed member order is
+iterated by the lobby's per-floor summary ([§ 4.1](#41-the-lobby--the-building-summary)). In
+particular the rows are **not** D2's cascade order, which is `offline`, `offline`, `stale`,
+`disabled`, `catching_up`, `live`, first match wins. The **set** is the whole of what this table
+publishes; the **order** is D2's, is not restated here, and is not what is below:
 
 | `link_state` | What it says about the seat | Currency treatment |
 |---|---|---|
