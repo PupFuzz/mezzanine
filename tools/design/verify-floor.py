@@ -21,7 +21,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                member D2 does not declare
   G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
-                                               bearing members without `fetch-fresh` / `dark-only`
+                                               bearing members without `fetch-fresh` / `dark-only`;
+                                               a section 5 table this gate has no column for; a table
+                                               row anywhere else naming one of the ten and declaring
+                                               neither a marker nor `named-not-rendered`
   G10 null-render closure, both directions      a member D2 section 8.2.1 marks `Null? yes` with no
                                                stated null render, or a null render for a member D2
                                                does not mark nullable
@@ -35,9 +38,12 @@ searcher stopped):
     the words "rendered in the drill-down".  It is `D3` plus the render-directed phrasings the two
     upstream documents actually use, over BOTH of them.  An obligation phrased in none of those forms
     is still not grep-derivable, so the rows resting on no marker section are printed ROW BY ROW.
-  * G9's PROSE half.  G9 reads the render tables and the panel table, where a source column names a
-    field.  A bookkeeping member reintroduced in prose is outside that population, so the count of
-    prose mentions is printed as named residue rather than folded into a pass.
+  * G9's PROSE half.  G9's table population is DERIVED -- every markdown table in the document, found
+    structurally -- and a table row outside the render map that names one of the ten now REDS unless
+    it declares itself `named-not-rendered`.  What is left outside is prose, which no set difference
+    reaches, so every prose mention is printed IN FULL as named residue rather than folded into a
+    pass.  In full: the previous revision printed the first twelve of nineteen beside the true count,
+    which is a cap that reads as a complete list.
   * G4's RESIDUE.  Every number G4 matches is then perturbed, and the ones some other value would
     also have satisfied are printed individually rather than counted as passes.  That list is the
     honest statement of which section 12 rows this gate is actually holding.
@@ -154,6 +160,32 @@ def table_rows(text, header_re):
                 j += 1
             return out
     return None
+
+
+def all_tables(src_lines):
+    """EVERY markdown table in a document, found by STRUCTURE: (start_index, header_line, [rows]).
+
+    Which tables exist is not written anywhere in this file.  It is re-derived on each run, because
+    the defect this closes is a STORED population rather than a wrong one: G9's table list used to be
+    five header patterns written here, so when § 5.6 was added -- thirty-six null-render rows, seven
+    of them sourcing one of D2 § 6.5's ten -- it entered the gate's blind spot and nothing reddened,
+    while § 2.4 went on claiming the marker rule held over every § 5 row and that this file reds when
+    one does not.  Both halves of that sentence were false, and no check could say so.
+
+    Unlike `table_rows`, this finds EVERY table, not the first whose header matches -- so a second
+    table sharing a header shape is read rather than silently skipped."""
+    out, i, n = [], 0, len(src_lines)
+    while i < n - 1:
+        if src_lines[i].startswith("|") and re.match(r"^\|[\s\-:|]+\|\s*$", src_lines[i + 1]):
+            j, rows = i + 2, []
+            while j < n and src_lines[j].startswith("|"):
+                rows.append(src_lines[j])
+                j += 1
+            out.append((i, src_lines[i], rows))
+            i = j
+        else:
+            i += 1
+    return out
 
 
 FIELDISH = re.compile(r"^[a-z_][a-z0-9_]*(\[\])?(\.[a-z_][a-z0-9_]*(\[\])?)*$")
@@ -953,36 +985,85 @@ else:
     if DARK_MEMBER not in ten:
         fail.append(f"G9 CONTROL: D2 § 6.5's carve-out names `{m_dark.group(1)}`, which is not one of "
                     f"the ten it excludes — the carve-out and the exclusion list have diverged")
-# (header, detection column, label).  `None` means detect over the whole row: § 4.3's panel table
-# names the members by their LEAF names in its contents cell, not as dotted paths in a source column.
+# THE COLUMN MAP -- and it is deliberately NOT the population any more.  The population is every
+# table `all_tables` finds; this list only says WHICH COLUMN of a render table names the source, which
+# is a fact about a table's shape and cannot be derived from the ten.  `None` means detect over the
+# whole row: § 4.3's panel table names the members by their LEAF names in its contents cell, not as
+# dotted paths in a source column, and § 5.5's narration table has no source column at all.
+#
+# The map being incomplete is now a FAILURE rather than a silence -- see the § 5 control below.  That
+# is the whole repair: a stored list that under-reads is not wrong in a way anything can see, and this
+# one under-read for two revisions while the document claimed the opposite.
 G9_TABLES = [
     (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1"),
     (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2"),
     (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3"),
+    (r"^\| Rendered narration \| The client's own record \| Rule \|", None, "5.5"),
+    (r"^\| D2 member \| What renders when it is null \|", 0, "5.6"),
     (ANIM_HEADER, ANIM_DRIVER_COL, "6.2"),
     (r"^\| Panel section \| Contents \| Source \|", None, "4.3"),
 ]
+DOC_TABLES = all_tables(lines)
+if len(DOC_TABLES) < 25:
+    fail.append(f"G9 CONTROL: only {len(DOC_TABLES)} markdown tables found in this document — the "
+                f"structural table finder is broken, and every population below is derived from it")
+
+
+def g9_map_entry(header_line):
+    for k, (hdr, _col, _where) in enumerate(G9_TABLES):
+        if re.search(hdr, header_line):
+            return k
+    return None
+
+
+# THE § 5 POPULATION CONTROL.  § 5 is derived from the heading numbers, never listed here, so a
+# § 5.7 added tomorrow is in this loop the moment it exists.  § 2.4 states the marker rule over EVERY
+# § 5 row whose source is one of the ten, so a § 5 table this gate has no column for is that rule with
+# nothing behind it — which is precisely what § 5.6 was.  Refusing loudly is the point: the previous
+# revision read four of the six § 5 tables and reported clean.
+for _start, _header, _rows in DOC_TABLES:
+    _sec = numbered_section_of(HEADS, _start)
+    if _sec is None or not (_sec == "5" or _sec.startswith("5.")):
+        continue
+    if g9_map_entry(_header) is None:
+        fail.append(f"G9: section {_sec} carries a table this gate has no column map for — its header "
+                    f"is `{_header.strip()[:80]}`. Section 2.4 states the two markers as a rule over "
+                    f"every section 5 row whose source is one of D2 § 6.5's ten, and a section 5 "
+                    f"table outside this map is that rule with nothing behind it on that table — "
+                    f"which is how section 5.6's ten-sourcing rows reached review carrying no marker")
+
 g9_rows = g9_hits = 0
 g9_covered = set()
-for header, col, where in G9_TABLES:
-    trows = table_rows(raw, header)
-    if not trows:
-        fail.append(f"G9 CONTROL: the table of section {where} did not parse — every bookkeeping "
-                    f"member it renders would go unmarked and unchecked")
+g9_pop_rows = set()
+g9_matched = set()
+
+
+def g9_hits_in(scope):
+    hits = {t for t in re.findall(r"`([a-z_.]+)`", scope) if t in ten}
+    # A member named INSIDE a compound span -- `(seq_epoch, last_seq)` -- is still a member this
+    # row renders, and matching only whole spans let exactly that one through unmarked.  LEAF names
+    # too: D2's own shorthand IS the leaf, which is what § 7.1's offline row uses.
+    for span in re.findall(r"`([^`]+)`", scope):
+        for tok in re.split(r"[^a-z_.]+", span):
+            if tok in ten:
+                hits.add(tok)
+            elif tok in leaf_of:
+                hits.add(leaf_of[tok])
+    return hits
+
+
+for _start, _header, _rows in DOC_TABLES:
+    k = g9_map_entry(_header)
+    if k is None:
         continue
-    for r in trows:
+    g9_matched.add(k)
+    _hdr, col, where = G9_TABLES[k]
+    for r in _rows:
         c = cells(r)
         g9_rows += 1
+        g9_pop_rows.add(r)
         scope = r if col is None else (c[col] if len(c) > col else "")
-        hits = {t for t in re.findall(r"`([a-z_.]+)`", scope) if t in ten}
-        # A member named INSIDE a compound span -- `(seq_epoch, last_seq)` -- is still a member this
-        # row renders, and matching only whole spans let exactly that one through unmarked.
-        for span in re.findall(r"`([^`]+)`", scope):
-            for tok in re.split(r"[^a-z_.]+", span):
-                if tok in ten:
-                    hits.add(tok)
-                elif tok in leaf_of:
-                    hits.add(leaf_of[tok])
+        hits = g9_hits_in(scope)
         if not hits:
             continue
         g9_hits += 1
@@ -1015,6 +1096,10 @@ for header, col, where in G9_TABLES:
                 f"offline seat; marking it `fetch-fresh` here would claim the desk renders it from a "
                 f"response that has just answered, which is the drill-down's rule and not this "
                 f"table's — and it is the substitution a row-scoped marker test could not see")
+for k, (_hdr, _col, where) in enumerate(G9_TABLES):
+    if k not in g9_matched:
+        fail.append(f"G9 CONTROL: the table of section {where} did not parse — every bookkeeping "
+                    f"member it renders would go unmarked and unchecked")
 if ten and not g9_hits:
     fail.append("G9 CONTROL: no render row names one of D2 § 6.5's ten — the detector is broken, and "
                 "a delivery-contract check that finds nothing to check reports clean over the class "
@@ -1035,35 +1120,42 @@ if not re.search(r"FLEET-STATE\.md#65-the-fold", raw):
     fail.append("G9: this document renders values D2 § 6.5 excludes from the feed and cites § 6.5 "
                 "nowhere — the section that decides whether a rendered fact is deliverable is not a "
                 "section a render map may leave uncited")
-# RESIDUE, printed rather than folded into a pass: G9 reads table rows whose columns name a field.
-# A bookkeeping member reintroduced in PROSE is outside that population.
-table_lines = set()
-for header, col, where in G9_TABLES:
-    for r in table_rows(raw, header) or []:
-        table_lines.add(r)
-# TWO residue classes, not one.  The declared limit used to read "a bookkeeping member reintroduced in
-# PROSE is outside it" -- while the filter below skipped EVERY line beginning with `|`, not merely the
-# rows of the five tables this check reads.  So a table row in section 7.1, section 7.6, section 11 or
-# Appendix A naming one of the ten appeared in NO residue at all and was invisible to the stated limit
-# as well as to the check.  The unchecked population is prose PLUS those rows, and both are printed.
-g9_prose, g9_table_residue = [], []
+# THE OTHER TABLE ROWS -- a FAILURE class now, not a disclosure.  This used to be "residue class B":
+# a table row outside the column map naming one of the ten was printed and passed.  That is the same
+# stored-denominator defect one level out -- a render table added in section 7 or section 9 would be
+# announced and admitted -- so the rule is inverted.  Outside the render map nothing is RENDERED from
+# one of the ten, so the only legal states for such a row are: it carries a marker (it is part of the
+# marker vocabulary itself -- section 2.4's marker table, section 12's G9 row), or it carries
+# `named-not-rendered`, the document's own token for a row that NAMES a member without rendering a
+# quantity from it (a fixture's contents, an upstream derivation rule quoted, an obligation restated).
+# Neither ⇒ red.  The exempted rows are still printed, because an exemption nobody can see is a
+# silence with extra steps.
+EXEMPT = "named-not-rendered"
+g9_prose, g9_exempt = [], []
 for i, line in enumerate(lines, 1):
-    if line in table_lines:
+    if line in g9_pop_rows:
         continue
-    # LEAF names too.  G9's own detector resolves `last_receipt_at` to `delivery.last_receipt_at`
-    # via leaf_of, so a residue that matched only the dotted spelling under-reported its own unchecked
-    # population -- and D2's shorthand IS the leaf, which is what section 7.1's offline row uses.
-    hit = set()
-    for span in re.findall(r"`([^`]+)`", line):
-        for tok in re.split(r"[^a-z_.]+", span):
-            if tok in ten:
-                hit.add(tok)
-            elif tok in leaf_of:
-                hit.add(leaf_of[tok])
-    hit = sorted(hit)
+    hit = sorted(g9_hits_in(line))
     if not hit:
         continue
-    (g9_table_residue if line.startswith("|") else g9_prose).append((i, hit[0]))
+    if not line.startswith("|"):
+        g9_prose.append((i, hit[0]))
+        continue
+    if EXEMPT in line or any(mk in line for mk in MARKED_FRESH):
+        g9_exempt.append((i, hit[0], EXEMPT in line))
+        continue
+    fail.append(
+        f"G9: L{i} is a TABLE ROW outside this document's render map and it names `{hit[0]}`, one of "
+        f"D2 § 6.5's ten, carrying neither a delivery marker nor `{EXEMPT}`. Either the row renders a "
+        f"quantity from a member no delta re-sends — in which case it owes `fetch-fresh` or "
+        f"`dark-only` and this table owes a column in G9's map — or it only NAMES the member, in "
+        f"which case it says so with `{EXEMPT}`. Leaving it unsaid is how a new table enters the "
+        f"document with the delivery contract unenforced on it, which is what section 5.6 did")
+if not g9_exempt:
+    fail.append(f"G9 CONTROL: no table row outside the render map names one of the ten at all — this "
+                f"document quotes D2's exclusion list, its fixtures set those members and Appendix A "
+                f"restates the obligations over them, so an empty set here means the detector stopped "
+                f"matching and the class above would be vacuously clean")
 
 # ------------------------- G10. null-render closure, re-derived from D2 § 8.2.1 ----
 # Decision 13 ("a null is rendered as *not reported*, never as a zero") is unobeyable without a stated
@@ -1161,18 +1253,21 @@ print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's
 print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nullable, "
       f"{len(null_rendered)} given a null render by section 5.6, "
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")
-print(f"G9  D2 § 6.5's non-version-bearing members re-derived: {len(ten)}; render rows scanned "
-      f"{g9_rows}, rows sourcing one of the ten {g9_hits}, all marked `fetch-fresh` or `dark-only`")
-print(f"    G9 residue A — PROSE mentions of the ten: {len(g9_prose)} (including § 2.4's own "
-      f"definition site)")
-for ln, f in g9_prose[:12]:
-    print(f"    G9 residue A — prose mention, unchecked by this gate · L{ln}: `{f}`")
-print(f"    G9 residue B — TABLE ROWS naming one of the ten that are OUTSIDE the "
-      f"{len(G9_TABLES)} tables this check reads: {len(g9_table_residue)}. This class used to appear "
-      f"in no residue at all, because the filter skipped every line starting with `|` while the "
-      f"stated limit said only \"prose\"")
-for ln, f in g9_table_residue[:12]:
-    print(f"    G9 residue B — table row outside this check's population · L{ln}: `{f}`")
+print(f"G9  D2 § 6.5's non-version-bearing members re-derived: {len(ten)}; markdown tables found by "
+      f"structure {len(DOC_TABLES)}, of which {len(g9_matched)} are render tables with a column in "
+      f"the map; render rows scanned {g9_rows}, rows sourcing one of the ten {g9_hits}, all marked "
+      f"`fetch-fresh` or `dark-only`")
+print(f"    G9 residue — PROSE mentions of the ten: {len(g9_prose)} (including § 2.4's own "
+      f"definition site). PRINTED IN FULL, never capped: an earlier revision printed the first 12 of "
+      f"19 and the count beside it, so the list looked complete on the pass that hid seven of it")
+for ln, f in g9_prose:
+    print(f"    G9 residue — prose mention, unchecked by this gate · L{ln}: `{f}`")
+print(f"    G9 table rows outside the render map: {len(g9_exempt)}, every one of them accounted for "
+      f"and listed below — a row here that carried neither a marker nor `{EXEMPT}` is a FAILURE "
+      f"above, not an entry in this list")
+for ln, f, ex in g9_exempt:
+    print(f"    G9 outside the render map, {'declared `' + EXEMPT + '`' if ex else 'marker vocabulary'}"
+          f" · L{ln}: `{f}`")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "
