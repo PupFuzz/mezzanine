@@ -282,13 +282,16 @@ The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet
   | Age | Field | The string, verbatim | Where it may appear |
   |---|---|---|---|
   | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
-  | **receipt age** | `delivery.last_receipt_at` | ***no data for 4m 12s*** | the drill-down's transport block **only**, under that block's *as of* stamp, never ticked ([§ 5.1](#51-the-desk)'s `dark-only`) |
+  | **receipt age** | `delivery.last_receipt_at` | ***no data for 4m 12s*** | the **`stale`/`offline` desk** — and no other desk — where it **ticks**, because such a seat is receiving nothing so the value it is measured from is frozen at the server too ([§ 5.1](#51-the-desk)'s **`dark-only`**); and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**) |
   | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | desk and drill-down, under a stamp, never ticked ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
 
   **One rendered string on this page looks like an age and is not:** a `stale`/`offline` desk's
   ***no data since 14:18***, which is `delivery.no_data_since` rendered as a **timestamp**
-  ([§ 5.1](#51-the-desk)). It is version-bearing where the receipt age is not, which is exactly why the
-  desk carries it and not the age. Their differences are the point
+  ([§ 5.1](#51-the-desk)). On those two states it is the **same instant** as the receipt age's basis —
+  [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares `no_data_since` *"equals
+  `last_receipt_at`"* there — delivered twice, once version-bearing and once not, and the desk renders
+  both halves of it: ***no data since 14:18 — no data for 41m***. The timestamp says *when* and is
+  delivered on the transition; the age says *how long* and is `dark-only`. Their differences are the point
   ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)); collapsing
   them into one "last seen" would destroy exactly the distinction the product is for. **Which surface
   may render which of the three is not a free choice**, because only one of them is refreshed by the
@@ -317,7 +320,9 @@ refreshes the bookkeeping members for free"*.
 So a client's copy of the ten is **not** unconditionally frozen, and saying it was — as an earlier
 revision of this paragraph did — contradicted the frozen section this rule rests on. What is true is
 narrower and is what the markers below encode: **no delta ever carries one of the ten for its own
-sake**, so no rendered value among them may be *ticked*; a value among them moves only when a whole
+sake**, so no rendered value among them may be *ticked* — **except the one the `dark-only` marker
+names**, whose basis is frozen at the server as well as at the client, which is what makes an age
+ticked from it exact rather than merely old; a value among them moves only when a whole
 object arrives that carries it — a snapshot, a detail fetch, a resync, or (for a nested object alone)
 a patch that touched a version-bearing sibling under the same key. D2 states the consequence as a
 constraint on this layer, in that same section: *"Every quantity this document says is rendered from
@@ -359,7 +364,7 @@ could say so:
 | Marker | What it permits | Why the value it renders is honest |
 |---|---|---|
 | **`fetch-fresh`** | rendered only from a response that has **just answered** — the snapshot apply, the drill-down's seat-detail fetch ([§ 4.3](#43-the-desk-drill-down-panel)), a resync fetch, or `fleet.health` / `feed.heartbeat` for the fleet object — stamped *as of HH:MM:SS*, and **never ticked as an age** between fetches | these are exactly the surfaces D2 names for the ten: *"served fresh by [§ 8.2.3], the snapshot and [§ 8.2.4] rather than held by a client between deltas"*. The stamp is what keeps the value a reading of a moment rather than a claim about now |
-| **`dark-only`** | rendered only on a `stale` or `offline` seat | D2's own carve-out: such a seat *"by definition is receiving nothing, so its `last_receipt_at` is frozen"* at the server too, and the **transition** into `stale`/`offline` moves `render_state` and `delivery.no_data_since`, both version-bearing — so the client is told, and the age it then renders is exact rather than merely old |
+| **`dark-only`** | rendered only on a `stale` or `offline` seat — on the **desk**, as the receipt age ***no data for 41m***, ticking, beside the *since* timestamp of the same instant; on no other desk and in no other state | D2's own carve-out: such a seat *"by definition is receiving nothing, so its `last_receipt_at` is frozen"* at the server too, and the **transition** into `stale`/`offline` moves `render_state` and `delivery.no_data_since`, both version-bearing — so the client is told, and the age it then renders is exact rather than merely old |
 
 **A third token, and it is deliberately not a marker.** A table row elsewhere in this document may
 *name* one of the ten without rendering any quantity from it: a fixture's contents
@@ -373,7 +378,10 @@ outgrown by a table added where the gate was not looking. What is left outside i
 set difference reaches; the tool prints every prose mention of the ten **in full** on every run, never
 a capped sample of them.
 
-**What that costs, stated rather than hidden.** A `live` desk renders **no receipt age**. The fact one
+**What that costs, stated rather than hidden, and it is a cost on the `live` desk alone.** A `stale`
+or `offline` desk **does** carry the receipt age, exactly as D2's carve-out permits. A `live` desk
+renders **no receipt age** — which is the whole of the cost, because a live seat is the one whose
+receipt age an operator would most like to watch. The fact one
 would carry — *this pipe is alive* — is carried instead by `link_state`, which is version-bearing and
 therefore delivered, and by [§ 5.5](#55-the-clients-own-narration)'s feed status for the client's own
 half of it. The two-age divergence [D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)
@@ -677,8 +685,8 @@ one, so the two documents can be read side by side.
 | the model label | `model_label` | `"claude-opus-5"` | null ⇒ omitted |
 | badge cluster | `badges`, `badges_since` | `["lossy"]` | empty ⇒ nothing rendered, and `badges_since` is then null; a badge appearing is animation [A11](#62-the-animation-table--the-closed-set). `badges_since` is the **cluster's** oldest onset ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), never a per-badge stamp ([§ 7.2](#72-badges-every-member-has-a-render)) |
 | the *reporting disabled* treatment | `enabled` | `true` | `null` before the first heartbeat, which is not the same as `false` and does not render as off |
-| *no data since …* | `delivery.no_data_since` | `null` | non-null only when `link_state ∈ {stale, offline}`; then the desk's label reads *no data since 14:18* rather than a bare glyph ([D2 § 4.5](FLEET-STATE.md#45-link-states)) |
-| the receipt age, and why a live desk carries none | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | **`dark-only`** — one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten, so a held copy freezes on a live seat ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). **The two rendered forms are different strings on different surfaces and neither is the other's shorthand:** the **desk** of a `stale`/`offline` seat renders ***no data since 14:18*** — a timestamp, from the version-bearing `delivery.no_data_since`, the row above — and the ***no data for N*** **age** form is rendered **only** in the drill-down's transport block, from this field, under that block's *as of* stamp and never ticked. No desk renders a receipt age in either form, and no surface renders both forms of one fact at once |
+| *no data since …* | `delivery.no_data_since` | `null` | non-null only when `link_state ∈ {stale, offline}`; then the desk's label reads *no data since 14:18* rather than a bare glyph ([D2 § 4.5](FLEET-STATE.md#45-link-states)). It is **version-bearing**, so the transition into dark is delivered; [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares it *"equals `last_receipt_at`"* there, which is why the row below may tick an age from the same instant |
+| the receipt age, on a dark desk only | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | **`dark-only`** — one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten, so a held copy freezes, which is why a `live` desk renders **no receipt age at all** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). **On a `stale` or `offline` desk it is rendered, as the age ***no data for 41m***, and it ticks** — D2's own carve-out, in its own words: such a seat *"by definition is receiving nothing, so its `last_receipt_at` is frozen"* at the server too, so the age is exact rather than merely old. The desk's label carries the *since* timestamp of that same instant beside it, from the version-bearing `delivery.no_data_since` (the row above), which is what delivered the transition ([§ 7.1](#71-the-render-per-state)). In the drill-down's transport block the same field is **`fetch-fresh`** on **any** seat — stamped, never ticked — which is the one place a `live` seat's receipt age is readable ([§ 5.2](#52-the-drill-down)) |
 | the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
 | the last thing the seat did, and when it says it did it | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
@@ -837,7 +845,7 @@ it.
 | `activity.last_event_time` | the seat-clock line beside the last kind is not drawn |
 | `activity.last_received_at` | **the quiet age is not drawn, and the desk reads *nothing done yet*** — never *nothing done for 0s*, which would claim a measurement at this instant. **This is the reachable case the whole rule is for**: [§ 3.4](#34-a-new-seats-first-appearance)'s provisioned-never-reported seat, and [D2 § 3.1](FLEET-STATE.md#31-the-rule) rule 4's heartbeat-only seat — *"A seat that only heartbeats is quiet, and renders as quiet"* — which is `live`, so its receipt age is `dark-only` and **the quiet age is the only age its desk carries** ([§ 5.1](#51-the-desk), Appendix A T29) |
 | `activity.last_kind` | the *last thing the seat did* line is not drawn. Never *(unknown)*, which is a `render_state` member's word for a different fact |
-| `delivery.last_receipt_at` | the drill-down's transport block renders the receipt age as ***no data yet***, under the block's *as of* stamp. Nothing changes on the desk, because no desk renders a receipt age ([§ 5.1](#51-the-desk)'s `dark-only`). This is the never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline` from |
+| `delivery.last_receipt_at` | the drill-down's transport block renders the receipt age as ***no data yet***, under the block's *as of* stamp (**`fetch-fresh`**). On the desk the **`dark-only`** age has nothing to draw and is not drawn: this is the never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline` from, so `delivery.no_data_since` is null too and [§ 7.1](#71-the-render-per-state)'s `offline` row already reads ***no data yet*** — one string, not a second one beside it |
 | `delivery.last_heartbeat_at` | the heartbeat-freshness line reads *not reported* — **`fetch-fresh`**, in the drill-down's transport block under that block's *as of* stamp ([§ 5.2](#52-the-drill-down)) |
 | `delivery.no_data_since` | on a `stale`/`offline` desk the label reads ***no data yet*** rather than *no data since null* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)); on a `live` desk it is null by construction and the line is not drawn at all |
 | `delivery.clock_skew_ms` | not rendered, and **no seat-clock timestamp gains a skew note** ([§ 5.2](#52-the-drill-down): *rendered whenever non-null*). Never 0, which would claim the two clocks were measured to agree. **`fetch-fresh`** — the non-null render is the panel's, under the transport block's stamp |
@@ -1019,8 +1027,8 @@ distinct render. The order below is the fixed order the lobby's per-floor summar
 | `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
 | `catching_up` | character present, replay marker, desaturated | *replaying history — last event 3h 12m ago (seat clock)* | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
-| `stale` | **empty chair**, desk dimmed | *no data since 14:18* — the seat has been silent past 300 s | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
-| `offline` | empty chair, desk dark | *no data since 13:52* — silent past 900 s. **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` (**`named-not-rendered`**: the null is D2's minting input, not a value this row draws) — the line reads ***no data yet*** instead ([§ 3.4](#34-a-new-seats-first-appearance)), never *no data since null* | none (A2 played on the way in) | removed from the floor |
+| `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 41m* — the seat has been silent past 300 s: the timestamp from the version-bearing `delivery.no_data_since`, the ticking age from `delivery.last_receipt_at` under [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
+| `offline` | empty chair, desk dark | *no data since 13:52 — no data for 2h 06m* — silent past 900 s, the same pair as `stale` above (**`dark-only`** for the age). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none (A2 played on the way in) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) |
 | `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
 
@@ -1180,8 +1188,8 @@ carry. The **set** is what this table publishes; the **order** is D2's and is no
 |---|---|---|
 | `live` | receipt within 300 s, enabled, not draining | none — the pose may be read as *now* ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) row 1) |
 | `catching_up` | the spool is draining: `oldest_unsent_age_s > 300` — D2's own derivation input, **`named-not-rendered`** here | the replay render, desaturated, activity state in the label only ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
-| `stale` | silent past 300 s | empty chair, dimmed, *no data since …* ([§ 7.1](#71-the-render-per-state)) |
-| `offline` | silent past 900 s, or never reported | empty chair, dark, *no data since …* / *no data yet* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)) |
+| `stale` | silent past 300 s | empty chair, dimmed, *no data since … — no data for …* ([§ 7.1](#71-the-render-per-state)) |
+| `offline` | silent past 900 s, or never reported | empty chair, dark, *no data since … — no data for …* / *no data yet* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)) |
 | `disabled` | `enabled == false` — reporting switched off, still heartbeating | *reporting disabled*, monitor off, motion stops ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 
 **`activity_state` — five members**, bounded by [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)
@@ -1456,7 +1464,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 |---|---|
 | `fx-snapshot-4` | [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot, extended to the four `aimla` seats of [§ 3.2](#32-the-desk-slot-function)'s worked assignment. **All four are `link_state: "live"`**, because D2's own `fleet` block in that snapshot reads `"seats_total": 4, "seats_live": 4` and [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object) defines `seats_live` as `link_state == "live"` — so a non-live seat here would contradict the fixture's own fleet object. The three D2 does not publish are stated here rather than left to the builder, because [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s control asserts an **exact** log over all four: `aimla-pm` is D2's published seat verbatim (`working`, `open_calls: 1`, `open_turn: true`, one subagent); **`aimla-impl-1`** is `working` with `open_calls: 1`, `open_turn: true`, `subagents: []`; **`aimla-impl-2`** is `idle` with `open_calls: 0`, `open_turn: false`, `action: null`; **`aimla-review`** is `blocked` with `open_calls: 0`, `open_turn: false`. All four carry `badges: []`, `enabled: true`, a non-null `context` and a non-null `session`; every `activity_state` equals its `render_state`. **No desk in this fixture renders a receipt age** — that readout is `dark-only` ([§ 5.1](#51-the-desk)) and every seat here is `live` |
 | `fx-clear-trace` | `fx-snapshot-4`, then the **ten** deltas of [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to `aimla-pm`, in order, in **both** hook orders D2 runs |
-| `fx-degraded` | one seat per non-`live` render: `catching_up` (with `oldest_unsent_age_s` = 4,000), `stale`, `offline`, `disabled`, `retired`, plus a `live` seat badged `fold_lag` with `derivation.fold_lag_ms` = 117,000. A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
+| `fx-degraded` | one seat per non-`live` render: `catching_up` (with `oldest_unsent_age_s` = 4,000), `stale`, `offline`, `disabled`, `retired`, plus a `live` seat badged `fold_lag` with `derivation.fold_lag_ms` = 117,000. The `stale` and `offline` seats carry `delivery.no_data_since` **equal to** their `delivery.last_receipt_at`, which is what [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares on those two states and what makes the desk's timestamp and its ticking age one instant ([§ 5.1](#51-the-desk)'s `dark-only`, [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded)). A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
 | `fx-interns` | one seat whose `subagents` goes 0 → 8 → 8-with-`subagents_open`-9, including one element with `title: null` |
 | `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
 | `fx-membership` | **three legs.** (a) a delta for a seat absent from `fx-snapshot-4`; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on that install's channel **during** the ADMIT (b) round trip, at `state_version` one above what (b) returns |
@@ -1571,7 +1579,10 @@ all.*
 - **GREEN:** all six desks are pairwise distinguishable by pose/glyph **and** by label line, per
   [§ 7.1](#71-the-render-per-state); the `catching_up` desk renders the replay treatment and its
   activity state appears **only** under a *was:* label; `stale` and `offline` render an empty chair with
-  *no data since …* built from `delivery.no_data_since`; `disabled` renders a present character with the
+  *no data since …* built from `delivery.no_data_since` **and the ticking age *no data for …* beside
+  it, built from `delivery.last_receipt_at`** — the one desk render `dark-only` permits
+  ([§ 5.1](#51-the-desk)); advance the harness clock and assert the age string moved while the
+  timestamp did not; `disabled` renders a present character with the
   monitor off and is **not** the `offline` render; the `fold_lag` seat renders its pose with the hatched
   overlay, the *117 s behind* line, and **no motion** — assert the animation log's `held` row for that
   seat with **`phase: entered`** carries **`motion: false`**, which says the render was entered and
@@ -2146,10 +2157,12 @@ reason to leave two readings live.
     ([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)'s shallow merge). **Blocks:** the two-age divergence
     [D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) calls the
     product, on the **desk**; the drill-down still has it. **In the meantime:**
-    [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s two markers — the receipt age is `dark-only`
-    (rendered on `stale`/`offline` from the version-bearing `delivery.no_data_since`, and on no other
-    desk), and every other rendered value among the ten is `fetch-fresh` (stamped *as of*, never
-    ticked). The `fold_lag` **treatment** is driven off the badge, which is version-bearing, so the
+    [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s two markers — the receipt age is `dark-only`,
+    rendered on a `stale`/`offline` desk **from `delivery.last_receipt_at` itself** and on no other
+    desk, where it ticks exactly because the seat is receiving nothing and the value is frozen at the
+    server too; the version-bearing `delivery.no_data_since` is what *delivers* that transition and
+    supplies the *since* timestamp beside it. Every other rendered value among the ten is
+    `fetch-fresh` (stamped *as of*, never ticked). The `fold_lag` **treatment** is driven off the badge, which is version-bearing, so the
     degradation still announces itself even though its number does not move
     ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)). **Closes it:** any one of —
     making `delivery.last_receipt_at` version-bearing on a coarse edge (it moves on every receipt, so
@@ -2256,7 +2269,7 @@ over it.
 | T26 | § 8.3.1 | `patch` is a shallow merge — a nested object is replaced whole — and `changed[]` is what a client uses to decide **what to animate** | [§ 2.2](#22-connect-snapshot-deltas), [§ 6.2](#62-the-animation-table--the-closed-set) |
 | T27 | § 4.2 | `render_state`'s ten members, and `retired` short-circuiting above both axes | [§ 7.1](#71-the-render-per-state), [§ 3.5](#35-retirement-and-the-only-removal) |
 | T28 | § 8.2.3 | The seat-detail response "is the drill-down's source" and carries the open call list **in full, not capped at 8** | [§ 4.3](#43-the-desk-drill-down-panel), [§ 8](#8-interns--subagent-rendering-and-the-cap) |
-| T29 | § 3.1 | A seat that only heartbeats is quiet and **renders as quiet**: its receipt age near zero, its activity age growing without bound, "**Both are** on the wire, separately, so no consumer has to guess which one it is holding" | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down) — the quiet half is version-bearing and rides the desk; the receipt half is one of § 6.5's ten, so it is `dark-only` on the desk and `fetch-fresh` in the panel ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
+| T29 | § 3.1 | A seat that only heartbeats is quiet and **renders as quiet**: its receipt age near zero, its activity age growing without bound, "**Both are** on the wire, separately, so no consumer has to guess which one it is holding" | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down) — the quiet half is version-bearing and rides the desk; the receipt half is one of § 6.5's ten, so it is `dark-only` on the desk and `fetch-fresh` in the panel. **The obligation's own seat is `live`**, which is where that split costs something and where it is said plainly: a heartbeat-only desk carries the quiet age alone and its receipt age is read in the panel, under a stamp; `dark-only` puts the age on the desk only once the seat has gone `stale` or `offline`, and [§ 14](#14-open-questions-for-the-review-loop) item 12 is the amendment that would close the `live` half |
 | T30 | § 4.4 | `resolution` / `resolution_source` carry `server_ceiling` — the value "exists so the drill-down can say *the server cleared this*" | [§ 14](#14-open-questions-for-the-review-loop) item 9 — on no read surface; this document renders nothing in its place rather than implying the request was answered |
 | T31 | § 4.7 | "Durations **rendered in the drill-down**": the event's own `duration_ms`, else `event_time` arithmetic, **with `duration_source`** | [§ 14](#14-open-questions-for-the-review-loop) item 9 — neither field is on a read surface, so [§ 5.2](#52-the-drill-down) renders no duration it cannot source and no qualifier it cannot check |
 | T32 | § 4.8 | A `tool.end` whose `match` is `synthesized` — a close with no open: the flag "is stored and **rendered in the drill-down**, so the anomaly is a visible flag rather than an absorbed one" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
