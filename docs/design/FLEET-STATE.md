@@ -1185,6 +1185,15 @@ CREATE TABLE sessions (
   last_turn_aborted_count SMALLINT UNSIGNED NULL,
   last_turn_tool_calls    SMALLINT UNSIGNED NULL,
   last_turn_failed_calls  SMALLINT UNSIGNED NULL,
+  last_turn_background_tasks_open SMALLINT UNSIGNED NULL,
+                                    -- The FOURTH component of § 4.3's `L`, and the one card #7337
+                                    -- added to the derivation without adding here (card #7339).
+                                    -- Rule 4 -- the only rule in this document that can produce
+                                    -- `idle` -- tests it, and a `session.end` CLEARS it while the
+                                    -- end reason and aborted count survive their session (§ 4.4).
+                                    -- That asymmetry is why it has to be a projected column: an
+                                    -- immutable `events` row cannot be cleared, and § 6.3 forbids
+                                    -- reading a state-model field out of `data` on a hot path.
   stalled_since DATETIME(3) NULL,
   stalled_cleared_by ENUM('turn_start','session_end','left_live') NULL,
                                     -- one member per exit of § 4.4's `stalled` block, which has

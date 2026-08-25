@@ -41,4 +41,28 @@ final class Ddl
 
         return $column;
     }
+
+    /**
+     * `docs/design/FLEET-STATE.md § 6.4`'s index name on MySQL, table-qualified elsewhere.
+     *
+     * INDEX NAMES ARE PER-TABLE ON MySQL AND PER-DATABASE ON SQLITE, and § 6.4 uses one name on
+     * two tables: `ix_open` is declared on both `calls` ("WHERE seat_ref=? AND closed_at IS NULL")
+     * and `attention_requests`. That is legal MySQL and a hard error on SQLite, which is where the
+     * suite runs — so the *production* engine gets the document's names verbatim, and the test
+     * store gets them qualified. Qualifying everywhere instead would have been simpler and would
+     * have shipped MySQL a set of index names § 6.4 does not contain, which is the one thing that
+     * section says a builder may not do.
+     *
+     * The branch lives here rather than at each call site for the same reason `ascii()` does: the
+     * version of this that gets it wrong is the one where an index is added later and its author
+     * copies the neighbouring line without the branch.
+     */
+    public static function index(string $table, string $name): string
+    {
+        if (in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            return $name;
+        }
+
+        return $table.'_'.$name;
+    }
 }

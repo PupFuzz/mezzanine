@@ -86,7 +86,11 @@ return [
     |
     */
 
-    'table' => env('SESSION_TABLE', 'sessions'),
+    // `web_sessions`, not Laravel's stock `sessions`: `docs/design/FLEET-STATE.md § 6.4` claims
+    // the name `sessions` for the fold's per-session projection and states that its names are
+    // final. The web-session store is the one of the two that is renameable by configuration, so
+    // it is the one that moves (card #7339).
+    'table' => env('SESSION_TABLE', 'web_sessions'),
 
     /*
     |--------------------------------------------------------------------------
