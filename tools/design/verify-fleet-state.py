@@ -33,7 +33,11 @@ where the searcher stopped):
     prefix, or a "constraining D2" note -- so the split is re-derived from those markers rather
     than from any mention of D2 in a section, and a section that mentions D2 without marking an
     obligation is now a failure rather than a silent pass (that gap is what let row S29 be walked
-    past three times).  What is left is the row whose D1-source column names no section number at
+    past three times).  A line that merely CITES D2 rather than constraining it says so with D1
+    section 1's `D2-CITED:` form and is subtracted -- opt-in per line, never by default, an
+    obligation marker on the same line winning, and the line held to naming a place in D2 and to
+    carrying no rule, so the form cannot be worn by an obligation.  What is left is the row whose
+    D1-source column names no section number at
     all: no marker in D1 can reach it, so it is printed per row and read by a human.  The size is
     re-derived every run and printed even at zero -- never written down here, because a count in
     a comment is a number free to disagree with the document.
@@ -773,6 +777,24 @@ else:
     # 6.2 mentioned D2 elsewhere, so a section-level derivation called that row derivable while the
     # obligation itself carried nothing a grep could find.
     OBLIGATION_MARKER = re.compile(r"`D2-MUST`|\bD2:|constraining D2")
+    # A D1 section may legitimately REFERENCE D2 without constraining it, and the obligation
+    # convention alone cannot tell the two apart: section 6.5's `synthesized` row cites D2 § 6.4's
+    # existing `calls.synthesized` column as corroboration that the field belongs in D1's table,
+    # and imposes nothing on D2.  Marking that sentence `D2-MUST` would be FALSE and an Appendix A
+    # row for it would record an obligation that does not exist -- so the predicate, not the
+    # document, was over-matching.  D1 section 1 therefore declares a CITATION form and this walker
+    # honours it, on three conditions that keep it from becoming the escape hatch S29 already cost
+    # this document three passes:
+    #   (1) it is opt-in PER LINE.  An unmarked D2 mention still reds, exactly as before; silence
+    #       is never read as the citation case.
+    #   (2) an obligation marker WINS on a line carrying both, so the citation form can never
+    #       subtract a sentence that already declares itself a rule.
+    #   (3) a citation-marked line must point AT a place in D2 and must not READ as a rule.  That
+    #       last one is the discriminating control: it is what the marker is not allowed to excuse.
+    CITATION_MARKER = re.compile(r"\bD2-CITED:")
+    D2_LOCATION = re.compile(r"FLEET-STATE\.md#|\bD2\s*§\s*\d")
+    DEONTIC = re.compile(r"\b(must|shall|may only|may not|never|required|obliged|forbid\w*)\b",
+                         re.I)
 
     def owning_section(i):
         owner = None
@@ -783,16 +805,32 @@ else:
                     owner = num.group(1)
         return owner if owner and owner.split(".")[0] not in restating else None
 
-    marked, obligation_marked = set(), set()
+    marked, obligation_marked, citation_lines = set(), set(), {}
     for i, line in enumerate(d1_lines):
         if "D2" not in line:
             continue
         owner = owning_section(i)
         if not owner:
             continue
-        marked.add(owner)
         if OBLIGATION_MARKER.search(line):
+            marked.add(owner)
             obligation_marked.add(owner)
+            continue
+        if CITATION_MARKER.search(line):
+            citation_lines.setdefault(owner, []).append(i + 1)
+            if not D2_LOCATION.search(line):
+                fail.append(f"G6: D1 line {i + 1} (§ {owner}) wears `D2-CITED` but names no place "
+                            f"in D2 — a citation cites something. Give it the `D2 § n` or the "
+                            f"`FLEET-STATE.md#` link it is citing, or it is not a citation and the "
+                            f"marker is the wrong one")
+            if DEONTIC.search(strip_code(line)):
+                fail.append(f"G6: D1 line {i + 1} (§ {owner}) wears `D2-CITED` and states a rule — "
+                            f"the citation form says a sentence REFERENCES D2, and it excuses "
+                            f"nothing that CONSTRAINS it. Mark the obligation with `D2-MUST`, a "
+                            f"`D2:` prefix or a \"constraining D2\" note and give it an Appendix A "
+                            f"row; split the line if it is doing both at once")
+            continue
+        marked.add(owner)
     if len(marked) < 5:
         fail.append(f"G6 CONTROL: only {len(marked)} D1 sections carry the `D2` marker — the "
                     f"section walker is broken and this half of the check is vacuous")
@@ -800,6 +838,24 @@ else:
         fail.append("G6 CONTROL: no D1 section carries an obligation-level marker — D1 section 1's "
                     "convention is either gone or spelled differently, and the split below would "
                     "then report every row as manual residue for the wrong reason")
+    # This gate SUBTRACTS lines on the strength of a convention D1 states in prose, so the two
+    # spellings must be held together: a marker renamed in D1 and not here reds nothing and forgives
+    # everything (canon: a restatement gets a drift check, not a hand re-sync).  Checked over the
+    # whole vocabulary, not only the form this round added.
+    d1_sec1 = next(("\n".join(d1_lines[h[3]:h[4]]) for h in d1_heads
+                    if h[0] == 2 and re.match(r"^1\.\s", h[1])), "")
+    if not d1_sec1:
+        fail.append("G6 CONTROL: D1 section 1 not found — the marker convention this gate reads its "
+                    "populations through cannot be checked against the document that declares it")
+    else:
+        for lit, what in (("D2-MUST", "the numbered-constraint marker"),
+                          ("D2:", "the obligation prefix"),
+                          ("constraining D2", "the obligation note"),
+                          ("D2-CITED", "the citation form, which SUBTRACTS lines from this gate")):
+            if lit not in d1_sec1:
+                fail.append(f"G6 CONTROL: D1 § 1 no longer declares `{lit}` ({what}), but this tool "
+                            f"still greps for it. The convention and the checker have drifted, and "
+                            f"a form the document does not declare is one a reader cannot honour")
     # The convention is stated as a rule over D1, so it is checked as one: a section that names D2
     # without marking WHICH sentence is the obligation is the S29 shape, and the coverage check
     # underneath cannot see it -- section 6.2 was cited, so it stayed green over a row nothing
@@ -1187,7 +1243,10 @@ print(f"G6  Appendix A: {n_must} + {n_further} rows "
       f"D1 sections mentioning D2: {len(marked) if appA else 0}, of which carrying a marker on an "
       f"obligation sentence: {len(obligation_marked) if appA else 0} "
       f"(D1's restating sections {sorted(restating) if appA else []} excluded: an acceptance "
-      f"test and a decision register restate obligations imposed elsewhere)")
+      f"test and a decision register restate obligations imposed elsewhere; sections whose only "
+      f"D2 prose is a `D2-CITED` reference excluded: "
+      f"{sorted(set(citation_lines) - marked) if appA else []} — a citation of what D2 already "
+      f"contains imposes nothing, so it owes no marker and no Appendix A row)")
 # The residue is PRINTED, never folded into the pass count, for the same reason G5's is: a count
 # of rows a tool did not check reports where the searcher stopped.  It is printed even at zero,
 # so "no residue" is a measurement someone made rather than a line that vanished.
