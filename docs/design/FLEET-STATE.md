@@ -1068,6 +1068,7 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 | `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on a hot path; it is kept for the drill-down, for replay and for forensics |
 | String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MySQL counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
 | Nullability | a column is `NULL` only where D1's field table says the wire value is nullable, or where the fact genuinely does not exist yet | a nullable column that "means zero" is a read-time fallback, which is a defect to trace to its write site |
+| Wire integers | every integer column the fold writes is `UNSIGNED`, and the fold reads a wire integer through **one** range rule applied after the encoding is resolved: a JSON number and its string spelling are the same value, and a value outside `0 … PHP_INT_MAX` is `NULL` and never a raise | [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10 does not type-check per-kind `data` fields, so the fold is the first plane that reads them and a reporter bug can put any scalar on any of them. Two encoding-specific tests are two rules free to disagree — and the disagreement is invisible, because it takes a reporter that writes the field the other way. `NULL` and not a raise because every one of these columns is nullable and [§ 6.5](#65-the-fold)'s poison-event rule would otherwise quarantine a whole event over one out-of-range field |
 
 ### 6.4 DDL
 
@@ -1185,6 +1186,15 @@ CREATE TABLE sessions (
   last_turn_aborted_count SMALLINT UNSIGNED NULL,
   last_turn_tool_calls    SMALLINT UNSIGNED NULL,
   last_turn_failed_calls  SMALLINT UNSIGNED NULL,
+  last_turn_background_tasks_open SMALLINT UNSIGNED NULL,
+                                    -- The FOURTH component of § 4.3's `L`, and the one card #7337
+                                    -- added to the derivation without adding here (card #7339).
+                                    -- Rule 4 -- the only rule in this document that can produce
+                                    -- `idle` -- tests it, and a `session.end` CLEARS it while the
+                                    -- end reason and aborted count survive their session (§ 4.4).
+                                    -- That asymmetry is why it has to be a projected column: an
+                                    -- immutable `events` row cannot be cleared, and § 6.3 forbids
+                                    -- reading a state-model field out of `data` on a hot path.
   stalled_since DATETIME(3) NULL,
   stalled_cleared_by ENUM('turn_start','session_end','left_live') NULL,
                                     -- one member per exit of § 4.4's `stalled` block, which has
@@ -1465,6 +1475,14 @@ loop:
        recompute derive_activity() + link_state + render_state
        if any VERSION-BEARING field changed (the set is named below): state_version += 1
        if render_state changed:                    INSERT seat_state_transitions
+                        -- BOTH CONDITIONS COME OFF ONE PAIR OF SNAPSHOTS, and a row is never
+                        -- written at a version that was not bumped for it: render_state IS a
+                        -- member of the version-bearing set below, so the second condition is a
+                        -- SUBSET of the first, and a writer that owes a row for a cause other than
+                        -- a render change (the poison-event rule below) bumps for that row too.
+                        -- Otherwise the row sits at a version the client already holds and § 8.5's
+                        -- `delta.state_version == local + 1` rule can never deliver it: the
+                        -- drill-down would have the row and the feed would have nothing.
        if rows is non-empty:
          UPDATE seat_state SET fold_cursor_event_id    = last row's id,
                                fold_cursor_received_at = last row's received_at, ...
@@ -1642,6 +1660,15 @@ leave a client's action field permanently stale ([§ 10](#10-worked-example-the-
 has five such changes inside one `working` state). A transition row, conversely, exists to answer *why
 did this desk change state*, and one row per tool call would bury that in noise.
 
+**Different populations, but NESTED ones: every transition row is written at a version bumped for it.**
+`render_state` is on the version-bearing side of the subtraction, so a render change is a version
+change by construction and the row lands at the new value — and the one writer that owes a row
+without a render change, the poison-event rule below, bumps for its row as well. The nesting is the
+property, not the two conditions: a row at a version the client already holds is unreachable through
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s `delta.state_version == local + 1`
+rule, so the desk's drill-down would record a change the feed could never deliver. An implementer
+computing the two conditions from two separate reads has no way to see that they have diverged.
+
 **Arrival order for visiting, `(event_time, seq_epoch, seq)` for applying.** The fold *reads* in
 `events.id` order because `seq` cannot carry a cursor at all: it can have permanent holes
 ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over `seq` could wait
@@ -1704,7 +1731,10 @@ seat, a poison event costs one desk, and that desk says so (`derivation_error`).
 **The poison-event rule.** If `project()` raises, the transaction is rolled back, the event is retried
 alone once, and on a second raise the cursor advances past it, `fold_error` increments,
 `seat_state.fold_errors` increments, the seat badges `derivation_error` and a transition row records the
-cause. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
+cause — **at a bumped `state_version`, like every other transition row**. A repeat error on a seat
+already badged `derivation_error` moves nothing version-bearing, so without that bump its row would be
+written at the version the last one already announced and no client would ever be told the event was
+skipped. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
 which is only true because the log is the source of truth and the projections are derived.
 
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
@@ -1785,8 +1815,10 @@ first week of live data.
 | a large fleet (50 seats) | **~6.8 GB** | × 50 |
 
 **Transitions are sized from the render-change rate, not from the delta rate**, and the two are
-different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written only when
-`render_state` changes, while a delta is emitted whenever a **version-bearing** field of the
+different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written when
+`render_state` changes — plus the rows a rule writes for its own cause with no render change, which
+are rare enough (a fold error, an operator retire) to leave the sizing below unmoved — while a delta
+is emitted whenever a **version-bearing** field of the
 [§ 8.2.1](#821-the-seat-state-object) object moves ([§ 6.5](#65-the-fold) names the set). At D1's ceiling a seat's render changes are
 ~1,200/day of turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) plus
 ~200/day of attention edges plus a handful of staleness and ceiling transitions — **~1,400/seat/day**,
@@ -1868,7 +1900,7 @@ is now re-derived from D1 on every run in both places.
 | `duplicate_open` | `seat_counters` | seat detail | — |
 | `late_open` | `seat_counters` | seat detail | — |
 | `late_completion` | `seat_counters`; the call also carries `late_completed` | seat detail | — (a **design signal**, read as a rate, not a badge) |
-| `late_close_cross_session` | `seat_counters`; the call carries `cross_session_close_refused` | seat detail | — **never a badge, and never folded into `late_completion`**: on this harness every `/clear` that kills a call produces one ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)), so it tracks `/clear` volume rather than a defect. Folding the two would peg the eagerness signal above it at one-per-clear forever |
+| `late_close_cross_session` | `seat_counters` | seat detail | — **never a badge, and never folded into `late_completion`**: on this harness every `/clear` that kills a call produces one ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)), so it tracks `/clear` volume rather than a defect. Folding the two would peg the eagerness signal above it at one-per-clear forever |
 | `orphan_timeout_closes` | `seat_counters`; the call carries `abort_reason: orphan_timeout` | seat detail | — |
 | `session_reopened` | `seat_counters`; `sessions.reopened` | seat detail | — |
 | `seq_gap` | `seat_counters` | snapshot (badge) + seat detail | **`seq_gap`** — this plane's own badge ([§ 7.2](#72-this-planes-own-counters-and-badges)), **never** D1's `lossy`; see the note below |

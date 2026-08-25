@@ -10,6 +10,25 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7339** — PART A of the fleet-state card: the store schema and **the fold** — everything
+  that turns accepted events into seat state. Creates `docs/design/FLEET-STATE.md § 6.4`'s
+  remaining projection tables (`sessions`, `calls`, `attention_requests`,
+  `seat_state_transitions`); adds `App\Fold\*` — § 4.3's derivation, § 4.5's link cascade,
+  § 4.2's collapse, § 6.5's per-seat claim / visibility lag / purged-window branch /
+  poison-event rule, and a projection for every one of the fourteen kinds the ingest accepts —
+  plus `mezzanine:fold` (§ 2.1) and `mezzanine:rebuild` (§ 6.6), which shares the fold's
+  `project()` rather than a copy of it. Fourteen acceptance tests from § 11 (AT-D2-1, -2 both
+  hook orders and Case β, -3, -4, -5, -6, -9, -10, -11, -17, -22), each seen RED under its own
+  named mutation before green, with the mutation's landing proved by `git diff` rather than
+  assumed. **Doc-sync: § 6.4's `sessions` gains `last_turn_background_tasks_open`** — the fourth
+  component of § 4.3's `L`, which card #7337 added to the derivation and not to the DDL; rule 4,
+  the only rule that can mint `idle`, reads it. ⚠ Written for both engines and tested on SQLite:
+  `FOR UPDATE SKIP LOCKED`, `ascii_bin`, `ON DUPLICATE KEY`, `ALGORITHM=INSTANT` and
+  `DATETIME(3)` are UNEXERCISED, and `SKIP LOCKED` is the fold's concurrency correctness
+  (card #7523, the store host, is the operator dependency that closes this). The WebSocket delta
+  feed and the REST snapshot are Part B; the sweeper, `mezzanine:purge` and `mezzanine:retire`
+  are claimed by neither part.
+
 - **card#7686** — `tools/design/verify-fleet-state.py`'s G6 was RED on `dev`, and the defect was in
   the guard: its predicate read **any** `D2` mention in a D1 section as an unmarked obligation, so
   card#7338's `§ 6.5` doc-sync — which *cites* D2 § 6.4's existing `calls.synthesized` column as
