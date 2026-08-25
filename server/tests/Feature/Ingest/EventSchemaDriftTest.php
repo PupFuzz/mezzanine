@@ -127,75 +127,26 @@ class EventSchemaDriftTest extends TestCase
 
     public static function enumMemberRows(): array
     {
-        $doc = (string) file_get_contents(self::DOC);
         $cases = [];
 
-        // Section 6.1–6.14, each `### 6.N \`kind\`` down to the next heading.
-        preg_match_all('/^### 6\.\d+ `([a-z]+\.[a-z_]+)`\n(.*?)(?=\n### |\n## )/ms', $doc, $sections, PREG_SET_ORDER);
-
-        foreach ($sections as [, $kind, $body]) {
-            foreach (explode("\n", $body) as $line) {
-                if (! str_starts_with(trim($line), '|')) {
-                    continue;
-                }
-
-                // Split into cells rather than pattern-matching the whole row. The tables do not
-                // all have the same columns — § 6.11's carries an extra "Source key in the
-                // statusLine payload" — so a regex that assumed a column count silently skipped
-                // `context.sample`'s two enums and reported a clean run over 16 of 19 fields.
-                $cells = array_map(trim(...), explode('|', trim($line, "| \t")));
-
-                if (count($cells) < 3 || ! preg_match('/^`([a-z_]+)`$/', $cells[0], $name)) {
-                    continue;
-                }
-
-                $typeCell = null;
-
-                foreach ($cells as $i => $cell) {
-                    if ($cell === 'enum' || $cell === 'array\<enum\>' || $cell === 'array<enum>') {
-                        $typeCell = $i;
-
-                        break;
-                    }
-                }
-
-                if ($typeCell === null) {
-                    continue;
-                }
-
-                $rest = implode('|', array_slice($cells, $typeCell + 1));
-
-                preg_match_all('/`([a-z_]+)`/', $rest, $members);
-
-                // `null` in a bounds cell is NULLABILITY, not a member — § 6.5's `agent_scope`
-                // reads "`main` \| `subagent` \| `null`" and § 6.4's `api_error_type` opens with
-                // "`null` unless `end_reason == "api_error"`". Treating it as a member would have
-                // put the string "null" into three enum sets, and the registry would then have
-                // accepted the literal string `"null"` as a valid `agent_scope`.
-                $members = array_values(array_diff(array_unique($members[1]), ['null']));
-
-                if ($members === []) {
-                    // A row that defers to another section carries no members of its own. § 6.8
-                    // does this for all three of its enums — "by reference and never restated —
-                    // this event is a second projection of that call's close, so a value set
-                    // written twice is a value set free to drift" — and § 6.13's
-                    // `resolution_source` says "as the table above". The referenced rows carry
-                    // the values, so there is nothing to check here; `deferredEnumRows()` is what
-                    // keeps them accounted for rather than silently absent.
-                    continue;
-                }
-
-                $cases["{$kind}.{$name[1]}"] = [$kind, $name[1], $members];
+        foreach (self::enumRows() as [$kind, $field, $members]) {
+            // A row with no members of its own defers to another section: § 6.8 does it for all
+            // three of its enums — "by reference and never restated — this event is a second
+            // projection of that call's close, so a value set written twice is a value set free
+            // to drift" — and § 6.13's `resolution_source` says "as the table above". The
+            // referenced rows carry the values; `deferredEnumRows()` accounts for these.
+            if ($members !== []) {
+                $cases["{$kind}.{$field}"] = [$kind, $field, $members];
             }
         }
 
         // § 9.3's own table is `reporter.heartbeat.degraded`'s value set — "defined here and
         // nowhere else", because an earlier draft typed the field `array<enum>` and pointed at a
         // section that had no such list.
-        preg_match('/#### `reporter\.heartbeat\.degraded`.*?\n\n(\|\s*Member.*?)\n\n/ms', $doc, $degradedTable);
+        $doc = (string) file_get_contents(self::DOC);
 
-        if (isset($degradedTable[1])) {
-            preg_match_all('/^\|\s*`([a-z_]+)`\s*\|/m', $degradedTable[1], $m);
+        if (preg_match('/#### `reporter\.heartbeat\.degraded`.*?\n\n(\|\s*Member.*?)\n\n/ms', $doc, $table)) {
+            preg_match_all('/^\|\s*`([a-z_]+)`\s*\|/m', $table[1], $m);
             $cases['reporter.heartbeat.degraded'] = ['reporter.heartbeat', 'degraded', $m[1]];
         }
 
@@ -308,10 +259,18 @@ class EventSchemaDriftTest extends TestCase
      *
      * @return list<string>
      */
-    public static function deferredEnumRows(): array
+    /**
+     * Walk every enum-typed row of § 6's `data` field tables once.
+     *
+     * Extracted at the SECOND caller rather than the Nth: `enumMemberRows()` and
+     * `deferredEnumRows()` are the two halves of one partition, and two copies of the parser that
+     * defines that partition is two chances for the halves to stop partitioning anything.
+     *
+     * @return \Generator<array{string, string, list<string>}> kind, field, members (may be empty)
+     */
+    private static function enumRows(): \Generator
     {
         $doc = (string) file_get_contents(self::DOC);
-        $deferred = [];
 
         preg_match_all('/^### 6\.\d+ `([a-z]+\.[a-z_]+)`\n(.*?)(?=\n### |\n## )/ms', $doc, $sections, PREG_SET_ORDER);
 
@@ -321,6 +280,10 @@ class EventSchemaDriftTest extends TestCase
                     continue;
                 }
 
+                // Split into cells rather than pattern-matching the whole row. The tables do not
+                // all have the same columns — § 6.11's carries an extra "Source key in the
+                // statusLine payload" — so a regex that assumed a column count silently skipped
+                // `context.sample`'s two enums and reported a clean run over 16 of 19 fields.
                 $cells = array_map(trim(...), explode('|', trim($line, "| \t")));
 
                 if (count($cells) < 3 || ! preg_match('/^`([a-z_]+)`$/', $cells[0], $name)) {
@@ -341,13 +304,25 @@ class EventSchemaDriftTest extends TestCase
                     continue;
                 }
 
-                $rest = implode('|', array_slice($cells, $typeCell + 1));
+                preg_match_all('/`([a-z_]+)`/', implode('|', array_slice($cells, $typeCell + 1)), $members);
 
-                preg_match_all('/`([a-z_]+)`/', $rest, $members);
+                // `null` in a bounds cell is NULLABILITY, not a member — § 6.5's `agent_scope`
+                // reads "`main` \| `subagent` \| `null`" and § 6.4's `api_error_type` opens with
+                // "`null` unless `end_reason == "api_error"`". Treating it as a member would put
+                // the string "null" into three enum sets, and the registry would then accept the
+                // literal `"null"` as a valid `agent_scope`.
+                yield [$kind, $name[1], array_values(array_diff(array_unique($members[1]), ['null']))];
+            }
+        }
+    }
 
-                if (array_diff(array_unique($members[1]), ['null']) === []) {
-                    $deferred[] = "{$kind}.{$name[1]}";
-                }
+    public static function deferredEnumRows(): array
+    {
+        $deferred = [];
+
+        foreach (self::enumRows() as [$kind, $field, $members]) {
+            if ($members === []) {
+                $deferred[] = "{$kind}.{$field}";
             }
         }
 
