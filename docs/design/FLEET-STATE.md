@@ -1900,7 +1900,7 @@ is now re-derived from D1 on every run in both places.
 | `duplicate_open` | `seat_counters` | seat detail | — |
 | `late_open` | `seat_counters` | seat detail | — |
 | `late_completion` | `seat_counters`; the call also carries `late_completed` | seat detail | — (a **design signal**, read as a rate, not a badge) |
-| `late_close_cross_session` | `seat_counters`; the call carries `cross_session_close_refused` | seat detail | — **never a badge, and never folded into `late_completion`**: on this harness every `/clear` that kills a call produces one ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)), so it tracks `/clear` volume rather than a defect. Folding the two would peg the eagerness signal above it at one-per-clear forever |
+| `late_close_cross_session` | `seat_counters` | seat detail | — **never a badge, and never folded into `late_completion`**: on this harness every `/clear` that kills a call produces one ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)), so it tracks `/clear` volume rather than a defect. Folding the two would peg the eagerness signal above it at one-per-clear forever |
 | `orphan_timeout_closes` | `seat_counters`; the call carries `abort_reason: orphan_timeout` | seat detail | — |
 | `session_reopened` | `seat_counters`; `sessions.reopened` | seat detail | — |
 | `seq_gap` | `seat_counters` | snapshot (badge) + seat detail | **`seq_gap`** — this plane's own badge ([§ 7.2](#72-this-planes-own-counters-and-badges)), **never** D1's `lossy`; see the note below |
