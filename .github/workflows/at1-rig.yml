@@ -1,0 +1,52 @@
+# at1-rig.yml — the AT-1 rig's hermetic half, on every change to the rig or to the reporter it
+# plants into.
+#
+# WHY IT EXISTS. `tools/at1-kill-vs-complete/` proves D1's headline test (AT-1), and the half that
+# needs a credential and a terminal cannot run here. The half that CAN — reading a stream and
+# deciding what a floor would render — is where a silent regression hides, because its failure mode
+# is a rig that still runs, still prints, and has stopped discriminating.
+#
+# WHAT A GREEN HERE MEANS. `selftest.py` asserts every reading against a control that must come out
+# the OTHER way on the same input: the amended idle rule against the pre-amendment one, the ledger's
+# cross-session refusal against the override it replaced, and D1 § 8.1's naive turn-boundary reading
+# against both. If the controls ever stop disagreeing, the job fails even though nothing "broke" —
+# which is the only way a rig can report that it has become decoration.
+#
+# WHY THE REPORTER IS IN THE PATH FILTER, AND IT IS NOT A COURTESY. `plant.py` binds to a LITERAL
+# line of `fleet-reporter.js` to build AT-1's RED copy. A refactor that moves that line leaves a
+# plant that applies nowhere — every future RED run would come out looking like a GREEN. The plant
+# asserts its anchor is unique and raises otherwise, and this is where that assertion should fire:
+# in the PR that moved the line, not months later in a run someone is trusting.
+
+name: AT-1 rig
+
+on:
+  pull_request:
+    paths:
+      - 'tools/at1-kill-vs-complete/**'
+      - '.github/workflows/at1-rig.yml'
+      - 'fleet-reporter/fleet-reporter.js'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'tools/at1-kill-vs-complete/**'
+      - '.github/workflows/at1-rig.yml'
+      - 'fleet-reporter/fleet-reporter.js'
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # No setup-python, matching card-token-lint.yml and fleet-reporter.yml: the runner's stock
+      # python3 is the whole dependency, so there is no third-party action pin to keep honest.
+      - name: Record the interpreter
+        run: python3 --version
+
+      - name: Rig selftest (hermetic — no credential, no session, no network)
+        run: python3 tools/at1-kill-vs-complete/selftest.py
