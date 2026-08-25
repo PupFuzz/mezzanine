@@ -805,7 +805,7 @@ else:
                     owner = num.group(1)
         return owner if owner and owner.split(".")[0] not in restating else None
 
-    marked, obligation_marked, citation_lines = set(), set(), {}
+    marked, obligation_marked, citation_only = set(), set(), set()
     for i, line in enumerate(d1_lines):
         if "D2" not in line:
             continue
@@ -817,7 +817,7 @@ else:
             obligation_marked.add(owner)
             continue
         if CITATION_MARKER.search(line):
-            citation_lines.setdefault(owner, []).append(i + 1)
+            citation_only.add(owner)
             if not D2_LOCATION.search(line):
                 fail.append(f"G6: D1 line {i + 1} (§ {owner}) wears `D2-CITED` but names no place "
                             f"in D2 — a citation cites something. Give it the `D2 § n` or the "
@@ -1245,7 +1245,7 @@ print(f"G6  Appendix A: {n_must} + {n_further} rows "
       f"(D1's restating sections {sorted(restating) if appA else []} excluded: an acceptance "
       f"test and a decision register restate obligations imposed elsewhere; sections whose only "
       f"D2 prose is a `D2-CITED` reference excluded: "
-      f"{sorted(set(citation_lines) - marked) if appA else []} — a citation of what D2 already "
+      f"{sorted(citation_only - marked) if appA else []} — a citation of what D2 already "
       f"contains imposes nothing, so it owes no marker and no Appendix A row)")
 # The residue is PRINTED, never folded into the pass count, for the same reason G5's is: a count
 # of rows a tool did not check reports where the searcher stopped.  It is printed even at zero,

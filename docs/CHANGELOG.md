@@ -10,6 +10,20 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7685** — `tools/design/verify-fleet-state.py`'s G6 was RED on `dev`, and the defect was in
+  the guard: its predicate read **any** `D2` mention in a D1 section as an unmarked obligation, so
+  card#7338's `§ 6.5` doc-sync — which *cites* D2 § 6.4's existing `calls.synthesized` column as
+  corroboration, and imposes nothing — was flagged as an obligation with no marker and no Appendix A
+  row. Marking it `D2-MUST` would have been false and an Appendix A row would have recorded an
+  obligation that does not exist. `docs/design/EVENT-SCHEMA.md § 1` now declares a fourth form,
+  **`D2-CITED:`**, for a sentence that references D2 without constraining it, and G6 subtracts those
+  lines. It is the one form that subtracts, so it is fenced three ways and each was seen to fail on a
+  plant: an **unmarked** D2 mention still reds (silence is never the citation case — the S29 shape is
+  untouched), an obligation marker on the same line wins over it, and a `D2-CITED:` line must name
+  the place in D2 it cites and must carry no deontic language — an obligation cannot pass by wearing
+  the marker. A new CONTROL holds D1 § 1's declared vocabulary and the tool's greps together, so a
+  form renamed in the document and not in the checker reds instead of silently forgiving. Appendix
+  A's derived 28/1 split is unchanged.
 - **card#7338** — The batch ingest endpoint: `POST /api/ingest/events` and
   `GET /api/ingest/health`, implementing `docs/design/EVENT-SCHEMA.md § 12` — the eleven
   validation steps in their stated order, the error bodies of § 12.2, the four rate limits of
