@@ -75,8 +75,9 @@ final class FoldEvent
      * ONE RANGE RULE, APPLIED TO BOTH WIRE ENCODINGS OF THE SAME VALUE.
      *
      * A JSON number and its string spelling are the same value, so they get the same answer: the
-     * string is turned into an int FIRST (and only when it survives the round trip exactly), and the
-     * single range test below then runs on the int whichever way it arrived. The predecessor of this
+     * string is turned into an int FIRST — and only when it is a whole integer inside PHP's int
+     * range, so nothing is clamped, though `filter_var` does tolerate surrounding whitespace — and
+     * the single range test below then runs on the int whichever way it arrived. The predecessor of this
      * method tested the two encodings separately — `is_int($value) || ctype_digit($value)` — and the
      * two tests disagreed in both directions: `ctype_digit("-5000")` is false so the string was
      * refused while `is_int(-5000)` is true so the number was ACCEPTED and written to an UNSIGNED
