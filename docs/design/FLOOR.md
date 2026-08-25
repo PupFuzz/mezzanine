@@ -1444,7 +1444,11 @@ never vendored.* This section turns that decision into obligations an implemente
 
 ### 10.1 The manifest, and the two gates
 
-Every asset file in the repository has a row in **`ATTRIBUTION.md`**, and the row carries all of:
+Every asset file in the repository has a row in **`docs/ATTRIBUTION.md`**, and the row carries all of:
+*(The directory is `docs/` because `docs/PLAN.md § 0` **D-09** reserves the repository root for AI-parsed
+`CLAUDE*.md` files and puts human-readable documents under `docs/`; `README.md` already writes the path that
+way. Written in full here because this document names `resources/characters/LINEAGE.md` in full and the bare
+filename beside it read as a root path — card#7340.)*
 
 | Column | Example | Why it is required |
 |---|---|---|
@@ -1456,7 +1460,7 @@ Every asset file in the repository has a row in **`ATTRIBUTION.md`**, and the ro
 | SHA-256 of the file as vendored | `a3f1…` | so a later edit or replacement of the bytes is visible without re-reading the source |
 
 **Gate 1 — every asset has a row.** The build fails when any file under the asset trees has no
-`ATTRIBUTION.md` row, or when a row's SHA-256 does not match the file. A missing row is an asset whose
+`docs/ATTRIBUTION.md` row, or when a row's SHA-256 does not match the file. A missing row is an asset whose
 licence nobody recorded, which is the only way an incompatible asset ever ships.
 
 **Gate 2 — no vendored character art.** The character sprites are **generated**, not vendored
@@ -1500,7 +1504,7 @@ the repository cannot honour.
   repository URL, the **commit SHA** the port was taken from, the files ported, the MIT copyright line
   and licence text as required by MIT, and, explicitly, **what was deliberately not taken and why**.
   The last item is the one that makes a later reader able to tell a port from a fork.
-- **The MIT notice ships with the distribution**, in `ATTRIBUTION.md` and in the lineage file. MIT's
+- **The MIT notice ships with the distribution**, in `docs/ATTRIBUTION.md` and in the lineage file. MIT's
   obligation is to reproduce the copyright notice and permission notice; a link is not a reproduction.
 - **The seed is the seat's identity.** A character is generated from `(install_id, seat_id)`
   ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so a seat looks the same on every browser and
@@ -2012,7 +2016,7 @@ free, which is why that clause is asserted by the half that has a tree to read.*
 
 - **Build — the manifest half:** run the asset gates against the repository
   ([§ 10.1](#101-the-manifest-and-the-two-gates)). **Reads:** the **provenance gates**.
-- **GREEN — the manifest half:** every asset file has an `ATTRIBUTION.md` row; every row's SHA-256
+- **GREEN — the manifest half:** every asset file has a `docs/ATTRIBUTION.md` row; every row's SHA-256
   matches its file; every licence identifier is in the allowlist.
 - **Build — the lineage half:** run the same gates once the port has landed
   ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
@@ -2309,7 +2313,7 @@ review can reverse it deliberately rather than discover it later.
 | 14 | **The floor requires 1,280 × 800 and falls back to a list, not a scaled floor** | scale the map to the viewport | A floor whose nameplates and badges are unreadable shows state without letting anyone read it, which is worse than the honest list of the same facts | small viewports get no floor. The list carries every fact, and the number is re-derived once a desk has a measured width |
 | 15 | **No framework, renderer or bundler is specified** | pin the stack so the implementer has one less decision | None of this document's properties depends on one, and a spec that pinned a stack would expire with it. What *is* pinned is the asset pipeline, because that is where a licence violation enters | two implementers could make different stack choices. Neither can make different **honesty** choices, which is what this document is for |
 | 16 | **Character art is generated from the seat key, never vendored** ([§ 10.2](#102-characters-the-munder-difflin-port)) | vendor a sprite sheet and map seats onto it | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets. Generating also makes a seat's appearance a function of its identity, so it survives reloads with no stored state — the same property the desk slot has | the generator must be ported before any character renders, and Gate 2 refuses the shortcut ([§ 10.1](#101-the-manifest-and-the-two-gates)) |
-| 17 | **Provenance is a build gate, not a document** | keep `ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
+| 17 | **Provenance is a build gate, not a document** | keep `docs/ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the socket, since an authorized handshake opened it | D2 refuses machine tokens on the socket precisely because an open connection has no revocation story — and the browser's session has the same property, which D2 does not address ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
 | 20 | **The animation table carries two classes — `edge` and `held` — and the animation log records them under different causality rules, a `held` render's entry and exit paired by an `episode_id` rather than by the animation and seat.** The class split is [§ 6.2](#62-the-animation-table--the-closed-set)'s and the log schema is [§ 11](#11-acceptance-tests)'s; this row records the decision and states neither a second time | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and four more fields in the log (`phase`, `episode_id`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in every field, from which *for how long* was unrecoverable. **`episode_id` is the third such widening and the one that ends the sequence**, because it is the first to give the log an identity for the thing the questions are actually asked about. Each of the first two — the class split, then `phase` — fixed the shape of a row while leaving the log keyed on `(animation_id, install_id, seat_id)`, a triple that is not unique per episode on this document's own headline fixture: `fx-clear-trace` enters A4 twice on one seat, so *which exit ended which entry* and *for how long* had no answer the log could give. Adding a fourth field to the row was cheaper than the alternative on offer, which was to declare the fixture out of scope for the pairing predicate and leave the headline test asserting less than it claims |
@@ -2403,15 +2407,32 @@ reason to leave two readings live.
    already owns. **Closes it:** an operator ruling before a second install exists, because the answer
    changes what a floor route means.
 
-7. **⇢ Operator / review — the art sources are not named in this repository.**
-   D-07 names *CC0 tilesets* and *munder-difflin's procedural generator* and this repository records no
-   tileset, no upstream URL and no commit. **Blocks:** card #7340 (the character port) cannot start, and
-   the 1,280 × 800 viewport floor cannot be re-derived from a measured desk width
-   ([§ 12](#12-every-number-and-where-it-comes-from)). **In the meantime:** the licence allowlist, the
-   manifest and both gates are specified and testable without knowing which assets will be listed
-   ([§ 10](#10-art-and-assets--provenance-as-a-gate)). **Closes it:** the upstream repository and commit
-   for the generator, and the chosen tileset — recorded in `ATTRIBUTION.md` and
-   `resources/characters/LINEAGE.md`, not in a message.
+7. **◑ HALF CLOSED — the generator's source is recorded; the tileset is still unnamed.**
+   D-07 names *CC0 tilesets* and *munder-difflin's procedural generator*, and this item was opened
+   because the repository recorded neither. **It is closed for the generator and open for the tileset,
+   and it stays one item because it is one question — *which upstream art does D-07 mean* — asked of two
+   assets.** Splitting it would file one class twice and would let the closed half's evidence read as
+   though it settled the open one.
+
+   **✅ The generator half, closed by card#7340 (2026-08-25).** The upstream repository
+   (`https://github.com/chaitanyagiri/munder-difflin`), the **pinned commit**
+   `eb3df9fa70b63b68495a965c45f158105e87b2e6`, the MIT licence and its reproduced notice are recorded
+   in `resources/characters/LINEAGE.md` and `docs/ATTRIBUTION.md` — **in the repository, not in a
+   message**, which is what this item asked for. That lineage file also records what was deliberately
+   **not** taken and why: the LimeZu-bound sprite path, three ISC-derived files (ISC is permissive and
+   MIT-compatible and is still **not** in [§ 10.1](#101-the-manifest-and-the-two-gates)'s closed
+   allowlist, so taking them is an operator decision nobody has made), and The Office's cast identities.
+
+   **⇢ The tileset half, still open, still an operator/review question.** No tileset is chosen and none
+   is recorded. **Still blocks:** card #7341 (floor v1), and the 1,280 × 800 viewport floor still cannot
+   be re-derived from a measured desk width ([§ 12](#12-every-number-and-where-it-comes-from)) —
+   that derivation needs a tile size, which is the half that did not close. **In the meantime:** the
+   licence allowlist, the manifest and both gates are specified, built and seen to fail
+   ([§ 10](#10-art-and-assets--provenance-as-a-gate)), and the asset root is the repo-root `resources/`
+   **entire**, so whichever directory the tileset lands in is covered by Gate 1 on the day it lands —
+   there is no tree list to remember to extend first, and a tileset with no row fails the build.
+   **Closes it:** the chosen CC0 tileset, recorded in `docs/ATTRIBUTION.md` with its source URL, author,
+   SPDX identifier and hash — not in a message.
 
 8. **✅ CLOSED — the `subagents` cap is 8.**
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9 handed this to D3.
@@ -2658,7 +2679,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 
 | Order | Artifact | Gate |
 |---|---|---|
-| 0 | `ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
+| 0 | `docs/ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
 | 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; both clauses of Gate 2 hold; and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, which is the half of that test with a file to read |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
 | 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
