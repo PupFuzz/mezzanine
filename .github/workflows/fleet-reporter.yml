@@ -24,11 +24,23 @@ on:
     paths:
       - 'fleet-reporter/**'
       - '.github/workflows/fleet-reporter.yml'
+      # The suite re-reads D1 § 6.1's `harness_label` pattern and example out of this file and
+      # asserts them against each other and against what the reporter emits. That guard exists
+      # because the doc's pattern once could not accept the value the doc itself mandates — and
+      # the likeliest way it breaks again is an edit to THIS file, not to the reporter. Without
+      # this path the drift check only runs on the side that did not drift.
+      - 'docs/design/EVENT-SCHEMA.md'
   push:
     branches: [dev, main]
     paths:
       - 'fleet-reporter/**'
       - '.github/workflows/fleet-reporter.yml'
+      # The suite re-reads D1 § 6.1's `harness_label` pattern and example out of this file and
+      # asserts them against each other and against what the reporter emits. That guard exists
+      # because the doc's pattern once could not accept the value the doc itself mandates — and
+      # the likeliest way it breaks again is an edit to THIS file, not to the reporter. Without
+      # this path the drift check only runs on the side that did not drift.
+      - 'docs/design/EVENT-SCHEMA.md'
 
 permissions:
   contents: read

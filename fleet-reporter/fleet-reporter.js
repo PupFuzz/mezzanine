@@ -73,8 +73,9 @@ const K = {
   BATCH_BYTES: 262144,           // § 4.4 256 KiB
   SPOOL_BYTES: 33554432,         // § 11.3 32 MiB
   RESIDENCY_MS: 8 * 86400000,    // § 11.3 8 days
-  FLUSH_MS: 10000,               // § 9.1
-  FLUSH_MIN_EVENTS: 50,          // § 11.5
+  FLUSH_MS: 10000,               // § 9.1 — the ONLY flush trigger; see the README on § 11.5's
+                                 // unimplemented "≥ 50 queued events" leg, and why `50` is not
+                                 // parked here as a constant nothing reads
   HEARTBEAT_MS: 60000,           // § 9.1
   BACKOFF_BASE_MS: 2000,         // § 11.5
   BACKOFF_MAX_MS: 120000,        // § 11.5
@@ -146,7 +147,11 @@ const NOTIFICATION_NOT_ATTENTION = ['auth_success', 'agent_completed', 'elicitat
  * length (§ 9.3: "Twelve members, and the array's bound is twelve"). Each maps to the counters
  * that raise it; a member is present when ANY of them is non-zero at that flush. */
 const DEGRADED = [
-  ['lossy', ['spool_dropped_events', 'spool_corrupt_lines', 'events_rejected_dropped', 'oversize_event_dropped']],
+  // `spool_append_failed.<tree>` is a LOSSY raiser and not an informational one: an append that
+  // fails discards the record it carried — an event, a counter delta, an index entry — which is
+  // precisely what § 9.3 defines `lossy` to mean. It raises no NEW member, so § 9.3's "twelve
+  // members, and the array's bound is twelve" is untouched.
+  ['lossy', ['spool_dropped_events', 'spool_corrupt_lines', 'events_rejected_dropped', 'oversize_event_dropped', /^spool_append_failed\./]],
   ['batches_rejected', ['batches_rejected']],
   ['harness_contract_moved', ['hook_name_mismatch', 'payload_key_missing.is_interrupt', /^payload_key_missing\./]],
   ['reporter_behind', [/^enum_value_unknown\./]],
@@ -322,7 +327,7 @@ function redactSecrets(s) {
  * hook that starts at 13:59:59.900 and computes its bucket at entry writes to bucket 13 after
  * the hour rolled, and the flusher's next pass is <= 10 s away: read-to-EOF, unlink, line lost.
  * Both halves of the fix are needed — this one, and the 5 s grace on the deletion side.       */
-function ensureDir(d) { try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); } catch (e) { /* EEXIST or a read-only tree: the caller's write fails and is counted */ } }
+function ensureDir(d) { try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); } catch (e) { /* EEXIST or a read-only tree: the open below then fails and `appendLine` counts it as spool_append_failed.<tree> */ } }
 
 /* One line, one writeSync, LF always (never os.EOL — identical bytes on both platforms keeps
  * fixtures identical). Returns true on success; a failed append is never fatal to the seat.
@@ -340,34 +345,72 @@ function ensureDir(d) { try { fs.mkdirSync(d, { recursive: true, mode: 0o700 });
  * bucket it later unlinks would write to an orphaned inode — events lost with no counter
  * incremented, which is the one loss shape § 0 item 9 forbids outright. */
 let FD_CACHE = null;   // a Map only in `hook` / `statusline`; null everywhere else
-function appendLine(file, line) {
-  try {
-    if (FD_CACHE) {
+
+/* THE PRIMITIVE COUNTS ITS OWN FAILURE, because four call-sites cannot be relied on to (§ 0
+ * item 9: bounded, COUNTED loss — "nothing is discarded uncounted", § 11.4). Before this, a
+ * failed append was a silent loss on three of the four: the counter sink and the seat log
+ * discarded the boolean outright, so a failed COUNTER append lost the counters INCLUDING the
+ * loss counters, and `emit` counted only its successes — an EISDIR on the current bucket gave
+ * a seat that spooled nothing, raised no counter, and went on heartbeating healthily. Counting
+ * in the primitive rather than at each caller is what makes a fifth writer, added later by
+ * someone who never read this, inherit the guarantee instead of re-opening the hole.
+ *
+ * `tree` NAMES THE SUBTREE, and it is a parameter rather than something derived from `file`
+ * because the events tree IS the spool root — its basename is a user-chosen directory name, so
+ * deriving the key from the path would put a slice of an operator's filesystem layout into a
+ * counter name that rides the heartbeat to the wire (§ 1's non-goal). It is a fixed vocabulary
+ * of five literals, not data.
+ *
+ * ONE RETRY, UNCACHED, ON A CACHED-DESCRIPTOR ERROR. The cache is an optimisation; a write
+ * error on a descriptor this process opened earlier says nothing about whether a FRESH open
+ * would fail. Dropping the entry and returning false — the old behaviour — spent exactly one
+ * event on every transient error while the next append through the reopened path succeeded.
+ * The retry can at worst duplicate a partially-written line, which lands as a torn line the
+ * flusher already quarantines and COUNTS (`spool_corrupt_lines`, § 11.4); that is a counted
+ * loss traded for a silent one, which is the direction § 0 item 9 chooses. */
+function appendLine(file, line, tree) {
+  const buf = Buffer.from(line + '\n', 'utf8');
+  let retried = false;
+  if (FD_CACHE) {
+    try {
       let fd = FD_CACHE.get(file);
       if (fd === undefined) { ensureDir(path.dirname(file)); fd = fs.openSync(file, 'a'); FD_CACHE.set(file, fd); }
-      fs.writeSync(fd, Buffer.from(line + '\n', 'utf8'));
+      fs.writeSync(fd, buf);
       return true;
+    } catch (e) {
+      const stale = FD_CACHE.get(file);
+      FD_CACHE.delete(file);
+      if (stale !== undefined) { try { fs.closeSync(stale); } catch (e2) { /* already gone */ } }
+      retried = true;
+      // fall through to the uncached open+write below rather than losing the line
     }
-  } catch (e) { FD_CACHE.delete(file); return false; }
+  }
   let fd = -1;
   try {
     ensureDir(path.dirname(file));
     fd = fs.openSync(file, 'a');
-    fs.writeSync(fd, Buffer.from(line + '\n', 'utf8'));
+    fs.writeSync(fd, buf);
+    /* COUNTED ON SUCCESS ONLY, and that is the whole meaning of the counter: it says a cached
+     * descriptor went bad and the reopen SAVED the line. Counting it at the point of the cached
+     * failure instead would raise it on the EISDIR path too, where the reopen fails as well and
+     * the line is lost — a "recovered, no loss" counter that fires on a loss, which is the same
+     * false-claim defect as a comment describing a defence that is not there. The two counters
+     * are mutually exclusive per call, so a loss-accounting sum over § 9.3 cannot double-count. */
+    if (retried) count(`spool_append_retried.${tree}`);
     return true;
-  } catch (e) { return false; }
+  } catch (e) { count(`spool_append_failed.${tree}`); return false; }
   finally { if (fd >= 0) { try { fs.closeSync(fd); } catch (e) { /* nothing left to do */ } } }
 }
 
 /* Append respecting a byte cap with stated at-cap behaviour (§ 11.1) — a cap without one is an
  * unstated default. Returns false when the cap refused the write, so the caller counts it. */
-function appendCapped(file, line, cap) {
+function appendCapped(file, line, cap, tree) {
   try {
     let size = 0;
     try { size = fs.statSync(file).size; } catch (e) { size = 0; }
     if (size >= cap) return false;
   } catch (e) { /* fall through and try the write */ }
-  return appendLine(file, line);
+  return appendLine(file, line, tree);
 }
 
 function atomicWrite(file, text) {
@@ -410,20 +453,37 @@ function predicate(name, branch) {
   P[name][branch ? 'true' : 'false'] += 1;
 }
 
+/* THE ONE APPEND WHOSE FAILURE CANNOT BE REPORTED BY A COUNTER, and the boundary of what § 0
+ * item 9 can promise. `appendLine` raises `spool_append_failed.counters` on its way out, but
+ * `C` was serialized one line above, so that increment lands in a process about to exit and
+ * reaches no sink. The seat log is the only surface left, and it is a different tree — an
+ * ENOSPC takes both, a counters-tree-only fault (mode, EISDIR, a full quota on a separate
+ * mount) leaves the log. That is why the log line is written here rather than assumed
+ * redundant: it is the only trace this class of loss can leave. */
 function flushCounters(spoolDir, role, atMs) {
   if (!Object.keys(C).length && !Object.keys(P).length) return;
   const t = atMs === undefined ? now() : atMs;
   const line = JSON.stringify({ t: rfc3339(t), p: role, c: C, k: P });
-  appendLine(path.join(spoolDir, 'counters', `${utcBucket(t)}.jsonl`), line);
+  // § 11.1 — the bucket is derived immediately before the write, from the clock, never from a
+  // timestamp captured at process entry. See the primitive's header.
+  if (!appendLine(path.join(spoolDir, 'counters', `${utcBucket(now())}.jsonl`), line, 'counters')) {
+    logLine(spoolDir, role, `counter sink append FAILED — ${Object.keys(C).length} counter(s) and ${Object.keys(P).length} predicate(s) lost: ${line}`);
+  }
 }
 
 /* The seat's own diagnostic log — local, never shipped (§ 1: "The reporter's own log stays
- * local. It is a diagnostic for the seat's owner, not a stream."). */
+ * local. It is a diagnostic for the seat's owner, not a stream.").
+ *
+ * RETURNS the append's outcome, and the CALLER of last resort does nothing further with it on
+ * purpose: a failed log write has exactly one surface left, and `appendLine` has already used
+ * it (`spool_append_failed.log`). Writing a log line about a failed log line is the recursion
+ * this comment exists instead of. The value is returned rather than dropped so the next caller
+ * to have somewhere to put it is not re-deriving that from scratch. */
 function logLine(spoolDir, role, msg) {
-  if (!spoolDir) return;
+  if (!spoolDir) return false;
   const t = now();
   const line = redactSecrets(`${rfc3339(t)} [${role}] ${msg}`);
-  appendCapped(path.join(spoolDir, 'log', `${utcDay(t)}.log`), line, K.LOG_DAY_CAP);
+  return appendCapped(path.join(spoolDir, 'log', `${utcDay(t)}.log`), line, K.LOG_DAY_CAP, 'log');
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
@@ -696,7 +756,7 @@ const indexDir = (spool) => path.join(spool, 'index');
 function journal(spool, rec) {
   const t = now();
   rec.at = rfc3339(t);
-  return appendLine(path.join(indexDir(spool), `${utcBucket(t)}.jsonl`), JSON.stringify(rec));
+  return appendLine(path.join(indexDir(spool), `${utcBucket(t)}.jsonl`), JSON.stringify(rec), 'index');
 }
 
 function emptyIndex() {
@@ -942,7 +1002,16 @@ function makeEmitter(cfg, spool) {
         line = JSON.stringify({ v: SCHEMA_VERSION, t: rfc3339(t), e: ev });
       }
     }
-    if (appendLine(path.join(spool, `${utcBucket(t)}.jsonl`), line)) count('events_emitted');
+    /* § 11.1 — THE BUCKET IS DERIVED HERE, from the clock, not from `t`. `t` is the event's
+     * SEMANTIC time and belongs in `event_time`; the bucket is a PLACEMENT decision and has to
+     * reflect the moment of the write, because the flusher's deletion grace is measured against
+     * the wall clock. A hook that entered at 13:59:59.900 and emits at 14:00:00.050 must land
+     * in bucket 14: writing it into bucket 13 puts a fresh line behind a cursor the flusher may
+     * already have passed. `journal()` has always done this; `emit` and `flushCounters` took
+     * `atMs` from `hookMain`'s single entry-time `now()`, which is what made the primitive's
+     * header comment describe a defence that only one of the three writers implemented.
+     * The failure is COUNTED now (see `appendLine`), so a lost event is never a silent one. */
+    if (appendLine(path.join(spool, `${utcBucket(now())}.jsonl`), line, 'events')) count('events_emitted');
     return ev;
   };
 }
@@ -972,9 +1041,41 @@ function key(payload, name) {
   return payload[name];
 }
 
+/* A PROJECT LABEL IS A PROJECT NAME, AND THE HOME DIRECTORY'S BASENAME IS THE OS USERNAME.
+ * § 1's non-goals are explicit and binding: "PII beyond install_id/seat_id … no OS usernames.
+ * Usernames leak through absolute paths, which is why § 7.3 rule 6 rewrites them." Rule 6
+ * rewrites `/home/<u>/` → `~/`, and it CANNOT fire here: `path.basename` runs first, so by the
+ * time `sanitize` sees the value the path structure that rule 6 matches on is gone and only a
+ * bare username token is left. Taking the basename of a cwd that IS the home directory
+ * therefore put the seat owner's username on the wire — literally conformant with § 6.1's
+ * "sanitized basename of cwd", and a § 1 violation regardless. § 6.1 now states this rule.
+ *
+ * COMPARING AGAINST os.homedir() COVERS ALL THREE PLATFORM SHAPES WITHOUT ENUMERATING ANY.
+ * `/home/u`, `/Users/u` and `C:\Users\u` differ per platform, and a hard-coded list of parents
+ * is the surface enumeration that is permanently one platform behind; the runtime reports its
+ * own. The comparison normalises separators, trailing separators and — on Windows only, where
+ * the filesystem is case-insensitive — case, because `C:\Users\Alice` and `c:\users\alice` are
+ * one directory there and two strings everywhere.
+ *
+ * The suppression is NEVER SILENT (`project_label_home_suppressed`): a label that is null
+ * because the seat was at home and one that is null because the payload carried no cwd are
+ * indistinguishable on the wire, and an unmeasurable suppression is the shape § 3.4 forbids. */
+function normalizeDirPath(p) {
+  const s = String(p).replace(/[\\/]+/g, '/').replace(/(.)\/+$/, '$1');
+  return process.platform === 'win32' ? s.toLowerCase() : s;
+}
+
+function isHomeDir(cwd) {
+  let home = null;
+  try { home = os.homedir(); } catch (e) { return false; }   // no passwd entry / no HOME
+  if (typeof home !== 'string' || !home) return false;
+  return normalizeDirPath(cwd) === normalizeDirPath(home);
+}
+
 function projectLabel(payload) {
   const cwd = typeof payload.cwd === 'string' ? payload.cwd : null;
   if (!cwd) return null;
+  if (isHomeDir(cwd)) { count('project_label_home_suppressed'); return null; }
   const base = path.basename(cwd.replace(/[\\/]+$/, ''));
   if (!base) return null;
   const r = sanitize(base, 48);
@@ -1990,7 +2091,7 @@ function advanceCursors(state, items, upTo) {
 function quarantine(spool, which, line) {
   const file = path.join(spool, 'quarantine', which === 'corrupt' ? 'corrupt.jsonl' : 'rejected.jsonl');
   const cap = which === 'corrupt' ? K.Q_CORRUPT_CAP : K.Q_REJECTED_CAP;
-  if (!appendCapped(file, redactSecrets(line), cap)) count(which === 'corrupt' ? 'quarantine_corrupt_dropped' : 'quarantine_rejected_dropped');
+  if (!appendCapped(file, redactSecrets(line), cap, 'quarantine')) count(which === 'corrupt' ? 'quarantine_corrupt_dropped' : 'quarantine_rejected_dropped');
 }
 
 /* Build ONE batch from contiguous same-version items. The flusher groups contiguous same-`v`

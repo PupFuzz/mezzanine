@@ -35,6 +35,7 @@ with certificate verification ON, rather than proving anything by turning it off
 """
 from __future__ import annotations
 
+import calendar
 import http.server
 import json
 import os
@@ -968,7 +969,7 @@ const file = process.argv[3], id = process.argv[4];
 const n = parseInt(process.argv[5], 10), startAt = parseInt(process.argv[6], 10);
 const body = id.repeat(8000);
 while (Date.now() < startAt) { /* spin to the common start instant */ }
-for (let i = 0; i < n; i++) appendLine(file, JSON.stringify({ w: id, i, body }));
+for (let i = 0; i < n; i++) appendLine(file, JSON.stringify({ w: id, i, body }), 'events');
 """
 stress_js = TMP / "stress.js"
 stress_js.write_text(STRESS, encoding="utf-8")
@@ -996,7 +997,7 @@ eq("  … every one parsing — no write landed inside another", 0, good_bad)
 # The pattern matches the WRITE ITSELF, not its surrounding block: `appendLine` has two write
 # sites with different trailing context, and anchoring on one of them planted the defect in a
 # branch the stress harness never reaches.
-p_split = plant_src((r"fs\.writeSync\(fd, Buffer\.from\(line \+ '\\n', 'utf8'\)\);",
+p_split = plant_src((r"fs\.writeSync\(fd, buf\);",
                      "fs.writeSync(fd, Buffer.from(line, 'utf8')); fs.writeSync(fd, Buffer.from('\\n', 'utf8'));"))
 _planted = p_split.read_text(encoding="utf-8")
 eq("  (plant control) the split write is present at BOTH of appendLine's write sites", 2,
@@ -1616,6 +1617,224 @@ redgreen("unknown enum values (AT-18) and the blocked pair (AT-20)",
          "enum_value_unknown.session.start.source, raw value absent from the wire; control "
          "source=fork passes through with no coercion counted; auth_success emits nothing and is "
          "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves")
+
+
+print("\n== 14. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
+# The loss shape § 0 item 9 forbids outright is the UNCOUNTED one: a seat that drops events and
+# renders healthy. The fault is injected in the product's own terms — the current spool bucket is
+# a DIRECTORY, so every append to it fails EISDIR — with `counters/` and `log/` left writable, so
+# the counter sink is demonstrably able to record the loss it is being asked to record.
+def bucket_now() -> str:
+    """The bucket the reporter will derive AT THE WRITE (§ 11.1), computed as late as possible.
+
+    Taken once at module scope this races the UTC hour boundary: the fault would be planted in
+    the previous hour's bucket and the run would go green having injected nothing.
+    """
+    return time.strftime("%Y%m%d%H", time.gmtime())
+
+
+def eisdir_seat(name: str, reporter: Path = REPORTER):
+    s = seat(name)
+    (s.spool / "counters").mkdir(exist_ok=True)
+    (s.spool / "log").mkdir(exist_ok=True)
+    (s.spool / f"{bucket_now()}.jsonl").mkdir()    # the injected fault
+    r = hook(s, "PreToolUse", pre(), reporter=reporter)
+    lines = sum(len([x for x in f.read_text(encoding="utf-8").splitlines() if x.strip()])
+                for f in s.spool.glob("*.jsonl") if f.is_file())
+    return s, r, lines
+
+
+s14, r14, spooled14 = eisdir_seat("append-eisdir")
+eq("an unwritable spool bucket still never breaks the seat (P-1)", (0, "", ""),
+   (r14.returncode, r14.stdout, r14.stderr))
+eq("  … the event really is lost — this is a LOSS, not a near-miss", 0, spooled14)
+eq("  … and the loss is COUNTED, keyed by the subtree that lost it", 1,
+   s14.counters().get("spool_append_failed.events"))
+eq("  … so the heartbeat badges the seat `lossy` rather than rendering it healthy", True,
+   "spool_append_failed.events" in json.dumps(s14.counters()))
+eq("  … and NO retry counter is raised, because the retry did not recover anything", None,
+   s14.counters().get("spool_append_retried.events"))
+# RED: the primitive stops counting its own failure — which is the state this suite found the
+# code in. Everything else is identical, so the check measures the counting and nothing else.
+red14 = plant_src((r"count\(`spool_append_failed\.\$\{tree\}`\); return false;", "return false;"))
+s14r, r14r, spooled14r = eisdir_seat("append-eisdir-red", reporter=red14)
+eq("RED: without the primitive's own counter the very same loss reports `c`:{} — a healthy-"
+   "looking seat dropping events", (0, 0, None),
+   (r14r.returncode, spooled14r, s14r.counters().get("spool_append_failed.events")))
+
+# The counter is raised by the PRIMITIVE, so a caller that never thinks about it still cannot
+# lose silently. The counter sink is its own tree: make THAT unwritable and the loss of the
+# counters is itself recorded, on the one surface left (the seat's log).
+s14c = seat("append-counters-eisdir")
+(s14c.spool / "counters").mkdir(exist_ok=True)
+(s14c.spool / "counters" / f"{bucket_now()}.jsonl").mkdir()
+hook(s14c, "PreToolUse", pre())
+eq("a counter-sink append that fails leaves its trace in the seat log, not nowhere", True,
+   any("counter sink append FAILED" in f.read_text(encoding="utf-8")
+       for f in (s14c.spool / "log").glob("*.log")))
+
+# THE RETRY LEG. A write error on a descriptor cached earlier in this process says nothing about
+# whether a fresh open would fail; the old code dropped the entry and returned false, spending
+# exactly one event per transient error. Injected here because the real trigger (EIO, a revoked
+# handle) cannot be produced from outside the process.
+THROW_ONCE = (
+    r"if \(fd === undefined\) \{ ensureDir\(path\.dirname\(file\)\); fd = fs\.openSync\(file, 'a'\); "
+    r"FD_CACHE\.set\(file, fd\); \}\n      fs\.writeSync\(fd, buf\);",
+    "if (fd === undefined) { ensureDir(path.dirname(file)); fd = fs.openSync(file, 'a'); "
+    "FD_CACHE.set(file, fd); }\n"
+    # Fires ONCE, and only on an events bucket — which is the spool ROOT's `<bucket>.jsonl`,
+    # matched positively rather than by excluding the sibling trees by substring, so a temp
+    # directory that happens to contain the word `log` cannot spend the injection elsewhere.
+    r"      if (!global.__frThrew && /spool[\\/]\d{10}\.jsonl$/.test(file)) "
+    r"{ global.__frThrew = true; const _e = new Error('simulated cached-fd write error'); "
+    r"_e.code = 'EIO'; throw _e; }"
+    "\n      fs.writeSync(fd, buf);")
+retry_src = plant_src(THROW_ONCE)
+s14t = seat("append-retry")
+hook(s14t, "PreToolUse", pre(), reporter=retry_src)
+eq("a cached-descriptor write error costs NO event: the uncached reopen carries the line", 1,
+   len([e for e in s14t.events() if e["kind"] == "tool.start"]))
+eq("  … counted as a RECOVERY, which is what makes the fallback measurable rather than assumed",
+   1, s14t.counters().get("spool_append_retried.events"))
+eq("  … and never as a loss, so a § 9.3 loss sum cannot double-count it", None,
+   s14t.counters().get("spool_append_failed.events"))
+# RED: the same injected error against the pre-fix behaviour — the catch returned false instead
+# of falling through to the reopen.
+norretry_src = plant_src(THROW_ONCE, (
+    r"      retried = true;\n      // fall through to the uncached open\+write below rather than "
+    r"losing the line", "      return false;"))
+s14n = seat("append-retry-red")
+hook(s14n, "PreToolUse", pre(), reporter=norretry_src)
+eq("RED: without the reopen the identical transient error loses exactly one event", 0,
+   len([e for e in s14n.events() if e["kind"] == "tool.start"]))
+redgreen(
+    "a failed append is counted, and a bad cached descriptor costs no event (§ 0 item 9, § 11.1)",
+    "current bucket made a directory: rc=0, 0 events spooled, counter sink `c`:{} — no counter "
+    "raised at all, so the seat renders healthy while dropping events; and a transient error on "
+    "a cached descriptor returns false without retrying, losing exactly one event",
+    "same fault: rc=0, 0 events spooled, spool_append_failed.events=1 -> badge `lossy`; a "
+    "counters-tree failure leaves 'counter sink append FAILED' in the seat log; an injected "
+    "cached-fd EIO loses nothing and counts spool_append_retried.events=1")
+
+print("\n== 15. THE OS USERNAME NEVER REACHES THE WIRE VIA project_label (§ 1 non-goal, § 6.1) ==")
+# `path.basename` runs before sanitize(), so § 7.3 rule 6 (`/home/<u>/` -> `~/`) can never match:
+# by the time the sanitizer sees the value the path structure is gone and only the bare username
+# is left. The three home shapes are covered by comparing against os.homedir(), never by an
+# enumerated list of home parents.
+HOME_SHAPES = [("posix", "/home/alice"), ("macos", "/Users/alice"), ("windows", r"C:\Users\alice")]
+
+
+def label_at(seat_obj: Seat, cwd: str, home: str, reporter: Path = REPORTER):
+    hook(seat_obj, "UserPromptSubmit",
+         {"session_id": SID, "hook_event_name": "UserPromptSubmit", "prompt_id": "pL",
+          "prompt": "status?", "cwd": cwd}, reporter=reporter, HOME=home)
+    ts = [e for e in seat_obj.events() if e["kind"] == "turn.start"]
+    return ts[-1]["data"].get("project_label") if ts else "<no turn.start>"
+
+
+for tag, home in HOME_SHAPES:
+    s15 = seat(f"label-home-{tag}")
+    eq(f"cwd == the home directory ({tag} shape) sends project_label null, never the username",
+       None, label_at(s15, home, home))
+    eq(f"  … ({tag}) and the suppression is counted, so it is not silent", 1,
+       s15.counters().get("project_label_home_suppressed"))
+
+s15t = seat("label-home-trailing")
+eq("a trailing separator is not a way around the rule", None,
+   label_at(s15t, "/home/alice/", "/home/alice"))
+
+# CONTROL: the field still works. A rule that nulled every label would pass every check above
+# and destroy the field, so the control is what makes those checks mean anything.
+s15c = seat("label-project")
+eq("CONTROL: a real project directory keeps its label", "mezzanine",
+   label_at(s15c, "/home/alice/src/mezzanine", "/home/alice"))
+eq("  … with no suppression counted, so the check measures the home case and not blanket nulling",
+   None, s15c.counters().get("project_label_home_suppressed"))
+
+red15 = plant_src((r"if \(isHomeDir\(cwd\)\) \{ count\('project_label_home_suppressed'\); return null; \}",
+                   ""))
+s15r = seat("label-home-red")
+eq("RED: without the rule the OS username is what crosses the WAN", "alice",
+   label_at(s15r, "/home/alice", "/home/alice", reporter=red15))
+redgreen("the OS username never reaches the wire via project_label (§ 1 non-goal, § 6.1)",
+         'cwd=/home/alice -> "project_label":"alice" on the wire; § 7.3 rule 6 cannot fire '
+         "because the basename is taken before the sanitizer sees the value",
+         "all three home shapes (/home/u, /Users/u, C:\\Users\\u) and a trailing separator send "
+         "null and count project_label_home_suppressed; control /home/alice/src/mezzanine still "
+         'sends "mezzanine" with no suppression counted')
+
+
+print("\n== 16. THE BUCKET IS DERIVED AT THE WRITE, AND § 6.1's PATTERN ADMITS ITS OWN EXAMPLE ==")
+# § 11.1: a hook entering at 13:59:59.900 must not write into bucket 13 after the hour rolled —
+# the flusher's next pass is <= 10 s away and would read to EOF and unlink. The entry timestamp
+# is moved back an hour, which is that boundary made deterministic; the event's `event_time`
+# must follow the entry clock while the FILE it lands in must follow the write clock.
+ENTRY_BACK_AN_HOUR = (r"function hookMain\(hookName\) \{\n  const atMs = now\(\);",
+                      "function hookMain(hookName) {\n  const atMs = now() - 3600000;")
+
+
+def bucket_of(rfc: str) -> str:
+    """The bucket name an event's own timestamp implies — `utcBucket`, in Python."""
+    return rfc[:13].replace("-", "").replace("T", "")
+
+
+def bucket_shift(b: str, hours: int) -> str:
+    return time.strftime("%Y%m%d%H", time.gmtime(
+        calendar.timegm(time.strptime(b, "%Y%m%d%H")) + hours * 3600))
+
+
+def emitted_bucket(s: Seat) -> tuple[str, list[str]]:
+    """(the bucket the event's OWN time implies, the buckets actually written).
+
+    Asserting the RELATION between the two rather than against a clock read in this process is
+    what keeps the check off the hour boundary it exists to be about: a run that straddles the
+    roll would otherwise fail on the harness's timing rather than the reporter's.
+    """
+    return (bucket_of(s.events()[0]["event_time"]),
+            sorted(f.stem for f in s.spool.glob("*.jsonl") if f.is_file()))
+
+
+s16 = seat("bucket-at-write")
+hook(s16, "PreToolUse", pre(), reporter=plant_src(ENTRY_BACK_AN_HOUR))
+entry_b, written_b = emitted_bucket(s16)
+eq("an event emitted after the hour rolled lands in the bucket the WRITE clock names, one hour "
+   "on from the timestamp captured at process entry", [bucket_shift(entry_b, 1)], written_b)
+eq("  … while event_time still carries the entry clock, so placement and semantics are not "
+   "conflated", True, entry_b == bucket_shift(written_b[0], -1))
+# RED: the pre-fix derivation — the bucket taken from the entry timestamp at both writers.
+s16r = seat("bucket-at-entry")
+hook(s16r, "PreToolUse", pre(),
+     reporter=plant_src(ENTRY_BACK_AN_HOUR, (r"utcBucket\(now\(\)\)", "utcBucket(t)")))
+entry_r, written_r = emitted_bucket(s16r)
+eq("RED: derived at process entry it lands in the PREVIOUS hour's bucket — behind a cursor the "
+   "flusher may already have read to EOF and unlinked", [entry_r], written_r)
+
+# § 6.1's `harness_label` pattern has to accept § 6.1's own mandated value. The doc and the
+# reporter hold two copies of one constraint, so this asserts them TOGETHER: a doc pattern that
+# rejects the value the installer is told to write means a 422, a rejected 200-event batch and a
+# permanent quarantine (§ 12.4, § 11.5) the first time a seat is configured correctly.
+DOC = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+row = [l for l in DOC.splitlines() if l.startswith("| `harness_label` |")][0]
+doc_pat = re.search(r"`(\^\[[^`]+\$)`", row).group(1)
+doc_example = re.search(r"`\"([^\"]+)\"`\s*\|?\s*$", row).group(1)
+eq("§ 6.1's harness_label pattern accepts § 6.1's own mandated example", True,
+   bool(re.match(doc_pat, doc_example)))
+eq("  (control) the pattern this replaced rejected that same mandated value", None,
+   re.match(r"^[A-Za-z0-9._-]+$", doc_example))
+eq("  … and it still rejects a value the field may not carry", None,
+   re.match(doc_pat, "claude code/2.1.240"))
+s16h = seat("harness-label")
+hook(s16h, "SessionStart", {"session_id": SID, "hook_event_name": "SessionStart",
+                            "source": "startup", "cwd": "/home/agent/mezzanine"})
+eq("  … and the REPORTER emits that same value, so doc and code agree on the wire", doc_example,
+   [e for e in s16h.events() if e["kind"] == "session.start"][0]["data"]["harness_label"])
+redgreen("the bucket is derived at the write (§ 11.1) and § 6.1's pattern admits its own example",
+         "entry-derived bucket: an event emitted at 14:00:00.050 by a hook that entered at "
+         "13:59:59.900 is written into bucket 13, which the flusher may already have read to EOF "
+         "and unlinked; and D1 § 6.1's `^[A-Za-z0-9._-]+$` rejects `claude-code/2.1.240`, the "
+         "value that same row mandates -> 422, 200 events rejected, permanent quarantine",
+         f"write-derived bucket: the event lands in {bucket_now()} with an event_time an hour "
+         f"earlier; § 6.1's pattern now admits `{doc_example}` and the reporter emits it")
 
 
 print("\n" + "=" * 92)

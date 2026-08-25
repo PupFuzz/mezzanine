@@ -57,11 +57,17 @@ suite prints a per-property RED/GREEN evidence block at the end.
 
 ## What D1 left open, and what was chosen
 
-Each of these is marked `D1-SILENT` at its site in the source, with the reasoning. They are
-listed here so a reviewer can find them without reading the file.
+Two kinds of thing are listed together here, because a reviewer looking for "where does this code
+differ from D1" wants one table rather than two. **Gaps** are places D1 is *silent*; each is marked
+`D1-SILENT` at its site in the source with the reasoning. **Amendments** are places D1 *spoke* and
+this change edited it — those are edits to `docs/design/EVENT-SCHEMA.md` in this same commit, not
+unilateral divergences left standing, and each says what would have broken.
 
-| Gap | Choice |
+| Gap or amendment | Choice |
 |---|---|
+| **Amendment — § 6.1's `harness_label` pattern was `^[A-Za-z0-9._-]+$`, which cannot accept the value that same row mandates** (`claude-code/2.1.240` contains `/`) | D1 § 6.1's pattern widened to `^[A-Za-z0-9._/-]+$`; the reporter's `^[A-Za-z0-9._/-]{1,32}$` was already right and is unchanged. **The doc was the wrong side.** Left alone this is not cosmetic: the ingest is a separate card with D1 as its authority, so a server implementing § 6.1 literally rejects the first seat whose installer writes the mandated value — `422 invalid_event`, all 200 events in that batch rejected (§ 12.4), permanent quarantine (§ 11.5). Guarded by a selftest row that re-reads the pattern *and* the example out of the doc row and asserts the one against the other, so the two cannot drift apart again |
+| **Amendment — § 6.1's `project_label` said only "sanitized basename of cwd"**, which a reporter can implement literally and still violate § 1 | D1 § 6.1 now states the rule: `null` when the cwd is the home directory, whose basename is the OS username on all three platform shapes. See "Decisions", below |
+| **Amendment — § 9.3 gained `spool_append_failed.<tree>` and `spool_append_retried.<tree>`** | the append primitive counts its own failures, so § 0 item 9's "a counter for every discarded event" holds for the write path and not only the read path. `spool_append_failed` raises the existing `lossy` member; no new `degraded` member, so § 9.3's "twelve members, and the array's bound is twelve" is untouched |
 | `harness_label`'s source (§ 6.1 mandates `claude-code/<version>` but names no source; no hook payload carries one and no `CLAUDE_CODE_VERSION` exists in a hook-visible environment) | read from an installer-written `harness_label` config key; honestly `null` plus a counter until the installer writes it |
 | The index journal has no record for sessions, turns or compactions, but § 8.2's 16-session cap, § 8.4's superseded-session rule, § 6.2's `turns` and § 6.4's `duration_ms` all need them | four reporter-internal record kinds added (`session_open`/`session_close`, `turn_open`/`turn_close`, `compaction_open`/`compaction_close`), plus `prompt_id` on `open` and `outcome` on `close`. None reaches the wire, so none costs a schema version |
 | A hook with multiple captured payload shapes (§ 17 reproduces 3 for `PreToolUse`) cannot be "the payload verbatim" in one file | the fixture is `{"_source": …, "shapes": [ …verbatim payloads… ]}`, and the key check asserts against the union |
@@ -70,6 +76,26 @@ listed here so a reviewer can find them without reading the file.
 | Order of `attention.resolved` vs `turn.start` on `UserPromptSubmit` | resolution first, matching every close-before-trigger ordering in § 8.3 |
 
 ## Decisions a maintainer should not silently reverse
+
+**§ 11.5's "≥ 50 queued events" flush trigger is deliberately NOT implemented, and the constant it
+would have used is deleted rather than parked.** § 11.5 states the trigger as *"≥ 50 queued events
+**or** 10 s elapsed"*; only the 10 s leg exists. Wiring the other leg is not a three-line change: the
+flusher's whole duty cycle is one pass every `FLUSH_MS`, so an early trigger needs the loop woken at
+some sub-10 s tick and a queue depth read on each of those ticks — ten times the wakeups, and either
+ten times the fold/snapshot I/O or a restructure splitting a cheap depth probe out of the full pass.
+The benefit is bounded by the 10 s leg either way: a burst is flushed at most 10 s late, never lost,
+and nothing in D1 depends on the earlier flush. **The constant was deleted because a defined-and-
+unread `FLUSH_MIN_EVENTS: 50` is worse than its absence** — it reads as an implemented trigger to
+anyone grepping for it, which is how the gap survived review once already. A maintainer who wants the
+leg should re-derive the number from § 11.5 along with the loop change that makes it mean something.
+
+**`project_label` is `null` when the cwd is the home directory, and that is a § 1 obligation rather
+than a nicety.** `path.basename` runs before `sanitize`, so § 7.3 rule 6 (`/home/<u>/` → `~/`) is
+structurally unable to fire on this field: by the time the sanitizer sees the value the path
+structure it matches on is gone and only a bare username token is left. The comparison is against
+`os.homedir()` — never a hard-coded list of home parents, which is one platform behind by
+construction. Reverting this puts the seat owner's OS username on the wire, which § 1 names a
+non-goal outright.
 
 **Latency is measured and printed; it is asserted only under `FLEET_REPORTER_PERF=1`.**
 D1 § 2.2 derives P-5's 250 ms budget against "Node cold start on a modern machine is 30-60 ms
