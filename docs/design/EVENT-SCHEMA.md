@@ -747,10 +747,32 @@ fed reads zero forever, and nothing reds. The obligations, both binding:
    subcommand asserts the fixtures in [§ 17](#17-appendix--the-captured-harness-payloads) against the
    payload keys the reporter actually reads — see the `harness_payload_keys` MUST below. That is the
    guard, and it runs in CI and at install rather than only in review.
-2. **A harness minor-version change re-runs the capture and re-marks this table**, and the diff is a
-   change to this document. The capture rig is ~20 lines (a settings file wiring every hook to
-   `cat >> file`, plus `claude -p` prompts); re-running it is minutes, which is why this is a
-   requirement and not an aspiration.
+2. **ANY harness version change re-runs the capture and re-marks this table** — patch bumps
+   included — and the diff is a change to this document. The capture rig is ~20 lines (a settings
+   file wiring every hook to `cat >> file`, plus `claude -p` prompts); re-running it is minutes,
+   which is why this is a requirement and not an aspiration.
+
+   > **AMENDED from "minor-version change" (card #7337, Q4), and this is the larger finding of that
+   > card.** The obligation was written for minor bumps. **2.1.240 → 2.1.245 is a patch bump, and the
+   > call lifecycle moved inside it**: the dispatch call now closes immediately and the subagent runs
+   > as a background task, which falsified [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s
+   > worked flow and [AT-1](#at-1-kill-vs-complete-the-headline-test)'s primary GREEN. Under the old
+   > wording nothing would have fired. *(Whether the behaviour changed **between** those two builds is
+   > **not established** — the upstream 26-of-26 capture was not re-read, and this document does not
+   > assert version drift as the cause. What is established is that the trigger could not have caught
+   > it either way.)*
+   >
+   > **Every capture records the harness version it was taken from, read from the running binary and
+   > not from configuration.** Three sources disagree in practice and only one of them is the fact:
+   > `harness_label` in the reporter's config is **written by the installer** and cannot see an
+   > upgrade; a `claude --version` taken before a run can be stale by the time it matters — an
+   > auto-update landed **mid-experiment** during card #7337's own runs, so events labelled
+   > `claude-code/2.1.243` were produced by 2.1.245, and only the session's own start-up banner said
+   > so. **A version pinned here that nothing re-derives is the same defect class this section
+   > exists to guard**, one level up: `tools/design/verify-harness-facts.py` re-derives key names and
+   > enum value sets from the installed binary on every run and reported clean throughout, because a
+   > **lifecycle and ordering** change moves neither. What that guard cannot see, a re-capture must —
+   > which is why the trigger is now any version at all.
 
 > **`SELFTEST-MUST` — the drift guard survives into the code, or it does not exist.**
 > `fleet-reporter.js selftest` MUST include a check named `harness_payload_keys` that, for **every**
@@ -804,9 +826,11 @@ reference, the measurement wins and the row says so.
 | `agent_id` and `agent_type` are common fields **present only inside a subagent**; `SubagentStart` exists | `agent_id`, `agent_type` | **MEASURED** — the subagent's own `PreToolUse`/`PostToolUse` carried `agent_id`; the main agent's did not. `agent_id` is a 17-hex-character opaque string on this build (**not** the `subagent_xyz789` shape the reference example shows) — [§ 3.2](#32-session-identity)'s opacity rule is why that costs nothing |
 | `SubagentStop` carries `agent_id` **and** `agent_type` | `agent_id` | **MEASURED** — settles what an earlier draft parked as unverified. It also carries `agent_transcript_path`, `last_assistant_message`, `stop_hook_active`, `background_tasks`, `session_crons`, and **no error indicator of any kind** — which is the stated reason [§ 6.6](#66-toolend) reports `completed` |
 | `SubagentStart` / `SubagentStop` carry **no** reference to the parent tool call | `tool_use_id` / `parent_tool_use_id` — **do not exist** | **MEASURED** — `SubagentStart`'s complete key set is `{session_id, transcript_path, cwd, prompt_id, agent_id, agent_type, hook_event_name}`. [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) is built on that, and no longer carries a binding rule that cannot execute |
-| **`Stop` does not fire inside a subagent** — a subagent's completion fires `SubagentStop` only | — | **MEASURED** — a turn that dispatched one subagent produced exactly one `Stop`, after the subagent's `SubagentStop` and after the dispatching call's `PostToolUse`. This was the document's highest-cost unverified fact: if `Stop` *had* fired per subagent, [§ 8.3](#83-the-reap-rules)'s reap would have aborted the parent's own in-flight calls and [§ 6.4](#64-turnend) would have minted a false idle per subagent. [§ 8.3](#83-the-reap-rules) is still `agent_id`-scoped, because the scoping is free and fails safe if this ever changes |
+| **`Stop` does not fire inside a subagent** — a subagent's completion fires `SubagentStop` only | — | **MEASURED** — a turn that dispatched one subagent produced exactly one `Stop`, after the subagent's `SubagentStop` and after the dispatching call's `PostToolUse`. *(At 2.1.245 the fact holds and that ORDERING does not: the `Stop` fires while the subagent is still running, before its `SubagentStop` — the background-task row above. The fact and its evidence sentence are separated here because only the second moved.)* This was the document's highest-cost unverified fact: if `Stop` *had* fired per subagent, [§ 8.3](#83-the-reap-rules)'s reap would have aborted the parent's own in-flight calls and [§ 6.4](#64-turnend) would have minted a false idle per subagent. [§ 8.3](#83-the-reap-rules) is still `agent_id`-scoped, because the scoping is free and fails safe if this ever changes |
 | The subagent-dispatch tool's `tool_name` is **`"Agent"`** on this build | `tool_name` | **MEASURED** — `{"tool_name":"Agent","tool_input":{"description":…,"prompt":…}}`. The model-facing name is `Task`; the *hook payload* says `Agent`. [§ 6.7](#67-subagentspawn) matches the set `{"Agent","Task"}` and counts which fired, because a design keyed on `"Task"` alone would emit no `subagent.spawn` on this build at all |
-| `Stop` carries `stop_hook_active` (bool), `last_assistant_message`, `background_tasks`, `session_crons` | `stop_hook_active` | **MEASURED** — `false` on the reproduced `Stop` capture and on every `Stop` of the capture run; settles what an earlier draft parked as unverified. `background_tasks` is **DOCS-CITED** as distinguishing "session is done" from "session is paused waiting on background work" — [§ 6.4](#64-turnend) reads it |
+| `Stop` carries `stop_hook_active` (bool), `last_assistant_message`, `background_tasks`, `session_crons` | `stop_hook_active` | **MEASURED** — `false` on the reproduced `Stop` capture and on every `Stop` of the capture run; settles what an earlier draft parked as unverified. `background_tasks` was DOCS-CITED and is now **MEASURED at 2.1.245** (card #7337): a `Stop` fired while a dispatched subagent ran carried `[{id, type: "subagent", status: "running", description, agent_type}]`, so the field does distinguish "session is done" from "paused waiting on background work" — [§ 6.4](#64-turnend) reads its **length** and is where the idle rule that consumes it lives |
+| A dispatched subagent runs as a **background task**: the dispatch call's own `PostToolUse` fires **4–45 ms after `SubagentStart`** and closes it `completed`, while the subagent runs on and its `SubagentStop` arrives **8.2 s and 18.9 s later** (2 observations; a third run's session ended before it fired), matching nothing | `background_tasks`, `tool_use_id` | **MEASURED at 2.1.245** (card #7337, 3 of 3 dispatch runs; `subagent_stop_unmatched` and `agent_bind_unresolved` counted it on the seat). **This contradicts the 2.1.240 measurement in [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)** that `SubagentStop` arrives first and is usually the hook that closes the dispatch call. Consequences: [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s two-open-calls trace does not reproduce, `parent_call_id` is `null` on every subagent-scoped call, and the parent's turn ends clean while the subagent works — [§ 6.4](#64-turnend)'s amendment. **No capture is committed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s declined-capture ruling stands); the rig that reproduces it is `tools/at1-kill-vs-complete/` |
+| A tool call killed by a `/clear` fires **`PostToolUseFailure`** carrying `error: "Exit code 137"`, `is_interrupt: false`, under the **new** `session_id`, 369 ms and 375 ms after `SessionEnd(reason: "clear")` | `error`, `is_interrupt` | **MEASURED at 2.1.245** (card #7337, 2 of 2 subagent-kill runs). [§ 8.1](#81-the-problem-restated) said no such hook fires; [§ 6.6](#66-toolend)'s kill signature and [§ 8.6](#86-server-side-interpretation-of-open-call-state)'s override exclusion are what this fact costs. Whether it differs from 2.1.240 is **not established** — the upstream capture was not re-read |
 | **`StopFailure`** fires instead of `Stop` when a turn ends on an API error, with `error` ∈ `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` | `error`, `error_details` | **DOCS-CITED** (binary enum declaration + reference, 2026-08-23). **Not drivable** — driving it means provoking a real rate-limit or outage. Cost if the shape is wrong: `turn.end` is still emitted from the reap path with `end_reason: "api_error"` and a null `api_error_type`, so *stalled* stays reachable and only the sub-classification is lost. Closed by the first real rate-limited turn on an instrumented seat, which `enum_value_unknown.turn.end.api_error_type` will announce. The eleven values are the harness's; [§ 6.4](#64-turnend) adds a twelfth, `unrecognised`, as the coercion target, because this set's own `unknown` is a real harness member and the two must not collide ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) |
 | `Notification` carries `notification_type` (string), `message` (string) and `title` (optional) | `notification_type` | **DOCS-CITED** (binary payload schema, 2026-08-23) — **not drivable headlessly**; a notification needs an interactive surface. Note two things the schema settles: a `message` field **does** exist, and `notification_type` is typed as a plain **string**, not a closed enum — so the wire contract is an **open set**: [§ 6.12](#612-attentionrequest) emits nothing for a type it does not recognise and counts it as `enum_value_unknown.notification_type`, rather than coercing it onto a wire value, because the suppression happens before rule 4 could reach it. There is **no** `notification_metadata` object on this build, so a notification cannot name a tool call |
 | The `notification_type` value set this build declares — the **16** members of the `Notification` hook's own matcher metadata; the set itself is owned by [§ 6.12](#612-attentionrequest)'s lookup table and is not restated here | `notification_type` | **DOCS-CITED** (the binary's `Notification` matcher declaration, read 2026-08-23, and re-read on every run of `tools/design/verify-harness-facts.py` — see the enum-source table below). Treated as an **open** set on the wire, because the payload types the field as a plain string: [§ 6.12](#612-attentionrequest) classifies the attention-bearing members and coerces everything else, so a value the declared set misses costs one label, never an event. *An earlier draft transcribed **14** values here, omitting `elicitation_dialog` and `elicitation_url_dialog` — the two the `elicitation` branch depends on — and no guard could see it, because the guard bound key names and not value sets* |
@@ -1219,6 +1243,28 @@ hook distinguish *"session is done"* from *"session is paused waiting for backgr
 it"* ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED). Only its **length**
 transits — the entries name commands, which [§ 1](#1-non-goals) excludes.
 
+> **AMENDED — that sentence was true and the rule below did not read it (card #7337, Q1).** The
+> field rode every `turn.end` and no rule consulted it, so a `turn.end` emitted while a subagent was
+> mid-flight satisfied `D2-MUST` #1 in full. **MEASURED at 2.1.245, twice:** a dispatched subagent
+> runs as a **background task** — its dispatch call is closed `completed` 4–45 ms after
+> `SubagentStart` ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) — so the parent's turn
+> ends *clean*, with `open_calls_at_end: 0` and `background_tasks_open: 1`, **239 ms and 1032 ms
+> before the subagent's own first tool call opened.** A conforming consumer therefore minted *idle*
+> on a seat running a subagent: the false idle of [§ 8.1](#81-the-problem-restated), arriving through
+> a field this document already carried for exactly this purpose. **Mezzanine exists to answer "is
+> this seat working?", and a seat with a live subagent IS working, whatever the parent turn's
+> bookkeeping says** — so the condition is now part of the rule. It changes what *idle* means on
+> every background-task seat, **and that is the point rather than a side effect**: such a seat was
+> never idle, and the model said so by omission.
+>
+> **What this does NOT do is suppress an idle that is true.** Once the boundary reap has closed the
+> killed call, nothing is running and *idle* is the honest state — the card's subject is a killed
+> call being reported as finished work, never a quiet seat being reported as quiet. Adding mechanism
+> to suppress that second transition would be minting a lie to satisfy a test's wording. The rule
+> that keeps both halves true is [D2 § 4.3](FLEET-STATE.md#43-the-derivation-function)'s: a
+> `session.end` clears the background-task fact along with `T`, `C` and `S`, because a background
+> task cannot outlive the session that spawned it.
+
 **The `aborted_call_ids` size note.** At the 64-call index cap the array holds 64 × 26 = 1,664 B of
 ULIDs; serialized as JSON each element also carries two quotes and a comma, so 64 × 29 = 1,856 B
 ≈ **1.8 KiB**. (An earlier draft showed the 26 and the 1.8 KiB without the quoting step between them,
@@ -1231,7 +1277,8 @@ count, so the disagreement between the two is itself the signal — and it can o
 that has already tripped `open_call_index_overflow`.
 
 > **`D2-MUST` #1 — the idle rule.** A consumer may mint an *idle* transition **only** from a
-> `turn.end` with `end_reason == "stop_hook"` **and** `aborted_call_ids == []`. Every other
+> `turn.end` with `end_reason == "stop_hook"`, `aborted_call_ids == []` **and
+> `background_tasks_open == 0`**. Every other
 > combination means the turn stopped for a reason other than the agent finishing, and the seat's
 > state is `unknown`, never `idle` — **except `end_reason == "api_error"`, which is its own rendered
 > state, `stalled`.** A rate-limited or overloaded fleet is a thing an operator acts on, and
@@ -1379,22 +1426,59 @@ gate — the event is emitted identically whether the ref is present or absent; 
 | Closing hook | `outcome` | `close_source` |
 |---|---|---|
 | `PostToolUse` — fires when the call **succeeded** | `completed` | `post_tool_use` |
-| `PostToolUseFailure` with `is_interrupt == false` — the call ran and errored | `failed` | `post_tool_use_failure` |
-| `PostToolUseFailure` with `is_interrupt == true` — the call was **interrupted**, not errored | `aborted` | `post_tool_use_failure` |
+| `PostToolUseFailure` matching the **kill signature** below — the call was killed, not errored | `aborted` | `post_tool_use_failure` |
+| `PostToolUseFailure` otherwise — the call ran and errored | `failed` | `post_tool_use_failure` |
 | a reap ([§ 8.3](#83-the-reap-rules)) — no harness close was ever observed | `aborted` | `reap_session_boundary` \| `reap_turn_boundary` \| `reap_reporter_restart` |
 | `SubagentStop`, for a dispatch call still open ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | `completed` | `subagent_stop_hook` |
 
-**`is_interrupt` is the harness's own kill-vs-fail discriminator, and this design uses it rather than
-re-deriving one.** `PostToolUseFailure` carries `{error, is_interrupt, duration_ms}` — MEASURED at
-2.1.240 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). An interrupted call did not
-*fail*; it stopped existing, which is [§ 8.1](#81-the-problem-restated)'s subject exactly, so it maps
-to `aborted` with `abort_reason: "interrupted"` and **does** block *idle* under `D2-MUST` #1, while
-an ordinary error maps to `failed` and does not. Reading it costs nothing and the alternative is
+> **THE KILL SIGNATURE — two independent signals, because neither is sufficient alone
+> (card #7337, Q3).** A `PostToolUseFailure` closes its call `aborted` / `interrupted` when
+> **either**:
+>
+> - `is_interrupt == true` — the harness naming the interrupt itself; **or**
+> - `error` reports **exit 137** *and* this hook's `session_id` differs from the one its call was
+>   opened in — a SIGKILL that arrived across a session boundary, which is the `/clear` kill's
+>   shape and nothing else's.
+>
+> **The residual, stated rather than left to be discovered: the second leg is evaluated at close
+> time.** MEASURED at 2.1.245 the kill's close arrives *after* both `/clear` signals, under the new
+> `session_id`, so the leg fires — but [§ 8.4](#84-detecting-a-clear-with-two-independent-signals)
+> is explicit that one capture is not an ordering guarantee. A close that genuinely preceded both
+> signals would carry the call's own `session_id`, close it `failed`, and leave the reap nothing to
+> abort: the false idle, on a path this rule does not cover. **UNVERIFIED**, deliberately, rather
+> than papered over with a timer. Cost if it happens: one seat renders *idle* for one killed call.
+> Made visible by `kill_close_same_session` ([§ 9.3](#93-degradation-counters)) rather than
+> assumed away, and closed by driving the reversed order — the same act
+> [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) already owes for its own pair.
+>
+> Anything else is `failed`. **Neither leg may be promoted to a sole rule.** `is_interrupt` alone
+> misses this kill outright (measured `false` on it). Exit 137 alone is *SIGKILL in general* — an
+> **OOM kill is a genuine failure**, the agent reads the error and carries on, and reading it as
+> `aborted` would block *idle* on a turn that legitimately finished, which is the false-*working*
+> defect wearing the other hat. The conjunction is the same two-independent-signal shape
+> [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) already uses to detect a `/clear` at
+> all, and its second leg is the same structural fact
+> [§ 8.6](#86-server-side-interpretation-of-open-call-state)'s override exclusion keys on: **a call
+> belongs to the session it was opened in.**
+
+**`is_interrupt` is the harness's own kill-vs-fail discriminator, and this design reads it — but it
+is not sufficient, and the prose that said so was doing no work.** `PostToolUseFailure` carries
+`{error, is_interrupt, duration_ms}` — MEASURED at 2.1.240
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). An interrupted call did not *fail*; it
+stopped existing, which is [§ 8.1](#81-the-problem-restated)'s subject exactly, so it maps to
+`aborted` with `abort_reason: "interrupted"` and **does** block *idle* under `D2-MUST` #1, while an
+ordinary error maps to `failed` and does not. When the key is absent the field is `null`, which is
+treated as `false` and counted `payload_key_missing.is_interrupt`.
+
+**This paragraph used to end by naming the exact hazard it then shipped**: *"the alternative is
 mislabelling every interrupted call as an ordinary failure — which would let a `/clear` that happens
-to produce a `PostToolUseFailure` mint the false idle the whole ledger exists to prevent. When the key
-is absent the field is `null`, which is treated as `false` and counted
-`payload_key_missing.is_interrupt`; that default is the safe direction only because the reap is the
-backstop for a genuinely killed call.
+to produce a `PostToolUseFailure` mint the false idle the whole ledger exists to prevent."* At 2.1.245
+a `/clear` **does** produce one, with `is_interrupt: false` (MEASURED, card #7337), so the mapping as
+written classified the headline kill as an ordinary failure — the named hazard, shipped. A document
+that names a hazard and then relies on a discriminator that does not exclude it has written a warning
+in place of a rule; the kill signature above is the rule. The reap remains the backstop, and
+[§ 8.6](#86-server-side-interpretation-of-open-call-state) is what stops the late close undoing it
+when the reap gets there first.
 
 **A call refused by the permission layer closes on the reap, and that is correct, not a lost close.**
 MEASURED at 2.1.240: a `Write` blocked by permissions fired `PreToolUse` and then **no close hook of
@@ -2332,17 +2416,33 @@ reaches any emitted event. The planted-string corpus reuses rule 3's prefixes.
 ### 8.1 The problem, restated
 
 **Measured upstream (roundtable #341/#340, 26 of 26 events): a `/clear` on a seat SIGKILLs an
-in-flight subagent's tool call.** The kill produces no completion signal — no `PostToolUse`, and no
-`PostToolUseFailure` either, because the call did not fail, it stopped existing. A consumer that
-treats the next turn boundary as "the turn finished" therefore mints a **false idle transition**, and
-it does so on exactly the seats that are busiest, because those are the seats running subagents when
-someone clears. A dashboard whose idle indicator is least trustworthy when work is heaviest is worse
-than no dashboard: it is confidently wrong in the one direction an operator would act on.
+in-flight subagent's tool call.** A consumer that treats the next turn boundary as "the turn
+finished" therefore mints a **false idle transition**, and it does so on exactly the seats that are
+busiest, because those are the seats running subagents when someone clears. A dashboard whose idle
+indicator is least trustworthy when work is heaviest is worse than no dashboard: it is confidently
+wrong in the one direction an operator would act on.
+
+> **AMENDED — the kill is not silent, and this section's original reason was wrong (card #7337).**
+> This section used to say the kill "produces no completion signal — no `PostToolUse`, and no
+> `PostToolUseFailure` either, because the call did not fail, it stopped existing." **MEASURED at
+> 2.1.245, twice, on a driven `/clear`: the killed call DOES fire `PostToolUseFailure`, carrying
+> `error: "Exit code 137"` and `is_interrupt: false`, 369 ms and 375 ms after
+> `SessionEnd(reason: "clear")` and under the NEW `session_id`.** The two facts that survive unchanged are the ones the design
+> actually rests on: the kill is not a completion, and no signal identifies it *as a kill* on its own
+> ([§ 6.6](#66-toolend) — `is_interrupt` is `false`, and exit 137 alone is also an OOM kill).
+> **Whether 2.1.240 and 2.1.245 genuinely differ here is NOT established** — the upstream capture
+> behind the 26-of-26 was not re-read, so the two measurements are recorded side by side rather than
+> one being declared drift. What the difference costs is stated where it lands:
+> [§ 6.6](#66-toolend)'s close mapping, [§ 8.6](#86-server-side-interpretation-of-open-call-state)'s
+> late-completion override, and [AT-1](#at-1-kill-vs-complete-the-headline-test).
 
 **The design answer: every tool call is an explicit ledger entry with an open and a close, and a
 close always states *how* it was closed.** Absence is never read as completion — by anybody, at any
 layer. The corollary, which the failure hook makes possible, is that *a call that ran and errored is
-a close, not an absence* ([§ 6.4](#64-turnend)).
+a close, not an absence* ([§ 6.4](#64-turnend)). The amendment above is why that rule is stated as a
+rule rather than as a consequence of the kill being silent: **a close that cannot say how it closed
+is not a completion either**, and the design survived a premise moving underneath it precisely
+because it never rested on the silence.
 
 ### 8.2 The call index: an append-only journal, and matching a close to its open
 
@@ -2659,9 +2759,17 @@ named here because they read the same payload value against two different index 
 - otherwise → emit nothing, increment `subagent_stop_unmatched`.
 
 `SubagentStop` and the dispatch call's own `PostToolUse` are two independent signals for one
-transition, in the same spirit as the two `/clear` signals — and at 2.1.240 `SubagentStop` arrives
-**first** ([§ 6.8](#68-subagentstop), MEASURED), so it is usually the one that closes the call.
-Whichever is second finds the call already closed and emits nothing. Using an unidentifiable signal to
+transition, in the same spirit as the two `/clear` signals. **Which of them arrives first is a
+harness fact that has already moved, and the design does not depend on the answer** — at 2.1.240
+`SubagentStop` arrived first ([§ 6.8](#68-subagentstop), MEASURED) and was usually the hook that
+closed the call; **at 2.1.245 the dispatch call's `PostToolUse` arrives first, 4–45 ms after
+`SubagentStart`, and `SubagentStop` follows 8–19 s later finding nothing to close** (MEASURED,
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read), card #7337), which is what
+`subagent_stop_unmatched` counts. Whichever is second finds the call already closed and emits
+nothing. **What the 2.1.245 ordering costs is not in this section but in two others**, because it
+inverts which signal is load-bearing: every hook firing inside the subagent now runs *after* its
+dispatch call left the index, so `parent_call_id` is `null` and `agent_bind_unresolved` counts it
+(below), and the parent's turn ends while the subagent works ([§ 6.4](#64-turnend)). Using an unidentifiable signal to
 close an arbitrary one of several candidates would be a guess with no observable, which is the failure
 mode this whole section exists to remove.
 
@@ -2682,7 +2790,8 @@ the right intern without the harness's opaque `agent_id` ever transiting. Where 
 | `tool.start` for a new `call_id` | open the call, record `started_at` = `event_time` |
 | `tool.start` for a `call_id` already known | ignore, count `duplicate_open` (a dedup escape or a replay) |
 | `tool.end` for an open call | close with the stated `outcome` |
-| `tool.end` with `match: "tombstone_ref"` for a call already closed `aborted` | **override** to the stated `outcome`, count `late_completion` ([§ 12.5](#125-late-completions-and-orphan-timeouts)) |
+| `tool.end` with `match: "tombstone_ref"` for a call already closed `aborted`, **carrying the same `session_id` the call was opened in** | **override** to the stated `outcome`, count `late_completion` ([§ 12.5](#125-late-completions-and-orphan-timeouts)) |
+| the same, but carrying a **different** `session_id` than the call was opened in | **no override — the abort stands**; count `late_close_cross_session` ([§ 12.7](#127-server-side-counters)) |
 | `tool.end` arriving **before** its `tool.start` (out-of-order batches) | create the entry already closed; a later `tool.start` for it **does not reopen it**, and counts `late_open` |
 | a call open past its **orphan timeout** ([§ 12.5](#125-late-completions-and-orphan-timeouts)) | close it `aborted` / `orphan_timeout`, server-side only — **no wire event is synthesized**, because the wire is what a seat said and the server must not put words in a seat's mouth |
 | `turn.end` with `aborted_call_ids` non-empty | the turn is **not** a clean boundary; `D2-MUST` #1 forbids an idle transition |
@@ -2706,6 +2815,16 @@ which is the failure the row looks innocent enough to hide.
 The acceptance-test scenario ([AT-1](#at-1-kill-vs-complete-the-headline-test)), event by event.
 `T` is the seat clock. This trace shows `SessionEnd` arriving before `SessionStart`; the reverse order
 is equally valid and is covered below.
+
+> ⚠ **This trace is the 2.1.240 lifecycle and does NOT reproduce at 2.1.245 (card #7337).** It
+> assumes the dispatch call `A` stays open for the subagent's life, which is what puts two calls in
+> the reap and gives the `turn.end` two `aborted_call_ids`. At 2.1.245 `A` is closed `completed` at
+> step 2½ and the parent's turn has already ended by step 3, so the `/clear` reaps **one** call and
+> emits **no `turn.end` at all**. The trace is kept because both lifecycles must be handled and this
+> is the readable statement of the reap's ordering rules; the measured 2.1.245 trace is
+> [AT-1](#at-1-kill-vs-complete-the-headline-test)'s Case A′, and which one a given build produces is
+> a question for the re-capture obligation ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)),
+> not for the reader to guess.
 
 | # | Time | Kind | Key data |
 |---|---|---|---|
@@ -2829,6 +2948,7 @@ statusLine processes reach the flusher through the counter sink
 | `clear_second_signal_found_nothing` | a `SessionStart(source=clear)` whose index held no other open session to reap ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and **expected on every `/clear` where `SessionEnd` ran first** — which at 2.1.240 is every one measured. It is `reap_noop_second_signal` seen from the selection side, and the two disagreeing means the second signal selected the *wrong* session |
 | `reap_noop_second_signal` | the second `/clear` signal found nothing to reap | informational, and **expected on every `/clear`** — a zero here on a seat that has cleared is the alarm ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) |
 | `tombstone_late_close` | a close matched a tombstone — the reap was too eager for that call | informational; the reporter-side half of `late_completion` |
+| `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in — the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
 | `compaction_double_close` | both `PostCompact` and `SessionStart(compact)` closed one compaction | informational; a zero means one of the two signals is dead |
 | `bad_session_id` | `session_id` failed its pattern and was sent as `null` ([§ 3.2](#32-session-identity)) | `degraded` |
 | `config_invalid` | the config failed validation at runtime (e.g. a non-`https` `ingest_url`) | `degraded`; the flusher keeps spooling and sends nothing |
@@ -3548,7 +3668,8 @@ either, and never trigger this path.
 | Orphan timeout, `Task` (subagent) call | **60 min** | a subagent is a full agent session and routinely runs tens of minutes; 60 min is 4× the ordinary ceiling. Erring long is the safe direction — a desk that shows *working* too long is honest-ish; a desk that goes idle while its subagent runs is the exact defect this section exists to prevent. Measured from the server's `received_at`, per the rule below |
 | Reporter-side tombstone window | **15 min** | deliberately the same number as the ordinary orphan timeout, so the reporter can still name a call for exactly as long as the server still holds one open ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) |
 | Orphan close | server-side ledger only, `aborted` / `orphan_timeout` | **no wire event is synthesized** — the wire records what a seat said |
-| **Late completion** | a `completed` or `failed` close carrying `match: "tombstone_ref"` for a call already closed as `aborted` **overrides** it | **completion is an observation; abort is an inference.** An observation always wins over an inference about the same fact. Counted as `late_completion`; a rising count means a reap rule is too eager and is a design signal, not noise — and it can only *be* counted because the tombstone gives the late close its original `call_id` |
+| **Late completion** | a `completed` or `failed` close carrying `match: "tombstone_ref"` for a call already closed as `aborted`, **under the same `session_id` the call was opened in**, **overrides** it | **completion is an observation; abort is an inference.** An observation always wins over an inference about the same fact. Counted as `late_completion`; a rising count means a reap rule is too eager and is a design signal, not noise — and it can only *be* counted because the tombstone gives the late close its original `call_id` |
+| **Cross-session late close** | the same close arriving under a **different** `session_id` — **refused**, the abort stands, counted `late_close_cross_session` (card #7337, Q2) | **a call belongs to the session it ran in**, so this is not a late observation of that call finishing — it is the corpse signal of the kill that ended the session, and on this build it is what a `/clear` emits 369 ms and 375 ms after the reap ([§ 8.1](#81-the-problem-restated)). Without the exclusion the rule above turns every killed call's final ledger outcome into `failed`, which [§ 6.4](#64-turnend) says never blocks *idle* — the false idle re-entering through the instrument built to detect an over-eager reap. The discriminator is structural rather than a heuristic on timing or on `error` text |
 
 **D2: both orphan ceilings are measured from the server's `received_at`, never from the seat's
 `event_time`.** The ledger records `started_at = event_time`
@@ -3601,6 +3722,7 @@ number that raised it.
 | `duplicate_open` | a `tool.start` for a `call_id` already open | informational; a dedup escape or a replay ([§ 8.6](#86-server-side-interpretation-of-open-call-state)) |
 | `late_open` | a `tool.start` arriving for a call already closed | informational; ordinary with out-of-order batches |
 | `late_completion` | a `match: "tombstone_ref"` close overriding an `aborted` one | **a design signal**: a rising count means a reap rule is too eager ([§ 12.5](#125-late-completions-and-orphan-timeouts)) |
+| `late_close_cross_session` | a `match: "tombstone_ref"` close arrived under a **different** `session_id` than its call was opened in, and was **refused** ([§ 8.6](#86-server-side-interpretation-of-open-call-state)) | **the kill's own volume**: on this build every `/clear` that kills a call produces one, so it is expected to track `/clear`s rather than to sit at zero. It is separated from `late_completion` precisely so that signal keeps meaning "a reap is too eager" — folded together, the eagerness instrument would read one-per-clear forever and could never report |
 | `orphan_timeout_closes` | the ledger closed a call nobody ever closed | informational per seat; a spike means the reporter stopped closing calls |
 | `session_reopened` | an event arrived for a session closed by `inferred_silence` | **re-derives the 90-minute rule** ([§ 6.2](#62-sessionend)) |
 | `seq_gap` | a missing `seq` inside an epoch | the **server's own** `seq_gap` badge on that seat, per the rule above — **not** a `lossy` member of [§ 9.3](#93-degradation-counters)'s array, which only the reporter mints ([§ 10.2](#102-ordering-seq-and-gap-detection)) |
@@ -3623,25 +3745,72 @@ seen to fail is not evidence — it is a decoration that reports the harness ran
 
 *This is the gate on trusting the signal at all (`docs/PLAN.md § 3`, card #7337).*
 
+**The rig is `tools/at1-kill-vs-complete/`**, which drives this against a real session and holds the
+mechanics this section cannot state in prose. Two of them change what "run AT-1" means and are
+recorded here because they are what a re-run will hit first:
+
+- **`Bash: sleep 120` is not drivable.** The harness refuses a standalone sleep outright (MEASURED at
+  2.1.245: *"Blocked: standalone sleep 120 … use Monitor with an until-loop"*). The in-flight call is
+  `until [ -f <sentinel>; ]; do sleep 2; done` against a sentinel the rig never creates.
+- **The `/clear` must be timed off the reporter's own index journal, never off a sleep**, and it can
+  only land mid-call against a **subagent's** call: the TUI **queues** keystrokes while the main
+  agent runs its own tool call, so a `/clear` typed there is not delivered until something
+  interrupts. That is not a limitation of the rig — it is why [§ 8.1](#81-the-problem-restated)'s
+  defect is a *subagent* defect.
+
 - **Build:** a real seat with the reporter installed, pointed at a real ingest over TLS. A dispatch
-  fixture that dispatches a subagent (the `Agent`/`Task` tool) → the subagent runs `Bash: sleep 120`.
-- **Do:** wait until the server's ledger shows both calls open, then type `/clear` in the seat.
-- **GREEN — the event stream matches [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)**:
-  two `tool.end`s with `outcome:"aborted"`, `abort_reason:"session_cleared"`,
-  `close_source:"reap_session_boundary"`; a `subagent.stop` with `outcome:"aborted"`; a `turn.end`
-  with `end_reason:"session_cleared"` and `aborted_call_ids` of length 2; a `session.end` with
-  `end_reason:"clear"`; and a `session.start(source:"clear")`. **Either hook order is a pass** —
-  `SessionEnd` before `SessionStart` or the reverse — but the reap must have happened **exactly
-  once**: assert `reap_noop_second_signal` incremented by exactly 1 and that no call was closed twice.
-- **GREEN — what must NOT appear:** no `tool.end` with `outcome:"completed"` or `"failed"` for either
-  call; no `turn.end` with `end_reason:"stop_hook"`; and **no idle transition in the derived state** —
-  the seat goes `working → unknown`, never through `idle`, and the floor shows no idle animation.
+  fixture that dispatches a subagent (the `Agent`/`Task` tool) → the subagent runs a long
+  foreground `Bash` call.
+- **Do:** wait until the ledger shows the target call open, then type `/clear` in the seat.
+- **GREEN — Case A′, the 2.1.245 background-task lifecycle (the one that reproduces today).** The
+  dispatch call `A` closes `completed` at its own `PostToolUse` before the subagent's first call
+  opens, and the parent's turn ends before the `/clear`
+  ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), so the clear reaps exactly the
+  subagent's own call `B`: **one** `tool.end` with `outcome:"aborted"`,
+  `abort_reason:"session_cleared"`, `close_source:"reap_session_boundary"`, `match:"reap"`; a
+  `session.end` with `end_reason:"clear"`; a `session.start(source:"clear")`; and **no `turn.end` at
+  the clear at all**, because no turn was open. The reap must have happened **exactly once**: assert
+  `reap_noop_second_signal` incremented by exactly 1 and that no call was closed twice.
+- **GREEN — Case A, the 2.1.240 lifecycle**, if the build under test keeps `A` open: the stream
+  matches [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call) — two `tool.end`s
+  `aborted`/`session_cleared`/`reap_session_boundary`, a `subagent.stop` with `outcome:"aborted"`, a
+  `turn.end` with `end_reason:"session_cleared"` and `aborted_call_ids` of length 2, the same
+  `session.end` and `session.start`. **Either hook order is a pass** in both cases — `SessionEnd`
+  before `SessionStart` or the reverse.
+  **Which case a build produces is itself the assertion to record**, with the harness version read
+  from the running binary: a build that changes case has changed the lifecycle, which is
+  [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s re-capture trigger firing.
+- **GREEN — the killed call's disposition, stated by its own close and not by absence:** its **final**
+  ledger outcome is `aborted`/`session_cleared`. The `PostToolUseFailure` that follows the reap
+  (`Exit code 137`, `is_interrupt:false`, new `session_id`) must be **refused** as a late completion
+  and counted `late_close_cross_session`
+  ([§ 8.6](#86-server-side-interpretation-of-open-call-state)); assert `late_completion` did **not**
+  increment for it.
+- **GREEN — the idle assertion, and it is narrower than "no idle in the trace":** **no idle
+  transition may be minted while the subagent is alive** — that is, none from the parent's clean
+  `turn.end`, nor at any point between it and the reap. **An idle *after* the reap is a PASS, not a
+  failure:** nothing is running then, so *idle* is true, and asserting its absence would be asserting
+  a lie ([§ 6.4](#64-turnend), card #7337 Q1b). The earlier wording — "the seat goes
+  `working → unknown`, never through `idle`" — described the 2.1.240 trace, where the `/clear`'s own
+  `turn.end` dirtied the turn record; it is wrong as a general assertion and is replaced by the
+  scoped one.
 - **RED (run it, don't assume it):** disable the reap in [§ 8.3](#83-the-reap-rules) and re-run. The
   calls stay open until the orphan timeout, the boundary events carry `aborted_call_ids: []`, and a
   consumer applying only "turn ended ⇒ idle" mints the false idle. Seeing that is the proof the test
-  discriminates.
+  discriminates. `tools/at1-kill-vs-complete/plant.py --defect reap-disable` builds this copy and
+  **raises if the defect fails to apply**, because a plant that silently applied nowhere turns the
+  RED run into a false GREEN.
 - **Second RED:** keep the reap but weaken `D2-MUST` #1 to "any `turn.end` ⇒ idle". The idle appears.
   Both halves — the schema and the consumer rule — must be individually necessary.
+- **Third RED — the `background_tasks_open` condition (card #7337 Q1):** keep everything and drop
+  that one condition from `D2-MUST` #1. On a Case A′ stream the false idle reappears **on the parent's
+  clean `turn.end`**, 239 ms before the subagent's first call opens. This RED is what makes the
+  condition load-bearing rather than decorative, and it is the one the rig's own `selftest.py`
+  asserts on synthetic fixtures so it is checked without a credential.
+- **Fourth RED — the cross-session exclusion (card #7337 Q2):** keep everything and let a
+  `tombstone_ref` close override regardless of `session_id`. The killed call's final ledger outcome
+  flips to `failed`, which [§ 6.4](#64-turnend) says never blocks *idle* — the false idle returning
+  through the late-completion instrument.
 - **Case B — `/clear` against a parallel dispatch, which is what the `agent_id` scoping is for.**
   Same fixture, but the turn dispatches **three** subagents concurrently, each running
   `Bash: sleep 120`, and the `/clear` lands with all three plus their parent calls open. **GREEN:**

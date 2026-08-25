@@ -225,9 +225,10 @@ Adopted from kanban-solo's #344 answer (measured, not folklore), with one delibe
 | Risk | Standing answer |
 |---|---|
 | Old reporter → new ingest skew | D1's versioning + support window; loud reject; VERSIONING owns the policy |
-| False idles on busy seats | the kill-vs-complete gate (#7337) blocks trusting the signal until passed |
+| False idles on busy seats | the kill-vs-complete gate (#7337) blocks trusting the signal until passed. **Run 2026-08-25: it FAILED and the bar stands** — the reporter was right and the design's guarantee did not hold on the installed harness. D1/D2 amended (`D2-MUST` #1's background-task condition, § 6.6's kill signature, § 8.6's cross-session exclusion); the reporter's own § 6.6 mapping is **not yet updated** |
 | Secrets in telemetry | minimized payload at the reporter (D-06); RED fixtures for the sanitizer |
 | Board-14 mention-vs-closure (#343) | inherited from the bridge writeback; first-release card enumeration discipline until the upstream fix lands |
+| **Harness facts drifting under the design** | D1 § 6.0's re-capture obligation, widened to **any** version change after a PATCH bump moved the call lifecycle (#7337). `tools/at1-kill-vs-complete/` re-runs the proof; the version is read from the running binary, never from config |
 | Windows divergence | validation seat is a P1 gate, not a P4 afterthought |
 | Doc structure churn | root `CLAUDE*` files wait on #346; nothing to migrate later |
 | Scope creep toward the watchdog | out of plan; only the REST snapshot is Mezzanine's part |

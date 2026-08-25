@@ -26,6 +26,24 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   to every `/api/*` route, including the MFA-gated snapshot. Doc-sync: `§ 6.5` gains the
   `synthesized` field row that `§ 6.6` has always mandated, and `§ 12.2` splits the one `422` row
   into the two codes `§ 12.1` actually names.
+- **card#7337** — Ran D1's AT-1 against a real `/clear` on a real seat, and **it failed** — the
+  reporter behaved exactly as `docs/design/EVENT-SCHEMA.md` § 8.2/§ 8.3 specify, while the design's
+  guarantee did not hold on the installed harness (2.1.245). Three measured facts: a killed call
+  **does** fire `PostToolUseFailure` (`Exit code 137`, `is_interrupt: false`) under the new
+  `session_id`; a dispatched subagent runs as a **background task**, so the parent's turn ends clean
+  while it works; and a conforming consumer therefore minted *idle* on a seat running a subagent.
+  Amended in consequence: `D2-MUST` #1 and D2 § 4.3's `derive_activity` gain
+  `background_tasks_open == 0` (and `session.end` clears that one component of `L`, so an idle that
+  is **true** after the reap is not suppressed); § 6.6 gains a two-signal **kill signature**
+  (`is_interrupt`, **or** exit 137 across a session boundary — exit 137 alone is an OOM kill and a
+  genuine failure); § 8.6 refuses a cross-session late close and counts `late_close_cross_session`;
+  § 6.0's re-capture obligation widens from minor to **any** version change, because a patch bump is
+  what moved the lifecycle. AT-1 is rewritten against that lifecycle, with its idle assertion
+  narrowed to the transitions that are false. New rig `tools/at1-kill-vs-complete/` drives the proof
+  end to end under a scratch config, with a hermetic `selftest.py`, a RED plant that raises rather
+  than silently applying nowhere, and an **operator-run** credential prerequisite the rig refuses to
+  script. Whether the harness behaviour changed between 2.1.240 and 2.1.245 is **not established**.
+
 - **card#7334** — Laravel application skeleton in `server/`, with mandatory MFA on stock
   packages (Fortify + `pragmarx/google2fa`). MFA gates three surfaces independently — the
   browser pages, the websocket handshake (`/broadcasting/auth`), and the REST snapshot route
