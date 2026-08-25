@@ -31,6 +31,7 @@ reopen an entry by talking to its decider.
 | D-13 | After the P0 designs land, the project **splits to a dedicated Mezzanine agent** running a **sandbox** instance; **prod** is a separate deployment driven by `bin/deploy.sh` (pattern requested from kanban-solo's kanban-board project) | operator | 2026-08-23 |
 | D-14 | Design docs are written to the **standalone-implementer standard** (§ 2, "The bar") — complete enough that an AI agent with no access to this project's conversational history implements from the document alone | operator | 2026-08-23 |
 | D-15 | The fleet-state store is **MySQL on a dedicated DB host**; provisioning it is a deployment task downstream of D2's schema, owned by the Mezzanine build agent (D-13) | operator | 2026-08-23 |
+| D-16 | The Laravel application lives in **`server/`**, not at the repo root — the root already owns `README.md`, `VERSION`, `bin/`, `docs/`, `tools/` and `fleet-reporter/`, and the downstream consumers (CI lanes #7344, `bin/deploy.sh` #7459, ingest #7338, store/feed #7339) each need one stable path to key on | pm | 2026-08-25 |
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
@@ -199,8 +200,10 @@ Adopted from kanban-solo's #344 answer (measured, not folklore), with one delibe
   (sandbox owner + implementer); aimla-pm drops to coordinator (reviews, cross-project routing,
   this plan's upkeep). The new seat inherits this plan as its orientation — which is a reason
   this document stays current rather than aspirational.
-- Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server; `.env` from a
-  staged example; seat-token store with 0600 posture; the same release≠deploy rule as
+- Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
+  `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
+  `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
+  credential; seat-token store with 0600 posture; the same release≠deploy rule as
   `docs/VERSIONING.md` — a release states which of the **two deploy targets** (server app;
   per-seat reporter) it touches, and prod only ever moves by `bin/deploy.sh`.
 - **Reporter rollout order:** aimla's four seats first (all on one box — cheap), then the

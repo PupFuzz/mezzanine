@@ -4,8 +4,9 @@
 every PM, solo, and implementation agent rendered as a character at a desk, showing what
 they are actually doing right now — with a drill-down into their tasks and subagents.
 
-> Status: **scaffolding.** No application code yet. The only thing that runs is the kanban
-> automation in `.github/workflows/` — see [Kanban](#kanban) below.
+> Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
+> shell with no dashboard behind it yet. The kanban automation in `.github/workflows/` also
+> runs; see [Kanban](#kanban) below.
 
 ## What it is
 
@@ -28,14 +29,33 @@ motion on the floor is driven by a real event. Nothing is canned status theater.
 Telemetry is **programmatic end to end** — the harness fires the hooks and the reporter
 posts the JSON. No model is asked to describe itself.
 
-## Repo layout (planned)
+## Repo layout
 
 ```
-app/, resources/, routes/   Laravel host + MFA-gated shell
-resources/js/floor/         Pixi.js office floor (scene, characters, camera)
+server/                     the Laravel host + MFA-gated shell   ← exists
+server/resources/js/floor/  Pixi.js office floor (scene, characters, camera)
 fleet-reporter/             cross-platform hook bundle + installer
 docs/                       design notes, feed schema, ATTRIBUTION
+bin/, tools/                kanban + design-doc automation       ← exists
 ```
+
+The application lives under `server/` and not at the repo root, which already holds this
+README, `VERSION`, `bin/`, `docs/` and `tools/`. That path is pinned as a decision
+(`docs/PLAN.md` D-16) because the CI lanes, the deploy script and the ingest/store cards all
+key on it.
+
+### Running the server locally
+
+```
+cd server
+composer install
+cp .env.example .env && php artisan key:generate    # .env is never committed
+php artisan migrate
+php artisan test
+```
+
+Every page requires a second factor, so a freshly created account is sent to the enrolment
+screen and reaches nothing else until it finishes there.
 
 ## Licensing and attribution
 

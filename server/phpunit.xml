@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+
+        <!--
+            Store isolation, per docs/design/FLEET-STATE.md § 6.2, which owns these values.
+            EVERY PIN BELOW IS TWO ADJACENT ENTRIES THAT MUST AGREE — an <env force="true">
+            and a matching <server>. `force` writes putenv() and $_ENV but never $_SERVER,
+            and Laravel's env() reads $_SERVER first, so the <env> half alone loses to an
+            exported variable. DatabasePinTest asserts the pairing, because the mode this
+            guards against is one line of a pair being edited.
+        -->
+        <env    name="DB_DATABASE"    value="mezzanine_test" force="true"/>
+        <server name="DB_DATABASE"    value="mezzanine_test"/>
+        <env    name="DB_URL"         value="" force="true"/>
+        <server name="DB_URL"         value=""/>
+        <env    name="REDIS_DB"       value="11" force="true"/>
+        <server name="REDIS_DB"       value="11"/>
+        <env    name="REDIS_CACHE_DB" value="10" force="true"/>
+        <server name="REDIS_CACHE_DB" value="10"/>
+        <env    name="REDIS_URL"      value="" force="true"/>
+        <server name="REDIS_URL"      value=""/>
+
+        <!--
+            DB_CONNECTION IS DELIBERATELY NOT FORCED, and the omission is the point:
+            forcing it is the shape that turned another repo's MariaDB matrix into a SQLite
+            run reporting green (§ 6.2). Nothing in this repo's CI selects a backend by
+            exporting it today; when something does, it must win.
+
+            DB_SQLITE_DATABASE rather than DB_DATABASE — see config/database.php's sqlite
+            connection. The two variables address different connections on purpose.
+        -->
+        <env name="DB_CONNECTION"      value="sqlite"/>
+        <env name="DB_SQLITE_DATABASE" value=":memory:"/>
+    </php>
+</phpunit>

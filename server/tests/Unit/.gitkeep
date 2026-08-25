@@ -1,0 +1,7 @@
+This directory is declared as a testsuite in phpunit.xml and is empty today — every test in
+this application is a Feature test. Git does not track directories, so without this file the
+directory would be absent on a clean checkout and PHPUnit would refuse to run the WHOLE suite
+with "Test directory .../tests/Unit not found" — measured, not assumed.
+
+Deleting the <testsuite name="Unit"> entry instead would work, but would silently stop running
+any unit test a later change drops in here.
