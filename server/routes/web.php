@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,7 +27,7 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // card #7339 and is deliberately absent rather than stubbed, so nothing downstream can
     // read a placeholder as a fleet that is empty. 501 says "this server does not implement
     // this yet", which is the only honest answer a gate can give on its own.
-    Route::get('/api/fleet/snapshot', fn (Request $request) => response()->json([
+    Route::get('/api/fleet/snapshot', fn () => response()->json([
         'error' => 'not_implemented',
         'message' => 'The fleet snapshot is not built yet; its content is card #7339.',
     ], Response::HTTP_NOT_IMPLEMENTED))->name('fleet.snapshot');
