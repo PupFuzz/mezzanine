@@ -95,6 +95,17 @@ class RebuildCommand extends Command
                 Counters::seat($seatRef, 'rebuild_truncated');
             }
 
+            // THE MARKER ROW GETS A VERSION OF ITS OWN, like every other transition row (§ 6.5).
+            // The replay above minted the seat's history through `StateRecompute`, so this row is
+            // the only one written here directly — and read back without this bump it lands on the
+            // version the replay's LAST row already announced (a window ending in a `turn.end`,
+            // which is most of them), leaving two rows on one version and no delta saying the seat
+            // was rebuilt. Bumping keeps `state_version` climbing, which is what § 8.5 needs of a
+            // rebuild; AT-D2-10 compares a rebuilt seat to a folded one excluding this column for
+            // exactly that reason.
+            DB::table('seat_state')->where('seat_ref', $seatRef)
+                ->update(['state_version' => DB::raw('state_version + 1')]);
+
             DB::table('seat_state_transitions')->insert([
                 'seat_ref' => $seatRef,
                 'state_version' => DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version'),

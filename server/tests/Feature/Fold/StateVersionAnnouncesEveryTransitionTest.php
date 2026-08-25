@@ -138,4 +138,25 @@ class StateVersionAnnouncesEveryTransitionTest extends FoldTestCase
 
         $this->assertGreaterThanOrEqual(3, count($renderRows), 'the fixture minted fewer render changes than it should');
     }
+
+    public function test_a_rebuild_writes_its_marker_row_at_a_version_of_its_own(): void
+    {
+        // THE THIRD WRITER OF A TRANSITION ROW, found auditing the shape of the two above.
+        // `mezzanine:rebuild` replays the log through the same `StateRecompute` — so the replay's
+        // own rows are minted correctly — and then writes ONE marker row with `cause: rebuild`
+        // directly, reading `state_version` back without bumping it. When the last replayed event
+        // moved the render (a `turn.end` leaving `working`, which is how most windows end) that
+        // marker lands on the version the replay's last row already announced: two rows, one
+        // version, and the feed carries no delta saying the seat was rebuilt.
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+
+        $rows = $this->transitionRows();
+
+        $this->assertSame('rebuild', end($rows)['cause'] ?? null);
+
+        $this->assertEveryRowAnnounced();
+    }
 }
