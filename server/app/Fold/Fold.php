@@ -323,26 +323,16 @@ final class Fold
             // its other facts still support" — so the poison-event path labels and never collapses,
             // which is the same discipline the rest of the document applies. The recompute below
             // therefore leaves the axes exactly where the last good event left them and only the
-            // badge moves; the transition row is written because the badge is a rendered change.
-            $before = DB::table('seat_state')->where('seat_ref', $seatRef)->value('render_state');
+            // badge moves.
+            //
+            // THE `fold_error` CAUSE IS THE WHOLE OF THIS CALL'S REQUEST FOR A ROW. § 6.5 requires
+            // "a transition row records the cause" whether or not the render moved, because the row
+            // is the drill-down's only record that an event was skipped — and `StateRecompute` owns
+            // that, including the version bump that makes the row reachable through the feed. This
+            // method used to write the no-render-change row itself, off a second pair of
+            // `render_state` reads and without a bump, which is how a repeat quarantine on an
+            // already-badged seat wrote three rows at one version.
             $this->recompute->after($event, 'fold_error');
-            $after = DB::table('seat_state')->where('seat_ref', $seatRef)->value('render_state');
-
-            if ($before === $after) {
-                // The render did not move, so the recompute wrote no row — but § 6.5 requires "a
-                // transition row records the cause" for a fold error regardless, because the row
-                // is the drill-down's only record that an event was skipped.
-                DB::table('seat_state_transitions')->insert([
-                    'seat_ref' => $seatRef,
-                    'state_version' => DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version'),
-                    'at' => Clock::sql(now()),
-                    'from_render_state' => $before,
-                    'to_render_state' => $after,
-                    'cause' => 'fold_error',
-                    'cause_event_ref' => null,
-                    'detail' => json_encode(['skipped_event_id' => $event->eventId, 'kind' => $event->kind]),
-                ]);
-            }
 
             $this->advance($seatRef, $cursor, $event->id, $receivedAt);
         });

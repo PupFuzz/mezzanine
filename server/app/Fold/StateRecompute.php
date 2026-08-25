@@ -52,43 +52,73 @@ class StateRecompute
     ];
 
     /**
-     * @param  string  $cause  a `seat_state_transitions.cause` member
-     * @return bool whether a version-bearing field moved (⇒ Part B enqueues a delta)
+     * ⛔ ONE PAIR OF SNAPSHOTS DECIDES BOTH WRITES, AND A TRANSITION ROW ALWAYS IMPLIES A BUMP.
+     *
+     * § 6.5 states the two as separate conditions — "if any VERSION-BEARING field changed:
+     * state_version += 1" / "if render_state changed: INSERT seat_state_transitions" — and the
+     * poison-event rule adds a third: a fold error writes its row "regardless". Computed
+     * independently, those conditions can disagree, and a transition row written at a version that
+     * was never incremented is a state change NO CONSUMER CAN LEARN ABOUT: § 8.5 makes
+     * `state_version` the feed's ordering key and has the client apply a delta iff
+     * `delta.state_version == local.state_version + 1`, so a row at the version the client already
+     * holds is a row it will never be told about. That is what happened to a repeat fold error on a
+     * seat already badged `derivation_error` — nothing version-bearing moves, so three consecutive
+     * quarantines cited one version between them.
+     *
+     * So: `$before`/`$after` are read ONCE each, both conditions are read out of that one pair, and
+     * the version is bumped whenever a row is written. The render comparison in particular is not a
+     * second pair of reads of `render_state` — it is the member of the SAME snapshot, which is also
+     * why it cannot silently diverge from the set `SeatFacts::versionBearing()` names.
+     *
+     * `!==` and not `!=`: loose array comparison equates `null` with `false` and with `0`, so a
+     * version-bearing field learning a value (`enabled: null → false`) would read as no change. The
+     * strict form errs toward an extra delta, which the feed tolerates; the loose one errs toward a
+     * change no client is told about, which is the failure this whole method exists to prevent.
+     *
+     * @param  string  $cause  a `seat_state_transitions.cause` member. Anything other than
+     *                         `wire_event` is a caller that owes a row whatever the render did —
+     *                         today only § 6.5's poison-event rule, via `Fold::quarantine()`.
+     * @return bool whether `state_version` was bumped (⇒ Part B enqueues a delta)
      */
     public function after(FoldEvent $e, string $cause = 'wire_event'): bool
     {
         $before = SeatFacts::versionBearing($e->seatRef);
-        $beforeRender = DB::table('seat_state')->where('seat_ref', $e->seatRef)->value('render_state');
 
         $this->writeSnapshotColumns($e);
         $this->writeDerivedColumns($e);
 
         $after = SeatFacts::versionBearing($e->seatRef);
-        $afterRender = DB::table('seat_state')->where('seat_ref', $e->seatRef)->value('render_state');
 
-        $moved = $before != $after;
+        $moved = $before !== $after;
+        $transition = $before['render_state'] !== $after['render_state'] || $cause !== 'wire_event';
 
-        if ($moved) {
+        if ($moved || $transition) {
             DB::table('seat_state')->where('seat_ref', $e->seatRef)
                 ->update(['state_version' => DB::raw('state_version + 1')]);
         }
 
-        if ($beforeRender !== $afterRender) {
+        if ($transition) {
             DB::table('seat_state_transitions')->insert([
                 'seat_ref' => $e->seatRef,
+                // Read back AFTER the bump above, which the line before this insert guarantees ran.
                 'state_version' => DB::table('seat_state')->where('seat_ref', $e->seatRef)->value('state_version'),
                 'at' => Clock::sql(now()),
-                'from_render_state' => $beforeRender,
-                'to_render_state' => $afterRender,
+                'from_render_state' => $before['render_state'],
+                'to_render_state' => $after['render_state'],
                 'cause' => $cause,
                 // `events.id`, and only when the cause is a wire event — which is what lets the
                 // drill-down say *this event did it* rather than *something did it around then*.
                 'cause_event_ref' => $cause === 'wire_event' ? $e->id : null,
-                'detail' => json_encode(['kind' => $e->kind, 'event_id' => $e->eventId]),
+                // A fold error's row names the event it SKIPPED; a wire event's names the event that
+                // caused the change. Same row, two different claims about one id, so they are not
+                // written under one key.
+                'detail' => json_encode($cause === 'fold_error'
+                    ? ['kind' => $e->kind, 'skipped_event_id' => $e->eventId]
+                    : ['kind' => $e->kind, 'event_id' => $e->eventId]),
             ]);
         }
 
-        return $moved;
+        return $moved || $transition;
     }
 
     /**

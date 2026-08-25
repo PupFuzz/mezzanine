@@ -1474,6 +1474,14 @@ loop:
        recompute derive_activity() + link_state + render_state
        if any VERSION-BEARING field changed (the set is named below): state_version += 1
        if render_state changed:                    INSERT seat_state_transitions
+                        -- BOTH CONDITIONS COME OFF ONE PAIR OF SNAPSHOTS, and a row is never
+                        -- written at a version that was not bumped for it: render_state IS a
+                        -- member of the version-bearing set below, so the second condition is a
+                        -- SUBSET of the first, and a writer that owes a row for a cause other than
+                        -- a render change (the poison-event rule below) bumps for that row too.
+                        -- Otherwise the row sits at a version the client already holds and § 8.5's
+                        -- `delta.state_version == local + 1` rule can never deliver it: the
+                        -- drill-down would have the row and the feed would have nothing.
        if rows is non-empty:
          UPDATE seat_state SET fold_cursor_event_id    = last row's id,
                                fold_cursor_received_at = last row's received_at, ...
@@ -1651,6 +1659,15 @@ leave a client's action field permanently stale ([§ 10](#10-worked-example-the-
 has five such changes inside one `working` state). A transition row, conversely, exists to answer *why
 did this desk change state*, and one row per tool call would bury that in noise.
 
+**Different populations, but NESTED ones: every transition row is written at a version bumped for it.**
+`render_state` is on the version-bearing side of the subtraction, so a render change is a version
+change by construction and the row lands at the new value — and the one writer that owes a row
+without a render change, the poison-event rule below, bumps for its row as well. The nesting is the
+property, not the two conditions: a row at a version the client already holds is unreachable through
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s `delta.state_version == local + 1`
+rule, so the desk's drill-down would record a change the feed could never deliver. An implementer
+computing the two conditions from two separate reads has no way to see that they have diverged.
+
 **Arrival order for visiting, `(event_time, seq_epoch, seq)` for applying.** The fold *reads* in
 `events.id` order because `seq` cannot carry a cursor at all: it can have permanent holes
 ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over `seq` could wait
@@ -1713,7 +1730,10 @@ seat, a poison event costs one desk, and that desk says so (`derivation_error`).
 **The poison-event rule.** If `project()` raises, the transaction is rolled back, the event is retried
 alone once, and on a second raise the cursor advances past it, `fold_error` increments,
 `seat_state.fold_errors` increments, the seat badges `derivation_error` and a transition row records the
-cause. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
+cause — **at a bumped `state_version`, like every other transition row**. A repeat error on a seat
+already badged `derivation_error` moves nothing version-bearing, so without that bump its row would be
+written at the version the last one already announced and no client would ever be told the event was
+skipped. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
 which is only true because the log is the source of truth and the projections are derived.
 
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
@@ -1794,8 +1814,10 @@ first week of live data.
 | a large fleet (50 seats) | **~6.8 GB** | × 50 |
 
 **Transitions are sized from the render-change rate, not from the delta rate**, and the two are
-different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written only when
-`render_state` changes, while a delta is emitted whenever a **version-bearing** field of the
+different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written when
+`render_state` changes — plus the rows a rule writes for its own cause with no render change, which
+are rare enough (a fold error, an operator retire) to leave the sizing below unmoved — while a delta
+is emitted whenever a **version-bearing** field of the
 [§ 8.2.1](#821-the-seat-state-object) object moves ([§ 6.5](#65-the-fold) names the set). At D1's ceiling a seat's render changes are
 ~1,200/day of turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) plus
 ~200/day of attention edges plus a handful of staleness and ceiling transitions — **~1,400/seat/day**,
