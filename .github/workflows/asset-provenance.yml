@@ -1,0 +1,67 @@
+# asset-provenance.yml — the two asset gates from docs/design/FLOOR.md § 10.1, at PR time.
+#
+# WHAT IT DOES. Runs `bin/asset-provenance.py` over this checkout: Gate 1 (every asset file has
+# an ATTRIBUTION row, every row's SHA-256 matches its file, every licence is in the closed
+# allowlist), Gate 2 (the character tree admits `.ts`/`.js`/`.md` only, and no file in it
+# carries a data:image URI or a base64-shaped literal over 1,024 B), and AT-D3-12's lineage
+# half (the port's LINEAGE.md carries its upstream URL, its COMMIT, the MIT notice, and what
+# was deliberately not taken).
+#
+# WHY IT EXISTS. The repository is MIT and public. An asset whose licence nobody recorded is
+# the only way an incompatible one ever ships, and the cheapest moment to catch it is while the
+# person who added it is still looking at the PR. The SHA-256 column makes a later swap of the
+# BYTES visible too — an asset can be replaced without its row ever changing, and that is the
+# case a human reviewer will not catch by reading a diff of a binary.
+#
+# ⚠ THIS IS NOT A REQUIRED STATUS CHECK, AND ADDING IT HERE DOES NOT MAKE IT ONE.
+# `docs/VERSIONING.md § Branch model` is explicit: `card-token-lint` is the only mechanically
+# required check on `dev` and `main`, and "a workflow that is added later is not automatically
+# required". So a red here does not block a merge — a human has to look. Making it required is
+# a repository-settings act on both branches, and card #7344 ("CI lanes for app code") owns
+# updating the required-check list. Until then, read this workflow as evidence a reviewer can
+# rely on, never as a gate that stopped anything.
+#
+# NO `paths:` FILTER, DELIBERATELY. Two reasons, and the second is the load-bearing one:
+#   1. The gate is Python stdlib over a handful of files — a couple of seconds, not a lane.
+#   2. A path-filtered workflow that produces NO RUN AT ALL reads as *pending*, not *passed*
+#      (`docs/VERSIONING.md § Branch model`). If this check is ever promoted to required, a
+#      filter would silently wedge every PR that happened not to touch the filtered paths. The
+#      filter would be a trap set today and sprung by somebody else months from now.
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK. Pure filesystem analysis against the checkout.
+
+name: Asset provenance
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  asset-provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # The gate's own prove-it-can-fail fixtures run HERE, against THIS checkout, BEFORE the
+      # gate judges anybody's PR — because a verdict is worth something only if the fixtures
+      # showing it CAN fail ran against the same bytes that are about to produce it. They build
+      # throwaway repositories in a temp directory and copy this checkout's gate into them, so
+      # what is exercised is the shipped script and not a re-implementation of it.
+      - name: Self-test (RED fixtures for every gate clause + a discriminating control)
+        run: python3 bin/asset-provenance.selftest.py
+
+      - name: Gate 1 + Gate 2 + the lineage check
+        run: python3 bin/asset-provenance.py
+
+      # The generator's own checks. Node is on the stock runner image; the character tree has no
+      # dependencies, so there is nothing to install and no lockfile to keep honest. This asserts
+      # the FNV-1a-32 seed hash against the four values `docs/design/FLOOR.md § 3.2` publishes,
+      # which is what keeps a seat's face and a seat's desk agreeing about who it is.
+      - name: Character generator self-test
+        run: node tools/characters/selftest.mjs

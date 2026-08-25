@@ -18,3 +18,10 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   Fortify logs an un-enrolled user in on a password alone, so `auth` by itself never meant
   "MFA-satisfied". Test-store isolation is pinned and guarded per
   `docs/design/FLEET-STATE.md § 6.2`. Repo layout decision recorded as D-16.
+- **card#7340** — Ported munder-difflin's procedural character generator into
+  `resources/characters/` as dependency-free ES modules, seeded from `(install_id, seat_id)` so
+  a seat's character is identical on every browser and every reload with nothing stored. Added
+  `docs/ATTRIBUTION.md` (the asset manifest), `resources/characters/LINEAGE.md` (upstream, the
+  pinned commit, the reproduced MIT notice, and what was deliberately not taken), and
+  `bin/asset-provenance.py` + its RED fixtures enforcing `docs/design/FLOOR.md § 10.1`'s two
+  gates and AT-D3-12's lineage half. The new workflow is **not** a required status check.

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mezzanine — character render harness</title>
+<!--
+  A plain-browser harness for `resources/characters/`. It is the check behind card #7340's
+  acceptance line ("renders in a plain browser") and it exists to be LOOKED AT: the node-side
+  selftest proves the generator's bytes, this proves a browser can draw them.
+
+  Run it — ES modules need a real origin, `file://` will not do:
+
+      python3 -m http.server 8791            # from the repository ROOT, any free port
+      xdg-open http://127.0.0.1:8791/tools/characters/harness.html
+
+  The server must be rooted at the repository, not at this directory: the page imports the
+  character tree by a repo-relative path, which is the same path the Laravel app will use.
+
+  NO BUILD STEP, NO DEPENDENCY, NO NETWORK. It imports the character tree's `.js` modules
+  directly. That is why the tree ships as ES modules rather than TypeScript: nothing in this
+  repository compiles anything yet, and an acceptance line that needs a toolchain to be checked
+  is an acceptance line nobody checks.
+
+  It also loads NO IMAGE. Gate 2 cannot see this file — it sits outside the character tree —
+  so the rule it would enforce is stated here instead: if a future edit makes this page fetch a
+  picture of a character, the gate will not catch it and the port's whole claim is gone.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 1.5rem; }
+  h1 { font-size: 1.1rem; margin: 0 0 .2rem; }
+  h2 { font-size: .95rem; margin: 1.6rem 0 .5rem; }
+  p.note { margin: .2rem 0 0; opacity: .75; max-width: 62rem; }
+  #verdict { display: inline-block; padding: .3rem .7rem; border-radius: 4px; font-weight: 700; }
+  #verdict.pass { background: #1c6b2e; color: #fff; }
+  #verdict.fail { background: #8c1d1d; color: #fff; }
+  .grid { display: flex; flex-wrap: wrap; gap: .9rem; margin-top: .6rem; }
+  .cell { text-align: center; }
+  .cell canvas { image-rendering: pixelated; display: block; background:
+    repeating-conic-gradient(#0002 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+  .cell .id { margin-top: .25rem; font-size: 11px; opacity: .8; }
+  .walk { display: flex; gap: .3rem; }
+  table { border-collapse: collapse; margin-top: .5rem; font-size: 12px; }
+  td, th { border: 1px solid #8884; padding: .15rem .45rem; text-align: left; }
+  #checks li.bad { color: #c33; font-weight: 700; }
+  form { margin-top: .6rem; }
+  input { font: inherit; padding: .2rem .35rem; }
+</style>
+</head>
+<body>
+<h1>Mezzanine — procedural character generator</h1>
+<p class="note">
+  Every figure below is computed from <code>(install_id, seat_id)</code> alone. Nothing is
+  fetched, nothing is stored, and reloading this page must not change a single pixel.
+</p>
+<p><span id="verdict">running…</span></p>
+
+<h2>The aimla fleet — the four real seats</h2>
+<div class="grid" id="fleet"></div>
+
+<h2>Walk frames, front and back — the only animation source there is</h2>
+<p class="note">stand · step-left · step-right, then the same three from behind. A seated agent
+shows the floor its back; these frames are what card #7341 animates, and there is no sprite
+sheet anywhere behind them.</p>
+<div class="grid" id="walk"></div>
+
+<h2>A synthetic spread — 36 seats across 6 installs</h2>
+<div class="grid" id="spread"></div>
+
+<h2>Try any identity</h2>
+<form id="try" autocomplete="off">
+  <input id="inst" value="aimla" size="14" aria-label="install_id">
+  <input id="seat" value="aimla-pm" size="20" aria-label="seat_id">
+  <button type="submit">draw</button>
+</form>
+<div class="grid" id="custom"></div>
+<table id="recipe"></table>
+
+<h2>In-page checks</h2>
+<ul id="checks"></ul>
+
+<script type="module">
+import {
+  characterFor, seatKey, fnv1a32,
+  portraitBuf, sceneFrames, paintPortrait, paintSceneFrame,
+  PORTRAIT_W, PORTRAIT_H, SCENE_W, SCENE_H,
+} from '../../resources/characters/index.js';
+
+const SCALE = 4;
+const $ = (id) => document.getElementById(id);
+const [elFleet, elWalk, elSpread, elCustom, elRecipe] =
+  ['fleet', 'walk', 'spread', 'custom', 'recipe'].map($);
+
+// The canvas is created UNSIZED on purpose. The painter sets its geometry (see `blit` in
+// index.js) — an earlier revision of this page sized it here at one scale while painting at
+// another, and cropped every 8x cell to its top-left quarter without looking broken.
+const sceneCanvases = [];
+function cell(parent, isScene, label) {
+  const d = document.createElement('div');
+  d.className = 'cell';
+  const c = document.createElement('canvas');
+  if (isScene) sceneCanvases.push(c);
+  d.append(c);
+  if (label !== undefined) {
+    const t = document.createElement('div');
+    t.className = 'id'; t.textContent = label;
+    d.append(t);
+  }
+  parent.append(d);
+  return c.getContext('2d');
+}
+
+const AIMLA = [
+  ['aimla', 'aimla-pm'], ['aimla', 'aimla-impl-1'],
+  ['aimla', 'aimla-impl-2'], ['aimla', 'aimla-review'],
+];
+
+for (const [i, s] of AIMLA) paintPortrait(cell(elFleet, false, s), i, s, SCALE);
+
+for (const [i, s] of AIMLA) {
+  const row = document.createElement('div');
+  row.className = 'cell';
+  const strip = document.createElement('div');
+  strip.className = 'walk';
+  row.append(strip);
+  const cap = document.createElement('div');
+  cap.className = 'id'; cap.textContent = s;
+  row.append(cap);
+  elWalk.append(row);
+  for (const back of [false, true]) {
+    for (const phase of [0, 1, 2]) paintSceneFrame(cell(strip, true), i, s, { phase, back, scale: SCALE });
+  }
+}
+
+for (let n = 0; n < 36; n++) {
+  const i = `install-${n % 6}`, s = `seat-${n}`;
+  paintPortrait(cell(elSpread, false, s), i, s, SCALE);
+}
+
+function drawCustom(i, s) {
+  elCustom.replaceChildren();
+  elRecipe.replaceChildren();
+  let r;
+  try { r = characterFor(i, s); } catch (e) {
+    elRecipe.textContent = String(e.message);
+    return;
+  }
+  paintPortrait(cell(elCustom, false, s), i, s, 8);
+  paintSceneFrame(cell(elCustom, true, 'front'), i, s, { scale: 8 });
+  paintSceneFrame(cell(elCustom, true, 'back'), i, s, { back: true, scale: 8 });
+  const head = document.createElement('tr');
+  const th = document.createElement('th');
+  th.colSpan = 2;
+  th.textContent = `${seatKey(i, s)} · h = ${fnv1a32(seatKey(i, s))}`;
+  head.append(th);
+  elRecipe.append(head);
+  for (const [k, v] of Object.entries(r)) {
+    const tr = document.createElement('tr');
+    for (const text of [k, JSON.stringify(v)]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.append(td);
+    }
+    elRecipe.append(tr);
+  }
+}
+$('try').addEventListener('submit', (e) => { e.preventDefault(); drawCustom($('inst').value, $('seat').value); });
+drawCustom('aimla', 'aimla-pm');
+
+// --- checks that run in the browser, so the page reports a verdict rather than looking fine ---
+const results = [];
+const check = (ok, what) => { results.push([ok, what]); };
+
+// FLOOR.md section 3.2's four published `h` values, so the browser's arithmetic is checked
+// against the design document and not merely against itself.
+for (const [k, h] of [
+  ['aimla/aimla-review', 185683291], ['aimla/aimla-impl-1', 671323131],
+  ['aimla/aimla-impl-2', 688100750], ['aimla/aimla-pm', 2865560748],
+]) check(fnv1a32(k) === h, `fnv1a32(${k}) === ${h}`);
+
+const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+check(same([...portraitBuf('aimla', 'aimla-pm')], [...portraitBuf('aimla', 'aimla-pm')]),
+  'the same seat draws byte-identical pixels twice');
+check(!same([...portraitBuf('aimla', 'aimla-pm')], [...portraitBuf('aimla', 'aimla-impl-1')]),
+  'two seats draw different pixels');
+check(portraitBuf('aimla', 'aimla-pm').length === PORTRAIT_W * PORTRAIT_H * 4, 'portrait geometry');
+
+// A CROPPED SPRITE STILL LOOKS LIKE A SPRITE — which is how the scale bug above survived a
+// visual read of this very page. So these two read back real pixels instead. What each one is
+// known to discriminate, from watching it fail:
+//   - the geometry check reds when anything resizes a scene canvas away from an exact multiple
+//     of 18x32 (planted: a caller resizing after the paint);
+//   - the scanline check reds when the sprite stops reaching its bottom row (planted: legs
+//     removed from the composer). It does NOT catch a missing shoe row on its own, because the
+//     outline pass draws a border one row below the legs — so read it as "the figure is
+//     full-height", which is what it was seen to prove, and not as "the feet are correct".
+let footless = 0, misgeometried = 0;
+for (const c of sceneCanvases) {
+  if (c.width % SCENE_W !== 0 || c.height / SCENE_H !== c.width / SCENE_W) { misgeometried++; continue; }
+  const scale = c.width / SCENE_W;
+  const row = c.getContext('2d').getImageData(0, c.height - scale, c.width, 1).data;
+  let ink = 0;
+  for (let i = 3; i < row.length; i += 4) if (row[i] > 0) ink++;
+  if (ink === 0) footless++;
+}
+check(sceneCanvases.length > 0 && misgeometried === 0,
+  `all ${sceneCanvases.length} scene canvases are an exact integer multiple of ${SCENE_W}x${SCENE_H} (${misgeometried} are not)`);
+check(sceneCanvases.length > 0 && footless === 0,
+  `every scene canvas draws its bottom scanline — the sprite has feet (${footless} cut off)`);
+check(sceneFrames('aimla', 'aimla-pm').front.length === 3, 'three front walk phases');
+check(document.querySelectorAll('img').length === 0, 'the page loaded no <img> at all');
+check(performance.getEntriesByType('resource').every((r) => !/\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(new URL(r.name).pathname)),
+  'no image resource was fetched by anything on this page');
+
+const ul = $('checks');
+for (const [ok, what] of results) {
+  const li = document.createElement('li');
+  li.textContent = `${ok ? 'ok' : 'FAIL'} — ${what}`;
+  if (!ok) li.className = 'bad';
+  ul.append(li);
+}
+const bad = results.filter(([ok]) => !ok).length;
+const v = $('verdict');
+v.textContent = bad === 0 ? `PASS — ${results.length} checks, ${document.querySelectorAll('canvas').length} canvases drawn` : `FAIL — ${bad} of ${results.length}`;
+v.className = bad === 0 ? 'pass' : 'fail';
+document.title = bad === 0 ? 'HARNESS PASS' : 'HARNESS FAIL';
+</script>
+</body>
+</html>
