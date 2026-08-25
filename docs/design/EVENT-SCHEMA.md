@@ -1314,6 +1314,21 @@ sharing the same `call_id`.
 | `parent_call_id` | ULID | — | **yes** | the `call_id` of the dispatch call this call runs inside; `null` in the main agent or when the binding is unresolved | `null` |
 | `harness_call_ref` | string | — | yes | ≤ 64 B, opaque | `"toolu_01A9F3kQ2mZ"` |
 | `open_calls_before` | int | — | no | 0…64 | `1` |
+| `synthesized` | bool | — | **yes** | present and `true` **only** on the `tool.start` half of a synthesized pair ([§ 6.6](#66-toolend)); absent (⇒ `null`, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) on every ordinary `tool.start`, which is why the worked example does not carry it | `true` |
+
+**`synthesized` is listed here because [§ 6.6](#66-toolend) mandates it and this table omitted it.**
+That section requires the reporter to emit "a `tool.start` with a fresh `call_id`, `descriptor:
+null`, `event_time` equal to the close time, and `data.synthesized: true`" whenever a close matches
+no open call — so the field has always been on the wire, and
+[D2 § 6.4](FLEET-STATE.md#64-ddl) has always had a `calls.synthesized` column citing § 6.6 for it.
+What it lacked was a row in its own kind's field table, which is the table
+[§ 12.1](#121-validation-order) step 10 validates against: an ingest built from this section alone
+counts a conforming reporter's `synthesized` as an unknown `data` key on every synthesized call,
+increments `ignored_unknown_fields`, and renders the seat `reporter_ahead`
+([§ 12.7](#127-server-side-counters)) for a field D1 has always defined. The same shape as
+[§ 9.3](#93-degradation-counters)'s `degraded` — a wire field whose declaration lived only in the
+prose of another section — caught one section later. (Added 2026-08-25, card#7338, by the ingest's
+schema-drift guard.)
 
 **`agent_scope` is labelled from the harness's own `agent_id` field, and from nothing else.**
 `agent_id` and `agent_type` are common input fields present **only** inside a subagent — MEASURED at
@@ -3414,9 +3429,20 @@ reporter can branch on `error` and a human can read `message`.
 | missing/unknown/revoked token | `401` | `unauthenticated` | — | permanent → quarantine, badge `degraded` |
 | identity ≠ token binding | `403` | `identity_mismatch` | `expected_install_id`, `expected_seat_id` | permanent → quarantine, badge `degraded` |
 | **unaccepted schema version** | `400` | `unsupported_schema_version` | `received_version`, `accepted_versions` | permanent → quarantine, `REJECTED.txt`, badge `degraded` |
-| batch/event validation failure | `422` | `invalid_event` | `index`, `field`, `reason` | permanent → quarantine, badge `degraded` |
+| **batch** envelope validation failure ([§ 12.1](#121-validation-order) step 8) | `422` | `invalid_batch` | `field`, `reason` | permanent → quarantine, badge `degraded` |
+| **event** validation failure ([§ 12.1](#121-validation-order) steps 9–10) | `422` | `invalid_event` | `index`, `field`, `reason` | permanent → quarantine, badge `degraded` |
 | rate limited | `429` | `rate_limited` | `retry_after_s`, `limit`, `window_s` | back off, retry |
 | server fault | `5xx` | `server_error` | `detail` (no internals) | back off, retry |
+
+**There are two `422` codes, and this table carried one.** [§ 12.1](#121-validation-order) step 8
+names `422 invalid_batch` and steps 9–10 name `422 invalid_event`; this table had a single
+"batch/event validation failure" row spelling both `invalid_event`, whose extra body keys include an
+`index` that a batch-level failure has no value for. `error` is the field a reporter branches on
+([§ 12.2](#122-error-responses)'s own opening sentence), so one code for two conditions makes a
+malformed envelope indistinguishable from a bad event 137 in the one place that distinction is
+diagnosable. Reporter behaviour is unchanged either way — `fleet-reporter.js`'s `classify()` treats
+any `422` as permanent — so the cost was paid entirely by whoever had to work out which check
+fired. (Split 2026-08-25, card#7338.)
 
 **The deliberately-invalid example.** A reporter at schema 3 posting to an ingest that accepts `[1,2]`,
 with a token bound to `(aimla, impl-2)`:

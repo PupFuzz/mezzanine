@@ -10,6 +10,22 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7338** — The batch ingest endpoint: `POST /api/ingest/events` and
+  `GET /api/ingest/health`, implementing `docs/design/EVENT-SCHEMA.md § 12` — the eleven
+  validation steps in their stated order, the error bodies of § 12.2, the four rate limits of
+  § 12.3 (the failed-authentication one evaluated inside step 4, where its subject is reachable),
+  atomic batches, per-event dedup and the § 12.7 counters. Per-seat `mzn_` tokens stored as
+  SHA-256 only, issued and revoked by `mezzanine:ingest-token:issue` / `:revoke`. The routes carry
+  **no middleware at all** — no session, no CSRF, no MFA and not Laravel's stock `api` throttle —
+  so the surface is machine-to-machine in structure rather than by convention, and the separation
+  is asserted both ways. Creates the store tables the ingest writes (`installs`, `seats`,
+  `batches`, `events`, `seat_state`, the two counter tables); the fold and feed tables are
+  card #7339's. Validated against the real `fleet-reporter` over TLS with certificate
+  verification on (`server/tests/roundtrip/ingest-roundtrip.py`), which also drives AT-9 and
+  AT-13's reporter half. Fixes a wildcard CORS header the unpublished stock config was applying
+  to every `/api/*` route, including the MFA-gated snapshot. Doc-sync: `§ 6.5` gains the
+  `synthesized` field row that `§ 6.6` has always mandated, and `§ 12.2` splits the one `422` row
+  into the two codes `§ 12.1` actually names.
 - **card#7334** — Laravel application skeleton in `server/`, with mandatory MFA on stock
   packages (Fortify + `pragmarx/google2fa`). MFA gates three surfaces independently — the
   browser pages, the websocket handshake (`/broadcasting/auth`), and the REST snapshot route

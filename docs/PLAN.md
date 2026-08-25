@@ -200,6 +200,14 @@ Adopted from kanban-solo's #344 answer (measured, not folklore), with one delibe
   (sandbox owner + implementer); aimla-pm drops to coordinator (reviews, cross-project routing,
   this plan's upkeep). The new seat inherits this plan as its orientation — which is a reason
   this document stays current rather than aspirational.
+- **Trusted proxies must be set to the actual reverse proxy at first deploy, and never to `*`.**
+  D1 § 12.3's failed-authentication limit is keyed on the **source IP**, and Laravel resolves that
+  from `X-Forwarded-For` only for proxies it trusts. The app currently trusts none, which is
+  correct for an unproxied host and fails safe either way: behind an untrusted proxy every request
+  appears to come from the proxy and the limit is merely coarse, whereas `trustProxies('*')` would
+  let any client forge the header and defeat the key entirely — the limit would then be a
+  decoration, which is the one thing § 12.3 says it must not be. The deploy host is not
+  provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
 - Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
