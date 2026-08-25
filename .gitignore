@@ -1,21 +1,18 @@
-# dependencies
-/vendor/
-/node_modules/
+# dependencies — UNANCHORED, so they match at any depth. A leading slash would pin them to
+# the repo root, and no dependency directory is ever created there.
+vendor/
+node_modules/
 
-# build output
-/public/build/
-/public/hot
-/public/storage
+# THE LARAVEL APP'S RUNTIME PATHS ARE NOT LISTED HERE. They belong to `server/.gitignore`,
+# which Laravel ships and maintains, plus the per-directory `.gitignore` files under
+# `server/storage/` and `server/bootstrap/cache/`. This file used to restate them
+# (`/public/build/`, `/storage/framework/*`, `/bootstrap/cache/*` …) with leading slashes,
+# anchoring every one of them to the repo root — where, since the app lives in `server/`
+# (docs/PLAN.md D-16), they could never match anything. A second copy of a rule that silently
+# matches nothing is worse than no copy: it reads as coverage. Verified with
+# `git check-ignore -v` against a planted file for each path.
 
-# laravel runtime
-/storage/*.key
-/storage/framework/cache/*
-/storage/framework/sessions/*
-/storage/framework/views/*
-/storage/logs/*
-/bootstrap/cache/*
-
-# env + secrets — never commit
+# env + secrets — never commit. These are deliberately unanchored and DO reach `server/`.
 .env
 .env.*
 !.env.example
