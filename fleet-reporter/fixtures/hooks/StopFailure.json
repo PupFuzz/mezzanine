@@ -1,0 +1,14 @@
+{
+  "_source": "docs-cited-stub",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000009",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000009.jsonl",
+      "cwd": "/home/agent/proj",
+      "hook_event_name": "StopFailure",
+      "error": "rate_limit",
+      "error_details": null,
+      "last_assistant_message": null
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_source": "capture",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000004",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000004.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000003",
+      "hook_event_name": "SessionEnd",
+      "reason": "clear"
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000000",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000000.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000000",
+      "hook_event_name": "SessionEnd",
+      "reason": "other"
+    }
+  ]
+}

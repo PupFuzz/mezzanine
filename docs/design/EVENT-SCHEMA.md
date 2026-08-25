@@ -1009,8 +1009,8 @@ reap is idempotent, and whichever runs second finds nothing open and increments
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
 | `source` | enum | — | no | `startup` \| `resume` \| `clear` \| `compact` \| `fork` \| `unknown` | `"clear"` |
-| `project_label` | string | — | yes | ≤ 48 B, sanitized basename of cwd | `"mezzanine"` |
-| `harness_label` | string | — | yes | ≤ 32 B, `^[A-Za-z0-9._-]+$` | `"claude-code/2.1.240"` |
+| `project_label` | string | — | yes | ≤ 48 B, sanitized basename of cwd, **`null` when cwd is the home directory** — see below | `"mezzanine"` |
+| `harness_label` | string | — | yes | ≤ 32 B, `^[A-Za-z0-9._/-]+$` | `"claude-code/2.1.240"` |
 | `previous_session_id` | string | — | **yes** | ≤ 128 B; **reporter-derived, not harness-supplied** — see below | `"e3c1a5f0-9b21-4a77-8f0e-2d61c4b8a913"` |
 
 `source` is `unknown` when the payload key is absent **or carries a value this reporter does not
@@ -1019,6 +1019,30 @@ know** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4) — 
 [§ 8](#8-call-lifecycle--the-kill-vs-complete-contract) and a wrong-but-plausible default would hide
 exactly the case this design exists to catch. `fork` is in the set because the harness declares it;
 a fork is not a kill, so it reaps nothing.
+
+**`project_label` is `null` when the cwd IS the home directory, and that rule is part of the field
+rather than an implementation detail.** The basename of a home directory is the OS username on all
+three platform shapes (`/home/<u>`, `/Users/<u>`, `C:\Users\<u>`), and
+[§ 1](#1-non-goals) names OS usernames a non-goal outright: *"PII beyond
+`install_id`/`seat_id` … no OS usernames. Usernames leak through absolute paths, which is why § 7.3
+rule 6 rewrites them."* Rule 6 rewrites `/home/<u>/` → `~/` and **cannot** reach this field: the
+basename is taken first, so the path structure the rule matches on is already gone and what reaches
+[§ 7.3](#73-redaction-rules-applied-in-this-order) is a bare token indistinguishable from a project name. An earlier
+wording of this row said only *"sanitized basename of cwd"*; a reporter implementing that literally
+is correct against this section and in violation of § 1, which is the defect this sentence closes.
+A reporter compares the resolved cwd against the platform's own reported home directory — never
+against an enumerated list of home parents, which is one platform behind by construction — and
+counts each suppression (`project_label_home_suppressed`), so a `null` from this rule is
+distinguishable from a `null` because the payload carried no `cwd`.
+
+**`harness_label`'s pattern admits `/`, because this row's own mandated value contains one.** The
+pattern was `^[A-Za-z0-9._-]+$` and the example beside it is `claude-code/2.1.240`; an ingest
+implementing [§ 12.1](#121-validation-order) literally would have rejected the first seat whose
+installer wrote the value this section *mandates* — `422 invalid_event`, and with it all 200 events
+in that batch ([§ 12.4](#124-batches-are-atomic)), then a permanent quarantine under
+[§ 11.5](#115-retry-and-backoff)'s poison-pill rule. That is exactly the failure
+[§ 9.3](#93-degradation-counters) exists to forbid, arriving through the schema rather than through
+the harness.
 
 **`harness_label` is the version pin, on the wire.** Every MEASURED fact in
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) is versioned to the harness build the
@@ -1119,7 +1143,7 @@ session B is ever inferred from a hook belonging to session A.
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
 | `prompt_chars` | int | UTF-16 code units | yes | 0…1,000,000 | `412` |
-| `project_label` | string | — | yes | ≤ 48 B | `"mezzanine"` |
+| `project_label` | string | — | yes | ≤ 48 B; **same field, same rule as [§ 6.1](#61-sessionstart)** — `null` when cwd is the home directory | `"mezzanine"` |
 
 **The prompt text never transits** — only its length, which is a size, not content, and is what lets
 the floor distinguish a one-line nudge from a pasted brief. If review reads a character count as
@@ -2762,6 +2786,8 @@ statusLine processes reach the flusher through the counter sink
 | `spool_dropped_events` | overflow or residency-cap discarded events | **D2:** seat badge `lossy`, **and the number is rendered** — a loss is never a badge alone |
 | `spool_overflow_deferred` | a hook found `spool_bytes` over the bound but the only over-bound bucket was the **current** one, which it may never drop ([§ 11.3](#113-rotation-and-the-overflow-policy)) | informational; the flusher drops it after the hour rolls. Sustained non-zero means a seat is producing > 32 MiB/hour and the bound needs re-deriving |
 | `spool_corrupt_lines` | unparseable spool lines quarantined | seat badge `lossy` |
+| `spool_append_failed.<tree>` | an append failed outright, discarding the record it carried. `<tree>` is one of `events`, `counters`, `index`, `log`, `quarantine` — the counter keys name the write sites individually, which is finer than the grouping [§ 11.1](#111-layout)'s ownership table uses. Raised by the append primitive itself, keyed by subtree, **not** by its callers — a caller that forgets to check is a silent loss, which is the one shape [§ 0](#0-overview) item 9 forbids | seat badge `lossy`; the subtree names what was lost, and `events` means telemetry the seat produced never reached the spool at all. **`counters` is the self-referential case:** that increment cannot itself be flushed, so the seat log is its only trace |
+| `spool_append_retried.<tree>` | a write on a cached descriptor failed and the retry through a fresh open succeeded; **no loss** ([§ 11.1](#111-layout)) | informational, and the measurement that the retry path is alive. A permanent zero on a busy fleet means the fallback is unexercised rather than unneeded |
 | `events_rejected_dropped` | events lost with a permanently-rejected batch — incremented by that batch's event count at quarantine time | seat badge `lossy`; this is the counter that makes `§ 0` item 9's promise true for the rejection path |
 | `oversize_event_dropped` | a single event over the 4 KiB cap, undeliverable, quarantined | seat badge `lossy` |
 | `batches_rejected` | permanent-status rejections | seat badge `degraded`; the last status and error code are shown |
@@ -2791,6 +2817,7 @@ statusLine processes reach the flusher through the counter sink
 | `compaction_double_close` | both `PostCompact` and `SessionStart(compact)` closed one compaction | informational; a zero means one of the two signals is dead |
 | `bad_session_id` | `session_id` failed its pattern and was sent as `null` ([§ 3.2](#32-session-identity)) | `degraded` |
 | `config_invalid` | the config failed validation at runtime (e.g. a non-`https` `ingest_url`) | `degraded`; the flusher keeps spooling and sends nothing |
+| `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
 | `statusline_suppressed` | sampling suppressions | informational; a *zero* here on an active seat means sampling is broken |
 | `negative_duration` | clock stepped mid-call | informational |
 | `wrapped_statusline_failures` | the wrapped status-line command failed | `degraded`; the seat's own UI is affected |
@@ -2839,7 +2866,7 @@ members stated nowhere and its two examples spelling one member two different wa
 
 | Member | Raised by | What a consumer should render |
 |---|---|---|
-| `lossy` | `spool_dropped_events`, `spool_corrupt_lines`, `events_rejected_dropped`, `oversize_event_dropped` | events were discarded and counted; the number is rendered |
+| `lossy` | `spool_dropped_events`, `spool_corrupt_lines`, `events_rejected_dropped`, `oversize_event_dropped`, `spool_append_failed.<tree>` | events were discarded and counted; the number is rendered |
 | `batches_rejected` | `batches_rejected` | a batch took a permanent status and was quarantined; the last status and error code are shown |
 | `harness_contract_moved` | `hook_name_mismatch`, `payload_key_missing.<key>` for a key [§ 6](#6-event-kinds) marks required, `payload_key_missing.is_interrupt` | the harness payload has moved under this reporter; this document owes a re-capture |
 | `reporter_behind` | `enum_value_unknown.<wire field>`, `enum_value_unknown.notification_type` | the harness has added an enum member this reporter coerces — or, for `notification_type`, a type whose event it suppresses; informational, and the trigger for an edit |

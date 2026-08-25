@@ -1,0 +1,60 @@
+{
+  "_source": "capture",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000000",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000000.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000000",
+      "permission_mode": "acceptEdits",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "echo hello-mezzanine",
+        "description": "Echo test string"
+      },
+      "tool_use_id": "toolu_01FIXTURE0000000000"
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000001",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000001.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000002",
+      "permission_mode": "acceptEdits",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Agent",
+      "tool_input": {
+        "description": "count files",
+        "prompt": "Run bash: ls /etc | wc -l and report the number. Nothing else.",
+        "subagent_type": "Explore",
+        "run_in_background": false
+      },
+      "tool_use_id": "toolu_01FIXTURE0000000003"
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000001",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000001.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000002",
+      "permission_mode": "acceptEdits",
+      "agent_id": "00000000000000000",
+      "agent_type": "Explore",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "ls /etc | wc -l",
+        "description": "Count entries in /etc"
+      },
+      "tool_use_id": "toolu_01FIXTURE0000000004"
+    }
+  ]
+}

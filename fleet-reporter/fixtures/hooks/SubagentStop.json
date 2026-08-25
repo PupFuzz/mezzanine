@@ -1,0 +1,23 @@
+{
+  "_source": "capture",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000001",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000001.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000002",
+      "permission_mode": "acceptEdits",
+      "agent_id": "00000000000000000",
+      "agent_type": "Explore",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "SubagentStop",
+      "stop_hook_active": false,
+      "agent_transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000001/subagents/agent-00000000000000000.jsonl",
+      "last_assistant_message": "<assistant text, never transits>",
+      "background_tasks": [],
+      "session_crons": []
+    }
+  ]
+}

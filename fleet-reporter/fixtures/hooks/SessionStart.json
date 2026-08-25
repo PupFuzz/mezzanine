@@ -1,0 +1,26 @@
+{
+  "_source": "capture",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000000",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000000.jsonl",
+      "cwd": "/home/agent/proj",
+      "hook_event_name": "SessionStart",
+      "source": "startup"
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000001",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000001.jsonl",
+      "cwd": "/home/agent/proj",
+      "hook_event_name": "SessionStart",
+      "source": "resume"
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000002",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000002.jsonl",
+      "cwd": "/home/agent/proj",
+      "hook_event_name": "SessionStart",
+      "source": "clear"
+    }
+  ]
+}
