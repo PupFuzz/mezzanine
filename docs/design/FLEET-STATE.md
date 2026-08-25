@@ -1020,8 +1020,13 @@ believed they had already done:
 - `DB_CONNECTION` is **not** forced, deliberately, and the omission is commented as load-bearing:
   nothing in this repo's CI selects a backend by exporting it today, but forcing it is exactly the shape
   that turned another repo's MariaDB matrix into a SQLite run reporting green.
-- The proof is a **hostile export**, not a clean run: `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test`
-  must abort on the guard. Watched failing once, or the guard is decoration.
+- The proof is **deleting one half of a pair**, not a hostile export and not a clean run (corrected
+  2026-08-25, card#7334 — this bullet said the opposite). Under an intact pin
+  `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test` **passes, and must**: the `<server>` twin beats
+  the export, so the resolved value never moves and the guard has nothing to refuse. To watch the guard
+  refuse, delete the `<server>` half of one pin under an export of that key — that is the only lever
+  that moves the resolved value. A guard watched failing under a lever that cannot move it is not
+  watched failing at all. See [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites).
 
 **Production migrations** additionally require `--force` (Laravel's own production confirmation) and
 `APP_ENV=production` — and `migrate:fresh`, `db:wipe` and `migrate:refresh` are **removed from the
@@ -2944,17 +2949,26 @@ and the gate on trusting the derived signal at all.*
   `config('database.redis.default.database')` and `config('database.redis.cache.database')` resolve to
   the pinned values; the connection's resolved `time_zone` is `+00:00`; every isolation-critical key has
   both an `<env force="true">` and a matching `<server>` entry with equal values.
-- **RED — the hostile export, which is the only proof that counts:**
-  `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **aborts on the guard before the first
-  migration**, naming the resolved value it found. A clean run proves nothing here — three separate
-  mechanisms (an export, a `force`-only pin, a `_URL` key) leave the declaration looking correct, so the
-  guard must be watched refusing.
+- **The hostile export is a GREEN, not a RED — corrected 2026-08-25 (card#7334; this row previously
+  said the opposite).** `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **passes, and passing is
+  the correct outcome**: with BOTH halves of each pin present the export is *defeated*, so the resolved
+  value never leaves `mezzanine_test` and the guard has nothing to refuse. ⛔ **The old text asserted
+  the guard would abort here, which it cannot do while the pin is intact** — an implementer running it
+  sees a pass and must then either report a false pass or "fix" a pin that was already correct. It was
+  a check that could never fire, which is the mirror of the check-that-cannot-fail this section exists
+  to prevent. **The mechanism, measured:** PHPUnit's `<env>` writes only `putenv`/`$_ENV`, a shell
+  export lands in `$_SERVER`, and Laravel reads `$_SERVER` **first** — so the `<server>` twin is what
+  makes a pin bite, and the export losing IS the pin working. ⇒ **Assert the green here** (resolved
+  value unchanged under a hostile export), and read the guard's refusal from the two REDs below, which
+  move the resolved value for real.
 - **Second RED — the `_URL` mechanism:** with the pins intact, set `DB_URL` to a URL naming
   `mezzanine` → the guard must still abort, because it reads the resolved value and not the declared
   one. Repeat with `REDIS_URL`.
-- **Third RED — the pair:** delete the `<server>` half of one pin under an export of that key → the
-  shape test fails, naming the key. That is the silent-divergence mode where one line of a two-line pin
-  is edited and everything still reads correctly.
+- **Third RED — the pair, and it is the PRIMARY refusal proof now that the export is a green:** delete
+  the `<server>` half of one pin under an export of that key → the export wins, the resolved value moves,
+  and the shape test fails naming the key. That is both the silent-divergence mode (one line of a
+  two-line pin edited, everything still reading correctly) **and the only lever that demonstrates the
+  guard refusing** — deleting a half is what lets an export reach the resolved value at all.
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 
@@ -3591,7 +3605,7 @@ everything from step 3 onward.
 
 | Order | Artifact | Gate |
 |---|---|---|
-| 0 | the pinned test database, the paired `phpunit.xml` entries and the resolved-value guard | **[AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)** RED (hostile export) then GREEN — first, because every test below runs against a database, and a suite that cannot prove its isolation must not run |
+| 0 | the pinned test database, the paired `phpunit.xml` entries and the resolved-value guard | **[AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)** RED (delete one half of a pin under an export — NOT the hostile export alone, which correctly passes) then GREEN — first, because every test below runs against a database, and a suite that cannot prove its isolation must not run |
 | 1 | migrations: `installs`, `seats`, `events`, `batches` | the ingest can write and the dedup key holds — [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) |
 | 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens` | schema only |
 | 3 | `project()` — the per-kind projections, with the LWW comparator | [AT-D2-11](#at-d2-11-out-of-order-batches-converge) |
@@ -3607,7 +3621,7 @@ everything from step 3 onward.
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both
 documents exist in this order); **AT-D2-4** (a heartbeat-only seat never looks busy — the maxim, made
-into a test); and **AT-D2-14** (the pin bites under a hostile export — because every other result here
+into a test); and **AT-D2-14** (the pin bites — proven by deleting half a pin, not by a hostile export, which an intact pin correctly defeats — because every other result here
 is only as trustworthy as the database it was produced against).
 
 **A note on order.** Steps 3 and 4 are separable and must stay so: `project()` writes facts and
