@@ -71,11 +71,45 @@ final class FoldEvent
         return mb_strlen($value) > $max ? mb_substr($value, 0, $max) : $value;
     }
 
+    /**
+     * ONE RANGE RULE, APPLIED TO BOTH WIRE ENCODINGS OF THE SAME VALUE.
+     *
+     * A JSON number and its string spelling are the same value, so they get the same answer: the
+     * string is turned into an int FIRST (and only when it survives the round trip exactly), and the
+     * single range test below then runs on the int whichever way it arrived. The predecessor of this
+     * method tested the two encodings separately — `is_int($value) || ctype_digit($value)` — and the
+     * two tests disagreed in both directions: `ctype_digit("-5000")` is false so the string was
+     * refused while `is_int(-5000)` is true so the number was ACCEPTED and written to an UNSIGNED
+     * column, and `ctype_digit` says yes to a digit string of any length so a magnitude above
+     * `PHP_INT_MAX` was silently CLAMPED as a string while the same value as a JSON number decoded
+     * to a float and was refused.
+     *
+     * ⛔ THE RANGE IS `>= 0`, AND IT BELONGS HERE RATHER THAN AT THE COLUMN. Every column this
+     * method feeds is `UNSIGNED` in § 6.4 — durations, counts, ages, token totals, none of which has
+     * a negative reading — so a negative is a value the store would refuse on MySQL and silently
+     * accept on SQLite, which is the engine asymmetry `enum()` is guarded against for the same
+     * reason. Widening the column instead would delete a constraint that is doing its job.
+     *
+     * A refusal is `null` AND NOT A RAISE, which is the class contract above: every one of those
+     * columns is nullable, the ingest does not type-check per-kind `data` fields, and raising here
+     * would put § 6.5's poison-event rule between a reporter bug on one field and the whole event.
+     */
     public function int(string $key): ?int
     {
         $value = $this->data[$key] ?? null;
 
-        return is_int($value) || (is_string($value) && ctype_digit($value)) ? (int) $value : null;
+        if (is_string($value)) {
+            // `filter_var` and not `(int)`: the cast clamps anything above PHP_INT_MAX to it, which
+            // invents a value the reporter never sent. This refuses it instead.
+            $parsed = filter_var($value, FILTER_VALIDATE_INT);
+            $value = $parsed === false ? null : $parsed;
+        }
+
+        if (! is_int($value) || $value < 0) {
+            return null;
+        }
+
+        return $value;
     }
 
     /**
