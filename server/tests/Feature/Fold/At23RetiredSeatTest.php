@@ -256,6 +256,56 @@ class At23RetiredSeatTest extends FoldTestCase
         $this->assertNotContains('operator', $this->causes($otherRef));
     }
 
+    /**
+     * **The publish is ordered by the transaction and never survives its rollback** — § 4.10's
+     * "in the transaction that sets the columns", bought by `ShouldDispatchAfterCommit` rather than
+     * by publishing inside a transaction that can still roll back.
+     *
+     * ⚠ WHY THIS ARM EXISTS AT ALL, WHEN THREE TESTS ABOVE ALREADY ASSERT THE DISPATCH. Every one
+     * of them runs the command on a transaction that COMMITS, and on that path a publish before the
+     * commit, inside it, or after it are indistinguishable. None of them could tell an event that
+     * defers from one that does not — which is exactly how the earlier shape (published from
+     * outside the transaction, with a comment claiming the departure was disclosed in the PR body)
+     * survived a full suite. The rollback is the only fixture that separates them.
+     *
+     * The transaction is driven directly rather than through `mezzanine:retire`, because the
+     * property under test belongs to the EVENT and the command has no failure injection point. What
+     * this proves is the contract the command relies on: dispatched inside a transaction, delivered
+     * on commit, never on rollback.
+     */
+    public function test_the_retired_message_never_reaches_a_client_from_a_transaction_that_rolled_back(): void
+    {
+        Event::fake([SeatRetired::class]);
+
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        try {
+            DB::transaction(function () {
+                SeatRetired::dispatch($this->seatRef, self::INSTALL, self::SEAT,
+                    Clock::sql(now()), 'operator@aimla', 'decommissioned', 1);
+
+                // Anything that aborts the act after the publish has been ordered: a constraint
+                // violation on one of the three columns, a lost connection, a raise in the shared
+                // recompute. A client told a seat retired here could never be told otherwise.
+                throw new \RuntimeException('the retirement did not commit');
+            });
+        } catch (\RuntimeException) {
+            // expected — the rollback is the fixture
+        }
+
+        Event::assertNotDispatched(SeatRetired::class);
+
+        // …and the SAME dispatch, on a transaction that commits, does reach a listener. Without
+        // this half the assertion above would pass against an event that is never delivered at all.
+        DB::transaction(function () {
+            SeatRetired::dispatch($this->seatRef, self::INSTALL, self::SEAT,
+                Clock::sql(now()), 'operator@aimla', 'decommissioned', 1);
+        });
+
+        Event::assertDispatchedTimes(SeatRetired::class, 1);
+    }
+
     private function retire(): void
     {
         $this->artisan('mezzanine:retire', [

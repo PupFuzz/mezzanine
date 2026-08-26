@@ -3,6 +3,7 @@
 namespace Tests\Feature\Sweep;
 
 use App\Sweep\Sweep;
+use App\Sweep\SweepPass;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Fold\FoldTestCase;
 
@@ -18,7 +19,7 @@ use Tests\Feature\Fold\FoldTestCase;
 abstract class SweepTestCase extends FoldTestCase
 {
     /** One sweep pass, on the current server clock. */
-    protected function sweep(): int
+    protected function sweep(): SweepPass
     {
         return app(Sweep::class)->pass();
     }

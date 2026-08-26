@@ -34,6 +34,10 @@ use Illuminate\Support\Facades\DB;
  * rather than racing it, because § 4.2 makes `retired` a function of `retired_at`, which by then is
  * set."
  *
+ * The publish is `ShouldDispatchAfterCommit`, so "in the transaction" is literal — it is ordered by
+ * the transaction — while a rollback still reaches no client. `App\Events\SeatRetired`'s docblock
+ * owns that argument; it is not restated here.
+ *
  * ⛔ AND WHAT IS NOT A DELETION. "Is it purged? **No.** `seats` is retained forever (§ 6.7); the 14
  * days is a READ FILTER, not a deletion, so an operator query can still find the row and its
  * reason." Nothing here deletes anything, and `Purge` has no plan row for `seats`.
@@ -100,7 +104,7 @@ class RetireCommand extends Command
         $seatRef = (int) $row->id;
         $at = Clock::sql(now());
 
-        $version = DB::transaction(function () use ($seatRef, $at, $by, $reason, $recompute) {
+        $version = DB::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason, $recompute) {
             DB::table('seats')->where('id', $seatRef)->update([
                 'retired_at' => $at,
                 'retired_by' => $by,
@@ -126,18 +130,23 @@ class RetireCommand extends Command
                 owesRow: true,
             );
 
-            return (int) DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version');
-        });
+            $version = (int) DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version');
 
-        // PUBLISHED AFTER THE COMMIT, AND THAT IS A DEPARTURE FROM § 4.10's "in the transaction that
-        // sets the columns" — FLAGGED IN THE PR BODY. A message published inside a transaction that
-        // then rolls back is a client told a seat retired when it did not, and there is no way to
-        // recall it; a message published after a commit that then fails to send is a client that
-        // learns the same fact from its next snapshot, which § 8.4's snapshot-then-deltas protocol
-        // already makes correct. The state the document is protecting — a row never vanishing
-        // between two refreshes — is bought by the COMMIT, not by the publish, and the delta rides
-        // `state_version`, which the transaction did bump.
-        SeatRetired::dispatch($seatRef, $installId, $seatId, $at, $by, $reason, $version);
+            // IN THE TRANSACTION, WHICH IS WHERE § 4.10 PUTS IT — and delivered only if that
+            // transaction commits, because `SeatRetired` is `ShouldDispatchAfterCommit`. That
+            // contract is the whole resolution: the publish is ordered by the same act that sets
+            // the columns, so no crash can land one without the other, and a rollback invokes no
+            // listener, so no client is ever told a seat retired when it did not. `SeatRetired`'s
+            // own docblock carries the argument; a rollback arm in the suite drives it.
+            //
+            // ⚠ AN EARLIER REVISION PUBLISHED HERE FROM OUTSIDE THE TRANSACTION AND ITS COMMENT
+            // SAID THE DEPARTURE WAS "FLAGGED IN THE PR BODY". IT WAS NOT FLAGGED ANYWHERE. The
+            // departure is now gone rather than better-disclosed, but the false pointer is recorded
+            // because it is the more dangerous half: a reviewer who reads "flagged" stops looking.
+            SeatRetired::dispatch($seatRef, $installId, $seatId, $at, $by, $reason, $version);
+
+            return $version;
+        });
 
         $this->info(sprintf('retired %s at %s (by %s) — state_version %d', $seat, $at, $by, $version));
 

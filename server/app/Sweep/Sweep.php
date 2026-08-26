@@ -9,6 +9,7 @@ use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
 use App\Ingest\Counters;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * `docs/design/FLEET-STATE.md § 2.1`'s **sweep** process: the SEVEN time-derived jobs, every 15 s.
@@ -87,23 +88,53 @@ final class Sweep
     ) {}
 
     /**
-     * One pass. Returns the number of seats visited, which is every seat: § 2.1 says the recompute
-     * covers "**every** seat", and the sizing that justifies it is § 2.1's own — "one scan of
-     * `seat_state`, which carries exactly one row per seat".
+     * One pass over every seat — § 2.1 says the recompute covers "**every** seat", and the sizing
+     * that justifies it is § 2.1's own: "one scan of `seat_state`, which carries exactly one row
+     * per seat".
      */
-    public function pass(): int
+    public function pass(): SweepPass
     {
         $nowSql = Clock::sql(now());
         $nowMs = Clock::toMs($nowSql);
 
         $seats = DB::table('seat_state')->orderBy('seat_ref')->pluck('seat_ref');
+        $failed = 0;
 
         foreach ($seats as $seatRef) {
-            // ONE TRANSACTION PER SEAT, the same grain § 6.5 gives the fold and for the same
-            // reason: a crash between closing a call and recording the state that closure implies
-            // would leave a ledger and a render disagreeing, with nothing to say which is right.
-            // Per SEAT rather than per PASS so one seat's failure costs one desk.
-            DB::transaction(fn () => $this->seat((int) $seatRef, $nowMs, $nowSql));
+            try {
+                // ONE TRANSACTION PER SEAT, the same grain § 6.5 gives the fold and for the same
+                // reason: a crash between closing a call and recording the state that closure
+                // implies would leave a ledger and a render disagreeing, with nothing to say which
+                // is right.
+                DB::transaction(fn () => $this->seat((int) $seatRef, $nowMs, $nowSql));
+            } catch (\Throwable $e) {
+                // ⛔ THE ERROR BOUNDARY IS THE POINT, AND THE TRANSACTION IS NOT IT. An earlier
+                // revision of this comment claimed the per-seat TRANSACTION was what made "one
+                // seat's failure cost one desk". It is not: a transaction bounds what is WRITTEN,
+                // not where the throw goes. Without this catch a single seat's raise leaves the
+                // foreach, leaves `pass()`, leaves `SweepCommand::handle()` and exits the process —
+                // under a supervisor, a crash loop that freezes EVERY seat's time-derived
+                // transitions. That is the one degradation § 2.2 singles out as able to leave a
+                // dead seat rendering `working`, and it contradicts § 2.1's "individually
+                // restartable". The raise is REACHABLE and not hypothetical:
+                // `SeatFacts::foldLagMs()` throws by design on a seat whose cursor clock was never
+                // seeded (§ 2.3), and it sits on this seat's recompute AND on its `fold_current`
+                // evaluation.
+                //
+                // COUNTED PER SEAT, mirroring § 7.2's `fold_error` — the other per-seat derivation
+                // failure, stored the same way — because a seat can be named for it and the answer
+                // is about that seat: its time-derived transitions did not advance this pass.
+                // ⚠ § 7.2 declares no counter for this and the name is therefore this card's;
+                // reported in the PR body with the other D2 gaps rather than slipped in.
+                $failed++;
+
+                Log::error('sweep: seat pass failed; continuing', [
+                    'seat_ref' => (int) $seatRef,
+                    'exception' => $e,
+                ]);
+
+                Counters::seat((int) $seatRef, 'sweep_seat_error');
+            }
         }
 
         // JOB 7, fleet half. `ingest_receiving` is the predicate "that separates 'every seat died'
@@ -118,9 +149,14 @@ final class Sweep
         // LAST, AND AFTER THE WORK RATHER THAN BEFORE IT. § 8.2.4 reads this as "the sweeper ran",
         // and a stamp written at the top of a pass that then died would assert a pass that never
         // finished — the same class of claim § 2.3 refuses for a fold-written lag.
+        //
+        // STAMPED EVEN WHEN SEATS FAILED, and that is deliberate rather than an oversight: the pass
+        // DID run, and withholding the stamp would report a dead sweeper — a different and larger
+        // claim than the true one. What says the pass was PARTIAL is the count returned beside it,
+        // which is why the count exists at all.
         PlaneClock::stamp(PlaneClock::SWEEP, $nowSql);
 
-        return $seats->count();
+        return new SweepPass($seats->count(), $failed);
     }
 
     /** One seat, one transaction: jobs 2–6, then the recompute that is job 1's whole effect. */

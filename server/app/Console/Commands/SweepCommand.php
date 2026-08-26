@@ -23,6 +23,13 @@ use Illuminate\Console\Command;
  * restartable without losing or double-applying anything", which is a property of the pass — every
  * job is guarded on the fact it closes still being open, and the per-seat recompute is a pure
  * function of stored facts — rather than of a supervisor's configuration.
+ *
+ * ⛔ AND RESTARTABILITY IS NOT THE SAME PROPERTY AS SURVIVING ONE BAD SEAT. A supervisor restarts a
+ * process that exits; it does not stop the process exiting again on the same seat, which is a crash
+ * loop that freezes the WHOLE fleet's time-derived transitions rather than one desk's. The error
+ * boundary that makes one seat's raise cost one desk lives in `Sweep::pass()`, per seat, inside the
+ * loop — not here, and not in the per-seat transaction, which bounds what is written and not where
+ * a throw goes. This command's job is to make the resulting partial pass VISIBLE.
  */
 class SweepCommand extends Command
 {
@@ -39,8 +46,25 @@ class SweepCommand extends Command
 
         do {
             $started = microtime(true);
-            $sweep->pass();
+            $result = $sweep->pass();
             $passes++;
+
+            // A PARTIALLY-FAILING PASS IS THE ONE SHAPE THIS DAEMON CAN NOW HAVE AND COULD NOT
+            // BEFORE, so it gets a surface. `Sweep::pass()` catches per seat and continues — which
+            // is what stops one desk's raise from crash-looping the process and freezing every
+            // seat's time-derived transitions — and the consequence is that a pass can succeed
+            // overall while some desks silently did not advance. `sweep_last_run_at` cannot say
+            // that: it is a liveness timestamp and the pass really did run. This line and the
+            // per-seat `sweep_seat_error` counter are what make it visible instead.
+            if ($result->partial()) {
+                $this->error(sprintf(
+                    'sweep pass %d: %d of %d seats failed and were skipped — see the log and each '
+                    .'seat\'s `sweep_seat_error` counter',
+                    $passes,
+                    $result->failed,
+                    $result->seats,
+                ));
+            }
 
             if ($this->option('once') || ($max !== null && $passes >= $max)) {
                 break;

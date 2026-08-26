@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
@@ -31,8 +32,28 @@ use Illuminate\Foundation\Events\Dispatchable;
  * The `state_version` rides the event because § 8.5 makes it the feed's ordering key: the delta
  * carrying `render_state: "retired"` and this message are two announcements of one transaction, and
  * a consumer that can see they sit at the same version does not have to guess whether it has both.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ `ShouldDispatchAfterCommit` IS WHAT SATISFIES § 4.10's "IN THE TRANSACTION THAT SETS THE
+ * COLUMNS" WITHOUT PUBLISHING A FACT THAT CAN BE ROLLED BACK.
+ *
+ * The command dispatches this INSIDE the retirement transaction, so the publish is ordered by the
+ * same act that sets `retired_at` and there is no window in which one landed and the other did not.
+ * The contract then defers the actual delivery until that transaction COMMITS. Both failure modes
+ * the two readings worry about are closed by the one mechanism:
+ *
+ *   publish inside a transaction that rolls back → a client told a seat retired when it did not,
+ *   and no way to recall it. The deferral means the listeners are never invoked.
+ *
+ *   publish after the commit, from outside → the publish is a separate act that a crash between
+ *   the two can lose. Here it is registered by the transaction itself.
+ *
+ * A send that fails AFTER the commit is still possible and is still correct: that client learns the
+ * same fact from its next snapshot, which § 8.4's snapshot-then-deltas protocol already makes
+ * right. What § 4.10 is protecting — a row never vanishing between two refreshes — is bought by the
+ * COMMIT, and the delta rides `state_version`, which the same transaction bumped.
  */
-final class SeatRetired
+final class SeatRetired implements ShouldDispatchAfterCommit
 {
     use Dispatchable;
 

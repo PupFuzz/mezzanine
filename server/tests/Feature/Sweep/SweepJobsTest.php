@@ -578,7 +578,14 @@ class SweepJobsTest extends SweepTestCase
         $this->assertSame(1, (int) $this->predicate('turn_clean')->false_count);
 
         $this->sweep();
-        $this->assertNull($this->predicate('turn_clean')->alarm_since, 'a mixed distribution does not alarm');
+
+        // ⚠ THIS LINE NO LONGER MEANS WHAT IT USED TO SAY, AND THE COMMENT IS CORRECTED RATHER THAN
+        // THE ASSERTION REMOVED. It used to read "a mixed distribution does not alarm" — but
+        // `turn_clean` is a windowed criterion and § 6.4 carries no windowed count, so it now
+        // reports `cannot_evaluate` on EVERY distribution and can never set `alarm_since` at all.
+        // The null here is therefore evidence that the refusal writes nothing, not evidence that
+        // the criterion discriminated. `PredicateAlarmsTest` owns the discrimination.
+        $this->assertNull($this->predicate('turn_clean')->alarm_since, 'a refusal writes no verdict');
     }
 
     public function test_job_7_call_closed_by_wire_separates_the_wire_from_the_server(): void
