@@ -53,7 +53,16 @@ return new class extends Migration
             // is recorded in `global_counters` and the log, not on the row, so a revoked row
             // cannot be made to look live". The columns exist for the accepted path only.
             $table->dateTime('last_used_at', 3)->nullable();
-            $table->binary('last_used_ip')->nullable();
+
+            // ⛔ THE LENGTH IS LOAD-BEARING AND ITS ABSENCE IS SILENT. § 6.4 declares
+            // `VARBINARY(16)`; `MySqlGrammar::typeBinary()` emits `varbinary({$length})` only
+            // `if ($column->length)` and falls through to **`blob`** otherwise — so
+            // `binary('last_used_ip')` with no length shipped a `blob` under a document saying
+            // `VARBINARY(16)`, on both engines, with nothing failing. 16 is `inet_pton()`'s
+            // widest output (an IPv6 address; IPv4 is 4), which is what `ReadTokens` writes here.
+            // `Tests\Feature\MySqlColumnTypeTest` is the guard, and it compiles the real MySQL
+            // grammar because the suite's own store (SQLite, § 6.2) cannot tell the two apart.
+            $table->binary('last_used_ip', 16)->nullable();
 
             $table->unique('token_hash', Ddl::index('feed_tokens', 'uq_hash'));
             $table->index('prefix', Ddl::index('feed_tokens', 'ix_prefix'));

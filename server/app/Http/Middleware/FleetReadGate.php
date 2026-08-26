@@ -4,6 +4,8 @@ namespace App\Http\Middleware;
 
 use App\Http\Middleware\EnsureTwoFactorSatisfied as Mfa;
 use App\Ingest\Counters;
+use App\Ingest\RateLimiter;
+use App\Ingest\TokenResolver;
 use App\Read\ReadGrant;
 use App\Read\ReadRefusal;
 use App\Read\ReadTokens;
@@ -58,6 +60,23 @@ class FleetReadGate
 
     public const RETRY_AFTER_S = 30;
 
+    /**
+     * D1 § 12.3's FOURTH limit — "failed authentications, keyed on source IP, 60/hour" — applied
+     * to this plane's refusal path. Not `=> 60` re-typed: the numbers are read from the one place
+     * that owns them, so a change to D1's limit cannot leave two planes disagreeing about what it
+     * is. § 9 does not require this on the read side; it is HARDENING, and D1 is honest about how
+     * little it buys — "it bounds log volume, CPU spent on hash comparisons, and the noise floor
+     * an operator reads — nothing more. It is not a defence against guessing", which against a
+     * 256-bit token it could not be. What it does bound here is the unauthenticated DB work a
+     * loop can provoke: one indexed `feed_tokens` SELECT plus a hot-row `global_counters` UPDATE
+     * per attempt, neither of which took a slot before.
+     */
+    public const FAILED_AUTH_LIMIT = TokenResolver::FAILED_AUTH_LIMIT;
+
+    public const FAILED_AUTH_WINDOW_S = TokenResolver::FAILED_AUTH_WINDOW_S;
+
+    public const FAILED_AUTH_RETRY_AFTER_S = TokenResolver::FAILED_AUTH_RETRY_AFTER_S;
+
     /** § 8.2's table: the one endpoint a `mzr_` token may not read. */
     public const SESSION_ONLY_ROUTES = ['fleet.timeline'];
 
@@ -96,7 +115,7 @@ class FleetReadGate
         }
 
         if ($token instanceof ReadRefusal) {
-            return $token;
+            return $this->failedAuth($request, $token);
         }
 
         if ($token instanceof ReadGrant) {
@@ -132,6 +151,71 @@ class FleetReadGate
         return $hits > $limit
             ? ReadRefusal::rateLimited(self::RETRY_AFTER_S, $limit, self::WINDOW_S)
             : null;
+    }
+
+    /**
+     * A PRESENTED BEARER THAT FAILED — the one refusal that costs the store real work before it
+     * is refused, and the only one that takes a slot.
+     *
+     * ⛔ SCOPED TO A PRESENTED CREDENTIAL, NOT TO EVERY 401. A request with no credential at all
+     * never reaches here (`ReadTokens::resolve()` returns null for "no bearer" and the session
+     * branch adjudicates it), and that exclusion is deliberate rather than an oversight: an
+     * ordinary browser hitting the floor before logging in is unauthenticated, is not a failed
+     * authentication, and throttling it per source IP would refuse a shared office its login page.
+     * A valid token on `/timeline` is excluded for the same reason from the other direction — the
+     * credential authenticated fine, § 8.2's table simply does not admit it on that route.
+     *
+     * ⛔ INCREMENT FIRST, THEN DECIDE, in D1 § 12.1 step 4's stated order and for its stated
+     * reason: "the request that crosses the limit is itself a failure and must be counted before
+     * the limit is read, or the 61st request is evaluated against a count of 59".
+     *
+     * ⚠ ONE BUDGET FOR BOTH PLANES, and it is `RateLimiter::hitFailedAuth()`'s — the existing
+     * primitive, key and window included, not a second one keyed `read:`. D1 § 12.3 states the
+     * limit as a property of the SOURCE ADDRESS ("keyed on source IP") bounding host-wide things
+     * — log volume, hash-comparison CPU, "the noise floor an operator reads" — none of which is
+     * per-plane, so one bucket per address is the faithful reading and a second bucket would be a
+     * second implementation of one concept.
+     *
+     * ⚠ A DRAFT OF THIS DELIBERATELY SPLIT THE BUCKET, on the theory that read-plane failures
+     * could exhaust the budget and start refusing a co-located SEAT's telemetry. That theory is
+     * FALSE and the code says so: `TokenResolver::resolve()` reaches `fail()` — the only caller
+     * of `hitFailedAuth()` — solely when no bearer was presented or the token resolves to nothing.
+     * A seat holding a VALID token never consults this limit at all, so no amount of read-side
+     * failure can darken it. What sharing actually costs is that a request which was going to be
+     * refused anyway is refused `429` rather than `401`, on either plane. That is the whole of it.
+     *
+     * ⚠ THE READ PLANE FEEDS THIS BUCKET A NARROWER SET than the ingest does, and the asymmetry is
+     * deliberate: the ingest counts "no bearer presented" as a failure (`TokenResolver:60`),
+     * because on that surface there is no such thing as a browser. Here there is, and the
+     * no-credential case is excluded above.
+     */
+    private function failedAuth(Request $request, ReadRefusal $refusal): ReadRefusal
+    {
+        // ⛔ A CREDENTIAL THAT RESOLVED TO A REAL ROW IS NOT A FAILED AUTHENTICATION, and this is
+        // D1 § 12.3's own rule rather than a preference of this gate's: a presented token that
+        // resolves to a REVOKED row "is counted per token row and alerted on, because that is a
+        // real signal with a real owner — a seat still holding a dead credential … It is NOT
+        // counted as a failed authentication, so it does not consume the log-volume budget."
+        // Expiry is the same shape one plane over (§ 9's 90 days), and it earns the same answer.
+        //
+        // It matters twice over now that the bucket is shared: counting a revoked READ token here
+        // would spend the INGEST's budget on precisely the case D1 refuses to spend it on. And a
+        // `429` would be the worse answer anyway — `401 token_expired` names the fault to the
+        // operator whose token it is; a rate-limit refusal hides it behind a retry.
+        //
+        // An ALLOWLIST and not a denylist: a refusal type added later is not counted until someone
+        // decides it should be, which is the direction a hardening measure should fail in.
+        if (! in_array($refusal->error, ['unauthenticated', 'token_wrong_surface'], true)) {
+            return $refusal;
+        }
+
+        $hits = app(RateLimiter::class)->hitFailedAuth((string) $request->ip());
+
+        return $hits > self::FAILED_AUTH_LIMIT
+            ? ReadRefusal::rateLimited(
+                self::FAILED_AUTH_RETRY_AFTER_S, self::FAILED_AUTH_LIMIT, self::FAILED_AUTH_WINDOW_S,
+            )
+            : $refusal;
     }
 
     /**

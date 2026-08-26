@@ -61,14 +61,24 @@ abstract class FeedTestCase extends SweepTestCase
         return ReadTokens::issue($name, 'suite');
     }
 
-    /** A REST call on the machine path — bearer token, no cookie (§ 9). */
-    protected function asMachine(string $token, string $path): TestResponse
+    /** The read plane's own source address — a DIFFERENT host from the reporter's, by default. */
+    protected const MACHINE_IP = '203.0.113.99';
+
+    /**
+     * A REST call on the machine path — bearer token, no cookie (§ 9).
+     *
+     * `$token` is nullable and `$ip` is a parameter for one reason each, both from the failed-auth
+     * limit's tests: a null token is a caller from that address presenting NOTHING (which must not
+     * take a slot, because it is unauthenticated rather than failed), and the address has to be
+     * choosable so a test can drive the read plane from the address `deliver()` posts from.
+     */
+    protected function asMachine(?string $token, string $path, string $ip = self::MACHINE_IP): TestResponse
     {
-        return $this->call('GET', $path, server: [
-            'REMOTE_ADDR' => '203.0.113.99',
-            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        return $this->call('GET', $path, server: array_filter([
+            'REMOTE_ADDR' => $ip,
+            'HTTP_AUTHORIZATION' => $token === null ? null : 'Bearer '.$token,
             'HTTP_ACCEPT' => 'application/json',
-        ]);
+        ], fn ($v) => $v !== null));
     }
 
     /** The server clock, in ms — every read surface computes ages against this. */

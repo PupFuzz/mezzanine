@@ -8,6 +8,7 @@ use App\Ingest\Counters;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Testing\TestResponse;
 
 /**
  * **AT-D2-19 — read-side auth refuses correctly** (`docs/design/FLEET-STATE.md § 11`, § 9, § 8.6).
@@ -197,6 +198,131 @@ class At19ReadAuthTest extends FeedTestCase
 
         // A DIFFERENT user is unaffected — the limit is keyed on the credential, not on the route.
         $this->actingAs($this->enrolled())->getJson('/api/fleet/health')->assertOk();
+    }
+
+    /**
+     * ⛔ THE REFUSAL PATH TAKES A SLOT TOO — D1 § 12.3's fourth limit, applied to this plane.
+     *
+     * Before this, `limit()` sat only on the two SUCCESS branches, so a caller looping bad bearers
+     * was never throttled at all: each attempt cost an indexed `feed_tokens` SELECT plus a hot-row
+     * `global_counters` UPDATE, unbounded, unauthenticated. This is hardening and not a § 9
+     * requirement — § 9 states no read-side failed-auth limit — and D1 is explicit about how
+     * little such a limit buys ("not a defence against guessing"); what it bounds is the DB work.
+     *
+     * The 61st is the one that must refuse, which is § 12.1 step 4's counted-before-read order.
+     */
+    public function test_a_bad_bearer_takes_a_rate_limit_slot_on_the_refusal_path(): void
+    {
+        // EVERY request in this test is from ONE address, including both controls. The limit is
+        // keyed on the source address, so a control sent from a different one would pass whatever
+        // the gate does — which is the shape that makes a control a decoration.
+        $ip = self::MACHINE_IP;
+
+        for ($i = 0; $i < FleetReadGate::FAILED_AUTH_LIMIT; $i++) {
+            $this->asMachine('mzr_never-existed-'.$i, '/api/fleet/health', $ip)
+                ->assertUnauthorized()
+                ->assertJsonPath('error', 'unauthenticated');
+        }
+
+        $this->asMachine('mzr_never-existed-61', '/api/fleet/health', $ip)
+            ->assertStatus(429)
+            ->assertJson([
+                'error' => 'rate_limited',
+                'limit' => FleetReadGate::FAILED_AUTH_LIMIT,
+                'window_s' => FleetReadGate::FAILED_AUTH_WINDOW_S,
+                'retry_after_s' => FleetReadGate::FAILED_AUTH_RETRY_AFTER_S,
+            ]);
+
+        // ⛔ CONTROL 1 — a VALID token from THAT SAME address is unaffected. A limiter that
+        // refused this would have turned a hardening measure into an outage lever: anyone able to
+        // send 60 bad bearers could darken the watchdog.
+        $this->asMachine($this->readToken(), '/api/fleet/health', $ip)->assertOk();
+
+        // ⛔ CONTROL 2 — a caller from that same address presenting NO credential is unaffected.
+        // It is unauthenticated, not a failed authentication, and per-IP throttling of the
+        // pre-login path would refuse a shared office its own floor.
+        $this->asMachine(null, '/api/fleet/health', $ip)
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'unauthenticated');
+    }
+
+    /**
+     * ⛔ A REVOKED OR EXPIRED TOKEN IS NOT A FAILED AUTHENTICATION — D1 § 12.3's own exclusion,
+     * and it has to hold on this plane too because the two now share one budget.
+     *
+     * "A presented token that resolves to a revoked row is counted per token row and alerted on …
+     * It is NOT counted as a failed authentication, so it does not consume the log-volume budget."
+     * Spending the budget on these would also replace the answer that names the fault
+     * (`401 token_revoked`, with `revoked_at`) with one that hides it behind a retry.
+     */
+    public function test_a_revoked_or_expired_token_does_not_spend_the_failed_auth_budget(): void
+    {
+        $ip = self::MACHINE_IP;
+
+        $revoked = $this->readToken('revoked');
+        $expired = $this->readToken('expired');
+
+        DB::table('feed_tokens')->where('prefix', substr($revoked, 0, 12))
+            ->update(['revoked_at' => Clock::sql(now())]);
+        DB::table('feed_tokens')->where('prefix', substr($expired, 0, 12))
+            ->update(['expires_at' => Clock::sql(now()->copy()->subSecond())]);
+
+        // Far past the limit, on credentials that RESOLVE. Every one must keep naming its fault.
+        for ($i = 0; $i <= FleetReadGate::FAILED_AUTH_LIMIT; $i++) {
+            $this->asMachine($revoked, '/api/fleet/health', $ip)
+                ->assertUnauthorized()->assertJsonPath('error', 'token_revoked');
+            $this->asMachine($expired, '/api/fleet/health', $ip)
+                ->assertUnauthorized()->assertJsonPath('error', 'token_expired');
+        }
+
+        // The budget is untouched, which only a request that DOES spend it can show: one bad
+        // bearer must still come back `401`, not `429`.
+        $this->asMachine('mzr_never-existed', '/api/fleet/health', $ip)
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'unauthenticated');
+    }
+
+    /**
+     * ⛔ ONE PER-ADDRESS BUDGET ACROSS BOTH PLANES — the reuse asserted, in both directions.
+     *
+     * D1 § 12.3 keys its failed-auth limit on the SOURCE ADDRESS, and the gate spends that same
+     * bucket rather than minting a `read:` twin. The first half proves the bucket really is
+     * shared (a read-plane failure moves the INGEST's count), which no assertion inside one plane
+     * could show. The second half is the reassurance that sharing costs no telemetry, and it is
+     * not a tautology: `hitFailedAuth()` is consulted only from `TokenResolver::fail()`, so a
+     * VALID seat token never reads this limit — move that check earlier in `resolve()` and this
+     * arm goes red.
+     */
+    public function test_both_planes_spend_one_failed_auth_budget_per_source_address(): void
+    {
+        // ⛔ THE REPORTER'S OWN ADDRESS, read from the constant `deliver()` posts from rather than
+        // re-typed — the whole test is the claim that these are the SAME address.
+        $ip = self::REPORTER_IP;
+
+        for ($i = 0; $i < FleetReadGate::FAILED_AUTH_LIMIT; $i++) {
+            $this->asMachine('mzr_never-existed-'.$i, '/api/fleet/health', $ip)->assertUnauthorized();
+        }
+
+        // The budget is spent. A BAD INGEST token from that address is now over the limit — and
+        // this is a request on the OTHER plane, refused by the OTHER plane's step 4, so a `429`
+        // here can only mean the two read one counter.
+        $this->postBatchAs('mzn_never-existed', $ip)
+            ->assertStatus(429)
+            ->assertJsonPath('error', 'rate_limited');
+
+        // …and the seat at that address, holding a VALID token, still delivers. `deliver()`
+        // asserts the `202` itself.
+        $this->deliver($this->cleanTurn());
+    }
+
+    /** A raw ingest POST with a chosen bearer and source address — auth is decided before the body. */
+    private function postBatchAs(string $token, string $ip): TestResponse
+    {
+        return $this->call('POST', '/api/ingest/events', server: [
+            'REMOTE_ADDR' => $ip,
+            'CONTENT_TYPE' => 'application/json; charset=utf-8',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['schema_version' => 1, 'events' => []]));
     }
 
     // ── § 8.2's surface table: the timeline is session-only ──────────────────────────────────

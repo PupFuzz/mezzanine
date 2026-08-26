@@ -29,6 +29,16 @@ abstract class FoldTestCase extends TestCase
 
     protected const SEAT = 'aimla-pm';
 
+    /**
+     * The source address every fixture batch is POSTed from.
+     *
+     * A constant rather than a literal because a second caller now needs the SAME address rather
+     * than an address: `At19ReadAuthTest` asserts that read-plane auth failures from an address do
+     * not throttle the INGEST at that address, and a test that used a different one would pass
+     * whether the two planes shared a rate-limit bucket or not.
+     */
+    protected const REPORTER_IP = '203.0.113.10';
+
     protected string $token;
 
     protected int $seatRef;
@@ -138,7 +148,7 @@ abstract class FoldTestCase extends TestCase
         $response = $this->call(
             'POST', '/api/ingest/events',
             server: [
-                'REMOTE_ADDR' => '203.0.113.10',
+                'REMOTE_ADDR' => self::REPORTER_IP,
                 'CONTENT_TYPE' => 'application/json; charset=utf-8',
                 'HTTP_AUTHORIZATION' => 'Bearer '.($token ?? $this->token),
             ],

@@ -10,6 +10,7 @@ use App\Read\ReadRefusal;
 use App\Read\RetirementFilter;
 use App\Read\SeatObject;
 use App\Read\Snapshot;
+use App\Read\TimelineCursor;
 use App\Sweep\Predicates;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -110,34 +111,40 @@ class FleetController extends Controller
             // would make the drill-down's own paging a negotiation.
             $limit = max(1, min(200, (int) $request->query('limit', '50')));
 
-            // ⛔ A MALFORMED `before` REFUSES RATHER THAN PAGING TO NOTHING. An unparseable cursor
-            // compared against a `DATETIME(3)` column matches no row, so the surface would answer
-            // `200` with `events: []` — `docs/KANBAN.md § G-1`'s clean zero, on a drill-down whose
-            // whole job is to say what a desk has been doing. "Nothing happened" and "your cursor
-            // was garbage" must not be the same response.
-            $before = $request->query('before');
+            // ⛔ A MALFORMED `before` REFUSES RATHER THAN PAGING TO NOTHING. An unreadable cursor
+            // matches no row, so the surface would answer `200` with `events: []` —
+            // `docs/KANBAN.md § G-1`'s clean zero, on a drill-down whose whole job is to say what
+            // a desk has been doing. "Nothing happened" and "your cursor was garbage" must not be
+            // the same response. `TimelineCursor` owns what a readable one is, and that class
+            // owns the argument for why a bare timestamp is NOT one.
+            $raw = $request->query('before');
+            $before = null;
 
-            if ($before !== null) {
-                try {
-                    // `Clock::toMs()` RAISES on anything that is not a `DATETIME(3)` value, which
-                    // is what makes it the right validator here rather than a second regex: the
-                    // shapes it accepts are exactly the shapes the column holds.
-                    Clock::toMs(str_replace(['T', 'Z'], [' ', ''], (string) $before));
-                } catch (\InvalidArgumentException) {
+            if ($raw !== null) {
+                $before = TimelineCursor::parse((string) $raw);
+
+                if ($before === null) {
                     return ReadRefusal::badCursor();
                 }
             }
 
-            $events = DB::table('events')
+            // ⛔ `limit + 1`, AND THE EXTRA ROW IS NEVER SERVED. It decides `next_before` by
+            // MEASUREMENT rather than by the "a full page probably has more" guess — and the
+            // guess is what puts an empty page on the wire when the event count is an exact
+            // multiple of `limit`, which is this surface's one forbidden shape reached by
+            // arithmetic instead of by a bad cursor. One extra row on a scan already bounded by
+            // the same index is what it costs.
+            $rows = DB::table('events')
                 ->where('seat_ref', $seatRef)
                 ->whereIn('kind', StateRecompute::ACTIVITY_KINDS)
-                ->when($before !== null, fn ($q) => $q->where(
-                    'received_at', '<', str_replace(['T', 'Z'], [' ', ''], (string) $before)
-                ))
+                ->when($before !== null, fn ($q) => $before->olderThan($q))
                 ->orderByDesc('received_at')
                 ->orderByDesc('id')
-                ->limit($limit)
-                ->get(['event_id', 'kind', 'event_time', 'received_at', 'session_id']);
+                ->limit($limit + 1)
+                ->get(['id', 'event_id', 'kind', 'event_time', 'received_at', 'session_id']);
+
+            $more = $rows->count() > $limit;
+            $events = $rows->take($limit);
 
             return [
                 'api_version' => Snapshot::API_VERSION,
@@ -145,13 +152,19 @@ class FleetController extends Controller
                 'install_id' => $installId,
                 'seat_id' => $seatId,
                 'limit' => $limit,
+                // § 8.1's additive rule: the cursor for the next page, ISSUED BY THE SERVER, and
+                // `null` when this page is the last one. A client that derives its own from a
+                // `received_at` below is deriving it from a column an entire batch shares — see
+                // `TimelineCursor`; that is the defect this member exists to make unnecessary and
+                // `bad_cursor` makes unconstructable.
+                'next_before' => $more ? TimelineCursor::after($events->last()) : null,
                 'events' => $events->map(fn ($e) => [
                     'event_id' => $e->event_id,
                     'kind' => $e->kind,
                     'event_time' => Clock::wire($e->event_time),
                     'received_at' => Clock::wire($e->received_at),
                     'session_id' => $e->session_id,
-                ])->all(),
+                ])->values()->all(),
             ];
         });
     }

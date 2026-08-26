@@ -9,6 +9,7 @@ use App\Feed\SeatDelta;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
 use App\Sweep\Purge;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
@@ -183,11 +184,57 @@ class FeedSurfaceTest extends FeedTestCase
         // makes `null` its db-down value on that endpoint. The two rules compose; they do not
         // cancel. A `null` here would put a member on the feed that § 8.2.4 says never rides it.
         $this->assertArrayNotHasKey('counters', $health[0]['payload']['fleet']);
-        $this->assertArrayNotHasKey('counters', $beats[0]['payload']['fleet'] ?? []);
 
         $beats = $this->wire->ofType('feed.heartbeat');
         $this->assertCount(1, $beats);
         $this->assertSame('down', $beats[0]['payload']['fleet']['db']);
+
+        // ⚠ THIS LINE USED TO SIT ABOVE, BEFORE `$beats` EXISTED. `$beats[0][…] ?? []` on an
+        // undefined variable is `[]` and raises nothing — the `??` swallows the diagnostic — so
+        // it asserted that an empty array has no `counters` key, on every run, for ever. It is
+        // here rather than deleted because the property is real; what was wrong was that the
+        // check could not fail.
+        $this->assertArrayNotHasKey('counters', $beats[0]['payload']['fleet']);
+    }
+
+    /**
+     * ⛔ § 8.2.4's `counters` ASYMMETRY, ON THE SURFACE THE FEED TESTS ABOVE DO NOT REACH: the
+     * REST snapshot.
+     *
+     * "**`GET /api/fleet/health` only.** The nine fleet-scoped counters … the snapshot and the
+     * feed never do." Both halves are asserted here because a negative assertion alone is passed
+     * by an application that has no counters at all — the positive half is what makes the
+     * negative one a finding about the ASYMMETRY. § 8.2.4's other term rides the same read: the
+     * nine are all-or-none, "a per-member omission is forbidden, because an omitted counter and a
+     * zero counter are the same wire shape to a consumer and only one of them is true".
+     *
+     * The expected member list is `FleetHealth::COUNTERS` rather than nine literals: the class
+     * docblock argues that the closed set must be a constant and not a query result, and a
+     * hand-typed list here would be the third copy of it.
+     */
+    public function test_the_nine_counters_ride_fleet_health_alone_and_never_the_snapshot(): void
+    {
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $token = $this->readToken();
+
+        // The positive half — and the control for the negative one below.
+        $counters = $this->asMachine($token, '/api/fleet/health')->assertOk()->json('fleet.counters');
+
+        $this->assertSame(FleetHealth::COUNTERS, array_keys($counters), '§ 8.2.4: all nine or none');
+
+        // The negative half. `Snapshot::build()` calls `FleetHealth::build()` WITHOUT
+        // `withCounters`, and the default is what carries this contract term — so this assertion
+        // is the whole of the guard, and mutating that one call site is what it must catch.
+        $snapshot = $this->asMachine($token, '/api/fleet/snapshot')->assertOk()->json('fleet');
+
+        $this->assertArrayNotHasKey('counters', $snapshot);
+        $this->assertSame(
+            ['db', 'fold', 'sweep', 'sweep_last_run_at', 'ingest_last_receipt_at',
+                'max_fold_lag_ms', 'seats_total', 'seats_live'],
+            array_keys($snapshot),
+        );
     }
 
     /**
@@ -439,16 +486,129 @@ class FeedSurfaceTest extends FeedTestCase
             ->assertJsonPath('error', 'bad_cursor');
 
         // …and a WELL-FORMED cursor pages, which is what makes the line above a finding about the
-        // cursor rather than about the parameter existing at all.
-        $all = $this->actingAs($this->enrolled())->getJson($path)->assertOk()->json('events');
-        $this->assertGreaterThan(2, count($all));
+        // cursor rather than about the parameter existing at all. The well-formed cursor is the
+        // one the SERVER issued: `next_before`, never a value the client assembled.
+        $first = $this->actingAs($this->enrolled())->getJson($path.'?limit=3')->assertOk()->json();
+
+        $this->assertCount(3, $first['events']);
+        $this->assertNotNull($first['next_before'], 'a page that was cut short carried no cursor');
 
         $paged = $this->actingAs($this->enrolled())
-            ->getJson($path.'?before='.$all[1]['received_at'])
+            ->getJson($path.'?limit=3&before='.urlencode($first['next_before']))
             ->assertOk()
             ->json('events');
 
-        $this->assertLessThan(count($all), count($paged), 'a valid cursor paged nothing');
+        $this->assertNotEmpty($paged, 'a valid cursor paged nothing');
+        $this->assertNotContains(
+            $paged[0]['event_id'],
+            array_column($first['events'], 'event_id'),
+            'the second page repeated a row from the first',
+        );
+    }
+
+    /**
+     * ⛔ PAGING ACROSS ONE BATCH'S SHARED `received_at` REACHES EVERY EVENT — the blocking defect
+     * of this card's first round, and the reason the cursor is `(received_at, id)` and not
+     * `received_at` alone.
+     *
+     * `App\Ingest\BatchWriter` stamps ONE `received_at` for a WHOLE batch, and `App\Ingest\Wire`
+     * admits up to `MAX_EVENTS_PER_BATCH = 200` events, so a batch of >`limit` renderable events
+     * is a single value of the column the timeline used to page on. A strict `received_at < ?`
+     * cursor derived from the last row of page 1 therefore skips **every event that shares that
+     * timestamp** — measured before the fix at 120 events in one batch: page 1 returned 50, page 2
+     * returned `200 {"events": []}`, and 70 events were unreachable by any cursor the response
+     * offered. That is exactly the shape `ReadRefusal::badCursor()` exists to refuse, produced
+     * from a WELL-FORMED cursor on ordinary traffic.
+     *
+     * The denominator is stated in the fixture rather than assumed: the assertions below check
+     * that all 120 events really do share one `received_at` (without which this test would pass
+     * over a fixture that never reproduces the defect) and then that following `next_before` to
+     * exhaustion yields all 120 exactly once.
+     */
+    public function test_the_timeline_pages_through_a_batch_whose_events_share_one_receipt(): void
+    {
+        // 30 clean turns = 120 renderable events, in ONE batch and so under ONE `received_at`.
+        $events = [];
+
+        for ($turn = 0; $turn < 30; $turn++) {
+            $events = array_merge($events, $this->cleanTurn());
+        }
+
+        $this->deliver($events);
+        $this->fold();
+
+        // The fixture's own control: without this, a batch that somehow split its receipt would
+        // let the assertions below pass while never reproducing the defect.
+        $this->assertSame(120, DB::table('events')->where('seat_ref', $this->seatRef)->count());
+        $this->assertSame(1, DB::table('events')->where('seat_ref', $this->seatRef)
+            ->distinct()->count('received_at'), 'the fixture did not build one shared receipt');
+
+        // 50 leaves a short last page; 60 divides 120 EXACTLY, which is the case the `limit + 1`
+        // look-ahead exists for — a server that guessed "a full page probably has more" would
+        // hand out a cursor after the last row and answer the follow-up with an empty page.
+        foreach ([50 => 3, 60 => 2] as $limit => $expectedPages) {
+            [$pages, $seen] = $this->pageTimelineThrough($limit);
+
+            $this->assertSame($expectedPages, $pages,
+                '120 events at '.$limit.'/page is '.$expectedPages.' pages and no empty tail');
+            $this->assertCount(120, $seen, 'the pages did not cover the batch');
+            $this->assertCount(120, array_unique($seen), 'a row was served on two pages');
+        }
+    }
+
+    /**
+     * Follow `next_before` to exhaustion.
+     *
+     * @return array{int, list<string>} pages fetched, and every `event_id` served in order
+     */
+    private function pageTimelineThrough(int $limit): array
+    {
+        $path = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT.'/timeline';
+
+        $seen = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $body = $this->actingAs($this->enrolled())
+                ->getJson($path.'?limit='.$limit.($cursor === null ? '' : '&before='.urlencode($cursor)))
+                ->assertOk()
+                ->json();
+
+            $this->assertNotEmpty($body['events'], 'a cursor the server itself issued paged to nothing');
+
+            $seen = array_merge($seen, array_column($body['events'], 'event_id'));
+            $cursor = $body['next_before'];
+            $pages++;
+        } while ($cursor !== null && $pages < 10);
+
+        return [$pages, $seen];
+    }
+
+    /**
+     * ⛔ A CURSOR THE CLIENT ASSEMBLED FROM `received_at` IS REFUSED, NOT ANSWERED WITH AN EMPTY
+     * PAGE — the other half of the fix above, and the half that makes the defect unconstructable
+     * rather than merely avoidable.
+     *
+     * Supplying a correct `next_before` fixes the client that reads it. This refusal is what stops
+     * the next client — D3's floor, a watchdog, an operator with `curl` — from re-deriving the
+     * lossy cursor out of the one column the response puts in front of it, silently, on a surface
+     * whose whole job is to say what a desk has been doing.
+     */
+    public function test_a_bare_timestamp_is_not_a_cursor_and_is_refused(): void
+    {
+        $this->deliver($this->clearKill());
+        $this->fold();
+
+        $path = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT.'/timeline';
+
+        $all = $this->actingAs($this->enrolled())->getJson($path)->assertOk()->json('events');
+        $this->assertGreaterThan(2, count($all));
+
+        $this->actingAs($this->enrolled())
+            ->getJson($path.'?before='.urlencode($all[1]['received_at']))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'bad_cursor');
     }
 
     /**

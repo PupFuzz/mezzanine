@@ -18,7 +18,22 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   predicate every read query shares. **Read-side auth** (§ 9): the `feed_tokens` store, a `mzr_`
   `fleet_read` credential with issue/revoke commands, revocation checked per request and never
   cached, `token_wrong_surface` for an `mzn_` ingest token, and § 9's 120/600 req-min limits —
-  each seen to fire and seen not to. **The feed** (§ 8.3): four of its five message types as
+  each seen to fire and seen not to — plus D1 § 12.3's failed-authentication limit on the REFUSAL
+  path, which took no rate-limit slot at all before, spending `RateLimiter::hitFailedAuth()`'s
+  existing per-source-address budget rather than a second one. A request presenting NO credential
+  is excluded (it is unauthenticated, not a failed authentication, and this surface has browsers),
+  and so is a token that resolves to a revoked or expired row — D1 § 12.3's own exclusion, which
+  matters twice over on a shared budget. **The timeline pages on a KEYSET CURSOR** `(received_at,
+  id)`, issued by the server as the response's `next_before` and decided by a `limit + 1`
+  look-ahead: `received_at` alone is not unique — one batch stamps one value across up to 200
+  events — so the strict `received_at < ?` cursor a client could only derive from the response
+  skipped every event sharing the boundary timestamp. Measured before the fix at 120 events in one
+  batch: page 1 served 50, page 2 served **0**, and 70 were unreachable — `200 {"events": []}`,
+  the one shape `ReadRefusal::badCursor()` exists to refuse, produced from a well-formed cursor on
+  ordinary traffic. ⚠ A bare timestamp is now refused `422 bad_cursor`, which TIGHTENS what the
+  endpoint accepts: § 8.2 names the parameter and specifies no type for its value, and refusing the
+  assembled cursor is what keeps the lossy form from being re-derived by the next client.
+  **The feed** (§ 8.3): four of its five message types as
   broadcastable events sharing one envelope and one channel name, published from the ONE place
   `state_version` is bumped, and a 15 s `mezzanine:feed-heartbeat` daemon that is deliberately not
   the sweeper's. `App\Events\SeatRetired` — card #7712's declared publication point — now reaches
@@ -54,7 +69,20 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   incomplete test naming the mechanism and the affected population rather than left green. A
   second, smaller one is reported the same way: `taskTier3()` re-stamps `task_as_of` on every
   recompute, so a seat with an open call emits a delta on every fold pass — the 16 % of pure noise
-  § 8.3 refuses. ⚠ Written for both engines and tested on SQLite; every MySQL-specific behaviour
+  § 8.3 refuses. **⛔ AND A `blob` SHIPPED WHERE § 6.4 DECLARES `VARBINARY(16)`, IN BOTH TOKEN
+  TABLES:** `$table->binary()` with no length compiles to `blob` on MySQL — `MySqlGrammar::typeBinary()`
+  emits `varbinary({$length})` only `if ($column->length)` — and the suite runs on SQLite, where the
+  two are the same, so nothing could notice. Fixed in `feed_tokens` and in the identical line
+  card #7338's `ingest_tokens` migration carries, and now GUARDED: `MySqlColumnTypeTest` compiles
+  the real migrations through the real MySQL grammar with no MySQL server, which proves the SQL
+  text and explicitly not the engine's enforcement of it. **Three more not-delivered items are named
+  rather than left to be inferred** — `fleet.health` ON CONNECT (§ 8.3 requires it; only the change
+  half exists, and the cost is the up-to-15 s latency § 8.3 itself names, NOT blindness, because the
+  unconditional heartbeat carries the same object), `feed_resync_required` (no writer anywhere in
+  `app/`, and downstream of AT-D2-15 rather than independent: § 8.5 increments it only at the
+  socket server's backpressure close), and § 6.4's `revoked_reason`, a column this application
+  creates that the document's DDL does not contain. ⚠ Written for both engines and tested on SQLite;
+  every MySQL-specific behaviour
   left unexercised is enumerated in the PR body (card #7523, the store host), and there is no PHP
   test lane in CI (card #7344), so this suite is SELF-ATTESTED and the mutation evidence in the PR
   body is the load-bearing part.

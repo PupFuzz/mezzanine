@@ -96,17 +96,23 @@ final class ReadRefusal
     }
 
     /**
-     * § 8.2's `before=` paging cursor, unparseable.
+     * § 8.2's `before=` paging cursor, unreadable.
      *
      * `422` and not an empty page: a cursor the server cannot read is a caller error, and the
      * alternative — matching no rows and answering `200 {events: []}` — is indistinguishable from
      * a desk that has done nothing, which is the one shape every surface in this design refuses.
+     *
+     * ⚠ A BARE TIMESTAMP LANDS HERE TOO, and `App\Read\TimelineCursor` argues why: `received_at`
+     * is shared by a whole batch, so a timestamp alone cannot name a row, and a client paging on
+     * one silently loses every event that shares the boundary value. Refusing it is what keeps
+     * that from being re-derived; the cursor to use is the response's own `next_before`.
      */
     public static function badCursor(): self
     {
         return new self(
             'bad_cursor',
-            '`before` must be an rfc3339_ms timestamp, e.g. 2026-08-23T14:23:14.201Z',
+            '`before` must be a cursor this endpoint issued as `next_before`, '
+                .'e.g. 2026-08-23T14:23:14.201Z,48219 — a timestamp alone does not name a row',
             JsonResponse::HTTP_UNPROCESSABLE_ENTITY,
         );
     }
