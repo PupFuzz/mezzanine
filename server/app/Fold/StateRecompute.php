@@ -85,36 +85,94 @@ class StateRecompute
         $before = SeatFacts::versionBearing($e->seatRef);
 
         $this->writeSnapshotColumns($e);
-        $this->writeDerivedColumns($e);
+        $this->writeDerivedColumns($e->seatRef);
 
-        $after = SeatFacts::versionBearing($e->seatRef);
+        return $this->settle(
+            seatRef: $e->seatRef,
+            before: $before,
+            cause: $cause,
+            // `events.id`, and only when the cause is a wire event — which is what lets the
+            // drill-down say *this event did it* rather than *something did it around then*.
+            causeEventRef: $cause === 'wire_event' ? $e->id : null,
+            // A fold error's row names the event it SKIPPED; a wire event's names the event that
+            // caused the change. Same row, two different claims about one id, so they are not
+            // written under one key.
+            detail: $cause === 'fold_error'
+                ? ['kind' => $e->kind, 'skipped_event_id' => $e->eventId]
+                : ['kind' => $e->kind, 'event_id' => $e->eventId],
+            // Preserves this method's original rule exactly: any cause other than `wire_event` is
+            // a caller that owes a row whatever the render did.
+            owesRow: $cause !== 'wire_event',
+        );
+    }
+
+    /**
+     * The same recompute, for a writer that has no event — `docs/design/FLEET-STATE.md § 2.1`'s
+     * **sweeper** and `mezzanine:retire`.
+     *
+     * ⛔ THE POINT IS THAT THERE IS ONE OF THESE, NOT THREE. § 6.5 states `state_version` and the
+     * delta as A PER-WRITER RULE and names all three writers — "the fold above; the SWEEPER, whose
+     * every pass recomputes `link_state` and `render_state` for every seat; and `mezzanine:retire`,
+     * which states its own bump and publish". A second implementation of the bump/row bookkeeping
+     * for the two writers that carry no `FoldEvent` would be a second copy of the nesting property
+     * `settle()` exists to hold (every transition row lands at a version bumped for it), free to
+     * drift — and the first thing it would drift on is the one delta a permanently quiet desk ever
+     * gets, which is the sweeper's own `live → stale`.
+     *
+     * The ONLY thing the event carries that a seat-scoped caller does not is
+     * `writeSnapshotColumns()` — the columns projected FROM an event (the activity trio, the
+     * ordering high-water mark, the batch envelope's reporter fields). None of those is a
+     * time-derived fact, so a sweeper pass has nothing to write there and writing anything would be
+     * § 3's forbidden form: an activity column moved by something that is not activity.
+     *
+     * @param  array<string, mixed>  $detail  the facts that changed, for the drill-down (§ 6.4)
+     * @param  bool  $owesRow  true for a job that must record its own cause even when the render
+     *                         did not move — § 4.4's attention ceiling and § 4.6's quiescence both
+     *                         change facts under a render that `link_state` is already masking
+     * @return bool whether `state_version` was bumped (⇒ Part B enqueues a delta)
+     */
+    public function forSeat(int $seatRef, string $cause, array $detail = [], bool $owesRow = false): bool
+    {
+        $before = SeatFacts::versionBearing($seatRef);
+
+        $this->writeDerivedColumns($seatRef);
+
+        return $this->settle($seatRef, $before, $cause, null, $detail, $owesRow);
+    }
+
+    /**
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $detail
+     */
+    private function settle(
+        int $seatRef,
+        array $before,
+        string $cause,
+        ?int $causeEventRef,
+        array $detail,
+        bool $owesRow,
+    ): bool {
+        $after = SeatFacts::versionBearing($seatRef);
 
         $moved = $before !== $after;
-        $transition = $before['render_state'] !== $after['render_state'] || $cause !== 'wire_event';
+        $transition = $before['render_state'] !== $after['render_state'] || $owesRow;
 
         if ($moved || $transition) {
-            DB::table('seat_state')->where('seat_ref', $e->seatRef)
+            DB::table('seat_state')->where('seat_ref', $seatRef)
                 ->update(['state_version' => DB::raw('state_version + 1')]);
         }
 
         if ($transition) {
             DB::table('seat_state_transitions')->insert([
-                'seat_ref' => $e->seatRef,
+                'seat_ref' => $seatRef,
                 // Read back AFTER the bump above, which the line before this insert guarantees ran.
-                'state_version' => DB::table('seat_state')->where('seat_ref', $e->seatRef)->value('state_version'),
+                'state_version' => DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version'),
                 'at' => Clock::sql(now()),
                 'from_render_state' => $before['render_state'],
                 'to_render_state' => $after['render_state'],
                 'cause' => $cause,
-                // `events.id`, and only when the cause is a wire event — which is what lets the
-                // drill-down say *this event did it* rather than *something did it around then*.
-                'cause_event_ref' => $cause === 'wire_event' ? $e->id : null,
-                // A fold error's row names the event it SKIPPED; a wire event's names the event that
-                // caused the change. Same row, two different claims about one id, so they are not
-                // written under one key.
-                'detail' => json_encode($cause === 'fold_error'
-                    ? ['kind' => $e->kind, 'skipped_event_id' => $e->eventId]
-                    : ['kind' => $e->kind, 'event_id' => $e->eventId]),
+                'cause_event_ref' => $causeEventRef,
+                'detail' => json_encode($detail),
             ]);
         }
 
@@ -222,10 +280,13 @@ class StateRecompute
      * The derived columns: the two axes, their collapse, the open-fact pointers, the badges and
      * § 4.9's tier-3 task title.
      */
-    private function writeDerivedColumns(FoldEvent $e): void
+    private function writeDerivedColumns(int $seatRef): void
     {
-        $facts = SeatFacts::for($e->seatRef);
-        $state = DB::table('seat_state')->where('seat_ref', $e->seatRef)->first();
+        $facts = SeatFacts::for($seatRef);
+        $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
+
+        $nowSql = Clock::sql(now());
+        $nowMs = Clock::toMs($nowSql);
 
         [$activity, $unknownReason] = Derivation::activity($facts);
 
@@ -233,7 +294,7 @@ class StateRecompute
             $facts->lastReceiptMs,
             $facts->enabled,
             $facts->oldestUnsentAgeS,
-            Clock::toMs(Clock::sql(now())),
+            $nowMs,
         );
 
         $render = Derivation::render($facts->retired, $link, $activity);
@@ -241,7 +302,7 @@ class StateRecompute
         // The rendered action is the NEWEST OPEN call (§ 8.2.1). Ordered by `opened_at` and then
         // by `id`, so two calls opened in the same millisecond still have one answer.
         $currentCall = DB::table('calls')
-            ->where('seat_ref', $e->seatRef)->whereNull('closed_at')
+            ->where('seat_ref', $seatRef)->whereNull('closed_at')
             ->orderByDesc('opened_at')->orderByDesc('id')
             ->value('id');
 
@@ -250,7 +311,7 @@ class StateRecompute
         // every session of the seat (see SeatFacts), so nothing about the STATE depends on this
         // choice — only the rendered narrative does.
         $currentSession = DB::table('sessions')
-            ->where('seat_ref', $e->seatRef)->whereNull('ended_at')
+            ->where('seat_ref', $seatRef)->whereNull('ended_at')
             ->orderByDesc('started_at')->orderByDesc('id')
             ->value('id');
 
@@ -258,14 +319,24 @@ class StateRecompute
         // stored as a duplicate and never opens a second `blocked` (§ 4.4), so the one that
         // actually opened the state is the one whose 60-minute ceiling bounds it.
         $openAttention = DB::table('attention_requests')
-            ->where('seat_ref', $e->seatRef)->whereNull('resolved_at')
+            ->where('seat_ref', $seatRef)->whereNull('resolved_at')
             ->orderBy('opened_at')->orderBy('id')
             ->value('id');
 
-        $badges = Badges::serverFor($e->seatRef, $state);
-        $nowSql = Clock::sql(now());
+        $badges = Badges::serverFor($seatRef, $state, $nowMs);
 
-        DB::table('seat_state')->where('seat_ref', $e->seatRef)->update([
+        // § 7.2's `fold_lag_alarm_entered` — "a seat's `fold_lag_ms` FIRST crossed 60 s in a lag
+        // episode". Counted here, in the one place the badge set is computed, and therefore exactly
+        // once per episode however many writers recompute: the ONSET is a property of the stored
+        // previous set, so whichever of the fold and the sweeper observes it first counts it and
+        // the other finds the badge already present. Counting it in the sweeper instead would have
+        // been a second writer of one fact.
+        if (in_array('fold_lag', $badges, true)
+            && ! in_array('fold_lag', json_decode((string) ($state->server_badges ?? 'null'), true) ?: [], true)) {
+            Counters::seat($seatRef, 'fold_lag_alarm_entered');
+        }
+
+        DB::table('seat_state')->where('seat_ref', $seatRef)->update([
             'activity_state' => $activity,
             'unknown_reason' => $unknownReason,
             'link_state' => $link,
@@ -283,7 +354,7 @@ class StateRecompute
             ),
             'state_computed_at' => $nowSql,
             'updated_at' => $nowSql,
-        ] + $this->taskTier3($e->seatRef, $currentCall, $nowSql));
+        ] + $this->taskTier3($seatRef, $currentCall, $nowSql));
     }
 
     /**
