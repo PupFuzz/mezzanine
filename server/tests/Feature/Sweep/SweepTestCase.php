@@ -41,6 +41,23 @@ abstract class SweepTestCase extends FoldTestCase
         $this->fold();
     }
 
+    /**
+     * § 4.10's one act, by its one producer.
+     *
+     * ⚠ HOISTED HERE AT ITS SECOND CALLER (card #7827's feed tests). § 11's AT-D2-23 BUILD is
+     * explicit that the mechanism under test is the COMMAND — "not by writing the columns
+     * directly, because the command *is* the mechanism under test" — so a second test file
+     * reaching for retirement must reach for the same three arguments, not for an UPDATE.
+     */
+    protected function retire(?string $seatId = null): void
+    {
+        $this->artisan('mezzanine:retire', [
+            '--seat' => self::INSTALL.'/'.($seatId ?? self::SEAT),
+            '--by' => 'operator@aimla',
+            '--reason' => 'decommissioned',
+        ])->assertSuccessful();
+    }
+
     /** @return list<string> the `cause` of every transition row, in order */
     protected function causes(?int $seatRef = null): array
     {
@@ -71,12 +88,35 @@ abstract class SweepTestCase extends FoldTestCase
     /** A `turn.start` plus one open `tool.start` of the given tool, and nothing that closes it. */
     protected function openCall(string $tool = 'Bash'): array
     {
+        $this->lastOpenCallId = $this->ulid();
+
         return [
             $this->event('turn.start', ['prompt_chars' => 40]),
             $this->event('tool.start', [
-                'call_id' => $this->ulid(), 'tool_name' => $tool, 'descriptor' => 'Bash: sleep 9000',
+                'call_id' => $this->lastOpenCallId, 'tool_name' => $tool, 'descriptor' => 'Bash: sleep 9000',
                 'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
                 'harness_call_ref' => null, 'open_calls_before' => 0,
+            ]),
+        ];
+    }
+
+    protected ?string $lastOpenCallId = null;
+
+    /**
+     * The `tool.end` that closes the call `openCall()` last opened — a WIRE close, on the ledger
+     * discipline D1 built, and not an UPDATE.
+     *
+     * ⚠ ADDED BY CARD #7827 BESIDE `openCall()` RATHER THAN IN A TEST FILE, because the pair is
+     * one fixture: a test that opens a call through the real ingest and closes it by writing
+     * `calls.closed_at` would be a test of its own UPDATE.
+     */
+    protected function closeOpenCall(string $tool = 'Bash'): array
+    {
+        return [
+            $this->event('tool.end', [
+                'call_id' => $this->lastOpenCallId, 'tool_name' => $tool, 'outcome' => 'completed',
+                'abort_reason' => null, 'duration_ms' => 900, 'duration_source' => 'harness',
+                'close_source' => 'post_tool_use', 'match' => 'harness_ref',
             ]),
         ];
     }

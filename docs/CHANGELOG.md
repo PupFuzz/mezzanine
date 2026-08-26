@@ -10,6 +10,55 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7827** — Fleet-state PART B: the REST read plane and the WebSocket delta feed —
+  `docs/design/FLEET-STATE.md` §§ 8.2, 8.2.1, 8.2.3, 8.2.4, 8.3, 8.4, 8.5, 8.6 and 9. **The four
+  REST endpoints** (`/api/fleet/snapshot`, `/seats/{i}/{s}`, `/seats/{i}/{s}/timeline`,
+  `/health`), the § 8.2.1 seat object in full, § 8.2.4's fleet-health object stated once and
+  carried by all three of its surfaces, and § 4.10's 14-day retired-seat READ FILTER as one
+  predicate every read query shares. **Read-side auth** (§ 9): the `feed_tokens` store, a `mzr_`
+  `fleet_read` credential with issue/revoke commands, revocation checked per request and never
+  cached, `token_wrong_surface` for an `mzn_` ingest token, and § 9's 120/600 req-min limits —
+  each seen to fire and seen not to. **The feed** (§ 8.3): four of its five message types as
+  broadcastable events sharing one envelope and one channel name, published from the ONE place
+  `state_version` is bumped, and a 15 s `mezzanine:feed-heartbeat` daemon that is deliberately not
+  the sweeper's. `App\Events\SeatRetired` — card #7712's declared publication point — now reaches
+  the wire. **AT-D2-7, AT-D2-8, AT-D2-16, AT-D2-19 and AT-D2-20 ship with their REDs DRIVEN**, and
+  **AT-D2-21 and AT-D2-23 are now COMPLETE**: their primary REDs were wire-surface assertions card
+  #7712 shipped undriven, and both are driven here (the omitted `fold_lag_ms`, and the vanishing
+  desk). 56 new tests, 285 total.
+  **⛔ AT-D2-15 IS NOT DELIVERED AND IS NOT APPROXIMATED.** Per-connection backpressure is a
+  property of the socket server's outbound queue, which no application publish can observe — and
+  `laravel/reverb`, § 8.3's pinned transport, is NOT INSTALLABLE on this tree: every version
+  through v1.11.1 needs `guzzlehttp/psr7 ^2.6` against this application's `3.1.0`, and
+  `composer require -W --dry-run` resolves only by downgrading guzzle 8.1.0 → 7.15.5, promises
+  3.0.2 → 2.5.3 and psr7 3.1.0 → 2.13.1. A backpressure test written against a mock would test
+  the mock. **Six D2 findings are REPORTED, not patched — the design doc is untouched:**
+  (1) § 8.3's 250 ms COALESCING and § 8.5's `delta.state_version == local + 1` cannot both hold,
+  because a merged message is indistinguishable from a lost one — this card ships one delta per
+  version and names the cost; (2) § 8.2.4 declares five members non-null while declaring
+  `db: "down"` reachable on the same object, so they are ABSENT rather than invented on that path;
+  (3) § 8.2.3's `detail` enumeration omits this plane's `seat_predicates`, which Appendix A's S11
+  requires per seat per predicate — added as an additive member under § 8.1's own rule, and
+  § 8.2.4 was NOT its home (`sweep_seat_error`, card #7832, needs none: it is already a
+  `seat_counters` row); (4) AT-D2-19's "redirect to the MFA challenge" contradicts § 2.2, and
+  § 2.2 wins; (5) AT-D2-16's "closed at its materialized `orphan_due_at`" reads two ways and card
+  #7712 chose one — asserted here only on what both readings share; (6) § 8.4 step 5's watermark
+  and § 8.5's discard are the same comparison, so one is unobservable without the other.
+  **⚠ AND ONE CARD #7339 DEFECT, FOUND HERE AND NOT CROSSED INTO:** `StateRecompute::after()`
+  samples its version-bearing fingerprint AFTER `Projector::apply()` has written the event, so
+  every projector-written member — `context.*`, `model_label`, `enabled`, `selftest_failed`, D1's
+  reporter badges, a late `subagents[].title` — is invisible to both the bump decision and the
+  delta patch. Measured: an `enabled` flip publishes `changed: ["link_state","render_state"]`; a
+  `context.sample` publishes `changed: ["badges"]`. The SNAPSHOT carries all of them correctly, so
+  the watchdog and § 8.4's join are unaffected and a reload heals a browser; recorded as an
+  incomplete test naming the mechanism and the affected population rather than left green. A
+  second, smaller one is reported the same way: `taskTier3()` re-stamps `task_as_of` on every
+  recompute, so a seat with an open call emits a delta on every fold pass — the 16 % of pure noise
+  § 8.3 refuses. ⚠ Written for both engines and tested on SQLite; every MySQL-specific behaviour
+  left unexercised is enumerated in the PR body (card #7523, the store host), and there is no PHP
+  test lane in CI (card #7344), so this suite is SELF-ATTESTED and the mutation evidence in the PR
+  body is the load-bearing part.
+
 - **card#7712** — The three processes `docs/design/FLEET-STATE.md § 2.1` names and neither half of
   card #7339 built. **`mezzanine:sweep`** — a supervised 15 s daemon applying § 2.1's seven
   time-derived jobs (staleness, orphan-timeout closes, attention ceilings, compaction ceilings, the

@@ -2,6 +2,7 @@
 
 namespace App\Fold;
 
+use App\Feed\Publisher;
 use App\Ingest\Counters;
 use Illuminate\Support\Facades\DB;
 
@@ -41,6 +42,24 @@ use Illuminate\Support\Facades\DB;
  */
 class StateRecompute
 {
+    /**
+     * ⚠ THE ONE CALLER THAT PASSES `false` IS `mezzanine:rebuild`, AND THE REASON IS NOT
+     * PERFORMANCE.
+     *
+     * A rebuild replays a seat's whole retained history through this identical path (§ 6.6: "The
+     * command shares the fold's code, NOT A COPY OF IT"), so every event of that history bumps
+     * `state_version` again and would publish a `seat.delta` again. Those deltas are not new
+     * facts: they are a re-derivation of state a connected client was already told about, at
+     * versions at or below the one it already holds, which § 8.5 has it discard as "a duplicate
+     * or a straggler". Publishing tens of thousands of them would spend the fleet's whole feed
+     * budget saying nothing.
+     *
+     * It is a CONSTRUCTOR parameter and not a global switch so that "this run does not publish"
+     * is a property of the object the rebuild built, visible at the one line that builds it, and
+     * cannot leak into a fold worker sharing the process.
+     */
+    public function __construct(private readonly bool $publish = true) {}
+
     /** § 3.2 — the activity event set, CLOSED. `context.sample` and `reporter.heartbeat` are not in it. */
     public const ACTIVITY_KINDS = [
         'turn.start', 'turn.end',
@@ -78,7 +97,7 @@ class StateRecompute
      * @param  string  $cause  a `seat_state_transitions.cause` member. Anything other than
      *                         `wire_event` is a caller that owes a row whatever the render did —
      *                         today only § 6.5's poison-event rule, via `Fold::quarantine()`.
-     * @return bool whether `state_version` was bumped (⇒ Part B enqueues a delta)
+     * @return bool whether `state_version` was bumped (⇒ a `seat.delta` was published)
      */
     public function after(FoldEvent $e, string $cause = 'wire_event'): bool
     {
@@ -129,7 +148,7 @@ class StateRecompute
      * @param  bool  $owesRow  true for a job that must record its own cause even when the render
      *                         did not move — § 4.4's attention ceiling and § 4.6's quiescence both
      *                         change facts under a render that `link_state` is already masking
-     * @return bool whether `state_version` was bumped (⇒ Part B enqueues a delta)
+     * @return bool whether `state_version` was bumped (⇒ a `seat.delta` was published)
      */
     public function forSeat(int $seatRef, string $cause, array $detail = [], bool $owesRow = false): bool
     {
@@ -176,7 +195,25 @@ class StateRecompute
             ]);
         }
 
-        return $moved || $transition;
+        $bumped = $moved || $transition;
+
+        // ⛔ § 6.5's LAST LINE — `COMMIT` / "if state_version changed: ENQUEUE A DELTA (§ 8.3)"
+        // — for all three writers at once, and the ONLY place this application publishes one.
+        //
+        // It is here rather than at the three call sites because the condition it is guarded by
+        // is precisely `$bumped`, which is computed here and nowhere else. A caller re-deriving
+        // "did anything version-bearing move" to decide whether to publish would be a second copy
+        // of § 6.5's subtraction, and the two would first disagree about whether an ordinary
+        // `reporter.heartbeat` mints a delta — the question that subtraction exists to settle.
+        //
+        // `SeatDelta` is `ShouldDispatchAfterCommit`, so this dispatch INSIDE the transaction is
+        // ordered by the act that bumped the version while the delivery waits for the commit —
+        // the same mechanism, for the same reason, that `App\Events\SeatRetired` already used.
+        if ($bumped && $this->publish) {
+            Publisher::seatDelta($seatRef, $before, $after);
+        }
+
+        return $bumped;
     }
 
     /**

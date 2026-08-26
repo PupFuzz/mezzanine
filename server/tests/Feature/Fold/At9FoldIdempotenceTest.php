@@ -35,7 +35,15 @@ class At9FoldIdempotenceTest extends FoldTestCase
         // pass — which is what a second fold worker does, and what makes `advance()` match no row.
         $racing = new class($this->seatRef) extends StateRecompute
         {
-            public function __construct(private int $seatRef) {}
+            public function __construct(private int $seatRef)
+            {
+                // The parent now takes `$publish` (card #7827): a `StateRecompute` publishes
+                // § 8.3's `seat.delta` whenever it bumps a version. This stand-in is a FOLD
+                // worker, so it takes the fold's own default rather than suppressing the feed —
+                // the pass under test is one whose transaction ROLLS BACK, and the property that
+                // no delta escapes it is `ShouldDispatchAfterCommit`'s, not this class's.
+                parent::__construct();
+            }
 
             public function after(FoldEvent $e, string $cause = 'wire_event'): bool
             {

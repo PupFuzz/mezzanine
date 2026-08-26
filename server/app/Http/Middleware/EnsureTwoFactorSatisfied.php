@@ -32,6 +32,23 @@ class EnsureTwoFactorSatisfied
 {
     public function handle(Request $request, Closure $next): Response
     {
+        return $this->refusalFor($request) ?? $next($request);
+    }
+
+    /**
+     * The gate's DECISION, without the pipeline around it: the refusal a request earns, or null
+     * if it earns none.
+     *
+     * ⚠ EXTRACTED AT THE SECOND CALLER, WHICH IS `App\Http\Middleware\FleetReadGate`.
+     * `docs/design/FLEET-STATE.md § 9` gives the read plane TWO credentials, and the token branch
+     * must be adjudicated before the session branch (see that class) — so this decision has to be
+     * reachable from inside another middleware rather than only from a pipeline position in front
+     * of it. What must NOT happen is a second copy of the rule: the enrolment column this reads
+     * and the enrolment-vs-challenge choice `refuse()` makes are both stated once, here, and the
+     * read plane consumes them rather than restating them.
+     */
+    public function refusalFor(Request $request): ?Response
+    {
         $user = $request->user();
 
         // A null user here means this middleware was reached without `auth` in front of it.
@@ -42,7 +59,7 @@ class EnsureTwoFactorSatisfied
             return $this->refuse($request);
         }
 
-        return $next($request);
+        return null;
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Fold\Clock;
 use App\Sweep\Sweep;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Tests\Feature\Sweep\SweepTestCase;
 
 /**
  * AT-D2-23 — **a retired seat is rendered, not disappeared.**
@@ -27,7 +28,7 @@ use Illuminate\Support\Facades\Event;
  * THERE after 14 days, nothing deletes it, and the render is still `retired`. Named in the PR body
  * rather than approximated with a query nobody will use.
  */
-class At23RetiredSeatTest extends FoldTestCase
+class At23RetiredSeatTest extends SweepTestCase
 {
     /**
      * GREEN — the whole act, in one transaction, by the one writer.
@@ -304,20 +305,5 @@ class At23RetiredSeatTest extends FoldTestCase
         });
 
         Event::assertDispatchedTimes(SeatRetired::class, 1);
-    }
-
-    private function retire(): void
-    {
-        $this->artisan('mezzanine:retire', [
-            '--seat' => self::INSTALL.'/'.self::SEAT,
-            '--by' => 'operator@aimla',
-            '--reason' => 'decommissioned',
-        ])->assertSuccessful();
-    }
-
-    /** @return list<string> */
-    private function causes(?int $seatRef = null): array
-    {
-        return array_column($this->transitions($seatRef), 'cause');
     }
 }

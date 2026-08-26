@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Symfony\Component\HttpFoundation\Response;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
 
@@ -15,20 +14,17 @@ Route::middleware('auth')->group(function () {
 });
 
 /*
- * The two MFA-gated surfaces that are HTTP routes. The third — the websocket handshake — is
- * /broadcasting/auth, gated in bootstrap/app.php, because Broadcast::routes() registers it
- * rather than this file.
+ * GATE 1 — the browser page. The other two surfaces card #7334 gated are elsewhere and neither
+ * is a `web` route: /broadcasting/auth is registered by Broadcast::routes() and gated in
+ * bootstrap/app.php, and the REST read plane is routes/fleet.php.
+ *
+ * ⚠ THE `/api/fleet/snapshot` 501 STUB THAT USED TO SIT HERE IS GONE, NOT MOVED. #7334 wrote it
+ * to hold the gate while the body was another card's: "the BODY belongs to card #7339 and is
+ * deliberately absent rather than stubbed, so nothing downstream can read a placeholder as a
+ * fleet that is empty." Card #7827 is that card. The route now lives in routes/fleet.php with
+ * the other three, behind `fleet.read` — which is a WIDER credential rule than `auth`+`mfa`
+ * (§ 9 adds the `mzr_` machine path) and could not be expressed by leaving the route here.
  */
 Route::middleware(['auth', 'mfa'])->group(function () {
-    // GATE 1 — the browser page.
     Route::view('/dashboard', 'dashboard')->name('dashboard');
-
-    // GATE 3 — the REST snapshot. The gate is the route's middleware; the BODY belongs to
-    // card #7339 and is deliberately absent rather than stubbed, so nothing downstream can
-    // read a placeholder as a fleet that is empty. 501 says "this server does not implement
-    // this yet", which is the only honest answer a gate can give on its own.
-    Route::get('/api/fleet/snapshot', fn () => response()->json([
-        'error' => 'not_implemented',
-        'message' => 'The fleet snapshot is not built yet; its content is card #7339.',
-    ], Response::HTTP_NOT_IMPLEMENTED))->name('fleet.snapshot');
 });

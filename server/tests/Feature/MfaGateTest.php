@@ -110,12 +110,19 @@ class MfaGateTest extends TestCase
 
     public function test_gate3_rest_snapshot_allows_a_second_factor_session(): void
     {
-        // 501 is the gate ALLOWING: the request reached the route, which has no body yet
-        // (card #7339). A refusal would be 401 or 403 and would never reach the action.
+        // ⚠ THIS ASSERTION USED TO BE `501 not_implemented` and now is `200`, because the body
+        // card #7827 landed is the thing the 501 stood in for. What is being tested is unchanged
+        // and is the same property either way: the request REACHED THE ACTION. A refusal would be
+        // 401 or 403 and would never get here.
+        //
+        // `api_version` rather than `installs`: the fleet is legitimately empty in this fixture
+        // (no seat has been provisioned), and asserting on a member that is present WHATEVER the
+        // fleet contains is what keeps this a gate test rather than a snapshot test — the
+        // snapshot's own content is `FleetReadPlaneTest`'s.
         $this->actingAs($this->enrolled())
             ->getJson('/api/fleet/snapshot')
-            ->assertStatus(501)
-            ->assertJsonPath('error', 'not_implemented');
+            ->assertOk()
+            ->assertJsonPath('api_version', 1);
     }
 
     // ── The gate's own preconditions ────────────────────────────────────────────────────

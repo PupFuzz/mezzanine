@@ -2,6 +2,7 @@
 
 namespace App\Fold;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -186,30 +187,10 @@ final class SeatFacts
         $s = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
         $seat = DB::table('seats')->where('id', $seatRef)->first();
 
-        $action = $s->current_call_ref === null ? null : DB::table('calls')
-            ->where('id', $s->current_call_ref)
-            ->first(['call_id', 'tool_name', 'descriptor', 'opened_at', 'opened_received_at',
-                'agent_scope', 'parent_call_id']);
-
-        $session = $s->current_session_ref === null ? null : DB::table('sessions')
-            ->where('id', $s->current_session_ref)
-            ->first(['session_id', 'started_at', 'start_source', 'project_label', 'harness_label']);
-
-        // § 8.2.1's `api_error_type` — non-null ONLY when the seat is `stalled`, and read from the
-        // stalled session rather than from whichever session happens to be current.
-        $apiErrorType = $s->activity_state !== 'stalled' ? null : DB::table('sessions')
-            ->where('seat_ref', $seatRef)
-            ->whereNotNull('stalled_since')
-            ->whereNull('ended_at')
-            ->orderByDesc('stalled_since')
-            ->value('api_error_type');
-
-        $subagents = DB::table('calls')
-            ->where('seat_ref', $seatRef)
-            ->whereNull('closed_at')
-            ->where('is_dispatch', true)
-            ->orderByDesc('opened_at')
-            ->get(['call_id', 'title', 'subagent_type', 'opened_at']);
+        $action = self::action($s);
+        $session = self::session($s);
+        $apiErrorType = self::apiErrorType($seatRef, (string) $s->activity_state);
+        $subagents = self::openSubagents($seatRef);
 
         return [
             'render_state' => $s->render_state,
@@ -254,5 +235,68 @@ final class SeatFacts
                 ? null
                 : [$seat->retired_at, $seat->retired_by, $seat->retired_reason],
         ];
+    }
+
+    // ── the four reads the FINGERPRINT above and § 8.2.1's WIRE OBJECT both need ──────────────
+    //
+    // ⚠ EXTRACTED AT THE SECOND CALLER, NOT THE Nth. `App\Read\SeatObject` (card #7827) serializes
+    // the same four facts onto the wire. Two copies of "which session's `api_error_type` counts",
+    // or of "which call is the action", are two copies free to disagree — and a fingerprint that
+    // disagreed with the object it is the fingerprint OF would emit deltas for changes the wire
+    // does not carry, or withhold them for changes it does. One home each, here.
+
+    /** § 8.2.1's `action` — the seat's current open call, or null. */
+    public static function action(object $state): ?object
+    {
+        return $state->current_call_ref === null ? null : DB::table('calls')
+            ->where('id', $state->current_call_ref)
+            ->first(['call_id', 'tool_name', 'descriptor', 'opened_at', 'opened_received_at',
+                'agent_scope', 'parent_call_id']);
+    }
+
+    /** § 8.2.1's `session` — the seat's current open session, or null. */
+    public static function session(object $state): ?object
+    {
+        return $state->current_session_ref === null ? null : DB::table('sessions')
+            ->where('id', $state->current_session_ref)
+            ->first(['session_id', 'started_at', 'start_source', 'project_label', 'harness_label']);
+    }
+
+    /**
+     * § 8.2.1's `api_error_type` — non-null ONLY when the seat is `stalled`, and read from the
+     * STALLED session rather than from whichever session happens to be current.
+     */
+    public static function apiErrorType(int $seatRef, string $activityState): ?string
+    {
+        if ($activityState !== 'stalled') {
+            return null;
+        }
+
+        return DB::table('sessions')
+            ->where('seat_ref', $seatRef)
+            ->whereNotNull('stalled_since')
+            ->whereNull('ended_at')
+            ->orderByDesc('stalled_since')
+            ->value('api_error_type');
+    }
+
+    /**
+     * Every open dispatch call, newest first — the WHOLE set, uncapped.
+     *
+     * § 8.2.1 caps the rendered `subagents` array at 8 with `subagents_open` beside it; that cap is
+     * a RENDERING rule and belongs to the renderer. The fingerprint carries the whole set, because
+     * a change in the ninth subagent is still a change to the seat's state even when the wire
+     * elides it.
+     *
+     * @return Collection<int, object>
+     */
+    public static function openSubagents(int $seatRef): Collection
+    {
+        return DB::table('calls')
+            ->where('seat_ref', $seatRef)
+            ->whereNull('closed_at')
+            ->where('is_dispatch', true)
+            ->orderByDesc('opened_at')
+            ->get(['call_id', 'title', 'subagent_type', 'opened_at']);
     }
 }
