@@ -2,6 +2,9 @@
 
 namespace App\Events;
 
+use App\Feed\FeedEnvelope;
+use App\Fold\Clock;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 
@@ -15,19 +18,20 @@ use Illuminate\Foundation\Events\Dispatchable;
  * a consumer is told to expect and no path produces." `mezzanine:retire` is the producer § 4.10
  * names, and this is the act of producing it.
  *
- * ⚠ SEAM — DELIBERATELY NOT `ShouldBroadcast`, AND THE OMISSION IS THE CONTRACT.
+ * ⚠ THE SEAM CARD #7712 LEFT HERE IS NOW CLOSED — card #7827, and this is what it did.
  *
- * § 8.3 (the WebSocket delta feed: its transport, its channel names, its message envelope, its
- * backpressure bounds) is card #7339 PART B's and is not built. This event is the PUBLICATION
- * POINT, not the publication: it says *this seat was retired, by this operator, for this reason, at
- * this `state_version`*, and Part B is what makes it reach a socket — by implementing
- * `ShouldBroadcast` on it or by listening for it, whichever § 8.3's envelope turns out to want.
+ * #7712 wrote: "This event is the PUBLICATION POINT, not the publication … Part B is what makes
+ * it reach a socket — by implementing `ShouldBroadcast` on it OR BY LISTENING FOR IT, whichever
+ * § 8.3's envelope turns out to want." § 8.3's envelope wanted the first: the message's `t` IS
+ * its broadcast name and its channel IS `private-fleet.{install_id}`, both of which
+ * `App\Feed\FeedEnvelope` now supplies to all five § 8.3 message types from one place. A
+ * listener would have put this one message's envelope somewhere the other four's is not.
  *
- * Building the broadcast here would have meant inventing a channel name and a payload shape for a
- * contract another card owns, which is how two documents start disagreeing about which one is the
- * contract (§ 1.3). Building NOTHING would have left § 4.10's producer missing again, and
- * AT-D2-23's third RED — "assert the ABSENCE of the message" when the columns are set directly —
- * with nothing to assert against.
+ * WHAT DID NOT CHANGE, and it is the half AT-D2-23's third RED turns on: this class is still the
+ * ONLY producer of `seat.retired`. "Set `retired_at` / `retired_by` / `retired_reason` directly
+ * and let the ordinary machinery run. NO `seat.retired` EVER REACHES A CONNECTED CLIENT — nothing
+ * else in this document publishes it." Adding `ShouldBroadcastNow` gives the one producer a wire;
+ * it does not give the columns-without-the-command path one.
  *
  * The `state_version` rides the event because § 8.5 makes it the feed's ordering key: the delta
  * carrying `render_state: "retired"` and this message are two announcements of one transaction, and
@@ -53,9 +57,10 @@ use Illuminate\Foundation\Events\Dispatchable;
  * right. What § 4.10 is protecting — a row never vanishing between two refreshes — is bought by the
  * COMMIT, and the delta rides `state_version`, which the same transaction bumped.
  */
-final class SeatRetired implements ShouldDispatchAfterCommit
+final class SeatRetired implements ShouldBroadcastNow, ShouldDispatchAfterCommit
 {
     use Dispatchable;
+    use FeedEnvelope;
 
     public function __construct(
         public readonly int $seatRef,
@@ -66,4 +71,36 @@ final class SeatRetired implements ShouldDispatchAfterCommit
         public readonly string $retiredReason,
         public readonly int $stateVersion,
     ) {}
+
+    public function type(): string
+    {
+        return 'seat.retired';
+    }
+
+    public function installId(): string
+    {
+        return $this->installId;
+    }
+
+    /**
+     * § 8.3's declared payload for this row: `install_id`, `seat_id`, `reason`, `at`.
+     *
+     * `state_version` rides it too, for the reason stated above — the delta carrying
+     * `render_state: "retired"` and this message are two announcements of one transaction, and a
+     * consumer that can see they sit at the same version does not have to guess whether it has
+     * both. § 8.1's REST rule ("additive changes are free") is not what licenses it; § 8.3's own
+     * feed rule is weaker still — the two ends of this channel ship in one deploy.
+     *
+     * @return array<string, mixed>
+     */
+    public function body(): array
+    {
+        return [
+            'install_id' => $this->installId,
+            'seat_id' => $this->seatId,
+            'reason' => $this->retiredReason,
+            'at' => Clock::wire($this->retiredAt),
+            'state_version' => $this->stateVersion,
+        ];
+    }
 }

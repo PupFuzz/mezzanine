@@ -10,6 +10,83 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7827** — Fleet-state PART B: the REST read plane and the WebSocket delta feed —
+  `docs/design/FLEET-STATE.md` §§ 8.2, 8.2.1, 8.2.3, 8.2.4, 8.3, 8.4, 8.5, 8.6 and 9. **The four
+  REST endpoints** (`/api/fleet/snapshot`, `/seats/{i}/{s}`, `/seats/{i}/{s}/timeline`,
+  `/health`), the § 8.2.1 seat object in full, § 8.2.4's fleet-health object stated once and
+  carried by all three of its surfaces, and § 4.10's 14-day retired-seat READ FILTER as one
+  predicate every read query shares. **Read-side auth** (§ 9): the `feed_tokens` store, a `mzr_`
+  `fleet_read` credential with issue/revoke commands, revocation checked per request and never
+  cached, `token_wrong_surface` for an `mzn_` ingest token, and § 9's 120/600 req-min limits —
+  each seen to fire and seen not to — plus D1 § 12.3's failed-authentication limit on the REFUSAL
+  path, which took no rate-limit slot at all before, spending `RateLimiter::hitFailedAuth()`'s
+  existing per-source-address budget rather than a second one. A request presenting NO credential
+  is excluded (it is unauthenticated, not a failed authentication, and this surface has browsers),
+  and so is a token that resolves to a revoked or expired row — D1 § 12.3's own exclusion, which
+  matters twice over on a shared budget. **The timeline pages on a KEYSET CURSOR** `(received_at,
+  id)`, issued by the server as the response's `next_before` and decided by a `limit + 1`
+  look-ahead: `received_at` alone is not unique — one batch stamps one value across up to 200
+  events — so the strict `received_at < ?` cursor a client could only derive from the response
+  skipped every event sharing the boundary timestamp. Measured before the fix at 120 events in one
+  batch: page 1 served 50, page 2 served **0**, and 70 were unreachable — `200 {"events": []}`,
+  the one shape `ReadRefusal::badCursor()` exists to refuse, produced from a well-formed cursor on
+  ordinary traffic. ⚠ A bare timestamp is now refused `422 bad_cursor`, which TIGHTENS what the
+  endpoint accepts: § 8.2 names the parameter and specifies no type for its value, and refusing the
+  assembled cursor is what keeps the lossy form from being re-derived by the next client.
+  **The feed** (§ 8.3): four of its five message types as
+  broadcastable events sharing one envelope and one channel name, published from the ONE place
+  `state_version` is bumped, and a 15 s `mezzanine:feed-heartbeat` daemon that is deliberately not
+  the sweeper's. `App\Events\SeatRetired` — card #7712's declared publication point — now reaches
+  the wire. **AT-D2-7, AT-D2-8, AT-D2-16, AT-D2-19 and AT-D2-20 ship with their REDs DRIVEN**, and
+  **AT-D2-21 and AT-D2-23 are now COMPLETE**: their primary REDs were wire-surface assertions card
+  #7712 shipped undriven, and both are driven here (the omitted `fold_lag_ms`, and the vanishing
+  desk). 56 new tests, 285 total.
+  **⛔ AT-D2-15 IS NOT DELIVERED AND IS NOT APPROXIMATED.** Per-connection backpressure is a
+  property of the socket server's outbound queue, which no application publish can observe — and
+  `laravel/reverb`, § 8.3's pinned transport, is NOT INSTALLABLE on this tree: every version
+  through v1.11.1 needs `guzzlehttp/psr7 ^2.6` against this application's `3.1.0`, and
+  `composer require -W --dry-run` resolves only by downgrading guzzle 8.1.0 → 7.15.5, promises
+  3.0.2 → 2.5.3 and psr7 3.1.0 → 2.13.1. A backpressure test written against a mock would test
+  the mock. **Six D2 findings are REPORTED, not patched — the design doc is untouched:**
+  (1) § 8.3's 250 ms COALESCING and § 8.5's `delta.state_version == local + 1` cannot both hold,
+  because a merged message is indistinguishable from a lost one — this card ships one delta per
+  version and names the cost; (2) § 8.2.4 declares five members non-null while declaring
+  `db: "down"` reachable on the same object, so they are ABSENT rather than invented on that path;
+  (3) § 8.2.3's `detail` enumeration omits this plane's `seat_predicates`, which Appendix A's S11
+  requires per seat per predicate — added as an additive member under § 8.1's own rule, and
+  § 8.2.4 was NOT its home (`sweep_seat_error`, card #7832, needs none: it is already a
+  `seat_counters` row); (4) AT-D2-19's "redirect to the MFA challenge" contradicts § 2.2, and
+  § 2.2 wins; (5) AT-D2-16's "closed at its materialized `orphan_due_at`" reads two ways and card
+  #7712 chose one — asserted here only on what both readings share; (6) § 8.4 step 5's watermark
+  and § 8.5's discard are the same comparison, so one is unobservable without the other.
+  **⚠ AND ONE CARD #7339 DEFECT, FOUND HERE AND NOT CROSSED INTO:** `StateRecompute::after()`
+  samples its version-bearing fingerprint AFTER `Projector::apply()` has written the event, so
+  every projector-written member — `context.*`, `model_label`, `enabled`, `selftest_failed`, D1's
+  reporter badges, a late `subagents[].title` — is invisible to both the bump decision and the
+  delta patch. Measured: an `enabled` flip publishes `changed: ["link_state","render_state"]`; a
+  `context.sample` publishes `changed: ["badges"]`. The SNAPSHOT carries all of them correctly, so
+  the watchdog and § 8.4's join are unaffected and a reload heals a browser; recorded as an
+  incomplete test naming the mechanism and the affected population rather than left green. A
+  second, smaller one is reported the same way: `taskTier3()` re-stamps `task_as_of` on every
+  recompute, so a seat with an open call emits a delta on every fold pass — the 16 % of pure noise
+  § 8.3 refuses. **⛔ AND A `blob` SHIPPED WHERE § 6.4 DECLARES `VARBINARY(16)`, IN BOTH TOKEN
+  TABLES:** `$table->binary()` with no length compiles to `blob` on MySQL — `MySqlGrammar::typeBinary()`
+  emits `varbinary({$length})` only `if ($column->length)` — and the suite runs on SQLite, where the
+  two are the same, so nothing could notice. Fixed in `feed_tokens` and in the identical line
+  card #7338's `ingest_tokens` migration carries, and now GUARDED: `MySqlColumnTypeTest` compiles
+  the real migrations through the real MySQL grammar with no MySQL server, which proves the SQL
+  text and explicitly not the engine's enforcement of it. **Three more not-delivered items are named
+  rather than left to be inferred** — `fleet.health` ON CONNECT (§ 8.3 requires it; only the change
+  half exists, and the cost is the up-to-15 s latency § 8.3 itself names, NOT blindness, because the
+  unconditional heartbeat carries the same object), `feed_resync_required` (no writer anywhere in
+  `app/`, and downstream of AT-D2-15 rather than independent: § 8.5 increments it only at the
+  socket server's backpressure close), and § 6.4's `revoked_reason`, a column this application
+  creates that the document's DDL does not contain. ⚠ Written for both engines and tested on SQLite;
+  every MySQL-specific behaviour
+  left unexercised is enumerated in the PR body (card #7523, the store host), and there is no PHP
+  test lane in CI (card #7344), so this suite is SELF-ATTESTED and the mutation evidence in the PR
+  body is the load-bearing part.
+
 - **card#7712** — The three processes `docs/design/FLEET-STATE.md § 2.1` names and neither half of
   card #7339 built. **`mezzanine:sweep`** — a supervised 15 s daemon applying § 2.1's seven
   time-derived jobs (staleness, orphan-timeout closes, attention ceilings, compaction ceilings, the

@@ -2,6 +2,7 @@
 
 namespace App\Ingest;
 
+use App\Support\FixedWindow;
 use Illuminate\Contracts\Cache\Repository;
 
 /**
@@ -97,27 +98,10 @@ final class RateLimiter
      */
     private function hit(string $key, int $windowS, int $by): int
     {
-        // The window index is part of the key, so an expired window cannot be resurrected by a
-        // TTL that outlived it and every window starts from zero without a sweeper.
-        //
-        // `now()` rather than `time()`, for the same reason `IngestPipeline` stamps `received_at`
-        // from the application clock: one clock per request. A window index taken from PHP's
-        // clock is one no test can advance, which would make "the limit releases after its
-        // window" a property nothing ever observed.
-        $windowed = sprintf('%s:%d', $key, intdiv(now()->getTimestamp(), $windowS));
-
-        $this->cache->add($windowed, 0, $windowS * 2);
-
-        if ($by === 0) {
-            return (int) $this->cache->get($windowed, 0);
-        }
-
-        $total = $this->cache->increment($windowed, $by);
-
-        // `increment` returns false on a store that lost the key between `add` and `increment`.
-        // Treating that as "no hit recorded" would silently disable the limit, so it is read
-        // back instead — and a store that cannot even do that is a broken limit, which is what
-        // the `false` here would surface as a `0` and a rising counter rather than a silent pass.
-        return is_int($total) ? $total : (int) $this->cache->get($windowed, $by);
+        // `App\Support\FixedWindow` is the one home of the window-index mechanism; the read
+        // plane (`docs/design/FLEET-STATE.md` § 9) needs the identical one with different
+        // numbers, and two copies would be two chances to lose the property that a window
+        // releases and that a test can advance it.
+        return FixedWindow::hit($this->cache, $key, $windowS, $by);
     }
 }

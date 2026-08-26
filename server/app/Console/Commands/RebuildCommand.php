@@ -30,8 +30,16 @@ class RebuildCommand extends Command
 
     protected $description = 'Replay a seat\'s events through the fold (docs/design/FLEET-STATE.md § 6.6)';
 
-    public function handle(Projector $projector, StateRecompute $recompute): int
+    public function handle(Projector $projector): int
     {
+        // ⚠ NOT the container's `StateRecompute`. A rebuild replays the seat's whole retained
+        // history through the identical fold path (§ 6.6), so publishing § 8.3's `seat.delta` per
+        // replayed event would re-announce, at versions clients already hold, state they were
+        // told about the first time — tens of thousands of messages § 8.5 has every client
+        // discard as stragglers. `publish: false` is that decision, made at the one line that can
+        // see it is a rebuild. See `StateRecompute::__construct()`.
+        $recompute = new StateRecompute(publish: false);
+
         $seat = (string) $this->option('seat');
 
         if (! str_contains($seat, '/')) {

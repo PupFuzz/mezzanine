@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureTwoFactorSatisfied;
+use App\Http\Middleware\FleetReadGate;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -22,6 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // Laravel provides for routes that belong to no group at all.
         then: function (): void {
             Route::middleware([])->group(__DIR__.'/../routes/ingest.php');
+
+            // The READ plane (card #7827). Its own file and its own stack for the mirror of the
+            // ingest's reason — see `routes/fleet.php`, which states each group it is not in and
+            // why. Registered here rather than from `web:` because it needs `web`'s session
+            // WITHOUT `auth`'s redirect in front of the token branch.
+            Route::group([], __DIR__.'/../routes/fleet.php');
         },
     )
     // The websocket gate. Broadcast::routes() would otherwise register /broadcasting/auth
@@ -34,6 +41,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'mfa' => EnsureTwoFactorSatisfied::class,
+            // docs/design/FLEET-STATE.md § 9, entire: session+MFA OR a `mzr_` fleet_read token,
+            // adjudicated in one place and in the one order that cannot let a revoked token
+            // through. See `App\Http\Middleware\FleetReadGate`.
+            'fleet.read' => FleetReadGate::class,
         ]);
 
         // Guests on an api/* path get 401 rather than a redirect to the login screen. A

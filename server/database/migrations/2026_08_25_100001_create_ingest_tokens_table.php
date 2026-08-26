@@ -67,7 +67,13 @@ return new class extends Migration
             // App\Ingest\TokenResolver. They answer "is this seat's credential in use, and from
             // where", which is the question a rotation asks.
             $table->dateTime('last_used_at', 3)->nullable();
-            $table->binary('last_used_ip')->nullable();
+
+            // The length, for the reason `create_feed_tokens_table` states in full: a length-less
+            // `binary()` emits `blob` on MySQL, not `varbinary`. This table's column is the SAME
+            // column for the ingest plane — same `inet_pton()` writer in `TokenResolver`, same 16
+            // bytes — and it is fixed here rather than only where the divergence was noticed,
+            // because the second copy is what re-mints the first.
+            $table->binary('last_used_ip', 16)->nullable();
 
             $table->unique('token_hash', 'uq_hash');
             $table->index('prefix', 'ix_prefix');
