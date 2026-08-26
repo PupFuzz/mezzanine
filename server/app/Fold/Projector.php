@@ -3,6 +3,7 @@
 namespace App\Fold;
 
 use App\Ingest\Counters;
+use App\Sweep\Predicates;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -154,7 +155,9 @@ class Projector
             // quiescence — the sweeper's, which neither half of this card builds.
             'closed_by' => 'wire',
             // § 4.6: an open compaction is bounded by its session closing, among other things.
+            // The ceiling's basis is cleared with the fact — see `compactionEnd()`.
             'compaction_open_since' => null,
+            'compaction_open_received_at' => null,
             'updated_at' => $e->receivedAt,
         ];
 
@@ -188,6 +191,7 @@ class Projector
             }
 
             Counters::seat($e->seatRef, 'session_close_orphans', $orphans->count());
+            $this->recordCallCloses($e, false, $orphans->count());
 
             $update += [
                 'turn_open' => false,
@@ -215,6 +219,7 @@ class Projector
                 ]);
 
             Counters::seat($e->seatRef, 'session_close_orphans', $orphans);
+            $this->recordCallCloses($e, false, $orphans);
         }
 
         // Card #7337, and the asymmetry IS the rule: a background task cannot outlive the session
@@ -235,6 +240,26 @@ class Projector
         $this->resolveOpenRequests($e, $ref);
 
         $this->touchApplied($ref, $e);
+    }
+
+    /**
+     * `docs/design/FLEET-STATE.md § 5`'s `call_closed_by_wire`, at its own evaluation site —
+     * "per call close — ~1,000–3,000/seat/day".
+     *
+     * The two branches are "a call closed by a `tool.end`" and "by a server orphan or quiescence",
+     * and the alarm direction is NOT constancy: "**≥ 5 % server-closed across ≥ 1,000 in 24 h** is
+     * the alarm direction here — server closes should be RARE". § 7.2 makes the same point from the
+     * counter side about a session close: "rising ⇒ reap `tool.end`s are being lost in transit,
+     * since D1's reaps should have closed them on the wire first."
+     *
+     * ⚠ THE SERVER-CLOSE BRANCH HAS THREE WRITERS AND THIS IS ONLY ONE OF THEM. The other two are
+     * the sweeper's orphan close and its offline quiescence (§ 4.6), which record the same `false`
+     * from `App\Sweep\Sweep`. That is why this is a shared helper rather than an inline call: one
+     * predicate, one branch, three sites, no third spelling of the meaning.
+     */
+    private function recordCallCloses(FoldEvent $e, bool $byWire, int $count): void
+    {
+        Predicates::record($e->seatRef, 'call_closed_by_wire', $byWire, $e->receivedAt, $count);
     }
 
     private function resolveOpenRequests(FoldEvent $e, int $sessionRef): void
@@ -352,6 +377,25 @@ class Projector
         }
 
         DB::table('sessions')->where('id', $ref)->update($update);
+
+        // § 5's `turn_clean`, evaluated at its own site — "per `turn.end` — ~200–600/seat/day".
+        // The branch is § 4.3 rule 4's TURN-SIDE conditions and nothing else: the rule's fourth
+        // input, `C == 0`, is a fact about the seat rather than about this turn, and folding it in
+        // would make the predicate answer a different question from the one § 5 names it for.
+        //
+        // WHAT CONSTANCY WOULD MEAN, which is why this is worth an evaluation site at all:
+        // "constant-`true` means the abort path is not reaching the derivation — THE FALSE-IDLE
+        // DEFECT RETURNING; constant-`false` means idle has become unreachable, which is what a
+        // wrongly-scoped reap looked like in D1's own review."
+        Predicates::record(
+            $e->seatRef,
+            'turn_clean',
+            $endReason === 'stop_hook'
+                && $update['last_turn_aborted_count'] === 0
+                && $update['last_turn_background_tasks_open'] === 0,
+            $e->receivedAt,
+        );
+
         $this->touchApplied($ref, $e);
     }
 
@@ -470,11 +514,16 @@ class Projector
                 'synthesized' => $match === 'synthesized',
             ] + $this->triple($e));
 
+            // A close is a close even when its open never arrived — the row is created ALREADY
+            // CLOSED and the seat's ledger gained one closed call, by the wire.
+            $this->recordCallCloses($e, true, 1);
+
             return;
         }
 
         if ($call->closed_at === null) {
             DB::table('calls')->where('id', $call->id)->update($close);
+            $this->recordCallCloses($e, true, 1);
             $this->touchCallApplied($call->id, $e);
 
             return;
@@ -614,6 +663,13 @@ class Projector
             return;
         }
 
+        // ⛔ `subagent.stop` DELIBERATELY RECORDS NO `call_closed_by_wire` BRANCH, and the omission
+        // is the predicate's meaning rather than an oversight. D1 § 6.8 makes it "a SECOND
+        // PROJECTION of the same call's close", sharing the dispatch call's `call_id` — so on the
+        // ordinary path the call was already closed by its own `tool.end` and counting again would
+        // put TWO evaluations on one physical close. § 5's alarm is a SHARE (≥ 5 % server-closed),
+        // and a wire branch double-counted on every dispatch would dilute the denominator by the
+        // dispatch rate — an alarm quietly made harder to reach by the shape of the traffic.
         if ($call->closed_at === null || Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($call))) {
             DB::table('calls')->where('id', $call->id)->update($close + ['is_dispatch' => true]);
         }
@@ -637,6 +693,15 @@ class Projector
         // inventing one would put a guessed value in a rendered field.
         DB::table('sessions')->where('id', $ref)->update([
             'compaction_open_since' => $e->eventTime,
+            // ⚠ THE SECOND COLUMN IS THE CEILING'S BASIS AND IT IS NOT `compaction_open_since`.
+            // § 4.6 bounds an open compaction at "15 min after the `compaction.start` RECEIPT", and
+            // § 4.7's whole table exists to say a timeout is measured on the SERVER clock: "a
+            // timeout is a statement about how long WE have waited." `compaction_open_since` is the
+            // seat's own claim about when it started compacting — the narrative — and running the
+            // ceiling off it would make a +10-minute skewed seat's compaction expire on arrival.
+            // § 6.4 declares no receipt column here; the migration that adds it says so and the PR
+            // body reports it as a D2 § 6.4 omission.
+            'compaction_open_received_at' => $e->receivedAt,
             'updated_at' => $e->receivedAt,
         ]);
 
@@ -649,6 +714,11 @@ class Projector
 
         DB::table('sessions')->where('id', $ref)->update([
             'compaction_open_since' => null,
+            // Cleared WITH its fact. Leaving the receipt behind would give the sweeper's ceiling
+            // scan a basis with no open compaction under it — a row matching a range predicate for
+            // a fact that has already closed, which is how a counter that means "`compaction.end`
+            // is not arriving" (§ 7.2) starts counting compactions that ended normally.
+            'compaction_open_received_at' => null,
             'updated_at' => $e->receivedAt,
         ]);
 
@@ -774,6 +844,17 @@ class Projector
             'applied_seq_epoch' => $e->seqEpoch,
             'applied_seq' => $e->seq,
         ]);
+
+        // § 5's `attention_resolved_by_wire`, WIRE branch — "per resolution — 0–50/seat/day".
+        //
+        // ⚠ ITS TWO BRANCHES ARE `attention.resolved` AND **THE SERVER CEILING**, and no other
+        // server-side resolution records either. § 5 names the pair exactly that way, and its alarm
+        // criterion is "ANY server-ceiling resolution in 24 h is surfaced" — so folding § 4.5's
+        // `seat_left_live` or the session close into the false branch would make an ORDINARY quiet
+        // seat raise the alarm that exists to say "resolutions are being LOST". Those two closes
+        // have their own counters (`left_live_resolved_attention`, and the session close is D1's
+        // own emission path); this predicate is about the reporter's resolution arriving or not.
+        Predicates::record($e->seatRef, 'attention_resolved_by_wire', true, $e->receivedAt);
     }
 
     // ── the heartbeat ────────────────────────────────────────────────────────────────────────

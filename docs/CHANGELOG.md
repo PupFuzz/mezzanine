@@ -10,6 +10,56 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7712** — The three processes `docs/design/FLEET-STATE.md § 2.1` names and neither half of
+  card #7339 built. **`mezzanine:sweep`** — a supervised 15 s daemon applying § 2.1's seven
+  time-derived jobs (staleness, orphan-timeout closes, attention ceilings, compaction ceilings, the
+  leaving-live clears, offline quiescence, the § 5 predicate-constant alarms), recomputing
+  `link_state` / `render_state` for every seat and bumping `state_version` under § 6.5's per-writer
+  rule; it is what makes `stale` reachable at all, because a seat that has stopped sending has no
+  unfolded events and is never claimed by the fold. **`mezzanine:purge`** — hourly, scheduled,
+  bounded 5,000-row batches under a 60 s budget, with `purge_backlog_rows` when it falls behind and
+  a hard REFUSAL of any retention below `D2-MUST` #3's 10-day dedup window (§ 2.2: "deleting on a
+  broken assumption costs the dedup guarantee — the safe direction is to keep"). **`mezzanine:retire`**
+  — the only writer of retirement, doing § 4.10's whole act in one transaction: the three columns,
+  the recomputed `render_state`, the `cause: operator` transition row, the `state_version` bump and
+  the `seat.retired` publish, each of which had no producer before. The publish is dispatched
+  **inside** that transaction and carries `ShouldDispatchAfterCommit`, so it is ordered by the act
+  that sets the columns and is delivered only if the act commits — a rollback reaches no client.
+  Creates § 6.4's `seat_predicates` and records all seven § 5 predicates at their own evaluation
+  sites. **One seat's failure costs one desk and no longer kills the daemon:** the per-seat pass is
+  inside an error boundary that logs, counts `sweep_seat_error` and continues, and a pass reports
+  how many seats it skipped — without it a single reachable raise (§ 2.3's unseeded cursor clock)
+  exits the process and, under a supervisor, crash-loops the fleet's time-derived transitions.
+  **AT-D2-21** (a frozen fold cannot look healthy — `fold_lag_ms` computed from a basis two
+  processes write, the badge, the episode counter, the never-folded seat) and **AT-D2-23** (a
+  retired seat is rendered, not disappeared) have their store-side REDs driven rather than
+  described; the PRIMARY RED of each is a wire-surface assertion Part B owns and neither is claimed
+  complete here. 59 tests; every one of the seven jobs and every new check was SEEN TO FAIL under a
+  named mutation whose landing was proved by `git diff` — including one mutation that did NOT red,
+  which corrected a false claim in this card's own comments (job order is not what makes § 6.4's
+  four deleted ENUM members unreachable; the disjointness of the two jobs' write sets is).
+  **Three D2 gaps are REPORTED, not patched — the design doc is untouched:** § 6.4 declares no home
+  for § 8.2.4's `sweep_last_run_at` / `purge_last_run_at` (a `plane_state` table is added and
+  flagged), no receipt column for § 4.6's compaction ceiling
+  (`sessions.compaction_open_received_at`, flagged), and `seat_predicates` cannot express § 5's own
+  rolling-window criteria — so those four criteria are **not evaluated at all**: the alarm returns a
+  named `cannot_evaluate` outcome rather than guessing in either direction. An earlier revision
+  approximated them and claimed the error ran in a safe under-firing direction; that claim was false
+  in both directions (a wall-clock proxy fired on the first evaluation after a sweep outage, and a
+  cumulative share latched permanently on a months-old incident), and the approximation is gone
+  rather than tuned. ⚠ Written for both engines and tested on SQLite: the sweeper's per-seat
+  work takes no row locks, so `FOR UPDATE SKIP LOCKED` is untouched by this card and remains
+  UNEXERCISED (card #7523, the store host) — and one MySQL-only exposure is now NAMED rather than
+  wrongly justified: `Predicates::record()` is a read-modify-write, two of the seven predicates are
+  written by two different processes, and the `SKIP LOCKED` claim its docblock used to rest on
+  excludes only other *fold* workers. On the pinned engine that is a lost update, and the two
+  writers take `seat_predicates` and `seat_state` in opposite orders. Corrected in the docblock,
+  carried onto #7523, not fixable here. **Deploy note:** `sessions.compaction_open_received_at` is
+  added NULLABLE with no backfill while `compactionCeilings()` requires it NOT NULL — no live data
+  exists yet, so pre-existing open compactions cannot be stranded; a backfill would be owed if that
+  ever stopped being true. The WebSocket delta feed and the REST snapshot remain Part B's, and the
+  feed-bound halves of both acceptance tests are named rather than approximated.
+
 - **card#7339** — PART A of the fleet-state card: the store schema and **the fold** — everything
   that turns accepted events into seat state. Creates `docs/design/FLEET-STATE.md § 6.4`'s
   remaining projection tables (`sessions`, `calls`, `attention_requests`,

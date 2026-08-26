@@ -7,11 +7,24 @@ use Illuminate\Support\Facades\DB;
 /**
  * `docs/design/FLEET-STATE.md § 7.2`'s server-derived badge set, and § 8.2.1's rendered union.
  *
- * SEVEN ARE DECLARED and this class raises SIX of them. The seventh, `fold_lag`, is deliberately
- * not here: § 2.3 computes `fold_lag_ms` at read time from a basis two processes write, precisely
- * so that pausing the fold makes the number rise. A `fold_lag` badge stored by the fold would
- * freeze with the thing it measures — AT-D2-21's second RED, watched once and then designed out.
- * It belongs to the read side, which is Part B's.
+ * SEVEN ARE DECLARED and this class now raises ALL SEVEN. `fold_lag` was left out by card #7339
+ * Part A on the reading that it "belongs to the read side, which is Part B's", and the SWEEPER
+ * (card #7712, § 2.1) is what makes that reading unnecessary — it does not make it wrong, and the
+ * distinction is the whole of § 2.3:
+ *
+ *   What § 2.3 forbids is a badge STORED BY THE FOLD, because "a stored `fold_lag_ms` whose only
+ *   writer is the fold pass dies with the thing it detects". AT-D2-21's second RED is watching
+ *   exactly that. The BASIS is still never stored — `SeatFacts::foldLagMs()` computes it from three
+ *   columns two other processes write — so pausing the fold makes the number rise, and the SWEEPER,
+ *   which is a different process on a 15 s cadence, is what re-reads it and raises the badge.
+ *
+ * That is what AT-D2-21's GREEN requires and no read of the wire can supply: "WITHIN 60 s every
+ * affected seat badges `fold_lag`", and § 7.2 counts `fold_lag_alarm_entered` "once per lag
+ * EPISODE" — an episode is a thing that happens on a clock, and a badge that exists only when
+ * somebody happens to fetch a snapshot cannot have one. The fold raises it too, from the same
+ * function, so the two writers cannot disagree; the episode counter is incremented in
+ * `StateRecompute`, at the single site that compares the new set against the stored one, so it
+ * counts once per episode however many writers recompute.
  *
  * These are separate from D1 § 9.3's twelve-member `degraded` array and are NEVER merged into it:
  * that array is what the *reporter* knows about itself, and a `lossy` written by this server would
@@ -21,7 +34,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class Badges
 {
-    /** § 7.2's set, in the document's own order. `fold_lag` is read-side; see the class docblock. */
+    /** § 7.2's set, in the document's own order. */
     public const SERVER = [
         'seq_gap', 'seq_collision', 'clock_skew', 'epoch_reset', 'reporter_ahead',
         'fold_lag', 'derivation_error',
@@ -31,6 +44,16 @@ final class Badges
     public const CLOCK_SKEW_MS = 120_000;
 
     /**
+     * § 2.3's per-seat `fold_lag` threshold: **> 60 s**, D2's number, derived not chosen.
+     *
+     * "60 s is one heartbeat interval (D1 § 9.1): a seat whose derivation is a whole heartbeat
+     * behind has certainly missed at least one input, so the badge cannot fire on a healthy pass."
+     * The healthy value is bounded by the fold's own poll plus one pass, ~1 s, so the threshold
+     * sits two orders of magnitude above healthy.
+     */
+    public const FOLD_LAG_MS = 60_000;
+
+    /**
      * Recompute the server badge set for a seat from the facts that raise each one.
      *
      * DERIVED ON EVERY RECOMPUTE RATHER THAN LATCHED, so a badge CLEARS when its condition does.
@@ -38,9 +61,12 @@ final class Badges
      * present" with "a badge that clears dropped from the map" — a latched set would make
      * `badges_since` answer a question about a condition that ended.
      *
+     * @param  int  $nowMs  the server clock, passed rather than read, so that the one caller that
+     *                      recomputes on a clock (the sweeper) and the one that recomputes on an
+     *                      event agree on the instant `fold_lag` is judged against
      * @return list<string>
      */
-    public static function serverFor(int $seatRef, object $state): array
+    public static function serverFor(int $seatRef, object $state, int $nowMs): array
     {
         $counters = DB::table('seat_counters')
             ->where('seat_ref', $seatRef)
@@ -79,6 +105,13 @@ final class Badges
 
         if ((int) $state->fold_errors > 0) {
             $badges[] = 'derivation_error';
+        }
+
+        // § 2.3's `fold_lag` badge. COMPUTED, never stored — see the class docblock and
+        // `SeatFacts::foldLagMs()`. STRICTLY GREATER, because § 2.3 states the threshold as
+        // "> 60 s" and a seat sitting exactly on a boundary is not past it.
+        if (SeatFacts::foldLagMs($state, $nowMs) > self::FOLD_LAG_MS) {
+            $badges[] = 'fold_lag';
         }
 
         // Ordered as § 7.2 lists them, so the array is a set with a stable rendering and two equal

@@ -101,6 +101,57 @@ final class SeatFacts
     }
 
     /**
+     * `docs/design/FLEET-STATE.md § 2.3`'s `fold_lag_ms`, COMPUTED — never read from a stored lag.
+     *
+     * ⛔ WHY THE BASIS AND NOT THE LAG. "A stored `fold_lag_ms` whose only writer is the fold pass
+     * DIES WITH THE THING IT DETECTS: pause the fold and the number freezes at whatever the last
+     * pass wrote, the badge can never fire, and AT-D2-21 can never go green." All three operands
+     * are columns of the seat's own `seat_state` row and TWO DIFFERENT PROCESSES write them — the
+     * ingest writes `head_event_id` and seeds `fold_cursor_received_at`, the fold advances the
+     * cursor pair — so the quantity keeps rising while the fold is dead.
+     *
+     * ⛔ AND WHY THIS OPERAND. "The age of the NEWEST unfolded event is near zero on any seat that
+     * is still receiving, so a frozen fold on a busy seat would read healthy under that definition
+     * however it was stored." What rises is the age of the OLDEST unfolded event, and
+     * `server_now − fold_cursor_received_at` is an upper bound on it: it exceeds the true age by at
+     * most one inter-arrival gap, EQUALS it exactly while the fold is stalled — the case the
+     * instrument exists for — and is pinned to `0` by the cursor test whenever the seat is caught
+     * up, so a quiet seat never badges.
+     *
+     * ⚠ THE NULL BOUNDARY IS CLOSED AT THE WRITE SITE, SO THIS RAISES RATHER THAN COALESCING.
+     * § 2.3: `fold_cursor_received_at` is null ONLY for a seat that has never received an event,
+     * and such a seat has `head_event_id = 0`, where the cursor test above already pinned the lag
+     * to `0`. Reaching the second branch with a null clock therefore means the INGEST's one-shot
+     * seed did not run — AT-D2-21's fourth RED exactly — and § 2.3 rejects the read-time
+     * `COALESCE` for it in terms: "the fallback would have read HEALTHY on the one state the
+     * instrument is for". A loud raise on an unreachable state beats a zero that lies.
+     *
+     * ⚠ SEAM. § 8.2.1's `derivation.fold_lag_ms` wire member and § 8.2.4's `max_fold_lag_ms`
+     * aggregate are Part B's; this is the one home of the arithmetic, and Part B composes on it
+     * rather than re-deriving it.
+     *
+     * @param  object  $state  a `seat_state` row
+     */
+    public static function foldLagMs(object $state, int $nowMs): int
+    {
+        if ((int) $state->fold_cursor_event_id >= (int) $state->head_event_id) {
+            return 0;
+        }
+
+        if ($state->fold_cursor_received_at === null) {
+            throw new \LogicException(
+                'seat_state.fold_cursor_received_at is NULL with head_event_id='
+                .$state->head_event_id.' on seat_ref='.$state->seat_ref
+                .' — the ingest\'s one-shot cursor seed (§ 2.3) did not run, and fold_lag_ms has no'
+                .' value. Not COALESCEd: that fallback reads healthy on the one state the'
+                .' instrument exists for.'
+            );
+        }
+
+        return max(0, $nowMs - Clock::toMs($state->fold_cursor_received_at));
+    }
+
+    /**
      * The VERSION-BEARING fact set of `docs/design/FLEET-STATE.md § 6.5`, as a comparable array.
      *
      * ─────────────────────────────────────────────────────────────────────────────────────────
