@@ -138,8 +138,23 @@ final class Fold
 
         foreach ($rows as $row) {
             $event = FoldEvent::fromRow($row);
+
+            // ⛔ SAMPLED BEFORE `apply()`, AND PER EVENT — card #7837. See
+            // `StateRecompute::after()` for the defect: the projector writes `enabled`,
+            // `context.*`, `model_label`, `selftest_failed`, the reporter badge array and the
+            // `calls` rows behind `subagents`, so a fingerprint sampled after it is identical to
+            // the one sampled after the recompute on exactly those members and they never reach
+            // § 8.3's patch.
+            //
+            // PER EVENT AND NOT ONCE PER WINDOW, which is the same reading `StateRecompute`'s
+            // class docblock argues for the recompute itself: § 4.8 row 4 is "one derivation pass
+            // per applied event" and § 10 is "ten events, ten deltas". One fingerprint per window
+            // would make a window's ten deltas share one `before` and re-report every earlier
+            // event's change on each of them.
+            $before = SeatFacts::versionBearing($event->seatRef);
+
             $this->projector->apply($event);
-            $this->recompute->after($event);
+            $this->recompute->after($event, $before);
         }
 
         $last = $rows->last();
@@ -275,8 +290,14 @@ final class Fold
             foreach ([1, 2] as $attempt) {
                 try {
                     DB::transaction(function () use ($event, $seatRef, $cursor, $row) {
+                        // Card #7837, and sampled INSIDE the transaction rather than above the
+                        // retry loop: attempt 1 may have written and rolled back, so the only
+                        // fingerprint this attempt can honestly call "before" is the one it reads
+                        // after its own BEGIN.
+                        $before = SeatFacts::versionBearing($event->seatRef);
+
                         $this->projector->apply($event);
-                        $this->recompute->after($event);
+                        $this->recompute->after($event, $before);
                         $this->advance($seatRef, $cursor, (int) $row->id, $row->received_at);
                     });
 
@@ -313,6 +334,22 @@ final class Fold
     private function quarantine(int $seatRef, int $cursor, FoldEvent $event, string $receivedAt): void
     {
         DB::transaction(function () use ($seatRef, $cursor, $event, $receivedAt) {
+            // ⛔ SAMPLED AT THE TOP OF THE TRANSACTION, AND THE ANSWER TO "WHAT IS `$before` HERE"
+            // IS THAT NOTHING WROTE BEFORE IT — card #7837, stated rather than left to be inferred
+            // from the absence of an `apply()` call.
+            //
+            // This path quarantines an event that RAISED, and both attempts ran inside their own
+            // transactions which rolled back — so no projection of this event survives and the
+            // seat's state is exactly what the last good event left. The two writes below are the
+            // `fold_error` counter and `seat_state.fold_errors`, and NEITHER is a member of the
+            // fingerprint: `Badges::render()` reads the STORED `server_badges` column, and
+            // `derivation_error` reaches it only through `Badges::serverFor()` inside
+            // `writeDerivedColumns()`, which runs after this sample either way. So this sample is
+            // VALUE-IDENTICAL to the one `after()` used to take for itself; what changes is that
+            // the rule is now the same one at all four fold call sites instead of three plus a
+            // coincidence.
+            $before = SeatFacts::versionBearing($seatRef);
+
             Counters::seat($seatRef, 'fold_error');
 
             DB::table('seat_state')->where('seat_ref', $seatRef)
@@ -332,7 +369,7 @@ final class Fold
             // method used to write the no-render-change row itself, off a second pair of
             // `render_state` reads and without a bump, which is how a repeat quarantine on an
             // already-badged seat wrote three rows at one version.
-            $this->recompute->after($event, 'fold_error');
+            $this->recompute->after($event, $before, 'fold_error');
 
             $this->advance($seatRef, $cursor, $event->id, $receivedAt);
         });

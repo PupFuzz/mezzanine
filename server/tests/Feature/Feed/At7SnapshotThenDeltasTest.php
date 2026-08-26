@@ -138,14 +138,16 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
         // seat that keeps heartbeating and does nothing else — § 6.5's own case: "the heartbeat
         // that moves nothing but bookkeeping emits no delta".
         //
-        // ⚠ AND IT MUST HAVE NO OPEN CALL, which is a CARD #7339 DEFECT this test found rather
-        // than a fixture nicety: `StateRecompute::taskTier3()` re-stamps `task_as_of` to `now()`
-        // on EVERY recompute while a title exists, `task` is version-bearing, so a seat with an
-        // open call emits a delta on every fold pass — 1,440 a seat-day from heartbeats alone,
-        // which is precisely the noise § 8.3 refuses ("a 16 % increase in feed traffic carrying no
-        // information"). REPORTED IN CARD #7827's PR BODY, not patched here: it is Part A's
-        // derivation, and `as_of`'s correct semantics interact with § 4.9's tier-1/2 freshness
-        // bounds, whose producers are not built.
+        // ⚠ AND IT HAS NO OPEN CALL, which WAS a CARD #7339 DEFECT this test found rather than a
+        // fixture nicety: `StateRecompute::taskTier3()` re-stamped `task_as_of` to `now()` on
+        // EVERY recompute while a title existed, `task` is version-bearing, so a seat with an open
+        // call emitted a delta on every fold pass — 1,440 a seat-day from heartbeats alone, which
+        // is precisely the noise § 8.3 refuses ("a 16 % increase in feed traffic carrying no
+        // information"). FIXED ON CARD #7837: `as_of` is now stamped when the tier's value moves
+        // and not when a pass re-reads it, and `FeedSurfaceTest::
+        // test_a_seat_with_an_open_call_is_as_quiet_as_one_without` drives the open-call fixture
+        // directly. The fixture here stays open-call-free anyway, because THIS test's subject is
+        // § 8.4's window and it should not go red for a § 4.9 regression that has its own case.
         $quietFrom = count($this->wire->sent);
 
         for ($i = 0; $i < 10; $i++) {

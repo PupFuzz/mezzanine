@@ -190,7 +190,31 @@ final class Sweep
         // § 6.5's per-writer rule, bumps `state_version` and enqueues the delta when a
         // version-bearing field moved. `staleness_sweep` is § 4.5's cause value for both the
         // render itself and the leaving-live writes: "one rule, one cause value".
-        $this->recompute->forSeat($seatRef, 'staleness_sweep', ['job' => 'sweep', 'link_state' => $link]);
+        //
+        // ⚠ SAMPLED HERE, WHICH IS EXACTLY WHERE `forSeat()` USED TO SAMPLE FOR ITSELF, AND THAT
+        // LEAVES ONE INSTANCE OF CARD #7837's CLASS OPEN ON PURPOSE. Jobs 2, 3 and 6 each settle
+        // their own writes and each now samples before them, so the fingerprint here is the one
+        // the last published delta left the client holding — for everything except JOB 5. JOB 5
+        // (`leavingLive`) deliberately has NO settle of its own and defers to this one, so its
+        // `sessions.stalled_since = NULL` write lands ABOVE this sample and the member that reads
+        // it — `api_error_type` — is identical on both sides. A seat that was `stalled` and then
+        // went quiet therefore keeps a stale `api_error_type` on a connected client until it
+        // resyncs.
+        //
+        // NOT FIXED BY MOVING THIS SAMPLE ABOVE JOB 5, WHICH WAS MEASURED AND IS WORSE: JOB 6
+        // settles between here and there and writes `render_state`, so a `$before` from above it
+        // sees a render change JOB 6's row already recorded and mints a SECOND transition row for
+        // one physical event — the duplication § 4.6 refuses in terms ("one physical event, one
+        // set of values, one counter"). The real fix is a decision about which settle OWNS JOB 5's
+        // writes — give `leavingLive()` its own `forSeat($seatRef, $before, 'staleness_sweep')`,
+        // which keeps § 4.5's one cause value but moves the row's writer — and that is a change to
+        // the sweeper's documented job ordering, not to the fold. Reported on card #7837's PR.
+        $this->recompute->forSeat(
+            $seatRef,
+            SeatFacts::versionBearing($seatRef),
+            'staleness_sweep',
+            ['job' => 'sweep', 'link_state' => $link],
+        );
 
         $this->predicates($seatRef, $nowMs, $nowSql);            // JOB 7, per-seat half
     }
@@ -224,6 +248,21 @@ final class Sweep
             return;
         }
 
+        // ⛔ SAMPLED BEFORE THE CLOSES BELOW — card #7837's defect, in the sweeper. `subagents` and
+        // `subagents_open` read `calls` DIRECTLY (`SeatFacts::openSubagents()`, `closed_at IS
+        // NULL`), so a fingerprint sampled after this job's UPDATEs has the orphaned intern gone
+        // from BOTH sides and § 8.3's patch never carries it — a desk keeps rendering a subagent
+        // the server timed out fifteen minutes ago. Nothing else here moves: the UPDATE touches no
+        // `seat_state` column, so `render_state` and therefore this job's transition row are
+        // unchanged by moving the sample.
+        //
+        // ⚠ BELOW THE EARLY RETURN AND NOT AT THE TOP OF THE METHOD, so this job costs a seat with
+        // nothing due exactly what it cost before — this method runs on every seat on every one of
+        // § 4.6's 5,760 passes a day, and a fingerprint read is ~5 indexed SELECTs. The `$due`
+        // read above is a READ, so sampling after it still satisfies the rule (`$before` is taken
+        // before the first WRITE of the unit of work).
+        $before = SeatFacts::versionBearing($seatRef);
+
         foreach ($due as $call) {
             DB::table('calls')->where('id', $call->id)->update([
                 // The server's own close time on both clocks: it observed nothing on the seat's.
@@ -248,6 +287,7 @@ final class Sweep
 
         $this->recompute->forSeat(
             $seatRef,
+            $before,
             'orphan_timeout',
             ['job' => 'orphan_timeout', 'calls' => $due->count()],
             owesRow: true,
@@ -283,6 +323,15 @@ final class Sweep
             return;
         }
 
+        // Card #7837's rule, applied here for UNIFORMITY and not because this job hid anything:
+        // its only writes are to `attention_requests`, and NO member of
+        // `SeatFacts::versionBearing()` reads that table — the resolution reaches the fingerprint
+        // through `activity_state`, which `writeDerivedColumns()` writes after this sample either
+        // way. Value-identical to the self-sample it replaces; what it buys is that a reader
+        // checking this file against the rule does not have to re-derive that for themselves.
+        // Below the early return for the same cost reason `orphanCloses()` above states.
+        $before = SeatFacts::versionBearing($seatRef);
+
         foreach ($due as $request) {
             DB::table('attention_requests')->where('id', $request->id)->update([
                 // RESOLVED AT THE CEILING, NOT AT `now`. The ceiling is the instant `D2-MUST` #5
@@ -307,6 +356,7 @@ final class Sweep
 
         $this->recompute->forSeat(
             $seatRef,
+            $before,
             'attention_ceiling',
             ['job' => 'attention_ceiling', 'requests' => $due->count()],
             owesRow: true,
@@ -440,6 +490,24 @@ final class Sweep
             ->where('seat_ref', $seatRef)->whereNull('closed_at')
             ->get(['id']);
 
+        // ⛔ SAMPLED BEFORE THE CLOSES BELOW — card #7837, the same defect `orphanCloses()` above
+        // carries and with a wider population, because this job closes EVERY open call and EVERY
+        // open session. Sampled afterwards, `subagents` / `subagents_open` (read from `calls`) and
+        // `api_error_type` (read from a `stalled_since IS NOT NULL AND ended_at IS NULL` session)
+        // are already at their post-write values on both sides and never reach the patch.
+        //
+        // ⚠ AND UNLIKE THE TWO JOBS ABOVE THIS ONE HAS NO EARLY RETURN TO SIT UNDER, SO IT COSTS
+        // A LONG-OFFLINE SEAT ~5 INDEXED SELECTS PER PASS THAT IT DID NOT COST BEFORE. The reason
+        // is structural rather than an oversight: the settle at the foot of this method is guarded
+        // on `$calls + $turns + $sessions > 0`, and `$turns` and `$sessions` are the affected-row
+        // counts of UPDATEs that have not run yet — so "will this job act" is not knowable here
+        // without a query of its own, and the job is level-triggered (§ 4.6: an offline seat is
+        // visited on every one of the 5,760 passes a day). Closing it properly means an emptiness
+        // guard around the whole job, which would also skip three UPDATEs that match zero rows
+        // today and would move `Predicates::record()`'s zero-count observation — card #7712's job
+        // shape and card #7834's budget, not this card's. NAMED rather than absorbed.
+        $before = SeatFacts::versionBearing($seatRef);
+
         foreach ($calls as $call) {
             DB::table('calls')->where('id', $call->id)->update([
                 'closed_at' => $nowSql,
@@ -489,6 +557,7 @@ final class Sweep
         if ($calls->count() + $turns + $sessions > 0) {
             $this->recompute->forSeat(
                 $seatRef,
+                $before,
                 'offline_quiesce',
                 ['job' => 'offline_quiesce', 'calls' => $calls->count(), 'turns' => $turns, 'sessions' => $sessions],
                 owesRow: true,

@@ -45,9 +45,19 @@ class At9FoldIdempotenceTest extends FoldTestCase
                 parent::__construct();
             }
 
-            public function after(FoldEvent $e, string $cause = 'wire_event'): bool
+            /**
+             * ⚠ THE `$before` PARAMETER IS CARD #7837's, AND UPDATING THIS OVERRIDE WAS FORCED BY
+             * THE COMPILER RATHER THAN FOUND BY READING — which is the whole reason that card made
+             * it REQUIRED instead of an optional argument defaulting to a self-sample. An optional
+             * one would have left this stand-in silently sampling on the wrong side of
+             * `Projector::apply()` while the real fold sampled on the right one, and a fold seam
+             * that derives differently from the fold is a seam that proves nothing.
+             *
+             * @param  array<string, mixed>  $before
+             */
+            public function after(FoldEvent $e, array $before, string $cause = 'wire_event'): bool
             {
-                $moved = parent::after($e, $cause);
+                $moved = parent::after($e, $before, $cause);
 
                 if ($e->kind === 'session.start') {   // E9, the last event of the fixture
                     DB::table('seat_state')->where('seat_ref', $this->seatRef)

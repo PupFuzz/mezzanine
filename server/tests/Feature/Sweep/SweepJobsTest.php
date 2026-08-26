@@ -400,6 +400,35 @@ class SweepJobsTest extends SweepTestCase
         $this->assertSame('unknown', $state->activity_state);
         $this->assertSame('session_closed_turn_open', $state->unknown_reason);
         $this->assertContains('offline_quiesce', $this->causes());
+
+        // ⛔ AND EXACTLY ONE ROW FOR THE ONE PHYSICAL EVENT — added by card #7837, and it is not
+        // padding on the `assertContains` above: that assertion is satisfied by a pass that writes
+        // the `offline_quiesce` row AND a second `staleness_sweep` row for the same
+        // `working → offline` change, which is § 4.6's "one physical event, one set of values, one
+        // counter" broken in a way the drill-down cannot repair — two rows, two causes, and a
+        // reader left to guess which one is the real diagnosis.
+        //
+        // ⚠ SEEN TO FAIL, AND THE LEVER IS THE ONE CHANGE A LATER CARD IS MOST LIKELY TO MAKE.
+        // `Sweep::seat()` samples JOB 1's version-bearing fingerprint at its own call site, and
+        // that call site's comment records the one instance of card #7837's class left open —
+        // JOB 5 (`leavingLive`) settles through JOB 1, so its writes land above the sample. Moving
+        // the sample above JOB 2 is the obvious fix and it is WRONG: measured, that produces
+        //
+        //   [{"from":"working","to":"offline","cause":"offline_quiesce"},
+        //    {"from":"working","to":"offline","cause":"staleness_sweep"}]
+        //
+        // where this fixture must produce only the first. Every one of this suite's 68 sweeper
+        // tests passed under that mutation before this assertion existed, which is why it exists.
+        $quiesceRows = array_values(array_filter(
+            $this->transitions(),
+            fn ($r) => $r['to'] === 'offline',
+        ));
+
+        $this->assertSame(
+            [['from' => 'working', 'to' => 'offline', 'cause' => 'offline_quiesce']],
+            $quiesceRows,
+            'one physical event produced two transition rows (§ 4.6)',
+        );
     }
 
     /**

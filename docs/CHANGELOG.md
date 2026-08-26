@@ -10,6 +10,58 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7837** — The fold sampled its version-bearing fingerprint AFTER the projector wrote, so
+  every projector-written member was invisible to the delta feed. `StateRecompute::after()` read
+  `SeatFacts::versionBearing()` on its own first line, which in `Fold::window()` is *after*
+  `Projector::apply()` — making `$before` and `$after` identical on `context.*`, `model_label`,
+  `enabled`, `selftest_failed`, D1's reporter badges and the `calls` rows behind `subagents`.
+  **Measured on the suite's rig, before → after:** a `context.sample` emitted **no delta at all**
+  → `changed: ["context","model_label"]`; an `enabled` flip emitted
+  `["link_state","render_state"]` → `["enabled","link_state","render_state"]`. (Card #7827's entry
+  above recorded the `context.sample` case as `changed: ["badges"]`; on a fixture where no badge
+  moves it emits nothing, which is the same defect one step worse.) **The fix is ONE fingerprint
+  sampled earlier and explicitly NOT a projector-returned diff**, which would be a second
+  implementation of § 6.5's version-bearing set free to disagree with the first. `$before` is now
+  a REQUIRED argument on both `after()` and `forSeat()` — required rather than defaulted so no
+  call site, and no test seam overriding them, can keep sampling on the wrong side; the rule is
+  the same one line everywhere: *sampled before the first write of the unit of work*. **Four fold
+  call sites**: `Fold::window()`, `Fold::recoverOneAtATime()` (sampled inside the retry's own
+  transaction, because attempt 1 may have written and rolled back), `Fold::quarantine()` (where
+  nothing writes first, so the value is unchanged — stated rather than left to be inferred), and
+  `mezzanine:rebuild`, which the card did not name and which § 6.6 requires derive through the
+  fold's code rather than a copy of it. **A sibling audit found the same shape in two more
+  writers, both fixed**: `mezzanine:retire` set `seats.retired_at/by/reason` before settling, so
+  the delta announcing a retirement carried `render_state: "retired"` and left the client's
+  `retired` object null (`["render_state"]` → `["render_state","retired"]`);
+  `Sweep::orphanCloses()` and `Sweep::quiesce()` close `calls` rows before settling, and
+  `subagents` / `subagents_open` read `calls` directly, so a desk kept rendering an intern the
+  server had closed. Both are driven separately — job 2 fires on a still-live seat at the call's
+  own 60-minute ceiling, job 6 only once the seat is `offline`, and a fix reasoned about for one
+  of them is a fix with one instance of evidence; each patch gained `subagents` and
+  `subagents_open`. **One instance of the class is reported and NOT fixed**:
+  `Sweep::leavingLive()` has no settle of its own and defers to JOB 1, so its `stalled_since`
+  clear lands above JOB 1's sample and `api_error_type` never reaches the wire. Moving JOB 1's
+  sample above it was measured to be worse — JOB 6 settles in between and writes `render_state`,
+  so a wider `$before` mints a SECOND transition row for one physical event (`[offline_quiesce,
+  staleness_sweep]` where § 4.6 allows one), and **all 68 of the sweeper's existing tests passed
+  under that mutation**, so `SweepJobsTest`'s job-6 case gains an exact-row-list assertion that
+  was seen to fail under it. The fix is a decision about which settle owns JOB 5's writes; the
+  hazard is recorded at the call site. **AND A SECOND, DISTINCT DEFECT IN THE SAME METHOD, JUDGED
+  SEPARATELY AND ALSO FIXED:** `taskTier3()` re-stamped `task_as_of` to `now()` on every recompute
+  while a title existed, and `task` is version-bearing — measured at **20 deltas over 20
+  heartbeat+sweep passes, every one `changed: ["task"]`, now 0**. `as_of` is what § 4.9's
+  freshness bounds are measured against, i.e. when the tier's value was *obtained*; re-stamping an
+  unchanged answer claimed it had been re-obtained by a pass that only re-read it. Not fixed by
+  dropping `task` from the fingerprint: § 6.5 states that set as a closed subtraction of ten named
+  members and adding an eleventh is a D2 change. Two suite cases that had to fence their fixtures
+  to a seat with no open call to dodge this now say so and are joined by one that drives the
+  open-call fixture directly. `FeedSurfaceTest::test_a_projector_written_member_reaches_the_delta`
+  is complete and green (it called `markTestIncomplete()` on its first line); every new assertion
+  was seen to fail against the old ordering first, and each carries a control plus a REST-snapshot
+  check that the surface which was already correct stayed correct. 297 tests / 3,643 assertions,
+  from 293 / 3,561 with one incomplete. ⚠ Run on SQLite: this seat has no MariaDB credential, and
+  nothing changed here is engine-specific.
+
 - **card#7827** — Fleet-state PART B: the REST read plane and the WebSocket delta feed —
   `docs/design/FLEET-STATE.md` §§ 8.2, 8.2.1, 8.2.3, 8.2.4, 8.3, 8.4, 8.5, 8.6 and 9. **The four
   REST endpoints** (`/api/fleet/snapshot`, `/seats/{i}/{s}`, `/seats/{i}/{s}/timeline`,
@@ -59,7 +111,9 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   § 2.2 wins; (5) AT-D2-16's "closed at its materialized `orphan_due_at`" reads two ways and card
   #7712 chose one — asserted here only on what both readings share; (6) § 8.4 step 5's watermark
   and § 8.5's discard are the same comparison, so one is unobservable without the other.
-  **⚠ AND ONE CARD #7339 DEFECT, FOUND HERE AND NOT CROSSED INTO:** `StateRecompute::after()`
+  **⚠ AND ONE CARD #7339 DEFECT, FOUND HERE AND NOT CROSSED INTO** — *both defects in this
+  paragraph were CLOSED BY `card#7837` below; the description is kept as the finding record and is
+  no longer a statement about the code:* `StateRecompute::after()`
   samples its version-bearing fingerprint AFTER `Projector::apply()` has written the event, so
   every projector-written member — `context.*`, `model_label`, `enabled`, `selftest_failed`, D1's
   reporter badges, a late `subagents[].title` — is invisible to both the bump decision and the
