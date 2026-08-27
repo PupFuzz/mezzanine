@@ -31,7 +31,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -138,19 +140,28 @@ def run(repo: Path) -> tuple[int, str]:
 
 
 def case(name: str, want_code: int, want_text: str | None, files, rows, manifest_body=None,
-         manifest_notice=True) -> None:
+         manifest_notice=True, forbid_text: str | None = None) -> None:
+    """One fixture. `forbid_text` asserts a string is ABSENT from the output.
+
+    The absence assertion exists for section 13's evasion pair, where the finding is that one
+    clause DOES NOT fire — a claim no substring match can make, and the whole reason the map
+    formats are handled by removing the base64 rather than by measuring how long it is.
+    """
     global failures, ran
     ran += 1
     with tempfile.TemporaryDirectory() as td:
         repo = build(Path(td), files, rows, manifest_body, manifest_notice)
         code, out = run(repo)
-    ok = code == want_code and (want_text is None or want_text in out)
+    ok = (code == want_code
+          and (want_text is None or want_text in out)
+          and (forbid_text is None or forbid_text not in out))
     if ok:
         print(f"  ok   {name}  (exit {code})")
     else:
         failures += 1
         print(f"  FAIL {name}: wanted exit {want_code}"
               + (f" naming {want_text!r}" if want_text else "")
+              + (f" and NOT naming {forbid_text!r}" if forbid_text else "")
               + f", got exit {code}\n---\n{out}\n---")
 
 
@@ -340,7 +351,186 @@ case("the lineage file is missing entirely",
      1, "the port has no record of where it came from",
      {"resources/characters/index.js": CLEAN_JS}, [BASE[0]])
 
-print("\n9. UNMEASURABLE (exit 2) — every state the gate cannot see its population in")
+print("\n9. GATE 2 IS SCOPED TO ALL OF resources/, not to the character tree (card#7913)")
+# THE GAP THIS CARD CLOSED, made executable. Until card#7913, Gate 2 ran over resources/characters/
+# while Gate 1 ran over all of resources/ — so `resources/floor/`, the tree about to receive this
+# project's FIRST vendored third-party art, was covered by Gate 1 and by NEITHER Gate 2 clause.
+# Both cases below PASSED the gate before the widening. Revert either scoping knob and they go
+# green again, which is the only way to tell this section from decoration.
+case("card#7913 clause 1 OUTSIDE the character tree: a .psd under resources/floor/ with a "
+     "COMPLETE, HONEST row. Passed the gate before the widening — the row was all Gate 1 asked "
+     "for and clause 1 never looked at the tree",
+     1, "sheet.psd",
+     {**FILES, "resources/floor/sheet.psd": b"8BPS\x00\x01"},
+     BASE + [row("resources/floor/sheet.psd", origin="licensed", url=URL, spdx="CC0-1.0")])
+case("card#7913 clause 2 OUTSIDE the character tree: a 40 KB base64 PNG pasted into a .js under "
+     "resources/floor/ — image bytes with no path, no row and no provenance, which the old scope "
+     "could not see at all",
+     1, "exceeds the 1024 B ceiling",
+     {**FILES, "resources/floor/atlas.js": f"export const A = '{BLOB}';\n"},
+     BASE + [row("resources/floor/atlas.js")])
+
+print("\n10. GATE 2 clause 3 — the Tiled artifacts declare their own encoding, so the gate reads it")
+# The four formats admitted by clause 1 for card#7913, and the plain forms of each.
+#
+# ⛔ TILED WAS NOT RUN. It is not installed on the machine these fixtures were written on, so every
+# artifact below is CONSTRUCTED FROM THE PUBLISHED 1.8/1.10 FORMAT SPECS and none of them is a byte
+# Tiled emitted. What that leaves unverified is named rather than papered over: whether Tiled's
+# JSON writer emits `"encoding": "csv"` or omits it. The spec documents csv as the DEFAULT, so the
+# CSV .tmj below carries NO `encoding` key — the harder of the two shapes for the check to accept,
+# and the one a check keyed on the key's presence would red on. The .tmx carries `encoding="csv"`,
+# which the TMX spec does require. Neither the check nor these fixtures rest on the unverified half:
+# the JSON side keys on the shape of `data`.
+CSV_TMJ = json.dumps({
+    "type": "map", "orientation": "orthogonal", "width": 4, "height": 2, "tilewidth": 16,
+    "tileheight": 16, "infinite": False, "tilesets": [{"firstgid": 1, "source": "office.tsx"}],
+    "layers": [{"type": "tilelayer", "id": 1, "name": "floor", "width": 4, "height": 2,
+                "x": 0, "y": 0, "opacity": 1, "visible": True,
+                "data": [1, 2, 3, 4, 5, 6, 7, 8]},
+               {"type": "objectgroup", "id": 2, "name": "desks", "objects": []}],
+}, indent=1)
+CSV_TMX = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<map version="1.10" orientation="orthogonal" width="4" height="2" '
+           'tilewidth="16" tileheight="16">\n'
+           ' <tileset firstgid="1" source="office.tsx"/>\n'
+           ' <layer id="1" name="floor" width="4" height="2">\n'
+           '  <data encoding="csv">\n1,2,3,4,\n5,6,7,8\n</data>\n'
+           ' </layer>\n'
+           ' <objectgroup id="2" name="desks"/>\n'
+           '</map>\n')
+REF_TSX = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<tileset version="1.10" name="office" tilewidth="16" tileheight="16" tilecount="4" '
+           'columns="2">\n <image source="office.png" width="32" height="32"/>\n</tileset>\n')
+REF_TSJ = json.dumps({"name": "office", "tilewidth": 16, "tileheight": 16, "tilecount": 4,
+                      "columns": 2, "image": "office.png", "imagewidth": 32, "imageheight": 32})
+TILED_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def tiled_files(**over) -> dict:
+    """A complete, correct Tiled map set under resources/floor/, with named parts replaceable."""
+    base = {"resources/floor/aimla.tmj": CSV_TMJ, "resources/floor/aimla.tmx": CSV_TMX,
+            "resources/floor/office.tsx": REF_TSX, "resources/floor/office.tsj": REF_TSJ,
+            "resources/floor/office.png": TILED_PNG}
+    base.update(over)
+    return {**FILES, **base}
+
+
+def tiled_rows() -> list:
+    return BASE + [row(p, origin="licensed", url=URL, spdx="CC0-1.0")
+                   for p in ("resources/floor/aimla.tmj", "resources/floor/aimla.tmx",
+                             "resources/floor/office.tsx", "resources/floor/office.tsj",
+                             "resources/floor/office.png")]
+
+
+case("⭐ THE CONTROL WITHOUT WHICH EVERY RED BELOW IS MEANINGLESS — a correct CSV map set (.tmj "
+     "with an ARRAY and NO `encoding` key, the shape the spec's default permits and the harder "
+     "one for the check to accept; .tmx with encoding=\"csv\"; .tsx "
+     "and .tsj referencing office.png by path) PASSES all three clauses, carries no base64 run "
+     "at all, and needs no carve-out from clause 2's 1,024 B ceiling",
+     0, PASS, tiled_files(), tiled_rows())
+
+# Base64 layer data as the published format specifies it — little-endian uint32 GIDs, 1,200 tiles.
+# base64 is the documented DEFAULT for the layer format; these bytes are constructed from the spec,
+# not captured from Tiled, which was never run here.
+def b64_layer(gid: int, n: int = 1200) -> str:
+    return base64.b64encode(struct.pack("<%dI" % n, *([gid] * n))).decode()
+
+
+B64_TMJ = json.dumps({"type": "map", "width": 40, "height": 30, "tilewidth": 16, "tileheight": 16,
+                      "tilesets": [{"firstgid": 1, "source": "office.tsx"}],
+                      "layers": [{"type": "tilelayer", "name": "floor", "width": 40, "height": 30,
+                                  "encoding": "base64", "data": b64_layer(14)}]})
+case("clause 3 RED — a .tmj whose layer is base64, the encoding Tiled uses by DEFAULT",
+     1, "declares encoding='base64'", tiled_files(**{"resources/floor/aimla.tmj": B64_TMJ}),
+     tiled_rows())
+ZLIB_TMJ = json.dumps({"type": "map", "width": 40, "height": 30,
+                       "layers": [{"type": "tilelayer", "name": "floor", "encoding": "base64",
+                                   "compression": "zlib", "data": "eJxjYBgFo2AUjIJRMApGwUgHAAg"}]})
+case("clause 3 RED — a zlib-compressed layer",
+     1, "is 'zlib'-compressed", tiled_files(**{"resources/floor/aimla.tmj": ZLIB_TMJ}),
+     tiled_rows())
+GROUP_TMJ = json.dumps({"type": "map", "width": 4, "height": 2, "layers": [
+    {"type": "group", "name": "outer", "layers": [
+        {"type": "group", "name": "inner", "layers": [
+            {"type": "tilelayer", "name": "buried", "encoding": "base64",
+             "data": b64_layer(14)}]}]}]})
+case("clause 3 RED — a base64 layer buried two GROUP layers deep. A non-recursive walk of "
+     "`layers[]` reports this map clean, and Tiled groups layers by default in any real map",
+     1, "tile layer 'buried' declares encoding='base64'",
+     tiled_files(**{"resources/floor/aimla.tmj": GROUP_TMJ}), tiled_rows())
+B64_TMX = CSV_TMX.replace('<data encoding="csv">\n1,2,3,4,\n5,6,7,8\n</data>',
+                          f'<data encoding="base64">{b64_layer(14)}</data>')
+case("clause 3 RED — the same defect in .tmx, which is a different parser and therefore a "
+     "different check that has to be seen failing on its own",
+     1, "declares encoding='base64'", tiled_files(**{"resources/floor/aimla.tmx": B64_TMX}),
+     tiled_rows())
+LEGACY_TMX = CSV_TMX.replace('<data encoding="csv">\n1,2,3,4,\n5,6,7,8\n</data>',
+                             "<data>" + "".join(f'<tile gid="{g}"/>' for g in range(1, 9)) + "</data>")
+case("clause 3 RED — TMX's third layer form, one <tile> element per GID. It is PLAIN and it is "
+     "not the hazard; it is refused because clause 3 admits exactly ONE form per format, and the "
+     "message says which reason applies so nobody reads it as a security finding",
+     1, "declares no encoding", tiled_files(**{"resources/floor/aimla.tmx": LEGACY_TMX}),
+     tiled_rows())
+
+print("\n11. GATE 2 clause 3 — the EMBEDDED TILESET IMAGE, which is the true positive")
+EMBEDDED_TSX = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<tileset version="1.10" name="office" tilewidth="16" tileheight="16">\n'
+                ' <image format="png" width="32" height="32">\n'
+                f'  <data encoding="base64">{base64.b64encode(TILED_PNG).decode()}</data>\n'
+                ' </image>\n</tileset>\n')
+case("⭐ clause 3 RED — a .tsx whose <image> has NO source= and holds the PNG's bytes inline. "
+     "This is the hole the card exists to close: image bytes with no path, so no manifest row, "
+     "so no provenance — and exempting the map formats from clause 2 would have re-opened it",
+     1, "carries an embedded tileset image",
+     tiled_files(**{"resources/floor/office.tsx": EMBEDDED_TSX}), tiled_rows())
+case("clause 3 RED — the embedded image reported ONCE, by the <image> rule that understands it, "
+     "not a second time by the layer-encoding rule that would call its <data> a tile layer",
+     1, "carries an embedded tileset image",
+     tiled_files(**{"resources/floor/office.tsx": EMBEDDED_TSX}), tiled_rows(),
+     forbid_text="tile layer '(unnamed)' declares encoding='base64'")
+DATAURI_TSJ = json.dumps({"name": "office", "tilewidth": 16, "tileheight": 16,
+                          "image": "data:image/png;base64," + base64.b64encode(TILED_PNG).decode()})
+case("clause 3 RED — the JSON form of the same thing: an `image` that is a data: URI rather "
+     "than a path",
+     1, "carries an embedded tileset image",
+     tiled_files(**{"resources/floor/office.tsj": DATAURI_TSJ}), tiled_rows())
+
+print("\n12. clause 3 — a file it cannot PARSE is a red, never a skip")
+case("an unparseable .tmj: a check that cannot establish its property says so",
+     1, "is not parseable as Tiled JSON",
+     tiled_files(**{"resources/floor/aimla.tmj": "{ not json at all"}), tiled_rows())
+case("an unparseable .tmx — including the .tsx COLLISION CASE, a TypeScript-JSX file under "
+     "resources/ that clause 1 admits by suffix and an XML parser then fails by name",
+     1, "is not parseable as Tiled XML",
+     tiled_files(**{"resources/floor/office.tsx":
+                    "export const Desk = () => <div className='desk'>{seat}</div>;\n"}),
+     tiled_rows())
+
+print("\n13. ⭐ WHY CSV AND NOT A CARVE-OUT — clause 2 CANNOT be trusted to catch a base64 layer")
+# The finding that decided this card, executable. `looks_encoded()` is an AND over three character
+# classes, so a run with no digit passes clause 2 AT ANY LENGTH. Tiled's uncompressed base64 layer
+# data is little-endian uint32 GIDs; with small GIDs three bytes in four are zero, and the run is
+# drawn from a narrow slice of the alphabet. Over a uniform 1,200-tile map at every GID in 0..255
+# the run is 6,400 B in ALL 256 cases and 154 of them pass clause 2 — the verdict turns on WHICH
+# TILE the artist placed, which changes no rendered pixel. The pair below is that coin, both faces.
+EVADES = json.dumps({"type": "map", "width": 40, "height": 30,
+                     "layers": [{"type": "tilelayer", "name": "floor", "encoding": "base64",
+                                 "data": b64_layer(1)}]})
+REDS = json.dumps({"type": "map", "width": 40, "height": 30,
+                   "layers": [{"type": "tilelayer", "name": "floor", "encoding": "base64",
+                               "data": b64_layer(14)}]})
+case("⭐ GID 1 — the FIRST TILE OF THE TILESET — encodes to a 6,400 B run with no digit and no "
+     "lowercase, so clause 2 DOES NOT FIRE ON IT AT ANY LENGTH. Clause 3 catches it anyway, "
+     "which is the whole argument for removing the encoding instead of tuning the ceiling",
+     1, "GATE 2 clause 3", tiled_files(**{"resources/floor/aimla.tmj": EVADES}), tiled_rows(),
+     forbid_text="GATE 2 clause 2")
+case("GID 14 — the same map, the same size, one different tile — DOES trip clause 2. Same file, "
+     "same encoding, opposite clause-2 verdict: that is the number a carve-out would have had to "
+     "be reasoned against, and it is noise",
+     1, "exceeds the 1024 B ceiling", tiled_files(**{"resources/floor/aimla.tmj": REDS}),
+     tiled_rows())
+
+print("\n14. UNMEASURABLE (exit 2) — every state the gate cannot see its population in")
 case("nothing under any asset tree — an empty measurement is not a clean one",
      2, "nothing was measured", {}, [])
 # Built by hand rather than through `case()`, because the perturbation is the ABSENCE of a file

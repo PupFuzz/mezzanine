@@ -1807,14 +1807,29 @@ character tree at all — which was the mechanised form of *the sprites are gene
 false about the product being built, and a gate asserting something false is worse than no gate: the
 next reader trusts its green. What replaces it is **not** a relaxed version of the absence. It is the
 claim Gate 1 needs in order to mean anything — *every asset is a file with a path, so every asset has
-a row*. Two clauses, and the **allowlist shape** the old text argued for at length is unchanged and is
-the reason this gate is still worth having: a denylist can only refuse the copies someone thought to
-enumerate, and every classifier written as a list of image extensions passes the format nobody
-anticipated. So the gate is an **allowlist**, and it fails on anything neither clause admits:
+a row*. Three clauses, and the **allowlist shape** the old text argued for at length is unchanged and
+is the reason this gate is still worth having: a denylist can only refuse the copies someone thought
+to enumerate, and every classifier written as a list of image extensions passes the format nobody
+anticipated. So the gate is an **allowlist**, and it fails on anything no clause admits.
 
-1. **File types.** Every file under the character tree carries one of **`.ts`, `.js`, `.md`, `.svg`,
-   `.png`** — and each member is here for a stated reason, because an allowlist whose members have no
-   reasons is a denylist that has not noticed yet:
+⚠ **Gate 2's population is Gate 1's population: ALL of the repo-root `resources/`.** Until card#7913
+it was `resources/characters/` while Gate 1 already walked everything, which was correct while Gate 2
+asserted an **absence peculiar to that tree** and became a leftover the moment the sentence above
+rewrote its claim as a **universal** one — *every asset is a file Gate 1 can see* says nothing about
+characters. The consequence was that `resources/floor/`, the tree about to receive this project's
+**first vendored third-party art** ([§ 10.3](#103-the-floor-map), card#7341), was the one tree Gate 2
+did not inspect: a `.psd` there passed with a valid row, and image bytes pasted into a `.js` there had
+no path, no row, and nothing to object. **The widening landed before that tree exists rather than on
+top of its contents.** And note what "widen Gate 2" actually means, because it is the thing that is
+easy to get half-right: **Gate 2 has TWO scoping knobs — the tree AND this clause's file-type
+allowlist — and moving one without the other is not a widening.** With the tree widened and the
+allowlist left alone, every Tiled artifact fails clause 1 by name for a reason that has nothing to do
+with what it contains; measured on a correct, CSV-only map set with no base64 anywhere, **four of five
+files RED, not one of them for an embedded-bytes reason.**
+
+1. **File types.** Every file under `resources/` carries one of **`.ts`, `.js`, `.md`, `.svg`,
+   `.png`, `.tmx`, `.tmj`, `.tsx`, `.tsj`** — and each member is here for a stated reason, because an
+   allowlist whose members have no reasons is a denylist that has not noticed yet:
    - **`.ts`, `.js`** — the generator's source. The seed machinery survives the art change unchanged
      ([§ 10.2](#102-characters-the-munder-difflin-port)); appearance is still computed from the key.
    - **`.md`** — the lineage file.
@@ -1826,6 +1841,22 @@ anticipated. So the gate is an **allowlist**, and it fails on anything neither c
      an asset is not re-encoded into a worse copy of itself on each pass through a tool; universally
      decodable with no pipeline of its own; and already the format [§ 10.3](#103-the-floor-map)'s
      Tiled tilesets ship in, so admitting it adds no decoder the floor did not already need.
+   - **`.tmx`, `.tmj`** — Tiled's map, in its XML and JSON spellings. [§ 10.3](#103-the-floor-map)
+     makes Tiled the map format, inherited from `docs/PLAN.md § 3`; a map is an asset like any other
+     and owes a row like any other. **Both** spellings, because the choice between them is the
+     implementer's and a list that admitted one would decide it here by accident.
+   - **`.tsx`, `.tsj`** — Tiled's *tileset*, same two spellings. A tileset is a separate file
+     precisely so the tileset image is referenced by path rather than embedded, which is the property
+     clause 3 checks; refusing the extension would push implementers toward embedding the tileset in
+     the map, i.e. toward the thing this gate exists to refuse.
+   - ⚠ **`.tsx` is Tiled's Tileset XML here, and TypeScript-JSX everywhere else in the world.** The
+     suffix genuinely means two things and this list admits only the first. Under `resources/` the
+     collision is **harmless today** — this repository's generator is plain `.ts`/`.js`
+     ([§ 10.2](#102-characters-the-munder-difflin-port)) and nothing under the asset root is JSX — and
+     it is written down anyway, because an allowlist that silently admits a second file type under one
+     suffix is a trap for the next reader. What actually happens to a React component dropped under
+     `resources/` is that clause 1 admits it by suffix and clause 3's XML parser then **fails it by
+     name**: a red for an odd-looking reason, but a red, not a hole.
    - **Everything else fails the build, named** — `.avif`, `.webp`, `.jpg`, `.psd`, `.dat`, and the
      extension nobody has thought of. `.webp` and `.avif` are refused not because they are bad but
      because **a second raster format buys nothing and doubles the surface**; `.jpg` because lossy
@@ -1835,8 +1866,8 @@ anticipated. So the gate is an **allowlist**, and it fails on anything neither c
      *not* the licence allowlist and not an operator gate — it is a format decision, whose cost when
      wrong is a build reddening on correct work. That is why every member above carries its argument:
      so the next person can disagree with the argument rather than with the list.
-2. **Embedded bytes, and its purpose is sharper now than when it was written.** No file under the
-   character tree carries a `data:image/` URI or a single base64-shaped literal longer than
+2. **Embedded bytes, and its purpose is sharper now than when it was written.** No text-bearing file
+   under `resources/` carries a `data:image/` URI or a single base64-shaped literal longer than
    **1,024 B**. It used to exist because clause 1 could not see image bytes pasted *inside* a file it
    admitted. Now that images are admitted as files, its job is the load-bearing one: **an asset
    embedded inside another file has no path of its own, therefore no manifest row, therefore no
@@ -1852,6 +1883,54 @@ anticipated. So the gate is an **allowlist**, and it fails on anything neither c
    `bin/asset-provenance.selftest.py` carries the discriminating pair — **a genuinely complex
    first-party SVG passes, and an SVG with an inlined `data:image/…` blob fails** — because either
    half alone is not evidence.
+   ⭐ **The 1,024 B ceiling has NO carve-out for the map formats, and clause 3 is why it needs none.**
+   Tiled's default layer encoding is base64, so widening this clause to `resources/` without clause 3
+   would put the two in collision over a correct map — and the obvious repair, exempting `.tmj`/`.tmx`
+   from this clause, **re-opens the hole this clause exists to close**: image bytes pasted into an
+   exempted map have no path either. Clause 3 takes the base64 away instead, so a correct map carries
+   no base64 run at all and there is nothing left to exempt.
+   ⚠ **And this clause's stated residue was understated, so it is corrected here rather than left to
+   be discovered.** A run must contain an uppercase, a lowercase **and** a digit to be called a
+   literal rather than a row of `// ======` dividers — a narrowing that is still right, because a
+   gate that calls a comment a picture gets switched off. What was wrong was the claim about what it
+   gives up: the code called the evasion *"a deliberate shortcut nobody takes by accident"*, and
+   **ordinary machine output takes it by accident.** Tiled's uncompressed base64 layer data is
+   little-endian `uint32` GIDs, so with small GIDs three bytes in four are zero and the run is drawn
+   from a narrow slice of the alphabet. Measured over a uniform 1,200-tile map at every GID in
+   `0..255`: the run is **6,400 B in all 256 cases**, 142 carry no digit and 28 no lowercase, and
+   **154 of the 256 pass this clause at any length** — including **GID 1, the first tile of the
+   tileset.** The verdict turns on which tile the artist happened to place, which changes no rendered
+   pixel. That is the finding that chose clause 3 over a carve-out: **an exemption would have had to
+   be reasoned against a number that is noise.** For the map formats clause 3 closes it; **for every
+   other text-bearing format the residue stands and is real**, and it is now stated at its true size.
+3. **Tiled artifacts state their own encoding, so the gate reads it.** Every `.tmx` / `.tmj` /
+   `.tsx` / `.tsj` under `resources/` stores its tile layer data **plainly, as CSV**, and **embeds no
+   tileset image**. The check reads the `encoding` and `compression` each tile layer declares, and
+   whether each `<image>` names a `source` — **out of the artifact itself.** There is no heuristic
+   here, no alphabet, and no ceiling to tune: every verdict is a value the file states about itself,
+   so nothing in this clause turns on a measurement that can move.
+   - **Why CSV.** Not because base64 is dangerous — because a base64 layer is a 25 KB run of clause
+     2's exact alphabet inside a file clause 1 admits, and the residue above shows clause 2 cannot be
+     relied on to judge it either way. Requiring the plain encoding removes the collision at its
+     source. The cost is file size and it is not a real cost here: the map is text either way, it is
+     read once at load, and a CSV map is reviewable in a diff, which a base64 blob is not.
+   - **Why the embedded image is the half that matters.** Tiled can store an image's *bytes* inside a
+     map or tileset instead of referencing a file. That is image bytes with **no path, therefore no
+     row, therefore no provenance** — clause 2's subject exactly, arriving in a format clause 2 was
+     never scoped to read. It is the **true positive** this widening buys, and it is the reason
+     exempting the map formats from clause 2 was the wrong shape of answer.
+   - **One admitted layer form per format, deliberately.** `.tmj` stores its GIDs as a JSON **array**
+     (the JSON format documents `csv` as the **default** for `encoding`, so a correct CSV layer need
+     not carry the key at all — the check therefore keys on the shape of `data`, which the format
+     does guarantee, and never requires the key); `.tmx` declares `encoding="csv"`. TMX has
+     a third, ancient form — one `<tile>` element per GID — which is **plain and is not a hazard**,
+     and is refused anyway for the reason clause 1 is an allowlist: one admitted shape per format,
+     each with a reason, beats a set nobody decided. **The refusal message says which reason applies**,
+     so nobody reads it as a security finding.
+   - **A file this clause cannot parse is a RED, never a skip.** A malformed `.tmj`, or a `.tsx` that
+     is really a React component, is a file clause 1 admitted and nothing understood — which is not a
+     file Gate 1 can see. Naming what it could not establish is the check's correct output, and the
+     [§ 11](#11-acceptance-tests) fixtures watch both parsers fail on their own.
 
 **What this change COSTS, named rather than left to be discovered.** The old Gate 2 was
 **self-verifying**: it asserted an absence, and an absence needs no truthful claim from anybody — the
@@ -1876,11 +1955,15 @@ was true. That is a smaller claim than the one they used to make, and the reason
 anyway is that the alternative — a gate that keeps asserting an absence the product no longer has —
 proves nothing at all while looking exactly as green.
 
-**The residue is named rather than implied.** Neither clause can refuse a generator that *fetches*
+**The residue is named rather than implied.** No clause can refuse a generator that *fetches*
 upstream art at run time — nothing that inspects a tree can. That is refused by the lineage file's
 *what was deliberately not taken and why* ([§ 10.2](#102-characters-the-munder-difflin-port)) and by
 review, and it is said here so nobody reads Gate 2 as a proof that no upstream pixel can reach the
-screen.
+screen. **Clause 3 adds one residue of its own, and it is a small one:** it reads *structure*, not
+pixels. It can say that a map's layer data is stored plainly and that every `<image>` names a file;
+it cannot say that the file named is the file the row describes, and it has nothing at all to say
+about a map that is correct in every particular and references somebody else's tileset. That is
+Gate 1's row and review's job, as above.
 
 **The licence allowlist is closed: `CC0-1.0` and `MIT`.** Anything else — `CC-BY-*`, `CC-BY-SA-*`,
 any `-NC` or `-ND` term, "free for personal use", or an asset with no stated licence — is refused by
@@ -1931,6 +2014,9 @@ nothing in the port's licence work is undone by the art direction changing.
 - **Tiled** (`.tmx`/`.tmj`) is the map format, per `docs/PLAN.md § 3`'s P3 acceptance line ("CC0 tiles;
   Tiled map"). It is the one format choice this document makes, and it is inherited from the plan
   rather than minted here.
+- **The map is exported with the tile layer format set to CSV, and the tileset references its image by
+  path rather than embedding it** — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 fails the
+  build otherwise. Both are Tiled export settings, not code.
 - The map declares an **object layer named `desks`** whose objects are the slots of
   [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The shipped `aimla` map
   declares **12**.
@@ -2653,13 +2739,14 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   matches its file; every licence identifier is in the closed allowlist; and **every row's `origin` is
   one of the two members and is consistent with the row's own source URL** — `first-party` against an
   in-repo reference, `licensed` against a genuine external one.
-- **Build — the lineage half:** run the same gates over the ported character tree
-  ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
+- **Build — the lineage half:** run the same gates over the repository, now that the ported character
+  tree exists ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
   **character tree**.
 - **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
-  notice; and every file in the **character tree** carries an admitted extension and no embedded image
-  bytes — Gate 2's two clauses, asserted here rather than at step 0, because a tree that does not
-  exist yet satisfies both for free.
+  notice; and every file under **`resources/`** carries an admitted extension, no embedded image
+  bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path —
+  Gate 2's three clauses, asserted here rather than at step 0, because a tree that does not
+  exist yet satisfies all three for free.
 - **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
   the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
   upstream commit nobody recorded is a port nobody can tell from a fork
@@ -2687,13 +2774,27 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   provenance, and it is invisible to Gate 1 by construction.
   **Seventh RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
   fails.
-- **Discriminating controls — two, and the second is the one that keeps this gate switched on:**
+  **Eighth RED — the base64 layer, which is Tiled's own export default:** export `aimla.tmj` with the
+  tile layer format left at base64 → clause 3 fails naming the layer and its encoding, and the same
+  defect in `aimla.tmx` fails too, on a different parser. Watched, because clause 2 **cannot** be
+  trusted to catch it: a base64 run drawn from an alphabet with no digit passes the entropy heuristic
+  at any length, which is the whole reason clause 3 reads the declared encoding rather than the bytes
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)).
+  **Ninth RED — the embedded tileset image, the true positive of this clause:** give `office.tsx` an
+  `<image>` with no `source=` and the PNG's bytes inline → clause 3 fails naming the tileset, and the
+  `data:` URI spelling of the same thing in a `.tsj` fails identically. It is the same hazard as the
+  sixth RED — an asset with no path has no row and so no provenance — arriving in the one file format
+  where the embedding is a legitimate Tiled feature rather than a mistake.
+- **Discriminating controls — three, and the second is the one that keeps this gate switched on:**
   *(a)* the clean tree passes every check, so the gates are known to be capable of reporting
   *provenance is complete*; *(b)* **a genuinely complex first-party `.svg` — long, mixed-case,
   digit-dense path data — PASSES clause 2.** Without (b) the sixth RED is satisfied by a gate that
   refuses every SVG ever drawn, and **a gate that reds on correct work gets disabled**, which is a
-  worse outcome than the one it was protecting against. Both halves of the pair run in
-  `bin/asset-provenance.selftest.py`; either alone is not evidence.
+  worse outcome than the one it was protecting against. *(c)* **a correct CSV map set — `.tmj`, `.tmx`
+  and `.tsx` together — PASSES clause 3**, and the `.tmj` in it carries **no `encoding` key at all**,
+  which is the shape the format spec's default permits and the harder one for the check to accept. Without
+  (c) the eighth and ninth REDs are satisfied by a clause that refuses every Tiled map ever exported.
+  All three run in `bin/asset-provenance.selftest.py`; any one alone is not evidence.
 
 ### AT-D3-13 every state is legible without motion
 
@@ -3374,7 +3475,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | Order | Artifact | Gate |
 |---|---|---|
 | 0 | `docs/ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **✅ LANDED 2026-08-25**, closing [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, both clauses of Gate 2 hold, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
+| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **✅ LANDED 2026-08-25**, closing [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, every clause of Gate 2 holds, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
 | 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
 | 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
