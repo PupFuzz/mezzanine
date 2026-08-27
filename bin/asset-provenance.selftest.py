@@ -423,12 +423,15 @@ def tiled_rows() -> list:
 
 
 case("⭐ THE CONTROL WITHOUT WHICH EVERY RED BELOW IS MEANINGLESS — a correct CSV map set (.tmj "
-     "with an ARRAY and NO `encoding` key, as Tiled writes it; .tmx with encoding=\"csv\"; .tsx "
+     "with an ARRAY and NO `encoding` key, the shape the spec's default permits and the harder "
+     "one for the check to accept; .tmx with encoding=\"csv\"; .tsx "
      "and .tsj referencing office.png by path) PASSES all three clauses, carries no base64 run "
      "at all, and needs no carve-out from clause 2's 1,024 B ceiling",
      0, PASS, tiled_files(), tiled_rows())
 
-# The base64 layer data Tiled emits by DEFAULT: little-endian uint32 GIDs, 1,200 tiles.
+# Base64 layer data as the published format specifies it — little-endian uint32 GIDs, 1,200 tiles.
+# base64 is the documented DEFAULT for the layer format; these bytes are constructed from the spec,
+# not captured from Tiled, which was never run here.
 def b64_layer(gid: int, n: int = 1200) -> str:
     return base64.b64encode(struct.pack("<%dI" % n, *([gid] * n))).decode()
 

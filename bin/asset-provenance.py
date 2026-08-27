@@ -516,9 +516,11 @@ def _tiled_json(rel: str, raw: bytes) -> None:
             _clause3(rel, f"tile layer {who!r} declares encoding={enc.strip()!r}, not "
                           f"{TILED_PLAIN_ENCODING!r} — set the tile layer format to CSV")
         # THE AUTHORITATIVE TEST ON THE JSON SIDE, and it is deliberately not the `encoding` key.
-        # Tiled omits that key entirely when the format is CSV and writes the GIDs as an ARRAY, so
-        # a check keyed on the key's presence would red on Tiled's ordinary CSV output. The SHAPE
-        # of `data` is stated by the artifact either way: an array is plain, a string is encoded.
+        # The JSON format documents `csv` as that key's DEFAULT, so a correct CSV layer need not
+        # carry the key at all, and a check keyed on its presence would red on such a layer. Whether
+        # Tiled's writer in fact omits it is NOT KNOWN HERE — Tiled was never run (see the constant
+        # above) — which is exactly why the check does not depend on the answer. The SHAPE of `data`
+        # is guaranteed either way: an array of GIDs is plain, a string is encoded.
         if isinstance(obj.get("data"), str):
             _clause3(rel, f"tile layer {who!r} stores its data as an encoded STRING rather than an "
                           f"array of GIDs — set the tile layer format to CSV")
