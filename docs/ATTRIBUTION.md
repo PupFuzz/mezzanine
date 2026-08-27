@@ -115,19 +115,32 @@ product ships original, high-resolution, resolution-independent art of its own. 
 licence work above is undone by that** — the port is still here, the MIT obligations are still
 owed, and what the port actually bought was the **seed machinery**, which the art direction does
 not touch. What changed is `§ 10.1` Gate 2: it used to assert an **absence** — no image file in
-the character tree at all — and now asserts that **every asset is a file Gate 1 can see**. The
-tree carries an admitted file type — **the list and the reason for each member live at § 10.1
+the character tree at all — and now asserts that **every asset is a file Gate 1 can see**. Every
+file carries an admitted file type — **the list and the reason for each member live at § 10.1
 and are deliberately not copied here**, because four copies of that list is what went stale the
-last time it moved — and no text-bearing file in it may carry a `data:image/` URI or a single
+last time it moved — and no text-bearing file may carry a `data:image/` URI or a single
 base64-shaped literal over 1,024 B, because an asset embedded inside another file has no path,
 so no row, so no provenance.
+
+**Since card#7913, Gate 2 runs over ALL of `resources/`, not just the character tree** — the same
+population Gate 1 walks. It had been scoped to `resources/characters/`, which was right while it
+asserted an absence peculiar to that tree and was a leftover once its claim became a universal
+one. It also gained a **third clause** for the Tiled formats § 10.1 clause 1 now admits: layer
+data stored plainly as CSV, and **no embedded tileset image**, which is image bytes inside a map
+with no path and therefore no row here. As above, § 10.1 owns the clauses and this file does not
+restate them.
 
 ## The floor map
 
 Not here yet — card **#7341** (floor v1) brings the CC0 tileset and the Tiled map, and adds its
 rows to the table above. Because the asset root is `resources/` entire, whatever directory that
 card creates under it is covered by Gate 1 on the day it lands, with nothing here to remember to
-update first. What it will need is the rows: a tileset with no row fails the build, by design.
+update first — and since card#7913 by **both Gate 2 clauses and the new third one** as well, which
+was the point of settling that card before this tree exists rather than after. What it will need is
+the rows: a tileset with no row fails the build, by design. **Two things it will also need, from
+`FLOOR.md § 10.1` clause 3:** export the map with the tile layer format set to **CSV**, and let the
+tileset **reference** its image by path rather than embedding it. Both are Tiled export settings,
+and both fail the build if they are wrong.
 
 ## What a green gate does not mean
 

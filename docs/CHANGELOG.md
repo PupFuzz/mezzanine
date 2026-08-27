@@ -10,6 +10,40 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7913** — **Gate 2 now runs over all of `resources/`, and Tiled's default layer encoding
+  is refused rather than exempted.** Gate 2's argument became **universal** on 2026-08-27 (*every
+  asset is a file Gate 1 can see*) while its enforcement stayed scoped to `resources/characters/`.
+  So `resources/floor/` — the tree about to receive this project's **first vendored third-party
+  art** (card#7341) — was covered by Gate 1 and by **neither Gate 2 clause**: a `.psd` there passed
+  with a valid row, and a 40 KB base64 PNG pasted into a `.js` there had no path, no row and
+  nothing to object. Both of those are now REDs in `bin/asset-provenance.selftest.py`, and both
+  **passed** before this change. ⚠ **"Widen Gate 2" is a TWO-knob change** — the tree *and* the
+  file-type allowlist — and moving one alone is not a widening: measured on a correct, CSV-only map
+  set with zero base64 anywhere, widening only the tree puts **4 of 5 files RED**, not one of them
+  for an embedded-bytes reason. Both knobs moved: clause 1 admits **`.tmx` / `.tmj` / `.tsx` /
+  `.tsj`**, each with its reason in `FLOOR.md § 10.1`, **including the `.tsx` collision** (Tiled
+  Tileset XML *and* TypeScript-JSX — harmless under `resources/` today, named so it is not a trap).
+  ⭐ **New clause 3, and it is what lets clause 2's 1,024 B ceiling apply to the map formats with NO
+  carve-out:** every Tiled artifact must store layer data **plainly as CSV** and **embed no tileset
+  image**, read out of the artifact's own `encoding` / `compression` / `<image source=>` — no
+  heuristic, no alphabet, no ceiling to tune. The embedded tileset image is the **true positive**:
+  image bytes inside a map, with no path, therefore no row, therefore no provenance. Exempting
+  `.tmj`/`.tmx` from clause 2 would have re-opened exactly that. ⭐ **And the reason it is CSV rather
+  than a carve-out is a measurement, not a preference:** `looks_encoded()` is an AND over three
+  character classes, so a run missing one passes clause 2 **at any length** — and Tiled's ordinary
+  uncompressed base64 layer data (little-endian `uint32` GIDs) misses one routinely. Over a uniform
+  1,200-tile map at every GID in `0..255` the run is **6,400 B in all 256 cases** and **154 of them
+  pass clause 2**, including **GID 1, the first tile of the tileset**. A carve-out would have had to
+  be reasoned against a verdict that flips when an artist repositions a tile. The selftest carries
+  that coin as a pair — GID 1 evades clause 2 and clause 3 catches it anyway; GID 14 trips both.
+  **The understated residue is corrected in the same change, on both surfaces that carried it:**
+  `bin/asset-provenance.py` called the one-class evasion *"a deliberate shortcut nobody takes by
+  accident"* — **ordinary machine output takes it by accident**, and that sentence was a live claim
+  in a gate's stated-residue list that a reader draws a conclusion from. Narrowed to what is true,
+  not deleted, in the module docstring, at the predicate, and now in `§ 10.1` clause 2, which had
+  never stated the residue at all. **Selftest 43 → 58 fixtures**, all seen failing under three
+  reverting mutations. **Out of scope, deliberately:** clause 1 still trusts the extension and
+  sniffs no magic bytes (a separate question, recorded in the gate's docstring and § 10.1).
 - **card#7341** — **the floor's wall clock and day/night sky advance on `feed.heartbeat`, so they
   stop when the feed does.** The operator ruled on 2026-08-27 between three options
   (`docs/design/FLOOR.md § 13` decision 21 records all three): ship them **static**, carve an
