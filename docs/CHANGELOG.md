@@ -10,6 +10,45 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7341** — **the floor's wall clock and day/night sky advance on `feed.heartbeat`, so they
+  stop when the feed does.** The operator ruled on 2026-08-27 between three options
+  (`docs/design/FLOOR.md § 13` decision 21 records all three): ship them **static**, carve an
+  exception into § 6.3 for viewer-clock decoration, or drive them from a **delivered message**. The
+  third is not a compromise — it is the only one that makes the element *earn* its motion. The
+  ratified reference re-renders clock and sky on a **10-second interval from the viewer's clock**,
+  which is § 6.3's second forbidden form and, worse than a rule violation, is a **second mover that
+  keeps moving after the feed dies**: the page then never goes still, and AT-D3-6 (*the feed dying is
+  visible within 45 s*) loses the observable it asserts. Driven by the heartbeat, **the clock stops
+  with the page — and a stopped clock is the feed-down claim in the form every human reads
+  instinctively.** ⭐ **§ 6.2 gains A17** (`edge`, driver `feed.heartbeat`, absence = *no message has
+  arrived, which at 45 s is the feed-down condition itself*), and the note under that table no longer
+  says A14 is *the only thing that moves unconditionally* — a sentence A17 makes false — but the
+  **property** it was protecting, which is stronger: *everything on this page that moves without a
+  delivered field holding it is driven by the heartbeat, so when the feed dies all of it stops
+  together.* **Five constraints ride with the row**, each a defect if dropped: **no second hand** —
+  the heartbeat is 15 s, so the minute hand **steps once a minute and is merely sampled four times**,
+  and a hand jumping in 15 s steps is the *looks broken* that gets repaired with a timer; the clock
+  reads the **viewer's** clock with only its **sampling** event-driven, reconciled at § 5.5 as the
+  client's own narration and never a fact about a seat; it is **no authority on the time and grows no
+  *as of* stamp** — the status strip already says how current the page is; a render **sets** it
+  rather than animating it, and ⭐ **only a render that establishes or re-establishes a LIVE feed sets
+  it** — a render the client makes *because* the feed is down never does, which is what keeps F1's
+  **10 s poll** from handing the clock back the interval this ruling removed, under the name
+  *setting*; and the hands' minute is **readable as text exactly once** (the element's accessible
+  name), because an analog clock has no string for a test to assert on and an implementer would
+  otherwise invent the target. **AT-D3-6 now ASSERTS the freeze**, in both directions and in a form a
+  conformant client can satisfy: its heartbeat phase **crosses a minute boundary**, and the rendered
+  minute advances **exactly once — on the heartbeat that crossed it, not on the other three and not
+  between them** — then is identical at every read after the feed stops, across the boundary the
+  silence phase spans. A **third RED is the exact repair a maintainer will attempt**: put A17 back on
+  a 10 s interval and watch the freeze fail at that boundary. § 6.3's timer bullet gains the
+  **driven-by versus read-at** distinction that decides the case (*motion that stops is caused;
+  motion that continues was on a timer*), § 4.2's enumeration of what the floor screen contains now
+  names the room, § 10.4's ⛔ *not admitted* bullet is replaced by the ruling, and § 6.4 **names the
+  five animation rows whose reduced-motion form no test asserts** (§ 14 item 15) rather than claiming
+  a coverage the two tests do not provide. **Out of scope and untouched:** the animation itself
+  (this is the spec), `docs/design/floor-preview/floor-preview.html`'s own `setInterval` (card#7912
+  owns the artifact), D1 and D2, and every other § 6.2 row.
 - **card#7898** — **D3 admits the ratified art direction, and the asset gates move from absence
   to declared provenance.** The operator ratified a high-resolution, whimsical, modern
   (Ghibli-adjacent in *feel*) direction on 2026-08-26/27; `docs/design/FLOOR.md` as written
