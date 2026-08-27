@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Events\SeatRetired;
 use App\Fold\Clock;
+use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -105,6 +106,22 @@ class RetireCommand extends Command
         $at = Clock::sql(now());
 
         $version = DB::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason, $recompute) {
+            // ⛔ SAMPLED BEFORE THE `seats` WRITE BELOW — card #7837, and this command is a
+            // SIBLING of that card's fold defect rather than a precaution.
+            //
+            // `retired` is a version-bearing member and it reads `seats.retired_at`,
+            // `retired_by` and `retired_reason` (`SeatFacts::versionBearing()`) — the three
+            // columns the UPDATE below sets. `forSeat()` used to sample its own `$before` on its
+            // first line, which is AFTER that UPDATE, so the two fingerprints agreed on `retired`
+            // and § 8.3's patch never carried it. The delta was still emitted (`render_state`
+            // collapses to `retired`), so a connected client learned the seat's render moved while
+            // its `retired` object stayed `null` — § 8.2.1's own member for who retired it, when
+            // and why, permanently absent until a resync.
+            //
+            // The UPDATE cannot move below the recompute instead: `render_state` is DERIVED from
+            // `retired_at`, so a recompute run first would derive the un-retired render.
+            $before = SeatFacts::versionBearing($seatRef);
+
             DB::table('seats')->where('id', $seatRef)->update([
                 'retired_at' => $at,
                 'retired_by' => $by,
@@ -125,6 +142,7 @@ class RetireCommand extends Command
             // desk and has to be asserted on the wire and on the ledger."
             $recompute->forSeat(
                 $seatRef,
+                $before,
                 'operator',
                 ['retired_by' => $by, 'retired_reason' => $reason],
                 owesRow: true,

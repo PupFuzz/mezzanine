@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Fold\Clock;
 use App\Fold\FoldEvent;
 use App\Fold\Projector;
+use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
 use App\Ingest\Counters;
 use Illuminate\Console\Command;
@@ -78,8 +79,18 @@ class RebuildCommand extends Command
 
             foreach ($events->cursor() as $row) {
                 $event = FoldEvent::fromRow($row);
+
+                // ⛔ THE FOURTH FOLD CALL SITE, AND IT TAKES CARD #7837's FIX BECAUSE § 6.6's
+                // WHOLE CLAIM IS THAT THIS COMMAND SHARES THE FOLD'S CODE RATHER THAN COPYING IT.
+                // A replay that sampled its fingerprint on the other side of `apply()` would be a
+                // rebuild deriving under a rule the live fold no longer uses — and AT-D2-10, whose
+                // entire job is asserting a rebuilt seat equals a folded one, compares the two
+                // through this loop. `publish: false` suppresses the DELTAS, never the comparison
+                // that decides `state_version`.
+                $before = SeatFacts::versionBearing($seatRef);
+
                 $projector->apply($event);
-                $recompute->after($event);
+                $recompute->after($event, $before);
                 $count++;
 
                 DB::table('seat_state')->where('seat_ref', $seatRef)->update([

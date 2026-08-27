@@ -94,15 +94,47 @@ class StateRecompute
      * strict form errs toward an extra delta, which the feed tolerates; the loose one errs toward a
      * change no client is told about, which is the failure this whole method exists to prevent.
      *
+     * ─────────────────────────────────────────────────────────────────────────────────────────
+     * ⛔ `$before` IS THE CALLER'S TO SAMPLE, AND IT IS A REQUIRED ARGUMENT RATHER THAN A DEFAULT
+     * — card #7837.
+     *
+     * This method used to sample `$before` on its own first line, and that was WRONG for every
+     * caller that writes something before calling it. `Fold` applies the event through
+     * `Projector::apply()` FIRST, so by the time a self-sampled `$before` was read the projector
+     * had already written `enabled`, `context.*`, `model_label`, `selftest_failed`,
+     * `reporter_degraded` and the `calls` rows behind `subagents` — making `$before` and `$after`
+     * IDENTICAL on exactly those members. They were then invisible to both the bump decision and
+     * to § 8.3's patch. Measured on this suite's rig, before → after:
+     *
+     *   an `enabled` flip     ["link_state","render_state"]  →  ["enabled","link_state","render_state"]
+     *   a `context.sample`    NO DELTA AT ALL                →  ["context","model_label"]
+     *
+     * ⚠ THE SECOND LINE CORRECTS CARD #7827's RECORD, WHICH HAS IT AS `changed: ["badges"]`. That
+     * was measured on a fixture where a badge happened to move on the same pass and carried the
+     * version bump; with no badge moving, nothing version-bearing moved at all and the sample was
+     * never announced. The snapshot carried it correctly either way, so a page reload healed a
+     * browser and nothing else did.
+     *
+     * The fix is ONE fingerprint sampled EARLIER, never a second diff produced by the projector:
+     * a projector-returned diff would be a second implementation of § 6.5's version-bearing set,
+     * free to disagree with `SeatFacts::versionBearing()` — the "second copy free to drift" § 4.1
+     * refuses for `render_state` and this document refuses for the same reason everywhere else.
+     *
+     * REQUIRED, because only the caller knows when its unit of work began, and an optional
+     * parameter defaulting to a self-sample would leave this defect a home at every call site
+     * that forgot it. THE RULE, one line, the same at every call site: **`$before` is
+     * `SeatFacts::versionBearing()` sampled before the FIRST write of the unit of work** — which
+     * is the fingerprint the connected client is currently holding.
+     *
+     * @param  array<string, mixed>  $before  `SeatFacts::versionBearing($e->seatRef)`, sampled
+     *                                        before the first write of this unit of work
      * @param  string  $cause  a `seat_state_transitions.cause` member. Anything other than
      *                         `wire_event` is a caller that owes a row whatever the render did —
      *                         today only § 6.5's poison-event rule, via `Fold::quarantine()`.
      * @return bool whether `state_version` was bumped (⇒ a `seat.delta` was published)
      */
-    public function after(FoldEvent $e, string $cause = 'wire_event'): bool
+    public function after(FoldEvent $e, array $before, string $cause = 'wire_event'): bool
     {
-        $before = SeatFacts::versionBearing($e->seatRef);
-
         $this->writeSnapshotColumns($e);
         $this->writeDerivedColumns($e->seatRef);
 
@@ -144,16 +176,26 @@ class StateRecompute
      * time-derived fact, so a sweeper pass has nothing to write there and writing anything would be
      * § 3's forbidden form: an activity column moved by something that is not activity.
      *
+     * ⛔ `$before` IS THE CALLER'S TO SAMPLE HERE FOR THE SAME REASON IT IS ON `after()` ABOVE, AND
+     * THE SWEEPER IS WHY IT IS REQUIRED RATHER THAN DEFAULTED — card #7837.
+     *
+     * A seat-scoped caller looks like it has nothing to sample before, and two of them do:
+     * `Sweep::orphanCloses()` and `Sweep::quiesce()` CLOSE `calls` rows and only then settle, and
+     * `subagents` / `subagents_open` read `calls` directly — so a self-sampled `$before` already
+     * had the intern gone from both fingerprints and the patch never carried it. `RetireCommand`
+     * is the same shape against `seats.retired_at`, which is what the `retired` member reads.
+     * Same rule as above: sampled before the FIRST write of the unit of work.
+     *
+     * @param  array<string, mixed>  $before  `SeatFacts::versionBearing($seatRef)`, sampled before
+     *                                        the first write of this unit of work
      * @param  array<string, mixed>  $detail  the facts that changed, for the drill-down (§ 6.4)
      * @param  bool  $owesRow  true for a job that must record its own cause even when the render
      *                         did not move — § 4.4's attention ceiling and § 4.6's quiescence both
      *                         change facts under a render that `link_state` is already masking
      * @return bool whether `state_version` was bumped (⇒ a `seat.delta` was published)
      */
-    public function forSeat(int $seatRef, string $cause, array $detail = [], bool $owesRow = false): bool
+    public function forSeat(int $seatRef, array $before, string $cause, array $detail = [], bool $owesRow = false): bool
     {
-        $before = SeatFacts::versionBearing($seatRef);
-
         $this->writeDerivedColumns($seatRef);
 
         return $this->settle($seatRef, $before, $cause, null, $detail, $owesRow);
@@ -391,7 +433,7 @@ class StateRecompute
             ),
             'state_computed_at' => $nowSql,
             'updated_at' => $nowSql,
-        ] + $this->taskTier3($seatRef, $currentCall, $nowSql));
+        ] + $this->taskTier3($seatRef, $currentCall, $nowSql, $state));
     }
 
     /**
@@ -406,9 +448,39 @@ class StateRecompute
      * no higher tier exists. A floor showing tier 3 everywhere is VISIBLY a floor whose board
      * integration is dark, which is why `task.source` is on the wire at all.
      *
+     * ⛔ `task_as_of` IS STAMPED WHEN THE TIER'S VALUE MOVES AND NOT ON EVERY RECOMPUTE — card
+     * #7837, and a defect DISTINCT from that card's ordering fix rather than a consequence of it.
+     *
+     * This method used to write `'task_as_of' => $nowSql` unconditionally while a title existed.
+     * `task` is version-bearing (§ 6.5's subtraction excludes ten bookkeeping members and this is
+     * not one of them), so a seat with ONE open call emitted a `seat.delta` on EVERY fold pass and
+     * on every sweep pass with nothing meaningful changed. MEASURED on the rig: 20 heartbeat +
+     * sweep passes over a seat with one open call produced 20 deltas, every one of them
+     * `changed: ["task"]`, and 0 after this fix. At D1 § 9.1's 60 s heartbeat that rate is
+     * 1,440/seat/day carried by heartbeats alone — § 8.3's "16 % increase in feed traffic carrying
+     * no information", which it refuses in terms. Two of this suite's own tests had to fence their
+     * fixtures to a seat with NO open call to avoid it; both say so, and both now say it is fixed.
+     *
+     * ⚠ THE FIX IS NOT TO DROP `task` FROM THE FINGERPRINT. § 6.5 states the version-bearing set
+     * as a CLOSED subtraction of ten named members; adding an eleventh is a D2 change, and D2 is
+     * not edited here. What was wrong is not that `task.as_of` counts — it is that it MOVED when
+     * the task did not.
+     *
+     * § 8.2.1 gives `task.as_of` the "server clock" and § 4.9 makes it the basis of the tier-1/2
+     * freshness bounds ("stale past 30 min"), i.e. **when this tier's value was obtained**. Tier 3
+     * is obtained from the seat's own open call, so its value is obtained when that call becomes
+     * the answer — which is what this now stamps. Re-stamping an unchanged answer claimed the
+     * value had been re-obtained on a pass that only re-read it, which is the same class of claim
+     * § 2.3 refuses for a fold-written lag.
+     *
+     * The comparison is against the WHOLE tier answer (title, source, ref) and not the title
+     * alone, so that a tier-1/2 producer landing later — § 4.9 leaves both unbuilt — moves `as_of`
+     * when the SOURCE changes under an identical title.
+     *
+     * @param  object  $state  the seat's `seat_state` row as read before this pass's writes
      * @return array<string, mixed>
      */
-    private function taskTier3(int $seatRef, ?int $currentCall, string $nowSql): array
+    private function taskTier3(int $seatRef, ?int $currentCall, string $nowSql, object $state): array
     {
         $title = DB::table('calls')
             ->where('seat_ref', $seatRef)->whereNull('closed_at')
@@ -424,11 +496,18 @@ class StateRecompute
             return ['task_title' => null, 'task_source' => null, 'task_ref' => null];
         }
 
+        $title = mb_substr($title, 0, 120);
+
+        $unmoved = $state->task_title === $title
+            && $state->task_source === 'telemetry'
+            && $state->task_ref === null
+            && $state->task_as_of !== null;
+
         return [
-            'task_title' => mb_substr($title, 0, 120),
+            'task_title' => $title,
             'task_source' => 'telemetry',
             'task_ref' => null,
-            'task_as_of' => $nowSql,
+            'task_as_of' => $unmoved ? $state->task_as_of : $nowSql,
         ];
     }
 }

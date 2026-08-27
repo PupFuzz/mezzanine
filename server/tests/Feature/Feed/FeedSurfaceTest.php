@@ -243,13 +243,14 @@ class FeedSurfaceTest extends FeedTestCase
      * VERSION-BEARING MEMBER, so it emits no delta … Emitting a delta per heartbeat would add
      * 1,440/seat/day of pure noise, a 16 % increase in feed traffic carrying no information."
      *
-     * ⚠ DRIVEN ON A SEAT WITH NO OPEN CALL, AND THAT RESTRICTION IS A CARD #7339 DEFECT THIS TEST
-     * FOUND rather than a fixture nicety: `StateRecompute::taskTier3()` re-stamps `task_as_of` to
-     * `now()` on every recompute while a title exists, and `task` is version-bearing — so a seat
-     * WITH an open call emits a delta on every fold pass, which is exactly the noise the rule
-     * above forbids. Reported in card #7827's PR body, not patched: it is Part A's derivation, and
-     * `as_of`'s correct semantics interact with § 4.9's tier-1/2 freshness bounds whose producers
-     * are not built.
+     * ⚠ DRIVEN ON A SEAT WITH NO OPEN CALL, AND THAT RESTRICTION WAS A CARD #7339 DEFECT THIS TEST
+     * FOUND rather than a fixture nicety: `StateRecompute::taskTier3()` re-stamped `task_as_of` to
+     * `now()` on every recompute while a title existed, and `task` is version-bearing — so a seat
+     * WITH an open call emitted a delta on every fold pass, which is exactly the noise the rule
+     * above forbids. FIXED ON CARD #7837, and the restriction is therefore no longer load-bearing:
+     * `test_a_seat_with_an_open_call_is_as_quiet_as_one_without` below drives the same rule with
+     * the open call this fixture avoids, and is what would go red if the re-stamp came back. This
+     * case keeps the no-open-call fixture so the two are independent.
      */
     public function test_an_ordinary_heartbeat_emits_no_delta(): void
     {
@@ -280,19 +281,17 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * ⛔ A CARD #7339 DEFECT THIS CARD FOUND AND DID NOT CROSS THE SEAM TO FIX. RECORDED HERE AS
-     * AN INCOMPLETE TEST SO IT CANNOT GO QUIET: the assertions below are what § 6.5 REQUIRES, and
-     * they fail today.
+     * ⛔ CARD #7827 RECORDED THIS AS AN INCOMPLETE TEST RATHER THAN CROSSING THE PART A / PART B
+     * SEAM TO FIX IT. CARD #7837 IS THAT FIX, AND THIS IS ITS ACCEPTANCE.
      *
-     * ── THE MECHANISM, MEASURED ──────────────────────────────────────────────────────────────
+     * ── THE MECHANISM, MEASURED (card #7827's rig, re-measured here as this card's RED) ──────
      *
-     * `Fold::foldSeat()` runs `$this->projector->apply($event)` and THEN
-     * `$this->recompute->after($event)`. `StateRecompute::after()` samples its "before"
-     * fingerprint at its own first line — i.e. AFTER the projector has already written that
-     * event's columns. So EVERY VERSION-BEARING MEMBER THE PROJECTOR WRITES IS IDENTICAL IN
-     * `$before` AND `$after`, and is invisible both to the bump decision and to the patch.
+     * `Fold::window()` ran `$this->projector->apply($event)` and THEN
+     * `$this->recompute->after($event)`, and `StateRecompute::after()` sampled its "before"
+     * fingerprint at its own first line — i.e. AFTER the projector had already written that
+     * event's columns. So EVERY VERSION-BEARING MEMBER THE PROJECTOR WRITES was identical in
+     * `$before` and `$after`, and invisible both to the bump decision and to § 8.3's patch:
      *
-     * Measured on this rig:
      *   a `reporter.heartbeat` flipping `enabled` true → false
      *     store:  enabled 1 → 0, state_version 4 → 5, link_state live → disabled
      *     wire:   changed ["link_state","render_state"]     ← `enabled` ABSENT
@@ -301,43 +300,63 @@ class FeedSurfaceTest extends FeedTestCase
      *     wire:   changed ["badges"]                        ← `context`, `model_label` ABSENT
      *
      * In both cases the version bumped ONLY because an unrelated derived member moved. A client
-     * therefore holds `enabled: true` and a null context gauge indefinitely — the snapshot is
-     * correct, so a page reload heals it and nothing else does.
+     * held `enabled: true` and a null context gauge indefinitely — the snapshot was correct, so a
+     * page reload healed it and nothing else did.
      *
-     * ── THE POPULATION (a sibling audit over `SeatFacts::versionBearing()`) ──────────────────
+     * ── WHY BOTH ARMS, AND WHY THESE TWO ─────────────────────────────────────────────────────
      *
-     * Affected — written by `Projector` before the fingerprint is sampled:
-     *   `context.*` · `model_label` · `enabled` · `selftest_failed` · D1's `reporter_degraded`
-     *   badges · a `subagents[].title` filled by a later `subagent.spawn` (§ 10's E2)
-     * Unaffected — written by `StateRecompute` after it:
-     *   `render_state` · `link_state` · `activity_state` · `unknown_reason` · `open_calls` ·
-     *   `open_turn` · `activity.*` · `reporter.version` / `.platform` · the server badge set
+     * They enter through DIFFERENT projector paths — `Projector::heartbeat()` and
+     * `Projector::contextSample()` — each with its own last-write-wins guard and its own column
+     * group, so one arm passing is no evidence for the other. Between them they cover the two
+     * distinct failure signatures the defect had: a member the recompute's own derivation happens
+     * to shadow (`enabled`, behind `link_state`) and one it does not (`context`, which reached the
+     * wire only because an unrelated badge moved on the same pass).
      *
-     * ── WHY IT IS NOT FIXED HERE ─────────────────────────────────────────────────────────────
-     *
-     * The fix is to sample the fingerprint BEFORE `Projector::apply()`, which is a change to the
-     * fold loop — card #7339's derivation, and this card's brief fences it: "if you cannot publish
-     * the state without changing how it is derived, the seam is in the wrong place — SAY SO."
-     * It also moves Part A's own version-bump semantics fleet-wide (strictly more bumps), which
-     * `tools/design/verify-fleet-state.py` re-derives § 10's "ten events, ten deltas" against, so
-     * it is Part A's owner's review. Card #7827's PR body carries it as the headline finding.
-     *
-     * It is NOT blocking this card: the SNAPSHOT carries every one of these members correctly, so
-     * the watchdog's entire interface and § 8.4's join are unaffected, and the damage is bounded
-     * to a browser's live view between reloads.
+     * The SNAPSHOT arm is asserted beside each: it was correct before this fix and must stay
+     * correct after it, because a fix that traded the delta's silence for a wrong snapshot would
+     * be a worse defect on the surface § 8.4's join and the autonomy watchdog both read.
      */
     public function test_a_projector_written_member_reaches_the_delta(): void
     {
-        $this->markTestIncomplete(
-            'card #7339: `StateRecompute::after()` samples its `before` fingerprint AFTER '
-            .'`Projector::apply()` has written the event, so every projector-written '
-            .'version-bearing member is invisible to the delta. See this test\'s docblock for the '
-            .'measured evidence and the affected population; reported in card #7827\'s PR body.'
-        );
-
         $this->deliver($this->cleanTurn());
         $this->stayAlive();
 
+        $token = $this->readToken();
+        $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+
+        // ── ARM 1: `context` and `model_label`, written by `Projector::contextSample()` ───────
+        $mark = count($this->wire->sent);
+
+        $this->deliver([$this->event('context.sample', [
+            'used_pct' => 73.2, 'used_tokens' => 146401, 'total_tokens' => 200000,
+            'used_pct_source' => 'harness', 'model_label' => 'claude-opus-5',
+            'sample_reason' => 'threshold_cross',
+        ])]);
+        $this->fold();
+
+        $deltas = $this->wire->ofTypeFrom('seat.delta', $mark);
+
+        $this->assertCount(1, $deltas, 'a context sample emitted no delta at all');
+
+        $changed = $deltas[0]['payload']['changed'];
+        $patch = $deltas[0]['payload']['patch'];
+
+        $this->assertContains('context', $changed,
+            '§ 6.5: `context` is version-bearing and a `context.sample` must ride the delta');
+        $this->assertContains('model_label', $changed,
+            '§ 6.5: `model_label` moves with the sample that carries it');
+
+        $this->assertSame(73.2, $patch->context['used_pct']);
+        $this->assertSame(146401, $patch->context['used_tokens']);
+        $this->assertSame('claude-opus-5', $patch->model_label);
+
+        // The SNAPSHOT was already correct and stays correct — the control that keeps this fix
+        // from having traded one defect for a worse one.
+        $seat = $this->asMachine($token, $seatPath)->assertOk()->json();
+        $this->assertSame(73.2, $seat['context']['used_pct']);
+        $this->assertSame('claude-opus-5', $seat['model_label']);
+
+        // ── ARM 2: `enabled`, written by `Projector::heartbeat()` ────────────────────────────
         $mark = count($this->wire->sent);
 
         $this->deliver([$this->disablingHeartbeat()]);
@@ -349,6 +368,220 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertContains('enabled', $deltas[0]['payload']['changed'],
             '§ 6.5: `enabled` is version-bearing and an `enabled` flip must ride the delta');
         $this->assertFalse($deltas[0]['payload']['patch']->enabled);
+
+        // …and the store agrees it really flipped, so the assertion above is about the WIRE and
+        // not about a fixture that never disabled anything.
+        $this->assertSame(0, (int) $this->state()->enabled);
+        $this->assertFalse($this->asMachine($token, $seatPath)->assertOk()->json('enabled'));
+    }
+
+    /**
+     * ⛔ THE SAME DEFECT IN THE SWEEPER — card #7837's sibling audit, driven rather than reported.
+     *
+     * `Sweep::quiesce()` closes every open `calls` row and only then settles, and `subagents` /
+     * `subagents_open` read `calls` DIRECTLY (`SeatFacts::openSubagents()`, `closed_at IS NULL`).
+     * A fingerprint sampled after those UPDATEs therefore had the intern already gone from BOTH
+     * sides, so the delta announcing the seat went offline never carried `subagents` and a desk
+     * kept rendering a subagent the server had closed.
+     *
+     * ⚠ THE `subagents_open` ASSERTION IS THE LOAD-BEARING ONE. `subagents` alone could be
+     * satisfied by a patch carrying an unchanged array; the count moving 1 → 0 is what says the
+     * member the client holds was actually corrected.
+     */
+    public function test_a_subagent_closed_by_the_sweeper_reaches_the_delta(): void
+    {
+        $dispatch = $this->ulid();
+
+        $this->deliver([
+            $this->event('turn.start', ['prompt_chars' => 40]),
+            $this->event('tool.start', [
+                'call_id' => $dispatch, 'tool_name' => 'Agent', 'descriptor' => null,
+                'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
+                'harness_call_ref' => null, 'open_calls_before' => 0,
+            ]),
+            $this->event('subagent.spawn', [
+                'call_id' => $dispatch, 'title' => 'audit the fold', 'title_truncated' => false,
+                'subagent_type' => 'coder',
+            ]),
+        ]);
+        $this->fold();
+
+        // The control: the intern IS open and IS on the wire before the sweeper acts. Without
+        // this the assertions below pass on a fixture that never had a subagent.
+        $token = $this->readToken();
+        $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+
+        $this->assertSame(1, $this->asMachine($token, $seatPath)->assertOk()->json('subagents_open'));
+
+        $this->advanceServerClock(1000);          // past § 4.5's 900 s `offline`
+        $this->fold();
+
+        $mark = count($this->wire->sent);
+
+        $this->sweep();
+
+        $deltas = $this->wire->ofTypeFrom('seat.delta', $mark);
+
+        $this->assertNotEmpty($deltas, 'offline quiescence emitted no delta at all');
+
+        $quiesce = $deltas[0]['payload'];
+
+        $this->assertContains('subagents', $quiesce['changed'],
+            '§ 6.5: `subagents` is version-bearing and quiescence closing the dispatch moved it');
+        $this->assertContains('subagents_open', $quiesce['changed']);
+        $this->assertSame([], $quiesce['patch']->subagents);
+        $this->assertSame(0, $quiesce['patch']->subagents_open);
+
+        // The snapshot agrees, on the surface that was already correct.
+        $this->assertSame(0, $this->asMachine($token, $seatPath)->assertOk()->json('subagents_open'));
+    }
+
+    /**
+     * ⛔ THE SAME DEFECT IN THE SWEEPER'S OTHER CALL-CLOSING JOB — `Sweep::orphanCloses()`.
+     *
+     * DRIVEN SEPARATELY FROM THE QUIESCENCE ARM ABOVE AND NOT FOLDED INTO IT, because the two are
+     * different jobs on different triggers: job 2 fires on a call's own materialized
+     * `orphan_due_at` while the seat is STILL LIVE, job 6 only once the seat is `offline`. A fix
+     * applied to one and reasoned about for the other is a fix with one instance of evidence.
+     *
+     * ⚠ 61 MINUTES AND A HEARTBEAT, WHICH IS THE FIXTURE'S WHOLE DIFFICULTY: a dispatch call gets
+     * § 4.6's 60-minute ceiling rather than the ordinary 15, and 60 minutes of silence would take
+     * the seat past § 4.5's 900 s `offline` and hand the close to job 6 instead — measuring the
+     * wrong job. The heartbeat keeps `link_state` at `live` so job 2 is the writer under test.
+     */
+    public function test_a_subagent_closed_by_the_orphan_ceiling_reaches_the_delta(): void
+    {
+        $dispatch = $this->ulid();
+
+        $this->deliver([
+            $this->event('turn.start', ['prompt_chars' => 40]),
+            $this->event('tool.start', [
+                'call_id' => $dispatch, 'tool_name' => 'Agent', 'descriptor' => null,
+                'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
+                'harness_call_ref' => null, 'open_calls_before' => 0,
+            ]),
+            $this->event('subagent.spawn', [
+                'call_id' => $dispatch, 'title' => 'audit the sweeper', 'title_truncated' => false,
+                'subagent_type' => 'coder',
+            ]),
+        ]);
+        $this->fold();
+
+        $token = $this->readToken();
+        $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+
+        $this->assertSame(1, $this->asMachine($token, $seatPath)->assertOk()->json('subagents_open'));
+
+        $this->advanceServerClock(61 * 60);
+        $this->stayAlive();
+
+        $mark = count($this->wire->sent);
+
+        $this->sweep();
+
+        $deltas = $this->wire->ofTypeFrom('seat.delta', $mark);
+
+        $this->assertNotEmpty($deltas, 'the orphan ceiling emitted no delta at all');
+
+        // The control that says job 2 was the writer: job 6's cause is `offline_quiesce`, and a
+        // seat that went offline instead would produce that one and pass every assertion below.
+        $this->assertContains('orphan_timeout', $this->causes());
+        $this->assertSame('live', $this->state()->link_state);
+
+        $orphan = $deltas[0]['payload'];
+
+        $this->assertContains('subagents', $orphan['changed'],
+            '§ 6.5: the orphan ceiling closing a dispatch moved `subagents` and it must ride');
+        $this->assertContains('subagents_open', $orphan['changed']);
+        $this->assertSame([], $orphan['patch']->subagents);
+        $this->assertSame(0, $orphan['patch']->subagents_open);
+
+        $this->assertSame(0, $this->asMachine($token, $seatPath)->assertOk()->json('subagents_open'));
+    }
+
+    /**
+     * ⛔ THE SAME DEFECT IN `mezzanine:retire` — card #7837's sibling audit, second instance.
+     *
+     * The command sets `seats.retired_at` / `retired_by` / `retired_reason` and THEN calls the
+     * shared recompute, whose self-sampled `$before` therefore already had them. `retired` is the
+     * § 8.2.1 member that reads exactly those three columns, so the `seat.delta` announcing the
+     * retirement carried `render_state: "retired"` and left the client's `retired` object `null`
+     * — who retired the seat, when and why, permanently absent until a resync.
+     *
+     * ⚠ ASSERTED ON `seat.delta` AND NOT ON `seat.retired`. § 8.3 gives retirement its own
+     * message and card #7712 already drives that one; it is a DIFFERENT message with a different
+     * body, and a client applying deltas to its seat object is corrected by neither if the delta
+     * omits the member. Asserting the retired message here would pass over the defect.
+     */
+    public function test_the_retired_member_reaches_the_delta_that_announces_it(): void
+    {
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $mark = count($this->wire->sent);
+
+        $this->retire();
+
+        $deltas = $this->wire->ofTypeFrom('seat.delta', $mark);
+
+        $this->assertCount(1, $deltas, 'retirement emitted no delta');
+
+        $changed = $deltas[0]['payload']['changed'];
+
+        $this->assertContains('retired', $changed,
+            '§ 6.5: `retired` is version-bearing and `mezzanine:retire` is what moves it');
+        $this->assertContains('render_state', $changed);
+
+        $retired = $deltas[0]['payload']['patch']->retired;
+
+        $this->assertSame('operator@aimla', $retired['by']);
+        $this->assertSame('decommissioned', $retired['reason']);
+        $this->assertSame('retired', $deltas[0]['payload']['patch']->render_state);
+    }
+
+    /**
+     * ⛔ THE `task_as_of` NOISE — card #7837's SECOND, SEPARATE defect, and the direct inverse of
+     * the three cases above: they are changes that failed to emit, this is an emission with no
+     * change behind it.
+     *
+     * `StateRecompute::taskTier3()` wrote `task_as_of => now()` on EVERY recompute while a title
+     * existed. `task` is version-bearing (§ 6.5's subtraction excludes ten named members and this
+     * is not one), so a seat with one open call emitted a `seat.delta` on every fold pass and
+     * every sweep pass with nothing meaningful moved — 1,440/seat/day from heartbeats alone, the
+     * "16 % increase in feed traffic carrying no information" § 8.3 refuses in terms.
+     *
+     * ⚠ THIS IS `test_an_ordinary_heartbeat_emits_no_delta`'s RULE ON THE FIXTURE THAT ONE HAD TO
+     * AVOID. Two tests rather than a widened one, because they fail for different reasons: that
+     * one goes red if the SUBTRACTION drifts, this one if the re-stamp comes back.
+     */
+    public function test_a_seat_with_an_open_call_is_as_quiet_as_one_without(): void
+    {
+        $this->deliver($this->openCall());
+        $this->fold();
+        $this->stayAlive();      // settles `enabled` and the reporter fields, as the case above does
+
+        // The control: this seat really does have the title the defect needed. Without it the
+        // silence below is the silence of a seat with nothing to re-stamp.
+        $this->assertNotNull($this->state()->task_title, 'the fixture opened no titled call');
+        $this->assertNotNull($this->state()->task_as_of);
+
+        $stamped = $this->state()->task_as_of;
+        $mark = count($this->wire->sent);
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->stayAlive();
+            $this->sweep();
+        }
+
+        $this->assertSame([], $this->wire->ofTypeFrom('seat.delta', $mark),
+            'a seat with an open call minted a delta per pass — § 8.3\'s pure-noise class');
+
+        // And the stamp itself did not move: the assertion above could also be satisfied by a
+        // `task_as_of` that moved while some other member masked it, and this is what separates
+        // "no delta" from "no change".
+        $this->assertSame($stamped, $this->state()->task_as_of,
+            '`task_as_of` was re-stamped on a pass that re-read the same title');
+        $this->assertSame(1, (int) $this->state()->open_calls, 'the call closed — wrong fixture');
     }
 
     /** § 8.3.1's patch is a SHALLOW merge and an empty one must serialize as `{}`, never `[]`. */
