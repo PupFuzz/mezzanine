@@ -10,6 +10,44 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7897 (part 1)** — **the seat's task is a THOUGHT BUBBLE, and the bubble REPLACES the text
+  chip rather than joining it.** `FLOOR.md` § 5.1 named the element *the task chip* in four places
+  (§ 5.1, § 5.6, § 7.5 and AT-D3-14) while the operator-ratified reference artifact had already been
+  drawing a bubble and no chip since 2026-08-26 — so the document and the artifact card#7341 builds
+  FROM disagreed about the desk's single most visible element. The amendment is a **form** change on
+  the test that decides one: the same five driving fields, the same honesty properties, **no D2
+  change and no new § 6.2 row**, because nothing about the bubble moves. § 5.1 now carries the
+  element's one statement — six rules — and every other site names it and points there. ⭐ **Three
+  of the six are not restatements of the chip's rules.** *(1)* **One rendered form**: a chip
+  surviving beside a bubble is one fact drawn twice (§ 2.4). *(2)* **A desk that draws no character
+  draws no bubble** — the bubble is anchored to the character, and `stale`, `offline` and `retired`
+  draw an empty chair or a cleared desk (§ 7.1). This is **the amendment's only truth-content cost
+  and it is stated rather than hidden**: a dark desk that used to carry a chip now carries none, and
+  the value is read in the drill-down under that panel's currency treatment — the fact is not lost,
+  the desk's claim about a seat nobody can hear is. *(3)* **A title too long for its desk truncates
+  with a MARK**, in a box sized from the measured text; a silently clipped title is read as the whole
+  title, which is a claim the wire did not make. ⛔ **One directed behaviour is REFUSED and the
+  refusal is recorded as decision 22 rather than left in a PR:** the ruling directs adoption of
+  upstream's `0.15 s` fade-in → `1.2 s` linger → `0.3 s` fade-out state machine. Its linger is a
+  timer (§ 6.3's second forbidden form), its fades are motion with no row, and the fade-out
+  **collapses the null render** — once a bubble hides itself, *no bubble* stops meaning *`task` is
+  null* and starts meaning *`task` is null **or** the linger expired*, and a null render two facts
+  produce is not one. Upstream's machine is right for upstream: its bubble reports a **tool call**,
+  an instant, where ours reports a **standing fact**. Its load-bearing half —
+  re-show-swaps-text-without-re-fading, which exists to stop a busy seat's label strobing — survives
+  for free, because a bubble that never fades cannot strobe. The overlap resolver and the
+  measured-box sizing are adopted, as § 5.1 rules 5 and 4. **The reference artifact is corrected in
+  the same change on two counts, both of which it was RENDERING:** its `.bub` carried a
+  `4.5 s ease-in-out infinite` float — an un-held loop with no § 6.2 row, § 6.3's first bullet, the
+  same defect shape as the `10 s` clock interval § 10.4 already refuses — and its character test was
+  `render_state !== "stale"` **written twice**, once for the sprite and once for the bubble, so a
+  sample seat in `offline` or `retired` would have drawn **both a character and a thought bubble on
+  a desk § 7.1 says is an empty chair or cleared**. Both now select on one predicate,
+  `hasCharacter()`, keyed on the member set. **Deliberately NOT fixed, and reported instead:** the
+  artifact's `.glowpulse` — a `2.4 s` infinite pulse on every occupied desk's lamp, the meeting-room
+  lamp and three status dots — is the same un-held-loop class, but it is ratified warmth on an
+  operator-taste surface rather than this card's element, so it is surfaced for its own ruling.
+
 - **card#7930** — **D1's harness-fact gate stopped being red for a reason that had nothing to do
   with D1, and D1's own re-capture obligation is discharged at 2.1.247.** `verify-harness-facts.py`
   pinned its ground truth to an absolute path ending in `2.1.240` — a build the installer

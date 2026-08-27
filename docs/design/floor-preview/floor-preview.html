@@ -75,8 +75,11 @@
   .star{position:absolute;pointer-events:none;font-size:15px;color:#ffe9a3;opacity:0;text-shadow:0 0 8px rgba(255,233,163,.9)}
   .folder{position:absolute;width:14px;height:10px;background:#ffcf7d;border-radius:2px 4px 2px 2px;pointer-events:none;opacity:0;box-shadow:0 1px 3px rgba(10,12,24,.5)}
   @media (prefers-reduced-motion:no-preference){
-    .bub{animation:hover 4.5s ease-in-out infinite}
-    @keyframes hover{0%,100%{margin-top:0}50%{margin-top:-4px}}
+    /* NOTHING here animates .bub. The thought bubble is STATIC by rule: it carries no § 6.2 row,
+       and § 6.3's first bullet admits motion through a row and through nothing else, so a float,
+       a bob or a fade on it is an un-held loop with no driving field. An earlier revision of this
+       file bobbed it on a 4.5s infinite `hover` keyframe — the same defect shape as the reference's
+       old 10s clock interval, and refused for the same reason. D3 § 5.1 rule 6 owns this. */
     .mk.b{animation:pl 1.6s ease-in-out infinite}.mk.t{animation:pl 2.2s ease-in-out infinite}
     @keyframes pl{0%,100%{opacity:1}50%{opacity:.3}}
     .env{animation:fly 7.5s ease-in-out infinite}
@@ -178,6 +181,10 @@
     now individuals</strong>: body shape, pattern, ears, sprout, eyes, mouth, accessory and posture are each drawn
     independently from the seat's seed, and every creature carries a seeded <em>vibe</em> (shown in its drill-down,
     labeled as flavour — never wire data). Interns seed from their parent seat, so they differ too. <strong>The
+    thought bubble is the desk's one rendered form of <code>task</code></strong> — no chip beside it, nothing at
+    all when <code>task</code> is null, and none over an empty chair, because it is anchored to a character. It
+    never animates: a bubble that faded out on a timer would make <em>no bubble</em> mean <em>no task</em>
+    <b>or</b> <em>the timer expired</em> (<code>docs/design/FLOOR.md</code> § 5.1). <strong>The
     windows and the wall clock step on each delivered <code>feed.heartbeat</code></strong> — dawn, day, dusk and
     night skies, hands at minute resolution and no second hand — so when the feed dies they freeze with the rest
     of the page, and <em>a stopped clock is the feed-down claim in the form every viewer reads without being
@@ -225,6 +232,14 @@ function poseOf(s){
   if(s.render_state==="working"&&s.open_calls===0&&s.open_turn===true)return "think";  /* A4 */
   return POSE[s.render_state];
 }
+/* D3 § 7.1's Desk column: three of the ten members draw no character — `stale` and `offline` are an
+   EMPTY CHAIR and `retired` is a CLEARED DESK. Everything anchored to the character is selected by
+   THIS ONE predicate and never by a second test of its own: the sprite, and § 5.1's thought bubble,
+   which is anchored to the character and therefore absent wherever the character is (§ 5.1 rule 3 —
+   a bubble over an empty chair would draw a thinker who is not there). Keyed on the member set, so
+   a sample seat in a fourth character-less state needs no edit here. */
+const NO_CHARACTER=new Set(["stale","offline","retired"]);
+function hasCharacter(s){return !!s&&!NO_CHARACTER.has(s.render_state);}
 
 function creatureSVG(install,seat,pose,size){
   const k=seatKey(install,seat);
@@ -382,7 +397,7 @@ const SCREENC={working:"#8ce8b0",idle:"#3c445c",blocked:"#ffd07a",stale:"#3c445c
 
 function deskSVG(T,id,s){
   const D=T.desks[id],x=D.x,y=D.y,w=D.w;
-  const state=s?s.render_state:null, pose=s?poseOf(s):null, occupied=s&&state!=="stale";
+  const state=s?s.render_state:null, pose=s?poseOf(s):null, occupied=hasCharacter(s);
   let g="";
   g+=`<ellipse cx="${x+w/2}" cy="${y+56}" rx="${w/2+14}" ry="14" fill="rgba(15,12,30,.28)"/>`;
   if(occupied)g+=`<ellipse class="glowpulse" cx="${x+w*D.lampx}" cy="${y-4}" rx="72" ry="44" fill="url(#glow)"/>`;
@@ -663,7 +678,11 @@ function render(){
       const [gt,gc]=GL[s.render_state];
       p.innerHTML="<span class='nm'>"+esc(s.seat)+"</span><br><span class='gl "+gc+"'>"+gt+"</span><span class='ln'>"+esc(labelFor(s))+"</span>";
       world.appendChild(p);
-      if(s.task&&s.render_state!=="stale"){
+      /* D3 § 5.1: the thought bubble is the desk's ONE rendered form of `task` — there is no task
+         chip beside it. A null `task` draws NOTHING (never an empty bubble, never a placeholder),
+         and a desk with no character has nothing to anchor to, selected by the SAME primitive as
+         the sprite rather than by a second render_state test of its own. */
+      if(hasCharacter(s)&&s.task){
         const bub=document.createElement("div");bub.className="bub";
         bub.style.left=PX(D.x+D.w*0.62);bub.style.top=PY(D.y-152);
         bub.innerHTML="<span class='body'>"+esc(s.task.ref+" · "+s.task.title)+"</span><span class='d1'></span><span class='d2'></span>";

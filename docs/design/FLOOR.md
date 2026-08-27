@@ -681,7 +681,11 @@ The desk is the unit. Everything on it is [§ 5.1](#51-the-desk)'s table; every 
 state (pose + glyph), whether the state is current (the currency treatment), the seat name (nameplate),
 and whether anything is wrong (badge cluster). Everything else — the descriptor, the task, the gauge
 numerals, the ages — is desk-adjacent text at a size that rewards approaching, and all of it is in the
-drill-down at full fidelity.
+drill-down at full fidelity. **The task's thought bubble ([§ 5.1](#51-the-desk)) sits across that
+split rather than on one side of it, and deliberately:** its *presence* is readable standing back — a
+desk with a task and a desk without are different shapes — while its *text* rewards approaching like
+the rest of this paragraph's list. Presence is exactly the fact `task` being non-null carries, so
+nothing is claimed at the distance the text cannot be read at.
 
 ### 4.3 The desk drill-down panel
 
@@ -810,7 +814,7 @@ one, so the two documents can be read side by side.
 | the *thinking* pose — a turn open with no call | `open_turn` | `true` | never null; read **with** `open_calls`, and both are D2's facts, not an inference ([§ 6.2](#62-the-animation-table--the-closed-set) row A4) |
 | the side table's stools | `subagents`, `subagents[].title`, `subagents[].subagent_type`, `subagents[].started_at`, `subagents[].call_id` | `"draft the D1 event schema"`, `"coder"` | a null `title` renders **untitled** and never an invented one ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
 | the *+N more* tag on the side table | `subagents_open` | `1` | never null; the tag appears only when it exceeds the array's length |
-| the task chip | `task.title`, `task.source`, `task.ref`, `task.as_of`, `task.degraded` | `"ingest endpoint"`, `"board_card"`, `"card#7338"` | `task` null ⇒ **no chip**, never a placeholder title |
+| the **thought bubble** — the desk's one rendered form of `task`, anchored to the character ([the rule below](#51-the-desk)) | `task.title`, `task.source`, `task.ref`, `task.as_of`, `task.degraded` | `"ingest endpoint"`, `"board_card"`, `"card#7338"` | `task` null ⇒ **no bubble**, never a placeholder title. A desk that draws no character draws no bubble either — the same absence for a different reason, and the rule below is where both are stated |
 | the context gauge | `context.used_pct` | `73.2` | `context` null ⇒ the gauge renders as *not reported*, **never as 0 %** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) |
 | the gauge's numerals and its own age | `context.used_tokens`, `context.total_tokens`, `context.source`, `context.sampled_at`, `context.sampled_received_at` | `146401`, `200000`, `"harness"` | tokens are nullable; the bar still renders from `used_pct`, which is not |
 | the model label | `model_label` | `"claude-opus-5"` | null ⇒ omitted |
@@ -823,6 +827,90 @@ one, so the two documents can be read side by side.
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
 | the *this state is N s behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns this render — the four things it draws, the two surfaces it draws them on, and why the **badge** and not the number decides the treatment — and this row states none of it a second time. What is this table's own is the **source**: the treatment reads `badges`, which is version-bearing and therefore delivered, and the number is `derivation.fold_lag_ms`, one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten and therefore **`fetch-fresh`**. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | the retirement plate | `retired.at`, `retired.by`, `retired.reason` | `null` | present for 14 days after retirement ([§ 3.5](#35-retirement-and-the-only-removal)) |
+
+⭐ **The `task` row's rendered form is a THOUGHT BUBBLE anchored to the character, and it REPLACES the
+text chip an earlier revision of that row named — it does not join it.** The operator's ask was for
+*bubbles of people thinking what task they are working on*, and card#7897's ruling admitted it as a
+**form** amendment on the test that decides one: the driving fields are the same five, every honesty
+property is the one the chip already carried, and **no
+[§ 6.2](#62-the-animation-table--the-closed-set) row is added** — because nothing about the bubble
+moves. **This paragraph is the document's one statement of the element**; the render rows, the null
+table, [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) and
+[AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) name it and point here rather than restating it.
+
+1. **One rendered form on the desk, which is the rule the amendment can break quietly.** The desk
+   draws the bubble and draws nothing else for `task`. A chip surviving beside a bubble would be one
+   fact drawn twice, which [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s
+   one-rendered-form-per-fact rule refuses for the same reason it refuses a second wording of an age.
+   The drill-down still carries `task` ([§ 4.3](#43-the-desk-drill-down-panel),
+   [§ 5.2](#52-the-drill-down)) and that is not a second form: it is the same fact at full fidelity on
+   a surface the viewer opened, which is [§ 4.2](#42-the-floor)'s standing split between what the
+   floor shows and what approaching shows.
+2. **A null `task` is NO bubble** — never an empty bubble, never a placeholder title, never the last
+   title the client held ([§ 5.6](#56-the-null-render-for-every-nullable-member),
+   [decision 13](#13-decisions-taken-revisable-at-review)). The bubble says **which**, never **how
+   much**: neither its presence nor its position encodes a quantity, and its size is a function of
+   **the text it holds** and of nothing about the seat — a bubble that grew with a token count, a
+   call count or an age would be
+   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s third forbidden form
+   with the motion taken out of it.
+3. ⭐ **A desk that draws no character draws no bubble.** The bubble is anchored to the character, and
+   [§ 7.1](#71-the-render-per-state)'s **Desk** column is where which desks have one is read — the
+   states that draw an empty chair or a cleared desk have none to anchor to. A bubble floating over an
+   empty chair would draw a thinker who is not there, which is
+   [§ 7.5](#75-what-a-degraded-desk-may-never-look-like)'s asleep-versus-gone confusion arriving
+   through a different element. **This is the one place the form change is not free, and the cost is
+   stated rather than hidden:** a dark desk that used to carry a chip now carries none, and the seat's
+   last known task is read in the drill-down under that panel's own currency treatment instead. The
+   **fact** is not lost; what is lost is **the desk's claim about a seat nobody can hear**, which is
+   the claim [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) exists to take away.
+4. **The text is `task.ref` and `task.title`, truncated visibly or not at all, in a box sized from the
+   MEASURED text.** Both members are bounded by
+   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object), so the worst case is real rather than
+   hypothetical: a box of fixed width would meet it by **silently clipping**, and a title clipped with
+   no mark is read as the whole title — a claim about the wire the wire did not make. So a title too
+   long for the bubble is truncated **with a mark**, the untruncated value is in the drill-down, and
+   the box is never sized from a guess at the text's width. **This document publishes no character
+   count** for that cap and [§ 12](#12-every-number-and-where-it-comes-from) carries no row for one:
+   what D3 requires is that a cap **exist**, that the box be **measured**, and that the truncation be
+   **marked**. The cap's value is a function of the art's type size and the zoom it is read at,
+   neither of which [§ 10.4](#104-the-art-direction-as-a-specification) specifies, so a number written
+   here would be a number about a drawing this document does not own.
+5. **Two bubbles that would overlap are separated DETERMINISTICALLY, and the separation carries no
+   fact.** The resolution is a pass over the **base** rects — the desks' own geometry, in a fixed
+   order — rather than over already-displaced ones, so two browsers rendering one fleet place them
+   identically with nothing stored, which is [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s
+   property one element over, and a bubble does not jitter when a neighbour's title changes. A
+   displaced bubble is a **layout** artifact: its offset says nothing about its seat, exactly as
+   [§ 6.2](#62-the-animation-table--the-closed-set)'s per-seat loop phase says nothing about its seat,
+   and for the same reason.
+6. ⛔ **The bubble does not move — it appears, changes and disappears on the frame the delta is
+   applied, with no fade, no drift, no bob and no float.** That is why it needs no
+   [§ 6.2](#62-the-animation-table--the-closed-set) row and why the amendment is a form change at all.
+   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet admits
+   motion through exactly one door — a § 6.2 row, with the field that drives it — and an element whose
+   motion would say nothing has no business opening it.
+
+⛔ **What was NOT adopted from the upstream form, named because the ruling that ordered this amendment
+named it as adoptable.** card#7897 directs this document to take three first-party behaviours from
+the upstream bubble: the deterministic overlap resolver, the character cap with measured-box sizing,
+and a **fade-in 0.15 s → linger 1.2 s → fade-out 0.3 s** state machine whose re-show swaps the text
+without re-fading. The first two are rules 5 and 4 above. **The third is refused, on this document's
+own rules rather than on a preference.** Upstream's bubble reports a **tool call** — an instant — so a
+linger and a fade-out are how a momentary event leaves a screen; this one reports **`task`, a standing
+fact**, and three things break when a standing fact is drawn with a transient's state machine. *(a)*
+The two fades are motion with no row, which rule 6 has just refused. *(b)* The linger is a **timer**,
+[§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form,
+and it is the same shape as the reference artifact's viewer-clock interval that
+[§ 10.4](#104-the-art-direction-as-a-specification) refuses by name. *(c)* Worst, and the reason this
+is a correctness refusal rather than a stylistic one: the fade-out **destroys rule 2**. Once a bubble
+hides itself on a timer, *no bubble* stops meaning *`task` is null* and starts meaning *`task` is
+null, **or** the linger expired* — and a null render two different facts produce is not a null render
+at all. **What survives of the third behaviour is its point, and it survives for free:**
+re-show-swaps-text-without-re-fading exists upstream to stop a busy seat's label strobing, and a
+bubble that never fades cannot strobe — its text changes on the frame the delta is applied, which is
+what [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s last bullet already
+requires of every rendered value on this page.
 
 ### 5.2 The drill-down
 
@@ -995,7 +1083,7 @@ it.
 | `action.parent_call_id` | no parent is named. The call is not drawn as an intern on the strength of a missing field |
 | `subagents[].title` | **untitled**, with the `call_id` in the drill-down — the honest orphan D1 § 6.8 and D2 § 8.2.1 both refuse to paper over ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
 | `subagents[].subagent_type` | the type tag beside the label is not drawn. The stool and its label are unaffected |
-| `task` | **no task chip at all**, never a placeholder title ([§ 5.1](#51-the-desk)) |
+| `task` | **no thought bubble at all**, never an empty bubble and never a placeholder title ([§ 5.1](#51-the-desk)). A desk with no character draws no bubble either, which is a **different** absence and is § 5.1's to state — this cell states the one a null produces |
 | `task.ref` | the title renders with **no link and no reference text** — not an empty link, not *(no reference)*. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the base-URL question, which is a different absence |
 | `context` | the gauge reads ***not reported*** and **the bar is absent** — not a bar at 0 % ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like), [decision 13](#13-decisions-taken-revisable-at-review)) |
 | `context.used_tokens` | the numerals read *not reported*; **the bar still renders**, because `used_pct` is not nullable ([§ 5.1](#51-the-desk)) |
@@ -1548,7 +1636,8 @@ places on this document by name:
   [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) both assert it, with motion on and with
   motion off. *(The ratified art draws that chair as a cushion — the noun in the render tables is the
   chair, and one noun is what keeps the two documents one document.)*
-- **Zeroed.** A null `context` renders *not reported*; a null `task` renders no chip; a null
+- **Zeroed.** A null `context` renders *not reported*; a null `task` renders no bubble
+  ([§ 5.1](#51-the-desk)); a null
   `subagents[].title` renders *untitled*; a null `counters` object renders *unreadable*. **A null is
   never drawn as a zero**, because a zero is a measurement and a null is the absence of one — the same
   clean-zero defect `docs/KANBAN.md § G-1` records, arriving through a gauge.
@@ -2098,6 +2187,15 @@ artifact is the worked example of it.
   delivered heartbeat**, so on a dead feed they stop with the rest of the page. **A build must not
   ship the reference's interval verbatim**, and must not add a second hand: both are
   [§ 6.2](#62-the-animation-table--the-closed-set)'s to state and the row's five constraints say why.
+- ⭐ **The seat's task is drawn as a THOUGHT BUBBLE over the character, and that is a ruling rather
+  than a drawing choice** — the operator's *bubbles of people thinking what task they're working on*,
+  admitted by card#7897 as a form amendment. An implementer holding the reference artifact alone could
+  read the bubble as decoration an ordinary text chip would satisfy, which is the misreading this
+  subsection exists to prevent. **What may be drawn freely** is the bubble's shape, its tail, its
+  palette and its type. **What may not**: it carries no motion of any kind, it replaces the chip
+  rather than joining it, a null task draws nothing, and it is not drawn on a desk with no character
+  to anchor to. Those four are [§ 5.1](#51-the-desk)'s, stated there in full with the upstream
+  behaviour that was refused and why, and this bullet states none of them a second time.
 - **What is deliberately NOT specified here:** the palette's hex values, the drawing itself, the file
   layout of the art, and the renderer. [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s
   non-goal stands — **no framework, bundler or state library is specified**, and this subsection does
@@ -2266,7 +2364,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-membership` | **three legs.** (a) a delta for a seat absent from `fx-snapshot-4`; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on that install's channel **during** the ADMIT (b) round trip, at `state_version` one above what (b) returns |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped |
 | `fx-refusals` | the four responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, a `fleet.health` with `db: "down"`, and a `fleet.reload` |
-| `fx-nulls` | **two** seats, because the **36** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 36, and neither covers them alone |
+| `fx-nulls` | **two** seats, because the **36** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 36, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
 
 ### AT-D3-1 no animation without its event
 
@@ -2853,7 +2951,9 @@ across the two surfaces and a single list read as though the desk could show the
   plus the operator health view for the `counters` assertion. **Reads:** the **drill-down**, the
   **uncapped intern list**.
 - **GREEN — `nulls-a`, the containers, desk half:** the context gauge reads **not reported** and the
-  bar is absent — **not** 0 %; there is no task chip; the monitor shows the state line rather than a
+  bar is absent — **not** 0 %; there is **no thought bubble**, and `nulls-a`'s desk **draws a
+  character** (fixture table above), so that absence is `task`'s and not the empty chair's
+  ([§ 5.1](#51-the-desk)); the monitor shows the state line rather than a
   blank; `model_label` is omitted rather than empty; the side table shows no stools rather than zero
   stools; and `retired` being null draws no plate.
 - **GREEN — `nulls-a`, the containers, panel half:** `session` renders *no session open*; the
@@ -3091,6 +3191,7 @@ review can reverse it deliberately rather than discover it later.
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
 | 20 | **The animation table carries two classes — `edge` and `held` — and the animation log records them under different causality rules, a `held` render's entry and exit paired by an `episode_id` rather than by the animation and seat.** The class split is [§ 6.2](#62-the-animation-table--the-closed-set)'s and the log schema is [§ 11](#11-acceptance-tests)'s; this row records the decision and states neither a second time | one schema for all seventeen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and four more fields in the log (`phase`, `episode_id`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in every field, from which *for how long* was unrecoverable. **`episode_id` is the third such widening and the one that ends the sequence**, because it is the first to give the log an identity for the thing the questions are actually asked about. Each of the first two — the class split, then `phase` — fixed the shape of a row while leaving the log keyed on `(animation_id, install_id, seat_id)`, a triple that is not unique per episode on this document's own headline fixture: `fx-clear-trace` enters A4 twice on one seat, so *which exit ended which entry* and *for how long* had no answer the log could give. Adding a fourth field to the row was cheaper than the alternative on offer, which was to declare the fixture out of scope for the pairing predicate and leave the headline test asserting less than it claims |
 | 21 | **The ratified wall clock and day/night sky advance on `feed.heartbeat`, so they stop when the feed does** ([§ 6.2](#62-the-animation-table--the-closed-set) A17). **Operator ruling, 2026-08-27, card#7341**, taken between three stated options | **(A)** ship them **static**, set once per render — what [§ 10.4](#104-the-art-direction-as-a-specification) required until this ruling; **(B)** carve an exception into [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) for viewer-clock decoration, keeping the reference's 10 s interval | Option B is the widening the art amendment existed **not** to do, and it is not a small one: a timer-driven clock is a mover that **keeps moving after the feed dies**, so the page never goes still and [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) loses the observable it asserts — a named acceptance test's instrument, spent on decoration. Option A is honest and costs the reference its sense of a place. **The heartbeat driver is neither a compromise nor a third-best**: the clock earns an ordinary [§ 6.2](#62-the-animation-table--the-closed-set) row driven by a message D2 declares, and **a stopped clock is A14's claim in the form every human reads instinctively**, so the element that would have destroyed the feed-down signal now carries it. The visual cost is near nil — the clock is **sampled** every 15 s and, at minute resolution, **steps once a minute**, which at floor zoom is indistinguishable from a continuous one; the sky is a slow gradient | **The clock is wrong by up to 15 s and is stale by construction whenever the feed is down** — accepted, and it is why the clock carries no *as of* stamp and is never an authority on the time ([§ 5.5](#55-the-clients-own-narration)). The real cost is that a **frozen clock looks like a bug**, and the repair a maintainer reaches for is the interval this ruling refused; the whole of the mitigation is that the reasoning is written at [§ 6.2](#62-the-animation-table--the-closed-set), the driven-versus-read distinction at [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith), and **two REDs** at [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) — one for that exact edit, and one for the same regression arriving through the recovery path, where the room is *set* on each 10 s poll rather than animated on a timer |
+| 22 | **`task` is rendered as a STATIC thought bubble anchored to the character, replacing the text chip, and the upstream bubble's fade/linger/fade state machine is refused** ([§ 5.1](#51-the-desk)). **Operator vision + card#7897's ruling, 2026-08-27**; the ruling directed the state machine's adoption and this row is where the refusal is recorded rather than left in a PR | **(A)** adopt the upstream machine as directed — fade in, linger, fade out, re-show swaps the text — which needs a [§ 6.2](#62-the-animation-table--the-closed-set) row the ruling also forbids; **(B)** keep the chip and add the bubble beside it, so nothing already asserted has to move | Option A is not a style question. The linger is a timer ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form), and the fade-out **collapses a null render**: once the bubble hides itself, *no bubble* means *`task` is null* **or** *the linger expired*, and a null render two facts produce is not one. Upstream's machine is right **for upstream** — its bubble reports a tool call, an instant, where ours reports a standing fact. Option B is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken on purpose, and it is the failure this amendment is most likely to reach by accident rather than by argument | **A dark desk loses a readout it used to have.** `stale`, `offline` and `retired` draw no character ([§ 7.1](#71-the-render-per-state)), so they now draw no task at all where a chip once sat; the value is in the drill-down under that panel's currency treatment. That is the amendment's only truth-content cost and it is on the side of claiming less. **And a static bubble is the thing a maintainer will "fix"** — a bubble that never animates reads as unfinished next to the reference's other motion, and the repair reached for is a float or a fade, which is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet arriving through an element nobody thinks of as an animation |
 
 ---
 
