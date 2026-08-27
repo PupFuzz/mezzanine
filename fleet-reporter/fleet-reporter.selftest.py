@@ -1234,8 +1234,8 @@ eq("GREEN: harness_payload_keys passes and covers EVERY subscribed hook — a mi
    "is a fail, never a skip", 15, len(base["detail"]["harness_payload_keys"]))
 eq("  … and every hook reports its provenance (capture vs docs-cited-stub)", True,
    all(d["source"] in ("capture", "docs-cited-stub") for d in base["detail"]["harness_payload_keys"]))
-eq("  … 10 captured hooks and 5 DOCS-CITED stubs, matching § 17's own counts",
-   (10, 5), (sum(1 for d in base["detail"]["harness_payload_keys"] if d["source"] == "capture"),
+eq("  … 11 captured hooks and 4 DOCS-CITED stubs, matching § 17's own counts",
+   (11, 4), (sum(1 for d in base["detail"]["harness_payload_keys"] if d["source"] == "capture"),
              sum(1 for d in base["detail"]["harness_payload_keys"] if d["source"] == "docs-cited-stub")))
 
 
@@ -1297,7 +1297,7 @@ redgreen("harness-fact drift guard (AT-21)",
          "renaming source/reason/trigger -> that hook alone reds, naming the key; a missing "
          "fixture -> fail not skip; dropping `clear` from the recognised set -> SessionStart "
          "reds on the VALUE-SET assertion with missing=[]",
-         "15/15 hooks pass (10 capture + 5 docs-cited-stub); a fixture gaining an unread key "
+         "15/15 hooks pass (11 capture + 4 docs-cited-stub); a fixture gaining an unread key "
          "still passes")
 
 

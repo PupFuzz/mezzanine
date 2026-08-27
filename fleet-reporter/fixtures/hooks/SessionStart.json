@@ -21,6 +21,15 @@
       "cwd": "/home/agent/proj",
       "hook_event_name": "SessionStart",
       "source": "clear"
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000005",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000005.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000004",
+      "hook_event_name": "SessionStart",
+      "source": "compact",
+      "model": "<model id, never read>"
     }
   ]
 }

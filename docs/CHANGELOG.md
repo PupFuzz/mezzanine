@@ -10,6 +10,49 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7930** — **D1's harness-fact gate stopped being red for a reason that had nothing to do
+  with D1, and D1's own re-capture obligation is discharged at 2.1.247.** `verify-harness-facts.py`
+  pinned its ground truth to an absolute path ending in `2.1.240` — a build the installer
+  garbage-collects — so it had emitted **31 failures** since the first harness update after it was
+  written, **30 of them saying real hooks "are not declared in this build"**. A reader repairing D1
+  to match that output would have deleted true facts, and *a gate that reds on correct work is a
+  gate that gets ignored*. Three more build-specific literals were pinned beside it: the
+  bundler-generated name `Ht` (regenerated every build), § 17's capture-run figures, and — the one
+  that could have put a **false fact into the document** — global-first-match identifier
+  resolution, which resolved `Notification.notification_type` to a 2-member set at 2.1.247 and to a
+  **39-member list of shell dotfile names** at 2.1.243. It was right at 2.1.240 by luck. The build
+  is now **READ from D1's five declared-build sites**, which must agree; the versions directory is
+  derived from wherever `claude` on `PATH` resolves; identifier resolution is module-scoped and
+  follows a bundled `import`/`export` pair to the declaring chunk; and when the declared build is
+  absent the gate still reds — **fail-closed is the point** — but with ONE line naming the build,
+  what is installed, and the fix. ⭐ **Newest-installed is deliberately not a default**: silently
+  re-binding converts *"true of 2.1.240"* into *"true of today's box"*, which is the false clean
+  the gate exists to prevent. ▶ **The re-capture then answered the card's real question:
+  NOTHING D1 states about the harness moved** across `2.1.240 → 2.1.243 → 2.1.245 → 2.1.246 →
+  2.1.247` — 0 of 22 fixture key sets, 0 of 9 enum value sets, 31 hooks, and every firing condition
+  re-observed. **Two facts got stronger**: `PostCompact` and `SessionStart(source=compact)` were
+  DOCS-CITED as *"not drivable"* and are now MEASURED (`claude -p --resume <sid> "/compact"` drives
+  both), and `PostCompact`'s real key set is **exactly** what the stub declared — the first evidence
+  this document has that a stub read from the binary is a fact and not a hope. **One thing is
+  contested and deliberately left open**: three of three headless dispatch runs at 2.1.247 produced
+  the **2.1.240** subagent lifecycle, not the 2.1.245 one D1 records — but that run varies *mode*
+  as well as *version* (the 2.1.245 row was measured through a real TUI), so it settles nothing and
+  **no fact was edited to prefer either reading**. Raw captures stay uncommitted per the 2026-08-23
+  ruling; the rig was scoped with `--settings`, never by editing `~/.claude/settings.json`, because
+  three other agents were live on this box. ⭐ **pm ruled the fork closed rather than open** — § 8.7
+  already requires *both* lifecycles to be handled and AT-1 carries a GREEN case for each, so
+  settling it would buy only the right to delete a trace the document must keep; **the primitive it
+  exposed is fixed instead**: § 6.0 obligation 2 now names **MODE** (headless `claude -p` vs a real
+  TUI) as a second axis beside VERSION, so *a fact measured in one mode is not established in the
+  other* and the next re-capture records which mode a fact came from instead of re-opening that row
+  at every build. Its **cost claim is corrected from estimate to measurement** in the same
+  obligation — *"re-running it is minutes"* was **the argument the requirement rested on**, and the
+  measured discharge was ten driven sessions, a fixture diff, ~25 restated version sites and
+  propagation into the reporter; an obligation defended by an estimate an order of magnitude low is
+  one that gets deferred, which is what happened across five builds. § 16 now **points at** that
+  obligation instead of carrying its own copy of the trigger, and names the two levers that would
+  make the next re-capture cheap.
+
 - **card#7913** — **Gate 2 now runs over all of `resources/`, and Tiled's default layer encoding
   is refused rather than exempted.** Gate 2's argument became **universal** on 2026-08-27 (*every
   asset is a file Gate 1 can see*) while its enforcement stayed scoped to `resources/characters/`.

@@ -4,11 +4,13 @@
 
 > **Status: Draft — pending design review.** Owner: aimla-pm. Gate: [`docs/PLAN.md § 2`](../PLAN.md#2-design-first-gates--the-order-is-the-plan)
 > (P0 design, board 14). Written to the **standalone-implementer standard (D-14)**: an agent holding
-> only this file must be able to build both ends. Nothing here is built yet — `fleet-reporter/` and
-> the ingest route do not exist in this repo. Every number below carries its derivation; where a
+> only this file must be able to build both ends. **`fleet-reporter/` and the ingest route now
+> exist** (`fleet-reporter/fleet-reporter.js`, landed in PR #12; `server/routes/ingest.php`, PR #16)
+> — this line said they did not, which was true when it was written and has been false since.
+> Every number below carries its derivation; where a
 > derivation rests on a value nobody has measured yet, it says so and names what to measure. Every
 > **harness** fact carries one of three states — MEASURED, DOCS-CITED, UNVERIFIED — against payloads
-> captured from Claude Code **2.1.240** and reproduced verbatim in
+> captured from Claude Code **2.1.247** and reproduced verbatim in
 > [§ 17](#17-appendix--the-captured-harness-payloads).
 > Decisions a reviewer is most likely to contest are collected in [§ 15](#15-decisions-taken-revisable-at-review),
 > not scattered — and none is left as a placeholder: each is **decided**, and review may reverse it.
@@ -117,7 +119,7 @@ subscribes to, and what each one produces, is
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read). The shape below is illustrative, and it is
 the shape that was actually used to capture
 [§ 17](#17-appendix--the-captured-harness-payloads)'s fixtures — so it is a working configuration at
-2.1.240, not a sketch. The reporter's own contract is narrower and stable: *it is invoked with the
+2.1.247, not a sketch. The reporter's own contract is narrower and stable: *it is invoked with the
 hook name as `argv[2]` and the hook's JSON payload on stdin.*
 
 **The reporter ships the fixtures beside itself.** `fixtures/hooks/<HookEventName>.json` is part of
@@ -127,7 +129,7 @@ the `harness_payload_keys` check needs them there
 carries [§ 17](#17-appendix--the-captured-harness-payloads)'s payload for that hook verbatim, plus
 one added key — `"_source": "capture"` or `"_source": "docs-cited-stub"`, which is how the vendored
 file records whether it is a measurement or a declaration
-([§ 17.1](#171-docs-cited-stubs--the-five-hooks-that-could-not-be-driven)). The appendix does not show
+([§ 17.1](#171-docs-cited-stubs--the-four-hooks-that-could-not-be-driven)). The appendix does not show
 that key, because there it is the surrounding prose that says which a payload is.
 
 ```json
@@ -708,19 +710,21 @@ section is the guard.
 | **UNVERIFIED** | neither of the above | what it costs if it is wrong, and the named act that closes it |
 
 **The measurement of record.** The fixtures in [§ 17](#17-appendix--the-captured-harness-payloads)
-were captured on **2026-08-23** from **Claude Code 2.1.240** on Linux (`claude --version`), by wiring
+were captured on **2026-08-27** from **Claude Code 2.1.247** on Linux (`claude --version`, agreeing
+with the binary the `claude` on `PATH` resolves to), by wiring
 every hook in the subscription table below to a command that appends its raw stdin to a capture file
 and then driving real sessions headlessly (`claude -p`) down each path: startup, resume, `/clear`, a
 prompt, a succeeding tool call, two genuinely failing tool calls, a subagent dispatch with its own
-inner tool call, and `/compact`. **56 payloads across 10 hook events**, of which
-[§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **16** distinct payload shapes that
+inner tool call, a `Write` refused by the permission layer, and `/compact`. **63 payloads across 11
+hook events**, of which
+[§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **18** distinct payload shapes that
 every MEASURED row below is read from. **Read the two numbers differently, because only one of them is
-checkable.** The 16 and their 10 hooks are re-derived from the appendix by
+checkable.** The 18 and their 11 hooks are re-derived from the appendix by
 `tools/design/verify-harness-facts.py` on every run and every key of every one is asserted against the
-installed binary. The 56 is provenance for the capture *run*: the raw capture files are not committed
+installed binary. The 63 is provenance for the capture *run*: the raw capture files are not committed
 — they carry a real seat's session ids, working directories and prompt text — so no reviewer and no
 tool can falsify a per-hook count taken over them, and this document therefore states its facts
-against the reproduced 16 rather than against a sample size nobody can check. **Committing a sanitized
+against the reproduced 18 rather than against a sample size nobody can check. **Committing a sanitized
 capture set was the named closure act, and it is DECLINED — 2026-08-23, PM ruling.** This repo is
 public and the raw captures carry a real seat's session ids, `cwd` paths and prompt text; sanitizing
 them to a standard that is safe to publish is exactly the judgement a sanitizer cannot be trusted to
@@ -728,14 +732,14 @@ make in one pass over real data, and the downside is unbounded and irreversible 
 sample size. The durable evidence stands without it: [§ 17](#17-appendix--the-captured-harness-payloads)'s
 reproduced fixtures, and the guard that asserts every key of every one against the **installed binary**
 — a source strictly stronger than any capture file, because it cannot go stale against the build it is
-read from. **The 56 therefore stays labelled run-provenance and unfalsifiable by design**, and no fact
+read from. **The 63 therefore stays labelled run-provenance and unfalsifiable by design**, and no fact
 in this document rests on it. Two further sources are used
 where a path could not be driven on that seat: the vendor hooks reference, and the installed
 harness binary's own payload schema declarations, which name every hook's fields and every closed
 matcher set verbatim and are therefore a *stronger* source than the reference page for key names.
 Facts from those two are DOCS-CITED, never MEASURED, and say which.
 
-**Every MEASURED fact in this document is versioned to 2.1.240 — a harness upgrade re-runs the
+**Every MEASURED fact in this document is versioned to 2.1.247 — a harness upgrade re-runs the
 capture.** This is not procedural tidiness; it is the same lesson
 [§ 3.4](#34-why-identity-never-comes-from-the-environment) is written about. That incident was a
 predicate keyed to a harness marker whose *meaning* changed at 2.1.219, silently, and stayed silently
@@ -748,9 +752,33 @@ fed reads zero forever, and nothing reds. The obligations, both binding:
    payload keys the reporter actually reads — see the `harness_payload_keys` MUST below. That is the
    guard, and it runs in CI and at install rather than only in review.
 2. **ANY harness version change re-runs the capture and re-marks this table** — patch bumps
-   included — and the diff is a change to this document. The capture rig is ~20 lines (a settings
-   file wiring every hook to `cat >> file`, plus `claude -p` prompts); re-running it is minutes,
-   which is why this is a requirement and not an aspiration.
+   included — and the diff is a change to this document. **VERSION is not the only axis: every
+   driven fact also records the MODE it was measured in** — headless `claude -p` or a real
+   interactive TUI — and **a fact measured in one mode is not established in the other.** The
+   capture rig is ~20 lines (a settings file wiring every hook to `cat >> file`, plus `claude -p`
+   prompts).
+
+   > **Why MODE is named here (card #7930): this document already holds a fact that may be scoped to
+   > it.** The subagent-dispatch lifecycle was measured through a **real TUI** at 2.1.245; three
+   > headless runs at 2.1.247 produced the *older* ordering, so *"the build changed"* and *"the TUI
+   > and `-p` have always differed here"* both fit every measurement this document holds
+   > ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) records it, unsettled and
+   > deliberately so — nothing in the design depends on the answer). **A trigger naming only VERSION
+   > sends the next re-capture down `claude -p` again, finds the headless ordering again, and
+   > re-opens that row at every build** — the instance recurring because the obligation never named
+   > the second axis. Naming it does not require driving both modes for everything; it requires
+   > saying which mode a fact came from, so a single-mode fact is legible as one.
+
+   > **The cost, measured instead of estimated (card #7930, 2026-08-27).** This obligation said
+   > *"re-running it is minutes, which is why this is a requirement and not an aspiration."*
+   > **Running the rig is minutes. Discharging the obligation is not.** The 2.1.247 discharge took
+   > **ten driven sessions**, a fixture-by-fixture diff, **~25 restated version sites** in this
+   > document, and propagation into `fleet-reporter/`'s vendored fixtures and its selftest counts.
+   > The correction is here rather than in a commit message because *"minutes"* was **the argument
+   > the requirement rested on**, and **an obligation defended by an estimate an order of magnitude
+   > low is one that gets deferred** — which is exactly what happened across five builds. ⚠ **The
+   > honest response is to reduce the cost, not to weaken the trigger**;
+   > [§ 16](#16-what-an-implementer-builds-from-this) names the two levers that would.
 
    > **AMENDED from "minor-version change" (card #7337, Q4), and this is the larger finding of that
    > card.** The obligation was written for minor bumps. **2.1.240 → 2.1.245 is a patch bump, and the
@@ -773,6 +801,22 @@ fed reads zero forever, and nothing reds. The obligations, both binding:
    > enum value sets from the installed binary on every run and reported clean throughout, because a
    > **lifecycle and ordering** change moves neither. What that guard cannot see, a re-capture must —
    > which is why the trigger is now any version at all.
+   >
+   > > **DISCHARGED 2026-08-27 at 2.1.247 (card #7930) — and the delay is the finding.** This
+   > > obligation went undischarged across `2.1.240 → 2.1.243 → 2.1.245 → 2.1.246 → 2.1.247`, and
+   > > the reason is exactly the failure mode the paragraph above describes one rung down: the guard
+   > > that was supposed to make a harness move visible had been **red for a reason that had nothing
+   > > to do with this document** — its ground-truth binary was pinned to an absolute path ending in
+   > > `2.1.240`, which the installer garbage-collects — so the move it existed to catch went
+   > > unnoticed while the gate reported 31 failures a reader would have "fixed" by deleting true
+   > > facts. **A gate that reds on correct work is a gate that gets ignored, and an ignored gate is
+   > > indistinguishable from an absent one.** Obligation 1's *"runs in CI"* is still **false**
+   > > (card #7929): none of the four verifiers is wired into a workflow or a hook.
+   > >
+   > > What the re-capture found is recorded where each fact lives; the summary is that **no key
+   > > name, no enum member and no firing condition this document states moved** across those five
+   > > builds. What did move is the **subagent-dispatch call lifecycle**, and it moved *back* — see
+   > > [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call).
 
 > **`SELFTEST-MUST` — the drift guard survives into the code, or it does not exist.**
 > `fleet-reporter.js selftest` MUST include a check named `harness_payload_keys` that, for **every**
@@ -817,19 +861,19 @@ reference, the measurement wins and the row says so.
 | `PostToolUseFailure` carries `error` (string) and `is_interrupt` (bool) | `error`, `is_interrupt` | **MEASURED** — `{"error":"Exit code 3","is_interrupt":false}`. `is_interrupt` is the harness's own kill-vs-fail discriminator and [§ 6.6](#66-toolend) uses it |
 | `PostToolUse` / `PostToolUseFailure` carry the harness's own `duration_ms` | `duration_ms` | **MEASURED** — 251 ms, 260 ms, 18 ms. Documented as excluding permission-prompt and hook time; [§ 6.6](#66-toolend) prefers it to the reporter's own clock difference |
 | `SessionEnd` exists, with `reason` ∈ `clear` \| `resume` \| `logout` \| `prompt_input_exit` \| `other` | **`reason`** | **MEASURED** — `"reason":"clear"` and `"reason":"other"` captured. The key is `reason`. The full value set is **DOCS-CITED** from the installed binary's own enum declaration, read 2026-08-23 |
-| `SessionStart.source` ∈ `startup` \| `resume` \| `clear` \| `compact` \| `fork` | **`source`** | **MEASURED** — `startup`, `resume` and `clear` captured verbatim; the key is `source`. `compact` and `fork` are **DOCS-CITED** from the binary's enum declaration. *A review round asserted this key is `session_start_reason`; that string does not occur anywhere in the installed 2.1.240 binary, and the three captures carry `source`. The measurement wins* |
+| `SessionStart.source` ∈ `startup` \| `resume` \| `clear` \| `compact` \| `fork` | **`source`** | **MEASURED** — `startup`, `resume`, `clear` **and `compact`** captured verbatim; the key is `source`. Only `fork` is still **DOCS-CITED** from the binary's enum declaration. *(`compact` was DOCS-CITED until the 2.1.247 re-capture drove `/compact` on a resumed session and the harness fired `SessionStart(source: "compact")` under the **same** `session_id` — closure act discharged. That payload also carries `model` and `prompt_id`, which no earlier capture had seen on a `SessionStart`; both are keys the binary's own `SessionStart` schema declares, so this is a path never driven, not a key that appeared.)* A review round asserted this key is `session_start_reason`; that string does not occur anywhere in the installed binary, and every capture carries `source`. The measurement wins |
 | `SessionStart` carries **no** predecessor-session key | `previous_session_id` — **does not exist** | **MEASURED** — the `source == "clear"` capture's complete key set is `{cwd, hook_event_name, session_id, source, transcript_path}`. The binary contains `previous_session_id` only in an internal analytics event, never in a hook payload. [§ 6.1](#61-sessionstart) and [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) are designed against this, not around it |
 | A `/clear` fires **both** `SessionEnd(reason=clear)` on the outgoing session **and** `SessionStart(source=clear)` under a **new** `session_id` | — | **MEASURED** — `SessionEnd(clear)` on `d867abf5…` at `T`, `SessionStart(clear)` on `d8f4ac95…` at `T+144 ms`. `SessionEnd` first, by 144 ms, in the one ordering captured |
 | A `resume` **keeps** the same `session_id`; a `/clear` **changes** it | — | **MEASURED** — resume fired `SessionStart(source=resume)` under the identical id |
-| `PreCompact.trigger` ∈ `manual` \| `auto`; `PostCompact` exists with the same key | **`trigger`** | `trigger` and `"manual"` **MEASURED**; `"auto"` and `PostCompact` **DOCS-CITED** (binary enum declaration, 2026-08-23) — neither is drivable on a scratch session. `PreCompact` also carries `custom_instructions` (nullable), which **never transits** ([§ 6.9](#69-compactionstart)) |
-| `PostCompact` carries `compact_summary` — the whole conversation summary | `compact_summary` | **DOCS-CITED** (binary payload schema, 2026-08-23). It is model-authored prose about the session and is **never read and never transits** ([§ 6.10](#610-compactionend)) — naming it here is what stops a later editor treating it as a free descriptor source |
+| `PreCompact.trigger` ∈ `manual` \| `auto`; `PostCompact` exists with the same key | **`trigger`** | `trigger`, `"manual"` **and `PostCompact` itself** are **MEASURED**; only `"auto"` remains **DOCS-CITED** (binary enum declaration, re-read 2026-08-27) — an automatic compaction is not drivable on a scratch session. `PreCompact` also carries `custom_instructions` (nullable), which **never transits** ([§ 6.9](#69-compactionstart)) |
+| `PostCompact` carries `compact_summary` — the whole conversation summary | `compact_summary` | **MEASURED at 2.1.247** — was DOCS-CITED and *"not drivable"*; the 2026-08-27 re-capture drove it by resuming a session that already had history and issuing `/compact`, and the real payload's key set is exactly the one the stub declared, plus `prompt_id`. The value is model-authored prose about the session and is **never read and never transits** ([§ 6.10](#610-compactionend)) — naming it here is what stops a later editor treating it as a free descriptor source |
 | `agent_id` and `agent_type` are common fields **present only inside a subagent**; `SubagentStart` exists | `agent_id`, `agent_type` | **MEASURED** — the subagent's own `PreToolUse`/`PostToolUse` carried `agent_id`; the main agent's did not. `agent_id` is a 17-hex-character opaque string on this build (**not** the `subagent_xyz789` shape the reference example shows) — [§ 3.2](#32-session-identity)'s opacity rule is why that costs nothing |
 | `SubagentStop` carries `agent_id` **and** `agent_type` | `agent_id` | **MEASURED** — settles what an earlier draft parked as unverified. It also carries `agent_transcript_path`, `last_assistant_message`, `stop_hook_active`, `background_tasks`, `session_crons`, and **no error indicator of any kind** — which is the stated reason [§ 6.6](#66-toolend) reports `completed` |
 | `SubagentStart` / `SubagentStop` carry **no** reference to the parent tool call | `tool_use_id` / `parent_tool_use_id` — **do not exist** | **MEASURED** — `SubagentStart`'s complete key set is `{session_id, transcript_path, cwd, prompt_id, agent_id, agent_type, hook_event_name}`. [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) is built on that, and no longer carries a binding rule that cannot execute |
 | **`Stop` does not fire inside a subagent** — a subagent's completion fires `SubagentStop` only | — | **MEASURED** — a turn that dispatched one subagent produced exactly one `Stop`, after the subagent's `SubagentStop` and after the dispatching call's `PostToolUse`. *(At 2.1.245 the fact holds and that ORDERING does not: the `Stop` fires while the subagent is still running, before its `SubagentStop` — the background-task row above. The fact and its evidence sentence are separated here because only the second moved.)* This was the document's highest-cost unverified fact: if `Stop` *had* fired per subagent, [§ 8.3](#83-the-reap-rules)'s reap would have aborted the parent's own in-flight calls and [§ 6.4](#64-turnend) would have minted a false idle per subagent. [§ 8.3](#83-the-reap-rules) is still `agent_id`-scoped, because the scoping is free and fails safe if this ever changes |
 | The subagent-dispatch tool's `tool_name` is **`"Agent"`** on this build | `tool_name` | **MEASURED** — `{"tool_name":"Agent","tool_input":{"description":…,"prompt":…}}`. The model-facing name is `Task`; the *hook payload* says `Agent`. [§ 6.7](#67-subagentspawn) matches the set `{"Agent","Task"}` and counts which fired, because a design keyed on `"Task"` alone would emit no `subagent.spawn` on this build at all |
 | `Stop` carries `stop_hook_active` (bool), `last_assistant_message`, `background_tasks`, `session_crons` | `stop_hook_active` | **MEASURED** — `false` on the reproduced `Stop` capture and on every `Stop` of the capture run; settles what an earlier draft parked as unverified. `background_tasks` was DOCS-CITED and is now **MEASURED at 2.1.245** (card #7337): a `Stop` fired while a dispatched subagent ran carried `[{id, type: "subagent", status: "running", description, agent_type}]`, so the field does distinguish "session is done" from "paused waiting on background work" — [§ 6.4](#64-turnend) reads its **length** and is where the idle rule that consumes it lives |
-| A dispatched subagent runs as a **background task**: the dispatch call's own `PostToolUse` fires **4–45 ms after `SubagentStart`** and closes it `completed`, while the subagent runs on and its `SubagentStop` arrives **8.2 s and 18.9 s later** (2 observations; a third run's session ended before it fired), matching nothing | `background_tasks`, `tool_use_id` | **MEASURED at 2.1.245** (card #7337, 3 of 3 dispatch runs; `subagent_stop_unmatched` and `agent_bind_unresolved` counted it on the seat). **This contradicts the 2.1.240 measurement in [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)** that `SubagentStop` arrives first and is usually the hook that closes the dispatch call. Consequences: [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s two-open-calls trace does not reproduce, `parent_call_id` is `null` on every subagent-scoped call, and the parent's turn ends clean while the subagent works — [§ 6.4](#64-turnend)'s amendment. **No capture is committed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s declined-capture ruling stands); the rig that reproduces it is `tools/at1-kill-vs-complete/` |
+| A dispatched subagent runs as a **background task**: the dispatch call's own `PostToolUse` fires **4–45 ms after `SubagentStart`** and closes it `completed`, while the subagent runs on and its `SubagentStop` arrives **8.2 s and 18.9 s later** (2 observations; a third run's session ended before it fired), matching nothing | `background_tasks`, `tool_use_id` | **MEASURED at 2.1.245** (card #7337, 3 of 3 dispatch runs; `subagent_stop_unmatched` and `agent_bind_unresolved` counted it on the seat). **This contradicts the 2.1.240 measurement in [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)** that `SubagentStop` arrives first and is usually the hook that closes the dispatch call. Consequences: [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s two-open-calls trace does not reproduce, `parent_call_id` is `null` on every subagent-scoped call, and the parent's turn ends clean while the subagent works — [§ 6.4](#64-turnend)'s amendment. **No capture is committed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s declined-capture ruling stands); the rig that reproduces it is `tools/at1-kill-vs-complete/`. ⚠ **CONTESTED at 2.1.247 (card #7930, 3 of 3 headless dispatch runs):** the dispatch call's `PostToolUse` fires **45–72 ms AFTER `SubagentStop`**, carrying `duration_ms` equal to the subagent's whole run (3300, 3811, 4957 ms), and `background_tasks` is `[]` on both `SubagentStop` and `Stop` — which is the **2.1.240** behaviour, not this row's. **Whether that is a version revert or a MODE difference is NOT established, and the two runs differ in both:** this row was measured through a real TUI (`tools/at1-kill-vs-complete/drive.py` types `/clear` into a live session), and both the 2.1.240 capture and the 2.1.247 re-capture were headless `claude -p`. So this row is stated build-scoped on evidence that may be mode-scoped, and settling it would need the TUI rig re-run at 2.1.247 — the one measurement that varies version alone. **DECLINED by pm on 2026-08-27, and this row is therefore finished rather than open:** [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call) already requires **both** lifecycles to be handled and [AT-1](#at-1-kill-vs-complete-the-headline-test) carries one GREEN case for each, so nothing depends on the answer — settling it would buy only the right to delete a trace this document must keep anyway. **Nothing here has been edited to prefer one reading over the other** |
 | A tool call killed by a `/clear` fires **`PostToolUseFailure`** carrying `error: "Exit code 137"`, `is_interrupt: false`, under the **new** `session_id`, 369 ms and 375 ms after `SessionEnd(reason: "clear")` | `error`, `is_interrupt` | **MEASURED at 2.1.245** (card #7337, 2 of 2 subagent-kill runs). [§ 8.1](#81-the-problem-restated) said no such hook fires; [§ 6.6](#66-toolend)'s kill signature and [§ 8.6](#86-server-side-interpretation-of-open-call-state)'s override exclusion are what this fact costs. Whether it differs from 2.1.240 is **not established** — the upstream capture was not re-read |
 | **`StopFailure`** fires instead of `Stop` when a turn ends on an API error, with `error` ∈ `rate_limit` \| `overloaded` \| `server_error` \| `authentication_failed` \| `billing_error` \| `invalid_request` \| `model_not_found` \| `max_output_tokens` \| `oauth_org_not_allowed` \| `account_on_hold` \| `unknown` | `error`, `error_details` | **DOCS-CITED** (binary enum declaration + reference, 2026-08-23). **Not drivable** — driving it means provoking a real rate-limit or outage. Cost if the shape is wrong: `turn.end` is still emitted from the reap path with `end_reason: "api_error"` and a null `api_error_type`, so *stalled* stays reachable and only the sub-classification is lost. Closed by the first real rate-limited turn on an instrumented seat, which `enum_value_unknown.turn.end.api_error_type` will announce. The eleven values are the harness's; [§ 6.4](#64-turnend) adds a twelfth, `unrecognised`, as the coercion target, because this set's own `unknown` is a real harness member and the two must not collide ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) |
 | `Notification` carries `notification_type` (string), `message` (string) and `title` (optional) | `notification_type` | **DOCS-CITED** (binary payload schema, 2026-08-23) — **not drivable headlessly**; a notification needs an interactive surface. Note two things the schema settles: a `message` field **does** exist, and `notification_type` is typed as a plain **string**, not a closed enum — so the wire contract is an **open set**: [§ 6.12](#612-attentionrequest) emits nothing for a type it does not recognise and counts it as `enum_value_unknown.notification_type`, rather than coercing it onto a wire value, because the suppression happens before rule 4 could reach it. There is **no** `notification_metadata` object on this build, so a notification cannot name a tool call |
@@ -1022,7 +1066,7 @@ limits sit 46× above it.
 ### 6.1 `session.start`
 
 **Trigger:** the `SessionStart` hook, unconditionally. The payload key is **`source`** and the value
-set is MEASURED at 2.1.240 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). When
+set is MEASURED at 2.1.247 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). When
 `source == "clear"` the hook runs the second `/clear` reap
 ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) before emitting, so any calls the clear
 killed are already closed as aborted and appear *earlier* in the spool. A `/clear` also fires
@@ -1099,7 +1143,7 @@ to the payload-reading rules.
 ### 6.2 `session.end`
 
 **Trigger:** the `SessionEnd` hook — an **observation**, not an inference. The payload key is
-**`reason`** (MEASURED at 2.1.240, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read));
+**`reason`** (MEASURED at 2.1.247, [§ 6.0](#60-conventions-and-how-harness-payloads-are-read));
 `end_reason` is that value passed through, coerced to `other` if it is one this reporter does not
 know ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4).
 
@@ -1348,7 +1392,7 @@ inferred.
 ### 6.5 `tool.start`
 
 **Trigger:** the `PreToolUse` hook, for every tool without exception — including the subagent-dispatch
-tool (`Agent` at 2.1.240, [§ 6.7](#67-subagentspawn)), which *also* produces a `subagent.spawn`
+tool (`Agent` at 2.1.247, [§ 6.7](#67-subagentspawn)), which *also* produces a `subagent.spawn`
 sharing the same `call_id`.
 
 | `data` field | Type | Units | Null? | Bounds | Example |
@@ -1381,7 +1425,7 @@ schema-drift guard.)
 
 **`agent_scope` is labelled from the harness's own `agent_id` field, and from nothing else.**
 `agent_id` and `agent_type` are common input fields present **only** inside a subagent — MEASURED at
-2.1.240 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)): in the captured dispatch the
+2.1.247 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)): in the captured dispatch the
 subagent's own `PreToolUse` and `PostToolUse` carried `agent_id`, and the main agent's carried
 neither. A hook invocation carrying `agent_id` is running in a subagent, one without it is running in
 the main agent.
@@ -1465,7 +1509,7 @@ gate — the event is emitted identically whether the ref is present or absent; 
 
 **`is_interrupt` is the harness's own kill-vs-fail discriminator, and this design reads it — but it
 is not sufficient, and the prose that said so was doing no work.** `PostToolUseFailure` carries
-`{error, is_interrupt, duration_ms}` — MEASURED at 2.1.240
+`{error, is_interrupt, duration_ms}` — MEASURED at 2.1.247
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). An interrupted call did not *fail*; it
 stopped existing, which is [§ 8.1](#81-the-problem-restated)'s subject exactly, so it maps to
 `aborted` with `abort_reason: "interrupted"` and **does** block *idle* under `D2-MUST` #1, while an
@@ -1483,7 +1527,7 @@ in place of a rule; the kill signature above is the rule. The reap remains the b
 when the reap gets there first.
 
 **A call refused by the permission layer closes on the reap, and that is correct, not a lost close.**
-MEASURED at 2.1.240: a `Write` blocked by permissions fired `PreToolUse` and then **no close hook of
+MEASURED at 2.1.247: a `Write` blocked by permissions fired `PreToolUse` and then **no close hook of
 any kind** — no `PostToolUse`, no `PostToolUseFailure`, no `PermissionDenied`
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Its ledger entry therefore survives to
 the turn reap **of the scope it was opened in** and closes `aborted` / `turn_boundary`: the `Stop`
@@ -1495,7 +1539,7 @@ That is the honest outcome — the call never ran — and it is named here so an
 the missing close as a defect and "fix" it by inferring a completion.
 
 The `SubagentStop` row reports `completed` for a stated reason rather than an unknown one: its
-payload is MEASURED at 2.1.240 and carries `agent_id`, `agent_type`, `agent_transcript_path`,
+payload is MEASURED at 2.1.247 and carries `agent_id`, `agent_type`, `agent_transcript_path`,
 `last_assistant_message`, `stop_hook_active`, `background_tasks` and `session_crons` — and **no error
 indicator of any kind**. So the hook genuinely cannot distinguish a subagent that succeeded from one
 that failed, and reporting the transition it *does* observe is the only honest option.
@@ -1530,8 +1574,10 @@ which stays UNVERIFIED in [§ 6.0](#60-conventions-and-how-harness-payloads-are-
 because nothing reads it.
 
 **`duration_ms` prefers the harness's own measurement to the reporter's clock arithmetic.**
-`PostToolUse` and `PostToolUseFailure` both carry `duration_ms` (MEASURED at 2.1.240: 251 ms, 260 ms,
-18 ms), documented as the tool's execution time excluding permission-prompt and hook time. That is a
+`PostToolUse` and `PostToolUseFailure` both carry `duration_ms` (MEASURED at 2.1.247: 179 ms and 166 ms on
+succeeding `Bash` calls, 167 ms on a `Bash` exiting 3, 4 ms on a `Read` of a missing path, and
+3811 ms on a subagent dispatch that stayed open for the subagent's whole run), documented as the
+tool's execution time excluding permission-prompt and hook time. That is a
 strictly better number than end-wall-clock minus start-wall-clock across two processes, and it is
 immune to the NTP step below. `duration_source` says which was used, so the two are never conflated
 in an aggregate. Where the reporter must compute it — a reap, a `SubagentStop` close, a harness build
@@ -1570,7 +1616,7 @@ is too eager was structurally incapable of reporting it.
 after** that call's `tool.start`, sharing its `call_id`.
 
 **The dispatch tool's payload `tool_name` is `"Agent"` on this build, not `"Task"` — MEASURED at
-2.1.240** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). The captured dispatch is
+2.1.247** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). The captured dispatch is
 `{"tool_name":"Agent","tool_input":{"description":"…","prompt":"…"}}`. `Task` is the *model-facing*
 name; the hook payload carries `Agent`. A design matching `"Task"` alone would emit **no**
 `subagent.spawn` on any seat running this build, bind no `agent_id`
@@ -1613,7 +1659,7 @@ the join key. Cost: ~120 bytes on an event class that fires tens of times a day.
 reap, or from the `SubagentStop` hook ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)).
 Emitted immediately after that call's `tool.end`, sharing the `call_id`.
 
-**Observed ordering at 2.1.240 (MEASURED).** For one dispatch the harness fired, in order:
+**Observed ordering at 2.1.247 (MEASURED).** For one dispatch the harness fired, in order:
 `PreToolUse(Agent)` → `SubagentStart` → the subagent's own `PreToolUse`/`PostToolUse` →
 `SubagentStop` → `PostToolUse(Agent)` → `Stop`. So `SubagentStop` arrives **before** the dispatch
 call's own `PostToolUse`, and it is `SubagentStop` that normally closes the call while `PostToolUse`
@@ -1647,7 +1693,7 @@ not a gap to paper over with a second copy that could disagree with the first.
 
 ### 6.9 `compaction.start`
 
-**Trigger:** the `PreCompact` hook. The payload key is **`trigger`** (MEASURED at 2.1.240 —
+**Trigger:** the `PreCompact` hook. The payload key is **`trigger`** (MEASURED at 2.1.247 —
 `"trigger":"manual"` captured; `"auto"` is DOCS-CITED from the installed build's enum declaration,
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)).
 
@@ -2600,7 +2646,7 @@ alone, and the scope key is the call's own scope — never the child it spawned.
 the **same `session_id` as its parent** — that is why the harness adds a separate `agent_id`, and why
 [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) builds the whole subagent binding on it —
 so `session_id` alone does not separate the two units whose lifecycles must not cross. It is MEASURED
-at 2.1.240 that `Stop` does **not** fire inside a subagent
+at 2.1.247 that `Stop` does **not** fire inside a subagent
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)): a turn dispatching one subagent produced
 exactly one `Stop`. The scoping is kept anyway, because it costs one map key and it fails safe if that
 ever changes. Were `Stop` to start firing per subagent against a `session_id`-only reap, every
@@ -2649,10 +2695,10 @@ observation and abort is an inference, so an observation always overrides.**
 
 ### 8.4 Detecting a `/clear` with two independent signals
 
-A `/clear` announces itself twice, and the measurement says exactly how. **MEASURED at 2.1.240**
+A `/clear` announces itself twice, and the measurement says exactly how. **MEASURED at 2.1.247**
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)): a `/clear` fired
 `SessionEnd(reason: "clear")` on the outgoing session `d867abf5…`, then
-`SessionStart(source: "clear")` under a **new** `session_id` `d8f4ac95…`, **144 ms later**. Three
+`SessionStart(source: "clear")` under a **new** `session_id` `d8f4ac95…`, **111 ms later**. Three
 facts fall out of that trace, and the design rests on them rather than on an assumption about hook
 order:
 
@@ -2708,7 +2754,7 @@ it.
 ### 8.5 Subagent identity — binding `agent_id` to a call
 
 `agent_id` and `agent_type` are common input fields present **only inside a subagent**, and
-`SubagentStart` and `SubagentStop` both carry `agent_id` — all MEASURED at 2.1.240
+`SubagentStart` and `SubagentStop` both carry `agent_id` — all MEASURED at 2.1.247
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). That is the join the subagent lifecycle
 is built on.
 
@@ -2723,7 +2769,7 @@ choosing by the first of these that applies:
 | no `SubagentStart` payload at all (the hook did not fire, or carried no `agent_id`) | none | `payload_key_missing.agent_id` |
 
 **There is no exact-reference binding row, because the payload carries no reference to bind on.**
-`SubagentStart`'s complete key set at 2.1.240 is
+`SubagentStart`'s complete key set at 2.1.247 is
 `{session_id, transcript_path, cwd, prompt_id, agent_id, agent_type, hook_event_name}` — no
 `tool_use_id`, no `parent_tool_use_id` (MEASURED). An earlier draft led this table with an exact-match
 row keyed on those two fields and marked its reachability "unverified"; it is not unverified, it is
@@ -2768,7 +2814,40 @@ closed the call; **at 2.1.245 the dispatch call's `PostToolUse` arrives first, 4
 `SubagentStart`, and `SubagentStop` follows 8–19 s later finding nothing to close** (MEASURED,
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read), card #7337), which is what
 `subagent_stop_unmatched` counts. Whichever is second finds the call already closed and emits
-nothing. **What the 2.1.245 ordering costs is not in this section but in two others**, because it
+nothing.
+
+> ⚠ **The 2.1.247 re-capture found the 2.1.240 ordering again, and this is the one harness
+> observation card #7930 could not close.** Three of three headless dispatch runs at **2.1.247**
+> fired `SubagentStart` → the subagent's own `PreToolUse`/`PostToolUse` → `SubagentStop` → the
+> dispatch call's `PostToolUse` (45, 46 and 72 ms after `SubagentStop`, `duration_ms` 3300–4957 ms
+> — the subagent's whole run) → one `Stop`, with `background_tasks` empty on every `SubagentStop`
+> and every `Stop`. **That is this paragraph's 2.1.240 sentence, not its 2.1.245 one.**
+>
+> **It does not establish a revert, because it does not vary version alone.** The 2.1.245
+> measurement was taken through a **real TUI** (`tools/at1-kill-vs-complete/drive.py`); the 2.1.240
+> capture and this one were **headless `claude -p`**. Version and mode moved together, so
+> *"2.1.245 changed the lifecycle"* and *"the TUI and `-p` have always differed here"* both fit
+> every measurement this document holds. **The discriminating run is the TUI rig at 2.1.247**, and
+> it is not run here — it needs a real interactive session and a credential the rig deliberately
+> will not fetch.
+>
+> **Nothing in this document has been re-decided on the strength of the headless run.** The design
+> above already does not depend on which signal arrives first, which is why this is a recorded
+> observation rather than an edit: [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s
+> warning and [AT-1](#at-1-kill-vs-complete-the-headline-test)'s GREEN cases are left exactly as
+> card #7337 left them.
+>
+> ⛔ **pm DECLINED the discriminating run on 2026-08-27 (card #7930), and the decline is the
+> disposition — not a deferral.** § 8.7 already states that **both** lifecycles must be handled and
+> keeps the 2.1.240 trace deliberately, with AT-1 carrying a GREEN case for each; the design is
+> order-independent by construction. **Settling the fork would buy the right to delete one trace,
+> which this document must not do anyway**, at the cost of a real interactive session and a
+> credential the rig deliberately will not fetch. Recording both readings IS the finished state of
+> this question. What the fork did change is [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
+> obligation 2, which now names **MODE** alongside VERSION — so a future re-capture records which
+> mode a fact came from instead of re-opening this row at every build.
+
+**What the 2.1.245 ordering costs is not in this section but in two others**, because it
 inverts which signal is load-bearing: every hook firing inside the subagent now runs *after* its
 dispatch call left the index, so `parent_call_id` is `null` and `agent_bind_unresolved` counts it
 (below), and the parent's turn ends while the subagent works ([§ 6.4](#64-turnend)). Using an unidentifiable signal to
@@ -2853,7 +2932,8 @@ active milliseconds earlier — reaps its calls with the identical `abort_reason
 emits events 4–8 itself, and the later `SessionEnd` is the one that finds nothing and counts
 `reap_noop_second_signal`. The wire is the same either way; that is what "two independent signals,
 either suffices" buys, and AT-1 accepts both orders while asserting that exactly one reap happened.
-*(The order MEASURED at 2.1.240 is the one traced above — `SessionEnd` 144 ms before `SessionStart` —
+*(The order MEASURED at 2.1.247 is the one traced above — `SessionEnd` 111 ms before `SessionStart`,
+and 144 ms at 2.1.240 —
 but one capture is not a guarantee, so both paths are specified and both are tested.)*
 
 The server sees two aborted calls and a `turn.end` that fails `D2-MUST` #1, so **no idle transition is
@@ -2937,7 +3017,7 @@ statusLine processes reach the flusher through the counter sink
 | `value_clamped.<wire field>` | a numeric value or array exceeded its stated bound and was clamped ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5) | `degraded` — a clamp means the reporter's own arithmetic left its declared range |
 | `data_truncated.<wire field>` | an object exceeded its stated serialized cap and was reduced by that field's stated rule | `degraded`, member `counters_omitted`. `reporter.heartbeat.counters` is the **only** field in [§ 6](#6-event-kinds) whose table states a reduction rule, so `data_truncated.reporter.heartbeat.counters` is this family's only instance that can fire today and the count rides the event as `counters_omitted`. **That is a derived fact, not an omission:** the wire's two other capped objects, `reporter.heartbeat.predicates` and `reporter.heartbeat.selftest`, are exempt from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's obligation by the arithmetic in [§ 6.14](#614-reporterheartbeat) — each carries one member per declared table row and cannot reach its cap — so they state no rule because they owe none. A field that is genuinely truncatable owes *both* a stated reduction rule and a member below — a rule-4 change, not a free addition |
 | `notification_not_attention.<type>` | a `Notification` whose `notification_type` is not an attention type, so no `attention.request` was emitted ([§ 6.12](#612-attentionrequest)) | informational, and the record that the one emission gate in the design is never silent. Also the measurement of which types a real fleet produces |
-| `dispatch_tool_name.<name>` | which `tool_name` the subagent-dispatch hook actually carried — `Agent` at 2.1.240 ([§ 6.7](#67-subagentspawn)) | informational; a change in the distribution means the harness renamed the tool and this document owes an edit |
+| `dispatch_tool_name.<name>` | which `tool_name` the subagent-dispatch hook actually carried — `Agent` at 2.1.247 ([§ 6.7](#67-subagentspawn)) | informational; a change in the distribution means the harness renamed the tool and this document owes an edit |
 | `payload_key_missing.is_interrupt` | `PostToolUseFailure` arrived without `is_interrupt`, so the close defaulted to `failed` ([§ 6.6](#66-toolend)) | `degraded`; an interrupted call would be mislabelled as a failure while this is non-zero |
 | `index_fold_truncated` | the index journal tail exceeded 8 MiB and history was skipped | `degraded` |
 | `flusher_lost_ownership` | a flusher found `state.json` owned by another and exited | informational; > 1/day means the lock is being lost, not just raced |
@@ -2947,7 +3027,7 @@ statusLine processes reach the flusher through the counter sink
 | `agent_bind_ambiguous` / `agent_bind_unresolved` | two unbound dispatch calls at `SubagentStart`; a subagent hook whose parent could not be resolved | informational; `parent_call_id` is `null` for those events. `agent_bind_ambiguous` is the trigger to revisit [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) with a real parallel-dispatch capture |
 | `attention_request_duplicate` | a second attention request while one was open | informational; also the measurement of whether `PermissionRequest` and `Notification` overlap |
 | `context_sample_stale` | a compaction event found no statusLine sample newer than 300 s | informational; > 0 on every seat without the statusLine integration installed |
-| `clear_second_signal_found_nothing` | a `SessionStart(source=clear)` whose index held no other open session to reap ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and **expected on every `/clear` where `SessionEnd` ran first** — which at 2.1.240 is every one measured. It is `reap_noop_second_signal` seen from the selection side, and the two disagreeing means the second signal selected the *wrong* session |
+| `clear_second_signal_found_nothing` | a `SessionStart(source=clear)` whose index held no other open session to reap ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and **expected on every `/clear` where `SessionEnd` ran first** — which at 2.1.247 is every one measured. It is `reap_noop_second_signal` seen from the selection side, and the two disagreeing means the second signal selected the *wrong* session |
 | `reap_noop_second_signal` | the second `/clear` signal found nothing to reap | informational, and **expected on every `/clear`** — a zero here on a seat that has cleared is the alarm ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) |
 | `tombstone_late_close` | a close matched a tombstone — the reap was too eager for that call | informational; the reporter-side half of `late_completion` |
 | `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in — the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
@@ -4359,7 +4439,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Context-sample staleness bound | 300 s | **Chosen** — a tolerance, not a freshness guarantee: statusLine is event-driven with no timer, so nothing guarantees a fresh sample and the earlier "5× the 60 s cadence" derivation was arithmetic over a rate that does not exist. Past 300 s `compaction.start` reports `null` rather than a stale percentage | [§ 6.9](#69-compactionstart) |
 | Bucket-deletion grace | 5 s | Derived — 20× P-5's 250 ms hook budget; covers a writer descheduled between deriving its bucket name and its `writeSync`, which is what the hour-roll straddle actually is | [§ 11.1](#111-layout) |
 | Open-session index | 16 open sessions | Chosen — far above the two or three terminals a real seat runs, so reaching it is itself the signal; **enforced** by eviction-and-reap, which is what makes `open_sessions`' 0…16 bound real rather than asserted | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
-| Harness build the MEASURED facts are pinned to | Claude Code **2.1.240** | **Measured** — 56 payloads across 10 hook events captured 2026-08-23, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **16** distinct shapes every MEASURED row is read from. The 16 is re-derived from the appendix by the verifier; the 56 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build, and a harness minor bump re-runs the capture | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
+| Harness build the MEASURED facts are pinned to | Claude Code **2.1.247** | **Measured** — 63 payloads across 11 hook events captured 2026-08-27, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **18** distinct shapes every MEASURED row is read from. The 18 is re-derived from the appendix by the verifier; the 63 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build; [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 owns **when a re-capture is owed and on which axes** (amended by card #7337, gained its MODE axis and its measured cost at the 2.1.247 discharge, card #7930) and is not restated here | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | `reporter.heartbeat.degraded` length | 12 elements | **Derived** — not chosen: the array carries at most one of each declared member, so its bound *is* the size of [§ 9.3](#93-degradation-counters)'s member table and moves only when that table moves | [§ 9.3](#93-degradation-counters) |
 | `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.predicates` cap | 512 B; worst case **396 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 5×(21 + 32) + 125 + 4`, both branch counts at the 16-digit JS-safe-integer ceiling. 116 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
@@ -4501,11 +4581,33 @@ Three of these are hard requirements before anything downstream may treat this t
 **AT-21**, because a schema this document transcribed from another product is only as good as the
 check that reds when it moves — and this document has already shipped that transcription wrong twice.
 
-**A re-capture is part of a harness upgrade, not a follow-up to one.** When a seat moves to a new
-Claude Code minor version, re-run the capture rig, diff the fixtures, re-mark
-[§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s table, and land all of it in one change.
+**A re-capture is part of a harness upgrade, not a follow-up to one.**
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 **owns the trigger and its
+axes — VERSION and MODE — and this paragraph deliberately does not restate them**: re-run the
+capture rig, diff the fixtures, re-mark that table, and land all of it in one change.
+*(Until 2026-08-27 this sentence carried its own copy of the trigger, still saying "minor version"
+a card #7337 amendment had already replaced — the restatement-drift shape the obligation is itself
+about. It now points instead of restating, which is the only version of this sentence that cannot
+go stale.)*
 `harness_label` on every `session.start` ([§ 6.1](#61-sessionstart)) is how the fleet is queried for
 seats that have moved off the measured build.
+
+**What would make the next re-capture cheap, since its real cost is now measured and recorded in
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2.** Two levers, both filed
+rather than built, and neither is a change to any fact:
+
+1. **Collapse the ~20 per-fact version restatements.** A mark that already points at
+   [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) does not also need the number:
+   let **MEASURED** mean *the build § 6.0 declares*, and reserve **MEASURED at X** for a fact
+   measured against a *different* build. The fact table in
+   [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) already reads that way. This is the
+   single biggest lever — it turns a ~25-site edit into a 5-site one.
+2. **Guard [§ 17](#17-appendix--the-captured-harness-payloads) against
+   `fleet-reporter/fixtures/hooks/`.** The reporter vendors this appendix *verbatim*, so the two can
+   diverge with every check still green — which they did, under the hands of the very change that
+   discharged the 2.1.247 re-capture. A restatement a program loads inline cannot be fixed by a
+   pointer; it needs a check that reds when the copies differ, and
+   `tools/design/verify-harness-facts.py` already parses both sides.
 
 ---
 
@@ -4519,22 +4621,30 @@ reporter against it. The reporter vendors them as `fixtures/hooks/<HookEventName
 
 | | |
 |---|---|
-| Harness | **Claude Code 2.1.240** (`claude --version`) |
+| Harness | **Claude Code 2.1.247** (`claude --version`) |
 | Platform | Linux |
-| Captured | **2026-08-23** |
-| Volume | **56 payloads across 10 hook events** captured; **16 reproduced below**, one per distinct payload shape, across those same **10** hooks. The 16 and the 10 are re-derived from this appendix by `tools/design/verify-harness-facts.py` on every run and asserted against these numbers; the **56** is provenance for the capture run and is *not* checkable from this repo — see the note under [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s fact table |
-| Method | a project-local `.claude/settings.json` wiring each subscribed hook to a command that appends its raw stdin to a capture file, plus a `statusLine` entry doing the same; sessions then driven headlessly with `claude -p` |
+| Captured | **2026-08-27** (re-capture; the first capture was 2026-08-23 at 2.1.240) |
+| Volume | **63 payloads across 11 hook events** captured; **18 reproduced below**, one per distinct payload shape, across those same **11** hooks. The 18 and the 11 are re-derived from this appendix by `tools/design/verify-harness-facts.py` on every run and asserted against these numbers; the **63** is provenance for the capture run and is *not* checkable from this repo — see the note under [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s fact table |
+| Method | a settings file wiring each subscribed hook to a command that appends its raw stdin to a capture file, passed to the session with `--settings <file>`; sessions then driven headlessly with `claude -p`. **Scope the rig to the run, never to the user.** Editing `~/.claude/settings.json` to capture wires those hooks into *every* session on the machine, including other agents' live ones; `--settings` (or a project-local file under a scratch `cwd`) confines it to the sessions the capture starts. The 2026-08-27 re-capture used `--settings` for exactly that reason |
 
-**What was driven, and what could not be.** Driven: `SessionStart` at `startup`, `resume` and
-`clear`; `UserPromptSubmit`; `PreToolUse`/`PostToolUse` in the main agent and inside a subagent;
-`PostToolUseFailure` twice (a `Bash` exiting 3, and a `Read` of a missing path); `SubagentStart` and
-`SubagentStop` via a real dispatch; `Stop`; `SessionEnd` at `clear` and `other`; `PreCompact` at
+**What was driven, and what could not be.** Driven: `SessionStart` at `startup`, `resume`, `clear`
+**and `compact`**; `UserPromptSubmit`; `PreToolUse`/`PostToolUse` in the main agent and inside a
+subagent; `PostToolUseFailure` twice (a `Bash` exiting 3, and a `Read` of a missing path);
+`SubagentStart` and `SubagentStop` via a real dispatch, three times; `Stop`; a `Write` refused by the
+permission layer; `SessionEnd` at `clear` and `other`; `PreCompact` **and `PostCompact`** at
 `manual`. **Not drivable on this seat, and DOCS-CITED instead:** `StopFailure` (needs a real API
 error), `Notification`, `PermissionRequest` and `PermissionDenied` (need an interactive surface —
-`claude -p` cannot show a prompt), `PostCompact` (the scratch session had too little history to
-compact), and the **statusLine payload** (`-p` renders no status line). Each of those carries its
+`claude -p` cannot show a prompt), and the **statusLine payload** (`-p` renders no status line).
+Each of those carries its
 cost-if-wrong and its closure act in [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s
 table; none is silently absent.
+
+> **`PostCompact` moved from stub to capture, and the reason it was a stub was the driving, not the
+> harness.** The 2026-08-23 note said *"the scratch session had too little history to compact"*.
+> Resuming a session that already had a tool call in it and issuing `/compact` drives it in one
+> command: `claude -p --resume <session_id> "/compact"`. The real payload's key set is **exactly**
+> the one the stub declared from the binary's schema, plus `prompt_id` — so the stub was right, and
+> it is now a measurement instead of a citation. Four stubs remain.
 
 **Sanitization applied to this appendix only.** Session ids, prompt ids, tool-use ids and agent ids
 are replaced with stable placeholders of the **same shape and length**; `cwd` and `transcript_path`
@@ -4638,12 +4748,28 @@ exist to pin, and none of them was touched.
 {"session_id":"11111111-2222-4333-8444-000000000005","transcript_path":"~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000005.jsonl","cwd":"/home/agent/proj","prompt_id":"aaaaaaaa-bbbb-4ccc-8ddd-000000000004","hook_event_name":"PreCompact","trigger":"manual","custom_instructions":null}
 ```
 
-### 17.1 DOCS-CITED stubs — the five hooks that could not be driven
+**SessionStart (source=compact)** — *new at the 2.1.247 re-capture; fires between `PreCompact` and
+`PostCompact`, under the **same** `session_id`, and is the only `SessionStart` shape that carries
+`model` and `prompt_id`*
+
+```json
+{"session_id":"11111111-2222-4333-8444-000000000005","transcript_path":"~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000005.jsonl","cwd":"/home/agent/proj","prompt_id":"aaaaaaaa-bbbb-4ccc-8ddd-000000000004","hook_event_name":"SessionStart","source":"compact","model":"<model id, never read>"}
+```
+
+**PostCompact (trigger=manual)** — *new at the 2.1.247 re-capture; was a DOCS-CITED stub*
+
+```json
+{"session_id":"11111111-2222-4333-8444-000000000005","transcript_path":"~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000005.jsonl","cwd":"/home/agent/proj","prompt_id":"aaaaaaaa-bbbb-4ccc-8ddd-000000000004","hook_event_name":"PostCompact","trigger":"manual","compact_summary":"<summary, never read>"}
+```
+
+### 17.1 DOCS-CITED stubs — the four hooks that could not be driven
 
 **These are not measurements.** Each carries exactly the key set the installed build's own payload
-schema declares for that hook (read from the binary, 2026-08-23), with placeholder values, so that
-`harness_payload_keys` ([AT-21](#at-21-the-harness-fact-drift-guard)) has something to assert against
-for every subscribed hook rather than skipping five of them. The vendored files carry
+schema declares for that hook (read from the binary, re-read 2026-08-27), with placeholder values, so
+that `harness_payload_keys` ([AT-21](#at-21-the-harness-fact-drift-guard)) has something to assert
+against for every subscribed hook rather than skipping four of them. **`PostCompact` was the fifth
+and is now a real capture above** — the stub's key set turned out to be exactly right, which is the
+first evidence this document has that a stub read from the binary is a fact and not a hope. The vendored files carry
 `"_source": "docs-cited-stub"`; the captures above carry `"_source": "capture"`. **Replacing one of
 these with a real payload is the closure act for its row in
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)** — and the first seat to hit a real rate
@@ -4671,12 +4797,6 @@ limit, permission prompt or auto-denial can supply it.
 
 ```json
 {"session_id":"11111111-2222-4333-8444-000000000009","transcript_path":"~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000009.jsonl","cwd":"/home/agent/proj","hook_event_name":"PermissionDenied","tool_name":"Bash","tool_input":{"command":"<never read>"},"tool_use_id":"toolu_01FIXTURE0000000009","reason":"auto-mode denial"}
-```
-
-**PostCompact** — *DOCS-CITED stub, **not** a capture*
-
-```json
-{"session_id":"11111111-2222-4333-8444-000000000009","transcript_path":"~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000009.jsonl","cwd":"/home/agent/proj","hook_event_name":"PostCompact","trigger":"auto","compact_summary":"<summary, never read>"}
 ```
 
 ### 17.2 Two facts visible only in the ordering
