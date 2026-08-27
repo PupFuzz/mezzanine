@@ -10,6 +10,41 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7897 (part 2, slice 1)** — **the coordination-event producer is designed in D1, and the card
+  is corrected twice on the way.** `EVENT-SCHEMA.md` gains § 18: Mezzanine's own GitHub webhook
+  receiver, deriving two fact objects — `coord.thread` and `coord.round` — from a coordination
+  repository's deliveries. ⛔ **Correction 1: the producer is NOT the `agent-webhook-bridge`,** which
+  the card specifies (*"all bridge-produced"*). § 1 non-goals a bridge dependency outright on D-10,
+  and the card's route is additionally **unbuildable**: the bridge's `HandlerRegistry` resolves ten
+  handlers and not one is a generic HTTP forwarder, so consuming its stream would have meant a
+  feature request into another team's write-side actuator, on our critical path. ⛔ **Correction 2:
+  two objects, not three** — `coord.message` was already collapsed into `coord.round` by the card's
+  own ruling, and the brief re-listed all three; every coordination act is a post on a thread, so a
+  third object is a second format for one fact. ⭐ **The bridge's classification behaviour was
+  re-derived AT SOURCE** (`v0.77.0`, `f85b419`) as prior art, and § 18.3 records eleven findings with
+  their file — DL-252's actor-vs-thread-author split, the three-member `AUTHORING_ACTIONS` allow-list,
+  DL-002's shared identity, DL-035's frozen label, the body-`TO:` addressing rule, and DL-176's
+  signed-body dedup key. ⭐ **The card's honesty audit is FALSIFIED in three places, and each is
+  stated rather than designed around.** *(A)* The `from:`/`to:` labels are **not** a property of the
+  `opened` delivery — the coordination repo's integrity Action materialises missing labels from the
+  body *after* the issue exists, and the posting tool auto-adds a `to:` label to a live thread, so
+  the addressee set is neither reliably present nor frozen; the bridge's own source records **641**
+  such `issues.labeled` deliveries already dropped on the reference install. The derivation therefore
+  keys on the body's `FROM:`/`TO:` lines, which the protocol makes authoritative, and treats labels
+  as corroboration — a deliberate, stated divergence from the bridge's label-authoritative wake gate.
+  *(B)* **A convergence has an act and may have no actor**: `issues.closed` is not an authoring
+  action, so under shared identity the closer is unrecoverable, and the phrase and the close arrive
+  as two different deliveries; the floor may show *that* a thread converged and never *who* closed
+  it. *(C)* **The escalation flare is a WON'T-DO** — its claimed observable, a gated / USER-ACTION
+  post, is barred by protocol from coordination threads (the banner is chat-output only), so
+  `needs_human` is deleted rather than carried permanently false, with the closure act named as a
+  protocol change. Also settled: the family gets **its own endpoint, HMAC auth (a third auth mode)
+  and validation order**, because nine of the batch envelope's invariants are false for a webhook
+  delivery and admitting it would weaken that path for the reporter too; sanitization reuses § 7.3's
+  redactor unchanged behind a **field** allowlist, and **no post body ever transits**; and one
+  producer serves both consumers, the `coord.*` family and D2 § 4.9's tier-2 task title. New: AT-23,
+  AT-24, AT-25 (each with its REDs), decisions 40–45, six § 14 rows, two § 16 build-order rows. **No
+  D2 or D3 edit** — the obligations those documents inherit are recorded as requests, not made.
 - **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
   was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
   observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —

@@ -1,6 +1,10 @@
 # D1 — the wire event schema
 
-**`fleet-reporter` → Mezzanine ingest.** The contract every seat POSTs and the server accepts.
+**Two inbound wires.** [§ 2](#2-the-producer--process-model)–[§ 17](#17-appendix--the-captured-harness-payloads):
+`fleet-reporter` → Mezzanine ingest, the contract every seat POSTs and the server accepts.
+[§ 18](#18-the-coordination-event-producer): GitHub → Mezzanine, the coordination deliveries this
+server receives and what it may honestly derive from them. They share this document's rules and
+almost nothing else — [§ 18.9](#189-why-this-does-not-ride-the-batch-contract) is why.
 
 > **Status: Draft — pending design review.** Owner: aimla-pm. Gate: [`docs/PLAN.md § 2`](../PLAN.md#2-design-first-gates--the-order-is-the-plan)
 > (P0 design, board 14). Written to the **standalone-implementer standard (D-14)**: an agent holding
@@ -55,6 +59,14 @@
     one alone let a wrong value set through three reviews: key names are bound to the installed
     build's payload schema, and every harness enum's **value set** is bound to the build's own
     declaration, at every place this document states it.
+12. A **second inbound wire** arrives at [§ 18](#18-the-coordination-event-producer): Mezzanine's own
+    GitHub webhook receiver, which derives two coordination fact objects — `coord.thread` and
+    `coord.round` — from a coordination repository's deliveries. It shares nothing with items 1–11
+    except this document's rules: a **third** authentication mode (a per-hook HMAC, not a seat token),
+    its own endpoint, its own validation order, and its own basis convention, because a webhook
+    delivery satisfies not one invariant the batch envelope rests on
+    ([§ 18.9](#189-why-this-does-not-ride-the-batch-contract)). What it reuses rather than re-mints is
+    named at each site: the identity-binding rule, the error-body shape and the redaction pass.
 
 ```
   Claude Code seat (Linux or Windows)                    │ WAN, TLS 1.2+ │   Mezzanine host
@@ -89,7 +101,8 @@ Stated so an implementer cannot widen scope in good faith. Each is a decision, n
 |---|---|
 | **Full tool arguments or outputs** | D-06, binding. The descriptor is a label, not a record. A telemetry stream that can carry a command's arguments will eventually carry a secret; the only reliable prevention is never building the path. |
 | **Any server → reporter channel** | The wire is one-way. No config push, no remote disable, no "run this". An ingest that can command seats is a fleet-wide remote-execution surface, and the dashboard gains nothing from it. Reporter configuration changes by editing the seat's config file. |
-| **Any dependency on the webhook bridge** | D-10: Mezzanine is an observer and stands alone. The reporter POSTs to Mezzanine directly; the bridge is neither in the path nor a fallback. |
+| **Any dependency on the webhook bridge** | D-10: Mezzanine is an observer and stands alone. The reporter POSTs to Mezzanine directly; the bridge is neither in the path nor a fallback. **This binds the second producer too, and card #7897 says otherwise** — [§ 18.1](#181-two-corrections-this-section-carries-and-the-boundary-it-keeps) carries the correction and the evidence, including the measured fact that the bridge has no surface to consume in the first place. The bridge stays what it is here: **prior art**, re-derived at source, never a runtime dependency. |
+| **Any body text from a coordination post** | [§ 18.10](#1810-sanitization-at-the-coordination-producer). A coordination thread's body is human-written prose with no allowlist behind it, so exactly one free-text field is carried — the issue title, redacted and bounded — and a body is read only to compute predicates whose *results* transit. |
 | **PII beyond `install_id` / `seat_id`** | No prompt text, no file contents, no OS usernames, no hostnames, no email addresses, no IP addresses. Usernames leak through absolute paths, which is why [§ 7.3 rule 6](#73-redaction-rules-applied-in-this-order) rewrites them. |
 | **The storage schema, retention, and state model** | D2 (`docs/design/FLEET-STATE.md`). This doc says what arrives and what it *means*; D2 says what is kept. **Where D1 constrains D2, the marker sits on the obligation sentence itself, never merely somewhere in its section:** **`D2-MUST`** for the five numbered hard constraints ([§ 12.6](#126-the-five-d2-must-constraints)), and a **`D2:`** prefix — or a *constraining D2* note — for every other consumer-addressed obligation. A section-level marker was the earlier convention and it is why an obligation phrased *"a consumer must not …"* ([§ 6.2](#62-sessionend)) was walked past three times by the grep that found its neighbours: the section carried a marker, the rule did not. The whole set is greppable now, and `tools/design/verify-fleet-state.py` re-derives D2's obligation table against it. **Where this doc merely *cites* D2 — stating what D2 already contains, as evidence, imposing nothing — the citing sentence carries `D2-CITED:` on the same line as the reference.** It is the one form that *subtracts* a line from that gate, so it is fenced: an **unmarked** mention of D2 still fails (silence is never read as a citation), an obligation marker on the same line wins over it, and a `D2-CITED:` line must name the place in D2 it cites and must not state a rule — a sentence doing both gets split, because the citation form excuses nothing that constrains D2. |
 | **Anything rendered** | D3 (`docs/design/FLOOR.md`). |
@@ -101,6 +114,16 @@ Stated so an implementer cannot widen scope in good faith. Each is a decision, n
 ---
 
 ## 2. The producer — process model
+
+**"The producer" here means `fleet-reporter`, and it is one of two.** The heading keeps its wording
+because every cross-reference in this document points at it, but the coordination producer
+([§ 18](#18-the-coordination-event-producer)) is a different program in a different place: it runs
+**inside the Mezzanine server**, has no spool, no flusher, no seat and no config file. The latency and
+exit-code rules of [§ 2.2](#22-rules-that-protect-the-seat) therefore do not reach it — there is no
+seat to protect — with **one deliberate exception, because it was never really about the seat**: P-6,
+*never print a token or a raw payload*, is a secret-hygiene rule and
+[§ 18.10](#1810-sanitization-at-the-coordination-producer) applies it to that route by name. Where the
+coordination producer reuses anything else stated here, it says so and cites the section.
 
 ### 2.1 One file, four subcommands
 
@@ -4403,6 +4426,66 @@ happen ([§ 6.14](#614-reporterheartbeat)).*
   seventeenth session makes `open_sessions` disagree with the index, and the calls of the untracked
   session are never reaped.
 
+### AT-23 the coordination receipt refuses what it cannot attribute
+
+**Property:** [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s gate is
+a check rather than a decoration, and its idempotency key is bound to the **signed** bytes.
+
+- **Fixture:** one recorded `issues.opened` body, its correct `X-Hub-Signature-256` under a test hook
+  secret, and the headers a delivery carries.
+- **GREEN:** the delivery is accepted `202` and derives one
+  [`coord.thread`](#186-coordthread) plus one [`coord.round`](#187-coordround).
+- **RED — the signature.** Flip one byte of the body, keep the signature → `401`, nothing derived,
+  nothing stored. Then flip one byte of the **signature**, keep the body → `401` again. Both
+  directions, because a comparison that passes in one of them is not a comparison.
+- **Second RED — DL-176's replay, which is the one a header-keyed design fails.** Re-POST the
+  **byte-identical signed body** under a **fresh** `X-GitHub-Delivery` → the digest key absorbs it,
+  `202`, and **no second object is derived**. Now key the receiver on `X-GitHub-Delivery` instead and
+  re-run → two objects from one post, and the floor draws a round that never happened. The header sits
+  outside the HMAC, so it is attacker-supplied; this test is what stops that being re-derived wrongly
+  by the next reader.
+- **Third RED — the binding.** Present a delivery whose `repository.full_name` names a repository the
+  verifying secret was not issued for → `403`, before any derivation. Without it, any holder of any
+  valid hook secret can write threads into another install's floor.
+
+### AT-24 a close names nobody, and says so
+
+**Property:** [§ 18.5](#185-the-three-findings-the-audit-turns-on)'s finding B is implemented rather
+than described — the three attribution states are all reachable and a bodyless action mints none of
+the recoverable two.
+
+- **Fixture:** three deliveries on one thread — `issues.opened` with a body `FROM:` line;
+  `issues.opened` with **no** `FROM:` line and no `from:` label; `issues.closed`.
+- **GREEN:** they derive `attribution` values `resolved`, `unresolved` and `unattributable`
+  respectively, and the third carries `opened_by: null`. **Assert the value, not merely that a value
+  is present:** the whole point of the three-state field is that the two nulls have different causes.
+- **RED:** make the close fall back to the thread's `from:` label — the one-line change every
+  implementation of this reaches for — and the fixture's close reports `opened_by` as the opener.
+  That is the exact defect DL-252 records a reading agent acting on, and this test is where it dies.
+- **Second RED:** drop the field and let `opened_by: null` carry the fact alone → `resolved`-with-no-name
+  and `unattributable` become one wire value, and the render has no honest branch to take.
+
+### AT-25 a thread opened without labels is still a thread
+
+**Property:** [§ 18.5](#185-the-three-findings-the-audit-turns-on)'s finding A — the derivation does
+not depend on labels being present on the `opened` delivery, because on a live coordination repo they
+often are not.
+
+- **Fixture:** an `issues.opened` delivery whose `issue.labels` is **empty** and whose body carries
+  `FROM: pm` and `TO: magento, platform`; and a second, otherwise-identical delivery that also carries
+  the two labels.
+- **GREEN:** both derive the same `participants` and the same `opened_by`. The labelled one is the
+  control that proves the fixture is exercising the path and not a fixture bug.
+- **RED:** read the address from `issue.labels` → the unlabelled delivery derives an empty
+  `participants` and no thread line is drawable, while every check stays green because the labelled
+  control still passes. That is the shape of it: **the wrong source fails only on the deliveries that
+  actually occur**, which is why the unlabelled fixture is the primary case and the labelled one is
+  the control.
+- **Second RED — the set that grows.** After the unlabelled `opened`, feed the `issue_comment.created`
+  that a membership auto-add accompanies, addressed `TO: moodle`. Assert the post's `to` names
+  `moodle` even though the thread's labels at open did not. An implementation that froze the addressee
+  set at open drops it silently.
+
 ---
 
 ## 14. Every number, and where it comes from
@@ -4475,14 +4558,29 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Quarantine caps | 256 KiB corrupt (stop writing) / 1 MiB rejected (stop writing) / 64 KiB marker (drop oldest) | Chosen — enough to diagnose, bounded so a broken seat cannot fill a disk; each with its at-cap behaviour stated | [§ 11.1](#111-layout) |
 | Local log | 1 MiB/day, 2 days retained | Chosen — day-bucketed so retention needs no rename; two days spans a weekend-adjacent incident | [§ 11.1](#111-layout) |
 | Sample-store retention | 24 h | Chosen — a session's last context sample is worthless the day after; the flusher unlinks older files | [§ 11.1](#111-layout) |
+| Coordination delivery body cap | 1 MiB | Chosen **against the stack, not against the sender** — it is the same nginx `client_max_body_size` default the 256 KiB batch cap is derived under, so a stock reverse proxy never refuses before this route does. **GitHub's own maximum is UNVERIFIED** and is carried with its cost and closure act | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
+| Coordination `subject` | 200 B | **Reused, not minted** — the same one-line bound `data.descriptor` already carries ([§ 4.4](#44-size-caps-and-their-derivations)), because it renders in the same one-line place. A second bound for a second one-line string is a second number to keep true | [§ 18.6](#186-coordthread) |
+| `participants` / `to` / `targets` members | 32 | Chosen — the roster is a **closed set** per install (four at this install), so 32 is 8× headroom; the array's worst case is 32 × (48 + 3) + 2 = 1,634 B. A delivery naming more is truncated and **counted**, per the no-silent-cap rule | [§ 18.7](#187-coordround) |
+| `thread_ref` / `post_ref` | 256 B | **Reused** — the same bound [§ 3.1](#31-the-seat-config-file) gives a path-shaped string. GitHub's own owner and repository name limits are not read here, so a longer value truncates and counts rather than being refused | [§ 18.6](#186-coordthread) |
+| `delivery_digest` | 64 B | Derived — SHA-256 as lowercase hex is exactly 64 characters. It is a uniqueness key and **not** a window, so this design carries no retention number for it | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
+| Rate limit on the coordination route | **none** | Chosen, and the absence is the decision — every limit above protects the server from a producer that retries and loses nothing when refused. This one's upstream is GitHub, whose behaviour on a refusal is UNVERIFIED, so a limit would risk converting a burst into permanent loss. The HMAC, the body cap and an alarmed delivery counter are what remain | [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) |
 
 Three numbers rest on estimates rather than measurements and say so at their definition: the
 busy-seat volume, the predicate-constant threshold, and the hook wall-time budget. Each names what
 re-derives it, and each has ≥ 4× headroom in the direction that fails safely. Two more rest on
 **UNVERIFIED harness or host facts** — the `Bash` timeout ceiling behind the 15-minute orphan window,
 and nginx's body-size default behind the 256 KiB batch cap — and both carry their cost-if-wrong and
-their closure act in [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s table, which is the
-one place this document tracks what it has not established.
+their closure act in [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s table.
+
+**This document now tracks what it has not established in TWO places, split by source class rather
+than by convenience**, and the split is stated here because a reader looking for one list would
+otherwise conclude the other does not exist:
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s table holds every **harness** fact, bound
+to the installed build; [§ 18.13](#1813-what-this-section-does-not-establish) holds every
+**coordination** fact, bound to a source revision or to a GitHub contract nothing here can read. The
+two coordination rows above whose basis is unverified — the 1 MiB cap, and the absent rate limit that
+follows from it — are tracked in the second, and the reason they are not tracked in the first is that
+a harness re-capture would not touch either.
 
 ---
 
@@ -4509,6 +4607,13 @@ the gate — rather than prose asserting a bound. **Row 17's amendment is that r
 finding**, and the same shape again: a quiet-seat fill time superseded twice in
 [§ 10.3](#103-idempotency-and-the-dedup-window) and left standing in the three sections that quote
 it.
+
+**Rows 40–45 are [§ 18](#18-the-coordination-event-producer)'s**, and they are a different kind from
+every row above: rows 1–39 decide how one producer's wire is shaped; these decide **whether a second
+producer exists at all, what it may claim, and what it must refuse to claim.** Read row 40 first — it
+is a correction to the card that commissioned the section — and row 44 last, because it is the only
+one of the six that **deletes** a requested feature, and a deletion on the record is the part a later
+reader is most likely to undo without knowing why it happened.
 
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
@@ -4551,6 +4656,12 @@ it.
 | 37 | **The failed-authentication rate limit is evaluated inside [§ 12.1](#121-validation-order) step 4** | ~~step 5, with the other three limits~~ | `Validation order` states "the first failure wins": a request whose token resolves to nothing terminates at step 4 and never reaches step 5, so a limit whose entire subject is *failed* authentications was evaluated only on requests that had already authenticated. It could never return the `429` it declared. This is the same defect class [§ 12.3](#123-rate-limits) already congratulates itself for fixing in this limit's **key** — a counter keyed on the presented string never accumulates past 1 — arriving a second time through its **placement** | **Superseded 2026-08-23 (round 4).** One exception to the ordering, stated at both ends (step 4, and the limit's own row). Cost: the auth check now has a side effect and a second exit status, which is why the attribution table gains the `429` explicitly — it degrades no seat, because a token that resolves to nothing names none. [AT-6](#at-6-unknown-schema-version-is-refused-loudly) case B drives the 61st bad token and carries a distinct-IP negative control |
 | 38 | **`open_calls_at_end` and `aborted_call_ids` are scoped to the reap that produced the event, which differs by `end_reason`** — `(session_id, agent_scope_id ?? "main")` for `stop_hook`/`api_error`, the whole `session_id` for `session_cleared`/`session_ended` | ~~one scope for all four `end_reason` values: the turn reap's, inferred from "a `turn.end` is emitted only where no `agent_id` is present"~~ | The inference conflates *the trigger payload carries no `agent_id`* (true of `SessionEnd`) with *the reap that ran was main-scoped* (false of it). [§ 8.3](#83-the-reap-rules)'s session-boundary rows abort every open call of that `session_id` with no scope filter, so on a `/clear` the subagent's own calls **are** aborted and must be named. Two scopes stated per trigger cost one clause; one scope asserted for all four was wrong on half the triggers | **Amended 2026-08-23 (round 5).** Cost if the wrong version had shipped: a builder implementing [§ 6.4](#64-turnend) as written emits `open_calls_at_end: 1` on [§ 8.7](#87-worked-flow--a-clear-during-a-subagents-bash-call)'s trace and **fails [AT-1](#at-1-kill-vs-complete-the-headline-test)**, this document's headline test — the field contract and the acceptance test disagreeing is the one failure mode the register exists to catch. AT-1 Cases B and C now assert the two scopes separately, so the readings are separated by a test |
 | 39 | **A capped object owes a reduction rule only where a seat can grow it past its cap** — `reporter.heartbeat.predicates` and `reporter.heartbeat.selftest` are exempt by stated arithmetic, and `selftest`'s member set is declared so that arithmetic exists | ~~give both fields a reduction rule, a `degraded` member and a `data_truncated` instance, on the ground that [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5 said every capped object states one~~ | Rule 5 asserted a reduction rule for every capped object while two of the three stated none, so the rule named an obligation nothing discharged and a reader could not tell a considered exemption from an omission. Writing the rules would have been worse than the gap: any reduction rule for `selftest` drops self-test results to fit, and the first result dropped on a broken seat is the one naming what broke — [§ 9.2](#92-why-this-is-the-structural-backstop)'s failure mode arriving through the fix for it. Both objects carry one member per row of a table this document declares, so the honest close is the arithmetic, at maximum values: **396 B of 512 B** and **171 B of 256 B** | **New 2026-08-23 (round 6).** Cost: declaring `selftest`'s member set had to key two checks [§ 2.1](#21-one-file-four-subcommands) described in prose and never named — `schema_version_accepted` and `predicate_discrimination` — and those two names are the contestable part of this row. Renaming either is free, because the object's keys are validated against the shape its field-table row states — a value set, a key pattern and a per-key bound — and not as a closed set, which is also why a reporter that ships a seventh check ahead of the table takes no `422`: at that per-key bound the headroom holds two further members. The residual is an editor who moves a member table without re-running the arithmetic: `tools/design/verify-event-schema.py` re-derives both figures from the tables and [AT-22](#at-22-a-maximally-degraded-seat-still-heartbeats) asserts both serializations at their worst case, with a RED one byte past the headroom |
+| 40 | **The second producer is Mezzanine's OWN GitHub webhook receiver** ([§ 18.1](#181-two-corrections-this-section-carries-and-the-boundary-it-keeps)) | consume the `agent-webhook-bridge`'s classified stream, which is what card #7897 specifies (*"all bridge-produced"*) | **D-10 already answered this and [§ 1](#1-non-goals) already non-goals it**, on an argument (`docs/PLAN.md § 1`) about coupling a read-side dashboard to a write-side actuator: a dashboard bug could take down fleet coordination, and a bridge deploy could blank the floor. GitHub fans a repository's events out to every registered hook, so the second consumer costs a hook registration. And the card's route is **unbuildable as specified**: the bridge's `HandlerRegistry` resolves ten handlers, none a generic forwarder, so consuming it would have meant an FR into another team's actuator, on our critical path — the exact dependency D-10 rejected | this design duplicates HMAC verification and a JSON parse, forever. If the bridge ever grows a forwarder and the fleet decides one derivation is better than two, D-10 is the decision to reopen, not this row. What is **not** a cost, and was checked: no classifier logic is duplicated — [§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found) re-derives the bridge's *findings* at source and diverges from its *mechanism* in exactly one stated place, for a stated reason |
+| 41 | **Two fact objects, `coord.thread` and `coord.round`; `coord.message` is deleted** | the card's three objects, with `coord.message` carrying the nine-field model | Card #7897's own architectural ruling collapsed the third before this section existed, and it is right: every animatable coordination act **is a post on a thread**, so a third object is a second format for one fact. The brief that commissioned this section re-listed all three; this row is the deviation, and it takes the ruling's side because the ruling's argument is the one this document applies elsewhere | a consumer wanting "just a message" reads a `coord.round` and ignores `thread_ref`, which costs nothing. The real cost lands if a coordination act is ever invented that is **not** a post on a thread — nothing in the protocol has one today, and it would be a new object then, not a resurrected one |
+| 42 | **Its own endpoint, envelope and validation order — it does not ride [§ 4.2](#42-batch-envelope-fields)'s batch contract** | extend the batch envelope to admit a webhook delivery | **Nine of the batch's invariants are false for a delivery**, enumerated in [§ 18.9](#189-why-this-does-not-ride-the-batch-contract): no seat, no bearer token, no `seq`, no session, a third clock, no producer version, no version-skew axis, no producer-side clamp, and one delivery is not a batch. Admitting it would mean loosening every one of them **for the reporter too** — a widened guard is one weaker path for both callers, not a second path | one more route and one more validation order to keep true. Cheap, and the alternative is that [§ 12.1](#121-validation-order) step 9 stops meaning "a conforming producer cannot reach this", which is the sentence that makes a `422` diagnostic |
+| 43 | **No field on either object is typed `enum`, and no closed set is declared for `lifecycle` or `carrier`** | declare them as closed enums and add rows to [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table | The enum machinery exists to route `docs/VERSIONING.md § Wire compatibility` rules 4 and 7 across a **version-skew boundary**, and these objects cross none — they are minted and consumed in one deployment. Worse, their candidate sets are owned elsewhere: `lifecycle`'s by GitHub, `carrier`'s by each install's `protocol.title_prefixes`. A closed set declared here would be a restatement of another party's with neither a pointer nor a guard, which is [decision 27](#15-decisions-taken-revisable-at-review)'s defect in a new table | `tools/design/verify-event-schema.py` is silent about these tables, and its silence is correct rather than a gap — but it *is* silence, so the trigger is stated instead: **publishing these objects across a deploy boundary attaches the classification obligation at that moment.** A reviewer who wants that guard earlier is asking for the sets to be closed, which is the thing that cannot be done honestly today |
+| 44 | **`needs_human` is deleted, not carried as a permanently-false field; the escalation flare is a won't-do with a named closure act** | carry `needs_human: false` and populate it when an observable appears; or classify the English wording of a thread comment | The observable the card names — a gated / USER-ACTION post — is **barred by protocol from the surface this producer watches**: the banner is chat-output only, and both role orientations say so in terms. What reaches a thread is prose carrying no label, no prefix and no token, so the only derivation available is an English-wording classifier — the shape [decision 6](#15-decisions-taken-revisable-at-review) already deleted from this document once. A field that is structurally false forever reads to a consumer as *"no seat is ever waiting on a human"*, which is a claim and a wrong one | the floor cannot draw an escalation flare from coordination activity, and that is the honest state. It is **not** a gap in the product: `attention.request` ([§ 6.12](#612-attentionrequest)) already carries a seat waiting on a human from the telemetry side. The closure act is a **protocol** change — mint a `needs-human` label or a title prefix — and it belongs to whoever owns the coordination protocol, not to this document |
+| 45 | **No rate limit on the coordination route; the controls are the HMAC, a 1 MiB body cap and an alarmed counter** | key a request limit on the hook binding, mirroring [§ 12.3](#123-rate-limits) | Every limit in [§ 12.3](#123-rate-limits) protects the server from a producer that **retries and loses nothing when refused** — a reporter with a spool. This producer's upstream is GitHub, and **what GitHub does with a refusal is UNVERIFIED here**, so a limit risks converting a burst into permanent loss of facts with no second source. A control whose failure mode is unbounded loss is worse than the volume it bounds | an unbounded delivery rate can only be *observed*, not stopped, until the redelivery question is closed. The counter is what makes it observable, and [§ 18.13](#1813-what-this-section-does-not-establish) names the act that closes the question |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -4561,7 +4672,11 @@ it here would create a second statement of it, free to drift, with nothing bindi
 
 ## 16. What an implementer builds from this
 
-In dependency order, with the gate each must pass before the next is trusted.
+In dependency order, with the gate each must pass before the next is trusted. **Rows 0–7 are the
+reporter chain and rows 8–9 are the coordination one, and the two chains are independent** — row 8
+depends on nothing above it, so the two can be built in either order or at once. They are listed in
+one table because they land in one server, and separating them into two would invite the reading that
+one of them is optional.
 
 | Order | Artifact | Gate |
 |---|---|---|
@@ -4573,6 +4688,8 @@ In dependency order, with the gate each must pass before the next is trusted.
 | 5 | ingest endpoint: auth, attribution, validation, atomic batch, dedup, enum coercion | AT-6, AT-12, AT-13, AT-15, AT-18 |
 | 6 | server-side call ledger + orphan timeouts | AT-1 (**the gate on trusting the signal at all**), AT-11, AT-19 |
 | 7 | staleness, predicate alarm, and the attention pair | AT-7, AT-8, AT-20, AT-22 |
+| 8 | the coordination **receipt** path: the hook registration and its per-hook secret, HMAC verification over the raw bytes, the validation order, and signed-body digest idempotency ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | **AT-23** RED then GREEN — all three REDs, and the replay one in particular: it is the only check that distinguishes this design from the header-keyed one every implementer reaches for first |
+| 9 | the coordination **derivation**: the two objects, their attribution states, and the body-line address rules ([§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur |
 
 Three of these are hard requirements before anything downstream may treat this telemetry as true:
 **AT-1** (`docs/PLAN.md § 3`, card #7337 — a real `/clear` against a real subagent tool call); a
@@ -4823,3 +4940,594 @@ one /clear, in fired order, with elapsed time and session id:
 `SessionEnd` first, by 144 ms; the new session carries a **different** `session_id`, and the
 `SessionStart` payload contains no reference to the old one. A `resume`, by contrast, fires
 `SessionStart(source=resume)` under the **same** `session_id`.
+
+---
+
+## 18. The coordination-event producer
+
+**Card #7897 part 2 asks for a second producer: coordination activity — who posted to whom, on which
+thread — as a fact the floor can be driven by.** This section designs it, and it corrects that card
+twice. The corrections are stated here rather than only in a merge commit, because the next reader of
+that card is otherwise sent to a producer this design forbids, and to a third message type the card's
+own ruling had already deleted.
+
+### 18.1 Two corrections this section carries, and the boundary it keeps
+
+**Correction 1 — the producer is Mezzanine's own GitHub webhook receiver, not the webhook bridge.**
+Card #7897 specifies its coordination events as *"all bridge-produced"*, with the `agent-webhook-bridge`
+as producer. [§ 1](#1-non-goals) non-goals a dependency on that bridge outright, on decision **D-10**
+(`docs/PLAN.md § 0`, ratified 2026-08-23, and argued in `docs/PLAN.md § 1`): *"Mezzanine is an observer
+and stands alone."* GitHub delivers a repository's events to **every** hook registered on that
+repository, so Mezzanine registers its own beside the bridge's; that is the platform's multi-consumer
+mechanism, and it is why D-10 costs this design nothing. What Mezzanine may not duplicate is the
+bridge's **business logic** — its classifiers, its card writeback, its channel push. It duplicates
+none of them. It duplicates HMAC verification and a JSON parse.
+
+The card's premise is additionally **unbuildable as written**, and that is a fact about the bridge
+rather than a preference of ours: **the bridge has no surface that emits to an arbitrary HTTP
+consumer.** Its dispatch targets resolve through one registry of ten handlers — nine always-on
+(`log_intent`, `registry_append`, `channel_push`, and six kanban writeback handlers) plus the opt-in
+`spawn_detached` — and not one of them is a generic forwarder
+([§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found)). Consuming the bridge's stream
+would therefore have meant building a new handler **inside the bridge**: a feature request into
+another team's write-side actuator, on Mezzanine's critical path, which is exactly the cross-team
+dependency `docs/PLAN.md § 1` weighed and rejected.
+
+**Correction 2 — two fact objects, not three.** The card specifies `coord.thread`, `coord.round`
+**and** `coord.message`. Its own architectural ruling (card #7897, 2026-08-27) already collapsed the
+third, in these words: *"THE THREAD IS THE OBJECT ON THE WIRE. `coord.message` IS NOT A SEPARATE
+MESSAGE TYPE, AND IS COLLAPSED INTO `coord.round`."* That
+ruling is right and this section builds it, because every animatable coordination act in this system
+**is a post on a thread** — a `[QUERY]` opens one, a reply is a post on it, a `[BRIEF]` dispatch is a
+post, a `to:all` broadcast is a post with several targets, and convergence is the thread ending. A
+third object would be a second format for one fact, and two formats for one fact is the defect this
+document refuses elsewhere ([§ 5](#5-compatibility--what-this-document-owes-the-policy) records the
+same reasoning about restated rules).
+
+**The boundary this section keeps.** It owns exactly two things:
+
+1. **Receipt** — the endpoint, its authentication, its validation order, its error bodies and its
+   idempotency key. That is the same subject [§ 4](#4-the-envelope) and
+   [§ 12](#12-the-server-contract) own for the reporter, and a **second inbound wire** needs it
+   stated rather than assumed.
+2. **Derivation** — given one delivery, which facts are honestly recoverable from it, each with its
+   basis and each with what would make it stale.
+
+Everything downstream of a derived fact is somebody else's.
+`D2-CITED:` the seat-state model is [D2 § 4](FLEET-STATE.md#4-the-seat-state-model), and this section
+adds no column to it.
+`D2-CITED:` the browser feed contract is [D2 § 8](FLEET-STATE.md#8-the-feed-contract), and this
+section adds no message type to it; the slice that wires these facts into a feed is a later one.
+Rendering belongs to `docs/design/FLOOR.md`, under its own honesty rule: **this section states no
+animation, names no render and assigns that document nothing.** It is referred to by path rather than
+by its document letter, deliberately: `tools/design/verify-floor.py` reads that letter as a
+render-directed obligation and requires that document to carry a row for it, and that gate carries no
+citation form of the kind [§ 1](#1-non-goals) declares for the store document — the one used twice in
+the two lines above. A boundary sentence is not an obligation, so it is
+written as one — and the missing citation form is recorded as an asymmetry rather than worked around
+silently.
+
+### 18.2 The basis convention for coordination facts
+
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) binds every **harness** fact to the
+installed Claude Code build, on two axes — VERSION and MODE — and marks it MEASURED, DOCS-CITED or
+UNVERIFIED. **The facts below are a different source class and must not borrow that vocabulary**, for
+one specific reason: **MEASURED** in this document means *a payload captured from a running harness
+and vendored as a fixture*, and **no GitHub webhook delivery was captured for this round.** A row
+here marked MEASURED would be a false MEASURED, which is the defect
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) exists to prevent, arriving through a
+neighbouring table.
+
+So this section states its own three bases, with a deliberately distinct first state:
+
+| State | What it means | What backs it | What makes it stale |
+|---|---|---|---|
+| **SOURCE-READ** | read out of source on this box, in this round | the file, and the checkout revision it was read at | a commit to that file; the revision is the axis, exactly as the build is § 6.0's |
+| **DOCS-CITED** | read from a vendor reference or corroborated only by another program's live use of it | what was read, and the date | the upstream changing it, which nothing here would see |
+| **UNVERIFIED** | neither | what it costs if it is wrong, and the named act that closes it | — |
+
+**The checkouts these SOURCE-READ facts are pinned to**, read 2026-08-27:
+
+| Source | Read at | Where |
+|---|---|---|
+| `agent-webhook-bridge` | `f85b419` (tag `v0.77.0`), tree clean | `app/Bridge/**` |
+| the coordination repo | `e9bc22a`, tree clean | `.github/workflows/protocol-integrity.yml`, `DESIGNS/protocol-spec.md`, `coordination.config.json` |
+| the fleet's own posting tool | **no revision available** — an installed copy at `~/.local/bin/coord-post`, mtime 2026-08-24, which differs from the plugin template on this box | `coord-post` |
+
+**The third row is a weaker basis than the first two, and it is marked rather than levelled up.** The
+posting tool is an installed copy on one box with no revision to pin it to and a body that differs
+from the template it was installed from, so a fact read out of it is true of *that file on that day*
+and cannot be re-derived by anyone else. The exposure is bounded, and it is bounded by what it is
+used for: two facts, one of which ([§ 18.5](#185-the-three-findings-the-audit-turns-on)'s
+config-gated widen path) the derivation is deliberately built not to depend on either way.
+
+**The axis is the REVISION, and it is the whole reason the state exists.** A SOURCE-READ fact is true
+of the code at that revision and of nothing else; re-reading it is minutes, and any change to the
+files above re-opens the rows that cite them. That is the same obligation
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 places on a harness fact,
+transposed to the source class it actually applies to.
+
+**One asymmetry is stated rather than papered over: the GitHub delivery payload itself has no
+SOURCE-READ available to this design.** GitHub's code cannot be read, and no delivery was captured.
+Every claim about what a delivery **contains** is therefore DOCS-CITED at best — and the strongest
+corroboration available is that the bridge reads those exact key paths in production and its
+consumers behave, which is evidence about the paths and **no evidence at all** about the ones nothing
+reads. [§ 18.13](#1813-what-this-section-does-not-establish) names the ones nothing reads.
+
+### 18.3 The bridge as prior art: what the source read found
+
+The bridge is not in this runtime path ([§ 18.1](#181-two-corrections-this-section-carries-and-the-boundary-it-keeps)).
+It **is** the best available prior art for one hard question — *given a GitHub coordination webhook,
+what can honestly be derived from it?* — because that derivation has been beaten into shape across
+many of its own decision-log rulings, and re-deriving it from scratch is how the same defects get
+re-minted. Every row below was read at `f85b419`.
+
+| Finding | Basis |
+|---|---|
+| **Attribution splits in two and the halves must be kept apart.** `CoordinationClassifier::attribute()` resolves *who acted* (`actor`) separately from *whose subject it is* (`thread_author`), on ruling DL-252. Its docblock records why: one value that was all three at once *"made every bodyless action report its thread's opener as the agent that acted"*, and a reading agent posted the wrong agent as fact | **SOURCE-READ** — `app/Bridge/Classifiers/CoordinationClassifier.php` |
+| **On an action that creates nothing, the actor is UNRECOVERABLE.** `AUTHORING_ACTIONS` is an allow-list of exactly three: `issues.opened`, `issue_comment.created`, `pull_request.opened`. On every other action — `closed`, `reopened`, `ready_for_review`, `labeled` — author and actor are free to differ, and under one shared upstream account nothing in the payload identifies who acted. It is an allow-list *"so a widening can only lose a name, never invent one"* | **SOURCE-READ** — same file, `AUTHORING_ACTIONS` and its docblock |
+| **The three attribution states are a wire value, never an absent key.** The bridge emits `resolved` / `unresolved` / `unattributable` on every event, because *"an absent field renders as nothing at all, which is indistinguishable from a summary that simply did not mention who acted"* | **SOURCE-READ** — same file, the `$attributionState` block |
+| **Shared identity (DL-002): every agent posts under one GitHub account**, so the payload's `sender` is the same account for every agent and attribution comes from the event's own content — the `from:<agent>` label, or the body `FROM:` line, and each only on an authoring action | **SOURCE-READ** — same file, class docblock and `attribute()` |
+| **The label freezes at thread-open (DL-035)**, so on every action after `opened` the `from:` label names the *opener*, who need not be the actor | **SOURCE-READ** — same file, `attribute()` docblock, evidence clause (b) |
+| **A comment's address is its body `TO:` line, not the thread's labels**, three-valued: a `TO:` naming someone else narrows unconditionally; a `TO:` naming you grants; no `TO:` line at all falls back. `RecipientAddressing`'s docblock names the reason — labels *"freeze at thread-open and silently drop a reply that reverses direction — the single most common shared-identity routing footgun"* | **SOURCE-READ** — `app/Bridge/Support/RecipientAddressing.php` |
+| **The recognised title-prefix set is `[BRIEF]` / `[ANNOUNCE]` / `[QUERY]` / `[REVIEW]` / `[TASK]`**, matched anchored for the stable id and unanchored, priority-ordered, for the type tag — two deliberately different rules on one title | **SOURCE-READ** — `stableId()` and `coordItype()` |
+| **The dedup key is the SHA-256 of the SIGNED BODY, not the `X-GitHub-Delivery` header (DL-176)** — *"the header is outside the HMAC, so a captured validly-signed body resent with a fresh header would otherwise mint a new dedup key and re-dispatch"*. The header is still required for envelope parity and its value is untrusted and unused | **SOURCE-READ** — `app/Bridge/Adapters/GitHubAdapter.php` |
+| **The signature header is `X-Hub-Signature-256`, carrying `sha256=<hex HMAC-SHA256 of the body bytes>`; `X-GitHub-Event` carries the event name and the composite type is `<event>.<action>`; the repository is `repository.full_name` and the actor id is `sender.id`** | **SOURCE-READ** for what the bridge reads and asserts; **DOCS-CITED** for GitHub's own contract, which no read here reaches |
+| **The bridge has no arbitrary-HTTP-consumer surface.** `HandlerRegistry` constructs nine handlers plus one opt-in; there is no forwarder, no fan-out target, no subscriber list | **SOURCE-READ** — `app/Bridge/Support/HandlerRegistry.php` |
+| **Families are config-gated**, default `['coord-message']`. What an install has switched on is a property of that install and of nothing else | **SOURCE-READ** — `DEFAULT_FAMILIES` and `classify()` |
+
+**What that last row settles, because it decides what may be called *derivable*.** A fact is derivable
+here if it follows from **the GitHub payload plus the coordination protocol** — never from the
+bridge's configuration, which this producer does not read and cannot see. Every derivation below is
+stated against those two, and where the protocol is the source it is cited as the protocol.
+
+### 18.4 The observable audit
+
+Card #7897 asserts that its seven visual elements' observables are *"all bridge-visible today"*. That
+is a claim to falsify, not a premise. Audited against what a delivery carries and what the sources
+above establish:
+
+| # | Element | The card's claimed observable | Verdict |
+|---|---|---|---|
+| 1 | thread line | issue opened with `from:`/`to:` labels, still open | **REAL, WRONG SOURCE.** The labels are not reliably on the `opened` delivery, and the addressee set is not frozen after it — [finding A](#185-the-three-findings-the-audit-turns-on). The derivation keys on the body's `FROM:`/`TO:` lines, which the protocol makes authoritative and which the `opened` payload carries by construction. *"Still open"* is a separate matter — [§ 18.13](#1813-what-this-section-does-not-establish) |
+| 2 | round bead | a Round comment posted | **REAL AT POST GRANULARITY, NOT AT ROUND GRANULARITY.** `issue_comment.created` is the delivery and it is honest. The round *number* lives in a `## Round N — <author>` prose heading, is a **per-author** sequence the protocol says *"does not identify one comment"* on a multi-party thread, and is in no payload field. The bridge parses no round heading at any revision read here. A bead per post is true; a bead per round is a claim the wire does not make |
+| 3 | carrier kind | title prefix `[QUERY]` / `[BRIEF]` / `[REVIEW]` / `[ANNOUNCE]` | **REAL, with prior art, and the set is not ours to close.** `stableId()` / `coordItype()` are the prior art. The set is **config-sourced** — `protocol.title_prefixes` in each install's `coordination.config.json`, six members at this install — so it is per-install and this document declares no closed enum for it ([§ 18.7](#187-coordround)) |
+| 4 | radial pulse | `to:all` label | **REAL, inheriting row 1's correction.** `all` is read from the body's `TO:` line with the label as corroboration. The **fan-out** is ours to resolve, not the bridge's: the bridge only ever asks *"does `to:all` include me"*, never *"who is everyone"*, so `targets[]` is derived here against the install's own roster — which is also what makes the operator's floor-scoping ruling true on the wire rather than only in the renderer |
+| 5 | convergence spark | the *"zero open questions"* phrase + issue close | **THE ACT IS REAL; THE ACTOR IS NOT; AND THE TWO HALVES ARE TWO DELIVERIES** — [finding B](#185-the-three-findings-the-audit-turns-on). There is also **no prior art whatsoever**: the phrase does not occur anywhere in the bridge at `f85b419` |
+| 6 | folder-to-intern | the `subagents[]` delta | **NOT A COORDINATION OBSERVABLE, and correctly not one.** A subagent dispatch is already on the reporter wire as [§ 6.7](#67-subagentspawn) / [§ 6.8](#68-subagentstop). Minting a coordination event for it would be the second-format defect correction 2 exists to refuse. The card's own ruling reached the same answer |
+| 7 | escalation flare | a gated / USER-ACTION post | **NOT DERIVABLE — the claimed observable is barred from the surface this producer watches** — [finding C](#185-the-three-findings-the-audit-turns-on). Recorded as a won't-do with its closure act |
+
+**Five of seven survive; one moves to a different producer; one does not exist.** That is the audit's
+result and it is the deliverable, not a gap to design around.
+
+### 18.5 The three findings the audit turns on
+
+**Finding A — the `from:`/`to:` labels are not a property of the `opened` delivery, and the addressee
+set is not frozen after it.** Two independent mechanisms move labels after an issue exists:
+
+- The coordination repo's own integrity Action **materializes missing or partial `from:`/`to:` labels
+  from the body**, on an `auto-apply` path that calls `issues.addLabels` — after the issue exists, and
+  therefore after the `issues.opened` delivery has already gone out. Its own header states the
+  precedence plainly: *"the body's `FROM:`/`TO:` lines are the source of truth"*
+  (**SOURCE-READ**, `.github/workflows/protocol-integrity.yml` at `e9bc22a`).
+- An **issue-body edit re-triggers that same auto-apply path** — the Action subscribes `issues.edited`
+  as well as `issues.opened` — so a thread whose `TO:` line gains a name gains a label, arbitrarily
+  later, on a delivery no reader of `issues.opened` sees.
+- A third mechanism exists and is **config-gated, and OFF at this install**, which is stated because
+  the gate is per-install and a producer cannot see it: the fleet's posting tool will auto-add a
+  `to:<agent>` label to an **existing** thread under `recipient_addressing.comment_widen`
+  (**SOURCE-READ**, `coord-post`'s membership pre-flight, which posts to `…/issues/<n>/labels`). This
+  install sets `comment_widen: false` with `non_member_action: "reject"`, so that path does not fire
+  here — **and an install that turns it on is not a different design, only a different rate**, which
+  is precisely why the derivation below must not depend on it either way.
+
+The posting tool **does** set both labels atomically on create (`gh issue create --label …`,
+**SOURCE-READ**), so a thread opened through it does carry them. Every other path does not — and the
+bridge's own source records the consequence as a live, measured defect rather than a hypothetical:
+its `coord-card-relane` family exists because *"the create leg fires at `issues.opened` and derives
+the lane from the labels THAT DELIVERY CARRIED. A `[TASK]` opened unlabelled is therefore carded in
+the `later` default"*, and it records an operator measurement of **641** `issues.labeled` deliveries
+already arrived and dropped on the reference install (**SOURCE-READ**, `CoordinationClassifier.php`).
+
+**So a producer that reads the fan-out from the `opened` payload's labels is wrong twice: it misses
+threads whose labels arrive later, and it freezes a set that grows.** The derivation therefore reads
+the **body's `FROM:`/`TO:` lines** as the source — present in the `opened` payload by construction,
+because the body is what `opened` delivers — and treats labels as corroboration. This is a deliberate
+divergence from the bridge, and it is not a disagreement: the bridge's membership gate is
+**label-authoritative by ruling (DL-022)** because a *wake* is a delivery decision, and a label is
+what an operator can see and fix. An **observer** has no delivery to make, so it may prefer the more
+available source, and the protocol names that source authoritative.
+
+**Finding B — a convergence has an act, and may have no actor; and its two halves are two
+deliveries.** The convergence phrase is written in a **comment** (`issue_comment.created`); the close
+is a different delivery (`issues.closed`) that carries no comment. And `closed` is not an authoring
+action, so under shared identity the actor of the close is **unrecoverable** — the bridge says so
+explicitly rather than naming the thread's opener, on DL-252, after a seat read exactly such a summary
+and posted the wrong agent as fact.
+
+**The floor may therefore be able to show that a thread converged and never able to show who closed
+it.** That is a fact this document states, not a hole to design around. What is recoverable, and is
+enough for the animation the card wants, is the pair: the **post** carrying the phrase is an authoring
+action and is attributable; the **close** is the lifecycle edge. So `converges` rides
+[`coord.round`](#187-coordround) — where an author can be named — and the close rides
+[`coord.thread`](#186-coordthread) — where one may not be. Two further facts fall out of the same
+read and both bear on the animation:
+
+- **A close is not necessarily a convergence.** The protocol also closes a stale thread with a
+  summary, and closure is performed *"with a `[CLOSE]`-prefixed final comment"* — so `lifecycle:
+  closed` alone means *the thread ended*, and only a preceding `converges: true` post makes it a
+  convergence (**SOURCE-READ**, `DESIGNS/protocol-spec.md` § Convergence and § Escalation).
+- **A closed thread can reopen** within roughly seven days, by protocol, with rounds continuing their
+  numbering. An animation that treats the spark as terminal will be wrong about real threads, which is
+  why `lifecycle` carries `reopened` as a first-class value rather than as an anomaly.
+
+**Finding C — the escalation flare's observable is barred from the surface this producer watches.**
+The `USER ACTION REQUIRED` banner is **chat-output only**, and both role orientations state in terms
+that it goes to the operator's chat and **not** into a coordination round comment (**SOURCE-READ**,
+the pm and solo orientation documents on this box). What does reach a thread is free prose — *"gated
+on user approval"*, *"awaiting user OK"* — carried by **no label, no title prefix and no protocol
+token**. Deriving a flare from it would take an English-wording classifier over another party's prose,
+which is the shape [decision 6](#15-decisions-taken-revisable-at-review) already deleted from this
+document once, for the reason recorded there: read the field, do not instrument the guess. There is no
+field.
+
+There is a second, independent reason the flare must not be minted here, and it is the stronger one:
+`D2-CITED:` *blocked* has exactly one source in [D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge),
+and it is [`attention.request`](#612-attentionrequest) — a coordination post minting the same rendered
+state would be a second source for one fact.
+
+**Verdict: won't-do, on the record.** The closure act is named and is not ours: the coordination
+protocol would have to mint an explicit token for a human gate — a `needs-human` label, or a title
+prefix in `protocol.title_prefixes` — at which point the flare becomes a one-line derivation with a
+real basis. Until then `needs_human` is **absent from both objects**, rather than present and always
+false, because a field that is structurally false forever reads to a consumer as *"no seat is ever
+waiting on a human"*, which is a claim, and a wrong one.
+
+#### 18.6 `coord.thread`
+
+**Trigger:** an `issues` delivery whose action is `opened`, `closed` or `reopened`, on a repository
+bound to an install ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)).
+One object per delivery. The thread's identity is its reference; nothing is minted for it.
+
+| Field | Type | Null? | Bounds | Example |
+|---|---|---|---|---|
+| `thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` | `"AIMLA-org/aimla-coordination#742"` |
+| `install_id` | slug | no | ≤ 32 B — from the **hook binding**, never from `repository.full_name`, per [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s rule applied to this wire | `"aimla"` |
+| `lifecycle` | slug | no | ≤ 32 B — the delivery's own `action`, verbatim: `opened`, `closed`, `reopened`. An unrecognised value passes through and is counted | `"closed"` |
+| `carrier` | slug | **yes** | ≤ 16 B — the recognised title prefix, lowercased; `null` when the title carries none | `"brief"` |
+| `subject` | string | **yes** | ≤ 200 B, sanitized ([§ 18.10](#1810-sanitization-at-the-coordination-producer)) | `"the coordination-event producer"` |
+| `subject_truncated` | bool | no | — | `false` |
+| `opened_by` | slug | **yes** | ≤ 48 B — the agent this delivery evidences; `null` when it evidences none | `"pm"` |
+| `attribution` | slug | no | ≤ 16 B — `resolved`, `unresolved` or `unattributable`, the three states DL-252 keeps apart | `"unattributable"` |
+| `participants` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the thread's addressees **at this lifecycle moment**; the source differs by moment, below | `["pm","magento"]` |
+| `posted_at` | rfc3339_ms | **yes** | the object's own timestamp from the payload; `null` when the payload carries none | `"2026-08-27T09:14:02.000Z"` |
+| `received_at` | rfc3339_ms | no | the receipt clock, which is the **only** clock this producer owns | `"2026-08-27T09:14:03.418Z"` |
+| `delivery_digest` | string | no | 64 B, lowercase hex — SHA-256 of the **signed** body; the idempotency key | `"7b1e…"` |
+
+**`attribution` is `unattributable` on every `closed` and every `reopened` — under a shared posting
+identity, which is the case this fleet runs and is a config fact, not a law.** Those actions are not
+authoring actions ([§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found)), so nothing in
+the payload names who acted **while every agent posts as one account**
+(`github.shared_identity: true`, **SOURCE-READ**, `coordination.config.json` at `e9bc22a`). On an
+install where each agent holds its own account, `sender.login` names the actor on **any** action and
+the value is `resolved` — which is why this is a derived field with three states rather than a
+constant this document could have written down. `opened_by` is `null` whenever the value is not
+`resolved`, and a consumer reading `opened_by` without reading `attribution` renders "nobody" where
+the honest render is "not recoverable" — which is why the state is a value and not an absent key.
+
+**`participants` reads a different source at each lifecycle moment, and that is finding A applied
+rather than restated.** At `opened` it reads the **body's** `FROM:`/`TO:` lines, because the labels may
+not have been applied yet. At `closed` and `reopened` it reads the **labels**, because by then they
+have been — and the body it would otherwise read is the *opening* post, which is months of rounds out
+of date about who is on the thread. Neither source is right at both moments, and picking one for both
+is the mistake that looks like consistency.
+
+**There is no `is_broadcast` field, deliberately.** *"This thread is a broadcast"* is a property of its
+**opening post's address**, which [`coord.round`](#187-coordround)'s `to` already carries verbatim
+(`["all"]`). A boolean here would be a second representation of one fact, free to disagree with the
+first — the defect this document refuses elsewhere. A consumer asking whether a thread is a broadcast
+reads its opening round, exactly as a consumer wanting a bead count counts posts.
+
+#### 18.7 `coord.round`
+
+**Trigger:** an `issue_comment.created` delivery, and the `issues.opened` delivery that also produces
+a [`coord.thread`](#186-coordthread) — the opening post **is** a post, and modelling it as only a
+lifecycle edge would lose the thread's first round. Two objects from one delivery is not two formats
+for one fact: they carry different facts about it.
+
+| Field | Type | Null? | Bounds | Example |
+|---|---|---|---|---|
+| `post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment | `"AIMLA-org/aimla-coordination#742-c1561"` |
+| `thread_ref` | string | no | ≤ 256 B | `"AIMLA-org/aimla-coordination#742"` |
+| `install_id` | slug | no | ≤ 32 B, from the hook binding | `"aimla"` |
+| `from` | slug | **yes** | ≤ 48 B — the author this post evidences; `null` when it evidences none | `"pm"` |
+| `attribution` | slug | no | ≤ 16 B — as [§ 18.6](#186-coordthread) | `"resolved"` |
+| `to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the thread's `to:` labels. `all` appears here verbatim | `["all"]` |
+| `targets` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the **resolved** fan-out, `all` expanded against this install's roster | `["magento","platform","moodle"]` |
+| `carrier` | slug | **yes** | ≤ 16 B — the thread's title prefix, repeated so a post is legible alone | `"brief"` |
+| `converges` | bool | no | — this post's body carries the convergence phrase | `false` |
+| `posted_at` | rfc3339_ms | **yes** | the comment's own timestamp; `null` when the payload carries none | `"2026-08-27T13:17:33.000Z"` |
+| `received_at` | rfc3339_ms | no | the receipt clock | `"2026-08-27T13:17:34.902Z"` |
+| `delivery_digest` | string | no | 64 B, lowercase hex | `"9c04…"` |
+
+**`to` and `targets` are both carried and they differ under broadcast.** That is the card's own
+requirement and it is right: `to` is what the author wrote, and is the honest label; `targets` is who
+it reaches, and is what a fan-out animation may draw. Collapsing them would make a broadcast
+indistinguishable from an enumeration, and would make the reach of the animation a renderer's guess.
+**`targets` is resolved against this install's roster and no other**, which is what makes the
+operator's floor-scoping ruling a property of the event rather than of the picture.
+
+**Fields the card specified that are deliberately absent, each with its reason:**
+
+| Card field | Disposition |
+|---|---|
+| `needsHuman` | **dropped** — finding C. No observable exists, and a permanently-false field is a false claim |
+| `n` (the round number) | **dropped** — audit row 2. Per-author, prose-only, and not one comment's identity on a multi-party thread. A consumer that wants a bead count counts posts |
+| `act` as a small closed enum | **kept as `carrier`, typed `slug`** — the set is per-install config, so a closed enum declared here would be a restatement of another file with neither a pointer nor a guard |
+| `seq` | **dropped in favour of `posted_at` + `received_at`** — no sequence exists in a delivery, and a server-minted one would be an ordering this producer invented. Both clocks are carried so a consumer can say which it ordered by |
+| `conversation` | **kept as `thread_ref`** — the thread reference **is** the conversation id, and it is stable, human-legible and joinable to the artifact |
+| the post's body text | **never carried** — [§ 18.10](#1810-sanitization-at-the-coordination-producer) |
+
+**No field on either object is typed `enum`, and that is a decision rather than an omission.**
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s enum machinery exists to route
+`docs/VERSIONING.md § Wire compatibility` rules 4 and 7 across a **version-skew boundary** — a seat
+upgrading independently of the server. These two objects cross no such boundary: they are minted and
+consumed inside one deployment, so there is nothing for that machinery to route, and declaring closed
+sets whose members are owned by GitHub (`lifecycle`) or by a per-install config file (`carrier`) would
+be exactly the unbound restatement [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) is
+written against. `tools/design/verify-event-schema.py` is correspondingly silent about these tables,
+and its silence is right. **If a later change publishes these objects across a deploy boundary, the
+classification obligation attaches then** — and the trigger for it is that publication, not a review
+round.
+
+**Worked example — a broadcast round on a thread that later converges.** The `[ANNOUNCE]` is opened
+by `pm` addressed to `all`; the resolved fan-out is this install's three implementation seats.
+
+```json
+{
+  "post_ref": "AIMLA-org/aimla-coordination#742",
+  "thread_ref": "AIMLA-org/aimla-coordination#742",
+  "install_id": "aimla",
+  "from": "pm",
+  "attribution": "resolved",
+  "to": ["all"],
+  "targets": ["magento", "platform", "moodle"],
+  "carrier": "announce",
+  "converges": false,
+  "posted_at": "2026-08-27T09:14:02.000Z",
+  "received_at": "2026-08-27T09:14:03.418Z",
+  "delivery_digest": "7b1e0f2c9a4d5e6f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7"
+}
+```
+
+**Worked example — the close of that thread, which names nobody.** The same thread, closed. Note that
+`opened_by` is `null` and `attribution` says why; a renderer that draws an actor here is drawing a
+fact no delivery carried.
+
+```json
+{
+  "thread_ref": "AIMLA-org/aimla-coordination#742",
+  "install_id": "aimla",
+  "lifecycle": "closed",
+  "carrier": "announce",
+  "subject": "the coordination-event producer",
+  "subject_truncated": false,
+  "opened_by": null,
+  "attribution": "unattributable",
+  "participants": ["pm", "magento", "platform", "moodle"],
+  "posted_at": null,
+  "received_at": "2026-08-27T16:02:11.775Z",
+  "delivery_digest": "9c0417a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f607"
+}
+```
+
+**A deliberately invalid delivery, and what happens to it.** A delivery whose body carries no `FROM:`
+line and whose issue carries no `from:` label produces a `coord.thread` with `opened_by: null` and
+`attribution: "unresolved"` — *this action could have carried evidence and none was present* — and is
+counted as `coord_attribution_unresolved`. It is **not** refused: an event with an unknown author is
+worth more than no event, which is the same judgement
+[§ 3.2](#32-session-identity) already makes about an unparseable `session_id`. What **is** refused is
+a delivery whose signature does not verify
+([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 3), because that
+is not a fact with a gap in it — it is bytes with no provenance.
+
+### 18.8 Receipt: the endpoint, its authentication and its validation order
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/ingest/github` | `X-Hub-Signature-256` | receive one GitHub webhook delivery |
+
+**This is a third authentication mode on this document, and it is stated as one.** [§ 1](#1-non-goals)
+says *"seat tokens authenticate machines"* and that MFA gates the browser plane and never touches
+ingest. Both stay true. This endpoint authenticates **neither** a machine nor a human: it
+authenticates a **delivery**, by a shared secret held per registered hook, and it is a third mode
+because a bearer token cannot be used here — GitHub decides what it sends and signs it, and the
+credential is one GitHub also holds.
+
+**The binding rule is [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s, transposed, and it
+is not restated.** The authoritative `install_id` is derived from **the secret the delivery verified
+against** — one secret per registered hook, issued for exactly one `(install_id, repository)`. The
+payload's `repository.full_name` is a claim, validated for equality with the binding and never used to
+route or attribute. The reason is identical to the one [§ 3.3](#33-authentication-and-the-identity-binding-rule)
+gives, and applying the same rule rather than writing a second one is the point.
+
+**Validation order — cheapest and most fatal first; the first failure wins and nothing is derived:**
+
+1. `Content-Type` is `application/json` → else `415`.
+2. Body ≤ **1 MiB** → else `413`, before any parse.
+3. `X-Hub-Signature-256` present and a **constant-time** match against the HMAC-SHA256 of the **raw
+   body bytes** under the hook's secret → else `401`. Computed over the bytes as received, before
+   any decode: a signature checked against a re-serialization is a signature checked against
+   something the sender did not sign.
+4. `X-GitHub-Event` and `X-GitHub-Delivery` present → else `400`. **`X-GitHub-Delivery`'s value is
+   required and unused** — DL-176's finding, adopted rather than re-derived: it sits outside the HMAC,
+   so a validly-signed body replayed under a fresh header would mint a fresh key.
+5. Body parses as JSON → else `400`.
+6. `repository.full_name` equals the hook binding's repository → else `403`.
+7. `delivery_digest` — SHA-256 of the signed body — is the **idempotency key**, and step 4 is why it
+   is not the header. The header's value is stored as an **operator-facing label only**, so a human
+   can find the same delivery in GitHub's own list; it is never compared, never keyed on and never
+   trusted. A repeat digest is absorbed and counted, whenever it arrives. This is a
+   uniqueness constraint and **not** a window, so it needs no retention number and cannot expire into
+   a double-derivation. GitHub's operator "Redeliver" button is deduplicated by it too, which is a
+   consequence to know rather than a defect.
+8. The event is one this producer derives from (`issues.opened|closed|reopened`,
+   `issue_comment.created`) → else it is accepted, derived from nothing, and counted as
+   `coord_delivery_ignored.<event type>`. **Accepted, not refused**: a repository delivers many events
+   and refusing the ones we do not read would train an operator to ignore this hook's failures.
+9. Derive, store, return `202`.
+
+**Every error body is [§ 12.2](#122-error-responses)'s shape** — `{"error": …, "message": …}` — reused
+rather than re-specified, because a second error grammar on one server is a second thing for an
+operator to learn.
+
+**No new rate limit is minted here, and the reason is a real one rather than an omission.** Every
+limit in [§ 12.3](#123-rate-limits) protects the server from a producer that will **retry** — a
+reporter with a spool, which loses nothing when refused. This producer's upstream is GitHub, and
+**this design cannot assert what GitHub does with a refusal**
+([§ 18.13](#1813-what-this-section-does-not-establish)), so a limit here converts a burst into
+permanent, unrecoverable loss of the exact facts the floor is driven by. The controls that remain are
+the ones that cost nothing when wrong: the HMAC, the 1 MiB body cap, and a **counter** on deliveries
+per hook binding that is alarmed on rather than enforced.
+
+### 18.9 Why this does not ride the batch contract
+
+The brief that commissioned this section asked whether the second producer rides
+[§ 4.2](#42-batch-envelope-fields)'s batch envelope or needs its own. It needs its own, and the answer
+is an enumeration rather than a preference: **every invariant that envelope rests on is false for a
+webhook delivery.**
+
+| Batch invariant | For the reporter | For a GitHub delivery |
+|---|---|---|
+| `seat_id` identifies the producer | the token's binding | **there is no seat.** A delivery belongs to a repository and an install; no field of it names a desk |
+| `Authorization: Bearer mzn_…` | per-seat, ours to issue and rotate | GitHub signs; the credential is one GitHub also holds |
+| `seq` + `seq_epoch` are a monotone per-seat ordering | the flusher is the single writer of the cursor | **nothing orders deliveries.** There is no counter and no epoch to key one to |
+| `session_id` is null only on `reporter.heartbeat` | a harness session exists | no session exists on any delivery |
+| `event_time` is the seat clock, reconciled by [§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what) | two clocks, seat and server | a third clock, GitHub's, reconciled with neither |
+| `reporter_version` / `reporter_platform` / `runtime_version` | describe the producing program | describe nothing here |
+| `schema_version` and its accepted set | seats upgrade independently of the server, so skew is the steady state | one deployment; **no skew axis exists** |
+| bounds are producer-clamped, so a `422` means a producer bug ([§ 12.1](#121-validation-order) step 9) | the reporter clamps before it writes | GitHub clamps nothing for us, so a strict bound here would refuse real deliveries |
+| a batch is atomic and 1…200 events | the reporter composes the batch | one delivery is one event and is not ours to compose |
+
+**Forcing a delivery into that envelope would mean widening nine rules the reporter path depends on,
+to admit a producer that satisfies none of them** — and a widened guard is not a second path, it is
+one weaker path for both callers. A dedicated endpoint with a dedicated validation order costs one
+route and leaves [§ 4](#4-the-envelope) exactly as strict as it is. That is the same call
+[§ 12.3](#123-rate-limits) records making about the failed-authentication limit's placement: a rule
+that has to be loosened to admit a new case was doing its job.
+
+### 18.10 Sanitization at the coordination producer
+
+[§ 7](#7-sanitization-at-the-reporter) is *"sanitization, at the reporter"*, and its argument — *a
+secret that is never sent cannot be leaked by the server* — does not transpose, because here **there
+is no client of ours to sanitize at**: the text arrives from GitHub already across the wire.
+[§ 1](#1-non-goals)'s PII non-goal still binds, and coordination titles and bodies are human-written
+text with no allowlist behind them. So the rule is stated for this producer explicitly:
+
+**Layer 1 is a FIELD allowlist, and it is the real control** — the same shape as
+[§ 7.1](#71-layer-1--the-descriptor-allowlist), over a different population. Exactly one free-text
+field is ever carried: `subject`, from the issue title, with the protocol's addressing preamble
+(`[PREFIX] from:x, to:y —`) removed because it is already carried as structure. **No body text is ever
+carried, at any length, in any field.** A body is read only to compute predicates and slugs — the
+`FROM:` line, the `TO:` line, the convergence phrase — and only their results transit: a name, a list
+of names, a boolean.
+
+**A name read out of a body is NOT free text, and the check that makes that true is stated rather than
+assumed.** A `FROM:` line's value is whatever the author typed after the colon, so *"we only carry the
+name"* is a claim about a field whose contents nobody controls — which is how a "structured" field
+becomes a free-text one. Every name derived from a body is therefore **validated against the `slug`
+pattern before it transits**, and a value that fails it becomes `null` and is counted as
+`coord_name_malformed`, exactly as [§ 3.2](#32-session-identity) treats an unparseable `session_id`.
+That validation is the whole of the claim: a boolean carries nothing, and a slug carries 48 bytes of
+`[a-z0-9-]` — which is not a shape a credential survives.
+
+**Layer 2 is [§ 7.3](#73-redaction-rules-applied-in-this-order)'s redaction pass, reused unchanged,
+and this document mints no second redactor.** The rules there are generic text rules — credential
+keywords, high-entropy blobs, absolute paths, control characters — and a title is text. Writing a
+second set for this producer is how two redactors start disagreeing about what a secret looks like;
+[§ 7.5](#75-red-fixtures--required-tests)'s fixtures are what keeps the one set honest, and they cover
+this caller for free.
+
+**Truncation follows [§ 7.4](#74-truncation)** and `subject_truncated` reports it, for the same reason
+`descriptor_truncated` does: a silently clipped string is read as the whole string.
+
+**Where the rule runs: in the receiver, before anything is stored.** That is as early as this design
+can place it, and stating the limit is part of stating the rule — **this is strictly weaker than
+[§ 7](#7-sanitization-at-the-reporter)'s position and the difference is not cosmetic.** The reporter
+sanitizes before the bytes leave the machine that made them, so the server can never be handed a
+secret; here the raw delivery has already crossed the WAN, has already been buffered by the web
+server, and may already have been captured by whatever a proxy in front of it records. Nothing in this
+design can move that boundary, because the producer of the text is GitHub. The mitigation is the one
+[§ 2.2](#22-rules-that-protect-the-seat) rule P-6 already states for the reporter, applied to this
+route: the raw body is never logged, and no diagnostic path prints it.
+
+### 18.11 One producer, two consumers
+
+**There is one GitHub-sourced producer in this design and there must not be a second.** Two consumers
+need one, and they are served by the same receipt path and the same derivation:
+
+1. **The coordination family** — [`coord.thread`](#186-coordthread) and
+   [`coord.round`](#187-coordround), for the floor's thread lines, beads, carriers and broadcast.
+2. **The human-readable task title.** `D2-CITED:` [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)
+   declares a tier-2 column sourced from *"the seat's most recent coordination/PR activity"*, supplying
+   `task.title` and `task.ref = "<repo>#N"`, and says in terms that its producer is designed in no
+   document in this repo.
+
+**They are the same producer because they are the same delivery.** A `coord.round` carries `from` and
+`thread_ref`; the thread it names carries `subject` and is the `task.title`. A title feed is those two
+objects read by a different consumer, keyed on `from` and joined on `thread_ref` — the join the
+objects were shaped to support, not a second derivation. Standing a second GitHub receiver beside this
+one — a second hook
+registration, a second secret, a second HMAC path, a second derivation of the same title — would be
+two implementations of one behaviour, which is a defect and not a separation of concerns.
+
+One thing the tier-2 join needs is **already stated** and one is **not owned by any document in this
+repo**, and the difference matters:
+`D2-CITED:` the freshness bound and the tier precedence are stated at [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here).
+**The join key is not.** This producer derives a **protocol agent name** — `pm`, `magento` — from the
+posting protocol's own addressing. A desk is identified by the `(install_id, seat_id)` pair
+[§ 3.1](#31-the-seat-config-file) makes file-resident on a seat. **Nothing establishes that an agent
+name equals a `seat_id`**, and on this fleet they merely happen to look alike; a coordination roster
+and a reporter installation are configured in different files, by different acts, and neither
+validates against the other. So this section derives the name and stops there, and the missing
+mapping is carried as an open item ([§ 18.13](#1813-what-this-section-does-not-establish)) rather
+than assigned to a document that has not agreed to it.
+
+### 18.12 The anti-requirements, checked against the derivation
+
+Card #7897 carries three anti-requirements. Each survives, and each is now anchored to something in
+this section rather than to intent:
+
+- **No silent cap.** Upstream's `MAX_ENVELOPES=16` drops messages under broadcast with no indicator.
+  Nothing here caps a message set: a broadcast is **one** `coord.round` whose `targets` is the
+  resolved fan-out, so there is no set of N objects to cap. Coalescing under burst is a rendering
+  decision over objects that all exist, and a count badge is derivable by counting them. The one
+  bound that could drop information — `targets` at 32 members — is a **counted** truncation on an
+  array whose real population is a roster of four at this install, and it is reported rather than
+  silent.
+- **The event lands before any animation.** This section is the event. It states no animation, and
+  the animation rows are a later slice by construction.
+- **Broadcast is floor-scoped.** The operator's ruling (2026-08-27) is now a property of the data:
+  `targets` is resolved against **this install's** roster and against no other, so the reach of the
+  event equals the reach of the install and a broadcast's fan-out is enumerated rather than implied. A
+  renderer that draws wider is drawing past its event, which is a defect a reviewer can now name by
+  pointing at a field.
+
+### 18.13 What this section does not establish
+
+Stated by name, because a condition that cannot be established locally is named on the surface the
+other end reads — and here the other end is GitHub, which will not be reading.
+
+| Not established | Cost if it is wrong | The act that closes it |
+|---|---|---|
+| **That an `issues.opened` payload carries `issue.body`, `issue.labels[].name`, `issue.number` and `issue.title`** — DOCS-CITED, corroborated only by the bridge reading those exact paths in production | the derivation reads `null` and every thread is unattributed; the receiver's own key-presence counter is what would say so | capture one real delivery on an instrumented hook and vendor it as a fixture, exactly as [§ 17](#17-appendix--the-captured-harness-payloads) does for the harness |
+| **That `issues.closed` carries `state`, `state_reason` or `closed_at`** — **UNVERIFIED.** Nothing on this box reads them: the bridge's close-path handler reads only `issue.number`, `issue.title` and `issue.labels` | *"still open"* on a thread line is derived from the lifecycle sequence this producer has itself seen, rather than from the payload — correct after the first `opened`, and blind to a thread closed before this hook existed | the same capture; or a one-time backfill read of open threads through the API, which is a different mechanism and is not designed here |
+| **What GitHub does with a 4xx or a 5xx from this endpoint** — UNVERIFIED, and it is why [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) mints no rate limit | if refusals are never redelivered, every refused delivery is permanent loss of a fact with no other source | read GitHub's documented redelivery behaviour, then decide whether a limit is affordable; until then the design assumes the worst and refuses almost nothing |
+| **GitHub's maximum delivery size** — UNVERIFIED; the 1 MiB cap is chosen against the stack, not against the sender | a real delivery over the cap takes a `413` and is lost | read the documented maximum, and measure the largest delivery a live coordination repo produces |
+| **Whether the convergence phrase appears in any body this producer will not see** — the phrase is protocol, and a post edited to add it fires `issue_comment.edited`, which this producer does not derive from | a convergence added by an edit is missed | subscribe `issue_comment.edited` and derive from it, which costs one action in step 8 and is deferred rather than refused |
+| **That a protocol agent name identifies the same thing a `seat_id` does** — **UNVERIFIED, and no document in this repo owns the mapping.** The two are configured in different files by different acts and neither validates against the other; that they look alike on this fleet is a coincidence of naming, not a contract | every coordination fact is derived correctly and **joins to no desk**: thread lines have no endpoints and the tier-2 title has no seat to sit on. The failure is total for the join and invisible in the derivation, which is the worst combination | someone owns the mapping and states it — the honest candidates are the seat config gaining a declared agent name, or a mapping table beside the roster. **This is the one open item that gates a rendered thread line**, so it is named here rather than left to be discovered by the slice that tries to draw one |
+
+**Two of these six are closed by one act — capturing a real delivery.** That is the same act
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) requires for a harness fact, and it is
+recorded here as owed rather than done: **no delivery was captured in this round**, and every
+statement above about payload contents is marked accordingly.
