@@ -26,12 +26,30 @@ FROM. It encodes, as working code, every design ruling of the 2026-08-26/27 oper
   floor-clipped broadcast pulse, convergence spark, escalation flare) — every element maps to a
   bridge-observable and **ships only behind the `coord.*` event family** (card#7897).
 
+- **every `render_state` member has a render, and a member this client does not know renders as
+  UNRECOGNISED** — `FLOOR.md` § 7.1's ten, plus § 5.4's eleventh case, in **one table** whose rows
+  the chip, the monitor, the pose, the marker, the state line, the desk's character and the lobby's
+  summary are all derived from. Copy the table, never one of the derivations: **six** copies of
+  one member set are what this replaced — four of them covering only four members (card#7943) —
+  and a second member set, in any spelling, is how the unrecognised case gets lost again.
+
 **Two things this file is careful about, because an earlier revision was not and card#7341 is
 specified to build FROM it.** `thinking` is **not** a `render_state`: D2 sends the ten members
 `FLOOR.md` § 7.1 publishes, and the *think pose* is derived here from § 6.2 **A4**'s condition over
 a `working` seat (`open_calls == 0` ∧ `open_turn == true`) — copy the derivation, never a wire
 member. And the lobby's per-floor summary iterates § 7.1's **fixed member order** (§ 4.1) rather
-than a member set of its own.
+than a member set of its own — **then names whatever the floor holds that is in no member set at
+all**, because iterating the order alone is a filter and it silently dropped an unrecognised seat
+out of its own floor's count (AT-D3-15).
+
+**The check is `tools/design/floor-preview.selftest.mjs`** (`node`, no dependencies, no network).
+It re-derives § 7.1's ten members and its seven `unknown_reason` sentences from `FLOOR.md` itself
+rather than storing them, so **a member added to D3 with no row here reds it**; it drives a probe
+seat through all ten, through the null edges § 7.1 and § 5.6 state, and through eight values that
+are not members; and it re-runs the whole sweep against the pre-fix shape and requires it to go
+red. ⚠ **It is not visual evidence.** There is no browser and no HTML parser behind it — no layout,
+no paint, nothing seen. What it asserts is the values the artifact emits; how any of it *looks* is
+verified by opening the file, which is the one check no tool here performs.
 
 The kanban cards carry the full rulings and their reasons: #7341 (floor build + viewport),
 #7897 (communication layer + meeting-room triggers), #7898 (art direction + characters),

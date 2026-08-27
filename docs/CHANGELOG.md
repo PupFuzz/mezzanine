@@ -10,6 +10,40 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7943** — **the ratified floor-preview carried SIX copies of one enum's member set, four of
+  them covering only the four `render_state` members its frozen sample fleet happens to contain.**
+  `FLOOR.md` § 7.1 defines **ten**, and § 5.4 / § 9 F9 / AT-D3-11 require an eleventh case — a
+  member the client does not know — to render as **explicitly unrecognised, carrying its raw
+  string**, never mapped to the nearest known member and never a crash. `GL`, `SCREENC`, `POSE`
+  and `labelFor`'s switch each broke that, and **the loud one was the least of them**:
+  `GL[s.render_state]` destructured `undefined` and threw a TypeError that
+  killed the whole render, while `SCREENC` emitted `fill="undefined"` into the SVG, `POSE` drew a
+  default creature and `labelFor`'s switch fell through to `undefined` — three SILENT wrong renders
+  that look like a render and report nothing. ⭐ **A FIFTH site was found by re-reading the
+  subsystem rather than by grepping the field name, and it was silent too:** the lobby's per-floor
+  summary iterated § 7.1's fixed member order, which over a wire value is a **filter** — a seat in
+  an unrecognised state fell straight out of its own floor's count (four seats at the desks, three
+  on the line), which is AT-D3-15's *the lobby never invents a count* failing in the direction
+  nobody watches. **The repair is one table and six derivations, not six patched call-sites**: one
+  row per § 7.1 member in § 7.1's own order, carrying the desk render, pose, marker, chip class,
+  monitor tint, currency and label line as cells, and one explicitly unrecognised row beside it.
+  The member set is now written **once**; patching the sites independently is what minted six
+  copies of it in the first place. **Reachability, stated rather than implied:** unreachable today — the artifact ships a
+  fixed sample fleet — and reachable the moment card#7341 feeds it a live wire, where D2 can
+  deliver any of the ten. ⛔ **The unrecognised desk keeps its character and is drawn NOT-CURRENT.**
+  An empty chair is the render of `stale` and `offline` (§ 7.1), so drawing one for a member nobody
+  recognises would be the nearest-member guess arriving through the desk instead of through the
+  chip; the character is the seat's identity redrawn, which § 5.4 admits explicitly and which says
+  nothing about state. **One visible change to the ratified picture, and only one:** the `stale`
+  sample desk now carries the not-current treatment § 7.1 and § 7.3 already specified for it
+  (*empty chair, desk dimmed*); the rest of the floor renders byte-identically. **The check is
+  `tools/design/floor-preview.selftest.mjs`** — Node, no dependencies, no network — which
+  re-derives the ten members and the seven `unknown_reason` sentences from `FLOOR.md` § 7.1's own
+  tables rather than storing them, so a member added to D3 with no row in the artifact reds it; and
+  which was **seen to fail**: 28 checks red against the pre-fix artifact, and its two silent
+  defects are each re-minted by a source mutation and required to go red on their own, because a
+  check that only ever ran behind a crash is a check nobody has seen work.
+
 - **card#7936** — **A17's clock had two setters and its accessible text was bound to one of them, so
   the hands and the text could render the same minute differently.** `FLOOR.md` § 6.2 A17
   constraint 5 read *set by the same A17 firing that moves the hands and by nothing else* — but
