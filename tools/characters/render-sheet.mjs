@@ -4,8 +4,13 @@
 //   node tools/characters/render-sheet.mjs [out.png] [scale]
 //
 // Defaults to `/tmp/mezzanine-characters.png` at 6x. It deliberately does NOT default anywhere
-// inside the repository: the character tree admits `.ts`/`.js`/`.md` only, and a PNG committed
-// beside the generator is exactly what Gate 2 exists to refuse.
+// inside the repository — and since the 2026-08-27 art-direction amendment the REASON has
+// changed, so it is written out rather than left as "the gate would refuse it". The character
+// tree now admits `.png` (FLOOR § 10.1 Gate 2 clause 1), so a contact sheet committed here
+// would not be refused for being an image; it would be refused for having no manifest row, and
+// giving a REGENERABLE BUILD ARTIFACT a provenance row is worse than the missing row — it would
+// be declaring an origin for output, and its SHA would red Gate 1 every time the generator's
+// pixels moved by one. Output goes outside the repository. Assets go in, with rows.
 //
 // This is the NODE-side check — it proves what the generator produces. It is not a substitute
 // for `harness.html`, which is what proves the browser can draw it; the two verify different

@@ -63,10 +63,12 @@ it, and what it must never draw.
 8. **The subagent cap stays at 8, and the arithmetic is published**
    ([§ 8](#8-interns--subagent-rendering-and-the-cap)). That closes
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9, which asked D3 to decide it.
-9. **Assets carry their provenance as a gate, not as a footnote.** Floor art is CC0, characters are a
-   port of munder-difflin's procedural generator under MIT with attribution, and the upstream's
-   commercial tilesets are never vendored (D-07). [§ 10](#10-art-and-assets--provenance-as-a-gate)
-   states the manifest, the licence allowlist and the two checks that fail the build.
+9. **Assets carry their provenance as a gate, not as a footnote.** Every asset file declares **where
+   it came from** — `first-party` or `licensed`, a closed set — under a closed licence allowlist, and
+   the upstream's commercial tilesets are never vendored (D-07).
+   [§ 10](#10-art-and-assets--provenance-as-a-gate) states the manifest, the allowlist and the two
+   checks that fail the build; [§ 10.4](#104-the-art-direction-as-a-specification) states the look
+   those assets serve, ratified by the operator on 2026-08-26/27.
 10. **Where the D2 contract cannot answer a UI need, nothing is invented.** Where the need can be met
     by fetching an object D2 already serves, this document fetches
     ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold),
@@ -617,6 +619,22 @@ route of its own, because closing it must not cost a re-subscribe.
 | feed status | the client's own connection state ([§ 9](#9-failure-paths-and-their-observables)) | *live* · *polling (feed down)* · *reconnecting* · *reload required*, with the resync count beside it |
 | the event log | the client's own record ([§ 5.5](#55-the-clients-own-narration)), newest first, capped at 200 lines | text only. **The lobby is a renderer of that record and not its home** — § 5.5 owns what the record is and what goes into it; what this row states is that the lobby is where it is read, so a desk that moved, appeared or vanished has a written cause somebody can find |
 
+**The ratified building cross-section is a *rendering* of this table, and changes nothing in it.**
+[§ 10.4](#104-the-art-direction-as-a-specification)'s reference draws the lobby as a building seen in
+section — one **floor plate per install**, stacked, with an elevator as the way between them — and
+that was checked against this table row by row rather than assumed: the plates are
+`installs[].install_id` in the same ascending order, each plate carries the same **per-floor state
+summary** over the seats the client already holds in [§ 7.1](#71-the-render-per-state)'s fixed member
+order, the fleet totals and the membership stamp are the same two readouts, and **the plate is the
+link** exactly as the list row was. No new field is read, no count is recomputed, and
+[§ 4.4](#44-routes-and-what-each-one-fetches)'s three routes are untouched — an elevator ride and a
+zoom-to-floor are [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera arriving at
+`/floor/{install_id}`, which is the route this document already declares and which must still
+deep-link on a cold start. **A cross-section that had replaced the summary with the desks themselves
+would have been a different change** — it would have made the lobby's counts a thing a viewer counts
+by eye, and [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) exists because counting by eye is
+where an invented count comes from. It does not, so this row stands.
+
 ### 4.2 The floor
 
 One install. `S` desk slots from the map, one desk per seat
@@ -699,14 +717,37 @@ desks it had not asked about.
   for that install — the same facts as text, one row per seat, no map. A scaled-down floor whose
   nameplates and badges are unreadable is a floor that shows state without letting anyone read it,
   which is worse than the honest list.
-- **Capabilities the implementer must have, and nothing further:** a 2-D tile renderer able to draw the
-  map and sprite frames at the floor's scale; a WebSocket client speaking the Pusher protocol
-  (Reverb's, [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)); and `prefers-reduced-motion`
-  support. No framework, bundler or state library is specified
-  ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)).
+  **Being crisp at any zoom does not license shrinking this number**, and the sentence is here
+  because *"it is vector now, so it scales"* is exactly the argument the next reader will make. The
+  floor is not 1,280 × 800 because of pixel density; it is 1,280 × 800 because a **nameplate and a
+  badge cluster have to be readable**, and a legible glyph has a minimum size in the viewer's eye
+  that no amount of resolution independence changes. Resolution independence removes the
+  *resampling* failure; it does not remove the *legibility* failure, and this rule was always about
+  the second.
+- **Capabilities the implementer must have, and nothing further:** a renderer able to draw the map and
+  the characters **at any camera zoom without resampling artefacts** — that is, a
+  **resolution-independent** one, which is a property rather than a technology and is the property
+  [§ 10.4](#104-the-art-direction-as-a-specification)'s art direction depends on; a WebSocket client
+  speaking the Pusher protocol (Reverb's,
+  [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)); and `prefers-reduced-motion` support. No
+  framework, bundler or state library is specified
+  ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)), and stating
+  the capability as a property rather than as *a 2-D tile renderer drawing sprite frames* — which is
+  what this bullet said while the art direction was pixel art — is what keeps that non-goal true.
+- **The camera is navigation, and navigation is never state.** The ratified reference
+  ([§ 10.4](#104-the-art-direction-as-a-specification)) zooms out to a building overview, zooms to a
+  floor, and pans by wheel and drag. **A camera move animates nothing in
+  [§ 6.2](#62-the-animation-table--the-closed-set)'s sense**: it renders no fact, it has no driving
+  D2 field, and it gets **no row in that table** — it is the viewer moving their own head, not the
+  fleet doing anything. Anything a camera move appeared to *start* would be an animation with no
+  causing message, which [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) forbids, and the
+  reason to pin it here rather than leave it obvious is that a zoom transition is the single most
+  natural thing to add to a table of animations it does not belong in.
 - **Colour is never the only carrier of a fact.** Every state has a pose or glyph and a text label;
   every badge has a name in the drill-down. A palette is a rendering choice; a state legible only by
-  hue is a state some viewers cannot read.
+  hue is a state some viewers cannot read. **A seat's own hue is not a fact at all** — it is seeded
+  appearance ([§ 10.4](#104-the-art-direction-as-a-specification)), and nothing on the page may read
+  a state out of it.
 
 ---
 
@@ -812,6 +853,19 @@ seat did and when, and nothing is guessed onto it.
   ([D2 decision 29](FLEET-STATE.md#13-decisions-taken-revisable-at-review)); this document adds no
   field D2 did not send. There is no host name, no IP, no path, no prompt text and no file content on
   any screen, because none of them is on the wire.
+  **The one thing this rule does not reach, said here rather than left to be argued at the render
+  site: a rendering of the seat's own IDENTITY.** A desk's slot, and a character's shape, hue and
+  seeded **vibe line** ([§ 10.4](#104-the-art-direction-as-a-specification)), are all pure functions
+  of `(install_id, seat_id)` — two fields the wire **does** send
+  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)) — so none of them is a fact the client
+  invented; each is the identity redrawn. What the rule above does bind is the **direction**: an
+  appearance-class rendering may **never become a fact about state**, so it carries a label saying it
+  is seeded, and it drives **no pose, no currency label, no badge and no animation**. That is the
+  same boundary [§ 5.5](#55-the-clients-own-narration) draws for the client's own narration, arriving
+  from the other side — the narration is *the client talking about itself*, this is *the client
+  drawing the seat's name* — and neither is ever a state. A vibe line that changed with
+  `render_state` would be state-bearing text with no field, which is exactly what this section
+  refuses.
 - **A token, a token prefix, a token hash, or any part of one.** They are not on the read surfaces
   ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)) and nothing on any screen may display one even
   if a future field carried it.
@@ -855,6 +909,14 @@ on a desk is [§ 9](#9-failure-paths-and-their-observables) F1's, which is *none
 continuing to tick from the timestamps the client already holds. That is the same boundary
 [§ 2.1](#21-the-seven-client-computed-values-closed) draws between presentation and state, applied to
 the one surface where the client is allowed to talk about itself.
+
+**There is a second such surface and it is not this one:** the seat's **seeded appearance**, including
+the **vibe line** in the drill-down ([§ 10.4](#104-the-art-direction-as-a-specification)). It is not
+narration — it says nothing about what the client did or saw — and it is not a wire fact either; it
+is `(install_id, seat_id)` redrawn, which [§ 5.4](#54-what-is-never-rendered) admits and labels. The
+rule it inherits from this section is the last one above, unchanged and for the same reason: **it
+never drives a pose, a currency label, a badge or an animation.** Two surfaces, two different
+justifications, one boundary.
 
 ### 5.6 The null render, for every nullable member
 
@@ -1004,10 +1066,10 @@ it carries the same fact.
 |---|---|---|---|---|---|---|---|---|
 | **A1** | `edge` | `arrive` — the character walks in and sits | desk | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value leaves `offline` | on arrival at the desk | the character is simply present | the seat has not left `offline` |
 | **A2** | `edge` | `depart` — the character stands and walks out, leaving the chair empty | desk | `render_state` | a delta whose new `render_state` is `offline` | at the door | the chair is empty and labelled | the seat is still reporting |
-| **A3** | `held` | `work` — typing at the keyboard, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
-| **A4** | `held` | `think` — leaning back, watching the monitor, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
+| **A3** | `held` | `work` — typing at the keyboard, with the eye **blink** and the gentle in-place **wiggle**, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
+| **A4** | `held` | `think` — leaning back, watching the monitor, with the same **blink** and **wiggle**, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
-| **A6** | `held` | `idle` — the chair turns from the desk, the monitor dims. **No loop.** | desk | `render_state` | `render_state == "idle"` | when it is not | identical — this state has no motion by design | the seat has not cleanly finished a turn |
+| **A6** | `held` | `idle` — the character is **slumped asleep on the desk**, the monitor dimmed, with drifting **z**'s, 4 fps loop | desk | `render_state` | `render_state == "idle"` | when it is not | the **static slumped pose**, z's drawn once and still | the seat has not cleanly finished a turn. **A sleeper is never a gone seat** — [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) owns that rule |
 | **A7** | `held` | `attention` — a raised hand and a marker above the desk, 4 fps loop | desk | `render_state` | `render_state == "blocked"` | when it is not | a static raised-hand pose and the marker | no `attention.request` is open ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | **A8** | `held` | `stalled` — head in hands, static, with the `api_error_type` line | desk | `render_state`, `api_error_type` | `render_state == "stalled"` | when it is not | identical | no `turn.end(api_error)` is standing |
 | **A9** | `held` | `unknown` — a question marker over an occupied desk | desk | `render_state`, `unknown_reason` | `render_state == "unknown"` | when it is not | identical | the seat's last turn record supports a positive reading |
@@ -1019,17 +1081,48 @@ it carries the same fact.
 | **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
 | **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) | on arrival | the desk appears in its new slot on the next render | no arrival collided |
 
-**A14 is the only thing on the page that moves unconditionally, and it is driven by a message.** That is
-deliberate: the one always-moving element is the one whose motion *is* the claim that the feed is alive,
-so when the feed dies it stops, and the page's stillness becomes true rather than ambiguous.
+**A14 is still the only thing on the page that moves unconditionally, and it is driven by a message.**
+That is deliberate: the one always-moving element is the one whose motion *is* the claim that the feed
+is alive, so when the feed dies it stops, and the page's stillness becomes true rather than ambiguous.
+**This sentence was re-derived when A6 gained a loop rather than carried over**, because it is exactly
+the kind of claim an amendment falsifies silently. It survives, and the reason is the class column: a
+`held` loop runs only while a delivered field has a value, so **every** loop on the floor — A3, A4, A6,
+A7, A15 — is conditional on something the wire delivered, and a desk with nothing delivered behind it
+is still. A14 is `edge`, fires on each `feed.heartbeat`, and is conditional on **no seat's state at
+all**; that is the property the word *unconditionally* names here, and A6's new loop does not touch it.
+
+**Per-seat loop phase, from the appearance seed — and it carries no information.** Loops are
+**phase-offset per seat**, so a floor of busy desks does not blink and wiggle in lockstep; the offset
+is drawn from the same `(install_id, seat_id)` seed as the character itself
+([§ 10.4](#104-the-art-direction-as-a-specification)). **This is stated rather than left as an art
+note, because a per-seat offset is precisely the thing a careful reader would suspect of being data.**
+It is not: [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) forbids motion
+whose **rate, amplitude or direction** encodes a quantity, and phase is none of the three — the rate
+stays [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2's fixed 4 fps for every loop and
+every seat, the amplitude is the row's own, and the offset is derived from **identity**, which does not
+change while the seat exists and therefore cannot report anything that does. A phase drawn from a
+seat's *state*, its context percentage or its call count would be forbidden by the same rule that
+permits this one.
 
 ### 6.3 Forbidden forms, named so they cannot be written in good faith
 
-- **Ambient life.** No idle breathing, blinking, foot-tapping, coffee sipping, passing NPCs, flickering
-  monitors, moving clouds or swaying plants. Every one of them is motion a viewer cannot distinguish at
-  a glance from state-bearing motion, which is precisely what makes the floor readable-at-a-glance in
-  the first place. The cost is accepted and stated: a still floor looks still, and a still floor **is**
-  a still fleet.
+- **Motion that is neither held by a delivered field nor caused by a delivered message — *ambient
+  life*.** That property is the rule; the named forms are its examples, and they remain forbidden
+  **as** examples: idle breathing, blinking, foot-tapping, coffee sipping, passing NPCs, flickering
+  monitors, moving clouds, swaying plants. The reason is unchanged and is the reason the property is
+  the right way to say it — **a viewer cannot distinguish such motion at a glance from state-bearing
+  motion**, which is precisely what makes the floor readable-at-a-glance in the first place. The cost
+  is accepted and stated: a still floor looks still, and a still floor **is** a still fleet.
+  **The property is what decides a case the list of names cannot.** A blink that runs on every desk in
+  every state is ambient and is forbidden — nothing delivers it, and it is the first name on the list
+  above. A blink that runs **only while a `§ 6.2` row's hold condition holds** is not ambient at all:
+  it is the drawn form of that row, held by a delivered field, stopping when the field stops, and the
+  honesty principle is satisfied by the very mechanism that has always satisfied it. **The bullet is
+  therefore sharper than the list it started as, never looser** — it now refuses one motion the list
+  never named (any un-held loop, whatever it depicts) and admits none the list forbade except by
+  writing it into a row, where a reviewer sees the field that drives it. **The only door in is a
+  `§ 6.2` row.** That table stays closed, `tools/design/verify-floor.py` reds when an animation id is
+  named anywhere in this document without one, and nothing in this bullet weakens that.
 - **Motion driven by a timer.** Nothing may be driven by the 1 s age tick, by a render loop's frame
   count, or by wall-clock time, except a state-held loop's own frames at the fixed rate of
   [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2.
@@ -1084,7 +1177,7 @@ distinct render. The order below is the fixed order the lobby's per-floor summar
 | `render_state` | Desk | Label line | Animation | Never |
 |---|---|---|---|---|
 | `working` | character at the keyboard | the action's descriptor | A3, or A4 when the turn is open with no call | rendered without its currency treatment when the seat is not `live` |
-| `idle` | chair turned, monitor dimmed, character present | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 (none) | rendered as absent. Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
+| `idle` | **character present, slumped asleep on the desk**, monitor dimmed | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 | rendered as absent, and **never as an empty desk** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)). Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | `blocked` | raised hand, marker above the desk | *waiting on a human since 14:31 (seat clock)* | A7 | shown as working, whatever `open_calls` says ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function): `blocked` outranks `working`) |
 | `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
@@ -1237,6 +1330,25 @@ places on this document by name:
 - **Empty.** A `stale` or `offline` desk is a *rendered* empty chair with a *no data since* line, not an
   absent desk. An absent desk and a quiet fleet are the two things D1 § 9.1's rendering clause and
   [D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path) exist to keep apart.
+- ⭐ **Asleep. A sleeping character and a gone seat must never be confusable, and this is a rule rather
+  than an art note.** [§ 6.2](#62-the-animation-table--the-closed-set) A6 draws `idle` as a character
+  **slumped asleep at its own desk** — and `idle` means *the seat cleanly finished a turn*, which is a
+  **positive observation** the fleet made ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)).
+  `stale`, `offline` and `unknown` mean the opposite: nobody can say what the seat is doing.
+  **So `stale` and `offline` render the empty chair of [§ 7.1](#71-the-render-per-state) — the seat
+  itself, with nothing in it — and never a sleeper**, however restful a dark desk looks; and `unknown`
+  keeps its question marker over an **occupied** desk, because its seat is present and its last turn
+  is what is unreadable. **This is where the honest-looking mistake lives**: *asleep* and *gone quiet*
+  are the same picture in most offices, and a floor that drew them alike would turn the one degradation
+  the whole of [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) exists to surface into the
+  most reassuring thing on the screen. The distinction survives motion being switched off, because
+  A6's reduced-motion form is the **static slumped pose** and the empty chair has no pose at all
+  ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) — a sleeper is a
+  *character*, an empty chair is an *absence*, and neither needs the z's to be told from the other.
+  [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) and
+  [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) both assert it, with motion on and with
+  motion off. *(The ratified art draws that chair as a cushion — the noun in the render tables is the
+  chair, and one noun is what keeps the two documents one document.)*
 - **Zeroed.** A null `context` renders *not reported*; a null `task` renders no chip; a null
   `subagents[].title` renders *untitled*; a null `counters` object renders *unreadable*. **A null is
   never drawn as a zero**, because a zero is a measurement and a null is the absence of one — the same
@@ -1442,6 +1554,17 @@ to D2 for the rule that would close it properly.
 munder-difflin's procedural generator (MIT, with attribution). The upstream's commercial tilesets are
 never vendored.* This section turns that decision into obligations an implementer can fail.
 
+**D-07's last sentence is untouched and always will be; its middle clause was superseded on
+2026-08-27.** The operator ratified a new art direction ([§ 10.4](#104-the-art-direction-as-a-specification)),
+under which the ported pixel generator is **interim placeholder art** and the product ships
+**original, high-resolution, resolution-independent** art of its own. `docs/PLAN.md § 0`'s register
+carries the supersession as an append beside D-07 rather than as an edit to it, because a register
+records what was decided when. **What this does to this section is one thing and it is the whole of
+§ 10.1's change:** **Gate 2** used to enforce that the character tree held **no art at all**, which was
+the mechanised form of *the sprites are generated*. Art now ships as files, so an absence is the wrong
+assertion — and the right one is not a weaker version of it but a different one: **no asset without
+declared provenance.**
+
 ### 10.1 The manifest, and the two gates
 
 Every asset file in the repository has a row in **`docs/ATTRIBUTION.md`**, and the row carries all of:
@@ -1453,33 +1576,106 @@ filename beside it read as a root path — card#7340.)*
 | Column | Example | Why it is required |
 |---|---|---|
 | path | `resources/floor/tiles/office-16.png` | the row's subject |
-| source URL | `https://opengameart.org/content/…` | where it came from, checkable by a human |
+| **origin** | `first-party` | **where the asset came from, as a value from a closed set of exactly two** — see below. It is the column that makes *"where did this picture come from"* a membership test rather than prose a reader has to interpret |
+| source URL | `https://opengameart.org/content/…` | where it came from, checkable by a human. Its **meaning depends on `origin`**, which is the point of typing that column |
 | author | *(as the source states)* | the attribution obligation's subject |
 | licence identifier | `CC0-1.0` | an SPDX identifier, not prose. "Free to use" is not a licence |
 | retrieved | `2026-08-23` | a licence can change; the row records which one was accepted |
 | SHA-256 of the file as vendored | `a3f1…` | so a later edit or replacement of the bytes is visible without re-reading the source |
 
-**Gate 1 — every asset has a row.** The build fails when any file under the asset trees has no
-`docs/ATTRIBUTION.md` row, or when a row's SHA-256 does not match the file. A missing row is an asset whose
-licence nobody recorded, which is the only way an incompatible asset ever ships.
+**`origin` is a closed set of exactly two, and a row outside it fails the build:**
 
-**Gate 2 — no vendored character art.** The character sprites are **generated**, not vendored
-([§ 10.2](#102-characters-the-munder-difflin-port)), so the assertion the gate makes is an **absence**:
-this is the mechanised form of *"the upstream's commercial tilesets are never vendored"*. A denylist
-can only refuse the copies someone thought to enumerate — and *"no raster or vector image file"* is a
-denylist wearing a description, because the tree is **not** empty (it holds the ported source and
-`LINEAGE.md`, [§ 10.2](#102-characters-the-munder-difflin-port)), so the gate must **classify** files,
-and every classifier written as a list of image extensions passes a `.webp`, an `.avif`, a sprite sheet
-named `.dat`, and base64 image data inside a `.ts`. So the gate is an **allowlist**, in two clauses,
-and it fails on anything neither clause admits:
+| `origin` | What it claims | What the row must then carry |
+|---|---|---|
+| **`first-party`** | drawn or written **for this repository** | the source URL is an **in-repo reference** — the repository's own URL, which is what the existing first-party rows already write — and the author is this repository's contributors. **The URL half is the gated half**, and it is the only one: a row claiming `first-party` while pointing at somebody else's URL contradicts itself, and that contradiction is the one a machine can catch. Its licence is ordinarily the repository's own (`MIT`), and that is a **convention, not a check** — the closed allowlist already bounds it, and a gate demanding `MIT` here would red on an original asset somebody deliberately dedicated `CC0-1.0`, which is strictly more permissive and harms nothing. Stated rather than implied, because a rule presented as gate-enforced when it is not is worse than one honestly labelled |
+| **`licensed`** | obtained from **outside** | a genuine **external** source URL — not this repository's — an SPDX identifier in the closed allowlist, and a `retrieved` date |
 
-1. **File types.** Every file under the character tree carries one of **`.ts`, `.js`, `.md`** — the
-   ported generator's source and its lineage file, and nothing else. Any other extension fails the
-   build, named. An allowlist refuses the format nobody anticipated; that is the property the
-   empty-tree argument was reaching for and the extension denylist gave away.
-2. **Embedded bytes.** No file in that tree carries a `data:image/` URI or a single base64-shaped
-   literal longer than **1,024 B**. Clause 1 cannot see image bytes pasted *inside* a file it admits,
-   and that is the one route an implementer taking the shortcut would actually take.
+A row with **no** `origin`, or an `origin` outside those two, fails Gate 1 by name. The set is closed
+for the same reason the licence allowlist is: a third value invented at a call site is a value nobody
+decided, and *"where did this come from"* answered in free text is a question nobody can re-ask a year
+later.
+
+**Gate 1 — every asset has a row, and the row says where the asset came from.** The build fails when
+any file under the asset trees has no `docs/ATTRIBUTION.md` row, when a row's SHA-256 does not match
+the file, when a row's licence is outside the closed allowlist, or when a row's `origin` is missing,
+outside the set, or contradicted by the row's own source URL. A missing row is an asset whose licence
+nobody recorded, which is the only way an incompatible asset ever ships.
+
+**Gate 2 — every asset is a file Gate 1 can see.** This is the gate that changed, and it changed its
+**assertion**, not its strictness. It used to assert an **absence** — no image file under the
+character tree at all — which was the mechanised form of *the sprites are generated*. Under
+[§ 10.4](#104-the-art-direction-as-a-specification) art ships as files, so that assertion is simply
+false about the product being built, and a gate asserting something false is worse than no gate: the
+next reader trusts its green. What replaces it is **not** a relaxed version of the absence. It is the
+claim Gate 1 needs in order to mean anything — *every asset is a file with a path, so every asset has
+a row*. Two clauses, and the **allowlist shape** the old text argued for at length is unchanged and is
+the reason this gate is still worth having: a denylist can only refuse the copies someone thought to
+enumerate, and every classifier written as a list of image extensions passes the format nobody
+anticipated. So the gate is an **allowlist**, and it fails on anything neither clause admits:
+
+1. **File types.** Every file under the character tree carries one of **`.ts`, `.js`, `.md`, `.svg`,
+   `.png`** — and each member is here for a stated reason, because an allowlist whose members have no
+   reasons is a denylist that has not noticed yet:
+   - **`.ts`, `.js`** — the generator's source. The seed machinery survives the art change unchanged
+     ([§ 10.2](#102-characters-the-munder-difflin-port)); appearance is still computed from the key.
+   - **`.md`** — the lineage file.
+   - **`.svg`** — the ratified direction is **vector-first**, and vector is what
+     [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s resolution-independence requirement
+     actually needs. It is also **text**, so clause 2 can read inside it, which no raster format
+     permits.
+   - **`.png`** — the one raster admitted, for artwork that genuinely cannot be vector. Lossless, so
+     an asset is not re-encoded into a worse copy of itself on each pass through a tool; universally
+     decodable with no pipeline of its own; and already the format [§ 10.3](#103-the-floor-map)'s
+     Tiled tilesets ship in, so admitting it adds no decoder the floor did not already need.
+   - **Everything else fails the build, named** — `.avif`, `.webp`, `.jpg`, `.psd`, `.dat`, and the
+     extension nobody has thought of. `.webp` and `.avif` are refused not because they are bad but
+     because **a second raster format buys nothing and doubles the surface**; `.jpg` because lossy
+     re-encoding of original art is a quality loss discovered after it ships; `.psd` and `.dat`
+     because a working file and an unnamed blob are not deliverables.
+   - **Widening this list is a change to this section**, made here with a reason beside it, and it is
+     *not* the licence allowlist and not an operator gate — it is a format decision, whose cost when
+     wrong is a build reddening on correct work. That is why every member above carries its argument:
+     so the next person can disagree with the argument rather than with the list.
+2. **Embedded bytes, and its purpose is sharper now than when it was written.** No file under the
+   character tree carries a `data:image/` URI or a single base64-shaped literal longer than
+   **1,024 B**. It used to exist because clause 1 could not see image bytes pasted *inside* a file it
+   admitted. Now that images are admitted as files, its job is the load-bearing one: **an asset
+   embedded inside another file has no path of its own, therefore no manifest row, therefore no
+   provenance** — and it is invisible to Gate 1 by construction, because Gate 1 walks paths. Clause 2
+   is what forces every asset to be a file Gate 1 can see. It is also why `.svg` being text matters
+   twice: an SVG that inlines a `data:image/png;base64,…` blob is a raster asset wearing a vector
+   file's extension, and clause 2 is the only thing in this document that can tell them apart.
+   ⚠ **The clause must not fire on legitimate SVG.** Path data (`d="M12.5 3.2c-1.1…"`) is long,
+   mixed-case and full of digits, and a base64 heuristic loose about its alphabet reds on a complex
+   first-party drawing — **and a gate that reds on correct work gets switched off**, which costs more
+   than the gate ever bought. The base64 alphabet is `A–Z a–z 0–9 + / =` and nothing else; path data
+   is broken up by `.`, `-`, `,` and spaces, so a run of it is not a run of that alphabet.
+   `bin/asset-provenance.selftest.py` carries the discriminating pair — **a genuinely complex
+   first-party SVG passes, and an SVG with an inlined `data:image/…` blob fails** — because either
+   half alone is not evidence.
+
+**What this change COSTS, named rather than left to be discovered.** The old Gate 2 was
+**self-verifying**: it asserted an absence, and an absence needs no truthful claim from anybody — the
+gate could see for itself that the tree held no art. The new one rests on a **row being true**. An
+implementer who vendors somebody's commercial art, drops it in as `.png` and writes `first-party` /
+`MIT` in its row **passes both gates**. That is a real loss of assurance and it is not recovered by
+anything below; what stands in its place is weaker and is worth naming exactly:
+
+- the **closed licence allowlist**, which refuses the honest-but-incompatible case even when the row
+  is true;
+- the closed **`origin`** set with its per-value checks, which cannot detect a lie but can detect an
+  **inconsistency** — the vendored asset whose author cell names somebody outside this project, or
+  whose source URL is external while its origin says `first-party`;
+- the lineage file's *what was deliberately not taken and why*
+  ([§ 10.2](#102-characters-the-munder-difflin-port)), which is a human statement and is the only
+  artifact here that addresses intent at all;
+- the **IP line** ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate));
+- and **review**, which is now doing more of the work than it was and should be told so.
+
+The honest summary is that these gates now prove **an asset was declared**, not that the declaration
+was true. That is a smaller claim than the one they used to make, and the reason to take the trade
+anyway is that the alternative — a gate that keeps asserting an absence the product no longer has —
+proves nothing at all while looking exactly as green.
 
 **The residue is named rather than implied.** Neither clause can refuse a generator that *fetches*
 upstream art at run time — nothing that inspects a tree can. That is refused by the lineage file's
@@ -1491,28 +1687,45 @@ screen.
 any `-NC` or `-ND` term, "free for personal use", or an asset with no stated licence — is refused by
 Gate 1 and is an **operator decision to widen**, never an implementer's. The repository is MIT (D-02)
 and public (`PupFuzz/mezzanine`), so an asset whose terms are stricter than the repository's is a term
-the repository cannot honour.
+the repository cannot honour. **This is the one allowlist in this document the amendment did not
+touch**, and it is stated here, once, rather than restated beside the `origin` set and again beside
+the file-type list.
 
 ### 10.2 Characters: the munder-difflin port
 
+**The port is MACHINERY, not the look. Read this subsection as answering one question — *what did the port actually buy, now that its art
+is not the product's art?*** The answer is *the seed machinery and the generator algorithm*, and
+nothing in the port's licence work is undone by the art direction changing.
+
 - **What is ported is the generator, not its art.** The upstream project ships a procedural character
   generator under MIT *and* commercial tilesets under terms that do not permit redistribution. This
-  document's requirement is that the port takes the **algorithm and the MIT-licensed source only**, and
-  that the character tree contains no image file at all ([§ 10.1](#101-the-manifest-and-the-two-gates)
-  Gate 2).
+  document's requirement is that the port takes the **algorithm and the MIT-licensed source only**.
+  *(This bullet used to end "…and that the character tree contains no image file at all". That
+  sentence was true of the pixel-art design and is false of the ratified one; it is gone from here,
+  from Gate 2, from [AT-D3-12](#at-d3-12-asset-provenance-gates-bite), from `docs/ATTRIBUTION.md`,
+  from `resources/characters/LINEAGE.md` and from `bin/asset-provenance.py`'s module docstring, which
+  is the whole of the population that carried it.)*
+- **The port's pixel art is INTERIM PLACEHOLDER art**, superseded by
+  [§ 10.4](#104-the-art-direction-as-a-specification). It renders today, from the seat key, in a plain
+  browser; it is not the look this product ships. **No rework of card#7340's lineage or licence work is
+  owed by that** — the obligations below are obligations of the *port*, and the port is still here.
+- **The identity property is unchanged and is the load-bearing half.** A character's appearance is
+  derived from `(install_id, seat_id)` ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so a
+  seat looks the same on every browser and every reload **with nothing stored** — the same property,
+  and the same reasoning, as the desk slot function. That property belongs to the *seed machinery*,
+  which the art direction does not touch: [§ 10.4](#104-the-art-direction-as-a-specification) changes
+  what is drawn, never what selects it.
 - **The port carries a lineage file** — `resources/characters/LINEAGE.md` — recording the upstream
   repository URL, the **commit SHA** the port was taken from, the files ported, the MIT copyright line
   and licence text as required by MIT, and, explicitly, **what was deliberately not taken and why**.
-  The last item is the one that makes a later reader able to tell a port from a fork.
+  The last item is the one that makes a later reader able to tell a port from a fork, and it is
+  **unchanged in every particular** — it is also, now, one of the few things standing where Gate 2's
+  absence used to stand ([§ 10.1](#101-the-manifest-and-the-two-gates)).
 - **The MIT notice ships with the distribution**, in `docs/ATTRIBUTION.md` and in the lineage file. MIT's
   obligation is to reproduce the copyright notice and permission notice; a link is not a reproduction.
-- **The seed is the seat's identity.** A character is generated from `(install_id, seat_id)`
-  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so a seat looks the same on every browser and
-  every reload without any stored appearance — the same property, and the same reasoning, as the desk
-  slot function.
-- **The upstream repository and commit are not recorded anywhere in this repository**, so the port
-  cannot begin until they are ([§ 14](#14-open-questions-for-the-review-loop) item 7). Stating that is
-  the point: an implementer holding only this document must not guess which project D-07 names.
+- **The upstream repository and commit are recorded** — closed by card#7340 on 2026-08-25 and carried
+  in the two files above ([§ 14](#14-open-questions-for-the-review-loop) item 7's generator half).
+  What is still open there is the **tileset**, not the generator.
 
 ### 10.3 The floor map
 
@@ -1524,6 +1737,107 @@ the repository cannot honour.
   declares **12**.
 - The map declares nothing about state. No slot is bound to a `seat_id`, because a map that named seats
   would be a second home for identity and would have to be edited every time a seat is provisioned.
+
+### 10.4 The art direction, as a specification
+
+**This subsection exists because until it did, the only carrier of the ratified look was an
+artifact — `docs/design/floor-preview/`, ratified by the operator on 2026-08-27 — and an artifact is
+not a specification.** A reference artifact answers *what does it look like*; it cannot answer *what
+may I change*, and an implementer holding only D3 (the standalone-implementer standard, D-14) could
+read every pixel of it and still not know which of them are rulings. Every bullet below is an
+**operator ruling** of the 2026-08-26 / 2026-08-27 sessions, not a suggestion, and the reference
+artifact is the worked example of it.
+
+- **Visual target: high-resolution, whimsical, modern, warm** — Ghibli-adjacent in *feel*, never in
+  content ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)). **Not pixel art.** The look
+  must be **resolution-independent**, which is not a style note but the capability
+  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) requires and the reason `.svg` heads
+  [§ 10.1](#101-the-manifest-and-the-two-gates) Gate 2's admitted formats: the camera zooms from a
+  whole building to one desk, and art that resamples on the way is art that is wrong at every zoom but
+  one.
+- **The seeded appearance space, and it is a space rather than a palette.** Appearance is drawn from
+  `fnv1a32(install_id, seat_id)` ([§ 3.2](#32-the-desk-slot-function)'s hash, already published here),
+  one independent draw per field, across **ten** dimensions: **7** silhouettes × **16** hues ×
+  **5** size buckets, plus pattern (**3**), ears (**4**), sprout (**5**), eye style (**4**), mouth
+  (**4**), accessory (**5**) and posture tilt (**3**). The operator's ruling is what makes this a
+  requirement rather than a flourish — *"we need more different characters, not just different colors.
+  Each agent and subagent needs their own appearance and personality"*, and then *"the AIMLA floor has
+  a repeated body. Be more creative on the different bodies and colors."* **Colour alone is not
+  variety**, and a body repeated across a floor is the defect that ruling names.
+- **Interns seed from the parent seat plus the intern index** — the key `seat~internN` — so siblings
+  at one side table differ from each other and from their seat
+  ([§ 8](#8-interns--subagent-rendering-and-the-cap)). One sprite **per open subagent**; the cap and
+  its arithmetic are § 8.1's and are **not** changed by anything here.
+- ⭐ **The salt is a design choice, and this is the rule that must survive this document's author.**
+  The per-field salts (the reference's `s18` for silhouette, `s3` for hue) were **searched against the
+  real roster** so that the known fleet renders all-distinct bodies and hues. **Determinism is
+  untouched** — one salt, picked once, fixed forever; the function stays pure and the appearance stays
+  a function of the key alone. **If the operator reports visible repetition, the response is to widen
+  the space or re-pick the salt — never to special-case a seat.** A special-cased seat is a *stored
+  appearance wearing a disguise*: it breaks [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s
+  property that two browsers agree with nothing stored, and it breaks it invisibly, because the seat
+  that was special-cased looks right on the machine where the special case lives.
+- **The collision acceptance is MEASURED, not asserted.** Full-tuple appearance collisions must be
+  vanishingly rare at fleet scale — call it **50** seats. What can be computed from the reference's
+  own field cardinalities is the size of the space: **8,064,000** distinct tuples
+  (7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3), and, **as an estimate that assumes the ten draws are
+  independent and uniform**, a birthday expectation of **1** collision in about **6,583** fleets of
+  50 seats. **That estimate is not the acceptance.** The assumption it rests on is exactly what a
+  *searched* salt perturbs, and a searched salt is what the bullet above requires — so the figure the
+  build owes is a **measurement**: run the shipped generator over the real roster and over a synthetic
+  roster at 50 seats, count full-tuple collisions, and record the count with the roster it was
+  measured against. State the measurement; do not restate the estimate as though it were one.
+- **The seeded vibe line.** A short flavour line in the drill-down, drawn from the same seed — the
+  operator's *"each agent and subagent needs their own appearance and personality"*. It is
+  **appearance-class text**: [§ 5.4](#54-what-is-never-rendered) admits it as a rendering of identity
+  rather than a fact about state, and [§ 5.5](#55-the-clients-own-narration) binds it with the rule it
+  shares with the client's own narration. Concretely, three obligations, and the first is the one a
+  reader arriving from § 5.4 must find here too: **it is labelled on the page as seeded flavour**, so
+  nothing about it can be mistaken for wire data; it **never drives a pose, a currency label, a badge
+  or an animation**; and it **never changes with state** — a line that moved when `render_state` moved
+  would be state-bearing text with no field, which is the defect § 5.4 exists to refuse. **Vibe
+  collisions between seats are expected and fine** (the list is short and the line is flavour);
+  **appearance** collisions on the full tuple are not, which is what the bullet above measures.
+- ⛔ **One element of the ratified reference is NOT admitted by this amendment, and it is named here
+  rather than left for the build to discover: the LIVE WALL CLOCK and the day/night SKY.** The
+  reference moves clock hands and re-renders the sky on a 10-second interval from the **viewer's**
+  local clock. That is motion driven by wall-clock time, which
+  [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s **second** forbidden
+  form refuses — and that bullet is untouched by this amendment. **It could not be admitted the way
+  the blink was.** The blink was admissible because a `§ 6.2` row could hold it by a **delivered
+  field**; the viewer's clock is no such thing, so a row for it would have a driving fact D2 does
+  not declare, which [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 1 forbids and
+  `tools/design/verify-floor.py` reds on. The only ways in are to carve an exception into § 6.3 —
+  the widening this amendment exists **not** to do — or to open a new admitted class for
+  viewer-clock-driven decoration, which is a decision about what the honesty principle means and
+  therefore an operator/review question, not an implementer's. **Until that is decided, the floor's
+  clock and sky are STATIC**, set once per render. Stated plainly because the alternative is a build
+  that ships the reference verbatim and quietly puts the one always-moving element on a page whose
+  whole claim is that motion means something ([§ 6.2](#62-the-animation-table--the-closed-set) A14).
+- **What is deliberately NOT specified here:** the palette's hex values, the drawing itself, the file
+  layout of the art, and the renderer. [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s
+  non-goal stands — **no framework, bundler or state library is specified**, and this subsection does
+  not sneak one in by naming SVG: SVG is a *file format on the asset side*, admitted by
+  [§ 10.1](#101-the-manifest-and-the-two-gates) and required by
+  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s property, not a rendering stack.
+
+### 10.5 The IP line — stated, and unenforceable by gate
+
+**Verbatim operator direction (card#7898):** drawing **from** the Pokémon or Ghibli aesthetic is fine;
+shipping actual Pokémon or Ghibli **characters** is IP infringement and never ships. Generalised,
+because the franchise named is an example and not the rule: **no character owned by another
+rights-holder ships in this product, whatever the franchise, however transformed the drawing.**
+Original creatures only — or commissioned or licensed art carrying its own provenance row
+([§ 10.1](#101-the-manifest-and-the-two-gates)).
+
+**No gate can test this, and saying so is part of stating it.** Nothing in
+`bin/asset-provenance.py` — nothing that inspects file types, hashes, licence identifiers or an
+`origin` column — can look at a drawing and recognise somebody else's character in it. A row reading
+`first-party` / `MIT` over a traced Pikachu passes every check in this document. **Its enforcement is
+review**, by a human who looks at the picture, and that is the whole of it. This is written down
+rather than left implicit for the reason [§ 10.1](#101-the-manifest-and-the-two-gates)'s cost
+paragraph gives: **a rule presented as gate-enforced when it is not is worse than one honestly
+labelled**, because the next reader sees a green build and concludes the question was asked.
 
 ---
 
@@ -1618,7 +1932,7 @@ one** `entered` row and **at most one** `left` row, and a `left` row's `episode_
 | `class` | `edge` | `held` | `held` |
 | `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
 | `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
-| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the three states with no motion by design (`idle`, `stalled`, `unknown`), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
+| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the **two** states with no motion by design (`stalled` and `unknown` — `idle` was the third until [A6](#62-the-animation-table--the-closed-set) gained its sleeping loop), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
 | `at` | the **corrected server-clock instant** the row was written ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, applied) — the client's own record of when it drew this, labelled as the client's own and rendered on no screen | as `edge` | as `edge` |
 
 A **held** row is written when the render is **entered** and again when it is **left**, so the log
@@ -1720,7 +2034,12 @@ all.*
   [D2 § 8.3.1](FLEET-STATE.md#831-worked-delta): `changed` is the patch's keys). A predicate demanding
   `render_state` in that delta would fail a correct client on the fixture it replays.
 - **RED:** add an ambient idle-breathing loop to the character sprite — the single most natural thing to
-  add to a pixel-art office — and re-run. The log gains rows whose `animation_id` has no row in
+  add to an office full of creatures, and **more tempting since [A3](#62-the-animation-table--the-closed-set)
+  and [A4](#62-the-animation-table--the-closed-set) gained a blink**: the difference between the
+  ratified blink and this defect is not what it depicts, it is that one is **held by
+  `render_state`** and the other runs always
+  ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) — and re-run. The log
+  gains rows whose `animation_id` has no row in
   [§ 6.2](#62-the-animation-table--the-closed-set) at all, and whose `cause` is `null` under either
   class's rule — there is no message that caused it and no delivered field holding it — and the test
   fails twice over.
@@ -1748,8 +2067,11 @@ all.*
   work was **killed**. That is the false idle, arriving through the render layer after D1 and D2 both
   removed it from theirs.
 - **Discriminating control:** `fx-snapshot-4`'s ordinary seat driven to a clean `turn.end` **does**
-  render `idle` and does log an **A6 `held` `entered` row** (`motion: false` — A6 has no motion by
-  design, opening a fresh `episode_id`), preceded by the **A3 `left` row** whose cause is that same
+  render `idle` and does log an **A6 `held` `entered` row** (`motion: true` under ordinary motion —
+  A6 holds the sleeping loop since the 2026-08-27 amendment, and this control asserted
+  `motion: false` while it was the *no-loop* row; the value is what
+  [§ 6.2](#62-the-animation-table--the-closed-set) says, not a constant — opening a fresh
+  `episode_id`), preceded by the **A3 `left` row** whose cause is that same
   `turn.end` delta's `state_version` and whose `episode_id` is the one A3's `entered` row opened at
   the snapshot apply — assert the pairing, not merely that both rows exist, because two rows in the
   right order with unrelated episodes is a log that cannot say the loop this seat was running is the
@@ -1816,12 +2138,28 @@ all.*
   drawn static; asserting the absence of a row instead would pass a client that never rendered the seat
   at all, and asserting it over *every* `held` row instead would be satisfied for free by the exit
   rows, whose `motion` is `false` by definition.
+  **Plus the sleeper assertion, which this test owns because it is a degradation claim:** the `stale`
+  and `offline` desks render the **empty chair** and **no character at all** — specifically **not** the
+  sleeping figure [A6](#62-the-animation-table--the-closed-set) draws for `idle`
+  ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) — asserted against a `live` `idle` seat
+  rendered in the same run, so the test compares the two pictures rather than describing one. Assert
+  it on the **render**, not on the animation log: a client that drew a sleeper on a `stale` desk and
+  logged nothing would satisfy a log-scoped assertion for free.
 - **RED — render the axis, not the collapse:** switch the desk on `activity_state` instead of
   `render_state` → the `stale` and `offline` seats render `idle` (their activity state is preserved
-  underneath), which is `D2-MUST` #2 broken at the last layer after two documents held it.
+  underneath), which is `D2-MUST` #2 broken at the last layer after two documents held it. **Under the
+  ratified art this RED is now also the sleeper defect**, and that is the reason it is worth watching a
+  second time: the `stale` desk does not merely mislabel itself, it draws a character **peacefully
+  asleep at a desk nobody has heard from in eleven minutes**, which is the most reassuring possible
+  rendering of the fleet's worst state.
 - **Second RED — the frozen fold:** drop the `fold_lag` treatment → a desk showing two-minute-old work
   beside a fresh receipt age, with every instrument on the page agreeing that everything is fine. This
   is [AT-D2-21](FLEET-STATE.md#at-d2-21-a-frozen-fold-cannot-look-healthy)'s defect at the render layer.
+- **Third RED — the sleeper on a dark desk:** render `stale` and `offline` with A6's sleeping pose
+  instead of the empty chair, keeping every label correct → the labels still read *no data since …*
+  and the picture says the seat is resting. Watch it: it is the one defect in this test a viewer
+  standing back cannot catch, because at floor-reading distance the label is the part they are not
+  reading.
 - **Discriminating control:** the `live` `working` seat of `fx-snapshot-4` renders full colour, with
   motion, and no currency label — so the test measures degradation and not a treatment applied to
   everything.
@@ -2010,36 +2348,62 @@ observable on **no** surface built before step 10.*
 *Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the manifest
 half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 0, the lineage half at
 step 1. The gates themselves are step 0 and must exist before any asset does; the **lineage file**
-and the **character tree** are step 1's artifacts, so a lineage assertion at step 0 asserts the contents of a
-file no step has yet created — and an empty character tree satisfies Gate 2's absence clause for
-free, which is why that clause is asserted by the half that has a tree to read.*
+and the **character tree** are step 1's artifacts, so a lineage assertion at step 0 asserts the
+contents of a file no step has yet created.*
+
+*⚠ **Its RED set was rebuilt on 2026-08-27** with [§ 10.1](#101-the-manifest-and-the-two-gates)'s
+gates. The old third RED planted a `sprites.webp` in the character tree to fail an **absence** clause
+that no longer exists; leaving it would have left this test passing over a rule the document had
+deleted — a green that reports the harness ran. What replaces it tests the rule that is actually
+there: not *is there art*, but **does every asset declare where it came from**.*
 
 - **Build — the manifest half:** run the asset gates against the repository
   ([§ 10.1](#101-the-manifest-and-the-two-gates)). **Reads:** the **provenance gates**.
 - **GREEN — the manifest half:** every asset file has a `docs/ATTRIBUTION.md` row; every row's SHA-256
-  matches its file; every licence identifier is in the allowlist.
-- **Build — the lineage half:** run the same gates once the port has landed
+  matches its file; every licence identifier is in the closed allowlist; and **every row's `origin` is
+  one of the two members and is consistent with the row's own source URL** — `first-party` against an
+  in-repo reference, `licensed` against a genuine external one.
+- **Build — the lineage half:** run the same gates over the ported character tree
   ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
   **character tree**.
 - **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
-  notice; and the **character tree** the port has just written contains **no** image file — Gate 2's
-  absence clause, asserted here rather than at step 0, where a tree that does not exist yet satisfies
-  it for free.
+  notice; and every file in the **character tree** carries an admitted extension and no embedded image
+  bytes — Gate 2's two clauses, asserted here rather than at step 0, because a tree that does not
+  exist yet satisfies both for free.
 - **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
   the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
   upstream commit nobody recorded is a port nobody can tell from a fork
   ([§ 10.2](#102-characters-the-munder-difflin-port)).
 - **RED — the unlisted asset:** add a tile with no row → Gate 1 fails naming the path. **Second RED —
-  the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256 check fails.
-  **Third RED — the vendored character, both clauses:** drop a `sprites.webp` into the character tree
-  — a format an image-extension *denylist* would not have listed → Gate 2 clause 1 fails naming the
-  path; then paste a 40 KB base64 PNG into `characters/atlas.ts`, a file clause 1 admits → clause 2
-  fails on the embedded literal. Both halves are watched, because the first is what an earlier draft of
-  this gate reduced to and the second is the shortcut that draft left open.
-  **Fourth RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
+  the undeclared picture:** drop a `creature.svg` into the character tree with **no manifest row** →
+  Gate 1 fails naming it. This is the RED the amendment is *for*: under the old gate the file was
+  refused for being an image, so the manifest was never the thing tested; now art is admitted and the
+  **row** is the only thing standing between it and the build.
+  **Third RED — the `origin` column, three ways, because a typed column with one RED is a column
+  tested at one value:** a row with **no** `origin` → Gate 1 fails naming the missing cell; a row whose
+  `origin` is `vendored` — a plausible third word nobody decided → fails as outside the closed set;
+  and a row claiming **`first-party`** while its source URL points at somebody else's repository →
+  fails on the contradiction, which is the only lie in this class a machine can catch at all
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)'s cost paragraph says why the rest cannot be).
+  **Fourth RED — the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256
+  check fails. **Fifth RED — the unanticipated format:** drop a `sprites.avif` into the character tree
+  **with a complete, honest manifest row** → Gate 2 clause 1 fails naming the extension. The row being
+  *correct* is the point of this one: it tests the file-type allowlist and nothing else, where the old
+  `sprites.webp` case tested an absence that has been repealed.
+  **Sixth RED — the embedded asset:** paste a 40 KB base64 PNG into `characters/atlas.ts`, a file
+  clause 1 admits → clause 2 fails on the embedded literal; **and** inline a
+  `data:image/png;base64,…` blob inside an otherwise-legitimate `.svg` → clause 2 fails again, on the
+  format the amendment newly admits. Both are watched: an embedded asset has no path, so no row, so no
+  provenance, and it is invisible to Gate 1 by construction.
+  **Seventh RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
   fails.
-- **Discriminating control:** the clean tree passes all four, so the gates are known to be capable of
-  reporting *provenance is complete*.
+- **Discriminating controls — two, and the second is the one that keeps this gate switched on:**
+  *(a)* the clean tree passes every check, so the gates are known to be capable of reporting
+  *provenance is complete*; *(b)* **a genuinely complex first-party `.svg` — long, mixed-case,
+  digit-dense path data — PASSES clause 2.** Without (b) the sixth RED is satisfied by a gate that
+  refuses every SVG ever drawn, and **a gate that reds on correct work gets disabled**, which is a
+  worse outcome than the one it was protecting against. Both halves of the pair run in
+  `bin/asset-provenance.selftest.py`; either alone is not evidence.
 
 ### AT-D3-13 every state is legible without motion
 
@@ -2058,7 +2422,12 @@ building. It is not split, because no half of it is observable earlier.*
   of `turn_killed_by_clear`) — two, and the ten are covered. **Reads:** the **desk render**, the
   **animation set**, the **animation log**.
 - **GREEN:** all **ten** `render_state` members are pairwise distinguishable from the static images
-  alone, and each carries its label line; every animation row's reduced-motion form is what appears;
+  alone, and each carries its label line — **including the `idle` / `stale` / `offline` triple, named
+  here because it is the pair-set the ratified art makes hardest and the one
+  [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) turns into a rule**: `idle` is the **static
+  slumped sleeper** and `stale` and `offline` are the **empty chair**, so with the z's switched off
+  the difference is a character being there or not, and the assertion is that the three static images
+  differ, not that three labels do; every animation row's reduced-motion form is what appears;
   the log gains **no `edge` row**, and every `held` row with **`phase: entered`** reads
   **`motion: false`** — which is the assertion that the reduced-motion form was *selected*, where an
   empty log would equally have reported a renderer that drew nothing at all. The phase scope is
@@ -2245,7 +2614,10 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | The worked slot assignment | 0 · 2 · 3 · 7 | **Measured** — FNV-1a-32 of the four keys, mod 12, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
 | Collision chance per arrival | `N/S` = **1 in 3** on the shipped map | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
 | Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. Re-derived once the tileset is chosen and a desk's rendered width is a measured number rather than a design intent | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
-| Gate 2's embedded-literal bound | **1,024 B** | **Chosen** — above any legitimate base64 literal in generator source (a seed table, a palette) and far below the smallest useful sprite sheet, so clause 2 cannot fire on the port and cannot miss a vendored sheet. **What re-derives it:** the longest literal the port actually contains, measurable the moment the port lands ([§ 14](#14-open-questions-for-the-review-loop) item 7) | [§ 10.1](#101-the-manifest-and-the-two-gates) |
+| **Seeded appearance dimensions** | **10** | **Chosen** — the independent draw fields of the ratified art direction (silhouette, hue, size, pattern, ears, sprout, eye style, mouth, accessory, tilt). One dimension is a palette; ten is a space, and the operator's ruling was that colour alone is not variety. **What re-derives it:** the shipped generator's own field list | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **The full appearance tuple's space** | **8,064,000** | **Derived** — 7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3, the ten cardinalities above multiplied out | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Expected full-tuple collisions at 50 seats** | **1 in 6,583** | **Derived**, and explicitly **not** the acceptance — a birthday estimate over the space above, resting on an assumption (ten independent, uniform draws) that a **searched** salt is precisely what perturbs. § 10.4 requires the real figure to be **measured** over the shipped generator and the real roster, and the measurement is what the acceptance reads | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and now **re-derived against a real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **62 B** (in `index.js`, measured 2026-08-27), sixteen times under the ceiling — and far below the smallest useful sprite sheet, so clause 2 cannot fire on the port and cannot miss a vendored one. This row previously deferred that measurement to *"the moment the port lands"*; the port landed on 2026-08-25 and the number is above. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
 | D2 § 8.2.1's nullable members | **36** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
 | Client event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
 
@@ -2299,7 +2671,7 @@ review can reverse it deliberately rather than discover it later.
 |---|---|---|---|---|
 | 1 | **The client derives no state; the seven things it computes are enumerated as a closed list** ([§ 2.1](#21-the-seven-client-computed-values-closed)) | let the client compute what it needs and rely on review to catch the rest | A closed list is checkable against a candidate computation; "only presentation" is not. D2 already refuses a re-derived `render_state` for the same reason — a second copy of a precedence is free to drift, and the first thing it drifts on is `stale`-vs-`idle` | a genuinely-presentational computation someone wants is a review conversation instead of a commit. That is the cost, and it is the point |
 | 2 | **The animation table is closed, and an animation without a row is a defect** ([§ 6.2](#62-the-animation-table--the-closed-set)) | state the honesty principle as a principle and trust it | A principle nobody can fail is a principle nobody keeps. A closed table plus the animation log makes the rule a test ([AT-D3-1](#at-d3-1-no-animation-without-its-event)) rather than an intention | every new effect costs a table row and a driving field. A flourish with no field is exactly what is being refused |
-| 3 | **No ambient life at all** — no breathing, blinking, NPCs or moving scenery | permit decorative motion that carries no state | Motion is the floor's vocabulary. A viewer cannot tell decorative motion from state-bearing motion at a glance, which is the range this screen is read at, so decoration would spend the vocabulary on nothing | a still floor looks still. That is accepted: a still floor **is** a still fleet, which is the reading we want |
+| 3 | **No motion that is neither held by a delivered field nor caused by a delivered message** — breathing, blinking, NPCs and moving scenery are the named examples, and they stay forbidden as examples ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)). **Amended 2026-08-27**, under the ratified art direction: this row read *no ambient life at all*, which forbade the operator-ratified blink-while-busy and sleeping-idle renders by naming two motions rather than the property that made them wrong | permit decorative motion that carries no state; or, at the amendment, carve the ratified motions out as named exceptions | Motion is the floor's vocabulary. A viewer cannot tell decorative motion from state-bearing motion at a glance, which is the range this screen is read at, so decoration would spend the vocabulary on nothing. **The property is what does that work**, and a name never did: a blink in every state is indistinguishable from a signal, and a blink held by `render_state == "working"` **is** a signal. An exception list would have said which motions were allowed rather than why, and the next one would have had to be argued from precedent | a still floor looks still. That is accepted: a still floor **is** a still fleet, which is the reading we want. **The amendment's own cost:** the rule is now a property a reviewer must apply rather than a list they can check, so the door is [§ 6.2](#62-the-animation-table--the-closed-set)'s closed table — a motion is admitted by being written into a row with its driving field, and by nothing else |
 | 4 | **A state-held loop is permitted, at a fixed rate that encodes nothing** | fire an animation only on edges, never hold one | A `working` desk must look different from an `idle` one at a glance and across a room, and a pose alone is weaker at distance than a pose that moves. The rate is pinned to the coalescing tick so the loop cannot claim more than the feed can carry | a loop is running while the underlying claim is bounded only by D2's ceilings. That is why every loop stops the moment its state's currency is in doubt ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 | 5 | **A snapshot, poll, resync, insert or reconnect never animates** ([§ 6.5](#65-a-snapshot-never-animates)) | animate the difference between the old and new object | The difference between two client states is not a fact about a seat. Animating it would play an arrival at every desk on every reconnect and make the floor's motion mean "the network hiccupped" | a state change that arrives via a snapshot rather than a delta is not announced. It is rendered — just not narrated — and the drill-down and the log carry the detail |
 | 6 | **The desk slot is a pure hash function of `(install_id, seat_id)`** ([§ 3.2](#32-the-desk-slot-function)) | sorted order; arrival order; a server-assigned slot | Sorted order shifts the whole floor when a seat is provisioned; arrival order is not a function of the rendered set, so two browsers disagree; a server slot is a field this document may not mint. The hash gives every client the same answer with no stored state at all | an arrival can displace an incumbent on a collision — bounded to the chain, rendered as a move, and with its frequency stated as `N/S` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
@@ -2312,7 +2684,7 @@ review can reverse it deliberately rather than discover it later.
 | 13 | **A null is rendered as *not reported*, never as a zero** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)), and **[§ 5.6](#56-the-null-render-for-every-nullable-member) states the behaviour per member for all 36** rather than leaving the rule to be applied by guess | coalesce nulls to sensible defaults so the layout never shifts; or state the rule and leave each member's rendering to the implementer | A zeroed gauge is a measurement the wire never made; a placeholder task title is a claim nobody sent. `docs/KANBAN.md § G-1`'s clean zero is the same defect one layer out | the layout must accommodate absent elements, which is a design constraint on the desk rather than a rendering convenience — and 36 stated null renders are 36 more cells a change must keep true, which is what G10 is for. **The per-member table is the half that was missing**: the headline rule was stated and certified from R1, while two dozen members it governs had no stated behaviour, so the implementer reaching for the obvious default would have written the very zero it forbids |
 | 14 | **The floor requires 1,280 × 800 and falls back to a list, not a scaled floor** | scale the map to the viewport | A floor whose nameplates and badges are unreadable shows state without letting anyone read it, which is worse than the honest list of the same facts | small viewports get no floor. The list carries every fact, and the number is re-derived once a desk has a measured width |
 | 15 | **No framework, renderer or bundler is specified** | pin the stack so the implementer has one less decision | None of this document's properties depends on one, and a spec that pinned a stack would expire with it. What *is* pinned is the asset pipeline, because that is where a licence violation enters | two implementers could make different stack choices. Neither can make different **honesty** choices, which is what this document is for |
-| 16 | **Character art is generated from the seat key, never vendored** ([§ 10.2](#102-characters-the-munder-difflin-port)) | vendor a sprite sheet and map seats onto it | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets. Generating also makes a seat's appearance a function of its identity, so it survives reloads with no stored state — the same property the desk slot has | the generator must be ported before any character renders, and Gate 2 refuses the shortcut ([§ 10.1](#101-the-manifest-and-the-two-gates)) |
+| 16 | **A seat's appearance is a pure function of the seat key, and every asset declares its origin** ([§ 10.2](#102-characters-the-munder-difflin-port), [§ 10.4](#104-the-art-direction-as-a-specification)). **Amended 2026-08-27:** this row read *character art is generated from the seat key, never vendored*, and mechanised the second clause as Gate 2's absence. The ratified direction ships original high-resolution art as files, so the absence is gone; **the identity property is not, and it is the half that was always load-bearing** | vendor a sprite sheet and map seats onto it; or, at the amendment, keep the absence and let the art land outside the asset trees | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets, which is untouched. Deriving appearance from `(install_id, seat_id)` is what makes a seat look the same on every browser with **nothing stored** — the same property the desk slot has — and that is independent of whether the drawing is code or a file. Keeping the absence would have pushed the art to a tree no gate watches, which is strictly worse than admitting it under a provenance row | Gate 2 no longer proves an absence, so it no longer refuses the shortcut for free — [§ 10.1](#101-the-manifest-and-the-two-gates) names in full what that costs and what stands in its place. **And the identity clause is now the one that can be broken quietly**: a special-cased seat looks correct on the machine where the special case lives, which is why [§ 10.4](#104-the-art-direction-as-a-specification) forbids it by name rather than by implication |
 | 17 | **Provenance is a build gate, not a document** | keep `docs/ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the socket, since an authorized handshake opened it | D2 refuses machine tokens on the socket precisely because an open connection has no revocation story — and the browser's session has the same property, which D2 does not address ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
@@ -2680,7 +3052,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | Order | Artifact | Gate |
 |---|---|---|
 | 0 | `docs/ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; both clauses of Gate 2 hold; and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, which is the half of that test with a file to read |
+| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **✅ LANDED 2026-08-25**, closing [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, both clauses of Gate 2 hold, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
 | 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
 | 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |

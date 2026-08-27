@@ -3,16 +3,37 @@
 
 WHAT IT DOES.
 
-  Gate 1 — every asset has a row.  Every file under a declared asset tree has exactly one row
-  in the manifest (docs/ATTRIBUTION.md), that row's SHA-256 matches the file's bytes, its
-  licence identifier is in the CLOSED allowlist, and no row names a file that is not there.
+  Gate 1 — every asset has a row, AND the row says where the asset came from.  Every file under
+  a declared asset tree has exactly one row in the manifest (docs/ATTRIBUTION.md); that row's
+  SHA-256 matches the file's bytes; its licence identifier is in the CLOSED allowlist; its
+  `origin` is one of exactly two values and is CONSISTENT WITH ITS OWN SOURCE URL; and no row
+  names a file that is not there.
 
-  Gate 2 — no vendored character art.  Under the character tree the gate is an ALLOWLIST, in
-  two clauses, exactly as section 10.1 argues it must be:
-    1. every file carries one of .ts / .js / .md, so a format nobody anticipated is refused
-       rather than merely a format somebody listed;
-    2. no file carries a `data:image/` URI or a single base64-shaped literal over 1,024 B,
-       because clause 1 cannot see image bytes pasted INSIDE a file it admits.
+    origin = first-party  drawn or written FOR this repository. The source URL must be an
+                          IN-REPO reference (this repository's own URL).
+    origin = licensed     obtained from outside. The source URL must be a genuine EXTERNAL one.
+
+  A row with no origin, or an origin outside the pair, fails. The column is typed so that
+  "where did this picture come from" is a membership test rather than prose, and so that the
+  one lie a machine CAN catch — a row claiming first-party over somebody else's URL — is
+  caught. See the honesty note below for the much larger class it cannot catch.
+
+  Gate 2 — every asset is a file Gate 1 can see.  Under the character tree the gate is an
+  ALLOWLIST, in two clauses, exactly as section 10.1 argues it must be:
+    1. every file carries one of .ts / .js / .md / .svg / .png, so a format nobody anticipated
+       is refused rather than merely a format somebody listed. (.svg because the ratified art
+       direction is vector-first and section 4.5 requires resolution independence; .png as the
+       one lossless raster, which the Tiled tilesets of section 10.3 already ship in.)
+    2. no TEXT-BEARING file in that tree carries a `data:image/` URI or a single base64-shaped
+       literal over 1,024 B — because an asset embedded inside another file has NO PATH OF ITS
+       OWN, therefore no manifest row, therefore no provenance, and it is invisible to Gate 1
+       by construction, since Gate 1 walks paths.
+
+  UNTIL 2026-08-27 GATE 2 ASSERTED AN ABSENCE — no image file in the character tree at all —
+  which was the mechanised form of "the sprites are generated". The operator ratified an art
+  direction under which original art ships as files (FLOOR section 10.4), so that assertion
+  became false about the product being built. It was not relaxed; it was replaced, by the claim
+  Gate 1 needs in order to mean anything.
 
   The lineage check — AT-D3-12's lineage half, and NOT a third gate: section 10.1 names two and
   this invents no more. It reads resources/characters/LINEAGE.md rather than the tree and
@@ -29,6 +50,19 @@ refreshed, and that is the point of the column rather than a cost of it.
 
 WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
 
+  * IT DOES NOT PROVE A ROW IS TRUE.  This is the big one and it is new. The old Gate 2 was
+    self-verifying: an absence needs no truthful claim from anybody. This one rests on a
+    declaration. Vendor somebody's commercial art as a .png, write `first-party` / `MIT` in its
+    row, and every check here passes. What stands in its place is the closed licence allowlist,
+    the origin/URL consistency check, the lineage file's deliberate-omissions section, FLOOR
+    section 10.5's IP line, and REVIEW. Section 10.1 names the residue in full.
+  * IT CANNOT SEE A CHARACTER SOMEBODY ELSE OWNS.  Nothing that reads file types, hashes and
+    licence strings can look at a drawing and recognise a Pikachu. FLOOR section 10.5 states
+    that rule and states that review, not this script, enforces it.
+  * IT TRUSTS THE EXTENSION.  Clause 1 classifies by suffix and sniffs no magic bytes, so an
+    .avif renamed to .png passes it. That is a known gap rather than an oversight: clause 1
+    exists to refuse the format nobody anticipated, not to defeat somebody deliberately hiding
+    one, and the line above already concedes the deliberate case.
   * It cannot refuse a generator that FETCHES upstream art at run time. Nothing that inspects
     a tree can. Section 10.1 names this residue; the lineage file's deliberate-omissions
     section and human review are what stand against it.
@@ -39,6 +73,15 @@ WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
     concatenated at run time would pass it — as would one encoded in a single case, because a
     run must contain upper, lower AND a digit to be called a literal rather than a row of
     comment dividers.
+  * Clause 2's alphabet is base64's own — A-Z a-z 0-9 + / = — and NOTHING ELSE. base64url's `-`
+    and `_` are deliberately outside it, which narrows what the clause claims and is the whole
+    reason a complex .svg passes: SVG path data is broken up by `.`, `-`, `,` and spaces, so a
+    run of it is not a run of this alphabet. A gate that reds on correct work gets switched
+    off, which costs more than the gate was ever worth. The selftest carries the discriminating
+    pair — a complex first-party SVG passes, an SVG with an inlined data:image blob fails.
+  * Clause 2 skips BINARY admitted formats (.png). The clause reasons about a file that is a
+    CONTAINER for an undeclared asset; a raster file is not a container for one, it IS the
+    asset, and it has a row of its own.
   * Clause 2 matches a data URI (a MIME subtype followed by `;` or `,`), not the bare string
     `data:image/` — otherwise the lineage file could not write down the rule it lives under.
 
@@ -76,10 +119,20 @@ REPO = Path(__file__).resolve().parent.parent
 # called. `server/resources/` is Laravel's and is NOT scanned.
 ASSET_TREES = ("resources",)
 
-# Gate 2's tree. Its allowlist is stricter than Gate 1's because the claim it enforces is an
-# ABSENCE: the character sprites are generated, so no image file may exist here at all.
+# Gate 2's tree. Its file-type allowlist is stricter than Gate 1's (which imposes none) because
+# the claim it enforces is that every asset here is a FILE GATE 1 CAN SEE: a known format, with
+# a path, with a row. Each member has a reason, stated in FLOOR section 10.1 clause 1 and not
+# restated here; what is here is the split the code needs and the document does not.
 CHARACTER_TREE = "resources/characters"
-CHARACTER_EXTENSIONS = frozenset({".ts", ".js", ".md"})
+#   TEXT-BEARING: clause 2 reads inside these, because a text file CAN be a container for an
+#   undeclared asset. `.svg` is in this half rather than the other half deliberately — an SVG
+#   that inlines a data:image blob is a raster asset wearing a vector file's extension, and
+#   clause 2 is the only thing in this repository that can tell the two apart.
+CHARACTER_TEXT_EXTENSIONS = frozenset({".ts", ".js", ".md", ".svg"})
+#   BINARY: admitted by clause 1, skipped by clause 2. A raster file is not a container for an
+#   undeclared asset; it IS the asset, and it carries a manifest row of its own.
+CHARACTER_BINARY_EXTENSIONS = frozenset({".png"})
+CHARACTER_EXTENSIONS = CHARACTER_TEXT_EXTENSIONS | CHARACTER_BINARY_EXTENSIONS
 BASE64_MAX_BYTES = 1024
 
 # The licence allowlist is CLOSED. Widening it is an OPERATOR decision (section 10.1), never an
@@ -87,10 +140,24 @@ BASE64_MAX_BYTES = 1024
 # repository's is a term the repository cannot honour.
 LICENCE_ALLOWLIST = frozenset({"CC0-1.0", "MIT"})
 
+# The `origin` set is CLOSED at two, and unlike the licence allowlist it is not an operator gate
+# — it is a TYPE. A third value invented at a row is a value nobody decided, and "where did this
+# come from" answered in free text is a question nobody can re-ask a year later.
+ORIGIN_FIRST_PARTY = "first-party"
+ORIGIN_LICENSED = "licensed"
+ORIGIN_SET = (ORIGIN_FIRST_PARTY, ORIGIN_LICENSED)
+
+# This repository's own URL, so that `first-party` can be checked against something rather than
+# merely recorded. It is declared here, once, for the same reason ASSET_TREES is: a second copy
+# is a second thing to keep true. A `first-party` row must point INSIDE it and a `licensed` row
+# must point OUTSIDE it — which is the ONE inconsistency in this class a machine can catch, and
+# the module docstring is explicit that the lie it cannot catch is much the larger set.
+REPO_URL_RE = re.compile(r"^https?://(?:www\.)?github\.com/PupFuzz/mezzanine(?:[/#?]|$)", re.I)
+
 MANIFEST = "docs/ATTRIBUTION.md"
 MANIFEST_BEGIN = "<!-- asset-manifest:begin -->"
 MANIFEST_END = "<!-- asset-manifest:end -->"
-MANIFEST_COLUMNS = ("path", "source url", "author", "spdx", "retrieved", "sha-256")
+MANIFEST_COLUMNS = ("path", "origin", "source url", "author", "spdx", "retrieved", "sha-256")
 
 # A DATA URI, not the STRING "data:image/". The two are different things and conflating them
 # makes the gate unable to tell a picture from a document that describes the rule — the lineage
@@ -99,19 +166,31 @@ MANIFEST_COLUMNS = ("path", "source url", "author", "spdx", "retrieved", "sha-25
 # carries: `data:image/png;base64,` and `data:image/svg+xml,<svg` match, a backticked mention of
 # `data:image/` does not.
 DATA_IMAGE_RE = re.compile(rb"data:image/[a-z0-9][a-z0-9.+-]*\s*[;,]", re.IGNORECASE)
-# A long run of base64 ALPHABET is not on its own a base64 LITERAL, and the difference matters
-# because `-`, `_` and `/` are all in that alphabet: a block of `// ---------` comment dividers
-# concatenates, once whitespace is stripped, into exactly such a run. Measured on this tree at
-# the time of writing, the longest innocent run is 129 B — under the ceiling, but the mechanism
-# is real and its failure mode is a gate accusing a comment of being a picture.
+# THE ALPHABET IS BASE64'S OWN, AND NOTHING ELSE: A-Z a-z 0-9 + / = .
 #
-# So a match must ALSO look like encoded bytes: at least one uppercase, one lowercase and one
-# digit inside the run. Dividers have none of the three; prose has no digits; a base64-encoded
-# image has all three within its first few dozen characters. This narrows what clause 2 claims
-# rather than widening what it admits — a hand-crafted blob of one case would evade it, and
-# that is a deliberate shortcut nobody takes by accident, whereas the divider is an accident
-# somebody takes eventually.
-BASE64_RUN_RE = re.compile(rb"[A-Za-z0-9+/=_-]{%d,}" % (BASE64_MAX_BYTES + 1))
+# An earlier revision also admitted `-` and `_` (base64URL's two extra characters). That was a
+# gate looking for a superset of what it claimed to find, and the cost landed on the format the
+# 2026-08-27 amendment newly admits: SVG. Path data — `d="M12.5 3.2c-1.1 0-2 .9-2 2"` — is long,
+# mixed-case and dense with digits, and with `-` in the class it concatenates, under the
+# whitespace-stripped pass, into exactly the shape this clause hunts. A GATE THAT REDS ON
+# CORRECT WORK GETS SWITCHED OFF, which costs more than the gate was ever worth.
+#
+# Narrowed to base64's own alphabet, path data cannot form a run at all: it is broken up by `.`,
+# `-`, `,` and spaces, none of which are in the class. What is given up is a base64URL-encoded
+# blob, which is not what a data URI or a pasted image ever uses (DATA_IMAGE_RE catches the
+# former regardless), so the claim narrows and the coverage does not.
+#
+# A long run of the alphabet is still not on its own a base64 LITERAL: `=` and `/` are both in
+# it, so a block of `// ==========` dividers concatenates, once whitespace is stripped, into
+# exactly such a run. Measured on this tree at the time of writing, the longest innocent run is
+# 129 B — under the ceiling, but the mechanism is real and its failure mode is a gate accusing a
+# comment of being a picture. So a match must ALSO look like encoded bytes: at least one
+# uppercase, one lowercase and one digit inside the run. Dividers have none of the three; prose
+# has no digits; a base64-encoded image has all three within its first few dozen characters.
+# This narrows what clause 2 claims rather than widening what it admits — a hand-crafted blob of
+# one case would evade it, and that is a deliberate shortcut nobody takes by accident, whereas
+# the divider is an accident somebody takes eventually.
+BASE64_RUN_RE = re.compile(rb"[A-Za-z0-9+/=]{%d,}" % (BASE64_MAX_BYTES + 1))
 BASE64_LOOKS_ENCODED = (re.compile(rb"[A-Z]"), re.compile(rb"[a-z]"), re.compile(rb"[0-9]"))
 WHITESPACE_RE = re.compile(rb"\s+")
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -189,7 +268,7 @@ def parse_manifest() -> dict[str, dict[str, str]]:
     if tuple(header) != MANIFEST_COLUMNS:
         unmeasurable(
             f"{MANIFEST}: header is {header!r}, expected {list(MANIFEST_COLUMNS)!r} — "
-            "the six columns section 10.1 requires, in order"
+            f"the {len(MANIFEST_COLUMNS)} columns section 10.1 requires, in order"
         )
 
     rows: dict[str, dict[str, str]] = {}
@@ -233,10 +312,41 @@ def gate1(assets: list[str], rows: dict[str, dict[str, str]]) -> None:
             )
         if not row["retrieved"] or not ISO_DATE_RE.match(row["retrieved"]):
             fail("GATE 1", f"{rel}: retrieved {row['retrieved']!r} is not an ISO date (YYYY-MM-DD)")
-        if not row["source url"].strip("`[]() ").startswith(("http://", "https://")):
+        url = row["source url"].strip("`[]() ")
+        if not url.startswith(("http://", "https://")):
             fail("GATE 1", f"{rel}: source URL {row['source url']!r} is not a URL a human can check")
         if not row["author"].strip("`"):
             fail("GATE 1", f"{rel}: no author — the attribution obligation has no subject")
+
+        # The origin column, and the ONE consistency it makes checkable. A missing cell and a
+        # cell outside the pair are separate failures rather than one, because "nobody said" and
+        # "somebody made a value up" are different things to go and fix.
+        origin = row["origin"].strip("`").lower()
+        if not origin:
+            fail(
+                "GATE 1",
+                f"{rel}: no origin — the row does not say where this asset came from. "
+                f"It is one of {list(ORIGIN_SET)}",
+            )
+        elif origin not in ORIGIN_SET:
+            fail(
+                "GATE 1",
+                f"{rel}: origin {origin!r} is not in the closed set {list(ORIGIN_SET)} — "
+                "a third value is a value nobody decided",
+            )
+        elif origin == ORIGIN_FIRST_PARTY and not REPO_URL_RE.match(url):
+            fail(
+                "GATE 1",
+                f"{rel}: origin is {ORIGIN_FIRST_PARTY!r} but its source URL {url!r} is not this "
+                "repository's — a row claiming it was drawn here while pointing somewhere else "
+                "contradicts itself",
+            )
+        elif origin == ORIGIN_LICENSED and REPO_URL_RE.match(url):
+            fail(
+                "GATE 1",
+                f"{rel}: origin is {ORIGIN_LICENSED!r} but its source URL {url!r} is this "
+                "repository's — a licensed asset came from OUTSIDE, and its row has to say where",
+            )
 
     asset_set = set(assets)
     for rel in sorted(rows):
@@ -257,9 +367,15 @@ def gate2(assets: list[str]) -> None:
             fail(
                 "GATE 2 clause 1",
                 f"{rel}: extension {ext or '(none)'!r} is not one of "
-                f"{sorted(CHARACTER_EXTENSIONS)} — the character tree holds source and lineage, "
-                "and character art is GENERATED, never vendored",
+                f"{sorted(CHARACTER_EXTENSIONS)} — an allowlist refuses the format nobody "
+                "anticipated, and admitting one is a change to FLOOR section 10.1 with a reason "
+                "beside it, not an edit here",
             )
+            continue
+        if ext in CHARACTER_BINARY_EXTENSIONS:
+            # Admitted by clause 1, skipped by clause 2 on purpose: clause 2 hunts an asset
+            # embedded inside a CONTAINER, and a raster file is not a container for one — it is
+            # the asset, and it has a row.
             continue
         raw = (REPO / rel).read_bytes()
         if DATA_IMAGE_RE.search(raw):

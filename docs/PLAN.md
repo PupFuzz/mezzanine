@@ -33,6 +33,32 @@ reopen an entry by talking to its decider.
 | D-15 | The fleet-state store is **MySQL on a dedicated DB host**; provisioning it is a deployment task downstream of D2's schema, owned by the Mezzanine build agent (D-13) | operator | 2026-08-23 |
 | D-16 | The Laravel application lives in **`server/`**, not at the repo root — the root already owns `README.md`, `VERSION`, `bin/`, `docs/`, `tools/` and `fleet-reporter/`, and the downstream consumers (CI lanes #7344, `bin/deploy.sh` #7459, ingest #7338, store/feed #7339) each need one stable path to key on | pm | 2026-08-25 |
 
+### Amendments — a decision is superseded by an APPEND, never by an edit
+
+**A register records what was decided when.** Rewriting a row to say what is true now destroys
+the only thing a register is for, so a superseding decision is recorded beneath the table with
+its date, its decider and the scope of what it moved. The original row above stands as written.
+
+- **D-07 · art direction superseded (the middle clause only) — operator, 2026-08-27.**
+  D-07 reads *"Floor art from **CC0 tilesets**; characters ported from munder-difflin's
+  procedural generator (MIT, with attribution). The upstream's commercial tilesets are never
+  vendored."* The operator ratified a new art direction on **2026-08-26** (card#7898) and
+  ratified a working reference for it on **2026-08-27** (`docs/design/floor-preview/`, card#7341),
+  in these words: *"I actually don't want to copy the munder difflin 'minecraft' style. I want
+  high resolution images that are whimsical but look modern."* **What moves:** the ported pixel
+  generator's **art** is now **interim placeholder art**; the product ships original,
+  high-resolution, resolution-independent art of its own, specified at
+  [`docs/design/FLOOR.md § 10.4`](design/FLOOR.md#104-the-art-direction-as-a-specification).
+  **What does NOT move, and each is load-bearing:** the **first** clause (floor art from CC0
+  tilesets) is untouched; the **last** clause (*the upstream's commercial tilesets are never
+  vendored*) is untouched and permanent; the port's MIT attribution obligations are untouched;
+  and the **seed machinery** — appearance derived from `(install_id, seat_id)` — is what the port
+  actually bought and is untouched, because the art direction changes what is drawn, never what
+  selects it. **No rework of card#7340's lineage or licence work is owed.** The consequence for
+  the asset gates is D3's to state and is stated at
+  [`§ 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates): they move from asserting an
+  absence to asserting declared provenance, at a named cost.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
