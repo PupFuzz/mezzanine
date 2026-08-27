@@ -3,14 +3,69 @@
 Every PR whose title or branch carries a `card#NNNN` token owes a line-initial
 `- **card#NNNN** — …` bullet under `## [Unreleased]`, **in the same PR**. A PR that names no
 card owes nothing. `docs/PLAN.md § 4` owns that rule and the reasoning behind it, including
-- **card#7341** — the operator-ratified INITIAL DESIGN for the floor UI lands as a working reference artifact (`docs/design/floor-preview/`): building cross-section + elevator navigation, per-floor themes, seeded 7×16×5 characters with one intern sprite per open subagent (cap 8, then +N), held-loop micro-animation, viewer-clock sky, and the staged coord.* communication layer. The build implements this; customization comes later by operator direction.
-
 why the bullet must be line-initial; `docs/VERSIONING.md` owns when a release collects these
 entries and retitles the section.
 
 Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
+
+- **card#7898** — **D3 admits the ratified art direction, and the asset gates move from absence
+  to declared provenance.** The operator ratified a high-resolution, whimsical, modern
+  (Ghibli-adjacent in *feel*) direction on 2026-08-26/27; `docs/design/FLOOR.md` as written
+  **forbade it in three places** and its CI gate would have red on the first asset it needs.
+  **§ 10.1 — Gate 2 stopped asserting an absence.** *"No image file in the character tree"* was
+  the mechanised form of *the sprites are generated*, and it became false about the product
+  rather than merely strict. It is replaced by the claim Gate 1 needs in order to mean anything:
+  **every asset is a file Gate 1 can see**. The manifest gains a seventh column, **`origin`**, a
+  closed set of `first-party` / `licensed`, each checked against the row's own source URL; the
+  character-tree allowlist widens to `.ts` `.js` `.md` `.svg` `.png`, every member with its
+  reason written down and `.avif` / `.webp` / `.jpg` / `.psd` / `.dat` still failing by name; and
+  clause 2's purpose is restated as the load-bearing one — **an asset embedded inside another
+  file has no path, so no row, so no provenance**. **What it COSTS is named in the document
+  rather than discovered later**: the old gate was self-verifying, the new one rests on a row
+  being *true*, and somebody who vendors commercial art as a `.png` under a `first-party` row
+  passes everything. `bin/asset-provenance.py`, `docs/ATTRIBUTION.md`,
+  `resources/characters/LINEAGE.md` and the workflow comment all say so.
+  **§ 6.3 — the ambient-life bullet was SHARPENED, not deleted.** The ratified micro-animation
+  (blink + wiggle while busy, slumped-asleep idle with drifting z's) was forbidden by a bullet
+  that named *blinking*. The rule is now the **property** that bullet's own reason states —
+  *motion neither held by a delivered field nor caused by a delivered message* — and every named
+  motion survives as an example of it. A blink in every state is still forbidden; a blink held by
+  a § 6.2 row's condition is the drawn form of that row. The only door in is still a § 6.2 row.
+  **A6 (`idle`) gains a held loop** and its reduced-motion form is the static slumped pose; ⭐
+  **a sleeper is never a gone seat** — `stale` / `offline` render the empty chair, stated as a
+  § 7.5 rule and asserted by AT-D3-5 (with motion) and AT-D3-13 (without).
+  **§ 4.5 — the capability floor is a property, not a technology**: a renderer crisp *at any
+  camera zoom without resampling artefacts*, where it read *a 2-D tile renderer drawing sprite
+  frames*. The camera is **navigation and animates nothing** — no § 6.2 row. The 1,280 × 800
+  floor **stays, and the reason is restated** because *"it's vector now, it scales"* is exactly
+  the argument the next reader will make: the rule is about **legibility**, never pixel density.
+  **§ 10.4 is new** — the art direction as a specification, because the ratified artifact is not
+  one: the ten seeded dimensions (7 silhouettes × 16 hues × 5 sizes + pattern/ears/sprout/eyes/
+  mouth/accessory/tilt, **8,064,000** tuples), the intern seeding, ⭐ **the salt is a design
+  choice — on visible repetition, widen the space or re-pick the salt, NEVER special-case a
+  seat** (a special-cased seat is a stored appearance wearing a disguise), and the collision
+  acceptance stated as a figure to be **measured** rather than the birthday estimate this entry
+  is careful not to pass off as one. **§ 10.5 is new** — the IP line, **stated as unenforceable
+  by gate**: no character owned by another rights-holder ships, and *review*, not a script, is
+  what enforces it. The seeded **vibe line** is reconciled with § 5.4 honestly rather than by
+  exception — appearance-class text is a rendering of *identity*, labelled as seeded, and drives
+  no pose, label, badge or animation.
+  **AT-D3-12's RED set was rebuilt** — its *vendored character* case tested a rule that no longer
+  exists and would have passed vacuously. **Every new guard was seen to fail**: nine deliberate
+  mutations of the gate, each watched red and restored. ⭐ **The control that matters most is the
+  SVG false-positive pair** — a complex first-party SVG carrying a 1,926 B minified integer path
+  must PASS while an SVG with an inlined `data:image/…` blob must FAIL. The first draft of that
+  control did **not** discriminate (its longest run was 20 B, which any alphabet passes); it was
+  rebuilt around the shape that actually collides — minified integer path data, where `-` is the
+  separator — and clause 2's alphabet was narrowed from base64URL's superset to base64's own,
+  which is what makes the drawing pass. **A gate that reds on correct work gets switched off.**
+  `docs/PLAN.md` records D-07's supersession as an **append**, not an edit — a register records
+  what was decided when. **Out of scope and untouched:** the `coord.*` event family and the
+  communication layer (card#7897 — events before animation), the floor build itself (card#7341),
+  D1, D2, § 8.1's cap arithmetic and the licence allowlist.
+- **card#7341** — the operator-ratified INITIAL DESIGN for the floor UI lands as a working reference artifact (`docs/design/floor-preview/`): building cross-section + elevator navigation, per-floor themes, seeded 7×16×5 characters with one intern sprite per open subagent (cap 8, then +N), held-loop micro-animation, viewer-clock sky, and the staged coord.* communication layer. The build implements this; customization comes later by operator direction. *(This bullet was landed in the file's PREAMBLE — between two halves of a sentence, above `## [Unreleased]` — and is moved here by card#7898. `docs/VERSIONING.md`'s release step collects what is under the section heading, so a bullet above it is a changelog entry no release would ever pick up.)*
 
 - **card#7837** — The fold sampled its version-bearing fingerprint AFTER the projector wrote, so
   every projector-written member was invisible to the delta feed. `StateRecompute::after()` read

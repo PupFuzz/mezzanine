@@ -72,15 +72,24 @@ screen and reaches nothing else until it finishes there.
 ## Licensing and attribution
 
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships
-`docs/ATTRIBUTION.md` naming every upstream. Character art is generated procedurally in
-code; office tiles are CC0. No commercially-licensed assets are vendored here.
+`docs/ATTRIBUTION.md` naming every upstream. Office tiles are CC0. **No commercially-licensed
+assets are vendored here.**
 
 The character generator is a **port** of munder-difflin's (MIT), at a pinned commit:
 `resources/characters/LINEAGE.md` records the upstream, the commit, the reproduced MIT notice,
 and — the part that makes it a port rather than a fork — what was deliberately not taken and
-why. Two CI gates enforce the claim rather than leaving it to discipline: every asset needs a
-provenance row whose hash matches, and the character tree admits `.ts`/`.js`/`.md` only, with
-no image bytes smuggled inside a file the first clause admits.
+why. **Its pixel art is interim** — the operator ratified a high-resolution, whimsical, modern
+art direction on 2026-08-26/27 (`docs/design/FLOOR.md § 10.4`); what the port bought and keeps
+is the **seed machinery**, so a seat's appearance is a pure function of `(install_id, seat_id)`
+and looks the same on every browser with nothing stored.
+
+Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
+needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`
+or `licensed` checked against the row's own source URL — and **every asset must be a file that
+gate can see**, i.e. a known format, with a path, never bytes pasted inside another file where
+it would have no row at all. **What the gates do NOT prove is that a row is true**;
+`docs/ATTRIBUTION.md` says so under *What a green gate does not mean*, and review is what
+stands there.
 
 ## Branch model
 

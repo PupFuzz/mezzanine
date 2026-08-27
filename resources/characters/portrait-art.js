@@ -6,8 +6,13 @@
 // These are fully custom-drawn figures (NOT recolored sprite-sheet art): a character is an
 // explicit recipe layering skin -> clothing -> face -> facial hair -> hairstyle -> glasses on
 // an 18x28 portrait canvas, and the same upper body plus legs on an 18x32 scene canvas. Every
-// pixel is computed. NO IMAGE FILE IS READ ANYWHERE IN THIS MODULE, and none may be added:
-// the character tree is gated on that absence (`docs/design/FLOOR.md` section 10.1, Gate 2).
+// pixel is computed. NO IMAGE FILE IS READ ANYWHERE IN THIS MODULE, and that is still true.
+// It is no longer true that the character tree is gated on an ABSENCE of image files: the
+// 2026-08-27 art-direction amendment admits declared art there, and `FLOOR.md` section 10.1
+// Gate 2 now asserts that every asset is a FILE GATE 1 CAN SEE — with a path, and therefore a
+// manifest row. What that means for THIS module is unchanged and narrower: it draws, it reads
+// nothing, and an image pasted INTO it would have no path, no row and no provenance, which is
+// exactly what Gate 2 clause 2 refuses. The art this module draws is INTERIM (section 10.4).
 //
 // What Mezzanine changed from upstream, and why, in one place so a reader is not left
 // diffing: upstream keyed everything on a closed set of 15 named show characters and shipped a

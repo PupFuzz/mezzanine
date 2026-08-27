@@ -155,16 +155,30 @@ Upstream's `LICENSE` carves them out of its own MIT grant:
 > License like the rest of the source."*
 
 That is a commercial licence Mezzanine holds no grant under, and `docs/PLAN.md § 0` **D-07**
-settles it: *the upstream's commercial tilesets are never vendored.* The mechanised half of that
-rule is § 10.1 Gate 2 — this directory admits `.ts`, `.js` and `.md` and nothing else, and no
-file in it may carry a `data:image/` URI or a base64-shaped literal over 1,024 B.
+settles it: *the upstream's commercial tilesets are never vendored.* **That sentence is
+permanent and nothing below amends it.**
+
+⚠ **What the 2026-08-27 art-direction amendment changed, and what it did not.** § 10.1 Gate 2
+used to mechanise D-07 as an **absence** — this directory admitted `.ts`, `.js` and `.md` and
+nothing else, so *no image file could exist here at all*. The operator ratified an art direction
+under which the product ships original high-resolution art as files
+([`FLOOR.md § 10.4`](../../docs/design/FLOOR.md#104-the-art-direction-as-a-specification)), so
+that absence is no longer true of the product and the gate no longer asserts it. **This
+directory now admits declared art**; § 10.1 clause 1 owns the list of file types and the reason
+for each member, and it is **not copied here** — a list restated in four documents is what went
+stale the last time this one moved. No text-bearing file in this directory may carry a
+`data:image/` URI or a base64-shaped literal over 1,024 B. **A vendored LimeZu sheet
+would still fail** — the licence allowlist refuses its terms, and the row it would need is a row
+somebody would have to write falsely. But the gate no longer *proves* the absence: it proves
+each asset was **declared**. That is a smaller claim, § 10.1 names it as such, and **this
+section and human review are what carry the difference.**
 
 ### 2. `SpriteAdapter.ts` — because it exists only to slice a LimeZu sheet
 
 Its own documentation says so: *"Maps a LimeZu character walk sheet to the 3-row frame grid
 CharacterSprite expects."* Its configuration fields are literally annotated `(LimeZu: 16)`,
-`(LimeZu: 32)`. It is useless without the art item 1 refuses, and its presence would contradict
-Gate 2's whole claim.
+`(LimeZu: 32)`. It is useless without the art item 1 refuses, so taking it would only ever have
+been the first half of taking that art.
 
 **Where walk animation comes from instead:** [`index.js`](index.js)'s `sceneFrames()` — three
 walk phases, front and back, composed by the same generator that draws the face. There is no
@@ -211,6 +225,15 @@ would have to be defended. What stands against it is this section and human revi
 gate. As of this commit the tree performs no I/O whatsoever: no `fetch`, no `XMLHttpRequest`, no
 `Image`, no URL of any kind — asserted by `tools/characters/selftest.mjs` § 7, and visible by
 reading three small files.
+
+**And since 2026-08-27 there is a larger thing none of it proves: that a manifest row is TRUE.**
+Gate 2 no longer asserts an absence it could see for itself; it asserts that every asset was
+declared. Somebody who drops vendored art into this directory as a `.png` and writes
+`first-party` / `MIT` in its row passes every check in this repository. **That is why the
+section above matters more than it did** — *what was deliberately not taken and why* is now one
+of the few artifacts in this project that speaks to intent at all, and it is a statement a human
+made, checkable only by another human. Keep it current: an item added to this tree that was
+*considered and refused* belongs above, and an item taken belongs in **What was ported**.
 
 The browser harness at `tools/characters/harness.html` lives **outside** this tree, so Gate 2
 cannot see it. It loads no image either, and its own in-page checks assert that no image

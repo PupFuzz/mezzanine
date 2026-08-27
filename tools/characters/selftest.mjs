@@ -3,9 +3,12 @@
 //
 // Node, no dependencies, no network. Run: `node tools/characters/selftest.mjs`
 //
-// It lives OUTSIDE `resources/characters/` on purpose: that tree is gated to `.ts`/`.js`/`.md`
-// with a provenance row per file (`docs/design/FLOOR.md` section 10.1), and a test fixture is
-// not an asset. It imports the tree's public entry point exactly as the app will.
+// It lives OUTSIDE `resources/characters/` on purpose: every file in that tree owes a
+// provenance row (`docs/design/FLOOR.md` section 10.1 Gate 1), and a test fixture is not an
+// asset — it has no upstream, no licence to record and no origin to declare. That reason is
+// the durable one; the tree's admitted FORMATS have already changed once (the 2026-08-27
+// art-direction amendment added `.svg` and `.png`) and are not restated here.
+// It imports the tree's public entry point exactly as the app will.
 //
 // EVERY CHECK HERE CAN FAIL, and section 6 proves it for the one that is easiest to write as a
 // decoration: the bucket-coverage assertion is re-run against a deliberately constant draw

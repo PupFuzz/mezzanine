@@ -1,11 +1,15 @@
 # asset-provenance.yml — the two asset gates from docs/design/FLOOR.md § 10.1, at PR time.
 #
-# WHAT IT DOES. Runs `bin/asset-provenance.py` over this checkout: Gate 1 (every asset file has
-# an ATTRIBUTION row, every row's SHA-256 matches its file, every licence is in the closed
-# allowlist), Gate 2 (the character tree admits `.ts`/`.js`/`.md` only, and no file in it
-# carries a data:image URI or a base64-shaped literal over 1,024 B), and AT-D3-12's lineage
-# half (the port's LINEAGE.md carries its upstream URL, its COMMIT, the MIT notice, and what
-# was deliberately not taken).
+# WHAT IT DOES. Runs `bin/asset-provenance.py` over this checkout: Gate 1 (every asset has a
+# row, and the row says where the asset came from), Gate 2 (every asset is a file Gate 1 can
+# see), and AT-D3-12's lineage half.
+#
+# THE CLAUSES ARE NOT RESTATED HERE, DELIBERATELY. This comment used to enumerate the admitted
+# extensions and the licence rules in prose, which made it a THIRD home for a set that already
+# lives in FLOOR.md § 10.1 (the specification) and in bin/asset-provenance.py (the enforcement)
+# — and it duly went stale the moment the 2026-08-27 art-direction amendment widened the
+# extension allowlist. The script's own module docstring is the operational copy and it is one
+# `head` away; § 10.1 is the contract. A workflow comment is not a place a rule can live.
 #
 # WHY IT EXISTS. The repository is MIT and public. An asset whose licence nobody recorded is
 # the only way an incompatible one ever ships, and the cheapest moment to catch it is while the
