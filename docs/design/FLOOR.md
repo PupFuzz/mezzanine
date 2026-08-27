@@ -2014,6 +2014,9 @@ nothing in the port's licence work is undone by the art direction changing.
 - **Tiled** (`.tmx`/`.tmj`) is the map format, per `docs/PLAN.md § 3`'s P3 acceptance line ("CC0 tiles;
   Tiled map"). It is the one format choice this document makes, and it is inherited from the plan
   rather than minted here.
+- **The map is exported with the tile layer format set to CSV, and the tileset references its image by
+  path rather than embedding it** — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 fails the
+  build otherwise. Both are Tiled export settings, not code.
 - The map declares an **object layer named `desks`** whose objects are the slots of
   [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The shipped `aimla` map
   declares **12**.
@@ -2736,13 +2739,14 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   matches its file; every licence identifier is in the closed allowlist; and **every row's `origin` is
   one of the two members and is consistent with the row's own source URL** — `first-party` against an
   in-repo reference, `licensed` against a genuine external one.
-- **Build — the lineage half:** run the same gates over the ported character tree
-  ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
+- **Build — the lineage half:** run the same gates over the repository, now that the ported character
+  tree exists ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
   **character tree**.
 - **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
-  notice; and every file in the **character tree** carries an admitted extension and no embedded image
-  bytes — Gate 2's two clauses, asserted here rather than at step 0, because a tree that does not
-  exist yet satisfies both for free.
+  notice; and every file under **`resources/`** carries an admitted extension, no embedded image
+  bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path —
+  Gate 2's three clauses, asserted here rather than at step 0, because a tree that does not
+  exist yet satisfies all three for free.
 - **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
   the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
   upstream commit nobody recorded is a port nobody can tell from a fork
@@ -2770,13 +2774,27 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   provenance, and it is invisible to Gate 1 by construction.
   **Seventh RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
   fails.
-- **Discriminating controls — two, and the second is the one that keeps this gate switched on:**
+  **Eighth RED — the base64 layer, which is Tiled's own export default:** export `aimla.tmj` with the
+  tile layer format left at base64 → clause 3 fails naming the layer and its encoding, and the same
+  defect in `aimla.tmx` fails too, on a different parser. Watched, because clause 2 **cannot** be
+  trusted to catch it: a base64 run drawn from an alphabet with no digit passes the entropy heuristic
+  at any length, which is the whole reason clause 3 reads the declared encoding rather than the bytes
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)).
+  **Ninth RED — the embedded tileset image, the true positive of this clause:** give `office.tsx` an
+  `<image>` with no `source=` and the PNG's bytes inline → clause 3 fails naming the tileset, and the
+  `data:` URI spelling of the same thing in a `.tsj` fails identically. It is the same hazard as the
+  sixth RED — an asset with no path has no row and so no provenance — arriving in the one file format
+  where the embedding is a legitimate Tiled feature rather than a mistake.
+- **Discriminating controls — three, and the second is the one that keeps this gate switched on:**
   *(a)* the clean tree passes every check, so the gates are known to be capable of reporting
   *provenance is complete*; *(b)* **a genuinely complex first-party `.svg` — long, mixed-case,
   digit-dense path data — PASSES clause 2.** Without (b) the sixth RED is satisfied by a gate that
   refuses every SVG ever drawn, and **a gate that reds on correct work gets disabled**, which is a
-  worse outcome than the one it was protecting against. Both halves of the pair run in
-  `bin/asset-provenance.selftest.py`; either alone is not evidence.
+  worse outcome than the one it was protecting against. *(c)* **a correct CSV map set — `.tmj`, `.tmx`
+  and `.tsx` together — PASSES clause 3**, and the `.tmj` in it carries **no `encoding` key at all**,
+  which is the shape the format spec's default permits and the harder one for the check to accept. Without
+  (c) the eighth and ninth REDs are satisfied by a clause that refuses every Tiled map ever exported.
+  All three run in `bin/asset-provenance.selftest.py`; any one alone is not evidence.
 
 ### AT-D3-13 every state is legible without motion
 
@@ -3457,7 +3475,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | Order | Artifact | Gate |
 |---|---|---|
 | 0 | `docs/ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **✅ LANDED 2026-08-25**, closing [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, both clauses of Gate 2 hold, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
+| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **✅ LANDED 2026-08-25**, closing [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, every clause of Gate 2 holds, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
 | 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
 | 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
