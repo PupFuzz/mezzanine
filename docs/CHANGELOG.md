@@ -44,6 +44,43 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   never stated the residue at all. **Selftest 43 → 58 fixtures**, all seen failing under three
   reverting mutations. **Out of scope, deliberately:** clause 1 still trusts the extension and
   sniffs no magic bytes (a separate question, recorded in the gate's docstring and § 10.1).
+- **card#7912** — **the ratified floor-preview stops encoding three things the spec does not
+  support.** `docs/design/floor-preview/floor-preview.html` is the artifact card#7341 is specified
+  to build FROM, so a divergence in it propagates by design rather than by accident. **(1) `thinking`
+  was an eleventh `render_state` in seven places** — a badge class, a `busyTop` test, the sample
+  seat's own wire field, a colour map, a monitor branch, a glyph/label map and a drill-down branch —
+  and the drill-down then mapped it **back** to `working` for display, which is both the tell that
+  the author knew it was not a wire member and *precisely* the mapping `FLOOR.md` § 5.4 forbids by
+  name. It is not a state: it is § 6.2 **A4**'s holding condition over a `working` seat
+  (`render_state == "working"` ∧ `open_calls == 0` ∧ `open_turn == true`). The artifact now derives
+  the **pose** from those three fields in one place (`poseOf`) and the drawing layer never sees a
+  state name at all; the sample seat carries `render_state: "working"` with the two fields that
+  select the pose, which is the data that should have driven it all along, and the drill-down shows
+  `render_state` verbatim beside the condition. **The state chip renders the STATE** (§ 5.1: *pose
+  and glyph | `render_state`*) — so the A4 seat's chip reads *WORKING* where it used to read
+  *THINKING*, and the think pose is carried by the pose treatment it always belonged to: the `…`
+  marker and the desk's state line. **D2 was not touched, deliberately**: the state set is closed and
+  derived, and adding a member to carry a client-side pose would put a rendering concern on the wire.
+  **(2) The lobby's per-floor summary iterated its own member list**; it now iterates § 7.1's fixed
+  ten-member order, which § 4.1 requires — the same root cause, so the same fix. **(3) The wall clock
+  and sky ran on a 10 s `setInterval` off the viewer's clock** — § 6.3's second forbidden form, and
+  the mover that keeps moving after the feed dies. They now hold **one value**, set by a delivered
+  `feed.heartbeat` and by nothing else (**A17**), so every other render — a zoom, an elevator ride, a
+  sky repaint — draws the held value and cannot move it. The minute hand steps once a minute with no
+  seconds term (**A17 constraint 1**), the hands' minute is carried as accessible text set on every
+  path that moves the hands (**constraint 5**, and in the corrected form card#7936 will bring the
+  document to), a live-establishing render **sets** the room while F1's 10 s poll sets nothing
+  (**§ 6.5**), and a room that has never been live is drawn **unset** — hands hidden, flat sky —
+  never at a plausible time. ⭐ **The artifact now demonstrates the argument instead of asserting
+  it:** a *simulated feed* control switches between **live**, **down** and **never live**, and on
+  *down* the clock holds while F1's poll count climbs beside a *polling (feed down)* status line —
+  which is what makes a frozen clock legible as the feed-down claim rather than as a minute that
+  happens not to have changed. The one `setInterval` left is the **feed** itself, whose entire body
+  is *deliver a heartbeat*; it is what a socket does in the build. `README.md`'s *"live wall clock +
+  day/night windows from the VIEWER's clock"* — the last sentence in the repo an implementer could
+  read as licence for the interval — is corrected and points at A17 rather than restating it.
+  **Untouched:** `docs/design/FLOOR.md` (card#7913 is editing it concurrently), D1, D2, the ratified
+  look everywhere it is not the defect, and the staged `coord.*` communication layer.
 - **card#7341** — **the floor's wall clock and day/night sky advance on `feed.heartbeat`, so they
   stop when the feed does.** The operator ruled on 2026-08-27 between three options
   (`docs/design/FLOOR.md § 13` decision 21 records all three): ship them **static**, carve an
