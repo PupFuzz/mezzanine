@@ -24,7 +24,12 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   summary iterated § 7.1's fixed member order, which over a wire value is a **filter** — a seat in
   an unrecognised state fell straight out of its own floor's count (four seats at the desks, three
   on the line), which is AT-D3-15's *the lobby never invents a count* failing in the direction
-  nobody watches. **The repair is one table and six derivations, not six patched call-sites**: one
+  nobody watches — **and it was MASKED by the crash above.** The desk loop runs over every floor
+  before the lobby does, so at the pre-fix revision an unrecognised seat anywhere threw out of
+  `GL[…]` and no lobby line was ever drawn to be wrong; removing the crash is what makes the
+  undercount the live failure mode. It had to land in the same change for exactly that reason: a
+  fix that converts a loud failure into a silent one is not a fix.
+  **The repair is one table and six derivations, not six patched call-sites**: one
   row per § 7.1 member in § 7.1's own order, carrying the desk render, pose, marker, chip class,
   monitor tint, currency and label line as cells, and one explicitly unrecognised row beside it.
   The member set is now written **once**; patching the sites independently is what minted six
@@ -34,15 +39,38 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   An empty chair is the render of `stale` and `offline` (§ 7.1), so drawing one for a member nobody
   recognises would be the nearest-member guess arriving through the desk instead of through the
   chip; the character is the seat's identity redrawn, which § 5.4 admits explicitly and which says
-  nothing about state. **One visible change to the ratified picture, and only one:** the `stale`
-  sample desk now carries the not-current treatment § 7.1 and § 7.3 already specified for it
-  (*empty chair, desk dimmed*); the rest of the floor renders byte-identically. **The check is
-  `tools/design/floor-preview.selftest.mjs`** — Node, no dependencies, no network — which
-  re-derives the ten members and the seven `unknown_reason` sentences from `FLOOR.md` § 7.1's own
-  tables rather than storing them, so a member added to D3 with no row in the artifact reds it; and
-  which was **seen to fail**: 28 checks red against the pre-fix artifact, and its two silent
-  defects are each re-minted by a source mutation and required to go red on their own, because a
-  check that only ever ran behind a crash is a check nobody has seen work.
+  nothing about state. ⭐ **`api_error_type` gets the same treatment, because § 5.4 gives it the
+  same rule** — *"rendered verbatim **and** membership-tested… Reading the two rules as
+  alternatives is what would make one of them dead"* — and § 5.2's drill-down table has no row for
+  it, so the desk line is its only surface. § 7.6's twelve now render as **the raw value with the
+  published phrase beside it**, a thirteenth renders with the **unrecognised** marker, and an
+  unrecognised value in *any* membership-tested field the desk draws — not only `render_state` —
+  makes the desk not-current. Without that, AT-D3-11's second RED would have arrived through a
+  different field in the release that fixed it for the first. **⚠ Reported to D3's owner, not
+  settled here:** § 7.1's Label line cell writes the example as *API error — rate limit*, eliding
+  the raw value that § 5.4, § 5.1 (*rendered verbatim*) and § 7.6's column heading (*The line
+  beside the raw value*) all require. Two rule statements and a heading outrank one abbreviated
+  example.
+  **Four label cells were not § 7.1's Label line and three of the four were visible on the
+  ratified artifact**, carried in from the old switch: `idle` dropped ***finished — ***, which is
+  the half that makes it a *positive observation* rather than the silence § 7.5 refuses; `blocked`
+  dropped ***(seat clock)***; `stale` and `offline` wrote *— 11m* where § 7.1 writes *— **no data
+  for** 11m*. Consolidating six copies into one primitive is where the primitive owes being right.
+  **Visible changes to the ratified picture, and only these:** the `stale` sample desk gains the
+  not-current treatment § 7.1 and § 7.3 already specified for it (*empty chair, desk dimmed*), and
+  four sample desk labels gain the § 7.1 text they were missing. The floor SVG is otherwise
+  byte-identical.
+  **The check is `tools/design/floor-preview.selftest.mjs`** — Node, no dependencies, no network.
+  It re-derives **three** published tables from `FLOOR.md` and compares them **cell by cell**:
+  § 7.1's ten members *with their Label line column*, § 7.1's seven `unknown_reason` sentences,
+  and § 7.6's twelve `api_error_type` phrases — so a member added to D3 with no row reds it, and
+  so does a rendered string that has drifted from the document's. ⛔ **The first revision of this
+  suite parsed only the member NAMES while three surfaces claimed it checked the sentences**; a
+  sentence rewritten to say the opposite of D3 ran green. Fixed, and the fix is proved by
+  mutation. **Seen to fail**: 38 checks red against the pre-fix artifact, plus five anchored
+  mutations — the pre-fix lookup, the lobby filter, a rewritten sentence, a rewritten phrase, and
+  a label cell reverted — each required to go red on its own, because a check that only ever ran
+  behind a crash, or only ever ran green, is a check nobody has seen work.
 
 - **card#7936** — **A17's clock had two setters and its accessible text was bound to one of them, so
   the hands and the text could render the same minute differently.** `FLOOR.md` § 6.2 A17

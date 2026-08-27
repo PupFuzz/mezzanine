@@ -39,17 +39,21 @@ specified to build FROM it.** `thinking` is **not** a `render_state`: D2 sends t
 a `working` seat (`open_calls == 0` ∧ `open_turn == true`) — copy the derivation, never a wire
 member. And the lobby's per-floor summary iterates § 7.1's **fixed member order** (§ 4.1) rather
 than a member set of its own — **then names whatever the floor holds that is in no member set at
-all**, because iterating the order alone is a filter and it silently dropped an unrecognised seat
-out of its own floor's count (AT-D3-15).
+all**, because iterating the order alone is a filter that drops an unrecognised seat out of its own
+floor's count (AT-D3-15). That undercount was **masked** by the `GL` crash until card#7943 removed
+it: the desk loop runs first, so nothing was ever drawn to be wrong.
 
 **The check is `tools/design/floor-preview.selftest.mjs`** (`node`, no dependencies, no network).
-It re-derives § 7.1's ten members and its seven `unknown_reason` sentences from `FLOOR.md` itself
-rather than storing them, so **a member added to D3 with no row here reds it**; it drives a probe
-seat through all ten, through the null edges § 7.1 and § 5.6 state, and through eight values that
-are not members; and it re-runs the whole sweep against the pre-fix shape and requires it to go
-red. ⚠ **It is not visual evidence.** There is no browser and no HTML parser behind it — no layout,
-no paint, nothing seen. What it asserts is the values the artifact emits; how any of it *looks* is
-verified by opening the file, which is the one check no tool here performs.
+It re-derives **three** published tables from `FLOOR.md` rather than storing them, and compares
+each **cell by cell**: § 7.1's ten members *with their Label line column*, § 7.1's seven
+`unknown_reason` sentences, and § 7.6's twelve `api_error_type` phrases. So **a member added to D3
+with no row here reds it — and so does a rendered string that has drifted from D3's**. It drives a
+probe seat through all ten members using D3's own worked example values, through the null edges
+§ 7.1 and § 5.6 state, through the two sibling membership sets, and through eight values that are
+not members; and it proves it can fail with five anchored source mutations. ⚠ **It is not visual
+evidence.** There is no browser and no HTML parser behind it — no layout, no paint, nothing seen.
+What it asserts is the values the artifact emits; how any of it *looks* is verified by opening the
+file, which is the one check no tool here performs.
 
 The kanban cards carry the full rulings and their reasons: #7341 (floor build + viewport),
 #7897 (communication layer + meeting-room triggers), #7898 (art direction + characters),

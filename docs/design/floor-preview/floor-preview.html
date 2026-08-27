@@ -272,8 +272,11 @@ const vibeFor=(i,s)=>VIBES[draw(seatKey(i,s),"vibe",VIBES.length)];
      chip    — the plate chip's colour class. The chip's TEXT is deliberately not a cell — it is
                the raw member string (chipText), so a chip can never disagree with the wire.
      screen  — the monitor's tint; `lit` is its brightness.
-     current — false where § 7.3 says the pose may not be read as *now*; the desk is desaturated.
-     label   — § 7.1's Label line column, as a function of the seat.
+     current — false where § 7.3 says the pose may not be read as *now*. It is ONE of two inputs
+               to isCurrent(), which also fails a desk carrying an unrecognised value in any
+               membership-tested field (§ 5.4); the desk is then desaturated.
+     label   — § 7.1's Label line column, VERBATIM, as a function of the seat. The suite parses
+               that column out of FLOOR.md and compares the rendered line to it literally.
 
    ⛔ `thinking` is NOT a render_state. D2 sends these ten and `thinking` is in none of them; it
    is A4's holding CONDITION over a `working` seat — `render_state == "working"` AND
@@ -287,29 +290,46 @@ const STATE_RENDER={
        never a stale last action. On a `working` seat that line IS A4's condition, in words, and
        it is selected by the SAME primitive as the pose rather than by a second test. */
     label:s=>poseOf(s)==="think"?"turn open, no call":(s.action?s.action.descriptor:"")},
+  /* § 7.1's line is *finished — nothing done for 4m 12s*, and `finished — ` is the load-bearing
+     half: `idle` is a POSITIVE OBSERVATION — the seat cleanly finished a turn — not a silence.
+     The bare age reads as the silence § 7.5's asleep-versus-gone bullet exists to refuse. */
   idle:{desk:"character",pose:"sleep",marker:null,chip:"g-idle",screen:"#3c445c",lit:false,current:true,
-    label:s=>"nothing done for "+s.quiet_for},
+    label:s=>"finished — nothing done for "+s.quiet_for},
+  /* § 2.4: a seat-clock timestamp is rendered LABELLED as one, wherever it appears. */
   blocked:{desk:"character",pose:"attention",marker:["!","b"],chip:"g-blocked",screen:"#ffd07a",lit:true,current:true,
-    label:s=>"waiting on a human since "+s.blocked_since},
-  /* § 7.1: head in hands, and `api_error_type` is ALWAYS on the line. § 7.6: the raw value is
-     what renders here; the plain-language phrase beside it is the drill-down's, not this line's.
-     § 5.6: a null one draws no error text — the desk keeps its pose and its label without it. */
+    label:s=>"waiting on a human since "+s.blocked_since+" (seat clock)"},
+  /* § 7.1: head in hands, and `api_error_type` is ALWAYS on the line — see apiErrorLine below
+     for the raw-value-plus-membership form § 5.4 and § 7.6 require of it. */
   stalled:{desk:"character",pose:"hands",marker:null,chip:"g-stalled",screen:"#ff9d8a",lit:true,current:true,
-    label:s=>s.api_error_type?"API error — "+s.api_error_type:"API error"},
+    label:s=>apiErrorLine(s.api_error_type)},
   unknown:{desk:"character",pose:"still",marker:["?","u"],chip:"g-unknown",screen:"#3c445c",lit:false,current:true,
     label:s=>unknownReasonLine(s.unknown_reason)},
   catching_up:{desk:"character",pose:"still",marker:["⟳","u"],chip:"g-catching-up",screen:"#8ecfdb",lit:false,current:false,
     /* § 7.1: a labelled seat-clock TIMESTAMP, never a duration — the only quantity that would
-       make it a duration is a seat clock subtracted from the server's (§ 2.4). */
-    label:s=>"replaying history — last event "+s.activity.last_event_time+" (seat clock)"},
+       make it a duration is a seat clock subtracted from the server's (§ 2.4).
+       ⛔ `activity.last_event_time` is NULLABLE (D2 § 8.2.1), and D3 states no line for a
+       `catching_up` seat that has one. § 5.6's row for the member does state the render — *the
+       seat-clock line beside the last kind is not drawn* — and its default is that a null is the
+       absence it is, so the TIMESTAMP is dropped and the state keeps its line. The refused
+       alternative is the four characters `null` on a desk label, which decision 13 and § 7.5's
+       *Zeroed* bullet both forbid; *not reported* is the form § 5.6 reserves for an element whose
+       own space is drawn unconditionally, and a fragment inside a sentence is not one. */
+    label:s=>s.activity&&s.activity.last_event_time
+      ?"replaying history — last event "+s.activity.last_event_time+" (seat clock)"
+      :"replaying history"},
+  /* § 7.1 writes both dark lines as *no data since 14:18 — NO DATA FOR 11m*: the age carries its
+     own words, because `— 11m` beside a timestamp reads as a second time rather than a duration.
+     `delivery.no_data_since` is non-null whenever `link_state ∈ {stale, offline}` (§ 5.1), so
+     `stale` needs no null branch and `offline`'s is not an inconsistency — it is § 7.1's own
+     provisioned-never-reported case, which is an `offline` seat and never a `stale` one. */
   stale:{desk:"empty-chair",pose:null,marker:null,chip:"g-stale",screen:"#3c445c",lit:false,current:false,
-    label:s=>"no data since "+s.delivery.no_data_since+" — "+s.no_data_for},
+    label:s=>"no data since "+s.delivery.no_data_since+" — no data for "+s.no_data_for},
   offline:{desk:"empty-chair",pose:null,marker:null,chip:"g-offline",screen:"#242a33",lit:false,current:false,
     /* § 7.1: the provisioned-never-reported seat has a NULL `delivery.no_data_since` (and a null
        receipt), and its line then reads *no data yet* ALONE — never "no data since null", and
        never an age beside it (§ 3.4, § 5.6). */
     label:s=>s.delivery&&s.delivery.no_data_since
-      ?"no data since "+s.delivery.no_data_since+" — "+s.no_data_for:"no data yet"},
+      ?"no data since "+s.delivery.no_data_since+" — no data for "+s.no_data_for:"no data yet"},
   disabled:{desk:"character",pose:"still",marker:null,chip:"g-disabled",screen:"#1b1f2b",lit:false,current:false,
     /* § 7.1: monitor OFF, character present — a seat that is off and a seat that is gone must not
        look alike (D1 § 6.14), which is why this row draws a character and `offline` does not. */
@@ -334,17 +354,8 @@ const UNRECOGNISED_RENDER={desk:"character",pose:"still",marker:["⚠","w"],chip
   label:()=>"this client does not recognise this state — not current"};
 /* § 7.1's fixed member order IS this object's key order, and § 4.1's lobby summary iterates it. */
 const RENDER_STATES=Object.keys(STATE_RENDER);
-/* § 5.4's membership test — "the client does not know" against the published set — made ONCE. */
-const isRenderState=v=>Object.prototype.hasOwnProperty.call(STATE_RENDER,v);
-function renderFor(v){return isRenderState(v)?STATE_RENDER[v]:UNRECOGNISED_RENDER;}
-/* the chip's text: the member itself, or § 5.4's unrecognised marker CARRYING THE RAW STRING.
-   `String(v)` is a wire boundary, not a defensive branch: `render_state` is never null per D2,
-   and a preview that crashed proving it would be asserting the very thing it cannot know. */
-function chipText(v){return isRenderState(v)?v.toUpperCase():"UNRECOGNISED · "+String(v);}
 
-/* D3 § 7.1's seven `unknown_reason` members — one glyph, seven explanations. § 5.4 names this
-   field in the SAME membership rule as `render_state`, so a reason this client does not know
-   renders as unrecognised carrying its raw string, never as one of the seven. */
+/* D3 § 7.1's seven `unknown_reason` members — one glyph, seven explanations. */
 const UNKNOWN_REASONS={
   no_data_yet:"no data yet — this seat has never reported",
   turn_aborted_calls:"the last turn ended with calls aborted",
@@ -354,12 +365,77 @@ const UNKNOWN_REASONS={
   stalled_session_ended:"rate-limited, then the session ended",
   session_closed_turn_open:"the session closed with a turn still open"
 };
-/* § 5.6: a null `unknown_reason` draws NO line — never an invented reason, never a placeholder. */
+/* D3 § 7.6's twelve `api_error_type` members — D1 § 6.4's set, which is where D2 sources it.
+   The column these come from is headed *The line beside the raw value*, which is the whole shape
+   of the render: the raw value, and one of these beside it. The last two are one distinction and
+   not a duplicate — `unknown` is the harness saying it does not know what went wrong, and
+   `unrecognised` is D1's coercion target for a member the reporter has never heard of. */
+const API_ERROR_TYPES={
+  rate_limit:"rate limit",
+  overloaded:"the API was overloaded",
+  server_error:"the API returned a server error",
+  authentication_failed:"authentication failed",
+  billing_error:"a billing error",
+  invalid_request:"the request was rejected as invalid",
+  model_not_found:"the model was not found",
+  max_output_tokens:"the turn hit its output-token ceiling",
+  oauth_org_not_allowed:"this organisation is not permitted",
+  account_on_hold:"the account is on hold",
+  unknown:"the harness reported the error as unknown",
+  unrecognised:"this reporter did not recognise the harness's error member"
+};
+
+/* ⭐ § 5.4's membership rule is over SIX fields, not one — `render_state`, `link_state`,
+   `activity_state`, `unknown_reason`, `api_error_type` and the badges — and this desk renders
+   three of them. Each is ONE ENTRY here, so a second membership-tested field is a row rather
+   than a branch, and the test itself is written once for all of them. */
+const MEMBER_SETS={render_state:STATE_RENDER,unknown_reason:UNKNOWN_REASONS,
+                   api_error_type:API_ERROR_TYPES};
+const isMember=(field,v)=>Object.prototype.hasOwnProperty.call(MEMBER_SETS[field],v);
+const isRenderState=v=>isMember("render_state",v);
+function renderFor(v){return isRenderState(v)?STATE_RENDER[v]:UNRECOGNISED_RENDER;}
+/* every field of this seat whose value is in no published set — the desk's own § 9 F9 list. */
+function unheardFields(s){
+  return Object.keys(MEMBER_SETS)
+    .filter(f=>s[f]!==null&&s[f]!==undefined&&!isMember(f,s[f]));
+}
+/* ⛔ § 5.4 / § 7.6: an unrecognised value in ANY of those fields treats the DESK as not-current,
+   not merely the one field that happened to be noticed first. Driving this off the row's cell
+   alone is how `render_state` gets the rule and its five siblings quietly do not — a seat whose
+   `api_error_type` this client has never heard of would otherwise render in full colour, which
+   is AT-D3-11's second RED arriving through a different field. */
+function isCurrent(s){return renderFor(s.render_state).current&&unheardFields(s).length===0;}
+
+/* § 5.6: a null `unknown_reason` draws NO line — never an invented reason, never a placeholder.
+   § 7.1 gives a member its sentence; a value in no set carries its RAW STRING and the
+   unrecognised marker (§ 5.4), and `isCurrent` above has already dimmed the desk it sits on. */
 function unknownReasonLine(r){
   if(r===null||r===undefined)return "";
-  return Object.prototype.hasOwnProperty.call(UNKNOWN_REASONS,r)
-    ?UNKNOWN_REASONS[r]:"unrecognised unknown_reason — "+String(r);
+  return isMember("unknown_reason",r)?UNKNOWN_REASONS[r]
+    :String(r)+" (unrecognised unknown_reason)";
 }
+/* ⭐ § 5.4 settles the reading an earlier revision of this file got backwards, and settles it in
+   a sentence written to pre-empt exactly that: "`api_error_type` is rendered verbatim AND
+   membership-tested, which is not a contradiction: the line carries the raw string EITHER WAY,
+   and membership decides only whether it carries its plain-language sentence or the UNRECOGNISED
+   marker beside the raw value. Reading the two rules as alternatives is what would make one of
+   them dead." § 5.2's drill-down table has no `api_error_type` row at all, so this desk line is
+   the field's ONLY surface and the membership test has nowhere else to live.
+   ⚠ § 7.1's Label line cell writes the example as *API error — rate limit* — the phrase with the
+   raw value ELIDED. That cannot be squared with "carries the raw string either way", with
+   § 7.6's column heading *The line beside the raw value*, or with § 5.1's *rendered verbatim*.
+   Two rule statements and a column heading outrank one abbreviated example, so the raw value is
+   rendered and the tension is reported to D3's owner rather than resolved here.
+   § 5.6: a null draws no error text — the desk keeps its pose and its label without one. */
+function apiErrorLine(t){
+  if(t===null||t===undefined)return "API error";
+  return "API error — "+String(t)
+    +(isMember("api_error_type",t)?" ("+API_ERROR_TYPES[t]+")":" (unrecognised)");
+}
+/* the chip's text: the member itself, or § 5.4's unrecognised marker CARRYING THE RAW STRING.
+   `String(v)` is a wire boundary, not a defensive branch: `render_state` is never null per D2,
+   and a preview that crashed proving it would be asserting the very thing it cannot know. */
+function chipText(v){return isRenderState(v)?v.toUpperCase():"UNRECOGNISED · "+String(v);}
 
 function poseOf(s){
   if(s.render_state==="working"&&s.open_calls===0&&s.open_turn===true)return "think";  /* A4 */
@@ -559,10 +635,11 @@ function deskSVG(T,id,s){
     });
     if(extra>0)g+=`<text x="${tx+tw+14}" y="${ty+8}" font-family="Quicksand,sans-serif" font-weight="700" font-size="14" fill="#cfd4e4">+${extra}</text>`;
   }
-  /* § 7.3 / § 5.4: a desk whose pose may not be read as *now* carries a visible treatment, and an
-     unrecognised member is one of those desks. Read from the row's `current` cell, so a state
-     added to the table declares its own currency rather than being missed by a list here. */
-  return R&&!R.current?`<g class="desat">${g}</g>`:g;
+  /* § 7.3 / § 5.4: a desk whose pose may not be read as *now* carries a visible treatment. The
+     row's `current` cell is one of two inputs — isCurrent() also fails the desk on an
+     unrecognised value in ANY membership-tested field it renders, so a state added to the table
+     declares its own currency and a member added to D1 cannot slip past it in full colour. */
+  return R&&!isCurrent(s)?`<g class="desat">${g}</g>`:g;
 }
 
 function bookshelf(x,y){
@@ -860,11 +937,15 @@ function render(){
   for(const inst of FLOORS){
     /* D3 § 4.1: a count per render_state member present, in § 7.1's FIXED member order — and
        THEN whatever the floor holds that is in no member set at all, in the order it holds them.
-       ⛔ Iterating § 7.1's order alone is a FILTER, and it silently dropped an unrecognised seat
-       out of its own floor's summary — four seats at the desks and three on the line, with no
-       glyph and no crash anywhere to say so. That is the card#7943 class arriving through a COUNT
-       instead of through a lookup, and AT-D3-15 — the lobby never invents a count — is what it
-       broke, in the direction nobody watches.
+       ⛔ Iterating § 7.1's order alone is a FILTER, and it drops an unrecognised seat out of its
+       own floor's summary — four seats at the desks, three on the line. That is the card#7943
+       class arriving through a COUNT instead of through a lookup, and AT-D3-15 — the lobby never
+       invents a count — is what it breaks, in the direction nobody watches.
+       ⭐ It was MASKED, and by the very defect above: the desk loop runs over every floor before
+       this one runs at all, so at the pre-fix revision an unrecognised seat anywhere threw out of
+       `GL[...]` and no lobby line was ever drawn to be wrong. Removing the crash is what makes
+       this the live failure mode, which is why it had to be fixed in the same change and not
+       filed as a follow-up: a fix that converts a loud failure into a silent one is not a fix.
        `Object.create(null)` because the keys are wire strings: a seat in `constructor` must be
        counted, not silently added to a function. */
     const seen=Object.create(null);
