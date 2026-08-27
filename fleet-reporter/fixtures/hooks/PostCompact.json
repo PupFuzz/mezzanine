@@ -1,12 +1,13 @@
 {
-  "_source": "docs-cited-stub",
+  "_source": "capture",
   "shapes": [
     {
-      "session_id": "11111111-2222-4333-8444-000000000009",
-      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000009.jsonl",
+      "session_id": "11111111-2222-4333-8444-000000000005",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000005.jsonl",
       "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000004",
       "hook_event_name": "PostCompact",
-      "trigger": "auto",
+      "trigger": "manual",
       "compact_summary": "<summary, never read>"
     }
   ]
