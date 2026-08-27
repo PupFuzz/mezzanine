@@ -10,6 +10,36 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7341** — **the floor's wall clock and day/night sky advance on `feed.heartbeat`, so they
+  stop when the feed does.** The operator ruled on 2026-08-27 between three options
+  (`docs/design/FLOOR.md § 13` decision 21 records all three): ship them **static**, carve an
+  exception into § 6.3 for viewer-clock decoration, or drive them from a **delivered message**. The
+  third is not a compromise — it is the only one that makes the element *earn* its motion. The
+  ratified reference re-renders clock and sky on a **10-second interval from the viewer's clock**,
+  which is § 6.3's second forbidden form and, worse than a rule violation, is a **second mover that
+  keeps moving after the feed dies**: the page then never goes still, and AT-D3-6 (*the feed dying is
+  visible within 45 s*) loses the observable it asserts. Driven by the heartbeat, **the clock stops
+  with the page — and a stopped clock is the feed-down claim in the form every human reads
+  instinctively.** ⭐ **§ 6.2 gains A17** (`edge`, driver `feed.heartbeat`, absence = *no message has
+  arrived, which at 45 s is the feed-down condition itself*), and the note under that table no longer
+  says A14 is *the only thing that moves unconditionally* — a sentence A17 makes false — but the
+  **property** it was protecting, which is stronger: *everything on this page that moves without a
+  delivered field holding it is driven by the heartbeat, so when the feed dies all of it stops
+  together.* **Four constraints ride with the row**, each a defect if dropped: **no second hand**
+  (the heartbeat is 15 s, and a hand jumping in 15 s steps is the *looks broken* that gets repaired
+  with a timer); the clock reads the **viewer's** clock with only its **sampling** event-driven,
+  reconciled at § 5.5 as the client's own narration and never a fact about a seat; it is **no
+  authority on the time and grows no *as of* stamp** — the status strip already says how current the
+  page is; and **first render *sets* it rather than animating it**, which § 6.5 does not forbid and
+  which is what keeps AT-D3-1's *no `edge` row on a snapshot* true. **AT-D3-6 now ASSERTS the
+  freeze** in both directions — the rendered clock string advances once per heartbeat and never
+  between them, then is identical at every read after the feed stops — with a **third RED that is the
+  exact repair a maintainer will attempt**: put A17 back on a 10 s interval and watch the assertion
+  fail. § 6.3's timer bullet gains the **driven-by versus read-at** distinction that decides the case
+  (*motion that stops is caused; motion that continues was on a timer*), and § 10.4's ⛔ *not
+  admitted* bullet is replaced by the ruling. **Out of scope and untouched:** the animation itself
+  (this is the spec), `docs/design/floor-preview/floor-preview.html`'s own `setInterval` (card#7912
+  owns the artifact), D1 and D2, and every other § 6.2 row.
 - **card#7898** — **D3 admits the ratified art direction, and the asset gates move from absence
   to declared provenance.** The operator ratified a high-resolution, whimsical, modern
   (Ghibli-adjacent in *feel*) direction on 2026-08-26/27; `docs/design/FLOOR.md` as written
