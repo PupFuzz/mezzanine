@@ -3,6 +3,8 @@
 Every PR whose title or branch carries a `card#NNNN` token owes a line-initial
 `- **card#NNNN** — …` bullet under `## [Unreleased]`, **in the same PR**. A PR that names no
 card owes nothing. `docs/PLAN.md § 4` owns that rule and the reasoning behind it, including
+- **card#7341** — the operator-ratified INITIAL DESIGN for the floor UI lands as a working reference artifact (`docs/design/floor-preview/`): building cross-section + elevator navigation, per-floor themes, seeded 7×16×5 characters with one intern sprite per open subagent (cap 8, then +N), held-loop micro-animation, viewer-clock sky, and the staged coord.* communication layer. The build implements this; customization comes later by operator direction.
+
 why the bullet must be line-initial; `docs/VERSIONING.md` owns when a release collects these
 entries and retitles the section.
 

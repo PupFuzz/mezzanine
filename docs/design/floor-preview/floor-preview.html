@@ -1,0 +1,752 @@
+<title>Mezzanine</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#171a28; --panel:#1f2333; --panel2:#262b3e; --line:#323850;
+    --ink:#eef0f6; --dim:#aab1c6; --faint:#707890;
+    --lamp:#ffcf7d; --lampdim:#a8834e;
+    --ok:#57c785; --idle:#9aa7c0; --blocked:#f0b455; --stale:#d97b6c; --think:#8f7ff0;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --disp:'Quicksand','IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  html{background:var(--ground)}
+  body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding:18px 14px 44px}
+  .wrap{max-width:1240px;margin:0 auto}
+  header{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap}
+  h1{font-family:var(--disp);font-size:30px;font-weight:700;letter-spacing:.5px;color:var(--lamp)}
+  .sub{color:var(--dim);font-size:13px}
+  .tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:#241f16;background:var(--lamp);padding:3px 10px;border-radius:20px;letter-spacing:.4px;font-weight:500}
+  .lobby{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px;
+    display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin:14px 0 14px}
+  .floors{display:flex;gap:9px}
+  .fbtn{background:var(--panel2);border:1px solid var(--line);border-radius:20px;color:var(--ink);
+    font-family:var(--disp);font-weight:600;font-size:15px;padding:7px 16px;cursor:pointer;display:flex;gap:9px;align-items:baseline}
+  .fbtn .c{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:400}
+  .fbtn[aria-pressed="true"]{border-color:var(--lamp);color:var(--lamp);background:#2a2417}
+  .fbtn:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+  .health{display:flex;gap:15px;font-family:var(--mono);font-size:12px;color:var(--dim);flex-wrap:wrap}
+  .hh{display:flex;gap:6px;align-items:center;white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+  .lright{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);text-align:right}
+
+  .room{position:relative;border-radius:18px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.45);
+    aspect-ratio:1.8;background:#1a1724;touch-action:none}
+  .world{position:relative;width:100%;transform-origin:0 0;will-change:transform}
+  .world svg{display:block;width:100%;height:auto}
+  .room.grabbing{cursor:grabbing}.room.grab{cursor:grab}
+  .zoomui{position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:40}
+  .zbtn{width:32px;height:32px;border-radius:10px;border:1px solid var(--line);background:rgba(31,35,51,.88);
+    color:var(--ink);font-family:var(--disp);font-weight:700;font-size:16px;cursor:pointer;line-height:1}
+  .zbtn:hover{border-color:var(--lamp);color:var(--lamp)}
+  .zbtn:focus-visible{outline:2px solid var(--lamp)}
+
+  .hit{position:absolute;background:none;border:0;padding:0;cursor:pointer;border-radius:14px}
+  .hit:hover{background:rgba(255,207,125,.10);box-shadow:inset 0 0 0 2px rgba(255,207,125,.45)}
+  .hit:focus-visible{outline:3px solid var(--lamp);outline-offset:-3px}
+  .plate{position:absolute;transform:translateX(-50%);text-align:center;pointer-events:none;white-space:nowrap}
+  .plate .nm{font-family:var(--disp);font-weight:700;font-size:13px;color:#fff;text-shadow:0 1px 3px rgba(10,12,24,.85)}
+  .plate .gl{font-family:var(--mono);font-size:8.5px;padding:2px 8px;border-radius:12px;letter-spacing:.5px;display:inline-block;margin-top:2px;box-shadow:0 1px 3px rgba(10,12,24,.5)}
+  .g-working{background:#1d4030;color:#8ce8b0} .g-thinking{background:#2d2758;color:#c3b8ff}
+  .g-idle{background:#293046;color:#b8c3dd} .g-blocked{background:#443413;color:#ffd07a}
+  .g-stale{background:#43221e;color:#ff9d8a}
+  .plate .ln{display:block;font-family:var(--mono);font-size:9px;color:#cfd4e4;margin-top:2px;
+    text-shadow:0 1px 3px rgba(10,12,24,.85);max-width:180px;overflow:hidden;text-overflow:ellipsis}
+
+  .bub{position:absolute;transform:translateX(-50%);pointer-events:none;text-align:center}
+  .bub .body{display:inline-block;background:#fffdf6;color:#3a3550;font-family:var(--disp);font-weight:600;font-size:10.5px;
+    padding:5px 11px;border-radius:16px;max-width:165px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    box-shadow:0 3px 10px rgba(20,16,40,.35)}
+  .bub .d1,.bub .d2{display:block;background:#fffdf6;border-radius:50%;margin:2px auto 0;box-shadow:0 2px 5px rgba(20,16,40,.3)}
+  .bub .d1{width:7px;height:7px}.bub .d2{width:4px;height:4px}
+  .mk{position:absolute;transform:translateX(-50%);font-family:var(--disp);font-weight:700;font-size:18px;pointer-events:none;
+    text-shadow:0 1px 4px rgba(10,12,24,.8)}
+  .mk.b{color:var(--blocked)}.mk.t{color:#c3b8ff}
+  .env{position:absolute;pointer-events:none;font-size:18px;filter:drop-shadow(0 2px 4px rgba(10,12,24,.6));opacity:0}
+  .envnote{position:absolute;pointer-events:none;font-family:var(--mono);font-size:8.5px;color:#9aa2bb;text-shadow:0 1px 3px rgba(10,12,24,.8)}
+  .floorclip{position:absolute;overflow:hidden;pointer-events:none}
+  .blink{transform-box:fill-box;transform-origin:50% 50%}
+  .busywiggle{transform-box:fill-box;transform-origin:50% 92%}
+  .annring{position:absolute;width:44px;height:44px;border:1px solid rgba(255,207,125,.75);border-radius:50%;pointer-events:none;opacity:0;transform:translate(-50%,-50%) scale(.15)}
+  .star{position:absolute;pointer-events:none;font-size:15px;color:#ffe9a3;opacity:0;text-shadow:0 0 8px rgba(255,233,163,.9)}
+  .folder{position:absolute;width:14px;height:10px;background:#ffcf7d;border-radius:2px 4px 2px 2px;pointer-events:none;opacity:0;box-shadow:0 1px 3px rgba(10,12,24,.5)}
+  @media (prefers-reduced-motion:no-preference){
+    .bub{animation:hover 4.5s ease-in-out infinite}
+    @keyframes hover{0%,100%{margin-top:0}50%{margin-top:-4px}}
+    .mk.b{animation:pl 1.6s ease-in-out infinite}.mk.t{animation:pl 2.2s ease-in-out infinite}
+    @keyframes pl{0%,100%{opacity:1}50%{opacity:.3}}
+    .env{animation:fly 7.5s ease-in-out infinite}
+    @keyframes fly{0%,52%{opacity:0;left:var(--x0);top:var(--y0)}58%{opacity:1}
+      86%{opacity:1;left:var(--x1);top:var(--y1)}92%,100%{opacity:0;left:var(--x1);top:var(--y1)}}
+    .threadline{animation:dash 2.8s linear infinite}
+    @keyframes dash{to{stroke-dashoffset:-13}}
+    .beadpulse{animation:pl 2s ease-in-out infinite}
+    .annring{animation:ann 9s ease-out infinite}
+    @keyframes ann{0%,64%{opacity:0;transform:translate(-50%,-50%) scale(.15)}66%{opacity:.9}88%{opacity:.3;transform:translate(-50%,-50%) scale(48)}94%{opacity:0;transform:translate(-50%,-50%) scale(52)}100%{opacity:0}}
+    .star{animation:conv 12s ease-in-out infinite}
+    @keyframes conv{0%,70%{opacity:0;left:var(--sx);top:var(--sy)}74%{opacity:1}92%{opacity:.9;left:var(--tx);top:var(--ty)}96%,100%{opacity:0}}
+    .folder{animation:hand 10s ease-in-out infinite}
+    @keyframes hand{0%,40%{opacity:0;left:var(--fx0);top:var(--fy0)}44%{opacity:1}56%{opacity:1;left:var(--fx1);top:var(--fy1)}60%,100%{opacity:0}}
+    .blink{animation:blink 4.6s linear infinite}
+    @keyframes blink{0%,91%{transform:scaleY(1)}93%,96%{transform:scaleY(.08)}99%,100%{transform:scaleY(1)}}
+    .busywiggle{animation:wig 2.3s ease-in-out infinite}
+    @keyframes wig{0%,100%{transform:rotate(-1.1deg)}50%{transform:rotate(1.2deg) translateY(-1px)}}
+    .sleepz{animation:zz 3.2s ease-in infinite;opacity:0}
+    @keyframes zz{0%{opacity:0;transform:translateY(0)}18%{opacity:.85}80%{opacity:0;transform:translateY(-16px)}100%{opacity:0}}
+    .glowpulse{animation:gp 2.4s ease-in-out infinite}
+    @keyframes gp{0%,100%{opacity:.85}50%{opacity:.55}}
+  }
+  @media (prefers-reduced-motion:reduce){.env{opacity:.9;left:var(--x1)!important;top:var(--y1)!important}.annring,.star,.folder{display:none}.threadline{animation:none}.blink,.busywiggle{animation:none}.sleepz{animation:none;opacity:.6}}
+
+  .strip{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:11px;flex-wrap:wrap}
+  .drill{margin-top:15px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:none}
+  .drill.open{display:block}
+  .drill h2{font-family:var(--disp);font-weight:700;font-size:19px;color:var(--lamp);display:flex;gap:11px;align-items:baseline;flex-wrap:wrap}
+  .drill h2 .k{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400}
+  .drill .x{margin-left:auto;background:none;border:1px solid var(--line);color:var(--dim);border-radius:16px;
+    font-family:var(--mono);font-size:11px;padding:4px 12px;cursor:pointer}
+  .dg{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+  .db{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .db h3{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--faint);font-weight:600;margin-bottom:7px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-family:var(--mono);font-size:11px}
+  .kv dt{color:var(--faint)}.kv dd{overflow-wrap:anywhere}
+  .kv dd.n{color:var(--faint);font-style:italic}
+  .foot{margin-top:18px;color:var(--faint);font-size:12px;max-width:80ch}
+  .foot strong{color:var(--dim)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Mezzanine</h1>
+    <span class="sub">the fleet, as a floor you can read at a glance</span>
+    <span class="tag">STATIC PREVIEW · SAMPLE DATA</span>
+  </header>
+
+  <div class="lobby">
+    <div class="floors" id="floors"></div>
+    <div class="health">
+      <span class="hh"><span class="dot"></span>store ok</span>
+      <span class="hh"><span class="dot"></span>fold ok · lag 117&nbsp;ms</span>
+      <span class="hh"><span class="dot"></span>sweep ok · 6&nbsp;s ago</span>
+      <span class="hh"><span class="dot" style="background:var(--lamp)"></span>feed: preview</span>
+    </div>
+    <div class="lright">8 seats · 7 live<br>membership as of 14:29:02</div>
+  </div>
+
+  <div class="room grab" id="room">
+    <div class="world" id="world"></div>
+    <div class="zoomui">
+      <button class="zbtn" id="zin" aria-label="zoom in">+</button>
+      <button class="zbtn" id="zout" aria-label="zoom out">−</button>
+      <button class="zbtn" id="zfit" aria-label="fit floor" style="font-size:13px">⤢</button>
+      <button class="zbtn" id="zall" aria-label="building view" style="font-size:14px">⌂</button>
+    </div>
+  </div>
+  <div class="strip">
+    <span>wall clock &amp; the sky outside: <b>your</b> local time, live</span>
+    <span>seat data: frozen sample at 14:29:02Z — ages do not tick</span>
+    <span>wheel to zoom · drag to pan · ⤢ fit floor · ⌂ whole building · ride the elevator between floors</span>
+    <span>every creature is derived from fnv1a32(install/seat) — identity is the appearance, computed</span>
+  </div>
+
+  <section class="drill" id="drill" aria-live="polite"></section>
+
+  <div class="foot">
+    <p><strong>This round:</strong> a whole <strong>building</strong>: zoom out (⌂ or wheel) to see every floor stacked in cross-section, zoom in to one floor, and <strong>ride the elevator</strong> — click it, or a floor button — to travel between them. A larger floor you can <strong>zoom into</strong> — the meeting room, the lounge,
+    the library corner all reward a closer look, and the vector art stays crisp at any depth. <strong>Characters are
+    now individuals</strong>: body shape, pattern, ears, sprout, eyes, mouth, accessory and posture are each drawn
+    independently from the seat's seed, and every creature carries a seeded <em>vibe</em> (shown in its drill-down,
+    labeled as flavour — never wire data). Interns seed from their parent seat, so they differ too. <strong>The
+    windows and the wall clock follow your system clock</strong>: dawn, day, dusk and night skies, live hands — the
+    viewer's clock is client-side truth, so this stays inside the honesty rule while the seat data remains a frozen
+    sample.</p>
+    <p style="margin-top:8px"><strong>The communication layer</strong> (staged, card&nbsp;#7897): an open thread glows
+    between participants with a bead per round (#725 shows four); carriers are shaped by kind — paper plane for a
+    query reply, a folder handed to the coder intern; a broadcast is one radial pulse, never N arcs; the escalation flare is staged on the sola floor (a blocked seat raises a tethered light to the status wall
+    until a human answers); and convergence
+    is visible — "zero open questions" becomes a spark that files itself onto the wall board. Every element maps to
+    an observable the bridge already classifies; none ships before its <code>coord.*</code> event exists.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* fnv1a32 + seatKey — verbatim from resources/characters/seed.js on PupFuzz/mezzanine dev. */
+const ENC=new TextEncoder();
+function fnv1a32(s){let h=2166136261>>>0;for(const b of ENC.encode(s)){h=(h^b)>>>0;h=Math.imul(h,16777619)>>>0;}return h>>>0;}
+function seatKey(i,s){return i+"/"+s;}
+function mix32(h){h^=h>>>16;h=Math.imul(h,2246822507)>>>0;h^=h>>>13;h=Math.imul(h,3266489909)>>>0;h^=h>>>16;return h>>>0;}
+const draw=(key,field,n)=>mix32(fnv1a32(key+"#"+field))%n;
+
+/* ---------- the creature: original, seeded, individual ---------- */
+const PASTELS=[["#a8e6c3","#6fbf94"],["#ffc9a3","#e09a6a"],["#cbb3f0","#9c82c9"],["#a3d5ff","#6fa8d9"],
+  ["#ffe9a3","#d9bb6a"],["#ffb3c1","#d9808f"],["#b3e6e0","#7fbfb7"],["#d9c3a3","#b09571"],
+  ["#c3e8a8","#94bf76"],["#e0b3e6","#b585bc"],["#ff9d8a","#d97b6c"],["#8ecfdb","#5fa8b5"],
+  ["#c3d0ff","#8fa0d9"],["#e6d3a8","#bfa878"],["#b8d9a8","#88ab78"],["#f0c3e0","#c98fb5"]];
+const VIBES=["quiet perfectionist","chirpy optimist","plans twice, ships once","night owl",
+  "snack strategist","asks the sharp question","measured & calm","sparkly chaos, tidy notes",
+  "collects rubber ducks","hums while compiling","never lost a semicolon","keeps the plants alive"];
+const vibeFor=(i,s)=>VIBES[draw(seatKey(i,s),"vibe",VIBES.length)];
+
+function creatureSVG(install,seat,state,size){
+  const k=seatKey(install,seat);
+  const [body,shade]=PASTELS[draw(k,"s3",PASTELS.length)];
+  const shape=draw(k,"s18",7), pattern=draw(k,"pat",3), ears=draw(k,"ears",4),
+        sprout=draw(k,"sprout",5), eyeS=draw(k,"eyestyle",4), mouth=draw(k,"mouth",4),
+        acc=draw(k,"acc",5), tilt=(draw(k,"tilt",3)-1)*4;
+  const SH=[{rx:32,ry:34,cy:62},{rx:25,ry:41,cy:57},{rx:37,ry:27,cy:67},{rx:29,ry:36,cy:60,pear:1},
+            {rx:27,ry:38,cy:59,egg:1},{rx:33,ry:30,cy:64,bell:1},{rx:28,ry:32,cy:62,rect:1}][shape];
+  const busyTop=(state==="working"||state==="thinking");
+  const smul=0.92+draw(k,"s7",5)*0.05;
+  const cx0=50, cy=SH.cy, s=size/100*smul;
+  let g=`<g transform="scale(${s})"><g transform="rotate(${tilt} 50 ${cy})">`;
+  g+=`<ellipse cx="50" cy="97" rx="${SH.rx-2}" ry="6" fill="rgba(15,12,30,.30)"/>`;
+  if(ears===1){g+=`<circle cx="${cx0-20}" cy="${cy-24}" r="9" fill="${body}"/><circle cx="${cx0+20}" cy="${cy-24}" r="9" fill="${body}"/>`;}
+  if(ears===2){g+=`<path d="M${cx0-24} ${cy-16} L${cx0-30} ${cy-40} L${cx0-12} ${cy-26} Z" fill="${body}"/><path d="M${cx0+24} ${cy-16} L${cx0+30} ${cy-40} L${cx0+12} ${cy-26} Z" fill="${body}"/>`;}
+  if(ears===3){g+=`<ellipse cx="${cx0-24}" cy="${cy-20}" rx="7" ry="12" fill="${body}" transform="rotate(-28 ${cx0-24} ${cy-20})"/><ellipse cx="${cx0+24}" cy="${cy-20}" rx="7" ry="12" fill="${body}" transform="rotate(28 ${cx0+24} ${cy-20})"/>`;}
+  if(SH.pear)g+=`<ellipse cx="50" cy="${cy+14}" rx="${SH.rx+5}" ry="${SH.ry-14}" fill="${body}"/>`;
+  if(SH.bell)g+=`<ellipse cx="50" cy="${cy+SH.ry-11}" rx="${SH.rx+9}" ry="13" fill="${body}"/>`;
+  if(SH.rect)g+=`<rect x="${50-SH.rx}" y="${cy-SH.ry}" width="${2*SH.rx}" height="${2*SH.ry}" rx="19" fill="${body}"/>`;
+  else g+=`<ellipse cx="50" cy="${cy}" rx="${SH.rx}" ry="${SH.ry}" fill="${body}"/>`;
+  if(SH.egg)g+=`<ellipse cx="50" cy="${cy-SH.ry*0.52}" rx="${SH.rx*0.7}" ry="${SH.ry*0.62}" fill="${body}"/>`;
+  if(pattern===1)for(const [px,py] of [[cx0-18,cy-12],[cx0+16,cy-18],[cx0+20,cy+6]])g+=`<circle cx="${px}" cy="${py}" r="3.4" fill="${shade}" opacity=".5"/>`;
+  if(pattern===2)g+=`<path d="M${cx0-SH.rx+3} ${cy-10} q${SH.rx-3} -14 ${2*SH.rx-6} 0" stroke="${shade}" stroke-width="5" fill="none" opacity=".45" stroke-linecap="round"/>`;
+  g+=`<ellipse cx="50" cy="${cy+SH.ry*0.32}" rx="${SH.rx*0.62}" ry="${SH.ry*0.52}" fill="#fffdf6" opacity=".85"/>`;
+  g+=`<path d="M${cx0-SH.rx+4} ${cy} a${SH.rx-4} ${SH.ry-4} 0 0 1 ${SH.rx*0.4} -${SH.ry*0.8}" stroke="${shade}" stroke-width="3" fill="none" stroke-linecap="round" opacity=".55"/>`;
+  const ty=cy-SH.ry;  /* (busy is declared just before the eye branch below) */
+  if(sprout===0)g+=`<path d="M50 ${ty-2} Q50 ${ty-12} 58 ${ty-16} Q54 ${ty-6} 50 ${ty-2}" fill="#7fae6a"/><line x1="50" y1="${ty+2}" x2="50" y2="${ty-4}" stroke="#5f8a4e" stroke-width="2.4" stroke-linecap="round"/>`;
+  if(sprout===1)g+=`<path d="M50 ${ty-3} Q47 ${ty-14} 39 ${ty-16} Q46 ${ty-7} 50 ${ty-3} M50 ${ty-3} Q53 ${ty-14} 61 ${ty-16} Q54 ${ty-7} 50 ${ty-3}" fill="#7fae6a"/><line x1="50" y1="${ty+1}" x2="50" y2="${ty-5}" stroke="#5f8a4e" stroke-width="2.4" stroke-linecap="round"/>`;
+  if(sprout===2)g+=`<line x1="50" y1="${ty+2}" x2="50" y2="${ty-12}" stroke="${shade}" stroke-width="2.6" stroke-linecap="round"/><circle cx="50" cy="${ty-15}" r="5" fill="${shade}"/>`;
+  if(sprout===3)g+=`<path d="M${cx0-10} ${ty} Q${cx0-12} ${ty-10} ${cx0-18} ${ty-12} Q${cx0-13} ${ty-4} ${cx0-10} ${ty} M${cx0+10} ${ty} Q${cx0+12} ${ty-10} ${cx0+18} ${ty-12} Q${cx0+13} ${ty-4} ${cx0+10} ${ty}" fill="${shade}"/>`;
+  if(sprout===4)g+=`<path d="M50 ${ty+1} q-2 -8 4 -12 q6 -4 4 -10" stroke="${shade}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+  const ey=cy-6, er=[4.6,3.6,4.2,5][eyeS];
+  const busy=busyTop;
+  if(state==="idle"){
+    g+=`<path d="M${cx0-14} ${ey} q5 5 10 0 M${cx0+4} ${ey} q5 5 10 0" stroke="#3a3550" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+  } else {
+    let eyes="";
+    if(eyeS===1){
+      eyes=`<ellipse cx="${cx0-9}" cy="${ey}" rx="3" ry="5" fill="#3a3550"/><ellipse cx="${cx0+9}" cy="${ey}" rx="3" ry="5" fill="#3a3550"/><circle cx="${cx0-8}" cy="${ey-2}" r="1.3" fill="#fff"/><circle cx="${cx0+10}" cy="${ey-2}" r="1.3" fill="#fff"/>`;
+    } else if(eyeS===2){
+      eyes=`<path d="M${cx0-13} ${ey-1} a4.5 4.5 0 0 0 9 0 z" fill="#3a3550"/><path d="M${cx0+4} ${ey-1} a4.5 4.5 0 0 0 9 0 z" fill="#3a3550"/>`;
+    } else {
+      eyes=`<circle cx="${cx0-9}" cy="${ey}" r="${er}" fill="#3a3550"/><circle cx="${cx0+9}" cy="${ey}" r="${er}" fill="#3a3550"/><circle cx="${cx0-7.5}" cy="${ey-1.5}" r="1.4" fill="#fff"/><circle cx="${cx0+10.5}" cy="${ey-1.5}" r="1.4" fill="#fff"/>`;
+      if(eyeS===3)eyes+=`<circle cx="${cx0-11}" cy="${ey+1.5}" r="0.9" fill="#fff"/><circle cx="${cx0+7}" cy="${ey+1.5}" r="0.9" fill="#fff"/>`;
+    }
+    // blink only while busy — a held loop at a fixed rate; the per-seat phase comes from the seed
+    g+= busy ? `<g class="blink" style="animation-delay:-${draw(k,"bph",40)/10}s">${eyes}</g>` : eyes;
+  }
+  g+=`<circle cx="${cx0-17}" cy="${ey+9}" r="4" fill="#ff9d8a" opacity=".55"/><circle cx="${cx0+17}" cy="${ey+9}" r="4" fill="#ff9d8a" opacity=".55"/>`;
+  const my=ey+12;
+  if(mouth===0)g+=`<path d="M${cx0-8} ${my} q8 6 16 0" stroke="#3a3550" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  if(mouth===1)g+=`<ellipse cx="50" cy="${my+2}" rx="3.4" ry="4.2" fill="#3a3550"/>`;
+  if(mouth===2)g+=`<line x1="${cx0-6}" y1="${my+1}" x2="${cx0+6}" y2="${my+1}" stroke="#3a3550" stroke-width="2.2" stroke-linecap="round"/>`;
+  if(mouth===3)g+=`<path d="M${cx0-8} ${my} q4 5 8 0 q4 5 8 0" stroke="#3a3550" stroke-width="2.1" fill="none" stroke-linecap="round"/>`;
+  if(acc===1)g+=`<circle cx="${cx0-9}" cy="${ey}" r="7" fill="none" stroke="#3a3550" stroke-width="1.7"/><circle cx="${cx0+9}" cy="${ey}" r="7" fill="none" stroke="#3a3550" stroke-width="1.7"/><line x1="${cx0-2}" y1="${ey}" x2="${cx0+2}" y2="${ey}" stroke="#3a3550" stroke-width="1.7"/>`;
+  if(acc===2)g+=`<path d="M${cx0-SH.rx*0.7} ${cy+SH.ry*0.55} q${SH.rx*0.7} 9 ${SH.rx*1.4} 0 l0 6 q-${SH.rx*0.7} 9 -${SH.rx*1.4} 0 z" fill="${shade}"/><rect x="${cx0+SH.rx*0.35}" y="${cy+SH.ry*0.55}" width="7" height="14" rx="3" fill="${shade}"/>`;
+  if(acc===3)g+=`<path d="M50 ${cy+SH.ry*0.62} l-8 -5 v10 z M50 ${cy+SH.ry*0.62} l8 -5 v10 z" fill="#d9808f"/><circle cx="50" cy="${cy+SH.ry*0.62}" r="2.4" fill="#c96a7e"/>`;
+  if(acc===4)g+=`<path d="M${cx0-SH.rx*0.72} ${ey-4} Q50 ${ty-6} ${cx0+SH.rx*0.72} ${ey-4}" stroke="#3a3550" stroke-width="3" fill="none"/><rect x="${cx0-SH.rx*0.72-4}" y="${ey-6}" width="8" height="12" rx="4" fill="#3a3550"/><rect x="${cx0+SH.rx*0.72-4}" y="${ey-6}" width="8" height="12" rx="4" fill="#3a3550"/>`;
+  if(state==="blocked"){g+=`<ellipse cx="${cx0+SH.rx-4}" cy="${cy-SH.ry+18}" rx="7" ry="5" fill="${body}" transform="rotate(-30 ${cx0+SH.rx-4} ${cy-SH.ry+18})"/>`;}
+  else{g+=`<ellipse cx="${cx0-SH.rx+6}" cy="${cy+14}" rx="7" ry="5" fill="${body}" transform="rotate(20 ${cx0-SH.rx+6} ${cy+14})"/><ellipse cx="${cx0+SH.rx-6}" cy="${cy+14}" rx="7" ry="5" fill="${body}" transform="rotate(-20 ${cx0+SH.rx-6} ${cy+14})"/>`;}
+  g+=`</g></g>`;
+  if(busyTop) return `<g class="busywiggle" style="animation-delay:-${draw(k,"wph",46)/20}s">${g}</g>`;
+  return g;
+}
+
+/* ---------- sky + clock from the VIEWER'S clock (client-side truth) ---------- */
+function skyPhase(){
+  const h=new Date().getHours()+new Date().getMinutes()/60;
+  if(h<5.5||h>=19.5)return "night";
+  if(h<7.5)return "dawn";
+  if(h<17.5)return "day";
+  return "dusk";
+}
+const SKY={
+  night:{top:"#141c3a",bot:"#25335e",stars:true,moon:true,sun:false,cityLit:.8},
+  dawn:{top:"#3a3a6e",bot:"#e8927c",stars:false,moon:false,sun:true,sunY:.82,cityLit:.35},
+  day:{top:"#8fc4e8",bot:"#cfe6f2",stars:false,moon:false,sun:true,sunY:.28,cityLit:0},
+  dusk:{top:"#4a3a6e",bot:"#f0a86a",stars:false,moon:false,sun:true,sunY:.86,cityLit:.55}
+};
+
+/* ---------- geometry: floor + building ---------- */
+const FW=1800,FH=1000,WALL=210;
+const BW=1900,ROOF=150,SLAB=40,LOBBYH=180,OX=50;
+const FLOORS=["aimla","sola"];
+const OY=i=>ROOF+i*(FH+SLAB);
+const BH=ROOF+FLOORS.length*FH+(FLOORS.length-1)*SLAB+LOBBYH;
+
+/* PER-FLOOR THEMES — the BUILDING owns structure (elevator, windows, walls); the floor owns
+   everything inside: palette, desk positions, cabin position, furniture set. */
+const THEMES={
+  aimla:{
+    wall:["#2a454f","#35565f"], floor:["#b98d5f","#9e744a"], plank:"#8a6540",
+    rug:{x:360,y:542,rx:230,ry:86,fill:"#7fae9e",edge:"#6a9a8a",cx:590,cy:628},
+    accent:"#ffcf7d",
+    cabin:{x:52,y:300,w:336,h:212,door:[238,310],signX:92},
+    desks:{cabin:{x:95,y:392,w:250,lampx:0.82}, a1:{x:452,y:352,w:230,lampx:0.93},
+           a2:{x:600,y:720,w:230,lampx:0.85}, b1:{x:1000,y:320,w:230,lampx:0.93}},
+    furniture:"aimla"
+  },
+  sola:{
+    wall:["#2e3450","#3a4060"], floor:["#8a6a52","#75563f"], plank:"#5f4636",
+    rug:{fill:"#7d6a9e",edge:"#6a5a8a",cx:640,cy:640,rx:250,ry:80},
+    accent:"#8ecfdb",
+    cabin:{x:1412,y:300,w:336,h:212,door:[1490,1562],signX:1452},
+    desks:{cabin:{x:1455,y:392,w:250,lampx:0.18}, a1:{x:980,y:340,w:230,lampx:0.07},
+           a2:{x:430,y:700,w:230,lampx:0.85}, b1:{x:380,y:330,w:230,lampx:0.07}},
+    furniture:"sola"
+  }
+};
+const FLEET={
+  aimla:[
+    {desk:"cabin",seat:"pm",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: kbcard patch --task 7112",started_at:"14:27:41",running:"1m 21s"},context:{used_pct:38.2,used_tokens:76400,total_tokens:200000,source:"harness"},model_label:"claude-fable-5",open_calls:1,open_turn:true,task:{title:"floor UI preview",source:"board_card",ref:"card#7341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:27:41"}},
+    {desk:"a1",seat:"magento",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: composer test",started_at:"14:26:03",running:"2m 59s"},context:{used_pct:25.0,used_tokens:250000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"docs rebuild",source:"issue",ref:"#324"},subagents:[{title:"rebuild the doc set against dev head",subagent_type:"coder"},{title:"sweep stale doc claims",subagent_type:"mechanic"},{title:"adversarial review of the rebuild",subagent_type:"reviewer"}],subagents_open:3,activity:{last_kind:"tool.start",last_event_time:"14:26:03"}},
+    {desk:"a2",seat:"platform",render_state:"thinking",link_state:"live",action:null,open_calls:0,open_turn:true,context:{used_pct:45.0,used_tokens:450000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"20 strays + sentinel",source:"issue",ref:"#719"},subagents:[],activity:{last_kind:"turn.start",last_event_time:"14:28:55"}},
+    {desk:"b1",seat:"moodle",render_state:"idle",link_state:"live",action:null,open_calls:0,open_turn:false,context:{used_pct:32.0,used_tokens:320000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"identity-leg catch fix",source:"issue",ref:"#722"},subagents:[],quiet_for:"4m 12s",activity:{last_kind:"turn.end",last_event_time:"14:24:50"}}
+  ],
+  sola:[
+    {desk:"cabin",seat:"sola-pm",render_state:"idle",link_state:"live",action:null,open_calls:0,open_turn:false,context:{used_pct:18.9,used_tokens:189000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:null,subagents:[],quiet_for:"12m 40s",activity:{last_kind:"turn.end",last_event_time:"14:16:22"}},
+    {desk:"a1",seat:"kanban",render_state:"working",link_state:"live",action:{tool_name:"Edit",descriptor:"Edit: board webhooks consumer",started_at:"14:28:12",running:"0m 50s"},context:{used_pct:22.4,used_tokens:224000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"autonomy watchdog",source:"issue",ref:"rt#341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:28:12"}},
+    {desk:"a2",seat:"sola-backend",render_state:"stale",link_state:"stale",action:null,open_calls:0,open_turn:false,context:null,model_label:null,task:null,subagents:[],delivery:{no_data_since:"14:18",last_receipt_at:"14:18:02"},no_data_for:"11m",activity:{last_kind:"reporter.heartbeat",last_event_time:"14:17:59"}},
+    {desk:"b1",seat:"sola-inventory",render_state:"blocked",link_state:"live",action:null,open_calls:0,open_turn:true,blocked_since:"14:21",context:{used_pct:61.7,used_tokens:617000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"MFA session ruling",source:"thread",ref:"inv#88"},subagents:[],activity:{last_kind:"attention.request",last_event_time:"14:21:07"}}
+  ]
+};
+const SCREENC={working:"#8ce8b0",thinking:"#c3b8ff",idle:"#3c445c",blocked:"#ffd07a",stale:"#3c445c"};
+
+function deskSVG(T,id,s){
+  const D=T.desks[id],x=D.x,y=D.y,w=D.w;
+  const state=s?s.render_state:null, occupied=s&&state!=="stale";
+  let g="";
+  g+=`<ellipse cx="${x+w/2}" cy="${y+56}" rx="${w/2+14}" ry="14" fill="rgba(15,12,30,.28)"/>`;
+  if(occupied)g+=`<ellipse class="glowpulse" cx="${x+w*D.lampx}" cy="${y-4}" rx="72" ry="44" fill="url(#glow)"/>`;
+  g+=`<ellipse cx="${x+w*0.62}" cy="${y+16}" rx="34" ry="12" fill="#8a5f8f" opacity=".9"/>`;
+  if(occupied){
+    if(state==="idle"){
+      // asleep: slumped low so the desk slab (drawn after) hides the lower half — head rests on the desk
+      g+=`<g transform="translate(${x+w*0.62-42},${y-44}) rotate(7 42 74)">${creatureSVG(s.__install,s.seat,state,84)}</g>`;
+      g+=`<text class="sleepz" style="animation-delay:0s" x="${x+w*0.62+26}" y="${y-46}" font-family="Quicksand,sans-serif" font-weight="700" font-size="15" fill="#cfd4e4">z</text>`;
+      g+=`<text class="sleepz" style="animation-delay:-1.6s" x="${x+w*0.62+38}" y="${y-60}" font-family="Quicksand,sans-serif" font-weight="700" font-size="11" fill="#cfd4e4">z</text>`;
+    } else {
+      g+=`<g transform="translate(${x+w*0.62-42},${y-72})">${creatureSVG(s.__install,s.seat,state,84)}</g>`;
+    }
+  }
+  const mx=x+w*0.14,my=y-34;
+  g+=`<rect x="${mx}" y="${my}" width="58" height="40" rx="7" fill="#232838" stroke="#4a5170" stroke-width="2"/>`;
+  g+=`<rect x="${mx+5}" y="${my+5}" width="48" height="26" rx="4" fill="${state?SCREENC[state]:"#3c445c"}" opacity="${state==="working"||state==="thinking"||state==="blocked"?.95:.6}"/>`;
+  g+=`<rect x="${mx+24}" y="${my+40}" width="10" height="8" rx="2" fill="#4a5170"/>`;
+  const lx=x+w*D.lampx;
+  g+=`<line x1="${lx}" y1="${y+2}" x2="${lx-10}" y2="${y-22}" stroke="#8a6a3e" stroke-width="4" stroke-linecap="round"/>`;
+  g+=`<path d="M${lx-22} ${y-20} q12 -12 24 0 z" fill="${T.accent}"/>`;
+  g+=`<rect x="${x}" y="${y}" width="${w}" height="26" rx="12" fill="url(#wood)"/>`;
+  g+=`<rect x="${x}" y="${y}" width="${w}" height="9" rx="5" fill="#c99a66" opacity=".55"/>`;
+  g+=`<rect x="${x+14}" y="${y+26}" width="12" height="34" rx="5" fill="#6e4c30"/>`;
+  g+=`<rect x="${x+w-26}" y="${y+26}" width="12" height="34" rx="5" fill="#6e4c30"/>`;
+  if(s&&(s.subagents||[]).length){
+    // D2 caps the subagents[] array at 8 (D3 § 8); every open subagent is its OWN seeded sprite.
+    const shown=s.subagents.slice(0,8), extra=(s.subagents_open||s.subagents.length)-shown.length;
+    const tx=x+w+26, ty=y+18, step=34;
+    const tw=Math.max(36, shown.length*step+6);
+    g+=`<ellipse cx="${tx+tw/2}" cy="${ty+26}" rx="${tw/2+8}" ry="8" fill="rgba(15,12,30,.25)"/>`;
+    g+=`<rect x="${tx+4}" y="${ty}" width="${tw}" height="12" rx="6" fill="#8a5f3d"/><rect x="${tx+tw/2-4}" y="${ty+12}" width="8" height="16" rx="3" fill="#6e4c30"/>`;
+    shown.forEach((sa,i)=>{
+      g+=`<g transform="translate(${tx+i*step-2},${ty-46})">${creatureSVG(s.__install,s.seat+"~intern"+i,"working",52)}</g>`;
+    });
+    if(extra>0)g+=`<text x="${tx+tw+14}" y="${ty+8}" font-family="Quicksand,sans-serif" font-weight="700" font-size="14" fill="#cfd4e4">+${extra}</text>`;
+  }
+  return g;
+}
+
+function bookshelf(x,y){
+  let g=`<rect x="${x}" y="${y}" width="96" height="156" rx="8" fill="#6e4c30"/><rect x="${x+6}" y="${y+6}" width="84" height="144" rx="4" fill="#8a5f3d"/>`;
+  const cols=["#c96a5e","#7fae9e","#f0b455","#8f7ff0","#a3d5ff","#6fd08c","#d9808f","#ffe9a3"];
+  for(let r=0;r<3;r++){
+    g+=`<rect x="${x+6}" y="${y+50+r*48}" width="84" height="5" fill="#6e4c30"/>`;
+    let bx=x+10;
+    for(let i=0;i<6;i++){const bw=8+((x+r*7+i*13)%3)*3,bh=30+((r+i*5)%3)*5;
+      if(bx+bw>x+86)break;
+      g+=`<rect x="${bx}" y="${y+48+r*48-bh}" width="${bw}" height="${bh}" rx="2" fill="${cols[(r*6+i)%8]}"/>`;bx+=bw+3;}
+  }
+  return g;
+}
+const plantSVG=(px,py)=>`<ellipse cx="${px}" cy="${py+26}" rx="26" ry="8" fill="rgba(15,12,30,.25)"/>
+  <path d="M${px-14} ${py+24} h28 l-4 -22 h-20 z" fill="#8a5f3d"/>
+  <path d="M${px} ${py} q-20 -12 -14 -38 q16 10 14 38 M${px} ${py} q20 -12 14 -38 q-16 10 -14 38 M${px} ${py-4} q0 -26 0 -40" stroke="#4a7a54" stroke-width="7" fill="#5a8f64" stroke-linecap="round"/>`;
+
+/* aimla's interior: meeting room, library corner, lounge, kitchenette, corkboard kanban */
+function furnitureAimla(){
+  let g="";
+  g+=`<rect x="1690" y="40" width="92" height="120" rx="10" fill="#c9a877"/><rect x="1697" y="47" width="78" height="106" rx="6" fill="#e8d9b8"/>`;
+  [["#f0b455",0,0],["#f0b455",0,1],["#57c785",1,0],["#57c785",1,1],["#57c785",1,2],["#d97b6c",2,0]].forEach(([c,col,row])=>{
+    g+=`<rect x="${1703+col*25}" y="${53+row*26}" width="19" height="19" rx="2" fill="${c}" transform="rotate(${(col*7+row*5)%7-3} ${1712+col*25} ${62+row*26})"/>`;});
+  g+=`<rect x="1420" y="58" width="52" height="66" rx="5" fill="#6e4c30"/><rect x="1426" y="64" width="40" height="54" rx="3" fill="#7fae9e"/><circle cx="1446" cy="84" r="9" fill="#ffe9a3"/><path d="M1428 112 l12 -14 8 8 10 -12 8 18 z" fill="#4a7a54"/>
+      <rect x="1490" y="76" width="38" height="48" rx="5" fill="#6e4c30"/><rect x="1495" y="81" width="28" height="38" rx="3" fill="#e0b3e6"/>`;
+  g+=`<ellipse cx="180" cy="712" rx="150" ry="16" fill="rgba(15,12,30,.25)"/>
+      <rect x="46" y="640" width="270" height="64" rx="14" fill="#5a6478"/><rect x="46" y="640" width="270" height="16" rx="8" fill="#707c94"/>
+      <rect x="70" y="596" width="52" height="44" rx="8" fill="#3a3244"/><rect x="80" y="614" width="32" height="14" rx="4" fill="#ffcf7d" opacity=".85"/>
+      <circle cx="160" cy="632" r="9" fill="#ffcf7d"/><circle cx="186" cy="632" r="9" fill="#a3d5ff"/><circle cx="212" cy="632" r="9" fill="#ffb3c1"/>`;
+  g+=`<ellipse cx="985" cy="700" rx="150" ry="18" fill="rgba(15,12,30,.25)"/>
+      <rect x="880" y="612" width="190" height="26" rx="12" fill="#9c6b8f"/>
+      <rect x="874" y="628" width="202" height="46" rx="16" fill="#b07da3"/>
+      <rect x="874" y="666" width="202" height="14" rx="7" fill="#8a5f8f"/>
+      <ellipse cx="985" cy="712" rx="46" ry="16" fill="url(#wood)"/><ellipse cx="985" cy="707" rx="46" ry="14" fill="#a97a50"/>
+      <line x1="1108" y1="600" x2="1108" y2="676" stroke="#8a6a3e" stroke-width="5" stroke-linecap="round"/>
+      <path d="M1088 604 q20 -18 40 0 z" fill="#ffcf7d"/><ellipse class="glowpulse" cx="1108" cy="618" rx="46" ry="30" fill="url(#glow)"/>
+      <ellipse cx="1150" cy="672" rx="24" ry="8" fill="rgba(15,12,30,.25)"/>
+      <path d="M1136 670 h28 l-4 -20 h-20 z" fill="#8a5f3d"/>
+      <path d="M1150 650 q-24 -14 -18 -44 q18 12 18 44 M1150 650 q24 -14 18 -44 q-18 12 -18 44 M1150 646 q0 -30 0 -46" stroke="#4a7a54" stroke-width="8" fill="#5a8f64" stroke-linecap="round"/>`;
+  g+=`<rect x="1240" y="250" width="480" height="310" rx="18" fill="#fffdf6" opacity=".06"/>
+      <rect x="1240" y="250" width="480" height="310" rx="18" fill="none" stroke="#8ecfdb" stroke-width="3" opacity=".5"/>
+      <line x1="1320" y1="560" x2="1400" y2="560" stroke="url(#floorg-aimla)" stroke-width="5"/>
+      <rect x="1256" y="238" width="92" height="20" rx="8" fill="#8ecfdb" opacity=".9"/>
+      <text x="1302" y="253" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="700" font-size="13" fill="#1f3339">MEETING</text>
+      <ellipse cx="1480" cy="425" rx="118" ry="50" fill="url(#wood)"/><ellipse cx="1480" cy="417" rx="118" ry="46" fill="#a97a50"/>
+      <ellipse cx="1480" cy="417" rx="92" ry="33" fill="none" stroke="#c99a66" stroke-width="3" opacity=".6"/>`;
+  [[1340,425],[1620,425],[1480,357],[1480,489]].forEach(([px2,py2])=>{g+=`<ellipse cx="${px2}" cy="${py2}" rx="20" ry="10" fill="#8a5f8f" opacity=".9"/>`;});
+  g+=`<rect x="1560" y="286" width="120" height="66" rx="6" fill="#fffdf6"/><rect x="1560" y="286" width="120" height="66" rx="6" fill="none" stroke="#8ecfdb" stroke-width="3"/>
+      <path d="M1572 306 h60 M1572 318 h84 M1572 330 h48" stroke="#8f7ff0" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+      <circle cx="1662" cy="322" r="9" fill="none" stroke="#c96a5e" stroke-width="3"/>`;
+  g+=bookshelf(1300,660)+bookshelf(1404,660);
+  g+=`<ellipse cx="1610" cy="852" rx="46" ry="14" fill="rgba(15,12,30,.25)"/>
+      <rect x="1570" y="790" width="84" height="26" rx="12" fill="#9c6b8f"/>
+      <rect x="1566" y="806" width="92" height="40" rx="14" fill="#b07da3"/>
+      <ellipse cx="1700" cy="836" rx="30" ry="11" fill="url(#wood)"/>
+      <rect x="1694" y="796" width="12" height="34" rx="4" fill="#ffe9a3"/><rect x="1690" y="800" width="12" height="30" rx="4" fill="#a3d5ff" transform="rotate(-9 1696 815)"/>`;
+  [[1160,300],[368,700],[30,590],[1260,952]].forEach(([px2,py2])=>{g+=plantSVG(px2,py2);});
+  g+=`<ellipse cx="760" cy="586" rx="18" ry="7" fill="rgba(15,12,30,.25)"/>
+      <rect x="748" y="540" width="24" height="44" rx="6" fill="#5a6478"/><ellipse cx="760" cy="536" rx="10" ry="12" fill="#a3d5ff" opacity=".85"/>`;
+  return g;
+}
+
+/* sola's interior: whiteboard wall, workshop bench, server rack, zen corner, tea bar */
+function furnitureSola(){
+  let g="";
+  /* big whiteboard where aimla hangs the corkboard */
+  g+=`<rect x="1620" y="44" width="162" height="112" rx="10" fill="#fffdf6"/><rect x="1620" y="44" width="162" height="112" rx="10" fill="none" stroke="#8ecfdb" stroke-width="4"/>
+      <path d="M1636 70 h96 M1636 88 h128 M1636 106 h74 M1636 124 h110" stroke="#8f7ff0" stroke-width="3.5" stroke-linecap="round" opacity=".7"/>
+      <circle cx="1756" cy="72" r="10" fill="none" stroke="#c96a5e" stroke-width="3"/>`;
+  /* workshop bench along the left-mid, with tool wall */
+  g+=`<rect x="60" y="560" width="300 " height="20" rx="6" fill="#5a4636"/>
+      <ellipse cx="210" cy="676" rx="160" ry="16" fill="rgba(15,12,30,.25)"/>
+      <rect x="56" y="588" width="310" height="58" rx="12" fill="url(#wood)"/><rect x="56" y="588" width="310" height="12" rx="6" fill="#c99a66" opacity=".5"/>
+      <rect x="70" y="646" width="14" height="26" fill="#6e4c30"/><rect x="338" y="646" width="14" height="26" fill="#6e4c30"/>
+      <rect x="92" y="566" width="10" height="18" rx="2" fill="#9aa7c0"/><rect x="116" y="562" width="16" height="8" rx="2" fill="#c96a5e"/>
+      <circle cx="160" cy="570" r="7" fill="none" stroke="#9aa7c0" stroke-width="3"/><rect x="188" y="562" width="6" height="20" rx="2" fill="#f0b455"/>
+      <rect x="210" y="596" width="44" height="18" rx="4" fill="#3a3244"/><circle cx="286" cy="606" r="9" fill="#8ecfdb" opacity=".6"/>`;
+  /* server rack corner, softly blinking */
+  g+=`<ellipse cx="1690" cy="960" rx="60" ry="12" fill="rgba(15,12,30,.3)"/>
+      <rect x="1640" y="770" width="104" height="184" rx="10" fill="#242a3c" stroke="#4a5170" stroke-width="3"/>`;
+  for(let r=0;r<5;r++){g+=`<rect x="1650" y="${782+r*34}" width="84" height="24" rx="4" fill="#2e3450"/>
+      <circle class="glowpulse" cx="${1662}" cy="${794+r*34}" r="3" fill="#57c785"/><circle cx="${1674}" cy="${794+r*34}" r="3" fill="${r===3?"#f0b455":"#3c445c"}"/>
+      <rect x="1694" y="${789+r*34}" width="32" height="4" rx="2" fill="#4a5170"/>`;}
+  /* zen corner: gravel, stones, bonsai */
+  g+=`<ellipse cx="1150" cy="880" rx="190" ry="60" fill="#b8b2c8" opacity=".5"/>
+      <path d="M1000 880 q150 -34 300 0 M1010 900 q140 -28 280 0 M1030 860 q120 -24 240 0" stroke="#8a84a0" stroke-width="2.5" fill="none" opacity=".6"/>
+      <ellipse cx="1080" cy="866" rx="24" ry="14" fill="#6e6884"/><ellipse cx="1120" cy="884" rx="14" ry="9" fill="#7d7794"/>
+      <ellipse cx="1230" cy="874" rx="18" ry="11" fill="#6e6884"/>
+      <path d="M1180 846 h24 l-4 -14 h-16 z" fill="#8a5f3d"/>
+      <path d="M1192 832 q-16 -8 -12 -30 q14 8 12 30 M1192 832 q16 -8 12 -30 q-14 8 -12 30" stroke="#4a7a54" stroke-width="6" fill="#5a8f64" stroke-linecap="round"/>`;
+  /* tea bar bottom-left */
+  g+=`<ellipse cx="180" cy="948" rx="130" ry="14" fill="rgba(15,12,30,.25)"/>
+      <rect x="60" y="880" width="240" height="56" rx="12" fill="#4e5668"/><rect x="60" y="880" width="240" height="14" rx="7" fill="#626c82"/>
+      <rect x="80" y="844" width="40" height="36" rx="7" fill="#3a3244"/><path d="M120 856 q14 4 0 16" stroke="#8ecfdb" stroke-width="4" fill="none"/>
+      <circle cx="160" cy="872" r="8" fill="#8ecfdb"/><circle cx="184" cy="872" r="8" fill="#ffe9a3"/><circle cx="208" cy="872" r="8" fill="#c3e8a8"/>`;
+  [[560,300],[30,300],[940,952]].forEach(([px2,py2])=>{g+=plantSVG(px2,py2);});
+  return g;
+}
+const FURNITURE={aimla:furnitureAimla,sola:furnitureSola};
+
+/* one floor's interior (no <svg>, no defs — the building wraps it) */
+function floorInner(seats){
+  const byDesk={};for(const s of seats)byDesk[s.desk]=s;
+  const inst=seats[0].__install, T=THEMES[inst];
+  const ph=SKY[skyPhase()];
+  let g="";
+  g+=`<rect width="${FW}" height="${WALL}" fill="url(#wallg-${inst})"/>`;
+  g+=`<rect y="${WALL}" width="${FW}" height="${FH-WALL}" fill="url(#floorg-${inst})"/>`;
+  for(let i=0;i<21;i++)g+=`<rect x="${i*88}" y="${WALL}" width="2.5" height="${FH-WALL}" fill="${T.plank}" opacity=".28"/>`;
+  g+=`<ellipse cx="${T.rug.cx}" cy="${T.rug.cy}" rx="${T.rug.rx}" ry="${T.rug.ry}" fill="${T.rug.fill}" opacity=".85"/><ellipse cx="${T.rug.cx}" cy="${T.rug.cy}" rx="${T.rug.rx-34}" ry="${T.rug.ry-16}" fill="none" stroke="${T.rug.edge}" stroke-width="3" opacity=".7"/>`;
+  /* BUILDING structure — identical on every floor: elevator, windows, skirting */
+  g+=`<rect x="38" y="34" width="118" height="168" rx="10" fill="#4a5670"/><rect x="48" y="46" width="98" height="150" rx="6" fill="#3a4356"/>
+      <rect x="52" y="50" width="43" height="142" rx="4" fill="#2b3145"/><rect x="99" y="50" width="43" height="142" rx="4" fill="#2b3145"/>
+      <rect x="95" y="50" width="4" height="142" fill="#242a3c"/><rect x="80" y="20" width="34" height="9" rx="4" fill="${T.accent}" opacity=".9"/>`;
+  g+=`<circle cx="205" cy="70" r="24" fill="#fffdf6"/><circle cx="205" cy="70" r="24" fill="none" stroke="#4a5670" stroke-width="4"/>
+      <line id="clkH-${inst}" x1="205" y1="70" x2="205" y2="56" stroke="#3a3550" stroke-width="3.6" stroke-linecap="round"/>
+      <line id="clkM-${inst}" x1="205" y1="70" x2="205" y2="51" stroke="#3a3550" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="205" cy="70" r="2.2" fill="#3a3550"/>`;
+  for(const wx of [268,560,852,1144]){
+    g+=`<rect x="${wx}" y="34" width="232" height="132" rx="14" fill="url(#skyg)"/>`;
+    if(ph.stars)for(let i=0;i<7;i++){const sx=wx+22+((i*67)%196),sy=48+((i*37)%54);g+=`<circle cx="${sx}" cy="${sy}" r="${1.5+(i%2)}" fill="#e8ecff" opacity=".8"/>`;}
+    for(let i=0;i<6;i++){const bx=wx+16+i*36;const bh=20+((i*13)%26);
+      g+=`<rect x="${bx}" y="${152-bh}" width="18" height="${bh}" fill="${ph.cityLit>0?"#1b2547":"#5a7086"}" opacity="${ph.cityLit>0?1:.75}"/>`;
+      if(ph.cityLit>0){g+=`<rect x="${bx+3}" y="${158-bh}" width="4" height="4" fill="#ffcf7d" opacity="${ph.cityLit}"/><rect x="${bx+10}" y="${164-bh}" width="4" height="4" fill="#ffcf7d" opacity="${ph.cityLit*.7}"/>`;}}
+    g+=`<rect x="${wx}" y="34" width="232" height="132" rx="14" fill="none" stroke="#4a5670" stroke-width="5"/>
+        <rect x="${wx+116}" y="34" width="1" height="132" fill="#4a5670"/>`;
+  }
+  if(ph.moon)g+=`<circle cx="946" cy="70" r="19" fill="#fff3cf" opacity=".95"/><circle cx="938" cy="64" r="16" fill="url(#skyg)"/>`;
+  if(ph.sun){const sy=34+132*ph.sunY;g+=`<circle cx="700" cy="${sy}" r="17" fill="#ffe9a3"/><circle cx="700" cy="${sy}" r="24" fill="#ffe9a3" opacity=".25"/>`;}
+  g+=`<rect y="${WALL-8}" width="${FW}" height="8" fill="#6e4c30"/>`;
+  /* the floor's own furniture set */
+  g+=FURNITURE[T.furniture]();
+  /* the PM cabin, wherever this floor puts it */
+  const cb=T.cabin;
+  g+=`<rect x="${cb.x}" y="${cb.y}" width="${cb.w}" height="${cb.h}" rx="16" fill="#fffdf6" opacity=".07"/>
+      <rect x="${cb.x}" y="${cb.y}" width="${cb.w}" height="${cb.h}" rx="16" fill="none" stroke="${T.accent}" stroke-width="3" opacity=".55"/>
+      <line x1="${cb.door[0]}" y1="${cb.y+cb.h}" x2="${cb.door[1]}" y2="${cb.y+cb.h}" stroke="url(#floorg-${inst})" stroke-width="5"/>
+      <rect x="${cb.signX-26}" y="${cb.y-12}" width="52" height="20" rx="8" fill="${T.accent}" opacity=".9"/><text x="${cb.signX}" y="${cb.y+3}" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="700" font-size="13" fill="#3a3550">PM</text>`;
+  for(const id of ["a1","b1","cabin","a2"]) g+=deskSVG(T,id,byDesk[id]||null);
+  if(inst==="aimla"){
+    g+=`<path class="threadline" d="M 330 378 C 420 296 500 296 572 342" stroke="#b9a8f5" stroke-width="2.5" fill="none" opacity=".8"/>`;
+    const beads=[[380,338],[430,318],[482,314],[534,326]];
+    beads.forEach((b,i)=>{g+=`<circle cx="${b[0]}" cy="${b[1]}" r="4" fill="#cbb3f0" stroke="#8f7ff0" stroke-width="1.2"${i===beads.length-1?' class="beadpulse"':''}/>`;});
+    g+=`<text x="455" y="288" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="600" font-size="13" fill="#cbb3f0">#725 · query · round 4 · open</text>`;
+  }
+  if(inst==="sola"){
+    const bd=T.desks.b1, fx=bd.x+bd.w*0.62;
+    g+=`<line class="threadline" x1="${fx}" y1="${bd.y-32}" x2="${fx}" y2="46" stroke="#f0b455" stroke-width="2.5" opacity=".8" stroke-dasharray="5 6"/>`;
+    g+=`<circle class="beadpulse" cx="${fx}" cy="38" r="9" fill="#ffd07a"/><circle cx="${fx}" cy="38" r="16" fill="#ffd07a" opacity=".25"/>`;
+    g+=`<text x="${fx}" y="24" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="600" font-size="13" fill="#ffd07a">needs a human — tethered until answered</text>`;
+  }
+  return g;
+}
+
+/* the building: roof + stacked floors + slabs + lobby + elevator cab */
+function buildingSVG(){
+  const ph=SKY[skyPhase()];
+  let g=`<svg viewBox="0 0 ${BW} ${BH}" role="img" aria-label="the Mezzanine building">`;
+  g+=`<defs>
+    ${FLOORS.map(fi=>{const T=THEMES[fi];return `<linearGradient id="wallg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.wall[0]}"/><stop offset="1" stop-color="${T.wall[1]}"/></linearGradient>
+    <linearGradient id="floorg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.floor[0]}"/><stop offset="1" stop-color="${T.floor[1]}"/></linearGradient>`;}).join("")}
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a97a50"/><stop offset="1" stop-color="#8a5f3d"/></linearGradient>
+    <linearGradient id="skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ph.top}"/><stop offset="1" stop-color="${ph.bot}"/></linearGradient>
+    <radialGradient id="glow"><stop offset="0" stop-color="#ffcf7d" stop-opacity=".34"/><stop offset="1" stop-color="#ffcf7d" stop-opacity="0"/></radialGradient>
+  </defs>`;
+  g+=`<rect width="${BW}" height="${BH}" fill="url(#skyg)" opacity=".45"/><rect width="${BW}" height="${BH}" fill="#12141f" opacity=".55"/>`;
+  if(ph.stars)for(let i=0;i<26;i++){const sx=(i*181)%BW,sy=(i*97)%BH;g+=`<circle cx="${sx}" cy="${sy}" r="${1.2+(i%2)}" fill="#e8ecff" opacity=".5"/>`;}
+  /* shell */
+  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${BH-ROOF-LOBBYH+FLOORS.length*0+24+FLOORS.length*SLAB+FLOORS.length*FH- (FH+SLAB)*(FLOORS.length-1) - FH + (FLOORS.length*FH+(FLOORS.length-1)*SLAB)}" fill="none"/>`;
+  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${FLOORS.length*FH+(FLOORS.length-1)*SLAB+LOBBYH+24}" fill="#242a3c" rx="14"/>`;
+  /* roof */
+  g+=`<rect x="${OX-58}" y="${ROOF-38}" width="${FW+116}" height="26" rx="9" fill="#3a4356"/>
+      <rect x="${OX+FW-260}" y="${ROOF-118}" width="120" height="84" rx="8" fill="#3a4356"/><rect x="${OX+FW-250}" y="${ROOF-128}" width="100" height="14" rx="6" fill="#4a5670"/>
+      <rect x="${OX+70}" y="${ROOF-104}" width="440" height="66" rx="12" fill="#1c2030" stroke="#ffcf7d" stroke-width="3"/>
+      <text x="${OX+290}" y="${ROOF-57}" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="700" font-size="44" fill="#ffcf7d" letter-spacing="6">MEZZANINE</text>`;
+  /* floors */
+  FLOORS.forEach((inst,i)=>{
+    g+=`<g transform="translate(${OX},${OY(i)})">${floorInner(FLEET[inst].map(s=>({...s,__install:inst})))}</g>`;
+    g+=`<text x="${OX-14}" y="${OY(i)+60}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="700" font-size="30" fill="#ffcf7d" opacity=".85">${inst.toUpperCase()}</text>`;
+    if(i<FLOORS.length-1)g+=`<rect x="${OX-34}" y="${OY(i)+FH}" width="${FW+68}" height="${SLAB}" fill="#3a4356"/><rect x="${OX-34}" y="${OY(i)+FH}" width="${FW+68}" height="8" fill="#4a5670"/>`;
+  });
+  /* elevator shaft guide + cab */
+  const shaftX=OX+38, lastY=OY(FLOORS.length-1);
+  g+=`<line x1="${shaftX+59}" y1="${ROOF-12}" x2="${shaftX+59}" y2="${lastY+FH+LOBBYH-30}" stroke="#4a5670" stroke-width="3" stroke-dasharray="8 10" opacity=".5"/>`;
+  g+=`<g id="cab" style="transition:transform 1.1s cubic-bezier(.4,0,.2,1)"><rect x="${shaftX-6}" y="34" width="130" height="176" rx="10" fill="none" stroke="#ffcf7d" stroke-width="5"/><rect x="${shaftX+52}" y="26" width="14" height="8" rx="3" fill="#ffcf7d"/></g>`;
+  /* lobby */
+  const ly=lastY+FH;
+  g+=`<rect x="${OX-34}" y="${ly}" width="${FW+68}" height="${LOBBYH}" fill="#2b3145"/>
+      <rect x="${OX-34}" y="${ly}" width="${FW+68}" height="10" fill="#4a5670"/>
+      <rect x="${OX+60}" y="${ly+34}" width="150" height="${LOBBYH-44}" rx="8" fill="#3a4356"/><rect x="${OX+72}" y="${ly+46}" width="126" height="${LOBBYH-66}" rx="5" fill="#8ecfdb" opacity=".35"/>
+      <text x="${OX+300}" y="${ly+104}" font-family="Quicksand,sans-serif" font-weight="700" font-size="26" fill="#aab1c6">LOBBY</text>
+      <rect x="${OX+FW-300}" y="${ly+50}" width="16" height="${LOBBYH-70}" fill="#8a5f3d"/><ellipse cx="${OX+FW-292}" cy="${ly+44}" rx="34" ry="24" fill="#4a7a54"/>
+      <rect x="${OX+FW-160}" y="${ly+50}" width="16" height="${LOBBYH-70}" fill="#8a5f3d"/><ellipse cx="${OX+FW-152}" cy="${ly+44}" rx="34" ry="24" fill="#4a7a54"/>`;
+  g+=`</svg>`;
+  return g;
+}
+
+/* ---------- overlays, lobby buttons, drill-down ---------- */
+const GL={working:["WORKING","g-working"],thinking:["THINKING","g-thinking"],idle:["IDLE","g-idle"],
+          blocked:["BLOCKED","g-blocked"],stale:["STALE","g-stale"]};
+const esc=t=>{const d=document.createElement("i");d.textContent=t;return d.innerHTML;};
+function labelFor(s){switch(s.render_state){
+  case "working":return s.action?s.action.descriptor:"";
+  case "thinking":return "turn open, no call";
+  case "idle":return "nothing done for "+s.quiet_for;
+  case "blocked":return "waiting on a human since "+s.blocked_since;
+  case "stale":return "no data since "+s.delivery.no_data_since+" — "+s.no_data_for;}}
+
+let current="aimla";
+function render(){
+  const world=document.getElementById("world");
+  world.innerHTML=buildingSVG();
+  tickClock();
+  const PXg=(v)=>(v/BW*100)+"%",PYg=(v)=>(v/BH*100)+"%";
+  FLOORS.forEach((inst,fi)=>{
+    const ox=OX, oy=OY(fi);
+    const PX=v=>PXg(ox+v), PY=v=>PYg(oy+v);
+    const TH=THEMES[inst];
+    for(const s0 of FLEET[inst]){
+      const s={...s0,__install:inst};
+      const D=TH.desks[s.desk];
+      const b=document.createElement("button");b.className="hit";
+      b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=PXg(D.w+((s.subagents||[]).length?90:20)).replace('%','')*1+"%";b.style.width=(( (D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20)) /BW)*100)+"%";b.style.height=((196/BH)*100)+"%";
+      b.setAttribute("aria-label",s.seat+" — "+s.render_state);
+      b.addEventListener("click",()=>openDrill(inst,s));world.appendChild(b);
+      const p=document.createElement("div");p.className="plate";
+      p.style.left=PX(D.x+D.w/2);p.style.top=PY(D.y+64);
+      const [gt,gc]=GL[s.render_state];
+      p.innerHTML="<span class='nm'>"+esc(s.seat)+"</span><br><span class='gl "+gc+"'>"+gt+"</span><span class='ln'>"+esc(labelFor(s))+"</span>";
+      world.appendChild(p);
+      if(s.task&&s.render_state!=="stale"){
+        const bub=document.createElement("div");bub.className="bub";
+        bub.style.left=PX(D.x+D.w*0.62);bub.style.top=PY(D.y-152);
+        bub.innerHTML="<span class='body'>"+esc(s.task.ref+" · "+s.task.title)+"</span><span class='d1'></span><span class='d2'></span>";
+        world.appendChild(bub);
+      }
+      if(s.render_state==="blocked"||s.render_state==="thinking"){
+        const m=document.createElement("div");m.className="mk "+(s.render_state==="blocked"?"b":"t");
+        m.textContent=s.render_state==="blocked"?"!":"…";
+        m.style.left=PX(D.x+D.w*0.62+52);m.style.top=PY(D.y-104);world.appendChild(m);
+      }
+    }
+    /* the floor's elevator is a travel control */
+    const eb=document.createElement("button");eb.className="hit";
+    eb.style.left=PX(30);eb.style.top=PY(26);eb.style.width=((136/BW)*100)+"%";eb.style.height=((184/BH)*100)+"%";
+    eb.setAttribute("aria-label","elevator — ride to "+(FLOORS[(fi+1)%FLOORS.length]));
+    eb.title="ride the elevator";
+    eb.addEventListener("click",()=>elevatorTo(FLOORS[(fi+1)%FLOORS.length]));
+    world.appendChild(eb);
+    if(inst==="aimla"){
+      const plane=document.createElement("div");plane.className="env";
+      plane.innerHTML='<svg width="22" height="15" viewBox="0 0 22 15"><path d="M22 7.5 L0 0 L7 7.5 L0 15 Z" fill="#d9ccff" stroke="#8f7ff0" stroke-width="1"/></svg>';
+      plane.style.setProperty("--x0",PX(328));plane.style.setProperty("--y0",PY(362));
+      plane.style.setProperty("--x1",PX(556));plane.style.setProperty("--y1",PY(334));
+      world.appendChild(plane);
+      // the broadcast is FLOOR-SCOPED: to:all on one install reaches that install's seats
+      // only, so the pulse is clipped at the slab — it never bleeds into another floor.
+      const clip=document.createElement("div");clip.className="floorclip";
+      clip.style.left=PXg(ox);clip.style.top=PYg(oy);
+      clip.style.width=(FW/BW*100)+"%";clip.style.height=(FH/BH*100)+"%";
+      const ring=document.createElement("div");ring.className="annring";
+      ring.style.left=(220/FW*100)+"%";ring.style.top=(400/FH*100)+"%";
+      clip.appendChild(ring);world.appendChild(clip);
+      const star=document.createElement("div");star.className="star";star.textContent="✦";
+      const ab=THEMES.aimla.desks.b1;star.style.setProperty("--sx",PX(ab.x+ab.w*0.62));star.style.setProperty("--sy",PY(ab.y-20));
+      star.style.setProperty("--tx",PX(1712));star.style.setProperty("--ty",PY(92));
+      world.appendChild(star);
+      const fold=document.createElement("div");fold.className="folder";
+      fold.style.setProperty("--fx0",PX(660));fold.style.setProperty("--fy0",PY(360));
+      fold.style.setProperty("--fx1",PX(710));fold.style.setProperty("--fy1",PY(364));
+      world.appendChild(fold);
+      [[150,528,"announce → all · one pulse, never N arcs"],
+       [1480,225,"#722 · zero open questions → filed to the board"],
+       [762,420,"brief → coder intern"],
+       [455,238,"staged — ships only behind the coord.* events"]].forEach(([x,y,t])=>{
+        const n=document.createElement("div");n.className="envnote";
+        n.style.left=PX(x);n.style.top=PY(y);n.textContent=t;world.appendChild(n);});
+    }
+  });
+  const f=document.getElementById("floors");f.innerHTML="";
+  for(const inst of FLOORS){
+    const c={};FLEET[inst].forEach(s=>c[s.render_state]=(c[s.render_state]||0)+1);
+    const line=["working","thinking","idle","blocked","stale"].filter(k=>c[k]).map(k=>c[k]+" "+k).join(" · ");
+    const b=document.createElement("button");b.className="fbtn";
+    b.setAttribute("aria-pressed",String(inst===current));
+    b.innerHTML="<span>"+esc(inst)+"</span><span class='c'>"+line+"</span>";
+    b.addEventListener("click",()=>elevatorTo(inst));f.appendChild(b);
+  }
+  const d=document.getElementById("drill");d.className="drill";d.innerHTML="";
+  placeCab(current,false);
+}
+function kv(rows){return "<dl class='kv'>"+rows.map(([k,v])=>{const n=v===null||v===undefined;
+  return "<dt>"+k+"</dt><dd"+(n?" class='n'":"")+">"+(n?"null":esc(String(v)))+"</dd>";}).join("")+"</dl>";}
+function openDrill(install,s){
+  const d=document.getElementById("drill");d.className="drill open";
+  d.innerHTML="<h2>"+esc(s.seat)+"<span class='k'>"+esc(install)+"/"+esc(s.seat)+" · fnv1a32 0x"+
+    fnv1a32(seatKey(install,s.seat)).toString(16)+"</span><button class='x' id='dx'>close ×</button></h2><div class='dg'>"
+    +"<div class='db'><h3>state</h3>"+kv([["render_state",s.render_state==="thinking"?"working":s.render_state],
+      ["link_state",s.link_state],["open_calls",s.open_calls],["open_turn",s.open_turn]])+"</div>"
+    +"<div class='db'><h3>action</h3>"+(s.action?kv([["tool_name",s.action.tool_name],["descriptor",s.action.descriptor],
+      ["started_at",s.action.started_at+" (seat clock)"],["running for",s.action.running]])
+      :"<div class='kv'><dd class='n'>no open call — the monitor shows the state line, never a stale last action</dd></div>")+"</div>"
+    +"<div class='db'><h3>context</h3>"+(s.context?kv([["used_pct",s.context.used_pct+"%"],
+      ["used_tokens",s.context.used_tokens.toLocaleString()],["total_tokens",s.context.total_tokens.toLocaleString()],
+      ["source",s.context.source]]):"<div class='kv'><dd class='n'>not reported — never rendered as 0%</dd></div>")+"</div>"
+    +"<div class='db'><h3>transport</h3>"+kv([["link_state",s.link_state],
+      ["no_data_since",s.delivery?s.delivery.no_data_since:null],
+      ["last_receipt_at",s.delivery?s.delivery.last_receipt_at:"14:29:01 (fetch-fresh)"],
+      ["fold_lag_ms","117 (fetch-fresh)"]])+"</div>"
+    +"<div class='db'><h3>activity</h3>"+kv([["last_kind",s.activity.last_kind],
+      ["last_event_time",s.activity.last_event_time+" (seat clock)"],
+      ["task",s.task?s.task.ref+" — "+s.task.title:null],["model",s.model_label]])+"</div>"
+    +"<div class='db'><h3>character</h3>"+kv([["vibe",vibeFor(install,s.seat)+"  (seeded flavour, not wire data)"],
+      ["interns",(s.subagents||[]).length?s.subagents.map((a,i)=>(a.subagent_type||"intern")+" · "+(a.title||"untitled")).join(" | "):null]])+"</div>"
+    +"</div>";
+  document.getElementById("dx").addEventListener("click",()=>{d.className="drill";d.innerHTML="";});
+  d.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+/* ---------- live wall clocks + sky refresh ---------- */
+function tickClock(){
+  const n=new Date(), h=n.getHours()%12+n.getMinutes()/60, m=n.getMinutes()+n.getSeconds()/60;
+  for(const inst of FLOORS){
+    const H2=document.getElementById("clkH-"+inst), M=document.getElementById("clkM-"+inst);
+    if(H2)H2.setAttribute("transform",`rotate(${h*30} 205 70)`);
+    if(M)M.setAttribute("transform",`rotate(${m*6} 205 70)`);
+  }
+}
+let lastPhase=skyPhase();
+setInterval(()=>{ tickClock();
+  const p2=skyPhase(); if(p2!==lastPhase){lastPhase=p2;render();}
+},10000);
+
+/* ---------- zoom / pan viewport with building + floor focus ---------- */
+const vp=document.getElementById("room"), worldEl=document.getElementById("world");
+let z=1,px=0,py=0;
+const vw=()=>vp.getBoundingClientRect().width, vh=()=>vp.getBoundingClientRect().height;
+const worldH=zz=>vw()*(BH/BW)*zz;
+const zAll=()=>vh()/(vw()*(BH/BW));
+function clampPan(){
+  const cw=vw()*z, ch=worldH(z);
+  px = cw<=vw() ? (vw()-cw)/2 : Math.min(0,Math.max(vw()-cw,px));
+  py = ch<=vh() ? (vh()-ch)/2 : Math.min(0,Math.max(vh()-ch,py));
+}
+function applyView(){worldEl.style.transform=`translate(${px}px,${py}px) scale(${z})`;}
+function smooth(fn){worldEl.style.transition="transform .85s cubic-bezier(.4,0,.2,1)";fn();
+  setTimeout(()=>{worldEl.style.transition="";},900);}
+function zoomAt(mx,my,nz){
+  nz=Math.min(4,Math.max(zAll(),nz));
+  px=mx-(mx-px)*nz/z; py=my-(my-py)*nz/z; z=nz; clampPan(); applyView();
+}
+function focusFloor(inst,animate=true){
+  current=inst; const fi=FLOORS.indexOf(inst);
+  const s=vw()/BW;
+  const zF=Math.min(4, vh()/( (FH+70)*s ));
+  const doIt=()=>{ z=zF;
+    px=vw()/2-(OX+FW/2)*s*z; py=vh()/2-(OY(fi)+FH/2)*s*z; clampPan(); applyView(); syncLobby(); };
+  animate?smooth(doIt):doIt();
+}
+function buildingView(){ smooth(()=>{ z=zAll(); clampPan(); applyView(); }); }
+function placeCab(inst,animate=true){
+  const cab=document.getElementById("cab"); if(!cab)return;
+  if(!animate)cab.style.transition="none";
+  cab.setAttribute("transform",`translate(0,${OY(FLOORS.indexOf(inst))})`);
+  if(!animate)setTimeout(()=>{cab.style.transition="";},50);
+}
+function elevatorTo(inst){
+  if(inst===current){focusFloor(inst);return;}
+  placeCab(inst,true);
+  setTimeout(()=>focusFloor(inst),650);
+}
+function syncLobby(){
+  document.querySelectorAll(".fbtn").forEach((b,i)=>b.setAttribute("aria-pressed",String(FLOORS[i]===current)));
+}
+vp.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const r=vp.getBoundingClientRect();
+  zoomAt(e.clientX-r.left,e.clientY-r.top, z*(e.deltaY<0?1.18:1/1.18));
+},{passive:false});
+let drag=null;
+vp.addEventListener("pointerdown",e=>{if(e.target.closest(".zbtn")||e.target.closest(".hit"))return;
+  drag={x:e.clientX,y:e.clientY,px,py};vp.classList.add("grabbing");vp.setPointerCapture(e.pointerId);});
+vp.addEventListener("pointermove",e=>{if(!drag)return;
+  px=drag.px+(e.clientX-drag.x);py=drag.py+(e.clientY-drag.y);clampPan();applyView();});
+vp.addEventListener("pointerup",()=>{drag=null;vp.classList.remove("grabbing");});
+document.getElementById("zin").addEventListener("click",()=>{zoomAt(vw()/2,vh()/2,z*1.35);});
+document.getElementById("zout").addEventListener("click",()=>{zoomAt(vw()/2,vh()/2,z/1.35);});
+document.getElementById("zfit").addEventListener("click",()=>focusFloor(current));
+document.getElementById("zall").addEventListener("click",buildingView);
+
+render();
+focusFloor("aimla",false);
+
+</script>
