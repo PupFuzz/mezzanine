@@ -18,6 +18,10 @@ FROM. It encodes, as working code, every design ruling of the 2026-08-26/27 oper
   resolution, the setting rule and the unset render are `docs/design/FLOOR.md` § 6.2 **A17** and
   § 6.5's, and are not restated here; the *simulated feed* control under the room is where you
   watch the room freeze, and why the operator chose that over a timer;
+- the **thought bubble** as the desk's ONE rendered form of `task` — there is no task chip beside
+  it, a null `task` draws nothing, and a desk with no character (`stale` / `offline` / `retired`)
+  has nothing to anchor one to. It is **static by rule**: `FLOOR.md` § 5.1 owns the six rules and
+  the upstream fade/linger/fade state machine it refuses, and they are not restated here;
 - the **staged communication layer** (thread-as-object with round beads, kind-shaped carriers,
   floor-clipped broadcast pulse, convergence spark, escalation flare) — every element maps to a
   bridge-observable and **ships only behind the `coord.*` event family** (card#7897).
