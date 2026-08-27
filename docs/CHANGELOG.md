@@ -10,6 +10,43 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7936** — **A17's clock had two setters and its accessible text was bound to one of them, so
+  the hands and the text could render the same minute differently.** `FLOOR.md` § 6.2 A17
+  constraint 5 read *set by the same A17 firing that moves the hands and by nothing else* — but
+  constraint 4 and § 6.5 give the hands **two** setters: the firing, and the render that establishes
+  or re-establishes a LIVE feed, which moves the hands and writes **no** animation-log row (§ 11: *a
+  firing writes a row, where the setting of § 6.5 writes none*). *By nothing else* excluded the
+  second. A client built from that sentence draws the **connect snapshot** with hands on the current
+  minute and an accessible name never set, and a **successful reconnect** with hands on the new
+  minute and an accessible name still holding the minute from before the disconnect — **one fact,
+  two renderings, disagreeing**, which is the *exactly once* premise of that same constraint and
+  § 2.4's one-form-per-fact rule broken by the sentence invoking them. It is worst on the path A17
+  exists to make visible: a reconnect onto a feed that then dies (§ 9 F1) freezes the hands at the
+  reconnect minute and the text at an **older** one, so a screen-reader user is told a *different*
+  wrong time from the one on the wall. **The repair is to bind the text to the hands rather than to
+  a named driver** — *set in the same render that sets the hands*, with constraint 4 left owning
+  which renders those are — so the coupling survives the driver set moving again, and no fourth
+  phrasing of the set-vs-fire distinction is minted. ⭐ **The unset case is stated for the first
+  time:** § 6.5 draws a never-live clock **unset**, while *the minute and nothing else* said nothing
+  about a clock with no minute; the text is now decision 13's ***not reported***, never an empty
+  string (an element with no accessible name is a clock assistive technology cannot find) and never
+  a plausible time. **No gate caught any of this and one now does:** AT-D3-6's first read of the
+  text fell inside the heartbeat phase, by which time a firing had set it either way, so the test
+  passed on a defective client. It gains a GREEN that reads the text **before the first heartbeat**,
+  where only the establishing render can have set it, and a **fifth RED** — the text driven by the
+  firing alone — which passes every other assertion in the test and fails only that read.
+  **Deliberately NOT changed, and reported instead:** § 2.5's 1 s-tick row (*advances on the
+  heartbeat and on nothing else*) and § 5.5's row (*read at the moment a `feed.heartbeat` arrives*)
+  are statements about what may **drive** motion, and § 6.5 is explicit that setting a value on
+  first paint is not an animation of it — so both are true as scoped and neither is restated here.
+  § 2.3's computed-values row was the one flatly false copy — *sampled when a `feed.heartbeat`
+  arrives **and at no other moment*** is a universal negative § 6.5 contradicts — and it now points
+  at constraint 4 rather than carrying its own spelling of the rule. **The reference artifact needed
+  no change and is the evidence the property is buildable:** `floor-preview.html` already sets the
+  `<title>` in `paintRoom()` on every path that moves the hands, already sets the room in
+  `establishLive()`, and already renders unset as *no time set* — the implementation was right and
+  the specification was wrong.
+
 - **card#7897 (part 1)** — **the seat's task is a THOUGHT BUBBLE, and the bubble REPLACES the text
   chip rather than joining it.** `FLOOR.md` § 5.1 named the element *the task chip* in four places
   (§ 5.1, § 5.6, § 7.5 and AT-D3-14) while the operator-ratified reference artifact had already been

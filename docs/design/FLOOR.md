@@ -168,7 +168,7 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
 | 6 | **Sort orders** | floors by `install_id` ascending; desks by slot; timeline as served | Deterministic ordering of received objects |
-| 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the client's event log, the *membership as of* stamp, the overflow determination, [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup, and the **wall clock's reading and the sky phase** — the viewer's own clock, sampled when a `feed.heartbeat` arrives and at no other moment ([§ 6.2](#62-the-animation-table--the-closed-set) A17) | the client's own connection state, its own request outcomes, the seat set it holds, and the **viewer's own clock** ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
+| 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the client's event log, the *membership as of* stamp, the overflow determination, [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup, and the **wall clock's reading and the sky phase** — the viewer's own clock, sampled only where [§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 4 says it is, and never on a timer | the client's own connection state, its own request outcomes, the seat set it holds, and the **viewer's own clock** ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
 
 **Forbidden, named because each is a computation an implementer would otherwise reach for:** deriving
 `render_state` from the two axes; inferring `idle`, `busy` or "gone" from the absence of deltas;
@@ -1300,9 +1300,12 @@ that exact edit, so the regression trips a test rather than a review.
    against *the rendered wall-clock string* would assert on a thing this document never specified, and
    an implementer building hands would invent the target — which is the seam an acceptance test exists
    to close, not to open. So the clock element carries an **accessible text form of the same minute**
-   (its accessible name — an `aria-label`, or an SVG `<title>`), set by the same A17 firing that moves
-   the hands and by nothing else, and [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) reads
-   it. **It is not a second rendered form of the fact**
+   (its accessible name — an `aria-label`, or an SVG `<title>`), **set in the same render that sets the
+   hands, and by nothing else** — constraint 4 above owns which renders those are, and this constraint
+   names no driver of its own. **The text is whatever the hands read, always:** it is not a second
+   value driven in parallel and kept in step, so there is no render at which the two can disagree, and
+   [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) reads it. **It is not a second rendered
+   form of the fact**
    ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-form-per-fact rule, which constraint 3 above
    applies to this clock): it is the *same* rendering
    delivered to assistive technology, which a pair of hands is otherwise unreadable to — the reasoning
@@ -1313,6 +1316,37 @@ that exact edit, so the regression trips a test rather than a review.
    was rejected because an angle is a fact about a drawing rather than about the time: two renderers
    drawing the same minute differently would disagree, and the assertion would be pinned to one of
    them.
+
+   ⚠ **Why the text is bound to the hands and not to a driver, written down because this constraint
+   once did the opposite.** It read *set by the same A17 firing that moves the hands and by nothing
+   else* — which names the **firing** as the only setter, while constraint 4 above gives the hands
+   **two** setters: the firing, and [§ 6.5](#65-a-snapshot-never-animates)'s establishing render, which
+   moves the hands and writes **no** animation-log row ([§ 11](#11-acceptance-tests): *a firing writes a
+   row, where the setting of § 6.5 writes none*). A client built from that sentence draws a connect
+   snapshot with hands on the current minute and an accessible name that was never set, and a
+   **successful reconnect** with hands on the new minute and an accessible name still holding the
+   minute from before the disconnect — **two renderings of one fact, disagreeing**, which is the
+   *exactly once* premise of this very constraint and
+   [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-form-per-fact rule broken by the sentence
+   that invoked them. It is worst on the path this row exists to make visible: a reconnect onto a feed
+   that then dies ([§ 9](#9-failure-paths-and-their-observables) F1) freezes the hands at the reconnect
+   minute and the text at an **older** one, so the viewer who cannot see the hands is told a *different*
+   wrong time from the one on the wall. Binding the text to the hands rather than to a named driver is
+   what closes it, and it stays closed if the driver set ever moves again — which is why this
+   constraint points at constraint 4 instead of restating it.
+
+   ⚠ **An unset clock's accessible text is *not reported*.** *The minute and nothing else* says what
+   the text carries when there **is** a minute and is silent when there is none, and there is such a
+   case: on a cold start onto a dead feed no render has established a live feed, so the clock has never
+   been set and [§ 6.5](#65-a-snapshot-never-animates) draws it **unset**. The text says so in words —
+   [decision 13](#13-decisions-taken-revisable-at-review)'s ***not reported***, **never an empty
+   string** (an element with no accessible name is a clock assistive technology cannot find, which is
+   the unreadability this constraint exists to remove) and **never a plausible time** — which
+   [§ 6.5](#65-a-snapshot-never-animates) calls *exactly the zero that rule refuses* where it draws the
+   hands, and it is the same zero one modality over. The
+   hands are drawn unset and the text reads unset: the same fact, in the same render, one modality
+   apart — which is the whole of this constraint applied to the case where the fact is that there is
+   nothing to report.
 
 **Per-seat loop phase, from the appearance seed — and it carries no information.** Loops are
 **phase-offset per seat**, so a floor of busy desks does not blink and wiggle in lockstep; the offset
@@ -2594,6 +2628,18 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
   issued and repeats every 10 s, and **every desk's
   quiet-age readout has continued to grow throughout** — assert the rendered age strings, not the
   internal timestamps.
+- ⭐ **GREEN — the floor half, the establishing render, and the read is taken BEFORE the first
+  heartbeat:** immediately after `fx-snapshot-4` is applied and before any heartbeat is delivered, the
+  clock's accessible text reads `HH:MM` — the minute the simulated viewer clock holds at its `HH:MM:30`
+  start — and **agrees with the hands**, which the same render set
+  ([§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 5: the text is set in the same
+  render that sets the hands). **The moment of the read is the assertion.** `fx-snapshot-4` establishes
+  a live feed, so [§ 6.5](#65-a-snapshot-never-animates) **sets** the room with **no A17 firing** and
+  no animation-log row; a test whose first read of the text falls inside the heartbeat phase cannot
+  tell a client that set the text on that establishing render from one that left it unset until a
+  firing arrived, because by then a firing has set it either way. The advance half below then runs from
+  a value that already exists, which is what keeps its *advances exactly once* a statement about the
+  minute rather than about the text appearing for the first time.
 - **GREEN — the floor half, the frozen room, and this is the assertion the whole design of
   [A17](#62-the-animation-table--the-closed-set) is for:** **what is read is the clock's accessible
   text** — its `aria-label` or `<title>`, the one machine-readable rendering of where the hands are
@@ -2660,6 +2706,20 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
   same regression reached by two different doors**, which is why both are named: the third comes in
   through the animation table, the fourth through the recovery path, and a client repaired against
   only one of them is still a client whose clock never stops.
+- ⭐ **Fifth RED — the accessible text driven by the firing alone, which is what this document asked
+  for until card#7936:** set the clock's accessible text in the A17 heartbeat handler only, leaving
+  [§ 6.5](#65-a-snapshot-never-animates)'s establishing render to move the hands by themselves — the
+  reading [§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 5 permitted when it named the
+  firing as the only setter — and re-run. The hands are right at every read, the advance half passes,
+  the freeze half passes, and **every other assertion in this test still passes**: the only one that
+  fails is the establishing-render GREEN above, and it fails at the one read taken before any firing
+  has happened, where the hands show `HH:MM` and the text shows nothing. **Watch this one fail before
+  trusting the agreement assertion, and watch *where* it fails** — from inside the heartbeat phase a
+  client that sets the text on both paths and one that sets it on neither are indistinguishable, so an
+  agreement assertion read only there is a decoration reporting that the harness ran. This RED is also
+  the reason the assertion is worth its line: the same client, reconnected rather than cold-started,
+  holds hands on the reconnect minute against a text still carrying the pre-disconnect minute, and
+  [§ 9](#9-failure-paths-and-their-observables) F1 then freezes the two at **different** wrong times.
 - **Discriminating control:** deliver heartbeats every 15 s for the whole run → the indicator never
   leaves *live*, no poll is issued, and the wall clock **advances once per minute throughout — on each
   heartbeat that crosses a minute boundary and on no other, and never between heartbeats**, which is a
