@@ -48,7 +48,10 @@
   .plate{position:absolute;transform:translateX(-50%);text-align:center;pointer-events:none;white-space:nowrap}
   .plate .nm{font-family:var(--disp);font-weight:700;font-size:13px;color:#fff;text-shadow:0 1px 3px rgba(10,12,24,.85)}
   .plate .gl{font-family:var(--mono);font-size:8.5px;padding:2px 8px;border-radius:12px;letter-spacing:.5px;display:inline-block;margin-top:2px;box-shadow:0 1px 3px rgba(10,12,24,.5)}
-  .g-working{background:#1d4030;color:#8ce8b0} .g-thinking{background:#2d2758;color:#c3b8ff}
+  /* one chip class per render_state — the chip renders the STATE (D3 § 5.1 "pose and glyph |
+     render_state"), never a pose. The think pose has no chip of its own: it is A4's condition
+     over a `working` seat, and it is rendered as a pose (the … marker and the state line). */
+  .g-working{background:#1d4030;color:#8ce8b0}
   .g-idle{background:#293046;color:#b8c3dd} .g-blocked{background:#443413;color:#ffd07a}
   .g-stale{background:#43221e;color:#ff9d8a}
   .plate .ln{display:block;font-family:var(--mono);font-size:9px;color:#cfd4e4;margin-top:2px;
@@ -97,9 +100,21 @@
     .glowpulse{animation:gp 2.4s ease-in-out infinite}
     @keyframes gp{0%,100%{opacity:.85}50%{opacity:.55}}
   }
-  @media (prefers-reduced-motion:reduce){.env{opacity:.9;left:var(--x1)!important;top:var(--y1)!important}.annring,.star,.folder{display:none}.threadline{animation:none}.blink,.busywiggle{animation:none}.sleepz{animation:none;opacity:.6}}
+  /* A14's reduced-motion form is the *last message HH:MM:SS* readout on the strip, which is
+     always there — so the pulse simply goes, and the fact is still carried (§ 6.4). */
+  @media (prefers-reduced-motion:reduce){.env{opacity:.9;left:var(--x1)!important;top:var(--y1)!important}.annring,.star,.folder{display:none}.threadline{animation:none}.blink,.busywiggle{animation:none}.sleepz{animation:none;opacity:.6}.dot.pulse{animation:none}}
 
   .strip{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:11px;flex-wrap:wrap}
+  .strip code{color:var(--dim)}
+  .feedctl{display:flex;gap:5px;align-items:center}
+  .feedbtn{font-family:var(--mono);font-size:11px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--dim);border-radius:12px;padding:2px 9px;cursor:pointer}
+  .feedbtn[aria-pressed="true"]{border-color:var(--lamp);color:var(--lamp);background:#2a2417}
+  .feedbtn:focus-visible{outline:2px solid var(--lamp);outline-offset:1px}
+  /* A14 — one frame on the feed indicator, fired by the same message that steps A17's room.
+     It is not a loop: no message, no pulse, which is what makes the still page readable. */
+  .dot.pulse{animation:fpulse .35s steps(2,end) 1}
+  @keyframes fpulse{0%{transform:scale(2.1);opacity:1}100%{transform:scale(1);opacity:1}}
   .drill{margin-top:15px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:none}
   .drill.open{display:block}
   .drill h2{font-family:var(--disp);font-weight:700;font-size:19px;color:var(--lamp);display:flex;gap:11px;align-items:baseline;flex-wrap:wrap}
@@ -129,7 +144,7 @@
       <span class="hh"><span class="dot"></span>store ok</span>
       <span class="hh"><span class="dot"></span>fold ok · lag 117&nbsp;ms</span>
       <span class="hh"><span class="dot"></span>sweep ok · 6&nbsp;s ago</span>
-      <span class="hh"><span class="dot" style="background:var(--lamp)"></span>feed: preview</span>
+      <span class="hh"><span class="dot" id="feeddot"></span><span id="feedstatus">feed: connecting</span></span>
     </div>
     <div class="lright">8 seats · 7 live<br>membership as of 14:29:02</div>
   </div>
@@ -144,7 +159,12 @@
     </div>
   </div>
   <div class="strip">
-    <span>wall clock &amp; the sky outside: <b>your</b> local time, live</span>
+    <span>wall clock &amp; the sky outside: set by each delivered <code>feed.heartbeat</code>, so they
+      <b>stop when the feed stops</b> — the viewer's clock is the value, the heartbeat is the driver</span>
+    <span class="feedctl">simulated feed:
+      <button class="feedbtn" data-mode="live" aria-pressed="true">live</button>
+      <button class="feedbtn" data-mode="down" aria-pressed="false">down</button>
+      <button class="feedbtn" data-mode="cold" aria-pressed="false">never live</button></span>
     <span>seat data: frozen sample at 14:29:02Z — ages do not tick</span>
     <span>wheel to zoom · drag to pan · ⤢ fit floor · ⌂ whole building · ride the elevator between floors</span>
     <span>every creature is derived from fnv1a32(install/seat) — identity is the appearance, computed</span>
@@ -158,9 +178,13 @@
     now individuals</strong>: body shape, pattern, ears, sprout, eyes, mouth, accessory and posture are each drawn
     independently from the seat's seed, and every creature carries a seeded <em>vibe</em> (shown in its drill-down,
     labeled as flavour — never wire data). Interns seed from their parent seat, so they differ too. <strong>The
-    windows and the wall clock follow your system clock</strong>: dawn, day, dusk and night skies, live hands — the
-    viewer's clock is client-side truth, so this stays inside the honesty rule while the seat data remains a frozen
-    sample.</p>
+    windows and the wall clock step on each delivered <code>feed.heartbeat</code></strong> — dawn, day, dusk and
+    night skies, hands at minute resolution and no second hand — so when the feed dies they freeze with the rest
+    of the page, and <em>a stopped clock is the feed-down claim in the form every viewer reads without being
+    told</em>. Try it: switch the simulated feed to <b>down</b> and watch the clock hold while the poll count
+    climbs; switch to <b>never live</b> and the room is drawn <em>unset</em> rather than at a plausible time.
+    The viewer's clock is the value the heartbeat samples, never the thing that drives it
+    (<code>docs/design/FLOOR.md</code> § 6.2 A17, § 6.5).</p>
     <p style="margin-top:8px"><strong>The communication layer</strong> (staged, card&nbsp;#7897): an open thread glows
     between participants with a bead per round (#725 shows four); carriers are shaped by kind — paper plane for a
     query reply, a folder handed to the coder intern; a broadcast is one radial pulse, never N arcs; the escalation flare is staged on the sola floor (a blocked seat raises a tethered light to the status wall
@@ -189,7 +213,20 @@ const VIBES=["quiet perfectionist","chirpy optimist","plans twice, ships once","
   "collects rubber ducks","hums while compiling","never lost a semicolon","keeps the plants alive"];
 const vibeFor=(i,s)=>VIBES[draw(seatKey(i,s),"vibe",VIBES.length)];
 
-function creatureSVG(install,seat,state,size){
+/* ---------- pose: what the character DOES, derived from the state the wire sent ----------
+   ⛔ `thinking` is NOT a render_state. D2 sends ten members (D3 § 7.1) and `thinking` is in
+   none of them; it is A4's holding CONDITION over a `working` seat — `render_state ==
+   "working"` AND `open_calls == 0` AND `open_turn == true` (D3 § 6.2 A4, § 5.1 "the *thinking*
+   pose — a turn open with no call | open_turn … read WITH open_calls"). So the pose is DERIVED
+   here, once, and the drawing layer never sees a state name: a `thinking` on the wire would be
+   an unrecognised member (§ 5.4), not a pose. */
+const POSE={working:"work",idle:"sleep",blocked:"attention",stale:"empty"};
+function poseOf(s){
+  if(s.render_state==="working"&&s.open_calls===0&&s.open_turn===true)return "think";  /* A4 */
+  return POSE[s.render_state];
+}
+
+function creatureSVG(install,seat,pose,size){
   const k=seatKey(install,seat);
   const [body,shade]=PASTELS[draw(k,"s3",PASTELS.length)];
   const shape=draw(k,"s18",7), pattern=draw(k,"pat",3), ears=draw(k,"ears",4),
@@ -197,7 +234,7 @@ function creatureSVG(install,seat,state,size){
         acc=draw(k,"acc",5), tilt=(draw(k,"tilt",3)-1)*4;
   const SH=[{rx:32,ry:34,cy:62},{rx:25,ry:41,cy:57},{rx:37,ry:27,cy:67},{rx:29,ry:36,cy:60,pear:1},
             {rx:27,ry:38,cy:59,egg:1},{rx:33,ry:30,cy:64,bell:1},{rx:28,ry:32,cy:62,rect:1}][shape];
-  const busyTop=(state==="working"||state==="thinking");
+  const busyTop=(pose==="work"||pose==="think");   /* A3 and A4 — both are `working` seats */
   const smul=0.92+draw(k,"s7",5)*0.05;
   const cx0=50, cy=SH.cy, s=size/100*smul;
   let g=`<g transform="scale(${s})"><g transform="rotate(${tilt} 50 ${cy})">`;
@@ -222,7 +259,7 @@ function creatureSVG(install,seat,state,size){
   if(sprout===4)g+=`<path d="M50 ${ty+1} q-2 -8 4 -12 q6 -4 4 -10" stroke="${shade}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
   const ey=cy-6, er=[4.6,3.6,4.2,5][eyeS];
   const busy=busyTop;
-  if(state==="idle"){
+  if(pose==="sleep"){
     g+=`<path d="M${cx0-14} ${ey} q5 5 10 0 M${cx0+4} ${ey} q5 5 10 0" stroke="#3a3550" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
   } else {
     let eyes="";
@@ -247,16 +284,34 @@ function creatureSVG(install,seat,state,size){
   if(acc===2)g+=`<path d="M${cx0-SH.rx*0.7} ${cy+SH.ry*0.55} q${SH.rx*0.7} 9 ${SH.rx*1.4} 0 l0 6 q-${SH.rx*0.7} 9 -${SH.rx*1.4} 0 z" fill="${shade}"/><rect x="${cx0+SH.rx*0.35}" y="${cy+SH.ry*0.55}" width="7" height="14" rx="3" fill="${shade}"/>`;
   if(acc===3)g+=`<path d="M50 ${cy+SH.ry*0.62} l-8 -5 v10 z M50 ${cy+SH.ry*0.62} l8 -5 v10 z" fill="#d9808f"/><circle cx="50" cy="${cy+SH.ry*0.62}" r="2.4" fill="#c96a7e"/>`;
   if(acc===4)g+=`<path d="M${cx0-SH.rx*0.72} ${ey-4} Q50 ${ty-6} ${cx0+SH.rx*0.72} ${ey-4}" stroke="#3a3550" stroke-width="3" fill="none"/><rect x="${cx0-SH.rx*0.72-4}" y="${ey-6}" width="8" height="12" rx="4" fill="#3a3550"/><rect x="${cx0+SH.rx*0.72-4}" y="${ey-6}" width="8" height="12" rx="4" fill="#3a3550"/>`;
-  if(state==="blocked"){g+=`<ellipse cx="${cx0+SH.rx-4}" cy="${cy-SH.ry+18}" rx="7" ry="5" fill="${body}" transform="rotate(-30 ${cx0+SH.rx-4} ${cy-SH.ry+18})"/>`;}
+  if(pose==="attention"){g+=`<ellipse cx="${cx0+SH.rx-4}" cy="${cy-SH.ry+18}" rx="7" ry="5" fill="${body}" transform="rotate(-30 ${cx0+SH.rx-4} ${cy-SH.ry+18})"/>`;}
   else{g+=`<ellipse cx="${cx0-SH.rx+6}" cy="${cy+14}" rx="7" ry="5" fill="${body}" transform="rotate(20 ${cx0-SH.rx+6} ${cy+14})"/><ellipse cx="${cx0+SH.rx-6}" cy="${cy+14}" rx="7" ry="5" fill="${body}" transform="rotate(-20 ${cx0+SH.rx-6} ${cy+14})"/>`;}
   g+=`</g></g>`;
   if(busyTop) return `<g class="busywiggle" style="animation-delay:-${draw(k,"wph",46)/20}s">${g}</g>`;
   return g;
 }
 
-/* ---------- sky + clock from the VIEWER'S clock (client-side truth) ---------- */
+/* ---------- THE ROOM: the wall clock and the sky, and the ONE value behind both ----------
+   D3 § 6.2 A17. The room is SET by a delivered `feed.heartbeat`, and by nothing else — no
+   timer, no re-read of the viewer's clock at render time. The viewer's clock is the VALUE;
+   the heartbeat is the DRIVER (A17 constraint 2). Every render draws the HELD value below,
+   so a render for any other reason (a zoom, an elevator ride, a sky-phase repaint) cannot
+   move the room, and when the heartbeat stops the room stops with it — which is F1's
+   observable and the whole reason this row exists.
+   ⛔ A 10-second `setInterval` off `new Date()` is what this file used to do. It is § 6.3's
+   second forbidden form, it keeps moving after the feed dies, and it costs AT-D3-6 the
+   instrument it asserts on. Do not put it back under any name, `setting` included (§ 6.5). */
+const roomState={set:false,ms:null};   /* ms: the viewer-clock instant the last SETTING render read */
+
+/* § 6.5: a render that establishes or re-establishes a LIVE feed sets the room; a render the
+   client makes BECAUSE the feed is down (F1's 10 s poll) sets nothing. Before any such render
+   the room has NO value and is drawn unset — never at a plausible time. */
+function setRoom(){ roomState.set=true; roomState.ms=Date.now(); }
+function clearRoom(){ roomState.set=false; roomState.ms=null; }
+
 function skyPhase(){
-  const h=new Date().getHours()+new Date().getMinutes()/60;
+  if(!roomState.set)return "unset";
+  const d=new Date(roomState.ms), h=d.getHours()+d.getMinutes()/60;
   if(h<5.5||h>=19.5)return "night";
   if(h<7.5)return "dawn";
   if(h<17.5)return "day";
@@ -266,7 +321,10 @@ const SKY={
   night:{top:"#141c3a",bot:"#25335e",stars:true,moon:true,sun:false,cityLit:.8},
   dawn:{top:"#3a3a6e",bot:"#e8927c",stars:false,moon:false,sun:true,sunY:.82,cityLit:.35},
   day:{top:"#8fc4e8",bot:"#cfe6f2",stars:false,moon:false,sun:true,sunY:.28,cityLit:0},
-  dusk:{top:"#4a3a6e",bot:"#f0a86a",stars:false,moon:false,sun:true,sunY:.86,cityLit:.55}
+  dusk:{top:"#4a3a6e",bot:"#f0a86a",stars:false,moon:false,sun:true,sunY:.86,cityLit:.55},
+  /* the null render (§ 6.5, decision 13): flat panes, no sun, no moon, no lit city — a sky
+     that says NOT REPORTED. A plausible time of day here would be the zero that rule refuses. */
+  unset:{top:"#2a2f42",bot:"#39405a",stars:false,moon:false,sun:false,cityLit:0,flat:true}
 };
 
 /* ---------- geometry: floor + building ---------- */
@@ -302,7 +360,9 @@ const FLEET={
   aimla:[
     {desk:"cabin",seat:"pm",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: kbcard patch --task 7112",started_at:"14:27:41",running:"1m 21s"},context:{used_pct:38.2,used_tokens:76400,total_tokens:200000,source:"harness"},model_label:"claude-fable-5",open_calls:1,open_turn:true,task:{title:"floor UI preview",source:"board_card",ref:"card#7341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:27:41"}},
     {desk:"a1",seat:"magento",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: composer test",started_at:"14:26:03",running:"2m 59s"},context:{used_pct:25.0,used_tokens:250000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"docs rebuild",source:"issue",ref:"#324"},subagents:[{title:"rebuild the doc set against dev head",subagent_type:"coder"},{title:"sweep stale doc claims",subagent_type:"mechanic"},{title:"adversarial review of the rebuild",subagent_type:"reviewer"}],subagents_open:3,activity:{last_kind:"tool.start",last_event_time:"14:26:03"}},
-    {desk:"a2",seat:"platform",render_state:"thinking",link_state:"live",action:null,open_calls:0,open_turn:true,context:{used_pct:45.0,used_tokens:450000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"20 strays + sentinel",source:"issue",ref:"#719"},subagents:[],activity:{last_kind:"turn.start",last_event_time:"14:28:55"}},
+    /* the A4 seat: a `working` seat with the turn open and no call — the pose is DERIVED from
+       these three fields (poseOf), which is the data that should have driven it all along. */
+    {desk:"a2",seat:"platform",render_state:"working",link_state:"live",action:null,open_calls:0,open_turn:true,context:{used_pct:45.0,used_tokens:450000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"20 strays + sentinel",source:"issue",ref:"#719"},subagents:[],activity:{last_kind:"turn.start",last_event_time:"14:28:55"}},
     {desk:"b1",seat:"moodle",render_state:"idle",link_state:"live",action:null,open_calls:0,open_turn:false,context:{used_pct:32.0,used_tokens:320000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"identity-leg catch fix",source:"issue",ref:"#722"},subagents:[],quiet_for:"4m 12s",activity:{last_kind:"turn.end",last_event_time:"14:24:50"}}
   ],
   sola:[
@@ -312,28 +372,34 @@ const FLEET={
     {desk:"b1",seat:"sola-inventory",render_state:"blocked",link_state:"live",action:null,open_calls:0,open_turn:true,blocked_since:"14:21",context:{used_pct:61.7,used_tokens:617000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"MFA session ruling",source:"thread",ref:"inv#88"},subagents:[],activity:{last_kind:"attention.request",last_event_time:"14:21:07"}}
   ]
 };
-const SCREENC={working:"#8ce8b0",thinking:"#c3b8ff",idle:"#3c445c",blocked:"#ffd07a",stale:"#3c445c"};
+/* D3 § 7.1's ten render_state members, in the document's own fixed order. § 4.1 requires the
+   lobby's per-floor summary to use THIS order; nothing here may carry a member set of its own. */
+const RENDER_STATES=["working","idle","blocked","stalled","unknown","catching_up","stale",
+                     "offline","disabled","retired"];
+/* the monitor's tint, per render_state. Keyed on the four members this sample fleet contains —
+   a sample seat in a fifth state owes a row here and in GL, both drawn from RENDER_STATES. */
+const SCREENC={working:"#8ce8b0",idle:"#3c445c",blocked:"#ffd07a",stale:"#3c445c"};
 
 function deskSVG(T,id,s){
   const D=T.desks[id],x=D.x,y=D.y,w=D.w;
-  const state=s?s.render_state:null, occupied=s&&state!=="stale";
+  const state=s?s.render_state:null, pose=s?poseOf(s):null, occupied=s&&state!=="stale";
   let g="";
   g+=`<ellipse cx="${x+w/2}" cy="${y+56}" rx="${w/2+14}" ry="14" fill="rgba(15,12,30,.28)"/>`;
   if(occupied)g+=`<ellipse class="glowpulse" cx="${x+w*D.lampx}" cy="${y-4}" rx="72" ry="44" fill="url(#glow)"/>`;
   g+=`<ellipse cx="${x+w*0.62}" cy="${y+16}" rx="34" ry="12" fill="#8a5f8f" opacity=".9"/>`;
   if(occupied){
-    if(state==="idle"){
+    if(pose==="sleep"){
       // asleep: slumped low so the desk slab (drawn after) hides the lower half — head rests on the desk
-      g+=`<g transform="translate(${x+w*0.62-42},${y-44}) rotate(7 42 74)">${creatureSVG(s.__install,s.seat,state,84)}</g>`;
+      g+=`<g transform="translate(${x+w*0.62-42},${y-44}) rotate(7 42 74)">${creatureSVG(s.__install,s.seat,pose,84)}</g>`;
       g+=`<text class="sleepz" style="animation-delay:0s" x="${x+w*0.62+26}" y="${y-46}" font-family="Quicksand,sans-serif" font-weight="700" font-size="15" fill="#cfd4e4">z</text>`;
       g+=`<text class="sleepz" style="animation-delay:-1.6s" x="${x+w*0.62+38}" y="${y-60}" font-family="Quicksand,sans-serif" font-weight="700" font-size="11" fill="#cfd4e4">z</text>`;
     } else {
-      g+=`<g transform="translate(${x+w*0.62-42},${y-72})">${creatureSVG(s.__install,s.seat,state,84)}</g>`;
+      g+=`<g transform="translate(${x+w*0.62-42},${y-72})">${creatureSVG(s.__install,s.seat,pose,84)}</g>`;
     }
   }
   const mx=x+w*0.14,my=y-34;
   g+=`<rect x="${mx}" y="${my}" width="58" height="40" rx="7" fill="#232838" stroke="#4a5170" stroke-width="2"/>`;
-  g+=`<rect x="${mx+5}" y="${my+5}" width="48" height="26" rx="4" fill="${state?SCREENC[state]:"#3c445c"}" opacity="${state==="working"||state==="thinking"||state==="blocked"?.95:.6}"/>`;
+  g+=`<rect x="${mx+5}" y="${my+5}" width="48" height="26" rx="4" fill="${state?SCREENC[state]:"#3c445c"}" opacity="${state==="working"||state==="blocked"?.95:.6}"/>`;
   g+=`<rect x="${mx+24}" y="${my+40}" width="10" height="8" rx="2" fill="#4a5170"/>`;
   const lx=x+w*D.lampx;
   g+=`<line x1="${lx}" y1="${y+2}" x2="${lx-10}" y2="${y-22}" stroke="#8a6a3e" stroke-width="4" stroke-linecap="round"/>`;
@@ -350,7 +416,7 @@ function deskSVG(T,id,s){
     g+=`<ellipse cx="${tx+tw/2}" cy="${ty+26}" rx="${tw/2+8}" ry="8" fill="rgba(15,12,30,.25)"/>`;
     g+=`<rect x="${tx+4}" y="${ty}" width="${tw}" height="12" rx="6" fill="#8a5f3d"/><rect x="${tx+tw/2-4}" y="${ty+12}" width="8" height="16" rx="3" fill="#6e4c30"/>`;
     shown.forEach((sa,i)=>{
-      g+=`<g transform="translate(${tx+i*step-2},${ty-46})">${creatureSVG(s.__install,s.seat+"~intern"+i,"working",52)}</g>`;
+      g+=`<g transform="translate(${tx+i*step-2},${ty-46})">${creatureSVG(s.__install,s.seat+"~intern"+i,"work",52)}</g>`;
     });
     if(extra>0)g+=`<text x="${tx+tw+14}" y="${ty+8}" font-family="Quicksand,sans-serif" font-weight="700" font-size="14" fill="#cfd4e4">+${extra}</text>`;
   }
@@ -470,15 +536,22 @@ function floorInner(seats){
   g+=`<rect x="38" y="34" width="118" height="168" rx="10" fill="#4a5670"/><rect x="48" y="46" width="98" height="150" rx="6" fill="#3a4356"/>
       <rect x="52" y="50" width="43" height="142" rx="4" fill="#2b3145"/><rect x="99" y="50" width="43" height="142" rx="4" fill="#2b3145"/>
       <rect x="95" y="50" width="4" height="142" fill="#242a3c"/><rect x="80" y="20" width="34" height="9" rx="4" fill="${T.accent}" opacity=".9"/>`;
-  g+=`<circle cx="205" cy="70" r="24" fill="#fffdf6"/><circle cx="205" cy="70" r="24" fill="none" stroke="#4a5670" stroke-width="4"/>
+  /* the wall clock. Two hands — hour and minute, NO SECOND HAND (A17 constraint 1): the
+     heartbeat is 15 s, so a second hand would advance in 15 s jumps, and a clock that looks
+     broken is exactly what gets "fixed" with a timer. The <title> is the accessible form of
+     the SAME minute (constraint 5) — it is set by paintRoom, on every path that moves the
+     hands, so the two can never disagree. Hands and title are painted, never drawn, here:
+     the markup carries no time at all until a setting render provides one. */
+  g+=`<g id="clk-${inst}" role="img"><title id="clkT-${inst}">wall clock</title>
+      <circle cx="205" cy="70" r="24" fill="#fffdf6"/><circle cx="205" cy="70" r="24" fill="none" stroke="#4a5670" stroke-width="4"/>
       <line id="clkH-${inst}" x1="205" y1="70" x2="205" y2="56" stroke="#3a3550" stroke-width="3.6" stroke-linecap="round"/>
       <line id="clkM-${inst}" x1="205" y1="70" x2="205" y2="51" stroke="#3a3550" stroke-width="2.6" stroke-linecap="round"/>
-      <circle cx="205" cy="70" r="2.2" fill="#3a3550"/>`;
+      <circle cx="205" cy="70" r="2.2" fill="#3a3550"/></g>`;
   for(const wx of [268,560,852,1144]){
     g+=`<rect x="${wx}" y="34" width="232" height="132" rx="14" fill="url(#skyg)"/>`;
     if(ph.stars)for(let i=0;i<7;i++){const sx=wx+22+((i*67)%196),sy=48+((i*37)%54);g+=`<circle cx="${sx}" cy="${sy}" r="${1.5+(i%2)}" fill="#e8ecff" opacity=".8"/>`;}
     for(let i=0;i<6;i++){const bx=wx+16+i*36;const bh=20+((i*13)%26);
-      g+=`<rect x="${bx}" y="${152-bh}" width="18" height="${bh}" fill="${ph.cityLit>0?"#1b2547":"#5a7086"}" opacity="${ph.cityLit>0?1:.75}"/>`;
+      g+=`<rect x="${bx}" y="${152-bh}" width="18" height="${bh}" fill="${ph.flat?"#454b63":ph.cityLit>0?"#1b2547":"#5a7086"}" opacity="${ph.cityLit>0?1:.75}"/>`;
       if(ph.cityLit>0){g+=`<rect x="${bx+3}" y="${158-bh}" width="4" height="4" fill="#ffcf7d" opacity="${ph.cityLit}"/><rect x="${bx+10}" y="${164-bh}" width="4" height="4" fill="#ffcf7d" opacity="${ph.cityLit*.7}"/>`;}}
     g+=`<rect x="${wx}" y="34" width="232" height="132" rx="14" fill="none" stroke="#4a5670" stroke-width="5"/>
         <rect x="${wx+116}" y="34" width="1" height="132" fill="#4a5670"/>`;
@@ -554,12 +627,15 @@ function buildingSVG(){
 }
 
 /* ---------- overlays, lobby buttons, drill-down ---------- */
-const GL={working:["WORKING","g-working"],thinking:["THINKING","g-thinking"],idle:["IDLE","g-idle"],
+/* the chip: one entry per render_state present in the sample fleet, drawn from RENDER_STATES. */
+const GL={working:["WORKING","g-working"],idle:["IDLE","g-idle"],
           blocked:["BLOCKED","g-blocked"],stale:["STALE","g-stale"]};
 const esc=t=>{const d=document.createElement("i");d.textContent=t;return d.innerHTML;};
 function labelFor(s){switch(s.render_state){
-  case "working":return s.action?s.action.descriptor:"";
-  case "thinking":return "turn open, no call";
+  /* D3 § 5.1: `action` is null when no call is open, and the desk then shows its state line —
+     never a stale last action. On a `working` seat that line IS A4's condition, in words — and
+     it is selected by the SAME primitive as the pose, not by a second test of its own. */
+  case "working":return poseOf(s)==="think"?"turn open, no call":(s.action?s.action.descriptor:"");
   case "idle":return "nothing done for "+s.quiet_for;
   case "blocked":return "waiting on a human since "+s.blocked_since;
   case "stale":return "no data since "+s.delivery.no_data_since+" — "+s.no_data_for;}}
@@ -567,8 +643,9 @@ function labelFor(s){switch(s.render_state){
 let current="aimla";
 function render(){
   const world=document.getElementById("world");
-  world.innerHTML=buildingSVG();
-  tickClock();
+  world.innerHTML=buildingSVG();      /* draws the sky from the HELD room value */
+  paintedPhase=skyPhase();            /* …and records which phase was drawn */
+  paintRoom();                        /* the hands and their accessible text, same value */
   const PXg=(v)=>(v/BW*100)+"%",PYg=(v)=>(v/BH*100)+"%";
   FLOORS.forEach((inst,fi)=>{
     const ox=OX, oy=OY(fi);
@@ -592,9 +669,10 @@ function render(){
         bub.innerHTML="<span class='body'>"+esc(s.task.ref+" · "+s.task.title)+"</span><span class='d1'></span><span class='d2'></span>";
         world.appendChild(bub);
       }
-      if(s.render_state==="blocked"||s.render_state==="thinking"){
-        const m=document.createElement("div");m.className="mk "+(s.render_state==="blocked"?"b":"t");
-        m.textContent=s.render_state==="blocked"?"!":"…";
+      const pose=poseOf(s);
+      if(pose==="attention"||pose==="think"){
+        const m=document.createElement("div");m.className="mk "+(pose==="attention"?"b":"t");
+        m.textContent=pose==="attention"?"!":"…";
         m.style.left=PX(D.x+D.w*0.62+52);m.style.top=PY(D.y-104);world.appendChild(m);
       }
     }
@@ -638,7 +716,8 @@ function render(){
   const f=document.getElementById("floors");f.innerHTML="";
   for(const inst of FLOORS){
     const c={};FLEET[inst].forEach(s=>c[s.render_state]=(c[s.render_state]||0)+1);
-    const line=["working","thinking","idle","blocked","stale"].filter(k=>c[k]).map(k=>c[k]+" "+k).join(" · ");
+    /* D3 § 4.1: a count per render_state member present, in § 7.1's FIXED member order. */
+    const line=RENDER_STATES.filter(k=>c[k]).map(k=>c[k]+" "+k).join(" · ");
     const b=document.createElement("button");b.className="fbtn";
     b.setAttribute("aria-pressed",String(inst===current));
     b.innerHTML="<span>"+esc(inst)+"</span><span class='c'>"+line+"</span>";
@@ -653,8 +732,11 @@ function openDrill(install,s){
   const d=document.getElementById("drill");d.className="drill open";
   d.innerHTML="<h2>"+esc(s.seat)+"<span class='k'>"+esc(install)+"/"+esc(s.seat)+" · fnv1a32 0x"+
     fnv1a32(seatKey(install,s.seat)).toString(16)+"</span><button class='x' id='dx'>close ×</button></h2><div class='dg'>"
-    +"<div class='db'><h3>state</h3>"+kv([["render_state",s.render_state==="thinking"?"working":s.render_state],
-      ["link_state",s.link_state],["open_calls",s.open_calls],["open_turn",s.open_turn]])+"</div>"
+    /* render_state verbatim. D3 § 5.4 forbids mapping a member to the nearest known one —
+       and the three fields below it ARE A4's condition, so the pose is readable from them. */
+    +"<div class='db'><h3>state</h3>"+kv([["render_state",s.render_state],
+      ["link_state",s.link_state],["open_calls",s.open_calls],["open_turn",s.open_turn],
+      ["pose (derived, § 6.2 A4)",poseOf(s)]])+"</div>"
     +"<div class='db'><h3>action</h3>"+(s.action?kv([["tool_name",s.action.tool_name],["descriptor",s.action.descriptor],
       ["started_at",s.action.started_at+" (seat clock)"],["running for",s.action.running]])
       :"<div class='kv'><dd class='n'>no open call — the monitor shows the state line, never a stale last action</dd></div>")+"</div>"
@@ -675,19 +757,106 @@ function openDrill(install,s){
   d.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 
-/* ---------- live wall clocks + sky refresh ---------- */
-function tickClock(){
-  const n=new Date(), h=n.getHours()%12+n.getMinutes()/60, m=n.getMinutes()+n.getSeconds()/60;
+/* ---------- painting the room from the HELD value — never from `new Date()` ----------
+   paintRoom draws whatever `roomState` currently holds. It reads no clock and decides nothing: it
+   is called by the heartbeat handler, by a live-establishing render, and by render() after it
+   rebuilds the SVG. That last call is why a zoom, an elevator ride or a repaint restores the
+   held hands rather than fresh ones. */
+let paintedPhase=null;
+function paintRoom(){
+  const set=roomState.set, d=set?new Date(roomState.ms):null;
+  /* minute resolution: the minute hand steps ONCE A MINUTE (no seconds term), and the
+     heartbeat merely samples it — three samples in four find the minute unchanged. */
+  const h=set?(d.getHours()%12+d.getMinutes()/60):0, m=set?d.getMinutes():0;
+  const hhmm=set?String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"):null;
   for(const inst of FLOORS){
-    const H2=document.getElementById("clkH-"+inst), M=document.getElementById("clkM-"+inst);
-    if(H2)H2.setAttribute("transform",`rotate(${h*30} 205 70)`);
-    if(M)M.setAttribute("transform",`rotate(${m*6} 205 70)`);
+    const H2=document.getElementById("clkH-"+inst), M=document.getElementById("clkM-"+inst),
+          TI=document.getElementById("clkT-"+inst);
+    if(H2){H2.setAttribute("transform",`rotate(${h*30} 205 70)`);H2.style.visibility=set?"visible":"hidden";}
+    if(M){M.setAttribute("transform",`rotate(${m*6} 205 70)`);M.style.visibility=set?"visible":"hidden";}
+    /* the accessible text carries the same minute and nothing else — no seconds, no date, no
+       *as of* stamp, no live/stale wording (A17 constraints 3 and 5). Unset is rendered as
+       unset, never as a plausible time. */
+    if(TI)TI.textContent=set?"wall clock — "+hhmm:"wall clock — no time set";
   }
+  /* the sky is the same held value one element over. A phase change needs the whole SVG
+     rebuilt (the gradient and the stars/sun/moon are baked into it); render() draws from the
+     same held value and records the phase it drew, so this is a repaint of that value and not
+     a second driver. `paintedPhase === null` means nothing has been drawn yet. */
+  if(paintedPhase!==null&&skyPhase()!==paintedPhase)render();
 }
-let lastPhase=skyPhase();
-setInterval(()=>{ tickClock();
-  const p2=skyPhase(); if(p2!==lastPhase){lastPhase=p2;render();}
-},10000);
+
+/* ---------- the feed. In the built client this section does not exist ----------
+   ⭐ The interval below IS THE SIMULATED FEED — it stands in for the websocket delivering
+   `feed.heartbeat` every 15 s (D2 § 8.3). It is not a render timer: its whole body is
+   "deliver a message", and the room moves in the HANDLER, on the message. A static artifact
+   has no socket, so the message has to come from somewhere; in the build it comes from the
+   wire and this timer is deleted. Nothing else in this file may move the room. */
+const HEARTBEAT_MS=15000, FEED_DOWN_MS=45000, POLL_MS=10000;   /* D3 § 12, § 9 F1 */
+const feed={live:false,lastMsgAt:null,everLive:false,down:false,polls:0};
+let heartbeatTimer=null;
+
+function onHeartbeat(){                       /* a delivered `feed.heartbeat` */
+  feed.lastMsgAt=Date.now();
+  setRoom();                                  /* A17: the room steps, on this message alone */
+  pulseFeed();                                /* A14: one-frame pulse on the same message */
+  paintRoom();
+  paintStrip();
+}
+function establishLive(){                     /* § 6.5: connect / successful reconnect */
+  feed.live=true; feed.everLive=true; feed.down=false; feed.polls=0; feed.lastMsgAt=Date.now();
+  setRoom();                                  /* sets the room — no step, no transition */
+  clearInterval(heartbeatTimer);
+  heartbeatTimer=setInterval(onHeartbeat,HEARTBEAT_MS);
+  paintRoom(); paintStrip();
+}
+function feedDown(){                          /* the feed stops. Nothing sets the room again */
+  feed.live=false; clearInterval(heartbeatTimer); heartbeatTimer=null;
+  paintStrip();                               /* the clock is NOT repainted: it is frozen */
+}
+function coldStartDeadFeed(){                 /* § 6.5: never live ⇒ the room has no value */
+  feed.live=false; feed.everLive=false; feed.down=true; feed.polls=0; feed.lastMsgAt=null;
+  clearInterval(heartbeatTimer); heartbeatTimer=null;
+  clearRoom(); paintRoom(); paintStrip();
+}
+
+/* the client's own watchdog: it declares F1 at 45 s of silence and runs F1's 10 s poll.
+   ⛔ It NEVER touches `roomState` — a poll exists only while the feed is down, and a room re-set on
+   it is the removed interval restored under the name *setting* (§ 6.5's worked case). What it
+   does move is the client's own narration on the strip (§ 5.5), which is not the room. */
+setInterval(()=>{
+  if(!feed.everLive)return;
+  const silent=Date.now()-feed.lastMsgAt;
+  feed.down=silent>=FEED_DOWN_MS;
+  feed.polls=feed.down?Math.floor((silent-FEED_DOWN_MS)/POLL_MS)+1:0;
+  paintStrip();
+},1000);
+
+/* A14 — one-frame pulse on the feed indicator, fired by the same message as A17, so the two
+   stop together and the page goes still (§ 6.2's note under the table). */
+function pulseFeed(){
+  const dot=document.getElementById("feeddot"); if(!dot)return;
+  dot.classList.remove("pulse"); void dot.offsetWidth; dot.classList.add("pulse");
+}
+function paintStrip(){
+  const st=document.getElementById("feedstatus"), dot=document.getElementById("feeddot");
+  if(!st||!dot)return;
+  /* the *last message HH:MM:SS* readout is A14's reduced-motion form (§ 6.2, § 6.4) — the same
+     fact as the pulse, carried without motion, and the thing that makes a frozen page legible
+     to a viewer who cannot see a one-frame pulse. It is the FEED's last message, not the
+     clock's minute: a different fact, on the surface § 9 F1 and § 5.5 put the narration. */
+  const stamp=feed.lastMsgAt?new Date(feed.lastMsgAt).toTimeString().slice(0,8):null;
+  let txt;
+  if(!feed.everLive)txt="feed: never live — the room has no value";
+  else if(feed.down)txt="feed: polling (feed down) · last message "+stamp+" · "
+    +feed.polls+" poll"+(feed.polls===1?"":"s")+", clock unchanged";
+  else txt="feed: live · last message "+stamp;
+  st.textContent=txt;
+  dot.style.background=!feed.everLive?"var(--faint)":feed.down?"var(--stale)":"var(--ok)";
+  document.querySelectorAll(".feedbtn").forEach(b=>
+    b.setAttribute("aria-pressed",String(b.dataset.mode===feedMode())));
+}
+function feedMode(){return !feed.everLive?"cold":feed.live?"live":"down";}
 
 /* ---------- zoom / pan viewport with building + floor focus ---------- */
 const vp=document.getElementById("room"), worldEl=document.getElementById("world");
@@ -746,6 +915,15 @@ document.getElementById("zout").addEventListener("click",()=>{zoomAt(vw()/2,vh()
 document.getElementById("zfit").addEventListener("click",()=>focusFloor(current));
 document.getElementById("zall").addEventListener("click",buildingView);
 
+/* the feed control — three buttons, one per case D3 § 6.5 works through. It is a preview
+   affordance, not a floor element: the built client has a feed instead of a switch. */
+document.querySelectorAll(".feedbtn").forEach(b=>b.addEventListener("click",()=>{
+  ({live:establishLive,down:feedDown,cold:coldStartDeadFeed})[b.dataset.mode]();
+}));
+
+/* the connect sequence (§ 2.2 step 1): the snapshot lands on a live feed, so it SETS the room
+   — no step, no transition, no animation-log row — and the heartbeat takes it from there. */
+establishLive();
 render();
 focusFloor("aimla",false);
 
