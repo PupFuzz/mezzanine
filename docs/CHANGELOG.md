@@ -10,6 +10,33 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
+  on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**
+  `… and drops nothing while deferring`
+  asserts that a hook over the 2 KiB bound refuses to unlink the live bucket. That refusal is
+  **hour-keyed**: `enforceSpoolBoundFromHook` defers while the oldest bucket is the current-hour
+  bucket, and once that hour has ended plus `BUCKET_GRACE_MS` the same hook **drops it, correctly**
+  (§ 11.3). The 20 hooks were driven off the real clock and take **~5.0 s measured** — the same order
+  as that **5 s** grace — so a run crossing the roll watched the reporter do exactly the right thing
+  and failed the assertion for it. Reproduced deterministically under a pinned clock: a simulated
+  crossing that ends past the grace drops the pre-roll bucket (`spool_dropped_events=5`), and pinning
+  the roll to just after the first hook reproduces the **exact reported `expected 0, got 1`**; the
+  same crossing held *inside* the grace, and a pinned run that does not cross at all, both stay green
+  — so it is the crossing, not the pinning. **The contention it was blamed on is real but is the
+  amplifier, not the cause:** no drop path in the reporter is reachable without the oldest bucket's
+  hour having ended, so load can only red this check by stretching the block past the 5 s grace —
+  and a ~5.0 s block against a 5 s grace has essentially no margin to lose. ⛔ **Not fixed with a
+  retry and not by loosening the assertion**: the assertion was right and the reporter was right, and
+  the harness was the wrong side. The 20 hooks are now pinned 30 minutes into the previous UTC hour,
+  where no run duration — loaded, slow disk or otherwise — can reach a boundary. ⭐ **The pin also
+  turns the accident into coverage.** The hook-side aged-out drop, § 11.3's other half, was executed
+  only when a run happened to straddle the roll — the flake *was* its only exercise — and is now a
+  stated check that one hook two hours on drops the bucket and counts **all 20** lines. Both arms are
+  shown to discriminate: with the hour guards planted out the deferral assertion reds (`dropped 20
+  while deferring`), and with the drop planted out the complement reds — **the latter being a defect
+  the block could not previously catch at all**, because a reporter that never drops satisfied every
+  assertion it contained.
+
 - **card#7943** — **the ratified floor-preview carried SIX copies of one enum's member set, four of
   them covering only the four `render_state` members its frozen sample fleet happens to contain.**
   `FLOOR.md` § 7.1 defines **ten**, and § 5.4 / § 9 F9 / AT-D3-11 require an eleventh case — a

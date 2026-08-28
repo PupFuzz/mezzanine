@@ -654,15 +654,43 @@ eq("  … with a strictly increasing seq that SURVIVES flusher restarts "
 eq("  … all under one seq_epoch", 1, len({b["batch"]["seq_epoch"] for b in INGEST.batches}))
 
 # RED — shrink the spool bound so overflow must happen, and prove the loss is VISIBLE.
+#
+# THE CLOCK IS PINNED HERE, AND THAT IS LOAD-BEARING (card#7952). The hook's refusal is keyed
+# to the UTC hour: `enforceSpoolBoundFromHook` defers only while the oldest bucket IS the
+# current-hour bucket, and once that hour has ended plus `BUCKET_GRACE_MS` (5 s) the very same
+# hook DROPS it — correctly, by § 11.3. Read off the real clock these 20 hooks take ~5 s, the
+# same order as that grace, so a run that happened to straddle a top-of-hour would watch the
+# hook do the right thing and red the "drops nothing" assertion below on CORRECT behaviour.
+# Seen once in the field and reproduced here deterministically by pinning a crossing. It is
+# not a flake to retry and not an assertion to loosen: it was this check reading a wall clock
+# it never meant to depend on, and the fix is to stop reading it. Pinned mid-hour, no run
+# duration — loaded, slow disk, or otherwise — can reach a boundary.
+of_at = (int(time.time()) // 3600 - 1) * 3600 * 1000 + 1_800_000   # 30 min into the last hour
 p_small = plant_src((r"SPOOL_BYTES: 33554432,", "SPOOL_BYTES: 2048,"))
 s4r = seat("overflow", ingest=DEAD)
 for i in range(20):
-    hook(s4r, "PreToolUse", pre(tuid=f"of_{i}"), reporter=p_small)
+    hook(s4r, "PreToolUse", pre(tuid=f"of_{i}"), reporter=p_small, FLEET_REPORTER_NOW_MS=of_at)
 deferred = s4r.counters().get("spool_overflow_deferred", 0)
 eq("RED: over a 2 KiB bound, a hook REFUSES to drop the current-hour bucket and says so "
    "(unlinking a file other hooks are appending to would lose uncounted events)",
    True, deferred > 0)
 eq("  … and drops nothing while deferring", 0, s4r.counters().get("spool_dropped_events", 0))
+
+# THE COMPLEMENT, which is what keeps the assertion above from being satisfied by a reporter
+# that simply never drops. Same fill, then ONE hook two hours on: the bucket has aged out, so
+# the hook must now drop it AND count every line in it (§ 0 item 9 — loss is bounded and
+# COUNTED). This path used to be reached only when a run accidentally straddled the hour roll
+# — i.e. it was the flake, never a test. Pinning the clock is what turns it into one.
+s4d = seat("overflow-aged", ingest=DEAD)
+for i in range(20):
+    hook(s4d, "PreToolUse", pre(tuid=f"ag_{i}"), reporter=p_small, FLEET_REPORTER_NOW_MS=of_at)
+aged_before = s4d.counters().get("spool_dropped_events", 0)
+hook(s4d, "PreToolUse", pre(tuid="ag_next"), reporter=p_small,
+     FLEET_REPORTER_NOW_MS=of_at + 2 * 3600 * 1000)
+aged_dropped = s4d.counters().get("spool_dropped_events", 0) - aged_before
+eq("GREEN (complement): once that bucket's hour HAS ended, the same hook drops it and counts "
+   "every line — the refusal above is hour-keyed, not a reporter that never drops", 20,
+   aged_dropped)
 
 # The drop itself belongs to the flusher, and only on a bucket whose hour has ended. The clock
 # seam writes the backlog into a PAST hour so the deletion precondition is genuinely satisfied.
@@ -682,8 +710,10 @@ flush(s4g)
 eq("GREEN (control): under the real 32 MiB bound the same run drops nothing", 0,
    s4g.counters().get("spool_dropped_events", 0) + s4g.state().get("counters", {}).get("spool_dropped_events", 0))
 redgreen("survives the bridge being down (AT-4)",
-         f"2 KiB spool bound -> hook defers ({deferred} x spool_overflow_deferred, 0 dropped: it may not "
-         f"unlink the live bucket); flusher then drops the aged-out bucket -> spool_dropped_events={red_dropped}",
+         f"2 KiB spool bound, clock pinned mid-hour -> hook defers ({deferred} x "
+         f"spool_overflow_deferred, 0 dropped: it may not unlink the live bucket); one hook two "
+         f"hours on drops the aged-out bucket counting all {aged_dropped} lines; flusher likewise "
+         f"drops the aged-out bucket -> spool_dropped_events={red_dropped}",
          f"real bound, ingest refused for 30 hooks then restored -> 30/30 hooks rc=0, "
          f"spool_dropped_events=0, {len(delivered_ids)} events delivered, missing={sorted(missing)}, "
          f"seq strictly increasing")
