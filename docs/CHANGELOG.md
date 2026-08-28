@@ -39,6 +39,17 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   call `hook()`. The lock is then 0 s old under whatever clock that hook uses, which is the state
   the freeze always modelled and never achieved when pinned; `flush()` opts out
   (`env(freeze=False)`) because it *is* the flusher and must find no lock.
+  ⚠ **Reached by every invocation, but re-applied per `env()` CALL — and those two coincide
+  everywhere except the writer bursts.** AT-10 and AT-16 call `env()` once per worker `Popen` and
+  the worker then drives 40 (resp. 15) hooks off that one freeze, so for those two paths the
+  window is **narrowed, not closed**, and the "0 s old" property does not extend to their hooks
+  2..N. Measured under the bursts' own concurrency rather than extrapolated from the idle p99:
+  the lock's age at the last hook is **22.6 s** (AT-10) and **6.5 s** (AT-16) against
+  `LOCK_STALE_MS` 90 s — a **4x** margin, and AT-10 would have to grow ~4x, to ~159 hooks per
+  worker, before a hook in it read its own lock as stale. Left open deliberately: closing it
+  requires a second freeze implementation inside generated worker source which could only
+  re-stamp the lock on *wall* time — the exact defect fixed above — and would be silently wrong
+  the day a burst is given a pinned clock. § 17 is the guard, and it fails loudly.
   ⭐ **The freeze is prevention, and prevention that fails is silent — so the run now also
   MEASURES.** A new § 17 sweeps `/proc` for flusher daemons whose config lies under this run's own
   temp directory, **fails** the suite naming each one, then reaps them; scoping identity to the

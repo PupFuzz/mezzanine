@@ -149,12 +149,31 @@ class Seat:
         e.pop("FLEET_REPORTER_NOW_MS", None)
         e.update({k: str(v) for k, v in extra.items()})
         # THE FREEZE BELONGS HERE, at the one place that knows the invocation's clock, and it is
-        # re-applied PER INVOCATION rather than once per seat. Once per seat also expires: a
+        # re-applied PER `env()` CALL rather than once per seat. Once per seat also expires: a
         # wall-clock freeze is 90 s old after 90 s of a run that measures ~163 s, so a seat
         # driven late enough is stale on its own freeze. Bolting the re-freeze onto `hook()`
         # would miss the callers that build their invocations elsewhere — the eight-writer AT-10
         # burst and the six-writer AT-16 burst both take `seat.env()` and never call `hook()`.
         # `freeze=False` is for `flush()` alone, which IS the flusher and must find no lock.
+        #
+        # ⚠ PER `env()` CALL IS NOT PER HOOK, AND FOR EXACTLY TWO PATHS THAT DIFFERENCE IS REAL.
+        # AT-10 and AT-16 call `env()` ONCE, to build a worker's `Popen` environment, and that
+        # worker then drives 40 (resp. 15) hooks off the single lock this call froze. Hooks 2..N
+        # there are as old as the burst, not 0 s: for those two paths the window is NARROWED, NOT
+        # CLOSED, and no claim of "0 s on every hook" covers them.
+        # MEASURED rather than extrapolated from the idle p99, because the burst's own
+        # concurrency is the point — 8 workers contend, and the README's own record that hook
+        # latency triples under load applies to the burst itself, so § 3's IDLE p99 understates
+        # it. Driving both bursts and reading the lock's age at the last hook of each:
+        # AT-10 22.6 s, AT-16 6.5 s, against LOCK_STALE_MS 90 s —
+        # a 4.0x margin, not the ~9x an idle 258 ms p99 would suggest. AT-10 would have to reach
+        # ~159 hooks per worker, a 4x growth, before a hook in it read its own lock as stale.
+        # NOT CLOSED HERE, deliberately: closing it means a SECOND freeze implementation inside
+        # generated worker source, which could only re-`utime` on WALL time — the very thing this
+        # change exists to stop doing — and would silently be wrong the day a burst is given a
+        # pinned clock. A duplicated primitive that cannot see the clock its hooks read buys a
+        # margin nothing is spending. § 17 is the guard instead: if the window is ever crossed,
+        # the sweep fails the run and names the leaked daemon rather than leaving it silent.
         if freeze:
             self.freeze_flusher(e.get("FLEET_REPORTER_NOW_MS"))
         return e
@@ -461,7 +480,18 @@ def await_flushers(want: bool, timeout: float = 20.0) -> "tuple[list[tuple[int, 
 
 
 def reap_flushers(found: "list[tuple[int, str]]") -> None:
-    """SIGTERM, then SIGKILL what is left. Only ever the pids `spawned_flushers` returned."""
+    """SIGTERM, then SIGKILL whatever is STILL one of this run's daemons — never a stale pid.
+
+    `found` is signalled as handed over, which is sound only because it is read immediately
+    before the call. THE SIGKILL LEG IS NOT: it fires up to 15 s later, and by then that list is
+    history. A daemon that obeyed its SIGTERM at T+3 s has had its pid free for 12 s while the
+    grace loop waited on a slower sibling, so replaying the original list signals whatever
+    inherited the number. Unreachable on a box with `pid_max` 4194304, reachable at the Linux
+    default of 32768 — and this is the one block in the suite licensed to signal processes, so
+    the guarantee is RE-DERIVED rather than assumed: the survivor set comes from a fresh /proc
+    sweep, which by `spawned_flushers`'s identity rule can only ever name a live flusher whose
+    config lies under THIS run's TMP.
+    """
     for pid, _ in found:
         try:
             os.kill(pid, signal.SIGTERM)
@@ -474,7 +504,7 @@ def reap_flushers(found: "list[tuple[int, str]]") -> None:
         if not spawned_flushers():
             return
         time.sleep(0.2)
-    for pid, _ in found:
+    for pid, _ in (spawned_flushers() or []):
         try:
             os.kill(pid, signal.SIGKILL)
         except OSError:
@@ -2044,9 +2074,12 @@ else:
              "hook forks a detached one with no exit condition; measured at 1 leaked daemon per "
              "run, accumulating across every run on the machine",
              "the lock is frozen against the invocation's OWN clock in `Seat.env()`, so it reads "
-             "0 s old on every hook however that hook's clock is pinned; the run ends with a "
-             "/proc sweep for daemons whose config is under this run's TMP, which fails the suite "
-             "and then reaps — a control daemon is planted first and must be found")
+             "0 s old however that hook's clock is pinned — on every hook that gets its own "
+             "`env()` call, which is all of them but the AT-10/AT-16 worker bursts, where one "
+             "freeze covers 40/15 hooks and the window is narrowed (measured 22.6 s / 6.5 s at "
+             "the last hook) rather than closed; the run ends with a /proc sweep for daemons "
+             "whose config is under this run's TMP, which fails the suite and then reaps — a "
+             "control daemon is planted first and must be found")
 
 
 print("\n" + "=" * 92)

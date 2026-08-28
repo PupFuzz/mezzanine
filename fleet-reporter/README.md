@@ -142,7 +142,15 @@ back door, and nothing in the reporter is disabled by it — but its *freshness*
 two hours ahead therefore reads as a lock two hours dead, and § 4's aged-out drop leaked one
 real detached daemon per run that way. So the freeze is applied in `Seat.env()` — the one place
 that knows the invocation's clock — against that clock, which makes the lock 0 s old however the
-hook is pinned. **Do not "fix" a future recurrence by re-freezing more often on wall time:** that
+hook is pinned. ⚠ **Per `env()` call, which is per hook everywhere except the two writer bursts:**
+AT-10 and AT-16 call `env()` once to build a worker's environment and then drive 40 and 15 hooks
+off that one freeze, so for those two paths the window is *narrowed, not closed*. Measured under
+the bursts' own concurrency, the lock's age at the last hook is 22.6 s (AT-10) and 6.5 s (AT-16)
+against `LOCK_STALE_MS` 90 s — a 4x margin, and AT-10 would have to grow ~4x before a hook read
+its own lock as stale. It is left open on purpose: closing it needs a second freeze implementation
+inside generated worker source that could only re-stamp on *wall* time, which is the defect this
+entry exists to remove. § 17 is the guard, and it fails loudly rather than leaking silently.
+**Do not "fix" a future recurrence by re-freezing more often on wall time:** that
 changes nothing for a pinned invocation, which is where the leak actually was. And the sweep
 stays regardless of the freeze, because prevention that fails is silent: a leaked daemon idles at
 0% CPU and nothing reports it. The sweep is the part that makes the next regression loud.
