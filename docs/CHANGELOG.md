@@ -30,8 +30,9 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   body *after* the issue exists, and the posting tool auto-adds a `to:` label to a live thread, so
   the addressee set is neither reliably present nor frozen; the bridge's own source records **641**
   such `issues.labeled` deliveries already dropped on the reference install. The derivation therefore
-  keys on the body's `FROM:`/`TO:` lines, which the protocol makes authoritative, and treats labels
-  as corroboration — a deliberate, stated divergence from the bridge's label-authoritative wake gate.
+  keys on the body's `FROM:`/`TO:` lines wherever it needs an **address**, which is the scope the
+  protocol makes them authoritative for — ⚠ **not membership, which is label-authoritative, as the
+  round-4 bullet below establishes and this line originally elided.**
   *(B)* **A convergence has an act and may have no actor**: `issues.closed` is not an authoring
   action, so under shared identity the closer is unrecoverable, and the phrase and the close arrive
   as two different deliveries; the floor may show *that* a thread converged and never *who* closed
@@ -69,7 +70,7 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   ⛔ **`converges` is deleted, because it could not make the distinction it existed to make.** Measured
   over the coordination repository's **entire** comment population — 10,552 comments, with a positive
   and a negative control — the *"zero open questions"* phrase is on **78.1%** of posts: it is a
-  per-post sign-off, so the flag was true 14.6 times per closed thread and `converges + closed`
+  per-post sign-off, so the flag was true **11.5** times per closed thread and `converges + closed`
   collapsed to `closed`. The protocol's `[CLOSE]` token is on **2.12%** of posts, **37.8%** of closed
   threads and **0.6%** of open ones — so `declares_close` keys on that, named for what the post
   declares rather than for a thread property it cannot establish. It **gains** a fact finding B looked
@@ -93,24 +94,24 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   gone; AT-24's fixture no longer wants two `issues.opened` on one thread and AT-25's no longer
   depends on a config switch that is **off** here. New overall: **AT-26**, **decisions 46–48**,
   **§ 18.3.1** and **§ 18.8.1**, eight § 14 rows, three § 16 build-order rows, four § 7.5 fixtures.
-  ⛔ **The ten route counters are declared in § 18.8.1 and deliberately NOT enrolled in § 12.7**:
+  ⛔ **The route counters — ten then, eleven now — are declared in § 18.8.1 and deliberately NOT
+  enrolled in § 12.7**:
   membership there is an obligation on the store's counter plane, and enrolling them makes
   `verify-fleet-state.py` red once per counter — which is how the obligation was found, and it is
   filed in § 18.13 rather than papered over.
   ⛔ **A second review round then found three rationales that were false about their own sources, and
-  all three are re-derived rather than re-worded.** *(1)* **`participants` no longer reads labels at
-  `closed`/`reopened`.** The justification — *labels are more current than the body* — is false in
-  both halves, at source: the integrity Action **materialises** those labels from the body's
-  `FROM:`/`TO:` lines, and a `to:` label naming anyone the body's `TO:` line does not is a
-  **structural hard-fail** (one carve-out, `to:<author>`, whose name the `FROM:` line already carries)
-  — so the label set is a **subset** of the body-derived set and can only lose names; and the `closed`
-  delivery carries the body it has at close, already listed in § 18.13 row 1 among the keys read. The
-  cost was concrete: a thread from finding A's own measured **641** unlabelled deliveries emitted
-  `participants: []` at its close, **losing both endpoints of the thread line at the moment the floor
-  renders it**, while `issue.body` in that same delivery named them. The body is now the source at all
-  three lifecycle moments, labels are corroboration, `coord_participants_unlabelled` is redefined to
-  the genuinely bodyless case, and **AT-25 gains a fourth RED at the `closed` moment** so the rule has
-  a check that fails rather than a paragraph that asserts. *(2)* **§ 18 never said what the hook
+  all three are re-derived rather than re-worded.** *(1)* **`participants` no longer reads labels
+  ALONE at `closed`/`reopened`** — its justification, *labels are more current than the body*, is
+  false at source, because the integrity Action **materialises** missing labels from the body's
+  `FROM:`/`TO:` lines and the `closed` delivery carries the body it has at close, already listed in
+  § 18.13 row 1 among the keys read. The cost was concrete: a thread whose labels had not arrived
+  emitted `participants: []` at its close, **losing both endpoints of the thread line at the moment
+  the floor renders it**, while `issue.body` in that same delivery named them. **AT-25 gained a fourth
+  RED at the `closed` moment** so the rule has a check that fails rather than a paragraph that
+  asserts. ⛔⛤ **The repair that round shipped — body-only, labels supplying no member at any moment —
+  is SUPERSEDED by the round-4 entry below, and its stated premise was FALSE.** It is described here
+  as it was, so the correction below has something to correct, and every claim it rests on is
+  withdrawn there by name. *(2)* **§ 18 never said what the hook
   SUBSCRIBES to**, which is the root cause of § 18.13 row 5 claiming the `issue_comment.edited`
   deferral was un-backfillable *because the hook was not subscribed* while pricing the fix, in the
   same cell, as *"one action in step 8"* — a subscription problem and a derive-set problem at once.
@@ -133,6 +134,44 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   *"`posted_at` is `null` on a `coord.thread`"* is scoped to `closed`/`reopened`; § 15's *"rows 46–48
   are all one shape"* enumerated 47, 48 and **45**; and the one 8-character source pin in a document
   that uses seven is gone with the sentence that carried it.
+  ⛔⛤ **A third review round then REFUTED the second round's own repair at source, and `participants`
+  is now the UNION of the body-derived names and the `to:`/`from:` labels.** ⚠ **This paragraph
+  supersedes a claim that is published in an uneditable place** — the commit message of `e2b0be1`, and
+  the paragraph above it — that *"a `to:` label naming anyone the body's `TO:` line does not is a
+  structural hard-fail … so the label set is a **subset** of the body-derived set by construction and
+  reading labels can only lose names."* ⛔ **That claim is FALSE and inverted, and this bullet is where
+  it is withdrawn**, because a commit message cannot be corrected in place and a reader who finds it
+  first must be able to find this. Three mechanisms, each read at `e9bc22a`: the integrity workflow
+  subscribes `issues: [opened, edited]`, `issue_comment: [created, edited]` and
+  `pull_request_target: [opened, edited]` and has **no `labeled` trigger**, so a label added to a live
+  thread is validated by nothing; the hard-fail **detects and repairs nothing** — the script's only
+  label mutation on any path is `addLabels`, and it removes none; and `DESIGNS/protocol-spec.md`
+  § Recipient addressing states that **membership is label-authoritative** and that widening it *is* a
+  deliberate label edit, which the gate's own remediation text repeats. **A label-widened thread is
+  the protocol's PRESCRIBED way to widen membership, not a violation nobody has caught yet.**
+  ⭐ **Measured over the whole live population 2026-08-28 — 729 non-PR issues: 36 (4.9%) whose labels
+  name someone the body does not, and ZERO in the opposite direction** — so the body-only rule was not
+  merely unproven, it was strictly **lossier** than the rule it replaced, on 36 real threads. Issue
+  `#635` is the worked case and is now AT-25's fifth-RED fixture: body `FROM: pm` / `TO: magento`,
+  labels `from:pm, to:pm, to:magento, to:platform, to:moodle` — body-only drops `platform` and
+  `moodle` while the delivery carries both. **Documenting it as a known miss was explicitly refused**;
+  it would ship a published field knowingly wrong 4.9% of the time and rename the defect as
+  documentation. ⭐ **AT-25 gains a FIFTH RED because the fourth could not catch this**: the fourth
+  pins *"do not read labels alone"*, so it passes under every body-reading rule including the body-only
+  one — which is how the defect shipped past five green gates. § 18.5's *"the protocol names that
+  source authoritative"* is scoped to **addressing**, where it is true, and away from **membership**,
+  where it contradicted the spec sentence § 18.5 itself quotes. `coord_participants_unlabelled` is
+  kept — it guards the no-source-at-all boundary — but its live population is **0 of 729** and it is
+  no longer cited as the counter that would have caught this; the **new `coord_participants_label_only`**
+  counts the union's disagreement case, with a known expectation of 36 of 729. Also corrected in the
+  same pass: the *"14.6 times per closed thread"* ratio divided two different populations and the
+  honest same-population figure is **11.5** (6,526 phrase-carrying posts on closed threads ÷ 568
+  closed threads, 2026-08-28); § 18.6 re-minted finding A's **641** as *"unlabelled deliveries"* when
+  it is a count of `issues.labeled` **deliveries** on another system's stream (`CoordinationClassifier`
+  at `f85b419`) and **0 of 729 live issues lack an addressing label**; § 18.13's *"two of these nine
+  are closed by one act"* is **two fully and one partly**, since three rows name a capture; § 12.3's
+  failed-auth limit is keyed `(route, source IP)` to match the bucket § 18.8 actually reuses; and
+  § 4.1's endpoint table now lists `/api/ingest/github` by pointer.
 - **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
   was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
   observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —

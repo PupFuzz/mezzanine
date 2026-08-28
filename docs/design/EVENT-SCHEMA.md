@@ -385,11 +385,12 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 |---|---|---|---|
 | `POST` | `/api/ingest/events` | `Authorization: Bearer` | submit one batch |
 | `GET` | `/api/ingest/health` | `Authorization: Bearer` | report the accepted schema-version set and server time |
+| `POST` | `/api/ingest/github` | **HMAC** (`X-Hub-Signature-256`) | receive one GitHub webhook delivery from a coordination repository — a **third auth mode** on a route of its own, whose envelope, validation order and rate limit are [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s and **not** this section's ([§ 18.9](#189-why-this-does-not-ride-the-batch-contract) says why it cannot ride the batch contract). Listed here so this table is the whole endpoint surface; every rule below in § 4 is about the two Bearer routes |
 
-- `Content-Type: application/json; charset=utf-8` is **required** on the POST; any other value is
-  `415`.
-- The endpoint accepts **no cookies and no session**, and sets no CORS headers. It is not
-  browser-facing; a browser that reaches it gets nothing useful.
+- `Content-Type: application/json; charset=utf-8` is **required** on `POST /api/ingest/events`; any
+  other value is `415`.
+- The **Bearer** endpoints accept **no cookies and no session**, and set no CORS headers. They are not
+  browser-facing; a browser that reaches one gets nothing useful.
 - **The path carries no version.** The schema version lives in the body, where the policy put it. A
   path version would be a second, silently divergent version line for one contract.
 - `GET /api/ingest/health` requires a valid seat token — the accepted-version set is fleet-internal
@@ -3768,7 +3769,7 @@ both record this fleet hitting for real.
 | Requests | token binding | **120 / minute** | healthy cadence is 6/min ([§ 11.5](#115-retry-and-backoff)); 120 is 20× headroom — it can only be reached by a spin loop | `429`, `retry_after_s: 30` |
 | Events | token binding | **20,000 / hour** | the [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) ceiling is ~10,420/day ≈ 434/hour; 20,000 is ~46× headroom, still bounds one runaway seat's storage to ~10 MB/hour, and is the number a full-spool drain is measured against ([§ 11.5](#115-retry-and-backoff)) | `429`, `retry_after_s: 60` |
 | Body size | — | 256 KiB | [§ 4.4](#44-size-caps-and-their-derivations) | `413` |
-| Failed authentications | **source IP** | **60 / hour** | see below | `429` and an operator-visible alert — **enforced at [§ 12.1](#121-validation-order) step 4**, inside the auth check itself, because a request that fails auth never reaches step 5 where the other limits live |
+| Failed authentications | **`(route, source IP)`** | **60 / hour** | see below | `429` and an operator-visible alert — **enforced at [§ 12.1](#121-validation-order) step 4**, inside the auth check itself, because a request that fails auth never reaches step 5 where the other limits live. **The route is part of the key, and is not a detail**: [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s step-3 refusal reuses this limit's *value* on an **unauthenticated** endpoint, so one shared bucket would let any caller on the internet spend the budget this row prices over authenticated seats. Each route gets a bucket of its own |
 
 **On the failed-auth limit, and what it is honestly for.** It bounds log volume, CPU spent on hash
 comparisons, and the noise floor an operator reads — nothing more. **It is not a defence against
@@ -4542,14 +4543,18 @@ the recoverable two.
 
 **Property:** [§ 18.5](#185-the-three-findings-the-audit-turns-on)'s finding A — the derivation does
 not depend on labels being present on **any** `issues` delivery, because on a live coordination repo
-they often are not.
+they often are not; **and, symmetrically, it does not depend on the body carrying every member**,
+because the protocol widens membership by a label edit that never touches the body
+([§ 18.6](#186-coordthread)). Both halves are needed and **neither implies the other**: the first four
+REDs below all pass under a body-only derivation, and the fifth exists because that derivation is the
+one that shipped.
 
 - **Fixture:** an `issues.opened` delivery whose `issue.labels` is **empty** and whose body carries
   `FROM: pm` and `TO: magento, platform`; a second, otherwise-identical delivery that also carries the
   two labels; and an `issues.closed` delivery on the unlabelled thread, carrying the same body.
 - **GREEN:** both derive the same `participants` and the same `opened_by`. The labelled one is the
   control that proves the fixture is exercising the path and not a fixture bug.
-- **RED:** read the address from `issue.labels` → the unlabelled delivery derives an empty
+- **RED:** read the membership from `issue.labels` alone → the unlabelled delivery derives an empty
   `participants` and no thread line is drawable, while every check stays green because the labelled
   control still passes. That is the shape of it: **the wrong source fails only on the deliveries that
   actually occur**, which is why the unlabelled fixture is the primary case and the labelled one is
@@ -4567,15 +4572,45 @@ they often are not.
   `coord_to_from_labels` incremented. This is not a corner: it is 30.1% of real posts
   ([§ 18.7](#187-coordround)), so an implementation that treats the body as the only source is wrong
   about three rounds in ten while every body-sourced fixture stays green.
-- **Fourth RED — the same source at the CLOSE, which is where the wrong one costs both endpoints.**
-  Feed an `issues.closed` delivery on the unlabelled thread, its `issue.body` still carrying the two
-  addressing lines. Assert `participants == ["pm","magento","platform"]` and that
-  `coord_participants_unlabelled` did **not** increment. **RED:** read the address from
-  `issue.labels` at `closed` — which is what this document specified until the review round that
-  removed it ([§ 18.6](#186-coordthread)) — and the close derives `participants: []` with the counter
-  set, losing both endpoints of the thread line at the moment the floor renders the close, while the
-  labelled control still passes. It is deliberately the same shape as the first RED one lifecycle
-  moment later, because that is where the defect actually shipped.
+- **Fourth RED — the label-ONLY source at the CLOSE, which is where the wrong one costs both
+  endpoints.** Feed an `issues.closed` delivery on the unlabelled thread, its `issue.body` still
+  carrying the two addressing lines. Assert `participants == ["magento","platform","pm"]` and that
+  `coord_participants_unlabelled` did **not** increment. **RED:** read the membership from
+  `issue.labels` alone at `closed` — which is what this document specified for one round
+  ([§ 18.6](#186-coordthread)) — and the close derives `participants: []` with the counter set, losing
+  both endpoints of the thread line at the moment the floor renders the close, while the labelled
+  control still passes. It is deliberately the same shape as the first RED one lifecycle moment later,
+  because that is where the defect actually shipped.
+- ⭐ **Fifth RED — the BODY-only source, on a thread the LABELS widened. This is the red the fourth
+  one cannot be**, and the distinction is the point: the fourth red pins the rule *"do not read labels
+  alone"*, so it passes under **every** rule that reads the body, including the body-only rule that is
+  itself the defect. A suite carrying only the first four is green on a derivation that drops real
+  participants, which is precisely how the body-only rule shipped past five passing gates.
+  - **Fixture — a live thread, not a hand-written one.** Issue `#635` at `AIMLA-org/aimla-coordination`
+    ([§ 18.6](#186-coordthread)): body head `FROM: pm` / `TO: magento`, labels `from:pm`, `to:pm`,
+    `to:magento`, `to:platform`, `to:moodle`. Feed its `issues.closed` delivery with those labels on
+    `issue.labels[].name` and that body on `issue.body`. **A synthesised near-miss is not a
+    substitute** — the fixture's whole property is that a real protocol repository produces this
+    state, on **36 of its 729 threads**, and that the gate upstream neither prevents nor repairs it.
+  - **GREEN:** `participants == ["magento","moodle","platform","pm"]` — the union — **and**
+    `coord_participants_label_only` incremented by one, **and** `coord_participants_unlabelled` did
+    **not**. ⛔ **Assert the counter as well as the array.** The array assertion alone passes under a
+    hypothetical "read labels only" rule on this fixture, because `#635`'s labels happen to be a
+    superset of its body names; it is the pair of counters that pins the union rather than either
+    single source.
+  - **RED:** derive `participants` from the body's `FROM:`/`TO:` lines alone → the value is
+    `["magento","pm"]`, `platform` and `moodle` are dropped, and **every other check in this suite,
+    including the fourth RED, stays green.** That is the shape of it a second time and one level up:
+    the fourth red pins the new rule, so it could not catch the defect *in* the rule.
+  - **Second RED — the counter's own reachability.** Delete `coord_participants_label_only`'s
+    increment and keep the union. `participants` is still right on every fixture, and the loss is
+    total and invisible: no operator surface distinguishes a correct union from a body-only regression
+    afterwards. Assert the increment, not merely the array.
+  - ⚠ **What this RED does NOT establish**, so that nobody reads it as covering more than it does: it
+    exercises the disagreement in the direction the population actually produces (labels richer). The
+    opposite direction has **zero live instances** and is not fixtured here; the union is symmetric by
+    construction — a set union has no direction — so the unexercised half is an arithmetic property
+    rather than a branch.
 
 ### AT-26 the close signal discriminates, and the phrase does not
 
@@ -4796,7 +4831,7 @@ what a field on the wire means.
 | 43 | **No field on either object is typed `enum`, and no closed set is declared for `lifecycle` or `carrier`** | declare them as closed enums and add rows to [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table | The enum machinery exists to route `docs/VERSIONING.md § Wire compatibility` rules 4 and 7 across a **version-skew boundary**, and these objects cross none — they are minted and consumed in one deployment. **Amended 2026-08-28**: the row's second reason was wrong about both fields and is replaced. `lifecycle` is **not** GitHub's set — [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 admits exactly three actions, so exactly three values reach it; the no-enum call stands on the skew argument alone. `carrier` is **not** a per-install config set either, since [§ 18.3.1](#1831-the-install-facts-input-declared-once) reads the bracketed token syntactically and consults no set at all — which removes the restatement the row was worried about rather than tolerating it | `tools/design/verify-event-schema.py` is silent about these tables, and its silence is correct rather than a gap — but it *is* silence, so the trigger is stated instead: **publishing these objects across a deploy boundary attaches the classification obligation at that moment.** A reviewer who wants that guard earlier is asking for the sets to be closed, which is the thing that cannot be done honestly today |
 | 44 | **`needs_human` is deleted, not carried as a permanently-false field; the escalation flare is a won't-do with a named closure act** | carry `needs_human: false` and populate it when an observable appears; or classify the English wording of a thread comment | The observable the card names — a gated / USER-ACTION post — is **barred by protocol from the surface this producer watches**: the banner is chat-output only, and both role orientations say so in terms. What reaches a thread is prose carrying no label, no prefix and no token, so the only derivation available is an English-wording classifier — the shape [decision 6](#15-decisions-taken-revisable-at-review) already deleted from this document once. A field that is structurally false forever reads to a consumer as *"no seat is ever waiting on a human"*, which is a claim and a wrong one | the floor cannot draw an escalation flare from coordination activity, and that is the honest state. It is **not** a gap in the product: `attention.request` ([§ 6.12](#612-attentionrequest)) already carries a seat waiting on a human from the telemetry side. The closure act is a **protocol** change — mint a `needs-human` label or a title prefix — and it belongs to whoever owns the coordination protocol, not to this document |
 | 45 | **No rate limit on VERIFIED coordination deliveries; [§ 12.3](#123-rate-limits)'s failed-authentication limit and a `coord_signature_invalid` counter on the step-3 refusal path** | one limit either way — key a request limit on the hook binding for everything, mirroring [§ 12.3](#123-rate-limits); or mint none at all, which is what this row said before | Every limit in [§ 12.3](#123-rate-limits) protects the server from a producer that **retries and loses nothing when refused** — a reporter with a spool. This producer's upstream is GitHub, and **what GitHub does with a refusal is UNVERIFIED here**, so a limit on verified deliveries risks converting a burst into permanent loss of facts with no second source. **Amended 2026-08-28 — that argument covers only the deliveries that PASS step 3, and the row applied it to the whole route.** A request whose HMAC does not verify is by construction not GitHub's, so refusing it loses nothing, while the endpoint hashes up to 1 MiB of body it chose and — before this amendment — counted the refusal nowhere at all. § 12.3 already owns a limit for exactly this purpose and its **value** is reused rather than re-derived. **Amended again 2026-08-28 — the bucket is keyed `(route, source IP)`, not shared with the reporter route**: § 12.3's cost was priced over seats sharing a budget with seats, and this endpoint is unauthenticated, so one shared bucket would have let any caller on the internet spend the budget a bad-token holder alone could previously reach. Reusing a limit's value must not widen the population it was priced over | on the verified half, an unbounded delivery rate can only be *observed*, not stopped, until the redelivery question is closed; the counter is what makes it observable and [§ 18.13](#1813-what-this-section-does-not-establish) names the closing act. On the unverified half the cost is inverted and small, **and it is now confined to this route**: a caller behind a shared NAT can exhaust 60 coordination-route refusals an hour for everyone behind it — the same trade § 12.3 accepted and states, now genuinely the same rather than a wider one wearing its name, and it cannot reach a seat's authentication budget on the reporter route. The residual a per-IP key cannot cover — a caller sourcing from many addresses — is named at [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) and bounded there by the body cap and the counter, not by this limit |
-| 46 | **`declares_close`, keyed on the protocol's `[CLOSE]` token, replaces `converges`; thread-level convergence is declared NON-DERIVABLE** | keep a field on the *"zero open questions"* phrase — the observable card #7897 names — renaming it to `carries_convergence_phrase` so at least the name is honest | **Measured, not argued.** Over the coordination repository's entire comment population (10,552 comments, 2026-08-28) the phrase is on **78.1%** of posts — it is a per-post sign-off, so a flag keyed on it is true 14.6 times per closed thread and `converges + lifecycle: closed` collapses to `lifecycle: closed`. The anchored `[CLOSE]` token is on **2.12%** of posts, **37.8%** of closed threads and **0.6%** of open ones (that one a reopen), and 224/224 carry a `FROM:` line — so it is precise, and it is the only one of the two that **names the closer**, which `issues.closed` never can. Renaming the phrase field would have made it honest and left it inert, which is a worse trade than under-reporting | **62.2% of closed threads carry no token and draw no spark.** That is under-reporting, which is the safe direction here, and it is exactly the *"a close is not necessarily a convergence"* distinction made real. If the protocol later puts required participants on the wire, the quorum becomes a count and this row is what to reopen |
+| 46 | **`declares_close`, keyed on the protocol's `[CLOSE]` token, replaces `converges`; thread-level convergence is declared NON-DERIVABLE** | keep a field on the *"zero open questions"* phrase — the observable card #7897 names — renaming it to `carries_convergence_phrase` so at least the name is honest | **Measured, not argued.** Over the coordination repository's entire comment population (10,552 comments, 2026-08-28) the phrase is on **78.1%** of posts — it is a per-post sign-off, so a flag keyed on it is true **11.5** times per closed thread and `converges + lifecycle: closed` collapses to `lifecycle: closed`. The anchored `[CLOSE]` token is on **2.12%** of posts, **37.8%** of closed threads and **0.6%** of open ones (that one a reopen), and 224/224 carry a `FROM:` line — so it is precise, and it is the only one of the two that **names the closer**, which `issues.closed` never can. Renaming the phrase field would have made it honest and left it inert, which is a worse trade than under-reporting | **62.2% of closed threads carry no token and draw no spark.** That is under-reporting, which is the safe direction here, and it is exactly the *"a close is not necessarily a convergence"* distinction made real. If the protocol later puts required participants on the wire, the quorum becomes a count and this row is what to reopen |
 | 47 | **One declared `install_facts` input — `roster[]` and `shared_identity` — provisioned with the hook registration, with a drift GUARD on the copy** | let each field read `coordination.config.json` at runtime (a live cross-repo coupling and a second credential); or hardcode the roster (a restatement with neither pointer nor guard); or leave it unstated, which is what the draft did | Four fields reached past [§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found)'s derivability test for one input nobody declared, in four separate places — one input consolidated, not four patches. Two of the four dissolved on inspection: `carrier` reads the bracketed token syntactically and `participants` stops expanding anything, so **only the roster genuinely varies**. The input is a copy, so it carries the config revision it was copied at, and the copy is **guarded**: a body-derived name absent from it increments `coord_roster_unknown_name` on that seat's first post | the guard is **one-directional** — it sees an addition, never a removal — and a stale roster under-expands a broadcast until the next provisioning. Both are stated at [§ 18.3.1](#1831-the-install-facts-input-declared-once) rather than discovered. If a runtime read is ever affordable, [decision 40](#15-decisions-taken-revisable-at-review) is the decision to reopen, not this row |
 | 48 | **[§ 7.3](#73-redaction-rules-applied-in-this-order) gains a `coord.subject` PROFILE differing in exactly one rule, and [§ 7.5](#75-red-fixtures--required-tests) gains real title fixtures** | reuse the pass unchanged, which is what the draft claimed to do; or narrow rule 4 for every caller; or write a second redactor for titles | Reuse was measured and it corrupts **7.0%** of 728 real titles, 49 of the 51 hits being rule 4's bare-whitespace separator firing on English (`token that` → `token ‹redacted›`). Narrowing rule 4 to an explicit `:`/`=` cuts that to **0.7%** and still catches every credential shape planted in a title. Narrowing it for **all** callers was rejected outright: it deletes the control [fixture 9](#75-red-fixtures--required-tests) holds, and a widened guard is one weaker path for both callers rather than a second path. A second redactor was rejected because two redactors disagree about what a secret looks like | a title with `password hunter2` — whitespace, no separator — survives on this profile where a descriptor would not. That is the accepted residual, and rule 3 remains the backstop for every prefixed credential. Rule 7's title false positive is **kept** and pinned as [fixture 17](#75-red-fixtures--required-tests) rather than narrowed away, because dropping it buys 1 title in 728 and gives up the unprefixed-blob backstop |
 
@@ -4826,7 +4861,7 @@ one of them is optional.
 | 6 | server-side call ledger + orphan timeouts | AT-1 (**the gate on trusting the signal at all**), AT-11, AT-19 |
 | 7 | staleness, predicate alarm, and the attention pair | AT-7, AT-8, AT-20, AT-22 |
 | 8 | the coordination **receipt** path: the hook registration and its per-hook secret, HMAC verification over the raw bytes, the validation order, and signed-body digest idempotency ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)) | **AT-23** RED then GREEN — all three REDs, and the replay one in particular: it is the only check that distinguishes this design from the header-keyed one every implementer reaches for first |
-| 9 | the coordination **derivation**: the two objects, their attribution states, the body-line address rules, and the install-facts input the fan-out resolves against ([§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur |
+| 9 | the coordination **derivation**: the two objects, their attribution states, the body-line address rules, [§ 18.6](#186-coordthread)'s **membership union**, and the install-facts input the fan-out resolves against ([§ 18.3.1](#1831-the-install-facts-input-declared-once), [§ 18.6](#186-coordthread), [§ 18.7](#187-coordround)) | **AT-24** and **AT-25** RED then GREEN. AT-25's unlabelled fixture is the primary case and its labelled twin is the control; a suite carrying only the labelled one passes while the derivation is wrong on the deliveries that actually occur. **AT-25's FIFTH red is the one to build first**: the other four all pass under a body-only derivation, which is the derivation that shipped |
 | 10 | the **close signal**, last of the three because it is the one whose defect is invisible per-post ([§ 18.5](#185-the-three-findings-the-audit-turns-on)) | **AT-26** RED then GREEN, and its first RED is a **rate** assertion over a replayed corpus rather than a per-post one. Built before the corpus exists, this row's test passes under the wrong implementation and under the right one alike |
 
 Three of these are hard requirements before anything downstream may treat this telemetry as true:
@@ -5299,10 +5334,10 @@ above establish:
 
 | # | Element | The card's claimed observable | Verdict |
 |---|---|---|---|
-| 1 | thread line | issue opened with `from:`/`to:` labels, still open | **REAL, WRONG SOURCE.** The labels are not reliably on the `opened` delivery, and the addressee set is not frozen after it — [finding A](#185-the-three-findings-the-audit-turns-on). The derivation keys on the body's `FROM:`/`TO:` lines, which the protocol makes authoritative and which the `opened` payload carries by construction. *"Still open"* is a separate matter — [§ 18.13](#1813-what-this-section-does-not-establish) |
+| 1 | thread line | issue opened with `from:`/`to:` labels, still open | **REAL, WRONG SOURCE — and the correction took two rounds to get right.** The labels are not reliably on the `opened` delivery, and the addressee set is not frozen after it — [finding A](#185-the-three-findings-the-audit-turns-on) — so the line's endpoints cannot come from labels alone. ⚠ **Nor from the body alone**: the protocol makes the body lines authoritative for **addressing** and the labels authoritative for **membership**, and a thread line's endpoints are membership. `participants` is therefore the **UNION** of both, which is [§ 18.6](#186-coordthread)'s rule and where the evidence for it sits. *"Still open"* is a separate matter — [§ 18.13](#1813-what-this-section-does-not-establish) |
 | 2 | round bead | a Round comment posted | **REAL AT POST GRANULARITY, NOT AT ROUND GRANULARITY.** `issue_comment.created` is the delivery and it is honest. The round *number* lives in a `## Round N — <author>` prose heading, is a **per-author** sequence the protocol says *"does not identify one comment"* on a multi-party thread, and is in no payload field. The bridge parses no round heading at any revision read here. A bead per post is true; a bead per round is a claim the wire does not make |
 | 3 | carrier kind | title prefix `[QUERY]` / `[BRIEF]` / `[REVIEW]` / `[ANNOUNCE]` | **REAL, and derived from the title alone.** `stableId()` / `coordItype()` are the prior art, but their *sets* are a write-side decision this producer does not make: the leading bracketed token is carried syntactically, with no set to close and no config to read ([§ 18.3.1](#1831-the-install-facts-input-declared-once)). This document declares no closed enum for it ([§ 18.7](#187-coordround)) |
-| 4 | radial pulse | `to:all` label | **REAL, inheriting row 1's correction.** `all` is read from the body's `TO:` line with the label as corroboration. The **fan-out** is ours to resolve, not the bridge's: the bridge only ever asks *"does `to:all` include me"*, never *"who is everyone"*, so `targets[]` is derived here against the install's own roster — which is also what makes the operator's floor-scoping ruling true on the wire rather than only in the renderer |
+| 4 | radial pulse | `to:all` label | **REAL, inheriting row 1's correction.** `all` is a literal member from **either** source — a body `TO: all` line or a `to:all` label — carried verbatim and never expanded on [`coord.thread`](#186-coordthread). The **fan-out** is ours to resolve, not the bridge's: the bridge only ever asks *"does `to:all` include me"*, never *"who is everyone"*, so `targets[]` is derived here against the install's own roster — which is also what makes the operator's floor-scoping ruling true on the wire rather than only in the renderer |
 | 5 | convergence spark | the *"zero open questions"* phrase + issue close | **THE ACT IS REAL, THE CLAIMED OBSERVABLE IS NOT, AND THE TWO HALVES ARE TWO DELIVERIES** — [finding B](#185-the-three-findings-the-audit-turns-on). The phrase is a **per-post sign-off**, true on 78.1% of this repository's entire comment population, so it cannot mark the one post that ends a thread. The **`[CLOSE]` token the protocol mandates for the close act** can, and does: the spark keys on it. There is also **no prior art whatsoever** — neither the phrase nor the token occurs anywhere in the bridge at `f85b419` |
 | 6 | folder-to-intern | the `subagents[]` delta | **NOT A COORDINATION OBSERVABLE, and correctly not one.** A subagent dispatch is already on the reporter wire as [§ 6.7](#67-subagentspawn) / [§ 6.8](#68-subagentstop). Minting a coordination event for it would be the second-format defect correction 2 exists to refuse. The card's own ruling reached the same answer |
 | 7 | escalation flare | a gated / USER-ACTION post | **NOT DERIVABLE — the claimed observable is barred from the surface this producer watches** — [finding C](#185-the-three-findings-the-audit-turns-on). Recorded as a won't-do with its closure act |
@@ -5339,14 +5374,24 @@ the lane from the labels THAT DELIVERY CARRIED. A `[TASK]` opened unlabelled is 
 the `later` default"*, and it records an operator measurement of **641** `issues.labeled` deliveries
 already arrived and dropped on the reference install (**SOURCE-READ**, `CoordinationClassifier.php`).
 
-**So a producer that reads the fan-out from the `opened` payload's labels is wrong twice: it misses
-threads whose labels arrive later, and it freezes a set that grows.** The derivation therefore reads
-the **body's `FROM:`/`TO:` lines** as the source — present in the `opened` payload by construction,
-because the body is what `opened` delivers — and treats labels as corroboration. This is a deliberate
-divergence from the bridge, and it is not a disagreement: the bridge's membership gate is
-**label-authoritative by ruling (DL-022)** because a *wake* is a delivery decision, and a label is
-what an operator can see and fix. An **observer** has no delivery to make, so it may prefer the more
-available source, and the protocol names that source authoritative.
+**So a producer that reads the fan-out from the `opened` payload's labels ALONE is wrong twice: it
+misses threads whose labels arrive later, and it freezes a set that grows.** The derivation therefore
+reads the **body's `FROM:`/`TO:` lines** wherever it needs an **address** — present in the `opened`
+payload by construction, because the body is what `opened` delivers — and never depends on a label
+being present on any delivery. ⚠ **That is a statement about ADDRESSING, and it must not be read as
+one about MEMBERSHIP.** The protocol names the body lines authoritative for *who this post is
+addressed to*; it names the **labels** authoritative for *who is party to the thread*
+(`DESIGNS/protocol-spec.md` § Recipient addressing, at `e9bc22a` — quoted in full at
+[§ 18.6](#186-coordthread)), and it is explicit that widening membership is a label edit rather than a
+body edit. So the two derived fields take the two answers the protocol actually gives:
+[`coord.round`](#187-coordround)'s `to` is an address and reads the body line first, falling back to
+labels only where no line exists; [`coord.thread`](#186-coordthread)'s `participants` is membership
+and reads the **union** of both. An earlier draft of this paragraph asserted a single authoritative
+source for both, and § 18.6 records what that cost. This remains a deliberate divergence from the
+bridge, and it is still not a disagreement: the bridge's membership gate is **label-authoritative by
+ruling (DL-022)** because a *wake* is a delivery decision, and a label is what an operator can see and
+fix. An **observer** has no delivery to make, so it need not choose one record at all — it may carry
+both, which is what the union does.
 
 **Finding B — a convergence has an act, and may have no actor; and its two halves are two
 deliveries.** The convergence phrase is written in a **comment** (`issue_comment.created`); the close
@@ -5376,9 +5421,19 @@ body line — a quotation of one, typically. Neither number is a correction of t
 reader meeting both otherwise meets two counts of what reads as one thing.
 
 **Nearly four posts in five carry it**, because every seat writes it at the end of every round. A
-`converges` flag keyed on it would be true 14.6 times per closed thread, so the compound predicate
+`converges` flag keyed on it would be true **11.5** times per closed thread, so the compound predicate
 `converges + lifecycle: closed` collapses to `lifecycle: closed` and the flag adds nothing but a
 wrong-looking spark on every ordinary round.
+
+⚠ **That ratio was 14.6 in an earlier draft and the correction is a POPULATION fix, not a
+re-measurement.** 14.6 divided the phrase-carrying posts across **all** threads by the count of
+**closed** threads — two different populations, so the quotient described nothing. Both halves must
+come from the same population: **phrase-carrying posts on closed threads ÷ closed threads**, which is
+**6,526 ÷ 568 = 11.5**, re-derived over the whole live population 2026-08-28 with the same two
+controls as above. ⛔ **It also falsifies a review claim made about this diff** — that every figure in
+it had been re-derived and every one matched to the digit; this one had not, and a ratio is exactly
+where that check fails silently, because each half is individually correct. The two counts are stated
+here so the quotient is checkable rather than quotable.
 
 **Worse, the thing the phrase is evidence *of* is a thread-level QUORUM, and that quorum is not
 derivable from anything this producer emits.** The protocol is explicit: *"An issue closes when
@@ -5466,7 +5521,7 @@ One object per delivery. The thread's identity is its reference; nothing is mint
 | `subject_truncated` | bool | no | — | `false` |
 | `opened_by` | slug | **yes** | ≤ 48 B — the agent this delivery evidences; `null` when it evidences none | `"pm"` |
 | `attribution` | slug | no | ≤ 16 B — `resolved`, `unresolved` or `unattributable`, the three states DL-252 keeps apart | `"unattributable"` |
-| `participants` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the thread's addressees **as written in the body this delivery carries**, `all` carried verbatim and never expanded here; the same source at all three lifecycle moments, below | `["pm","magento"]` |
+| `participants` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the thread's membership: the **UNION** of the names written on the body's `FROM:`/`TO:` lines in this delivery and the names carried by the delivery's own `to:`/`from:` labels, deduplicated and sorted. `all` is carried verbatim from either source and never expanded here. The same rule at all three lifecycle moments, below | `["magento","moodle","pm"]` |
 | `posted_at` | rfc3339_ms | **yes** | the object's own timestamp from the payload; `null` when the payload carries none | `"2026-08-27T09:14:02.000Z"` |
 | `received_at` | rfc3339_ms | no | the receipt clock, which is the **only** clock this producer owns | `"2026-08-27T09:14:03.418Z"` |
 | `delivery_digest` | string | no | 64 B, lowercase hex — SHA-256 of the **signed** body; the idempotency key | `"7b1e…"` |
@@ -5485,61 +5540,162 @@ which is the direction the bridge's own three-member allow-list is built in. `op
 `resolved`, and a consumer reading `opened_by` without reading `attribution` renders "nobody" where
 the honest render is "not recoverable" — which is why the state is a value and not an absent key.
 
-**`participants` reads the SAME source at all three lifecycle moments — the delivery's own
-`issue.body` `FROM:`/`TO:` lines — and that is finding A applied rather than restated.** Labels
-supply **no** member of this field at any moment: they are corroboration in finding A's sense — they
-may agree and cannot decide — and the derivation has no path that reads them for it. That is
-deliberately **not** the label fallback [§ 18.7](#187-coordround)'s `to` carries, and the two fields
-differ because their sources do: a comment genuinely has no `TO:` line 30.1% of the time and the
-thread's labels are the only address left, whereas an issue's own body is the very text those labels
-were computed from, so a fallback here would be a second path that can add nothing (next paragraph)
-and would need a counter of its own to stay honest. One source, one counter.
+**`participants` is the UNION, at all three lifecycle moments, of the names on the delivery's own
+`issue.body` `FROM:`/`TO:` lines and the names carried by that delivery's `to:`/`from:` labels.**
+Neither source dominates, because the protocol assigns them different jobs.
+`DESIGNS/protocol-spec.md` § Recipient addressing makes **membership** the labels' job in terms:
+*"Membership is **label-authoritative**: the `to:`/`from:` labels are the durable, queryable record of
+who is party to a thread, and changing membership is a deliberate, auditable label edit. A comment's
+`TO:` line **refines** delivery within that membership; by default it can only *narrow*, never
+*widen* it"* (**SOURCE-READ**, at `e9bc22a`). The body's lines are what the labels are computed
+**from** on the ordinary path, and they are what carries **attribution**, which no label can express
+under a shared identity. So labels are this field's primary record and the body is its other one, a
+name in exactly one of them is *information* rather than noise, and the union is monotone in the safe
+direction: **it drops nobody whose membership EITHER source records.** ⚠ That is the honest bound and
+it is not the same as *"drops nobody"* — a member whose membership was never recorded in either source
+is missed by the union exactly as by each single source, and that residual is named below rather than
+absorbed into this sentence.
 
-**An earlier draft read the labels at `closed` and `reopened`, on the argument that by then they have
-usually been applied while the body is the months-old opening post. Both halves of that argument are
-false, and the second one is what makes this a derivation defect rather than a wording one.**
+**This is deliberately NOT the same shape as [§ 18.7](#187-coordround)'s `to`, which is a fallback
+rather than a union, and the two differ because they answer different questions.** `to` is a per-post
+**address** — what one author wrote — so a second source may only stand in where the first is absent,
+which is the 30.1% of comments carrying no `TO:` line. `participants` is thread **membership**, where
+both sources are durable records of one fact and their disagreement is the case that matters.
 
-- **A label can carry no name the body does not, so it can never be the fresher source.** The
-  integrity Action's auto-apply path adds only labels it computed **from** those very lines
-  (`issues.addLabels({labels: result.missing})`, where `missing` is the set difference of the
-  body-derived expected labels against the ones present), and its success comment says so in terms:
-  *"Labels inferred from body `FROM:` and `TO:` lines … (the body lines are the source of truth)."*
-  A `to:` label naming anyone **not** on the body's `TO:` line is not merely uncorroborated, it is a
-  **structural hard-fail** — *"extra label(s) … not in body `TO:` line"* — with exactly one carve-out,
-  `to:<author>` on the author's own thread, whose name the body's `FROM:` line already carries. So on
-  this protocol the label set is a **subset** of the body-derived set by construction, and reading
-  labels instead of the body can only ever lose names (**SOURCE-READ**,
-  `.github/scripts/protocol-integrity.js` and `.github/workflows/protocol-integrity.yml` at
-  `e9bc22a`).
-- **The `closed` delivery carries the body it has at close, not a copy of the opening delivery.**
-  `issue.body` is already listed in [§ 18.13](#1813-what-this-section-does-not-establish) row 1 among
-  the keys this derivation reads, on every `issues` delivery. Any edit that moved the addressing lines
-  moved them there — and, by the bullet above, that same edit is what moved the labels.
+**Two earlier drafts each named ONE source, and each lost real members. The second is the expensive
+one, because it was argued from a premise about the gate that the gate does not hold.** The first
+read only the labels at `closed`/`reopened`, on the argument that by then they have usually been
+applied while the body is the months-old opening post. The round that corrected it read only the
+body, at all three moments, on this argument: a `to:` label naming anyone **not** on the body's `TO:`
+line is a **structural hard-fail** — *"extra label(s) … not in body `TO:` line"*, with exactly one
+carve-out, `to:<author>` on the author's own thread — therefore **the label set is a subset of the
+body-derived set by construction** and reading labels can only ever lose names.
 
-**What the old rule cost, since it is the reason this is stated at all.** A thread opened by a path
-that set no labels is finding A's own measured population — **641** `issues.labeled` deliveries
-already arrived and dropped on the reference install. Closed later, it emitted `participants: []` and
-`coord_participants_unlabelled`, **losing both endpoints of the thread line at the moment the floor
-renders the close**, while `issue.body` in that same delivery named them. That is a read-time fallback
-standing in for a source choice, which is the defect this document refuses elsewhere.
+⛔ **The hard-fail rule quoted there is real, and the conclusion does not follow.** Three independent
+mechanisms, each read at source at `e9bc22a`:
+
+- ⛔ **The gate never runs on a label add.** `.github/workflows/protocol-integrity.yml` subscribes
+  `issues: [opened, edited]`, `issue_comment: [created, edited]` and
+  `pull_request_target: [opened, edited]` — **there is no `labeled` trigger** (**SOURCE-READ**). A
+  `to:` label added to a live thread is validated by nothing until somebody next edits that thread's
+  body or title, which may be never. *"Impossible by construction"* is a claim about the paths the
+  constructing code runs on, and this one was checked against the code and not against its triggers.
+- ⛔ **The hard-fail detects and does not repair.** It pushes a structural error and returns; the
+  script's only label mutation anywhere is `issues.addLabels({labels: result.missing})` on the
+  auto-apply path, and **it removes no label on any path** (**SOURCE-READ**,
+  `.github/scripts/protocol-integrity.js`). "By construction" requires a repair; there is none.
+- ⛔ **The protocol SANCTIONS creating exactly that state.** Widening membership *is* a label edit, by
+  the § Recipient addressing sentence quoted above, and the gate's own remediation text says the same:
+  *"A comment cannot widen thread membership — add the `to:<agent>` label first (pm), then comment."*
+  ⇒ A label-widened thread is not a violation the gate has yet to catch; **it is the protocol's
+  prescribed way to widen membership**, and a body-only derivation declares the record of that act
+  unreadable.
+
+**Measured over the whole live population rather than argued** — every non-PR issue in the
+coordination repository, each one's labels against its own body lines, read **2026-08-28**:
+
+```
+non-PR issues in the population           : 729
+labels name someone the body does not     :  36   (4.9%)   <- 32 by one name, 4 by two
+body names someone the labels do not      :   0
+issues carrying NO to:/from: label        :   0
+issues carrying NO FROM:/TO: body line    :   0
+CONTROL, positive (to:/from: assignments) : 1863           <- the scan really read the labels
+CONTROL, positive (anchored FROM: lines)  :  729           <- and really read the bodies
+CONTROL, negative (a label prefix that
+         cannot occur / a body line that
+         cannot occur)                    :    0 / 0       <- and can return zero
+```
+
+⚠ **The addressing-label vocabulary on this install is a CLOSED set** — `to:` over
+`{pm, magento, platform, moodle, all}` and `from:` over `{pm, magento, platform, moodle}`, every name
+a roster member — which matters for what the union may publish and is dispositioned two paragraphs
+below rather than twice.
+
+⇒ **the body-only rule is not merely unproven — it is strictly LOSSIER than the rule it replaced, on
+36 real threads, and richer on none.** Issue `#635` is the worked case: body head `FROM: pm` /
+`TO: magento`, labels `from:pm, to:pm, to:magento, to:platform, to:moodle`. Body-derived yields
+`pm, magento`; the union yields `magento, moodle, platform, pm`. **Two real participants would
+otherwise be dropped on the floor, by a delivery that carries `issue.labels[].name` naming both.**
+
+⚠ **The label vocabulary is closed and roster-bounded on this install, which is why the union cannot
+publish a name the derivation would not otherwise accept** — but that is a property of the population,
+not a guarantee, and `coord_roster_unknown_name` is what says so if it stops holding: a label-derived
+name absent from [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s copied roster reds it
+exactly as a body-derived one does.
+
+**Keeping the body-only rule and DOCUMENTING the loss was considered and refused.** It would ship a
+published field knowingly wrong on 4.9% of live threads and rename the defect as documentation — a
+read-time fallback standing in for a source choice, which is the defect this document refuses
+elsewhere. The data is on the delivery; the derivation reads it.
+
+**The `closed` delivery carries the body it has at close, and the labels it has at close.**
+`issue.body` and `issue.labels[].name` are both already listed in
+[§ 18.13](#1813-what-this-section-does-not-establish) row 1 among the keys this derivation reads, on
+every `issues` delivery — so the union costs no key that was not already claimed, and any edit that
+moved the addressing lines is carried at the same moment as any label edit that moved membership.
+
+**What each old rule cost, since that is the reason this is stated at all — and the two costs are
+different sizes, measured rather than asserted.** The **label-only** rule lost a thread whose labels
+had not arrived: it emitted `participants: []` at the close, losing both endpoints of the thread line
+at the moment the floor renders it, while `issue.body` in that same delivery named them. ⚠ **Its
+population is a rate, not a count, and an earlier draft of this paragraph mis-stated the one figure it
+had.** Finding A's **641** is a count of `issues.labeled` **deliveries** that had already arrived and
+been dropped as action-undeclared on the reference install (**SOURCE-READ**, `CoordinationClassifier`
+at `f85b419`) — it is a delivery count on another system's stream, **not** a count of unlabelled
+deliveries here and **not** a thread population, and it cannot be either: **0 of the 729 live issues
+carry no addressing label** (read 2026-08-28, above). [§ 18.5](#185-the-three-findings-the-audit-turns-on)
+states it correctly; this paragraph re-minted it wrongly and now does not. The **body-only** rule's
+cost is the one measured directly: **36 of 729 threads, 4.9%** — 32 of them dropping one named
+participant and 4 dropping two, every one of which the delivery itself carried.
+
+**Labels supply MEMBERSHIP and nothing else, and that scope is what the earlier drafts kept losing.**
+`opened_by` and `attribution` remain derived from the body and the payload alone: a `from:` label
+names an author the way a filing cabinet names one, and DL-252 records what a reading agent acting on
+that costs. A `from:pm` label on a `closed` delivery therefore still yields
+`attribution: "unattributable"` and `opened_by: null` — it contributes `pm` to `participants` and to
+nothing else. **Membership from the labels, attribution from the body** is the whole of the split, and
+it is why the union is not a widening of the label-authoritative wake gate this section diverges from
+at [§ 18.5](#185-the-three-findings-the-audit-turns-on).
 
 **What this end still cannot establish, NAMED rather than assumed away — and it is a property of the
-protocol, not of the source choice.** The issue body is the **opening** post's text, so a seat that
-joined mid-thread by replying appears in `participants` only if someone edited that body. It did not
-appear in the labels either: an extra `to:` label is the hard-fail above, so no source available on an
-`issues` delivery carries it. Mid-thread addressing is carried per post by
-[`coord.round`](#187-coordround)'s `to` and `targets`, which is where a consumer reads it. The rule is
-consequently stated with its miss: **`participants` is `[]` when the delivery's body carries no
-`FROM:`/`TO:` lines at all, and `coord_participants_unlabelled` counts it** — an empty array with a
-counter behind it, rather than a silent one. That is a **bodyless** thread, which the integrity
-Action's own hard-fail path already refuses (*"missing `FROM:` line at start of body"*), so it is a
-structurally malformed thread rather than an ordinary one, and no label set is available to rescue it
-either: labels are materialised only from the lines that are missing.
+protocol, not of the source choice.** A seat that joined mid-thread by replying, **without** the
+membership label edit the protocol prescribes, appears in neither source: the body is the opening
+post's text, and the labels record only deliberate membership acts. No key on an `issues` delivery
+carries it. Mid-thread addressing is carried per post by [`coord.round`](#187-coordround)'s `to` and
+`targets`, which is where a consumer reads it. ⚠ **And the union has a second miss, in the opposite
+direction and by the same mechanism as its correctness**: because no path removes a label and no path
+removes a body line, **it cannot see a DEPARTURE** — an agent detached from a thread stays in
+`participants` until somebody both deletes the label and edits the body. That is the direction this
+field is deliberately wrong in, naming somebody who was party over dropping somebody who is, and it
+follows from the protocol's append-only record rather than from this derivation.
 
-**`participants` expands nothing.** A body `TO: all` yields the literal member `all`. Resolving `all`
-against a roster happens once, on
-[`coord.round`](#187-coordround)`.targets`, and a second expansion rule here would be one behaviour
-written twice.
+**The rule is consequently stated with both misses counted rather than described:**
+
+- **`participants` is `[]` only when the delivery carries no `FROM:`/`TO:` body lines *and* no
+  `to:`/`from:` labels, and `coord_participants_unlabelled` counts that** — an empty array with a
+  reason behind it rather than a silent one. Such a thread has no membership record at all, and the
+  integrity Action's own hard-fail path already refuses one (*"missing `FROM:` line at start of
+  body"*), so it is a structurally malformed thread rather than an ordinary one.
+- **`coord_participants_label_only` counts every delivery whose labels name at least one member the
+  body does not** — the union's disagreement case. Its live population is the measured **36 of 729**,
+  and it is the counter that makes this field's correction watchable: a regression to body-only drives
+  it to zero, and a body-line parser that breaks drives it to nearly everything.
+
+⚠ **`coord_participants_unlabelled` is NOT the counter that would have caught the defect above, and
+this document previously implied it was.** Its live population is **0 of 729** (read 2026-08-28,
+above): it counts a thread with *no* sources, while the defect was a thread with *two that disagree*.
+It is kept because it guards a real boundary and a rising count is a protocol violation upstream
+rather than a derivation defect here — but the counter for the disagreement is
+`coord_participants_label_only`, and the two are not substitutes.
+
+**`participants` expands nothing, from EITHER source.** A body `TO: all` yields the literal member
+`all`, and so does a `to:all` **label** — which is a real label on this install, carried by **68 of
+the 729** live issues (read 2026-08-28), so the rule has to be stated for the label side and not only
+the body side. On all 68 the body already carries `all`, so the union adds no member there; the clause
+exists because a rule that held only by coincidence of the current population is not a rule. Resolving
+`all` against a roster happens once, on [`coord.round`](#187-coordround)`.targets`, and a second
+expansion rule here would be one behaviour written twice.
 
 **There is no `is_broadcast` field, deliberately.** *"This thread is a broadcast"* is a property of its
 **opening post's address**, which [`coord.round`](#187-coordround)'s `to` already carries verbatim
@@ -5845,7 +6001,8 @@ four of them in sentences and put none in a table, which is a counter an impleme
 | `coord_name_malformed` | **the one definition, covering both callers and both causes** — a value that IS present fails validation: either a **name** read from a body `FROM:`/`TO:` line, or the **`carrier`** token read from a title ([§ 18.10](#1810-sanitization-at-the-coordination-producer) states why a title token is a body-shaped value), failing the `slug` pattern **or** exceeding its field's byte bound. A value that is simply **absent** is not malformed and is not counted here: a missing `FROM:` line is `coord_attribution_unresolved`, and a title leading with no bracketed token is a plain `null` | the field becomes `null` and is **never truncated**, because half a name and half a carrier each read as a different, real one. A rising count means titles or bodies are being written in a shape the protocol does not describe |
 | `coord_targets_unresolved` | `to` contains `all` and [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s roster is unreadable | `targets` is `null` rather than `[]`; **operator alert**, because every broadcast on that install is losing its fan-out |
 | `coord_roster_unknown_name` | a name derived from a body is absent from the copied roster ([§ 18.3.1](#1831-the-install-facts-input-declared-once)) | **the drift guard on the copy**: a seat added upstream and not here announces itself on its first post. One-directional — it cannot see a removal |
-| `coord_participants_unlabelled` | an `issues` delivery whose `issue.body` carries no `FROM:`/`TO:` lines at all, at any of the three lifecycle moments ([§ 18.6](#186-coordthread)) | `participants` is `[]` with a reason rather than silently. It counts a **bodyless** thread, which is the only case left once the body is the source at every moment; the name is kept rather than churned because such a thread is unlabelled too — labels are materialised only from the lines that are missing — and it is the coordination repo's own structural hard-fail, so a rising count is a protocol violation upstream and not a derivation defect here |
+| `coord_participants_unlabelled` | an `issues` delivery that carries **neither** `FROM:`/`TO:` body lines **nor** any `to:`/`from:` label, at any of the three lifecycle moments ([§ 18.6](#186-coordthread)) | `participants` is `[]` with a reason rather than silently. It counts a thread with **no membership record in either source**, which is the only case the union leaves empty, and it is the coordination repo's own structural hard-fail (*"missing `FROM:` line at start of body"*), so a rising count is a protocol violation upstream and not a derivation defect here. ⚠ **Its live population is 0 of 729** (2026-08-28), and it is **not** the counter that catches a label-widened thread — the row below is. It is kept because it guards a boundary, not because it has traffic |
+| `coord_participants_label_only` | an `issues` delivery whose `to:`/`from:` labels name at least one member the `FROM:`/`TO:` body lines do not — the **union's disagreement case** ([§ 18.6](#186-coordthread)) | informational, and the watch on this field's correction. **Its live population is 36 of 729 threads, 4.9%** (2026-08-28), so it has a known non-zero expectation: a drop to **zero** means the derivation has regressed to body-only and is silently dropping members the delivery carried, and a rise toward **everything** means the body-line parser has broken. Neither failure is visible in `participants` itself, which is exactly how the body-only rule shipped past a green gate |
 | `coord_to_from_labels` | a post carries no body `TO:` line and `to` falls back to the thread's labels ([§ 18.7](#187-coordround)) | informational, and **expected to be large** — measured at 30.1% of protocol posts. It is the residual of finding A, made watchable rather than inferred |
 
 ### 18.9 Why this does not ride the batch contract
@@ -6018,10 +6175,16 @@ read it is a row somebody can close.
 | **Whether a `[CLOSE]` token is added to a body this producer will not see** — a post edited to add it fires `issue_comment.edited`, which [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 does not derive from | a close act declared by an edit is missed, and its thread draws `lifecycle: closed` with no spark and no closer — the same render an undeclared close produces, so the two are indistinguishable. **The deferral IS backfillable, and that is a consequence of two things [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) now states rather than a hope**: the hook subscribes the whole `issue_comment` event, so those deliveries **were** sent and are in GitHub's delivery list; and step 8 commits **no digest** for a delivery it ignored, so a Redeliver after step 8 widens is derived rather than absorbed as a duplicate. ⚠ **What bounds the backfill is not this design**: GitHub's retention of redeliverable deliveries is a vendor fact no read on this box reaches, and anything older than it — or older than the hook registration itself — stays missed | add `issue_comment.edited` to step 8's derive set. That is **one action in the derive set and no re-registration**, which is what the subscription above was written wide to buy; the earlier draft of this row priced it as a subscription change and then, in the same cell, as a step-8 edit — the two were incompatible and the subscription set is what had gone unstated |
 | **That a protocol agent name identifies the same thing a `seat_id` does** — **UNVERIFIED. No artifact anywhere owns the mapping**, not this repo, not the coordination config and not the reporter config; the two names are configured in different files by different acts and neither validates against the other. ⚠ They cannot even be *compared* on the seat this was written on: **no reporter config exists there, so no live `seat_id` does either, and `"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value** | every coordination fact is derived correctly and **joins to no desk**: thread lines have no endpoints and the tier-2 title has no seat to sit on. The failure is total for the join and invisible in the derivation, which is the worst combination | **RULED on `card#7957`, and this row records the decision rather than the candidates it used to list.** *(d)* the **seat** declares its own protocol agent name — one optional field in the reporter config, emitted on the seat's identity event, read off the surface a renderer already reads to learn a desk exists. It is the only shape where one party knows both facts; a table beside the roster was rejected because no party can check it, and a declaration nobody can check is a comment. *(2)* **independently of when (d) ships, an unresolved participant is a first-class rendering**: no line to a guessed desk, no line to nothing, reported as unresolved, and it does not suppress the rest of the event. That half is what unblocks the slice that draws a thread line. **Still open under (d), and named rather than assumed:** the declaring seat validating its declared name against the roster where both sit on one box, and saying the name is *undeclared* rather than omitting the field where they do not |
 | **That a thread CONVERGED, as the protocol defines convergence** — the protocol's convergence is a **quorum**: *"An issue closes when every required participant has posted `zero open questions`. Required participants are those on `to:` labels who are not observer-CC'd"*. Neither object carries an observer-CC flag, a required-participant set, or a per-participant ACK ledger, and `participants` includes observers with nothing to exclude them by. **The quorum is not computable from anything emitted here** | a consumer that reads `lifecycle: closed` or `declares_close: true` as *"the thread converged"* is making a claim the wire does not carry — and it would be right about many threads and wrong about every stale-close, with no way to tell which. What this design offers instead is two weaker facts that are true: the thread ended, and somebody declared the close act | the protocol names required participants **on the wire** — an observer-CC marker in the body or a distinct label — at which point the quorum is a count. Until then this row is the answer, and [§ 18.5](#185-the-three-findings-the-audit-turns-on) states in terms that `declares_close` is not it |
-| **That the coordination route's counters have anywhere to live** — [§ 18.8.1](#1881-the-counters-this-route-mints) declares ten, and [§ 12.7](#127-server-side-counters)'s table is the surface that would give them storage and a badge. Membership there is an **obligation on the store's counter plane**, so this section declares the counters and does not enrol them | an implementer builds the receipt path, increments ten counters, and no operator can read any of them — the alarms `coord_targets_unresolved` and `coord_roster_unknown_name` exist for are the two that matter most, and both would be write-only | the slice that designs the coordination store adopts the ten into [§ 12.7](#127-server-side-counters) and gives each a row on the counter plane, in one change with the plane's own document. **The evidence that this is a real obligation and not bookkeeping is mechanical**: enrolling them early makes `tools/design/verify-fleet-state.py` red with one failure per counter, which is how this row was found |
+| **That the coordination route's counters have anywhere to live** — [§ 18.8.1](#1881-the-counters-this-route-mints) declares eleven, and [§ 12.7](#127-server-side-counters)'s table is the surface that would give them storage and a badge. Membership there is an **obligation on the store's counter plane**, so this section declares the counters and does not enrol them | an implementer builds the receipt path, increments ten counters, and no operator can read any of them — the alarms `coord_targets_unresolved` and `coord_roster_unknown_name` exist for are the two that matter most, and both would be write-only | the slice that designs the coordination store adopts the ten into [§ 12.7](#127-server-side-counters) and gives each a row on the counter plane, in one change with the plane's own document. **The evidence that this is a real obligation and not bookkeeping is mechanical**: enrolling them early makes `tools/design/verify-fleet-state.py` red with one failure per counter, which is how this row was found |
 | **That the idempotency key cannot expire into a double-derivation** — a uniqueness constraint has no window, but the store that holds it has a retention, and **nothing bounds how old a redelivered coordination delivery can be**. The reporter's equivalent is bounded by [§ 11.3](#113-rotation-and-the-overflow-policy)'s 8-day spool residency; GitHub's Redeliver button has no such floor | an operator redelivering a delivery older than the store's retention re-derives it: one thread line or round bead drawn twice, from one real post. Bounded and recoverable, and invisible while it happens | either state the digest store's retention as unbounded and price it — the key is 64 B and this repository's whole history is under 12,000 deliveries — or bound the redelivery age at receipt by refusing a payload timestamp older than the retention. Both are decisions for the slice that builds the store, and each is cheap; what is not affordable is the sentence an earlier draft carried, which asserted the problem away |
 
-**Two of these nine are closed by one act — capturing a real delivery.** That is the same act
+**Two of these nine are closed FULLY by one act — capturing a real delivery — and a third is closed
+PARTLY by it.** Rows 1 and 2 are the two: the payload keys this derivation reads, and whether
+`issues.closed` carries `state`/`state_reason`/`closed_at`. Row 4, GitHub's maximum delivery size, is
+the partial one — a capture measures this endpoint's envelope overhead but not the **sender's**
+documented maximum, which stays a vendor fact no read on this box reaches. An earlier draft said
+*"two"* while three rows named a capture, which is the count that had to move rather than the rows.
+That is the same act
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) requires for a harness fact, and it is
 recorded here as owed rather than done: **no delivery was captured in this round**, and every
 statement above about payload contents is marked accordingly.
