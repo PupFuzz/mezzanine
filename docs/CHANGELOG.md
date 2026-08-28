@@ -54,7 +54,36 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   Both are now one function with a control per direction. **The sample fleet carries a seat with no
   slot on the `sola` floor and interns for both null edges**, because a behaviour no sample reaches
   is one no implementer sees — the artifact is where card#7341 reads what these render like. The
-  gate's mutation controls go from five to **twelve**.
+  gate's mutation controls go from five to **fourteen**.
+  ⭐ **And the overflow row was drawn on top of sola's tea bar, which every check above passed.**
+  The row's origin was one shared constant (`x 110`), and a constant cannot make a claim about art
+  that differs per floor: sola's tea bar stands at `x 50–310, y 844–962`, desks emit *after*
+  `furnish()`, and both fills are opaque — so the first surplus desk's slab was painted over the
+  counter and its character sat on the cups. Every structural fact the gate asserted was true and
+  none of them could see it. **Each theme now DECLARES where its overflow row goes**, in a region it
+  states is clear of its own furniture, with the reason in the cell; and because a declaration with
+  no check is a comment, the gate measures it: every shape an overflow desk emits is compared
+  against every shape that floor's `furnish()` emits — on every theme the artifact declares, at
+  D2's eight-subagent cap (the widest desk it can draw), and on every overflow desk the sample fleet
+  really draws. Seen red on the reviewed head, naming the tea bar, and on a 40 px nudge. ⚠ **Still
+  not evidence about the picture**: this is arithmetic on the artifact's own emitted coordinates, so
+  z-order, opacity, the difference between a box and the glyph in it, and `<text>` (no extent
+  without font metrics) are outside it — opening the file remains the one check no tool performs.
+  Two adjacent limits are now **stated rather than left to be inferred**: `overflowSlot` clamps a
+  desk's width to its own step so slabs cannot overlap at n ≥ 7, but `deskSVG` hangs the intern tray
+  *outside* the slot, so a seat with subagents can still reach into the next one; and `placeFloor`
+  is **order-dependent**, so it is a pure function of the seat *list* and not of the seat *set*
+  § 3.2 asks for — § 3.2's own answer is the slot function `h(seat)` with forward probing, which
+  this preview does not implement and card#7341 does. **A gate hole in the same class was closed in
+  the gate itself**: § 5.4's population was sliced with `indexOf`, which answers `-1` for a heading
+  that has moved — and `slice(i, -1)` is *the document minus one character*, not *to the end*. A
+  § 5.4 whose closing anchor had moved silently widened the population to the rest of the document
+  (306 300 characters), where six surface names are still findable, and the gate printed
+  `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none — **the false-clean
+  shape this whole deliverable exists to prevent, inside it.** Both anchors are now required, their
+  absence is a failure, and the widening has its own control. § 5.5's notice is asserted **in full**
+  against the re-derived shortfall rather than by its opening words, which left the count and the
+  noun free to drift and stay green.
 
 - **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
   on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**

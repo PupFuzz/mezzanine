@@ -626,6 +626,9 @@ const THEMES={
     cabin:{x:52,y:300,w:336,h:212,door:[238,310],signX:92},
     desks:{cabin:{x:95,y:392,w:250,lampx:0.82}, a1:{x:452,y:352,w:230,lampx:0.93},
            a2:{x:600,y:720,w:230,lampx:0.85}, b1:{x:1000,y:320,w:230,lampx:0.93}},
+    /* aimla's furniture leaves the whole left half of the low floor free: nothing it draws below
+       y 774 starts before x 1234 (the kitchenette plant), so the row starts at the wall. */
+    overflow:{x:110,y:906},
     furniture:"aimla"
   },
   sola:{
@@ -635,6 +638,12 @@ const THEMES={
     cabin:{x:1412,y:300,w:336,h:212,door:[1490,1562],signX:1452},
     desks:{cabin:{x:1455,y:392,w:250,lampx:0.18}, a1:{x:980,y:340,w:230,lampx:0.07},
            a2:{x:430,y:700,w:230,lampx:0.85}, b1:{x:380,y:330,w:230,lampx:0.07}},
+    /* sola's low floor is NOT free at the wall — the tea bar reaches x 310 (counter, kettle, cups
+       and the shadow under them), and to the right a floor plant stands at x 914–966 with the zen
+       corner's gravel from x 960. The clear run between them, x 310–914, is where the row goes.
+       This cell is the reason the origin is a THEME's declaration and not a constant: the shared
+       constant put the row's first desk on top of this floor's tea bar. */
+    overflow:{x:350,y:906},
     furniture:"sola"
   }
 };
@@ -656,6 +665,8 @@ const UNTHEMED={
   accent:"#aab1c6",
   cabin:{x:52,y:300,w:336,h:212,door:[238,310],signX:92},
   desks:{},
+  /* trivially clear: a floor with no furniture set has nothing for the row to land on. */
+  overflow:{x:110,y:906},
   furniture:null
 };
 const themeFor=inst=>THEMES[inst]||UNTHEMED;
@@ -702,10 +713,33 @@ const FLEET={
    already given away) takes the next free slot, and a seat left with no slot at all renders in the
    labelled OVERFLOW ROW while the floor carries § 5.5's notice *floor map is short N desks*.
    By construction `short` is the count § 5.5 names — the rendered seat count against `S` — since
-   the map's slots are exhausted before any seat overflows. */
-const OVERFLOW_Y=906;
-function overflowSlot(i,n){const step=Math.min(280,(FW-260)/Math.max(1,n));
-  return {x:110+i*step,y:OVERFLOW_Y,w:230,lampx:0.9};}
+   the map's slots are exhausted before any seat overflows.
+   ⚠ AND WHAT IT IS NOT: placement here is ORDER-DEPENDENT, so it is a pure function of the seat
+   LIST and not of the seat SET that § 3.2 asks for. Two seats naming one slot resolve by array
+   position — the earlier one keeps the slot, the later one takes the next free one — so the same
+   set delivered in a different order can put two seats on different desks. § 3.2's own answer is
+   the slot FUNCTION `h(seat)` with forward probing, which is order-independent by construction and
+   is card#7341's to build; this preview does not implement it (see the line above). Stated here
+   because a porter reading "pure function of (map, seat list)" would otherwise carry the weaker
+   guarantee across as the stronger one. */
+/* ⛔ THE ROW'S ORIGIN IS THE THEME'S, NOT THIS FUNCTION'S. It used to be the constant `110,906`
+   for every floor, and that is a claim about art the constant cannot make: sola's tea bar stands
+   at x 50–310, y 844–962, so the first overflow desk's slab was drawn over the counter and its
+   character sat on the cups. Each theme now declares an origin in a region IT says is clear of
+   its own furniture, and the selftest checks that declaration against the furniture the theme
+   actually emits rather than believing it.
+   ⚠ WHAT IS STILL NOT GUARANTEED, so a porter does not read more into this than it holds: the
+   clamp below stops a desk SLAB overlapping its neighbour's, but `deskSVG` hangs the intern tray
+   at `x+w+26` — outside the slot — so at n ≥ 2 a seat with subagents can still reach into the
+   next slot; past roughly n = 12 the clamped slabs are narrower than the character drawn on them;
+   and the clamp bottoms out at 60 rather than going negative, so past roughly n = 77 the slabs
+   overlap again. One row of desks across one floor width has a capacity; § 3.2 does not state
+   what a floor does past it, and neither does this. The floor of 60 is not a guard against an
+   impossible state — it keeps this function's own arithmetic inside the range `deskSVG` can draw,
+   because a negative `width` is not a narrow desk, it is an SVG error that draws nothing. */
+function overflowSlot(T,i,n){
+  const ov=T.overflow, step=Math.min(280,(FW-ov.x-60)/Math.max(1,n));
+  return {x:ov.x+i*step,y:ov.y,w:Math.max(60,Math.min(230,step-18)),lampx:0.9};}
 function placeFloor(T,seats){
   const slots=Object.keys(T.desks), free=new Set(slots), placed=[], spilled=[];
   for(const s of seats){
@@ -718,7 +752,7 @@ function placeFloor(T,seats){
     if(next!==undefined){free.delete(next);placed.push({seat:s,slot:next,D:T.desks[next]});}
     else homeless.push(s);
   }
-  homeless.forEach((s,i)=>placed.push({seat:s,slot:null,D:overflowSlot(i,homeless.length)}));
+  homeless.forEach((s,i)=>placed.push({seat:s,slot:null,D:overflowSlot(T,i,homeless.length)}));
   return {placed,S:slots.length,short:homeless.length};
 }
 /* the desk takes its SLOT GEOMETRY, never a slot key: an overflow desk has geometry and no key,
@@ -930,11 +964,12 @@ function floorInner(seats){
        seat, and beside § 5.5's persistent notice, which is the client's own narration and names
        the shortfall as arithmetic (the rendered seat count against `S`). D3 writes the notice's
        template as *floor map is short N desks*; the singular is the same statement. */
-    g+=`<rect x="40" y="${OVERFLOW_Y-132}" width="${FW-80}" height="218" rx="18" fill="#12141f" opacity=".55"/>
-        <rect x="40" y="${OVERFLOW_Y-132}" width="${FW-80}" height="218" rx="18" fill="none" stroke="${T.accent}" stroke-width="3" stroke-dasharray="12 9" opacity=".75"/>
-        <text x="68" y="${OVERFLOW_Y-100}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
-        <text x="${FW-68}" y="${OVERFLOW_Y-100}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
-        <text x="68" y="${OVERFLOW_Y-76}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · a seat is never dropped (§ 3.2, § 9 F13)</text>`;
+    const BY=T.overflow.y-132;
+    g+=`<rect x="40" y="${BY}" width="${FW-80}" height="218" rx="18" fill="#12141f" opacity=".55"/>
+        <rect x="40" y="${BY}" width="${FW-80}" height="218" rx="18" fill="none" stroke="${T.accent}" stroke-width="3" stroke-dasharray="12 9" opacity=".75"/>
+        <text x="68" y="${BY+32}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
+        <text x="${FW-68}" y="${BY+32}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
+        <text x="68" y="${BY+56}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · a seat is never dropped (§ 3.2, § 9 F13)</text>`;
     /* each surplus desk is marked as one — the row is LABELLED for the reader, and a desk in it
        is identifiable as a desk that had no slot rather than as an ordinary one drawn low. */
     for(const p of over) g+=`<g class="overflow-desk">${deskSVG(T,p.D,p.seat)}</g>`;

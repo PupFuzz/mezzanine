@@ -44,14 +44,23 @@
 //      *floor map is short N desks*, and never a dropped seat. § 8 holds the intern label's two
 //      nulls apart: a null `subagent_type` draws NO tag, a null `title` draws *untitled*.
 //
-// EVERY CHECK HERE CAN FAIL, AND THE CONTROLS PROVE IT rather than asserting it. TWELVE anchored
+//   6. WHERE THE OVERFLOW ROW LANDS (§ 8). Layer 5 asserts the homeless seat's desk IS DRAWN and
+//      cannot see WHERE — which is how the row shipped painted over sola's tea bar with every
+//      structural fact above green. The row's origin is the THEME's declaration now, and this
+//      layer checks the declaration against the furniture that theme actually emits: every shape
+//      of an overflow desk against every shape of `furnish()`, on every theme the artifact
+//      declares and on every overflow desk it really draws.
+//
+// EVERY CHECK HERE CAN FAIL, AND THE CONTROLS PROVE IT rather than asserting it. FOURTEEN anchored
 // mutations: the pre-fix lookup shape, the lobby's silent filter, a rewritten `unknown_reason`
 // sentence, a rewritten `api_error_type` phrase, a label cell reverted to its pre-fix wording, a
-// D3 that grew a SEVENTH render surface, a scope row for a surface D3 does not publish, the
-// unguarded desk lookup, an overflow row drawn with its label and no desk in it, the unguarded
-// theme lookup, and each of the intern label's two nulls collapsed into the other's rule. Each is
-// anchored, the anchor count is asserted, and the relevant layer is REQUIRED to go red. The
-// derivations that are pure comparison get their own discriminating controls.
+// D3 that grew a SEVENTH render surface, a scope row for a surface D3 does not publish, § 5.4's
+// closing anchor moved out from under the derivation, the unguarded desk lookup, an overflow row
+// drawn with its label and no desk in it, the unguarded theme lookup, the overflow row's origin
+// reverted to the shared constant that put it on sola's tea bar, and each of the intern label's
+// two nulls collapsed into the other's rule. Each is anchored, the anchor count is asserted, and
+// the relevant layer is REQUIRED to go red. The derivations that are pure comparison get their own
+// discriminating controls.
 //
 // ⚠ WHAT THIS IS NOT EVIDENCE ABOUT. There is no browser here and no HTML parser: the DOM below
 // is a stub that records what the artifact's own code writes into it, so what is asserted is the
@@ -59,7 +68,11 @@
 // here has been laid out, painted, or seen. A green run says the artifact emits the right values;
 // it says nothing about how any of it LOOKS, and it cannot: `filter`, `opacity` and every colour
 // in the table are read by a renderer that never ran. jsdom would not close that gap either —
-// it does no layout and no paint — so the gap is named rather than papered over.
+// it does no layout and no paint — so the gap is named rather than papered over. § 8 narrows that
+// gap by ONE fact and does not close it: two opaque fills at the same coordinates is arithmetic on
+// emitted numbers, not a picture — z-order, opacity, the difference between a bbox and the glyph
+// inside it, and `<text>`, whose extent needs font metrics that do not exist here, are all outside
+// what it can say.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -102,6 +115,7 @@ const PROBE_NAMES = [
   'MEMBER_SETS', 'isMember', 'unheardFields', 'isCurrent', 'apiErrorLine',
   'isRenderState', 'renderFor', 'chipText', 'poseOf', 'hasCharacter', 'labelFor',
   'render', 'FLEET', 'FLOORS', 'D3_SCOPE', 'placeFloor', 'themeFor', 'internLabel',
+  'THEMES', 'UNTHEMED', 'FURNITURE', 'deskSVG', 'overflowSlot', 'FW', 'FH',
 ];
 const PROBE_EPILOGUE = `
 ;globalThis.__probe = {};
@@ -577,8 +591,17 @@ const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'sev
 /** D3's membership-tested render surfaces, read out of § 5.4. `null` when the anchors are gone —
  *  which is a FAILURE below, never a silently empty comparison. */
 function docSurfaces(floorMd) {
-  const s54 = floorMd.slice(floorMd.indexOf('### 5.4 What is never rendered'),
-    floorMd.indexOf('### 5.5 The client'));
+  // ⛔ `indexOf` answers -1 for a heading that is GONE, and `slice(-1, …)` / `slice(…, -1)` do not
+  // mean "from the start" and "to the end" — they mean "the last character" and "everything but
+  // the last character". A § 5.4 that had been renamed away therefore handed the whole document
+  // to the parse below, which found six surface names somewhere in it and reported `ok parsed 6
+  // render surfaces from § 5.4` while § 5.4 published nothing. That is the false-clean shape this
+  // whole layer exists to prevent, inside the layer itself: the population silently became the
+  // document. Both anchors are required, in order, and their absence is a FAILURE (`null`).
+  const i54 = floorMd.indexOf('### 5.4 What is never rendered');
+  const i55 = floorMd.indexOf('### 5.5 The client');
+  if (i54 < 0 || i55 < 0 || i55 <= i54) return null;
+  const s54 = floorMd.slice(i54, i55);
   const RULE = '- **An unrecognised enum member guessed into a known one.**';
   const PUB = '**"The client does not know" is a membership test';
   const ruleAt = s54.indexOf(RULE), pubAt = s54.indexOf(PUB);
@@ -701,6 +724,26 @@ if (rowHits === 1 && DOC_SURFACES) {
   const hit = failed.find((f) => f.includes("row `sprocket_state`"));
   check(!!hit, `a row for a surface D3 does not publish goes RED — ${JSON.stringify(hit || null)}`);
 }
+// DIRECTION 3 — THE DERIVATION'S OWN ANCHORS. Neither direction above is worth anything if the
+// slice they run over is not § 5.4. `indexOf` answers -1 for a heading that has moved, and the
+// slice then silently becomes the REST OF THE DOCUMENT, which still contains six surface names —
+// so the gate printed `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none.
+// The control renames the closing anchor and requires the derivation to go red rather than widen.
+const S55_ANCHOR = '### 5.5 The client';
+const s55Hits = FLOOR_MD.split(S55_ANCHOR).length - 1;
+check(s55Hits === 1, `the moved-anchor control is anchored exactly once (${s55Hits}): ${JSON.stringify(S55_ANCHOR)}`);
+if (s55Hits === 1) {
+  const MOVED = FLOOR_MD.replace(S55_ANCHOR, '### 5.5b The client');
+  const failed = [];
+  checkDerivation(docSurfaces(MOVED), (cond, what) => { if (!cond) failed.push(what); });
+  check(docSurfaces(MOVED) === null && failed.some((f) => f.includes('both found')),
+    `a § 5.4 whose closing anchor has moved goes RED rather than widening — ${JSON.stringify(failed[0] || null)}`);
+  // …and this is what it was widening TO, which is why the miss was invisible: the pre-fix
+  // expression `slice(indexOf(5.4), -1)` runs past § 5.4 and over the rest of the document.
+  const preFix = MOVED.slice(MOVED.indexOf('### 5.4 What is never rendered'), MOVED.indexOf(S55_ANCHOR));
+  check(preFix.includes('### 5.6') && preFix.length > 20000,
+    `the control is the real hole: the pre-fix slice covered ${preFix.length} chars, running past § 5.4 into § 5.6 and beyond`);
+}
 
 // ---------------------------------------------------------------------------------------------
 // 7. § 9 F13 — a seat the floor's map has no slot for is PLACED, never dropped and never a crash
@@ -754,8 +797,15 @@ function f13(source, report, mode) {
   const homeless = shorts.reduce((a, b) => a + b, 0);
   const shortFloors = shorts.filter((n) => n > 0).length;
   say(homeless > 0 && shortFloors > 0, `${mode}: the driven fleet really is short of desks (${homeless} seats over ${shortFloors} floors)`);
-  say((svg.match(/floor map is short/g) || []).length === shortFloors,
-    `${mode}: every short floor carries § 5.5's persistent notice — *floor map is short N desks*`);
+  // ⭐ THE WHOLE SENTENCE, not its opening. Matching `/floor map is short/` alone left the COUNT
+  // and the NOUN free to drift to anything at all — `short 0 chairs` passed it — and the count is
+  // the only part of the notice that carries information. Each short floor's expected sentence is
+  // built from that floor's OWN re-derived `short`, and the whole set is required, in full.
+  const wanted = shorts.filter((n) => n > 0)
+    .map((n) => `floor map is short ${n} desk${n === 1 ? '' : 's'}`);
+  say(wanted.every((w) => svg.includes(w))
+    && (svg.match(/floor map is short/g) || []).length === shortFloors,
+    `${mode}: every short floor carries § 5.5's notice IN FULL — ${JSON.stringify(wanted)}`);
   say((svg.match(/OVERFLOW/g) || []).length === shortFloors,
     `${mode}: and each one labels the row (§ 3.2), rather than drawing a desk low and unexplained`);
   // The desk ITSELF, not only the label around it: F13 gives the surplus seat "same desk, same
@@ -801,14 +851,225 @@ if (themeHits === 1) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 8. § 5.6's two intern nulls — one label, two rules, and they are NOT the same rule
+// 8. WHERE the overflow row is drawn — the one thing § 7 cannot see
+// ---------------------------------------------------------------------------------------------
+// § 7 asserts that every homeless seat's desk IS DRAWN. It says nothing about where, and the row
+// shipped drawn on top of sola's tea bar for exactly that reason: every structural fact above was
+// correct — the band inside `FH`, the three label strings, `S=4 seats=5 short=1` — and none of
+// them could catch a desk slab painted over a counter and a character sitting on the cups.
+//
+// The row's origin is now the THEME's declaration (`T.overflow`), because a shared constant
+// cannot make a claim about art that differs per floor. A declaration with no check is a comment,
+// so this layer checks it: every shape the overflow desk emits is measured against every shape
+// that floor's `furnish()` emits, and any overlap is named.
+//
+// ⚠ WHAT THIS IS AND IS NOT. It is arithmetic on the artifact's own emitted coordinates: two
+// opaque fills at the same coordinates is a FACT, and desks emit after `furnish()`, so an overlap
+// is the later fill winning. It is still not evidence about the picture — nothing here is laid
+// out or painted, and z-order, opacity and shape (a bbox is not the glyph) are not modelled.
+// ⛔ `<text>` IS EXCLUDED BY NAME rather than approximated: a label's extent needs font metrics
+// and there is no layout here, so its bbox is not measurable and is not claimed. Every FILLED
+// shape — rect, circle, ellipse, line, path — is measured, and the parse asserts it found one box
+// per shape element, so a silently skipped tag cannot pass as a clean floor.
+section('8. the overflow row is drawn clear of the furniture the theme itself emits');
+
+/** Every number in a string, in order. */
+const svgNums = (s) => (String(s).match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || []).map(Number);
+const attrOf = (s, k) => { const m = s.match(new RegExp(`\\b${k}="([^"]*)"`)); return m ? m[1] : null; };
+const numOf = (s, k, d = 0) => { const v = attrOf(s, k); return v === null ? d : Number(v); };
+/** A path's bbox from its own command stream. Bezier CONTROL points are included, so the box is a
+ *  superset of the true curve — the safe direction: it can over-report an overlap, never miss one. */
+function pathBox(d) {
+  const toks = String(d).match(/[a-zA-Z]|-?\d*\.?\d+/g) || [];
+  let i = 0, x = 0, y = 0, sx = 0, sy = 0, cmd = '';
+  const pts = [], n = () => Number(toks[i++]);
+  while (i < toks.length) {
+    if (/[a-zA-Z]/.test(toks[i])) cmd = toks[i++];
+    if (i >= toks.length && !/^[Zz]$/.test(cmd)) break;
+    const rel = cmd === cmd.toLowerCase(), c = cmd.toUpperCase();
+    if (c === 'M') { const a = n(), b = n(); x = rel ? x + a : a; y = rel ? y + b : b; sx = x; sy = y; pts.push([x, y]); cmd = rel ? 'l' : 'L'; }
+    else if (c === 'L') { const a = n(), b = n(); x = rel ? x + a : a; y = rel ? y + b : b; pts.push([x, y]); }
+    else if (c === 'H') { const a = n(); x = rel ? x + a : a; pts.push([x, y]); }
+    else if (c === 'V') { const a = n(); y = rel ? y + a : a; pts.push([x, y]); }
+    else if (c === 'Q') { const a = n(), b = n(), e = n(), f = n(); pts.push([rel ? x + a : a, rel ? y + b : b]); x = rel ? x + e : e; y = rel ? y + f : f; pts.push([x, y]); }
+    else if (c === 'T') { const e = n(), f = n(); x = rel ? x + e : e; y = rel ? y + f : f; pts.push([x, y]); }
+    else if (c === 'C') { const a = n(), b = n(), e = n(), f = n(), g = n(), h = n(); pts.push([rel ? x + a : a, rel ? y + b : b], [rel ? x + e : e, rel ? y + f : f]); x = rel ? x + g : g; y = rel ? y + h : h; pts.push([x, y]); }
+    else if (c === 'S') { const e = n(), f = n(), g = n(), h = n(); pts.push([rel ? x + e : e, rel ? y + f : f]); x = rel ? x + g : g; y = rel ? y + h : h; pts.push([x, y]); }
+    else if (c === 'Z') { x = sx; y = sy; }
+    else { i++; }
+  }
+  if (!pts.length) return null;
+  return { x0: Math.min(...pts.map((p) => p[0])), x1: Math.max(...pts.map((p) => p[0])),
+    y0: Math.min(...pts.map((p) => p[1])), y1: Math.max(...pts.map((p) => p[1])) };
+}
+/** `translate` and `rotate` only — the two the artifact uses. A rotated box becomes the box of its
+ *  four rotated corners, which again over-reports rather than under-reports. */
+function parseTransform(s) {
+  const out = [];
+  for (const m of String(s).matchAll(/(translate|rotate|scale|matrix)\(([^)]*)\)/g)) {
+    const v = svgNums(m[2]);
+    if (m[1] === 'translate') out.push({ k: 't', a: v[0] || 0, b: v[1] || 0 });
+    else if (m[1] === 'rotate') out.push({ k: 'r', a: v[0] || 0, b: v[1] || 0, c: v[2] || 0 });
+    else if (m[1] === 'scale') out.push({ k: 's', a: v[0], b: v.length > 1 ? v[1] : v[0] });
+    else out.push({ k: '?' });                                  // counted below, never silent
+  }
+  return out;
+}
+function applyTransforms(b, tf) {
+  for (let k = tf.length - 1; k >= 0; k--) {
+    const t = tf[k];
+    if (t.k === 't') b = { x0: b.x0 + t.a, x1: b.x1 + t.a, y0: b.y0 + t.b, y1: b.y1 + t.b };
+    else if (t.k === 's') {
+      if (!Number.isFinite(t.a) || !Number.isFinite(t.b)) return null;
+      const xs = [b.x0 * t.a, b.x1 * t.a], ys = [b.y0 * t.b, b.y1 * t.b];
+      b = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+    } else if (t.k === 'r') {
+      const r = t.a * Math.PI / 180, co = Math.cos(r), si = Math.sin(r);
+      const cs = [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]]
+        .map(([px, py]) => [t.b + (px - t.b) * co - (py - t.c) * si, t.c + (px - t.b) * si + (py - t.c) * co]);
+      b = { x0: Math.min(...cs.map((p) => p[0])), x1: Math.max(...cs.map((p) => p[0])),
+        y0: Math.min(...cs.map((p) => p[1])), y1: Math.max(...cs.map((p) => p[1])) };
+    } else return null;                                          // an unmodelled transform is loud
+  }
+  return b;
+}
+const SHAPE_TAGS = ['rect', 'circle', 'ellipse', 'line', 'path'];
+/** Every filled shape of an SVG fragment, as an absolute box. `skipped` is what could not be
+ *  measured, so an empty result can never be mistaken for a clean one. */
+function svgShapes(svg) {
+  const boxes = [], skipped = [], stack = [];
+  const re = /<(\/?)(g|rect|circle|ellipse|line|path|text)\b([^>]*?)(\/?)>/g;
+  let m, seen = 0;
+  while ((m = re.exec(svg))) {
+    const [, close, tag, rest] = m;
+    if (tag === 'g') { if (close) stack.pop(); else stack.push(parseTransform(attrOf(rest, 'transform') || '')); continue; }
+    if (close || tag === 'text') continue;
+    seen++;
+    let b = null;
+    if (tag === 'rect') { const x = numOf(rest, 'x'), y = numOf(rest, 'y'); b = { x0: x, x1: x + numOf(rest, 'width'), y0: y, y1: y + numOf(rest, 'height') }; }
+    else if (tag === 'circle') { const cx = numOf(rest, 'cx'), cy = numOf(rest, 'cy'), r = numOf(rest, 'r'); b = { x0: cx - r, x1: cx + r, y0: cy - r, y1: cy + r }; }
+    else if (tag === 'ellipse') { const cx = numOf(rest, 'cx'), cy = numOf(rest, 'cy'), rx = numOf(rest, 'rx'), ry = numOf(rest, 'ry'); b = { x0: cx - rx, x1: cx + rx, y0: cy - ry, y1: cy + ry }; }
+    else if (tag === 'line') { const a = numOf(rest, 'x1'), c = numOf(rest, 'y1'), d = numOf(rest, 'x2'), e = numOf(rest, 'y2'); b = { x0: Math.min(a, d), x1: Math.max(a, d), y0: Math.min(c, e), y1: Math.max(c, e) }; }
+    else b = pathBox(attrOf(rest, 'd') || '');
+    if (b) b = applyTransforms(b, parseTransform(attrOf(rest, 'transform') || ''));
+    if (b) b = applyTransforms(b, stack.flat());
+    if (b) boxes.push({ tag, b }); else skipped.push(tag);
+  }
+  // An unbalanced `<g>` would silently shift every box after it by another group's transform, and
+  // the shift would look exactly like a floor that happens to be clear.
+  return { boxes, skipped, seen, balanced: stack.length === 0 };
+}
+/** Two boxes share area. Touching edges do not count — abutting fills are not an overlap. */
+const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+const boxStr = (b) => `x ${b.x0.toFixed(0)}–${b.x1.toFixed(0)}, y ${b.y0.toFixed(0)}–${b.y1.toFixed(0)}`;
+/** Every shape of A that shares area with a shape of B, named on both sides. */
+const collisions = (A, B) => A.boxes.flatMap((d) => B.boxes.filter((f) => overlaps(d.b, f.b))
+  .map((f) => `desk <${d.tag}> ${boxStr(d.b)} over <${f.tag}> ${boxStr(f.b)}`));
+const say1 = (hits) => (hits.length ? ` — ${hits.length} overlap(s), first: ${hits[0]}` : '');
+
+// D2 caps `subagents[]` at 8 and `deskSVG` hangs the intern tray OUTSIDE the slot, so a seat at
+// that cap is the widest desk the artifact can draw. The per-theme probe below carries the cap:
+// the declaration is then good for any seat, not only for the one the sample happens to overflow.
+const WIDEST_SEAT = {
+  ...BASE, desk: 'nowhere', render_state: 'working', open_turn: true, open_calls: 1,
+  action: { tool_name: 'Bash', descriptor: 'Bash: x', started_at: '14:00:00', running: '1m' },
+  subagents: Array.from({ length: 8 }, (_, i) => ({ title: `intern ${i}`, subagent_type: 'coder' })),
+};
+/** The layer, reusable so the control below can re-run it against a planted origin. */
+function overflowClear(probe, say) {
+  if (!probe.THEMES || !probe.UNTHEMED || !probe.FURNITURE || !probe.deskSVG || !probe.overflowSlot) {
+    say(false, 'the artifact exposes its themes, its furniture sets, its desk and its overflow slot');
+    return [];
+  }
+  const failed = [];
+  const record = (cond, what) => { if (!cond) failed.push(what); say(cond, what); };
+  // ⭐ THE POPULATION IS THE ARTIFACT'S OWN THEME LIST, re-derived here — a theme added to the map
+  // is checked without this file being edited, which is the whole reason the origin moved into the
+  // theme rather than staying a constant this file could have hard-coded alongside it.
+  const themes = [...Object.keys(probe.THEMES).map((k) => [k, probe.THEMES[k]]),
+    ['(unthemed)', probe.UNTHEMED]];
+  record(themes.length >= 2, `the theme population is the artifact's own (${themes.length}: ${themes.map((t) => t[0]).join(', ')})`);
+  for (const [name, T] of themes) {
+    const furnish = probe.FURNITURE[T.furniture];
+    record(!!T.overflow && Number.isFinite(T.overflow.x) && Number.isFinite(T.overflow.y),
+      `theme \`${name}\` declares where its overflow row goes — ${JSON.stringify(T.overflow || null)}`);
+    if (!T.overflow) continue;
+    if (!furnish) { record(true, `theme \`${name}\` draws no furniture, so the row has nothing to land on`); continue; }
+    const F = svgShapes(furnish());
+    const D = svgShapes(probe.deskSVG(T, probe.overflowSlot(T, 0, 1), { ...WIDEST_SEAT, __install: name }));
+    // An empty measurement is not a clean floor. Both sides must have been measured in full.
+    record(F.boxes.length > 0 && F.skipped.length === 0 && F.boxes.length === F.seen && F.balanced,
+      `theme \`${name}\`: every furniture shape was measured (${F.boxes.length}/${F.seen}, ${F.skipped.length} unmeasurable, groups ${F.balanced ? 'balanced' : 'UNBALANCED'})`);
+    record(D.boxes.length > 0 && D.skipped.length === 0 && D.boxes.length === D.seen && D.balanced,
+      `theme \`${name}\`: every shape of a widest-case overflow desk was measured (${D.boxes.length}/${D.seen}, ${D.skipped.length} unmeasurable, groups ${D.balanced ? 'balanced' : 'UNBALANCED'})`);
+    record(collisions(D, F).length === 0,
+      `theme \`${name}\`: no shape of the overflow row's first desk touches this floor's furniture${say1(collisions(D, F))}`);
+    // The SIBLING of the same shape: the row is drawn over whatever is already there, and the map's
+    // own desk slots are already there too. Checked against every slot the theme declares.
+    const slots = Object.keys(T.desks).flatMap((k) => svgShapes(probe.deskSVG(T, T.desks[k], null)).boxes);
+    record(collisions(D, { boxes: slots }).length === 0,
+      `theme \`${name}\`: nor any desk the map itself declares (${Object.keys(T.desks).length} slots)${say1(collisions(D, { boxes: slots }))}`);
+    // …and inside the floor. An origin that puts the row off the bottom is the same defect wearing
+    // a different number, and nothing else here would notice.
+    // ⛔ The bounds must be READ, not assumed: `x > undefined` is `false`, so a missing `FW`/`FH`
+    // would make every comparison below answer "inside" and this check would pass over anything.
+    record(Number.isFinite(probe.FW) && Number.isFinite(probe.FH),
+      `the floor's own bounds were read from the artifact (${probe.FW}×${probe.FH})`);
+    const out = D.boxes.filter((d) => d.b.x0 < 0 || d.b.y0 < 0 || d.b.x1 > probe.FW || d.b.y1 > probe.FH);
+    record(out.length === 0,
+      `theme \`${name}\`: and the whole desk is inside the ${probe.FW}×${probe.FH} floor${out.length ? ` — ${out.length} outside, first ${out[0].tag} ${boxStr(out[0].b)}` : ''}`);
+  }
+  // …and the floors the artifact ACTUALLY renders, with the seats it actually has: the sample
+  // fleet already puts a seat in sola's row, so this half is measured on the shipped picture and
+  // not only on a probe.
+  let drawn = 0;
+  for (const inst of probe.FLOORS) {
+    const T = probe.themeFor(inst), furnish = probe.FURNITURE[T.furniture];
+    if (!furnish) continue;
+    const F = svgShapes(furnish());
+    const over = probe.placeFloor(T, probe.FLEET[inst]).placed.filter((p) => !p.slot);
+    for (const p of over) {
+      drawn++;
+      const D = svgShapes(probe.deskSVG(T, p.D, { ...p.seat, __install: inst }));
+      record(collisions(D, F).length === 0,
+        `${inst}/${p.seat.seat}: its overflow desk as SHIPPED touches no furniture${say1(collisions(D, F))}`);
+    }
+  }
+  record(drawn > 0, `the sample fleet really draws an overflow desk on a furnished floor (${drawn}) — an empty sweep is not a clean one`);
+  return failed;
+}
+overflowClear(P, check);
+// THE CONTROL — the defect itself, planted. Before this round every theme's row started at the
+// same `110`, and on sola that is the tea bar. The check must name the collision, or it is not
+// the check that would have caught it.
+const ORIGIN_ANCHOR = '    overflow:{x:350,y:906},';
+const originHits = SCRIPT.split(ORIGIN_ANCHOR).length - 1;
+check(originHits === 1, `the shared-origin control is anchored exactly once (${originHits})`);
+if (originHits === 1) {
+  const SHARED = SCRIPT.replace(ORIGIN_ANCHOR, '    overflow:{x:110,y:906},');
+  const failed = overflowClear(load(SHARED).probe, () => { });
+  const hit = failed.find((f) => f.includes('sola-mailer'));
+  check(!!hit, `the pre-fix shared origin puts sola's row on its tea bar and goes RED — ${JSON.stringify(hit || null)}`);
+  check(!!failed.find((f) => f.startsWith('theme `sola`:') && f.includes('overlap(s)')),
+    `and the theme's own declaration is what fails, not only the shipped seat — ${JSON.stringify(failed.find((f) => f.startsWith('theme `sola`:') && f.includes('overlap(s)')) || null)}`);
+}
+// The comparator's discriminating control: a box pair that DOES overlap must be reported as
+// overlapping, and a pair that merely abuts must not. A predicate that only ever answered "no" is
+// indistinguishable from one that cannot answer anything else.
+check(overlaps({ x0: 0, x1: 10, y0: 0, y1: 10 }, { x0: 9, x1: 20, y0: 9, y1: 20 })
+  && !overlaps({ x0: 0, x1: 10, y0: 0, y1: 10 }, { x0: 10, x1: 20, y0: 0, y1: 10 })
+  && !overlaps({ x0: 0, x1: 10, y0: 0, y1: 10 }, { x0: 0, x1: 10, y0: 11, y1: 20 }),
+  'the overlap predicate says yes to a shared area, and no to an abutting edge and to a clear gap');
+
+// ---------------------------------------------------------------------------------------------
+// 9. § 5.6's two intern nulls — one label, two rules, and they are NOT the same rule
 // ---------------------------------------------------------------------------------------------
 // § 5.6 (`subagents[].subagent_type`): "the type tag beside the label is not drawn" — a null type
 // renders NOTHING, because a substitute states a fact the wire never sent. § 5.1 and AT-D3-4:
 // a null `title` renders *untitled*, and falling back to `subagent_type`, to the tool name or to
 // *subagent* is that test's first RED. They sit on one line of the drill-down and a fix that
 // treated them alike would break the compliant one to fix its neighbour, so both are asserted.
-section("8. the intern label: a null subagent_type draws NO tag, a null title draws *untitled*");
+section("9. the intern label: a null subagent_type draws NO tag, a null title draws *untitled*");
 const INTERN_CASES = [
   [{ subagent_type: 'coder', title: 'rebuild the doc set' }, 'coder · rebuild the doc set', 'both present'],
   [{ subagent_type: null, title: 'rebuild the doc set' }, 'rebuild the doc set', 'a null type draws no tag AND no separator (§ 5.6)'],

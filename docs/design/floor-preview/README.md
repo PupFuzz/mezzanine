@@ -66,11 +66,18 @@ floor whose map is short of desks, in both shapes that produces (a seat at a des
 not declare, and an install the theme map has never seen), against § 3.2's overflow rule and § 9
 F13 — the labelled overflow row, the *floor map is short N desks* notice, and never a dropped seat;
 the sample fleet carries such a seat on the `sola` floor, so the behaviour is visible and not only
-claimed. And it holds § 5.6's two intern nulls apart: a null `subagent_type` draws **no type tag**,
-a null `title` draws ***untitled***. It proves it can fail with **twelve** anchored source
-mutations. ⚠ **It is not visual evidence.** There is no browser and no HTML parser behind it — no layout, no paint, nothing seen.
-What it asserts is the values the artifact emits; how any of it *looks* is verified by opening the
-file, which is the one check no tool here performs.
+claimed. It measures **where that row lands**: the row's origin is each theme's own declaration —
+sola's tea bar stands where the shared constant used to put the first overflow desk — and every
+shape an overflow desk emits is checked against every shape that floor's furniture emits, so a
+declaration that has gone false reds instead of shipping a desk painted over a counter. And it
+holds § 5.6's two intern nulls apart: a null `subagent_type` draws **no type tag**, a null `title`
+draws ***untitled***. It proves it can fail with **fourteen** anchored source mutations.
+⚠ **It is still not visual evidence.** There is no browser and no HTML parser behind it — no
+layout, no paint, nothing seen. What it asserts is the values the artifact emits, and the bbox
+layer only adds arithmetic on those same emitted numbers: z-order, opacity, the difference between
+a box and the glyph inside it, and text (which has no extent without font metrics) are all outside
+it. How any of it *looks* is verified by opening the file, which is the one check no tool here
+performs.
 
 The kanban cards carry the full rulings and their reasons: #7341 (floor build + viewport),
 #7897 (communication layer + meeting-room triggers), #7898 (art direction + characters),
