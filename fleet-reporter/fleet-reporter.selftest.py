@@ -41,6 +41,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import ssl
 import statistics
 import subprocess
@@ -57,6 +58,7 @@ assert len(TOKEN) - 4 == 43
 
 fails = 0
 _evidence: list[str] = []
+_skipped: list[str] = []
 
 
 def ok(msg: str) -> None:
@@ -67,6 +69,16 @@ def bad(msg: str) -> None:
     global fails
     fails += 1
     print(f"  FAIL {msg}", file=sys.stderr)
+
+
+def skip(msg: str) -> None:
+    """A check that could not RUN here — never an `ok`, and reprinted at the end.
+
+    A check whose instrument is unavailable has measured nothing, and printing that as a pass is
+    the same defect as a sweep that finds nothing because it cannot look.
+    """
+    _skipped.append(msg)
+    print(f"  SKIP {msg}")
 
 
 def eq(what: str, want, got) -> None:
@@ -106,24 +118,45 @@ class Seat:
     def write_cfg(self) -> None:
         self.cfg_path.write_text(json.dumps(self.cfg), encoding="utf-8")
 
-    def freeze_flusher(self) -> None:
-        """Make the flusher lock look FRESH so hooks do not opportunistically respawn one.
+    def freeze_flusher(self, at_ms=None) -> None:
+        """Make the flusher lock look FRESH **on the clock the next invocation will read**.
 
         This is the product's own mechanism (D1 § 2.3: a lock whose mtime is under 90 s means a
         live flusher), used exactly as AT-7 specifies for the same purpose. It is not a test
         back door: no code path in the reporter is disabled, the hook simply observes a live
         owner. Without it every hook invocation would fork a real flusher into the middle of an
         exact-count assertion.
+
+        THE MTIME IS PINNED TO THE INVOCATION'S OWN CLOCK, NOT TO WALL TIME, AND THAT IS THE
+        WHOLE CORRECTNESS OF IT (card#7976). `maybeRespawnFlusher` computes
+        `now() - lock.mtimeMs < LOCK_STALE_MS`, and `now()` is whatever `FLEET_REPORTER_NOW_MS`
+        says. A hook driven with the clock pinned two hours AHEAD therefore reads a wall-clock
+        freeze as a lock two hours dead, concludes — correctly, by § 2.3 — that no flusher is
+        alive, and forks a real detached one that outlives the suite. Measured: § 4's aged-out
+        drop is pinned `of_at + 2 h`, and it leaked exactly one daemon per run, within a minute
+        of the run starting. Freezing against the same clock the reporter will read makes the
+        lock zero seconds old under that clock, which is the state the freeze always modelled
+        and never achieved on a pinned invocation.
         """
         lock = self.spool / "flusher.lock"
         lock.write_text('{"pid":1,"started_at":"1970-01-01T00:00:00.000Z"}', encoding="utf-8")
-        os.utime(lock, None)
+        t = time.time() if at_ms is None else int(at_ms) / 1000.0
+        os.utime(lock, (t, t))
 
-    def env(self, **extra) -> dict:
+    def env(self, *, freeze: bool = True, **extra) -> dict:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
         e.update({k: str(v) for k, v in extra.items()})
+        # THE FREEZE BELONGS HERE, at the one place that knows the invocation's clock, and it is
+        # re-applied PER INVOCATION rather than once per seat. Once per seat also expires: a
+        # wall-clock freeze is 90 s old after 90 s of a run that measures ~163 s, so a seat
+        # driven late enough is stale on its own freeze. Bolting the re-freeze onto `hook()`
+        # would miss the callers that build their invocations elsewhere — the eight-writer AT-10
+        # burst and the six-writer AT-16 burst both take `seat.env()` and never call `hook()`.
+        # `freeze=False` is for `flush()` alone, which IS the flusher and must find no lock.
+        if freeze:
+            self.freeze_flusher(e.get("FLEET_REPORTER_NOW_MS"))
         return e
 
     def events(self) -> list[dict]:
@@ -191,13 +224,17 @@ def flush(seat: Seat, *, reporter: Path = REPORTER, **envx):
     exits 0). So the lock is released for the run and re-frozen after — which is the real
     handover, not a bypass: exactly one flusher is alive at any moment throughout.
     """
+    # `freeze=False`: `seat.env()` re-freezes the lock on every other invocation (see
+    # `freeze_flusher`), and a re-freeze here would hand THIS flusher a fresh lock — it would
+    # lose `acquireLock`, exit 0, and make the pass this call exists to drive a no-op.
+    env = seat.env(freeze=False, FLEET_REPORTER_ONE_PASS="1", **envx)
     lock = seat.spool / "flusher.lock"
     if lock.exists():
         lock.unlink()
     try:
         return subprocess.run(
             ["node", str(reporter), "flusher"], capture_output=True, text=True,
-            env=seat.env(FLEET_REPORTER_ONE_PASS="1", **envx), cwd=str(HERE), timeout=90)
+            env=env, cwd=str(HERE), timeout=90)
     finally:
         seat.freeze_flusher()
 
@@ -366,6 +403,83 @@ def seat(name: str, **kw) -> Seat:
     root = TMP / name
     root.mkdir(parents=True, exist_ok=True)
     return Seat(root, kw.pop("ingest", INGEST.url), ca=kw.pop("ca", CA), **kw)
+
+
+# ── flusher daemons THIS run caused to exist (card#7976) ───────────────────────────────────
+# A hook that finds a stale lock forks a REAL detached flusher (§ 2.3, P-7), and that process
+# has no exit condition: it loops until signalled. Prevention is `freeze_flusher` above; this is
+# the MEASUREMENT, and it is the part that matters, because the leak it exists to catch survived
+# for days on a workstation purely by being invisible to anyone not running `pgrep`.
+def spawned_flushers() -> "list[tuple[int, str]] | None":
+    """(pid, config) for every live flusher daemon whose config lives under THIS run's `TMP`.
+
+    `TMP` is a fresh `mkdtemp` per run, so the match cannot name another worktree's daemon,
+    another developer's, or a concurrent run of this same file — which is what makes reaping the
+    result safe. Returns None where /proc cannot be read, so the caller reports "not measured"
+    rather than reading an empty list as "none".
+
+    NOT `pgrep -af 'fleet-reporter.*flush'`: that pattern also matches the command line of the
+    shell running the measurement, so it reports at least one process that is not a daemon.
+    Matching argv[1]/argv[2] and the environment exactly cannot match the measurement itself.
+    """
+    proc = Path("/proc")
+    if not (proc / "self" / "environ").exists():
+        return None
+    found: list[tuple[int, str]] = []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = [x.decode("utf-8", "replace")
+                    for x in (entry / "cmdline").read_bytes().split(b"\0") if x]
+            envb = (entry / "environ").read_bytes().split(b"\0")
+        except OSError:
+            continue                      # exited under us, or not this uid's to read
+        if len(argv) < 3 or not argv[1].endswith("fleet-reporter.js") or argv[2] != "flusher":
+            continue
+        cfg = next((s.split("=", 1)[1]
+                    for s in (kv.decode("utf-8", "replace") for kv in envb)
+                    if s.startswith("FLEET_REPORTER_CONFIG=")), "")
+        if cfg.startswith(f"{TMP}{os.sep}"):
+            found.append((int(entry.name), cfg))
+    return sorted(found)
+
+
+def await_flushers(want: bool, timeout: float = 20.0) -> "tuple[list[tuple[int, str]], float]":
+    """Poll until the spawned set is non-empty (`want`) or empty, and return it with the wait.
+
+    The spawn is asynchronous — the hook `unref()`s it and exits — so an instant read after a
+    hook is a race in BOTH directions: it can miss a daemon that is still starting, and an
+    absence it reports is a measurement that never happened.
+    """
+    t0 = time.time()
+    while True:
+        got = spawned_flushers() or []
+        if bool(got) == want or time.time() - t0 > timeout:
+            return got, time.time() - t0
+        time.sleep(0.2)
+
+
+def reap_flushers(found: "list[tuple[int, str]]") -> None:
+    """SIGTERM, then SIGKILL what is left. Only ever the pids `spawned_flushers` returned."""
+    for pid, _ in found:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    # SIGTERM sets the loop's `running = false`, but the loop is inside `await sleep(FLUSH_MS)`
+    # and exits only when that resolves — up to 10 s. Grace first, certainty after.
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        if not spawned_flushers():
+            return
+        time.sleep(0.2)
+    for pid, _ in found:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    await_flushers(False, 10.0)
 
 
 def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
@@ -1867,13 +1981,88 @@ redgreen("the bucket is derived at the write (§ 11.1) and § 6.1's pattern admi
          f"earlier; § 6.1's pattern now admits `{doc_example}` and the reporter emits it")
 
 
+print("\n== 17. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+# WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
+# detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
+# and that process loops until it is signalled. A teardown that quietly reaped them would leave
+# the suite's own defect invisible again, which is exactly how one leaked daemon per run
+# survived unnoticed: it sits at 0% CPU and nothing but `pgrep` reports it. So the sweep FAILS
+# the run and then reaps, rather than reaping and saying nothing.
+#
+# THE CONTROL RUNS FIRST, because this check passes by finding NOTHING and a sweep that cannot
+# find a daemon it was handed would pass over a leak identically — the same rule § 5 applies to
+# the credential sweep.
+if spawned_flushers() is None:
+    skip("the leaked-flusher sweep needs /proc, which this platform does not have — the run's "
+         "daemon count was NOT measured, and that is not a pass")
+else:
+    ahead = int(time.time() * 1000) + 2 * 3600 * 1000
+    eq("nothing this run spawned is still alive before the control plants one", [],
+       spawned_flushers())
+
+    # RED — the defect verbatim: a lock frozen on the WALL clock, then a hook whose own clock is
+    # pinned two hours ahead. Driven around `hook()` on purpose, because `hook()` goes through
+    # `seat.env()`, which is where the fix lives; this is the invocation the harness used to
+    # make, and § 4's aged-out drop is a real instance of it.
+    ctl = seat("flusher-leak-control", ingest=DEAD)
+    ctl.freeze_flusher()                                        # wall clock, as before the fix
+    subprocess.run(["node", str(REPORTER), "hook", "PreToolUse"],
+                   input=json.dumps(pre(tuid="leak_ctl")), capture_output=True, text=True,
+                   env=ctl.env(freeze=False, FLEET_REPORTER_NOW_MS=ahead), cwd=str(HERE))
+    leaked, spawn_s = await_flushers(True)
+    eq("RED: a hook pinned two hours ahead of a wall-clock freeze reads the lock as long dead, "
+       "forks a real detached flusher, and that flusher outlives the run",
+       [str(ctl.cfg_path)], [cfg for _, cfg in leaked])
+    reap_flushers(leaked)
+    eq("  … and the sweep sees it gone once reaped, so its verdict tracks the world both ways",
+       [], spawned_flushers())
+
+    # GREEN — the same seat and the same pinned clock, through the harness. The reporter's
+    # respawn rule is untouched: it stats the lock and finds a live owner, which is the state
+    # the freeze has always meant to model and now models on the clock the hook actually reads.
+    grn = seat("flusher-leak-green", ingest=DEAD)
+    hook(grn, "PreToolUse", pre(tuid="leak_grn"), FLEET_REPORTER_NOW_MS=ahead)
+    # Waited against the control's own measured spawn latency, so the zero below is an interval
+    # in which a spawn demonstrably WOULD have been seen, not an instant read that raced it.
+    # Capped, because a control that TIMED OUT (i.e. already red above) must not also stretch the
+    # run by 80 s to say so again.
+    watch_s = min(max(3.0, 4 * spawn_s), 15.0)
+    time.sleep(watch_s)
+    eq(f"GREEN: the same hook through the harness forks nothing, watched for "
+       f"{watch_s:.1f} s — the control's daemon was already visible on the first "
+       f"read after its own hook returned ({spawn_s:.1f} s), so this zero is not a race",
+       [], spawned_flushers())
+
+    # THE RUN-WIDE SWEEP, over every seat this file created, not only the two above.
+    left = spawned_flushers()
+    eq("and no block of this suite leaves a flusher daemon behind", [],
+       [f"pid {pid} <- {cfg}" for pid, cfg in left])
+    reap_flushers(left)
+    redgreen("the suite reaps what it spawns: no run leaves a live flusher daemon (card#7976)",
+             "lock frozen on the wall clock + a hook pinned 2 h ahead -> `now() - mtime` is 2 h "
+             "against LOCK_STALE_MS=90 s, so § 2.3 correctly declares the flusher dead and the "
+             "hook forks a detached one with no exit condition; measured at 1 leaked daemon per "
+             "run, accumulating across every run on the machine",
+             "the lock is frozen against the invocation's OWN clock in `Seat.env()`, so it reads "
+             "0 s old on every hook however that hook's clock is pinned; the run ends with a "
+             "/proc sweep for daemons whose config is under this run's TMP, which fails the suite "
+             "and then reaps — a control daemon is planted first and must be found")
+
+
 print("\n" + "=" * 92)
 print("RED / GREEN EVIDENCE, PER SAFETY PROPERTY")
 print("=" * 92)
 for e in _evidence:
     print(e)
 print("=" * 92)
+if _skipped:
+    # Reprinted here rather than left in the scroll: a check that could not run is the one thing
+    # a reader of a green run would otherwise take for a pass.
+    print("\nNOT MEASURED ON THIS PLATFORM — not passes:")
+    for s in _skipped:
+        print(f"  - {s}")
 if fails:
     print(f"\nfleet-reporter.selftest: {fails} check(s) FAILED", file=sys.stderr)
     sys.exit(1)
-print("\nfleet-reporter.selftest: all checks passed")
+print(f"\nfleet-reporter.selftest: all checks passed"
+      f"{f' ({len(_skipped)} not measured here)' if _skipped else ''}")

@@ -50,6 +50,14 @@ script as real subprocesses several thousand times, and stands up a TLS ingest s
 `ca_file` key — so the transport path runs with certificate verification ON rather than being
 proven by turning it off.
 
+**The last block signals processes, and only ever its own.** § 2.3 has every hook fork a real
+detached flusher when it finds no live one, so a run can leave live daemons behind; the suite
+ends by sweeping `/proc` for flusher processes whose `FLEET_REPORTER_CONFIG` sits under *this
+run's* temp directory, failing if it finds any and then reaping them. A daemon from another
+checkout, another developer, or a concurrent run of this same file cannot match. On a platform
+with no `/proc` the sweep prints `SKIP` and is listed as *not measured* under the evidence
+block — never as a pass.
+
 **Every safety property is driven twice**: once against a deliberately defective copy of the
 reporter, which must go RED, and once against the real one. A plant that matches nothing raises
 rather than passing, because a RED that has quietly become a GREEN is worse than no test. The
@@ -124,6 +132,20 @@ find this failing, do not raise the bound** — either the machine is loaded, in
 number is not about the code, or the reporter genuinely regressed, in which case the fix is in
 the reporter. What is *always* asserted, because neither is load-sensitive, is that every hook
 exits 0 and prints nothing on stdout, on every adverse path.
+
+**The suite's flusher lock is frozen against the clock the invocation will READ, not against
+wall time — and the run then sweeps for daemons anyway.** `Seat.freeze_flusher` writes
+`flusher.lock` so a hook observes a live owner (§ 2.3) instead of forking a real flusher into
+the middle of an exact-count assertion. That is the product's own liveness mechanism, not a
+back door, and nothing in the reporter is disabled by it — but its *freshness* is judged with
+`now()`, which is whatever `FLEET_REPORTER_NOW_MS` says. A wall-clock freeze under a hook pinned
+two hours ahead therefore reads as a lock two hours dead, and § 4's aged-out drop leaked one
+real detached daemon per run that way. So the freeze is applied in `Seat.env()` — the one place
+that knows the invocation's clock — against that clock, which makes the lock 0 s old however the
+hook is pinned. **Do not "fix" a future recurrence by re-freezing more often on wall time:** that
+changes nothing for a pinned invocation, which is where the leak actually was. And the sweep
+stays regardless of the freeze, because prevention that fails is silent: a leaked daemon idles at
+0% CPU and nothing reports it. The sweep is the part that makes the next regression loud.
 
 **`redactSecrets` has two independent legs and both are guarded.** Known VALUES the process
 holds, and known SHAPES (`CRED_PREFIX_RE`). A shape list is permanently one credential format
