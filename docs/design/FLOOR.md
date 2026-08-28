@@ -599,7 +599,7 @@ is **rendered, not disappeared**:
 | Fact | Render |
 |---|---|
 | `render_state: "retired"` | the desk stays in its slot, cleared: no character, chair pushed in, the nameplate marked **retired** |
-| `retired.at` / `.by` / `.reason` | rendered on the desk's label line and in full in the drill-down: *retired 2026-08-20 09:11 by aimla-pm — host decommissioned* |
+| `retired.at` / `.by` / `.reason` | **two surfaces, two strings, and neither is the other abbreviated.** The **desk's label line** carries the one-line summary [§ 7.1](#71-the-render-per-state)'s `retired` row publishes — *retired 2026-08-20 by aimla-pm — host decommissioned*, the date **without a time**. The **drill-down** carries the full record — *retired 2026-08-20 09:11 by aimla-pm — host decommissioned* — with `retired.at` to the minute. That is [§ 4.2](#42-the-floor)'s standing split between what the floor shows and what approaching shows, applied to this plate. An earlier revision of this cell asserted **one** string for **both** surfaces, and the words *"and in full in"* are what made it self-refuting: a string that is *in full* on one surface is not the summary on the other, so the two sites published two strings for one line and each read as complete. **Neither string carries a clock-basis label, and that is derived rather than omitted** — [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares `retired.at` a **server**-clock value, and [§ 2.4](#24-the-clock-and-every-age-on-the-page) labels a **seat** clock precisely because it is another machine's claim; this page's own corrected clock needs none, exactly as [§ 7.1](#71-the-render-per-state)'s `stale` line carries *no data since 14:18* unlabelled |
 | `link_state` / `activity_state` underneath | still rendered in the drill-down, labelled *at retirement, and since* — D2 keeps deriving them and `retired` short-circuits only the **render** ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) |
 | the `seat.retired` message | the desk transitions immediately, with the reason and the time — the two its payload carries ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): `install_id`, `seat_id`, `reason`, `at`, and **no `by`**). The **operator** appears when the delta carrying `retired.by` lands, whichever of the two arrives first; both are idempotent ([§ 2.5](#25-what-re-renders-and-when), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained)) |
 | 14 days later | the seat leaves the snapshot by D2's read filter, and [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s last row removes the desk **on a *full* snapshot apply only**, with a log line |
@@ -805,7 +805,7 @@ one, so the two documents can be read side by side.
 | currency treatment — whether the pose may be read as *now* | `link_state` | `"live"` | never null ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 | the underlying activity, shown **under a label** when the desk is not `live` | `activity_state` | `"working"` | never null |
 | the *why we do not know* line | `unknown_reason` | `null` | non-null only when `activity_state == "unknown"`; then one of seven reasons, each with its own sentence ([§ 7.1](#71-the-render-per-state)) |
-| the rate-limit line on a `stalled` desk | `api_error_type` | `null` | non-null only when `activity_state == "stalled"`; rendered verbatim, e.g. *rate limit* |
+| the rate-limit line on a `stalled` desk | `api_error_type` | `null` | non-null only when `activity_state == "stalled"`; **rendered verbatim** — e.g. `rate_limit`, the wire's own member, and **never** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s phrase *rate limit* standing in for it, which is what this cell's own illustration did from this document's first revision onward, while the sentence around it said *verbatim*. [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes the composed line the phrase sits beside it in |
 | the monitor's content — what the seat is doing right now | `action.tool_name`, `action.descriptor` | `"Bash"`, `"Bash: composer test"` | `action` is null when no call is open: the monitor shows the desk's state line instead, never a stale last action |
 | the action's start, as the seat's claim | `action.started_at` | `"2026-08-23T14:23:09.882Z"` | rendered *seat clock*, never as an age ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) |
 | the action's elapsed time | `action.started_received_at` | `"2026-08-23T14:23:14.201Z"` | rendered ***running for 2m 05s***, the fourth of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four durations. It is the basis of the **only** honest elapsed time over an action, because both ends are the server clock; version-bearing, so it ticks |
@@ -1495,18 +1495,57 @@ is exactly the zero that rule refuses.
 `render_state` has **ten** members ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) and every one has a
 distinct render. The order below is the fixed order the lobby's per-floor summary uses.
 
+⭐ **The Label line column is a WORKED INSTANCE, never a rule — and this is the convention that
+settles it when a cell and a rule disagree.** Every cell below renders forms and fields that other
+sections own: [§ 2.4](#24-the-clock-and-every-age-on-the-page) for every age and every timestamp's
+clock basis, [§ 5.1](#51-the-desk) for which element draws which field,
+[§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) for the currency label a non-`live` desk
+carries, [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) for the
+composed error line, [§ 3.5](#35-retirement-and-the-only-removal) for the retirement plate. So
+**where a cell here and a rule statement there disagree, the rule statement governs and the cell is
+the defect, corrected to match.** A worked example is a *rendering* of a rule this table does not
+own, and an implementer who copies the example over the rule ships the one string nobody ratified —
+which is not hypothetical: `stalled`'s cell elided a value three rule statements and its own
+**Never** column require, and `retired`'s was correct while
+[§ 3.5](#35-retirement-and-the-only-removal), which restated it, had drifted. Both are corrected,
+each naming what it was corrected against.
+⛔ **Where two rule statements disagree with each other — rule against rule, not rule against
+example — neither this table nor its reader settles it.** That is an amendment to whichever section
+owns the fact, and it is raised rather than picked: picking makes one of two ratified statements
+silently dead, and the reader who follows the other one is left building against a rule this
+document still publishes.
+
+⚠ **Three cells are in that second case as this is written, and they are named rather than left for
+the implementer to discover** (card#7966's sweep of all ten cells against their governing
+statements; a clean column with an unnamed remainder would report where the sweep stopped rather
+than the state of the table). **`blocked`** renders *since 14:31* from **no field at all** — no
+[§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) row carries it and
+[D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object declares no such timestamp, the open
+attention request being in `detail`, which is the drill-down's source and not the desk's — so it
+stands against [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field)'s own rule that a
+rendered fact with no field is a fact the client invented. **`working`** renders the action's
+descriptor, which [§ 5.1](#51-the-desk) assigns to the **monitor** — and that row's own null case
+sends the monitor to *"the desk's state line"*, which is either this column or a second element
+this document never names; either way this cell states nothing at all for the seat A4 describes, a
+turn open with no call, where the descriptor it names does not exist. **`catching_up`** carries a labelled
+seat-clock timestamp in a second wording of the one
+[§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) fixes for it. All
+three turn on one question this document does not answer — whether
+[§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s currency label and this column are one
+rendered element or two — which is why they are raised and not picked.
+
 | `render_state` | Desk | Label line | Animation | Never |
 |---|---|---|---|---|
 | `working` | character at the keyboard | the action's descriptor | A3, or A4 when the turn is open with no call | rendered without its currency treatment when the seat is not `live` |
 | `idle` | **character present, slumped asleep on the desk**, monitor dimmed | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 | rendered as absent, and **never as an empty desk** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)). Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | `blocked` | raised hand, marker above the desk | *waiting on a human since 14:31 (seat clock)* | A7 | shown as working, whatever `open_calls` says ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function): `blocked` outranks `working`) |
-| `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
+| `stalled` | head in hands | *API error — rate_limit (rate limit)* — a **worked instance** of the composed line [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes, which is where its order and its separators are stated; the raw wire value is on the line and § 7.6's phrase is beside it | A8 | folded into `unknown`; `api_error_type` is always on the line — **which the Label line cell beside this one denied from this document's first revision onward**, publishing the phrase with the raw value elided. One row contradicting itself is the cheapest proof available, and [§ 5.4](#54-what-is-never-rendered), [§ 5.1](#51-the-desk) and § 7.6's own column heading all say the same thing louder |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
 | `catching_up` | character present, replay marker, desaturated | *replaying history — last event 12:47 (seat clock)* — a labelled seat-clock **timestamp**, because the only quantity that would make it a duration is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
 | `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 11m* — **the worked label line for this state**, derived from [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** marker rather than restating it, read at a corrected clock of **14:29**: the timestamp is the version-bearing `delivery.no_data_since` and the ticking age is `delivery.last_receipt_at`. The age is inside this state's own window and not merely large — [D2 § 4.5](FLEET-STATE.md#45-link-states) puts `stale` past 300 s and `offline` past 900 s, so a worked 41m here would have been an `offline` seat wearing the `stale` row's label | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
 | `offline` | empty chair, desk dark | *no data since 12:23 — no data for 2h 06m* — the same worked pair for this state, at the same **14:29** so the two rows describe one moment rather than two, silent past 900 s (**`dark-only`** for the age, [§ 2.4](#24-the-clock-and-every-age-on-the-page)). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none (A2 played on the way in) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) |
-| `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
+| `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* — the desk's **one-line summary**, the date **without a time**. The drill-down carries the full record instead, with `retired.at` to the minute, and [§ 3.5](#35-retirement-and-the-only-removal) publishes the two side by side so that neither site reads as complete on its own | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
 
 **The seven `unknown_reason` members, each with its sentence** — one glyph, seven explanations, exactly
 as [D2 § 4.3](FLEET-STATE.md#43-the-derivation-function) intends ("the *rendering* is one glyph… the
@@ -1754,6 +1793,29 @@ The last two rows are one distinction and it is worth the two lines: *the harnes
 went wrong* and *the reporter has never heard of what the harness said* are different facts about
 different components, and D1 minted a twelfth member precisely so a consumer would not have to collapse
 them.
+
+⭐ **The composed line, published here ONCE, because the order and the separators were the half that
+was never written down anywhere.** The table above fixes the *phrase*; [§ 5.1](#51-the-desk) and
+[§ 5.4](#54-what-is-never-rendered) fix that the *raw value* is on the line; **how the two are put
+together was published by no site at all**, which is what let a second reading be minted in a worked
+example. On a `stalled` desk the line reads:
+
+**API error — *the raw value* (*the phrase*)** — the raw value first and verbatim, then the phrase
+from the table above in parentheses. A value in **no** row above takes **(unrecognised)** in place of
+the phrase and keeps its raw string exactly as [§ 5.4](#54-what-is-never-rendered) requires; and where
+`api_error_type` is null the line reads **API error** alone — the error text
+[§ 5.6](#56-the-null-render-for-every-nullable-member) says is not drawn, on a desk that keeps its
+pose and its label without one.
+
+[§ 7.1](#71-the-render-per-state)'s `stalled` cell is a **worked instance** of that form and not a
+second statement of it — *API error — rate_limit (rate limit)*, this line with the table's first row
+substituted in. That cell published *API error — rate limit* from this document's first revision until card#7966: the phrase with the
+raw value **elided**, contradicting the sentence above this table, this table's own column heading,
+[§ 5.4](#54-what-is-never-rendered), [§ 5.1](#51-the-desk) and its own **Never** column, all at once.
+Nothing could difference the two sites while the composition lived at neither, which is why it is
+stated here rather than corrected there alone; `tools/design/verify-floor.py` G11 now holds the
+instance against this table, and `tools/design/floor-preview.selftest.mjs` compares the artifact's
+rendered line to that cell literally rather than exempting it.
 
 ---
 
@@ -3205,6 +3267,7 @@ belongs in its own round.
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one — **per member, not per row**: each member must carry a marker **legal for that member**, where `dark-only` is granted to `delivery.last_receipt_at` alone (re-derived from § 6.5's own carve-out sentence, not written into the tool) and `fetch-fresh` governs the rest; a row carrying `dark-only` must source that member; and a row of a table that renders on the **desk** — [§ 5.1](#51-the-desk) and [§ 7.1](#71-the-render-per-state), the two the column map flags as desk surfaces — must carry `dark-only` specifically for it, because on the desk that is the marker in force. The row-scoped test this replaces could be satisfied by a marker belonging to a **different surface** — § 5.1's receipt-age row survived deleting `dark-only` because the same row mentions `fetch-fresh` for the drill-down. Also: this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk. **And the rule's own statement of its scope is closed against the gate, both directions:** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s marker-rule sentence enumerates the tables the rule holds over, which is a second home for this gate's column map and is the home that went false twice — five tables named while § 5.6 sat outside the gate, seven named while § 7.1 rendered the receipt age on the desk. Neither side is stored: the map is the tool's, the list is read out of the document. **The table population is DERIVED, not listed:** every markdown table in this document is found structurally, a table under a § 5 heading that the gate has no source column for **reds** rather than being skipped, and membership in that population is keyed on a row's **line number** rather than on its text, so a row byte-identical to a checked one cannot be pasted into an unchecked table and test as already-checked. A table row anywhere else naming one of the ten **reds** unless it declares itself **`named-not-rendered`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) — a marker in such a row exempts nothing, and the only two rows entitled to carry one without rendering are found by **role**: the marker table's own rows, whose key cell *is* the marker, and this table's rows, found by this table's header | **tool-checked**, with **one** stated limit: **prose**. The gate held a list of five table headers until § 5.6 was added with six ten-sourcing rows and no marker — the list did not contain it, nothing reddened, and § 2.4 went on claiming the rule held over every § 5 row. A stored population does not fail visibly; it under-reads. Both halves of that are now inverted — the population is re-derived every run and the rows that used to be *announced* as outside it are **failures** unless the document declares them — and the second finding of the same shape, § 7.1's two desk renders of the receipt age, is why the outside-the-map rule no longer accepts a bare marker token: a token-presence test admits a row naming the marker for a surface it does not render on. What remains outside is a bookkeeping member reintroduced in **prose**, and every prose mention is printed **in full**, leaf spellings included. Not a capped sample: the residue printer used to print the first twelve of nineteen beside the true count, which reads as a complete list and is how the seven it hid stayed hidden |
 | **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 36 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
+| **G11 the composed `api_error_type` line** | [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s twelve member/phrase pairs, re-derived from that table, against the two sites that render one: [§ 7.1](#71-the-render-per-state)'s `stalled` **worked instance**, which must carry a member **verbatim** with that member's phrase **beside** it, and [§ 5.1](#51-the-desk)'s *rendered verbatim* row, whose illustration must be a **member** and never one of the phrases. **The class is a worked example contradicting the rule statement that governs it** ([§ 7.1](#71-the-render-per-state)'s stated convention), and this is the instance that shipped: the cell published *API error — rate limit* — the phrase with the raw value elided — against five statements including its own **Never** column, and nothing could difference the two sites because the **composition** was published at neither. Both predicates are **fed their own defect on every run** and must reject it, because a comparison only ever shown agreeing is not evidence it can disagree | **tool-checked**, with a stated limit: it holds the composition at the **two sites that render it**, and cannot see a third minted in prose |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every animation has an event, never that the floor is legible |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 

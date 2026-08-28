@@ -395,19 +395,19 @@ const STRANGERS = ['pondering', 'thinking', 'constructor', '__proto__', 'toStrin
 // § 7.1's Label line column, per member, as the literal string the desk owes.
 const DOC_LABEL = {};
 for (const row of DOC_STATE_ROWS) DOC_LABEL[row.member] = publishedLine(row.cells[2]);
-// The three members for which § 7.1 publishes PROSE rather than a literal, each with the reason
-// it is exempt. An unlisted member whose column parses to nothing is a FAILURE above, never a
-// silent skip — that is how this exemption stays three members wide instead of growing quietly.
+// The TWO members for which § 7.1 publishes PROSE rather than a literal, each with the reason it
+// is exempt. An unlisted member whose column parses to nothing is a FAILURE above, never a silent
+// skip — that is how this exemption stays two members wide instead of growing quietly.
+// ⭐ `stalled` was a THIRD entry and is one no longer, and the difference is a card#7966 D3
+// amendment rather than a decision taken here: § 7.1's cell read *API error — rate limit* — § 7.6's
+// phrase with the RAW VALUE ELIDED — which no rule statement admitted, so the literal could not be
+// compared and the properties both readings agree on were asserted instead. D3 now publishes the
+// COMPOSED line once, at § 7.6, and § 7.1's cell is a worked instance of it, so the literal is
+// comparable and is compared. An exemption outliving the contradiction that justified it is a
+// permanently weakened check wearing a stale reason, which is why removing it was part of that fix.
 const LABEL_NOT_COMPARABLE = {
   working: '"the action\'s descriptor" — the line is a wire field, not a fixed string',
   unknown: '"one sentence per `unknown_reason` (below)" — the literals are that table\'s, checked in § 1',
-  // ⚠ § 7.1's cell for `stalled` reads *API error — rate limit*: the § 7.6 phrase with the RAW
-  // VALUE ELIDED. That contradicts § 5.4 ("the line carries the raw string either way"), § 7.6's
-  // column heading ("The line beside the raw value") and § 5.1 ("rendered verbatim"). The
-  // artifact follows the two rule statements and the heading; the literal is therefore NOT
-  // comparable, and the properties both readings agree on are asserted instead, below. The
-  // tension is reported to D3's owner rather than settled here.
-  stalled: '§ 7.1\'s example elides the raw value that § 5.4, § 5.1 and § 7.6 all require — reported to D3, asserted by property',
 };
 
 const KNOWN_CHIPS = P.STATE_RENDER ? Object.values(P.STATE_RENDER).map((r) => r.chip) : [];
@@ -505,14 +505,14 @@ function sweep(source, report) {
       }
     }
     say(!r.markers.some((k) => k.glyph === 'undefined'), `${member}: no marker reads "undefined"`);
-    if (member === 'stalled') {
-      // The two properties § 7.1's abbreviated example and D3's rule statements BOTH agree on.
-      say(r.label.includes(extra.api_error_type),
-        `stalled: the line carries the raw \`api_error_type\` verbatim (§ 5.1, § 5.4) — got ${JSON.stringify(r.label)}`);
-      const phrase = P.API_ERROR_TYPES ? P.API_ERROR_TYPES[extra.api_error_type] : null;
-      say(!!phrase && r.label.includes(phrase),
-        `stalled: and § 7.6's phrase beside it — want ${JSON.stringify(phrase)} inside the line`);
-    }
+    // ⭐ `stalled` carried two extra PROPERTY assertions here — the raw value present, § 7.6's
+    // phrase present — and they existed only as the substitute for a literal comparison D3's own
+    // contradiction made impossible. D3 now publishes the composed line at § 7.6 and § 7.1's cell
+    // is a worked instance of it, so the comparison above holds the WHOLE line, which contains
+    // both properties and their order and separators as well (card#7966). Keeping them would be a
+    // weaker restatement of a check three lines up, still carrying the reason it was weaker.
+    // The other three branches of that composition are literals in EDGE_CASES: a second known
+    // member, a thirteenth value with § 5.4's marker, and a null.
     say(lobbyTotal(r.lobby) === aimlaSeats,
       `${member}: the lobby line counts every seat on the floor (${aimlaSeats}) — got ${lobbyTotal(r.lobby)}`);
     say(r.lobby !== null && r.lobby.includes(member), `${member}: the lobby names the member itself`);
@@ -611,6 +611,20 @@ if (control(hitsOf(SCRIPT, LABEL_ANCHOR), "§ 7.1's `idle` label cell reverted t
   const failedUnderBareAge = sweep(SCRIPT.replace(LABEL_ANCHOR, 'label:s=>"nothing done for "+s.quiet_for'), false);
   check(failedUnderBareAge.some((f) => f.startsWith('idle:') && f.includes('verbatim')),
     `the sweep goes RED when a label cell stops being § 7.1's line — e.g. ${JSON.stringify(failedUnderBareAge.find((f) => f.includes('verbatim')) || null)}`);
+}
+// ⭐ AND ITS OWN CONTROL FOR `stalled`, which joined that comparison in card#7966 and had until
+// then been EXEMPT from it. The exemption's own justification — "the literal is not comparable" —
+// is exactly the shape that outlives its reason, so the member's first run inside the comparison
+// is the one that owes proof the comparison can fail ON IT. The mutation re-mints the pre-fix
+// defect from the artifact's own composition rather than from a string typed here: the phrase
+// substituted for the raw value, which is precisely what § 7.1 published from its first revision on.
+const STALLED_ANCHOR = 'return "API error — "+String(t)\n'
+  + '    +(isMember("api_error_type",t)?" ("+API_ERROR_TYPES[t]+")":" (unrecognised)");';
+if (control(hitsOf(SCRIPT, STALLED_ANCHOR), 'the composed `api_error_type` line § 7.6 publishes')) {
+  const failedUnderElision = sweep(SCRIPT.replace(STALLED_ANCHOR,
+    'return "API error — "+(isMember("api_error_type",t)?API_ERROR_TYPES[t]:String(t));'), false);
+  check(failedUnderElision.some((f) => f.startsWith('stalled:') && f.includes('verbatim')),
+    `the sweep goes RED when the line elides the raw value — e.g. ${JSON.stringify(failedUnderElision.find((f) => f.startsWith('stalled:') && f.includes('verbatim')) || null)}`);
 }
 // The two derivations that are pure comparison get their own discriminating controls, because a
 // comparison that has only ever been shown agreeing is not evidence that it can disagree.

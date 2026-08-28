@@ -483,11 +483,16 @@ function unknownReasonLine(r){
    marker beside the raw value. Reading the two rules as alternatives is what would make one of
    them dead." § 5.2's drill-down table has no `api_error_type` row at all, so this desk line is
    the field's ONLY surface and the membership test has nowhere else to live.
-   ⚠ § 7.1's Label line cell writes the example as *API error — rate limit* — the phrase with the
-   raw value ELIDED. That cannot be squared with "carries the raw string either way", with
-   § 7.6's column heading *The line beside the raw value*, or with § 5.1's *rendered verbatim*.
-   Two rule statements and a column heading outrank one abbreviated example, so the raw value is
-   rendered and the tension is reported to D3's owner rather than resolved here.
+   ⭐ THE COMPOSITION BELOW IS § 7.6'S, PUBLISHED THERE AND NOT INVENTED HERE. It used to be:
+   the order and the separators of <raw value> + <phrase | unrecognised> were stated by no site in
+   D3 at all, so this file composed them and § 7.1's Label line cell composed them differently —
+   *API error — rate limit*, the phrase with the raw value ELIDED, which could not be squared with
+   "carries the raw string either way", with § 7.6's column heading *The line beside the raw
+   value*, or with § 5.1's *rendered verbatim*. That tension was reported up rather than resolved
+   here, and card#7966 resolved it at D3: § 7.6 now publishes the composed line ONCE and § 7.1's
+   cell is a worked instance of it. So this function renders D3's published form, and
+   floor-preview.selftest.mjs compares the whole line to § 7.1's cell literally — the exemption
+   that stood in for that comparison is gone with the contradiction that justified it.
    § 5.6: a null draws no error text — the desk keeps its pose and its label without one. */
 function apiErrorLine(t){
   if(t===null||t===undefined)return "API error";

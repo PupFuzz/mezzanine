@@ -10,6 +10,61 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7966** — **D3's § 7.1 Label line column published strings that its own rule statements
+  forbid, and the reason no gate could say so is that the COMPOSITION of those strings was published
+  nowhere.** Two known instances, one root cause, and a sweep of all ten cells that found three more.
+  ⭐ **The root-cause fix is a stated convention, not the two corrected strings**: § 7.1 now declares
+  that its Label line column is a **worked instance and never a rule**, so where a cell and a rule
+  statement disagree the **rule governs and the cell is the defect** — which disposes of instance N+1
+  without a round trip — and that where two **rule statements** disagree neither the table nor its
+  reader settles it, because picking makes one of two ratified statements silently dead.
+  **`stalled`** read *API error — rate limit*: § 7.6's **phrase** with the raw wire value **elided**,
+  against § 7.6's own column heading *The line beside the raw value*, § 5.4's *"the line carries the
+  raw string either way"*, § 5.1's *rendered verbatim* and **the same row's own `Never` column**
+  (*"`api_error_type` is always on the line"*) — one row contradicting itself, and five statements
+  outranking one example. ⛔ **Correcting the string was half of it**: the order and separators of
+  raw value + phrase were stated by **no site in D3 at all**, which is exactly what let a second
+  reading be minted, so **§ 7.6 now publishes the composed line once** — *API error — the raw value
+  (the phrase)*, **(unrecognised)** in place of the phrase for a thirteenth value, **API error**
+  alone for a null — and § 7.1's cell is a worked instance pointing there rather than a second copy.
+  **`retired`** was the mirror image: § 3.5 asserted **one** string for **both** surfaces, in the
+  words *"rendered on the desk's label line **and in full in** the drill-down"* — self-refuting,
+  because a string that is *in full* on one surface is not the summary on the other. § 7.1's shorter
+  string stands; § 3.5 now states **two strings for two surfaces**, each site naming the other, and
+  answers the clock-basis question at source rather than by invention: `retired.at` is a **server**
+  clock (D2 § 8.2.1), and D3 labels a **seat** clock precisely because it is another machine's claim,
+  so neither string takes a label — exactly as the `stale` desk's *no data since 14:18* carries none.
+  **A third site was corrected on the same reading:** § 5.1's `api_error_type` row said the value is
+  *rendered verbatim* and then illustrated it with *rate limit* — § 7.6's **phrase**, where the raw
+  value is `rate_limit` — so the site stating the rule was showing the reader the value the rule
+  forbids.
+  ⭐ **The class now has a gate that did not exist: `verify-floor.py` G11**, an eleventh guard class
+  holding a **worked example against the rule statement governing it**. § 7.6's twelve member/phrase
+  pairs are re-derived from that table on every run and both rendering sites are held against them;
+  nothing is stored, and each predicate is **fed its own defect on every run** and must reject it.
+  Seen to fail three ways before being trusted, each on its own message and each restored: § 7.1's
+  cell reverted to the pre-fix string, § 5.1's illustration reverted to the phrase, and § 7.6's
+  phrase drifted with § 7.1 left untouched — the third proving the guard catches drift from **either**
+  end, which is why its message now names both sides instead of blaming § 7.1.
+  ⚠ **The downstream carve-outs went with it, because an exemption outliving its reason is a
+  permanently weakened check wearing a stale justification**: `stalled` is no longer in
+  `floor-preview.selftest.mjs`'s `LABEL_NOT_COMPARABLE` (three members, now two), its literal is
+  compared to § 7.1's cell like every other member's, and a new planted control re-mints the pre-fix
+  elision **from the artifact's own composition** and requires the comparison to go red on it — it
+  does, with *want "API error — rate_limit (rate limit)", got "API error — rate limit"*. The two
+  property-based assertions that stood in for that comparison are gone as the weaker restatement they
+  became, and the artifact's comment recording the tension now records its resolution.
+  ⛔ **The sweep's remainder is NAMED IN THE DOCUMENT rather than left for whoever builds the floor**,
+  because a clean column with an unnamed remainder reports where the searcher stopped: **`blocked`**
+  renders *since 14:31* from **no field at all** — no § 5 row carries it and D2 § 8.2.1 declares no
+  such timestamp, the open attention request living in `detail`, which is the drill-down's source and
+  not the desk's — against § 5's own rule that a rendered fact with no field is a fact the client
+  invented; **`working`** renders a descriptor § 5.1 assigns to the monitor, and states nothing for
+  the A4 seat whose turn is open with no call, where that descriptor does not exist; and
+  **`catching_up`** carries a second wording of the labelled seat-clock timestamp § 7.6 fixes once.
+  All three turn on one question D3 does not answer — whether § 7.3's currency label and § 7.1's
+  Label line are one rendered element or two — which is **rule against rule**, so the new convention
+  reserves it rather than letting this change pick it.
 - **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
   was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
   observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —

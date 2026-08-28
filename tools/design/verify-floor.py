@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D3 verification gate: docs/design/FLOOR.md.
 
-TEN guard classes, G1-G10, one per defect class this document can carry that a reader will not
+ELEVEN guard classes, G1-G11, one per defect class this document can carry that a reader will not
 reliably catch.  Every population below is RE-DERIVED on each run -- from this document's own
 tables, or from docs/design/FLEET-STATE.md (D2) and docs/design/EVENT-SCHEMA.md (D1) -- and never
 from a list stored here.  A number or a member list written into a checker is one free to disagree
@@ -30,6 +30,11 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G10 null-render closure, both directions      a member D2 section 8.2.1 marks `Null? yes` with no
                                                stated null render, or a null render for a member D2
                                                does not mark nullable
+  G11 the composed `api_error_type` line        a WORKED EXAMPLE that contradicts the rule statement
+                                               governing it: section 7.1's `stalled` cell against
+                                               section 7.6's member/phrase table, and section 5.1's
+                                               *rendered verbatim* illustration against the MEMBERS
+                                               rather than the phrases
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -1627,6 +1632,130 @@ elif d2_nullable and int(m.group(1)) != len(d2_nullable):
     fail.append(f"G10: section 12 states {m.group(1)} nullable members and D2 § 8.2.1 marks "
                 f"{len(d2_nullable)} — and `fx-nulls`' two-seat split is sized from that number")
 
+# ---- G11. the composed `api_error_type` line: section 7.6's form vs its worked instances ----
+# Section 7.1's `stalled` Label line cell is a WORKED INSTANCE of a line section 7.6 owns, and from
+# this document's first revision until card#7966 it was a second, shorter READING of it:
+# *API error - rate limit*, section 7.6's
+# PHRASE with the raw value ELIDED, against that table's own column heading ("The line beside the raw
+# value"), against section 5.4 ("the line carries the raw string either way"), against section 5.1
+# ("rendered verbatim") and against the same row's own `Never` column ("`api_error_type` is always on
+# the line").  Five statements, one row contradicting itself, and nothing red -- because the two sites
+# could not be DIFFERENCED: the composition itself, the order and the separators of <raw value> and
+# <phrase>, was published at neither, so each site was free to guess and neither was wrong against
+# anything.  Section 7.6 now publishes it once; this holds the instances against that table.
+#
+# Both populations are read out of the document.  Nothing below stores a member, a phrase or a string.
+def leading_italic(cell):
+    """The published render at the head of a cell: D3 writes it as the LEADING ITALIC SPAN, with the
+    reasoning in prose after it.  Backticks inside are markdown, never part of the rendered text."""
+    m = re.match(r"\s*\*([^*][^*]*)\*", cell or "")
+    return m.group(1).replace("`", "") if m else None
+
+
+AET_PAIRS = {}
+for _r in table_rows(raw, r"^\| `api_error_type` \| The line beside the raw value \|") or []:
+    _c = cells(_r)
+    if len(_c) >= 2:
+        _m = re.match(r"^`([a-z_]+)`$", _c[0])
+        _p = leading_italic(_c[1])
+        if _m and _p:
+            AET_PAIRS[_m.group(1)] = _p
+if len(AET_PAIRS) != 12:
+    fail.append(f"G11 CONTROL: {len(AET_PAIRS)} member/phrase pairs parsed out of section 7.6's "
+                f"`api_error_type` table, not the twelve it publishes — every comparison below would "
+                f"be run against a population that was never read, and an empty one passes silently")
+
+
+def composed_of(line, pairs):
+    """The member whose composition `line` is, or None.  The test IS the two rules: the raw value on
+    the line VERBATIM, and its phrase AFTER it.  Deliberately not a regex over a stored template --
+    a template written here is a third home for the composition, and the defect this closes is
+    exactly a second one."""
+    for member, phrase in pairs.items():
+        i = line.find(member)
+        if i < 0:
+            continue
+        if line.find(phrase, i + len(member)) > i:
+            return member
+    return None
+
+
+# THE CAPABILITY TEST, run every time rather than asserted once, and BOTH WAYS -- a predicate that
+# rejected everything would pass a rejection-only control while making the real check below fire for
+# a reason that has nothing to do with the document.  Fed (a) the exact shape section 7.1 published
+# from this document's first revision on, the phrase alone with the raw value elided, which it must
+# REJECT, and (b) a line it composes itself from the same table, which it must ACCEPT as that member.
+if AET_PAIRS:
+    _k = sorted(AET_PAIRS)[0]
+    _defect = "API error — " + AET_PAIRS[_k]
+    if composed_of(_defect, AET_PAIRS) is not None:
+        fail.append(f"G11 CONTROL: the composed-line test ACCEPTS {_defect!r} — section 7.6's phrase "
+                    f"with the raw value elided, which is the defect this class exists to catch. A "
+                    f"check that admits its own defect is a decoration")
+    _good = f"API error — {_k} ({AET_PAIRS[_k]})"
+    if composed_of(_good, AET_PAIRS) != _k:
+        fail.append(f"G11 CONTROL: the composed-line test REJECTS {_good!r}, which it composed out of "
+                    f"section 7.6's own row for `{_k}`. It is refusing everything, so its verdict on "
+                    f"section 7.1's cell below carries no information either way")
+
+_stalled_cell = None
+for _r in state_rows:
+    _c = cells(_r)
+    if _c and _c[0] == "`stalled`" and len(_c) >= 3:
+        _stalled_cell = _c[2]
+if _stalled_cell is None:
+    fail.append("G11 CONTROL: section 7.1's `stalled` row did not parse, so the one worked instance "
+                "of section 7.6's composed line was never read and this class would be clean over "
+                "nothing")
+else:
+    _line = leading_italic(_stalled_cell)
+    if _line is None:
+        fail.append("G11 CONTROL: section 7.1's `stalled` Label line cell publishes no leading "
+                    "italic span, so there is no rendered string to compare — the cell may have "
+                    "become prose, which is a change this class must not pass in silence")
+    elif AET_PAIRS and composed_of(_line, AET_PAIRS) is None:
+        fail.append(
+            f"G11: section 7.1's `stalled` Label line reads {_line!r} and that is not section 7.6's "
+            f"composed line for any of its twelve members — the raw wire value must be ON the line, "
+            f"verbatim, with that member's phrase BESIDE it. EITHER SITE may be the one that moved, "
+            f"and this gate cannot tell you which: the cell may have dropped the raw value (the "
+            f"defect card#7966 fixed, against section 7.6's column heading, section 5.4, section 5.1 "
+            f"and this row's own `Never` column), or section 7.6's phrase for that member may have "
+            f"been rewritten without the instance following it. Read both before editing either")
+
+# The same defect one section over, and it is where it was ILLUSTRATED rather than composed: section
+# 5.1's row says `api_error_type` is *rendered verbatim* and then showed the reader section 7.6's
+# PHRASE as the example of verbatimness.  An illustration that contradicts the rule it illustrates is
+# read as the rule, because it is the concrete half.
+_sec51 = section_text("51-the-desk") or ""
+_m51 = re.search(r"^\|[^|]*\|\s*`api_error_type`\s*\|.*$", _sec51, re.M)
+if not _m51:
+    fail.append("G11 CONTROL: section 5.1's `api_error_type` render row did not parse — the rule "
+                "whose illustration went false has no readable home here")
+else:
+    _c51 = cells(_m51.group(0))
+    _rule51 = _c51[3] if len(_c51) >= 4 else ""
+    _eg = re.search(r"verbatim\*{0,2}\s*—?\s*e\.g\.\s*(`[a-z_]+`|\*[^*]+\*)", _rule51)
+    if not _eg:
+        fail.append("G11 CONTROL: section 5.1's `api_error_type` row no longer illustrates *rendered "
+                    "verbatim* with an example at all. The illustration is the half that went false, "
+                    "so losing it silently would take this check with it")
+    elif AET_PAIRS and _eg.group(1).strip("`*") not in AET_PAIRS:
+        fail.append(
+            f"G11: section 5.1 says `api_error_type` is *rendered verbatim* and illustrates it with "
+            f"{_eg.group(1)}, which is not one of the twelve MEMBERS section 7.6 publishes. If it is "
+            f"one of that table's phrases, the site stating the rule is showing the reader the value "
+            f"the rule forbids — which is what it did from this document's first revision on")
+# ...and the precondition that leg's discrimination rests on, checked rather than assumed: the test
+# is membership in the KEYS, so it can only tell a member from a phrase while the two vocabularies
+# are disjoint.  A table row whose phrase equalled a member name would make it pass on the very
+# substitution it exists to catch, silently.
+_collide = sorted(p for p in AET_PAIRS.values() if p in AET_PAIRS)
+if _collide:
+    fail.append(f"G11 CONTROL: section 7.6 publishes {_collide[0]!r} as both a PHRASE and a member "
+                f"KEY, so the verbatim test above cannot tell the two apart on that row and would "
+                f"pass on the phrase — the exact substitution it exists to catch")
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -1672,6 +1801,10 @@ print(f"G7  render closure, both directions: {len(state_rendered)}/{len(render_m
       f"{len(link_rendered)}/{len(link_m)} link_state, {len(act_rendered)}/{len(act_m)} "
       f"activity_state, {len(aet_rendered)}/{len(aet_m)} api_error_type (the last from D1 § 6.4)")
 print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair")
+print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
+      f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
+      f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "
+      f"rejected it")
 print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nullable, "
       f"{len(null_rendered)} given a null render by section 5.6, "
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")
