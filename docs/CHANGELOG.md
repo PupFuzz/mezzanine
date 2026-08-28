@@ -10,6 +10,64 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
+  was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
+  observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —
+  legitimate precisely because it uses the product's own liveness rule and disables nothing. But
+  that rule is `now() - lock.mtimeMs < LOCK_STALE_MS`, `now()` is whatever `FLEET_REPORTER_NOW_MS`
+  says, and the freeze used **wall time**. So the one hook the spool-overflow entry directly below
+  this one pinned **two hours ahead**
+  (§ 4's aged-out drop, `of_at + 2 h`) read a just-written lock as two hours dead, concluded
+  correctly by § 2.3 that no flusher was alive, and forked a real detached one with no exit
+  condition — **within 35 s of the run starting, not after the 90 s expiry the card described.**
+  Measured at `cbc2a6a`: a full 163 s run took the box from 12 live daemons to 13, and the one it
+  added carried `FLEET_REPORTER_CONFIG=…/overflow-aged/config.json` with
+  `FLEET_REPORTER_NOW_MS` 54 minutes ahead of wall time.
+  ⚠ **Two corrections to the filed report, both measured rather than argued.** *(1)* The 90 s
+  expiry is real but **latent**: no seat here is driven late enough on a real clock to age out of
+  its own freeze, and a run in which it fired would have leaked more than the single daemon
+  observed. *(2)* The dozen daemons accumulated on the reporting workstation were **not this
+  suite's** — their configs are `/tmp/tmp.*`, `/tmp/mezzanine-roundtrip-*`, `/tmp/rtprobe-*` and
+  two scratchpad paths, while every seat here lives under a per-run `/tmp/fr-suite-*`. They came
+  from ad-hoc probe rigs, which is a separate leak with a separate owner.
+  ⛔ **So the obvious fix — re-freeze before every hook — was rejected on evidence rather than on
+  the docstring's disclaimer**: re-freezing on wall time leaves a pinned invocation exactly as
+  stale, and would have fixed none of the leak that was actually happening.
+  **The freeze is instead pinned to the clock the invocation will read**, in `Seat.env()` — the
+  one place that both decides `FLEET_REPORTER_NOW_MS` and is reached by every invocation,
+  including the AT-10 and AT-16 writer bursts that build their hooks in generated source and never
+  call `hook()`. The lock is then 0 s old under whatever clock that hook uses, which is the state
+  the freeze always modelled and never achieved when pinned; `flush()` opts out
+  (`env(freeze=False)`) because it *is* the flusher and must find no lock.
+  ⚠ **Reached by every invocation, but re-applied per `env()` CALL — and those two coincide
+  everywhere except the writer bursts.** AT-10 and AT-16 call `env()` once per worker `Popen` and
+  the worker then drives 40 (resp. 15) hooks off that one freeze, so for those two paths the
+  window is **narrowed, not closed**, and the "0 s old" property does not extend to their hooks
+  2..N. Measured under the bursts' own concurrency rather than extrapolated from the idle p99:
+  the lock's age at the last hook is **22.6 s** (AT-10) and **6.5 s** (AT-16) against
+  `LOCK_STALE_MS` 90 s — a **4x** margin, and AT-10 would have to grow ~4x, to ~159 hooks per
+  worker, before a hook in it read its own lock as stale. Left open deliberately: closing it
+  requires a second freeze implementation inside generated worker source which could only
+  re-stamp the lock on *wall* time — the exact defect fixed above — and would be silently wrong
+  the day a burst is given a pinned clock. § 17 is the guard, and it fails loudly.
+  ⭐ **The freeze is prevention, and prevention that fails is silent — so the run now also
+  MEASURES.** A new § 17 sweeps `/proc` for flusher daemons whose config lies under this run's own
+  temp directory, **fails** the suite naming each one, then reaps them; scoping identity to the
+  run's `mkdtemp` is what makes reaping safe beside another checkout's daemons or a concurrent run
+  of this same file. **A control daemon is planted first** — a wall-clock freeze plus a hook pinned
+  two hours ahead, the defect verbatim — and the sweep must find it and then see it gone, because a
+  sweep that passes by finding nothing is worth nothing until it has found something. Where
+  `/proc` cannot be read the sweep prints `SKIP` and is reprinted as *not measured*, never as a
+  pass. Shown to discriminate: with the clock-correct freeze reverted the run reds four checks and
+  names both leaked daemons by config path.
+  **CI was not accumulating these.** All six workflows are GitHub-hosted `ubuntu-latest`, whose
+  per-job VM is discarded, so nothing carries across runs — this was workstation hygiene. One
+  in-job consequence was real, though: `fleet-reporter.yml` runs the suite twice in one job and the
+  second step is the latency gate, whose own comment has it running "on an otherwise-idle job". A
+  daemon leaked by the first step was alive throughout the second, so that premise did not hold;
+  the end-of-run sweep restores it. ⚠ **No claim is made that these daemons affected any
+  measurement** — they idle at 0% CPU and their contribution has never been measured.
+
 - **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
   on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**
   `… and drops nothing while deferring`
