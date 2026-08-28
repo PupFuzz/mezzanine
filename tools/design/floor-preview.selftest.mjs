@@ -30,11 +30,27 @@
 //      the null/absent edges § 7.1 and § 5.6 state, through the sibling membership sets on
 //      `unknown_reason` and `api_error_type`, and through eight values that are NOT members at
 //      all. The DOM the artifact produces is read back each time.
+//   4. THE SCOPE DECLARATION (§ 5, § 6). The artifact implements PART of D3 deliberately, so it
+//      declares WHICH part, per render surface, in one machine-readable table — and that
+//      declaration is checked rather than believed: § 5.4's six membership-tested surfaces are
+//      re-derived from the document (twice over, plus its own count in words) and
+//      set-differenced against the table BOTH WAYS. A surface D3 gains with no row reds; a row
+//      for a surface D3 does not publish reds. Absent-because-out-of-scope and absent-because-
+//      missed are what card#7341's implementer cannot otherwise tell apart.
+//   5. THE TWO IDENTITY-KEYED LOOKUPS (§ 7) and § 5.6's INTERN NULLS (§ 8). A seat's `desk`
+//      against the floor map's slots, and an install against the client's theme map, are keyed
+//      on identity and not on a member set, so layer 1's primitive does not reach them; § 3.2's
+//      overflow rule and § 9 F13 say what both owe — a labelled overflow row, a notice reading
+//      *floor map is short N desks*, and never a dropped seat. § 8 holds the intern label's two
+//      nulls apart: a null `subagent_type` draws NO tag, a null `title` draws *untitled*.
 //
-// EVERY CHECK HERE CAN FAIL, AND § 4 PROVES IT rather than asserting it. Five mutations: the
-// pre-fix lookup shape, the lobby's silent filter, a rewritten `unknown_reason` sentence, a
-// rewritten `api_error_type` phrase, and a label cell reverted to its pre-fix wording. Each is
-// anchored, the anchor count is asserted, and the relevant layer is REQUIRED to go red. The two
+// EVERY CHECK HERE CAN FAIL, AND THE CONTROLS PROVE IT rather than asserting it. TWELVE anchored
+// mutations: the pre-fix lookup shape, the lobby's silent filter, a rewritten `unknown_reason`
+// sentence, a rewritten `api_error_type` phrase, a label cell reverted to its pre-fix wording, a
+// D3 that grew a SEVENTH render surface, a scope row for a surface D3 does not publish, the
+// unguarded desk lookup, an overflow row drawn with its label and no desk in it, the unguarded
+// theme lookup, and each of the intern label's two nulls collapsed into the other's rule. Each is
+// anchored, the anchor count is asserted, and the relevant layer is REQUIRED to go red. The
 // derivations that are pure comparison get their own discriminating controls.
 //
 // ⚠ WHAT THIS IS NOT EVIDENCE ABOUT. There is no browser here and no HTML parser: the DOM below
@@ -85,7 +101,7 @@ const PROBE_NAMES = [
   'STATE_RENDER', 'UNRECOGNISED_RENDER', 'RENDER_STATES', 'UNKNOWN_REASONS', 'API_ERROR_TYPES',
   'MEMBER_SETS', 'isMember', 'unheardFields', 'isCurrent', 'apiErrorLine',
   'isRenderState', 'renderFor', 'chipText', 'poseOf', 'hasCharacter', 'labelFor',
-  'render', 'FLEET', 'FLOORS',
+  'render', 'FLEET', 'FLOORS', 'D3_SCOPE', 'placeFloor', 'themeFor', 'internLabel',
 ];
 const PROBE_EPILOGUE = `
 ;globalThis.__probe = {};
@@ -122,7 +138,7 @@ function makeDom() {
     closest() { return null; }
     setPointerCapture() { }
   }
-  for (const id of ['room', 'world', 'drill', 'floors', 'feeddot', 'feedstatus', 'zin', 'zout', 'zfit', 'zall']) {
+  for (const id of ['room', 'world', 'drill', 'floors', 'scope', 'feeddot', 'feedstatus', 'zin', 'zout', 'zfit', 'zall']) {
     const e = new El('div'); e.id = id; byId.set(id, e);
   }
   const document = {
@@ -538,6 +554,302 @@ check(!eq(DOC_STATES, ['working', 'idle', 'blocked', 'stale']),
   'the member-set comparison rejects the four-member set the defect shipped');
 check(/undefined/.test('<rect fill="undefined"/>') && !/undefined/.test('<rect fill="#8ce8b0"/>'),
   'the "undefined" detector fires on the exact string the pre-fix SCREENC lookup emitted, and not on a real colour');
+
+// ---------------------------------------------------------------------------------------------
+// 5. THE SCOPE DECLARATION, against D3's own set of render surfaces — in BOTH directions
+// ---------------------------------------------------------------------------------------------
+// The artifact implements PART of D3 on purpose: making it complete would make it a second full
+// implementation of D3's render surfaces — the floor built twice — and card#7341 a port of it
+// rather than the build. What that costs the reader is the thing this layer repairs: an absent
+// render surface is otherwise indistinguishable from one that was MISSED. The artifact declares
+// its scope per surface in `D3_SCOPE`, and the declaration is checked here rather than believed.
+//
+// ⭐ THE POPULATION IS NOT STORED HERE EITHER. § 5.4 states the membership rule over its own
+// surfaces TWICE — once as the rule ("a `render_state`, `link_state` … or badge the client does
+// not know") and once as the publication sentence naming where each set lives — and states their
+// COUNT in words. All three are re-derived below and cross-checked, so a parse that quietly
+// returned nothing cannot pass for agreement, and the scope table is set-differenced against the
+// result BOTH WAYS: a surface D3 publishes with no row reds, and a row for a surface D3 does not
+// publish reds. ⇒ D3 gaining a SEVENTH surface reds this gate instead of passing silently.
+section("5. the scope declaration, against § 5.4's own six render surfaces, both ways");
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+  'nine', 'ten', 'eleven', 'twelve'];
+/** D3's membership-tested render surfaces, read out of § 5.4. `null` when the anchors are gone —
+ *  which is a FAILURE below, never a silently empty comparison. */
+function docSurfaces(floorMd) {
+  const s54 = floorMd.slice(floorMd.indexOf('### 5.4 What is never rendered'),
+    floorMd.indexOf('### 5.5 The client'));
+  const RULE = '- **An unrecognised enum member guessed into a known one.**';
+  const PUB = '**"The client does not know" is a membership test';
+  const ruleAt = s54.indexOf(RULE), pubAt = s54.indexOf(PUB);
+  if (ruleAt < 0 || pubAt < 0 || pubAt < ruleAt) return null;
+  const end = s54.indexOf('\n  **', pubAt + 4);          // the next bold paragraph ends this one
+  const pubText = s54.slice(pubAt, end < 0 ? undefined : end);
+  // Link TARGETS are not prose: `#72-badges-every-member-has-a-render` would otherwise answer for
+  // the word `badges` that the sentence itself is supposed to carry.
+  const names = (t) => [...new Set([...t.replace(/\]\([^)]*\)/g, '')
+    .matchAll(/`([a-z_]+)`|\bbadges?\b/g)].map((m) => m[1] || 'badge'))];
+  // D3 backticks five of the six and writes the sixth as the English word `badge(s)` — in both
+  // enumerations and in § 7.2's own table header — so the word is read as the name it is.
+  const spelled = (pubText.match(/all (\w+)\s+sets are published here/) || [])[1];
+  return {
+    rule: names(s54.slice(ruleAt, pubAt)),
+    surfaces: names(pubText),
+    spelled: NUMBER_WORDS.indexOf(String(spelled)),
+  };
+}
+const STATUSES = ['implemented', 'partial', 'not implemented'];
+/** The derivation's own controls: an empty or half-parsed § 5.4 must be loud. */
+function checkDerivation(d, say) {
+  say(d !== null, "§ 5.4's two enumerations were both found — the population is D3's, not this file's");
+  if (!d) return;
+  say(d.surfaces.length > 0, `parsed ${d.surfaces.length} render surfaces from § 5.4: ${JSON.stringify(d.surfaces)}`);
+  say(eq(d.rule.slice().sort(), d.surfaces.slice().sort()),
+    `§ 5.4's rule sentence and its publication sentence name the same surfaces — ${JSON.stringify(d.rule)} vs ${JSON.stringify(d.surfaces)}`);
+  say(d.spelled === d.surfaces.length,
+    `and D3's own count of them, spelled in words, is the number parsed (${d.spelled} vs ${d.surfaces.length})`);
+}
+/** The set difference, both ways, plus the shape of a row. Reusable so § 6 can re-run it. */
+function compareScope(probe, surfaces, say) {
+  const rows = Array.isArray(probe.D3_SCOPE) ? probe.D3_SCOPE : null;
+  say(!!rows && rows.length > 0, 'the artifact carries a D3_SCOPE table');
+  if (!rows) return;
+  const declared = rows.map((r) => r.surface);
+  say(new Set(declared).size === declared.length, 'scope: no surface is declared twice');
+  for (const s of surfaces) {
+    say(declared.includes(s),
+      `scope: § 5.4 publishes \`${s}\` and the scope table declares what this artifact does with it`);
+  }
+  for (const s of declared) {
+    say(surfaces.includes(s),
+      `scope: the scope table's row \`${s}\` is a surface § 5.4 actually publishes`);
+  }
+  for (const r of rows) {
+    say(STATUSES.includes(r.status),
+      `scope \`${r.surface}\`: status ${JSON.stringify(r.status)} is one of ${STATUSES.join(' / ')}`);
+    say(typeof r.note === 'string' && r.note.trim().length > 0,
+      `scope \`${r.surface}\`: names the render it is implemented by, or the reason there is none`);
+    // `implemented` is the claim that this artifact renders the surface FROM a member set of D3's,
+    // so the row carries that set — and a half-there surface (`link_state`, rendered raw and never
+    // membership-tested) may not wear the same word as one that is closed.
+    say((r.status === 'implemented') === !!r.table,
+      `scope \`${r.surface}\`: carries its member set iff it says implemented — ${r.status}, table ${r.table ? 'present' : 'null'}`);
+  }
+  // The declaration is load-bearing, not decorative: the membership test is DERIVED from these
+  // rows, so there is no second list of tested fields to forget to edit.
+  say(!!probe.MEMBER_SETS
+    && eq(Object.keys(probe.MEMBER_SETS), rows.filter((r) => r.table).map((r) => r.surface)),
+    `the artifact membership-tests exactly the surfaces its scope table gives a member set: ${JSON.stringify(Object.keys(probe.MEMBER_SETS || {}))}`);
+}
+const DOC_SURFACES = docSurfaces(FLOOR_MD);
+checkDerivation(DOC_SURFACES, check);
+if (DOC_SURFACES) compareScope(P, DOC_SURFACES.surfaces, check);
+// The declaration is also on the PAGE, painted from the same table — one source, two readers.
+const scopePanel = load(SCRIPT).dom.byId.get('scope').innerHTML;
+for (const r of (P.D3_SCOPE || [])) {
+  check(scopePanel.includes(r.surface) && scopePanel.includes(r.status),
+    `the page's scope panel carries \`${r.surface}\` and its status — painted from D3_SCOPE, never re-typed`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 6. The scope controls — one per DIRECTION, because a set difference that has only ever been
+//    seen agreeing is not evidence that it can disagree
+// ---------------------------------------------------------------------------------------------
+section('6. the scope controls: each direction re-run against something that MUST make it red');
+// DIRECTION 1 — D3 GAINS A SEVENTH SURFACE. The mutation is on D3's side and is a well-formed
+// one: both of § 5.4's enumerations gain `sprocket_state` and the count in words goes to seven,
+// so what is simulated is a document that grew a surface, not a document that broke. The scope
+// table then has no row for it, and the gate must say so.
+const D3_MUTATIONS = [
+  ['`api_error_type` or badge', '`api_error_type`, `sprocket_state` or badge'],
+  ['and `api_error_type` in', 'and `sprocket_state` and `api_error_type` in'],
+  ['all six\n  sets are published here', 'all seven\n  sets are published here'],
+];
+let grownDoc = FLOOR_MD;
+let anchorsOk = true;
+for (const [from, to] of D3_MUTATIONS) {
+  const hits = grownDoc.split(from).length - 1;
+  check(hits === 1, `the seventh-surface control is anchored exactly once (${hits}): ${JSON.stringify(from)}`);
+  if (hits !== 1) { anchorsOk = false; continue; }
+  grownDoc = grownDoc.split(from).join(to);
+}
+if (anchorsOk) {
+  const grown = docSurfaces(grownDoc);
+  const derivationFailed = [];
+  checkDerivation(grown, (cond, what) => { if (!cond) derivationFailed.push(what); });
+  check(derivationFailed.length === 0 && grown.surfaces.length === 7 && grown.spelled === 7,
+    `the control's D3 is a document that GREW a surface, not one that broke: ${JSON.stringify(grown.surfaces)}`);
+  const failed = [];
+  compareScope(P, grown.surfaces, (cond, what) => { if (!cond) failed.push(what); });
+  const hit = failed.find((f) => f.includes('§ 5.4 publishes `sprocket_state`'));
+  check(!!hit, `a D3 surface with no row in the scope table goes RED — ${JSON.stringify(hit || null)}`);
+}
+// DIRECTION 2 — THE SCOPE TABLE CLAIMS A SURFACE D3 DOES NOT PUBLISH. The mutation is on the
+// artifact's side: a row is added for a surface that exists nowhere in D3. A one-directional
+// check would pass this — every one of D3's six still has a row — which is exactly the direction
+// a stale declaration drifts in as D3 moves under it.
+const ROW_ANCHOR = '  {surface:"badge",status:"not implemented",table:null,';
+const rowHits = SCRIPT.split(ROW_ANCHOR).length - 1;
+check(rowHits === 1, `the invented-row control is anchored exactly once (${rowHits})`);
+if (rowHits === 1 && DOC_SURFACES) {
+  const INVENTED = SCRIPT.replace(ROW_ANCHOR,
+    '  {surface:"sprocket_state",status:"not implemented",table:null,note:"planted by the control"},\n'
+    + ROW_ANCHOR);
+  const failed = [];
+  compareScope(load(INVENTED).probe, DOC_SURFACES.surfaces,
+    (cond, what) => { if (!cond) failed.push(what); });
+  const hit = failed.find((f) => f.includes("row `sprocket_state`"));
+  check(!!hit, `a row for a surface D3 does not publish goes RED — ${JSON.stringify(hit || null)}`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 7. § 9 F13 — a seat the floor's map has no slot for is PLACED, never dropped and never a crash
+// ---------------------------------------------------------------------------------------------
+// The two lookups keyed on IDENTITY rather than on an enum member, which is why the member-set
+// primitive of § 1 does not reach them: the seat's `desk` against the map's slots, and the
+// install against the client's own theme map. Both used to be unguarded, and they failed in
+// OPPOSITE directions on the same seat — the floor SVG iterated a fixed four-slot list and
+// silently DROPPED the seat, while the overlay pass read `THEMES[inst].desks[s.desk].x` and threw
+// the whole render away. § 3.2's overflow rule and § 9 F13 state the behaviour that is neither:
+// the surplus seats render in a labelled overflow row under a persistent notice reading
+// *floor map is short N desks*, and F13's Never column is one phrase — dropping a seat.
+section('7. § 9 F13 — an undeclared desk key and an unthemed install both render, and are labelled');
+/** Drive a floor that is short of desks. @returns the failures, so § 7's controls can re-run it. */
+function f13(source, report, mode) {
+  const failed = [];
+  const say = report ? check : (cond, what) => { if (!cond) failed.push(what); };
+  // The artifact renders itself once as it loads, and the sample fleet already contains a seat
+  // its floor's map has no slot for — so a revision carrying the pre-fix lookup throws on the way
+  // IN, before anything can be driven. That is this check failing, not the harness failing.
+  let ctx = null, loadThrew = null;
+  try { ctx = load(source); } catch (e) { loadThrew = e; }
+  if (loadThrew) { say(false, `${mode}: the floor renders without throwing — ${loadThrew}`); return failed; }
+  const { probe, world } = ctx;
+  if (!probe.FLEET || !probe.render) { say(false, `${mode}: the artifact exposes FLEET and render()`); return failed; }
+  const seat = `f13-${mode}`;
+  if (mode === 'undeclared-desk') {
+    // aimla's map declares four slots and the fleet already fills all four, so a fifth seat at a
+    // desk key the map does not name has nowhere to sit at all.
+    probe.FLEET.aimla.push({ ...BASE, seat, desk: 'no-such-desk', render_state: 'idle', quiet_for: '1m' });
+  } else {
+    // An install the client's theme map has never seen: no palette and NO DESK SLOTS, so § 3.2's
+    // overflow rule is already the whole answer and every one of its seats is placed by it.
+    probe.FLOORS.push('mystery');
+    probe.FLEET.mystery = [{ ...BASE, seat, desk: 'a1', render_state: 'idle', quiet_for: '1m' }];
+  }
+  let threw = null;
+  try { probe.render(); } catch (e) { threw = e; }
+  say(!threw, `${mode}: the floor renders without throwing${threw ? ` — ${threw}` : ''}`);
+  if (threw) return failed;
+  const kids = world.children || [];
+  say(kids.some((c) => c.className === 'hit' && String(c.getAttribute('aria-label')).startsWith(seat)),
+    `${mode}: the seat is on the floor with its own hit target — F13's Never is "dropping a seat"`);
+  say(kids.some((c) => c.className === 'plate' && c.innerHTML.includes(seat)),
+    `${mode}: and carries its nameplate and state line, the same render as any other seat`);
+  const svg = world.innerHTML || '';
+  // ⭐ Both counts below are RE-DERIVED from the artifact's own placement of its own fleet, never
+  // written down here: the sample fleet already contains a seat with no slot (sola's `b2`), so a
+  // stored figure would be a second home for a number the fixture moves.
+  const shorts = probe.FLOORS.map((i) => probe.placeFloor(probe.themeFor(i), probe.FLEET[i]).short);
+  const homeless = shorts.reduce((a, b) => a + b, 0);
+  const shortFloors = shorts.filter((n) => n > 0).length;
+  say(homeless > 0 && shortFloors > 0, `${mode}: the driven fleet really is short of desks (${homeless} seats over ${shortFloors} floors)`);
+  say((svg.match(/floor map is short/g) || []).length === shortFloors,
+    `${mode}: every short floor carries § 5.5's persistent notice — *floor map is short N desks*`);
+  say((svg.match(/OVERFLOW/g) || []).length === shortFloors,
+    `${mode}: and each one labels the row (§ 3.2), rather than drawing a desk low and unexplained`);
+  // The desk ITSELF, not only the label around it: F13 gives the surplus seat "same desk, same
+  // render" (§ 3.2), and a row drawn with a notice and no desk in it is the silent drop wearing
+  // the fix's label. This is the one observable that direction has.
+  say((svg.match(/class="overflow-desk"/g) || []).length === homeless,
+    `${mode}: every homeless seat's own DESK is drawn in that row (${homeless}) — "same desk, same render" (§ 3.2)`);
+  say(!svg.includes('undefined'), `${mode}: nothing in the floor SVG reads "undefined"`);
+  return failed;
+}
+f13(SCRIPT, true, 'undeclared-desk');
+f13(SCRIPT, true, 'unthemed-install');
+// The control for each half, planted at the shape it actually had.
+const PLACE_ANCHOR = 'for(const {seat:s0,D} of placeFloor(TH,FLEET[inst]).placed){\n      const s={...s0,__install:inst};';
+const placeHits = SCRIPT.split(PLACE_ANCHOR).length - 1;
+check(placeHits === 1, `the pre-fix desk-lookup control is anchored exactly once (${placeHits})`);
+if (placeHits === 1) {
+  const UNGUARDED = SCRIPT.replace(PLACE_ANCHOR,
+    'for(const s0 of FLEET[inst]){\n      const s={...s0,__install:inst};const D=TH.desks[s.desk];');
+  const failed = f13(UNGUARDED, false, 'undeclared-desk');
+  check(failed.some((f) => f.includes('without throwing')),
+    `the unguarded desk lookup goes RED, the way the defect did — ${JSON.stringify(failed.find((f) => f.includes('without throwing')) || null)}`);
+}
+const OVERFLOW_ANCHOR = '    for(const p of over) g+=`<g class="overflow-desk">${deskSVG(T,p.D,p.seat)}</g>`;';
+const overflowHits = SCRIPT.split(OVERFLOW_ANCHOR).length - 1;
+check(overflowHits === 1, `the silent-drop control is anchored exactly once (${overflowHits})`);
+if (overflowHits === 1) {
+  // The surplus desk is simply not drawn — no throw, no glyph, a seat that exists and is
+  // invisible. The notice is what makes that visible to this suite, which is why F13 states it.
+  const DROPPED = SCRIPT.replace(OVERFLOW_ANCHOR, '');
+  const failed = f13(DROPPED, false, 'undeclared-desk');
+  check(failed.some((f) => f.includes('own DESK is drawn')),
+    `a floor that draws the row's label and not the desk in it goes RED — ${JSON.stringify(failed.find((f) => f.includes('own DESK is drawn')) || null)}`);
+}
+const THEME_ANCHOR = 'const themeFor=inst=>THEMES[inst]||UNTHEMED;';
+const themeHits = SCRIPT.split(THEME_ANCHOR).length - 1;
+check(themeHits === 1, `the unthemed-install control is anchored exactly once (${themeHits})`);
+if (themeHits === 1) {
+  const RAW = SCRIPT.replace(THEME_ANCHOR, 'const themeFor=inst=>THEMES[inst];');
+  const failed = f13(RAW, false, 'unthemed-install');
+  check(failed.some((f) => f.includes('without throwing')),
+    `the unguarded theme lookup goes RED — ${JSON.stringify(failed.find((f) => f.includes('without throwing')) || null)}`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 8. § 5.6's two intern nulls — one label, two rules, and they are NOT the same rule
+// ---------------------------------------------------------------------------------------------
+// § 5.6 (`subagents[].subagent_type`): "the type tag beside the label is not drawn" — a null type
+// renders NOTHING, because a substitute states a fact the wire never sent. § 5.1 and AT-D3-4:
+// a null `title` renders *untitled*, and falling back to `subagent_type`, to the tool name or to
+// *subagent* is that test's first RED. They sit on one line of the drill-down and a fix that
+// treated them alike would break the compliant one to fix its neighbour, so both are asserted.
+section("8. the intern label: a null subagent_type draws NO tag, a null title draws *untitled*");
+const INTERN_CASES = [
+  [{ subagent_type: 'coder', title: 'rebuild the doc set' }, 'coder · rebuild the doc set', 'both present'],
+  [{ subagent_type: null, title: 'rebuild the doc set' }, 'rebuild the doc set', 'a null type draws no tag AND no separator (§ 5.6)'],
+  [{ subagent_type: 'coder', title: null }, 'coder · untitled', 'a null title is *untitled* — never the type, the tool name or "subagent" (§ 5.1, AT-D3-4)'],
+  [{ subagent_type: null, title: null }, 'untitled', 'both null: the label is *untitled* alone'],
+];
+function internLabels(probe, say) {
+  say(typeof probe.internLabel === 'function', 'the artifact states the intern label as one function');
+  if (typeof probe.internLabel !== 'function') return;
+  for (const [el, want, why] of INTERN_CASES) {
+    const got = probe.internLabel(el);
+    say(got === want, `intern label — ${why}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+  }
+}
+internLabels(P, check);
+// The sample fleet carries both edges, so the artifact a reader opens shows them rather than
+// only claiming them.
+const SAMPLE_INTERNS = (P.FLEET ? Object.values(P.FLEET).flat() : [])
+  .flatMap((s) => s.subagents || []);
+check(SAMPLE_INTERNS.some((a) => a.subagent_type === null) && SAMPLE_INTERNS.some((a) => a.title === null),
+  'the sample fleet contains an intern with no type and one with no title — both edges are visible in the artifact');
+// The control is the exact pre-fix default, which is what makes the first case above evidence.
+const INTERN_ANCHOR = 'function internLabel(a){return (a.subagent_type?a.subagent_type+" · ":"")+(a.title||"untitled");}';
+const internHits = SCRIPT.split(INTERN_ANCHOR).length - 1;
+check(internHits === 1, `the intern-label control is anchored exactly once (${internHits})`);
+if (internHits === 1) {
+  const DEFAULTED = SCRIPT.replace(INTERN_ANCHOR,
+    'function internLabel(a){return (a.subagent_type||"intern")+" · "+(a.title||"untitled");}');
+  const failed = [];
+  internLabels(load(DEFAULTED).probe, (cond, what) => { if (!cond) failed.push(what); });
+  check(failed.some((f) => f.includes('null type')),
+    `a null subagent_type defaulted to "intern" goes RED — ${JSON.stringify(failed.find((f) => f.includes('null type')) || null)}`);
+  // …and the OTHER null must not move with it: a control that accepted any red at all would pass
+  // a "fix" that also deleted § 5.1's *untitled*.
+  const BOTH = SCRIPT.replace(INTERN_ANCHOR,
+    'function internLabel(a){return (a.subagent_type?a.subagent_type+" · ":"")+(a.title||a.subagent_type||"subagent");}');
+  const failedBoth = [];
+  internLabels(load(BOTH).probe, (cond, what) => { if (!cond) failedBoth.push(what); });
+  check(failedBoth.some((f) => f.includes('null title')),
+    `and a null title falling back to the type goes RED too — ${JSON.stringify(failedBoth.find((f) => f.includes('null title')) || null)}`);
+}
 
 console.log(`\n${failures === 0 ? 'PASS' : `FAIL — ${failures} check(s)`}  (${HTML_PATH})`);
 process.exit(failures === 0 ? 0 : 1);

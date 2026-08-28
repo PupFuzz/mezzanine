@@ -4,7 +4,16 @@
 future, but let's start with this as the initial design."*
 
 `floor-preview.html` is the self-contained reference artifact the floor build (card#7341) is built
-FROM. It encodes, as working code, every design ruling of the 2026-08-26/27 operator sessions:
+FROM. It encodes, as working code, every design ruling of the 2026-08-26/27 operator sessions —
+**the operator's DESIGN rulings, which is not the same claim as covering D3's render surfaces, and
+reading it as one is what this file now refuses to let happen. What of `docs/design/FLOOR.md` this
+artifact implements is declared per render surface in its own `D3_SCOPE` table — the answer to
+*"what of D3 does this artifact implement?"*, in the artifact, rendered on the page under *What of
+FLOOR.md this artifact implements*: each of § 5.4's six membership-tested surfaces is marked
+implemented (naming the render table it is implemented by), half-there, or not implemented (naming
+why in one clause), and the check below set-differences that table against § 5.4's own six in both
+directions on every run. It is a reference implementation of a DECLARED SUBSET — *not implemented*
+is a ruling, because the floor is built once, by card#7341.** The design rulings it encodes:
 
 - the **building cross-section** (floors stacked one per install; the elevator is navigation;
   zoom out = fleet overview, zoom to a floor, wheel/drag/fit) — structure belongs to the building,
@@ -50,8 +59,16 @@ each **cell by cell**: § 7.1's ten members *with their Label line column*, § 7
 with no row here reds it — and so does a rendered string that has drifted from D3's**. It drives a
 probe seat through all ten members using D3's own worked example values, through the null edges
 § 7.1 and § 5.6 state, through the two sibling membership sets, and through eight values that are
-not members; and it proves it can fail with five anchored source mutations. ⚠ **It is not visual
-evidence.** There is no browser and no HTML parser behind it — no layout, no paint, nothing seen.
+not members. It re-derives § 5.4's **six** render surfaces from that section's own two enumerations
+and its count in words, and set-differences them against the artifact's `D3_SCOPE` table **both
+ways** — so D3 gaining a seventh surface reds the gate instead of passing silently. It drives a
+floor whose map is short of desks, in both shapes that produces (a seat at a desk key the map does
+not declare, and an install the theme map has never seen), against § 3.2's overflow rule and § 9
+F13 — the labelled overflow row, the *floor map is short N desks* notice, and never a dropped seat;
+the sample fleet carries such a seat on the `sola` floor, so the behaviour is visible and not only
+claimed. And it holds § 5.6's two intern nulls apart: a null `subagent_type` draws **no type tag**,
+a null `title` draws ***untitled***. It proves it can fail with **twelve** anchored source
+mutations. ⚠ **It is not visual evidence.** There is no browser and no HTML parser behind it — no layout, no paint, nothing seen.
 What it asserts is the values the artifact emits; how any of it *looks* is verified by opening the
 file, which is the one check no tool here performs.
 

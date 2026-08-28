@@ -10,6 +10,52 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7965** — **the ratified floor-preview is a reference implementation of a subset of D3 and
+  never said which subset, so an absent render surface was indistinguishable from one that was
+  missed.** The artifact is what card#7341 builds FROM, and the reader who needed that answer is
+  that card's implementer. Three surfaces already said the artifact was *partial*; none said *of
+  what*, and `docs/design/floor-preview/README.md`'s *"encodes, as working code, every design
+  ruling of the 2026-08-26/27 operator sessions"* — true of the operator's **design** rulings —
+  reads as coverage of D3's **render surfaces**. **That conflation was the defect, not the
+  absence.** ⛔ **The alternative was declined on the product, not on cost:** completing the preview
+  against D3 would make it a second full implementation of D3's render surfaces — the floor built
+  twice — and card#7341 a port of it rather than the build. There is one build. So the artifact now
+  carries **one machine-readable scope table**, a row per membership-tested render surface `FLOOR.md`
+  § 5.4 publishes (the same six `verify-floor.py` **G7** closes over): *implemented*, naming the
+  render table it is implemented by; *partial*, for `link_state`, which renders **raw** in two
+  drill-down blocks and is **not** membership-tested; or *not implemented*, naming why in one clause
+  (§ 7.2's eighteen badges, § 7.6's `activity_state`). It is rendered on the page from that same
+  table rather than re-typed, and the membership test itself is **derived** from it, so a row is the
+  one place a surface's status is written. ⭐ **A declaration with no check is a comment, and this is
+  the case where that bites**, so `floor-preview.selftest.mjs` re-derives § 5.4's six from the
+  document — from **both** of § 5.4's enumerations and its own count in words, cross-checked — and
+  set-differences them against the table **in both directions**: a surface D3 gains with no row reds,
+  and a row for a surface D3 does not publish reds. **D3 gaining a seventh surface now reds the gate
+  instead of passing silently**, and each direction has its own anchored mutation control, one of
+  them a D3 that *grew* a surface rather than one that broke.
+  **Three defects in what the artifact does implement, all in the same class and none reachable by
+  the member-set primitive card#7943 landed — they are keyed on IDENTITY, not on an enum member.**
+  (1) A seat's `desk` against the floor map: the SVG iterated a **fixed four-slot list** and
+  silently **dropped** any seat outside it, while the overlay pass read `THEMES[inst].desks[s.desk].x`
+  and **threw the whole render away** — one fact derived twice, failing in opposite directions on the
+  same seat. § 3.2's overflow rule and § 9 **F13** state the behaviour that is neither: the surplus
+  seats render in a **labelled overflow row** with the same desk and the same render, under a
+  persistent notice reading *floor map is short N desks*, and F13's *Never* column is one phrase —
+  **dropping a seat**. Placement is now **one pure function** of (map, seat list) that both the SVG
+  and the overlay pass read, and the map's slot count `S` comes from the map. (2) Three unguarded
+  `THEMES[…]` lookups threw on an install the client's art has never seen; all three now resolve
+  through one function, and the unthemed floor declares **no slots**, so § 3.2's overflow rule is
+  already the whole answer for it — every seat of an unknown install renders, labelled. (3)
+  `subagents[].subagent_type` was defaulted to *"intern"*; § 5.6 says the type tag is **not drawn**,
+  so it is not, and a substitute stated a fact the wire never sent. ⛔ **`title || "untitled"` beside
+  it was NOT changed and must not be**: § 5.1 gives a null title the literal *untitled* and AT-D3-4's
+  first RED is falling back to `subagent_type`, the tool name or *"subagent"* — the two nulls are
+  different rules, and treating them alike would break the compliant render to fix its neighbour.
+  Both are now one function with a control per direction. **The sample fleet carries a seat with no
+  slot on the `sola` floor and interns for both null edges**, because a behaviour no sample reaches
+  is one no implementer sees — the artifact is where card#7341 reads what these render like. The
+  gate's mutation controls go from five to **twelve**.
+
 - **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
   on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**
   `… and drops nothing while deferring`
