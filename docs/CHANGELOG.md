@@ -40,11 +40,65 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   `needs_human` is deleted rather than carried permanently false, with the closure act named as a
   protocol change. Also settled: the family gets **its own endpoint, HMAC auth (a third auth mode)
   and validation order**, because nine of the batch envelope's invariants are false for a webhook
-  delivery and admitting it would weaken that path for the reporter too; sanitization reuses § 7.3's
-  redactor unchanged behind a **field** allowlist, and **no post body ever transits**; and one
-  producer serves both consumers, the `coord.*` family and D2 § 4.9's tier-2 task title. New: AT-23,
-  AT-24, AT-25 (each with its REDs), decisions 40–45, six § 14 rows, two § 16 build-order rows. **No
-  D2 or D3 edit** — the obligations those documents inherit are recorded as requests, not made.
+  delivery and admitting it would weaken that path for the reporter too; **no post body ever
+  transits**; and one producer serves both consumers, the `coord.*` family and D2 § 4.9's tier-2 task
+  title.
+  ⭐ **A review round then found the same defect SHAPE at three sites, and fixing the shape is most
+  of what changed: a rule derived over one population, applied to a second without re-deriving it.**
+  *(1)* § 18.3's derivability test excluded *"the bridge's configuration, which this producer cannot
+  see"* and never asked the same question of the **coordination repo's own** config, equally
+  invisible — so four fields reached for it in four unstated places. § 18.3.1 is the consolidation,
+  and two of the four dissolved: `carrier` reads the title's bracketed token **syntactically** with no
+  set consulted (measured: all 728 real titles carry one, and the six distinct tokens are exactly the
+  six configured), and `participants` stops expanding `all` because `targets` already does it once.
+  What is left is **one declared input** provisioned with the hook registration — `roster[]` and
+  `shared_identity` — carrying the config revision it was copied at, and **guarded**, since a
+  body-derived name absent from the copy reds `coord_roster_unknown_name` on that seat's first post.
+  *(2)* § 7.3's redaction rules are derived over **argv** and § 18.10 claimed to reuse them
+  *unchanged*, *"covered for free"* by § 7.5's fixtures. Both false: measured over all **728** real
+  coordination titles, the pass corrupts **7.0%** of them, **49 of the 51 hits being rule 4's
+  bare-whitespace separator firing on English** (`token that` → `token ‹redacted›`) — and § 7.5 could
+  not have caught it, because all 13 fixtures were `(tool, command-or-path)` pairs. § 7.3 now declares
+  two **profiles** differing in exactly one rule (`coord.subject` requires an explicit `:`/`=`), which
+  takes the damage to **0.7%** while still redacting every credential shape planted in a title;
+  narrowing rule 4 for *all* callers was refused because it deletes what fixture 9 holds. § 7.5 gains
+  **fixtures 14–17** and a **caller** column, and AT-2 gains a fourth RED that fails in **both**
+  directions. *(3)* Decision 45's no-rate-limit argument is sound only for deliveries that **pass**
+  step 3; a request failing the HMAC is by construction not GitHub's, so § 12.3's failed-auth limit is
+  reused for it and `coord_signature_invalid` counts a refusal that previously left no trace.
+  ⛔ **`converges` is deleted, because it could not make the distinction it existed to make.** Measured
+  over the coordination repository's **entire** comment population — 10,552 comments, with a positive
+  and a negative control — the *"zero open questions"* phrase is on **78.1%** of posts: it is a
+  per-post sign-off, so the flag was true 14.6 times per closed thread and `converges + closed`
+  collapsed to `closed`. The protocol's `[CLOSE]` token is on **2.12%** of posts, **37.8%** of closed
+  threads and **0.6%** of open ones — so `declares_close` keys on that, named for what the post
+  declares rather than for a thread property it cannot establish. It **gains** a fact finding B looked
+  to have lost: all 224 anchored `[CLOSE]` comments carry a `FROM:` line, so the closer is nameable
+  where `issues.closed` never names one. **Thread-level convergence is a QUORUM and is now declared
+  NON-DERIVABLE** — no observer-CC flag, no required-participant set, no ACK ledger — rather than
+  approximated. **AT-26 asserts the RATE over a replayed corpus**, because the defect is statistical
+  and every per-post assertion passes under both implementations.
+  ⚠ **Two claims this entry itself made are corrected.** *(a)* It said the obligations D2 and D3
+  inherit were *"recorded as requests"*; **no request was recorded anywhere in the diff**, and § 18.11
+  said the opposite in terms. There is still **no D2 or D3 edit** — what those documents inherit is
+  cited at its site and carried in § 18.13, and the join key is ruled on `card#7957`. *(b)* § 18.8
+  step 7 claimed the idempotency key *"cannot expire into a double-derivation"*. True of the
+  constraint's form, false of any store: the reporter's equivalent is bounded by § 11.3's 8-day spool
+  residency and **GitHub's Redeliver has no such floor**, so an old redelivery re-derives. Marked
+  `D2-CITED:` at its site — a gate that structurally could not see the class now can — with the
+  residual in § 18.13, and **steps 7 and 9 now commit together**, so a failed derivation leaves no
+  digest to absorb the operator's retry. Also corrected: `participants`' *"by then the labels have
+  been applied"* rests on another repo's Action whose **hard-fail path applies only `INVALID_LABEL`**,
+  so it is now stated with its miss and a counter; `to` falls back to labels on a **measured 30.1%**
+  of posts, not the 15.7% a 300-comment sample suggested; the § 18.3 prefix row no longer restates a
+  set its own source says *"do not restate"*; `lifecycle`'s unreachable unrecognised-value clause is
+  gone; AT-24's fixture no longer wants two `issues.opened` on one thread and AT-25's no longer
+  depends on a config switch that is **off** here. New overall: **AT-26**, **decisions 46–48**,
+  **§ 18.3.1** and **§ 18.8.1**, eight § 14 rows, three § 16 build-order rows, four § 7.5 fixtures.
+  ⛔ **The ten route counters are declared in § 18.8.1 and deliberately NOT enrolled in § 12.7**:
+  membership there is an obligation on the store's counter plane, and enrolling them makes
+  `verify-fleet-state.py` red once per counter — which is how the obligation was found, and it is
+  filed in § 18.13 rather than papered over.
 - **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
   was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
   observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —
