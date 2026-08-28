@@ -54,36 +54,56 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   Both are now one function with a control per direction. **The sample fleet carries a seat with no
   slot on the `sola` floor and interns for both null edges**, because a behaviour no sample reaches
   is one no implementer sees — the artifact is where card#7341 reads what these render like. The
-  gate's mutation controls go from five to **fourteen**.
-  ⭐ **And the overflow row was drawn on top of sola's tea bar, which every check above passed.**
-  The row's origin was one shared constant (`x 110`), and a constant cannot make a claim about art
-  that differs per floor: sola's tea bar stands at `x 50–310, y 844–962`, desks emit *after*
-  `furnish()`, and both fills are opaque — so the first surplus desk's slab was painted over the
-  counter and its character sat on the cups. Every structural fact the gate asserted was true and
-  none of them could see it. **Each theme now DECLARES where its overflow row goes**, in a region it
-  states is clear of its own furniture, with the reason in the cell; and because a declaration with
-  no check is a comment, the gate measures it: every shape an overflow desk emits is compared
-  against every shape that floor's `furnish()` emits — on every theme the artifact declares, at
-  D2's eight-subagent cap (the widest desk it can draw), and on every overflow desk the sample fleet
-  really draws. Seen red on the reviewed head, naming the tea bar, and on a 40 px nudge. ⚠ **Still
-  not evidence about the picture**: this is arithmetic on the artifact's own emitted coordinates, so
-  z-order, opacity, the difference between a box and the glyph in it, and `<text>` (no extent
-  without font metrics) are outside it — opening the file remains the one check no tool performs.
-  Two adjacent limits are now **stated rather than left to be inferred**: `overflowSlot` clamps a
-  desk's width to its own step so slabs cannot overlap at n ≥ 7, but `deskSVG` hangs the intern tray
-  *outside* the slot, so a seat with subagents can still reach into the next one; and `placeFloor`
-  is **order-dependent**, so it is a pure function of the seat *list* and not of the seat *set*
+  gate carries a planted mutation for every layer, and **how many is counted at run time and printed
+  on the run's own last line** rather than restated in the files that describe it.
+  ⭐ **And the overflow row was drawn INSIDE the floor — on top of sola's tea bar — while every
+  check above passed. D3 § 3.2 had already said where it goes: BELOW THE FLOOR.** Four passes read
+  § 9 **F13**'s summary row, which names the row and its notice but not its position, and § 3.2 at
+  `FLOOR.md:537` is what owns the position. Drawn inside the floor, the row needed machinery to be
+  safe — a per-theme `overflow:{x,y}` origin, a declared "clear run" between the tea bar and the
+  plant, a stated row capacity, and a pairwise desk-versus-furniture collision gate over an
+  arbitrary-shape bbox extractor. **All of it is deleted, because the question stops being asked**:
+  an overflowing floor is now drawn on a canvas one band taller and the row lives in that appended
+  strip, so the floor's shapes stop at `FH`, the band's start there, and collision is impossible by
+  construction **at any row length**. What replaces the collision gate is one invariant with one
+  scalar per floor in each direction — **nothing the floor emits reaches below `FH`, and nothing the
+  band emits rises above it** — with a planted-mutation control for each leg (furniture pushed below
+  the line; the band raised back up into the floor), each seen red first. ⛔ **And an unmeasurable
+  shape now makes that assertion FAIL.** The deleted layer guaranteed *unmeasurable is loud* and the
+  guarantee was false in four demonstrated forms — an arc command, a `<polygon>`, a `NaN` width and
+  an unmodelled `stroke-width` — three of which stayed **green** with an obstacle drawn on the desk,
+  because each fell through a silent `else` and left a shorter list of boxes that still looked
+  clean. Every element is classified now, a tag the measurement does not own is named, and the
+  answer is *not measured* rather than a number. Two of the four are now MEASURED instead — an arc
+  is bounded by ±2r about its endpoints, a stroke pads its shape by half its width — and the other
+  two are planted controls, beside the two generalisations of the same class (a path command the
+  measurement does not implement, a transform it does not model). ⚠
+  **Still not evidence about the picture**: this is arithmetic on the artifact's own emitted
+  coordinates, so z-order, opacity and the difference between a box and the ink in it are outside
+  it, and where a bound cannot be computed exactly it is computed **wide** so that its only possible
+  error is over-reporting — opening the file remains the one check no tool performs.
+  Two adjacent limits are **stated rather than left to be inferred**: `deskSVG` hangs the intern
+  tray *outside* the slot, so at n ≥ 2 a seat with subagents reaches into the next one, and past
+  roughly n = 12 the clamped slab is narrower than the character drawn on it — both are `deskSVG`
+  re-layouts and belong to card#7341's build; and `placeFloor` is **order-dependent**, so it is a
+  pure function of the seat *list* and not of the seat *set*
   § 3.2 asks for — § 3.2's own answer is the slot function `h(seat)` with forward probing, which
   this preview does not implement and card#7341 does. **A gate hole in the same class was closed in
-  the gate itself**: § 5.4's population was sliced with `indexOf`, which answers `-1` for a heading
-  that has moved — and `slice(i, -1)` is *the document minus one character*, not *to the end*. A
-  § 5.4 whose closing anchor had moved silently widened the population to the rest of the document
-  (306 300 characters), where six surface names are still findable, and the gate printed
+  the gate itself, at all THREE sites that had it**: a section's population was sliced with
+  `md.slice(md.indexOf(open), md.indexOf(close))`, and `indexOf` answers `-1` for a heading that has
+  moved — `slice(i, -1)` is *the document minus one character*, not *to the end*. A § 5.4 whose
+  closing anchor had moved silently widened the population to the rest of the document (306 300
+  characters), where six surface names are still findable, and the gate printed
   `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none — **the false-clean
-  shape this whole deliverable exists to prevent, inside it.** Both anchors are now required, their
-  absence is a failure, and the widening has its own control. § 5.5's notice is asserted **in full**
-  against the re-derived shortfall rather than by its opening words, which left the count and the
-  noun free to drift and stay green.
+  shape this whole deliverable exists to prevent, inside it.** Fixing that site alone left the other
+  two: renaming § 7.1's closing anchor `### 7.2 Badges` widened its slice from **4 546** characters
+  to **251 401**, and the ten `render_state` members still parsed out of it, so the gate stayed
+  PASS. All three now go through **one `sliceBetween(md, open, close)`** that returns `null` when
+  either anchor is missing, every caller treats `null` as a failure rather than an empty-but-clean
+  parse, and one control renames each of the three closing anchors in turn and prints what the
+  replaced shape would have widened to. § 5.5's notice is asserted **in full** against the
+  re-derived shortfall rather than by its opening words, which left the count and the noun free to
+  drift and stay green.
 
 - **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
   on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**

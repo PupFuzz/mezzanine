@@ -66,18 +66,24 @@ floor whose map is short of desks, in both shapes that produces (a seat at a des
 not declare, and an install the theme map has never seen), against § 3.2's overflow rule and § 9
 F13 — the labelled overflow row, the *floor map is short N desks* notice, and never a dropped seat;
 the sample fleet carries such a seat on the `sola` floor, so the behaviour is visible and not only
-claimed. It measures **where that row lands**: the row's origin is each theme's own declaration —
-sola's tea bar stands where the shared constant used to put the first overflow desk — and every
-shape an overflow desk emits is checked against every shape that floor's furniture emits, so a
-declaration that has gone false reds instead of shipping a desk painted over a counter. And it
-holds § 5.6's two intern nulls apart: a null `subagent_type` draws **no type tag**, a null `title`
-draws ***untitled***. It proves it can fail with **fourteen** anchored source mutations.
+claimed. It measures **where that row lands**, which is the one thing the checks above cannot see —
+and § 3.2 answers it in a word the summary row of § 9 F13 does not carry: the row is **below the
+floor**. So an overflowing floor is drawn on a canvas one band taller and the row lives in that
+appended strip, and the gate holds the boundary between them: **nothing the floor emits reaches
+below `FH`, and nothing the band emits rises above it** — one scalar per floor in each direction,
+at any row length. ⛔ **A shape it cannot measure makes that FAIL**, by name, rather than dropping
+out of the measurement: *not measured* is never *clear*. And it holds § 5.6's two intern nulls
+apart: a null `subagent_type` draws **no type tag**, a null `title` draws ***untitled***. It proves
+every one of those can fail with anchored source mutations — the furniture pushed below the line,
+the band raised above it, and each shape form the measurement could once have skipped silently.
+**How many checks and how many planted controls is printed on the run's own last line**, counted
+rather than written down, so no file here carries a figure that drifts from it.
 ⚠ **It is still not visual evidence.** There is no browser and no HTML parser behind it — no
-layout, no paint, nothing seen. What it asserts is the values the artifact emits, and the bbox
-layer only adds arithmetic on those same emitted numbers: z-order, opacity, the difference between
-a box and the glyph inside it, and text (which has no extent without font metrics) are all outside
-it. How any of it *looks* is verified by opening the file, which is the one check no tool here
-performs.
+layout, no paint, nothing seen. What it asserts is the values the artifact emits, and the boundary
+layer only adds arithmetic on those same emitted coordinates: z-order, opacity and the difference
+between a box and the ink inside it are all outside it. Where a bound cannot be computed exactly it
+is computed **wide**, so the only error it can make is to over-report a crossing. How any of it
+*looks* is verified by opening the file, which is the one check no tool here performs.
 
 The kanban cards carry the full rulings and their reasons: #7341 (floor build + viewport),
 #7897 (communication layer + meeting-room triggers), #7898 (art direction + characters),

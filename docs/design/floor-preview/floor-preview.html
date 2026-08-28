@@ -609,12 +609,13 @@ const SKY={
   unset:{top:"#2a2f42",bot:"#39405a",stars:false,moon:false,sun:false,cityLit:0,flat:true}
 };
 
-/* ---------- geometry: floor + building ---------- */
+/* ---------- geometry: floor + building ----------
+   `FH` is THE FLOOR'S OWN HEIGHT and nothing else. A floor that overflows is drawn on a TALLER
+   canvas — see the band block after `placeFloor`, where the per-floor height, the storey origins
+   and the building's own height are derived from it. */
 const FW=1800,FH=1000,WALL=210;
 const BW=1900,ROOF=150,SLAB=40,LOBBYH=180,OX=50;
 const FLOORS=["aimla","sola"];
-const OY=i=>ROOF+i*(FH+SLAB);
-const BH=ROOF+FLOORS.length*FH+(FLOORS.length-1)*SLAB+LOBBYH;
 
 /* PER-FLOOR THEMES — the BUILDING owns structure (elevator, windows, walls); the floor owns
    everything inside: palette, desk positions, cabin position, furniture set. */
@@ -626,9 +627,6 @@ const THEMES={
     cabin:{x:52,y:300,w:336,h:212,door:[238,310],signX:92},
     desks:{cabin:{x:95,y:392,w:250,lampx:0.82}, a1:{x:452,y:352,w:230,lampx:0.93},
            a2:{x:600,y:720,w:230,lampx:0.85}, b1:{x:1000,y:320,w:230,lampx:0.93}},
-    /* aimla's furniture leaves the whole left half of the low floor free: nothing it draws below
-       y 774 starts before x 1234 (the kitchenette plant), so the row starts at the wall. */
-    overflow:{x:110,y:906},
     furniture:"aimla"
   },
   sola:{
@@ -638,12 +636,6 @@ const THEMES={
     cabin:{x:1412,y:300,w:336,h:212,door:[1490,1562],signX:1452},
     desks:{cabin:{x:1455,y:392,w:250,lampx:0.18}, a1:{x:980,y:340,w:230,lampx:0.07},
            a2:{x:430,y:700,w:230,lampx:0.85}, b1:{x:380,y:330,w:230,lampx:0.07}},
-    /* sola's low floor is NOT free at the wall — the tea bar reaches x 310 (counter, kettle, cups
-       and the shadow under them), and to the right a floor plant stands at x 914–966 with the zen
-       corner's gravel from x 960. The clear run between them, x 310–914, is where the row goes.
-       This cell is the reason the origin is a THEME's declaration and not a constant: the shared
-       constant put the row's first desk on top of this floor's tea bar. */
-    overflow:{x:350,y:906},
     furniture:"sola"
   }
 };
@@ -665,8 +657,6 @@ const UNTHEMED={
   accent:"#aab1c6",
   cabin:{x:52,y:300,w:336,h:212,door:[238,310],signX:92},
   desks:{},
-  /* trivially clear: a floor with no furniture set has nothing for the row to land on. */
-  overflow:{x:110,y:906},
   furniture:null
 };
 const themeFor=inst=>THEMES[inst]||UNTHEMED;
@@ -688,8 +678,9 @@ const FLEET={
        are already taken — so this seat has nowhere to sit. It is in the sample deliberately:
        § 9 F13's overflow row and its *floor map is short N desks* notice are behaviour card#7341
        has to build, and a behaviour no sample reaches is one no implementer sees. Ride the
-       elevator to sola: the seat is at the bottom of the floor, in the labelled band, rendered
-       exactly like any other seat — never dropped, and never a crash. Its `subagents[]` carries
+       elevator to sola: the seat is in the labelled band BELOW the floor — where § 3.2 puts it,
+       and where a reader meets it plainly rather than tucked into a gap between the furniture —
+       rendered exactly like any other seat, never dropped and never a crash. Its `subagents[]` carries
        § 5.6's two null edges side by side: an intern with no `subagent_type` (no type tag at
        all) and one with no `title` (*untitled*, never an invented one). */
     {desk:"b2",seat:"sola-mailer",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: php artisan queue:work",started_at:"14:28:41",running:"0m 21s"},context:{used_pct:12.5,used_tokens:125000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"digest send window",source:"issue",ref:"#341"},subagents:[{title:"draft the digest template",subagent_type:null},{title:null,subagent_type:"coder"}],activity:{last_kind:"tool.start",last_event_time:"14:28:41"}}
@@ -711,7 +702,7 @@ const FLEET={
    where the built client derives the slot from `h(seat)` and probes forward. What it does take
    from § 3.2 is the half F13 turns on — a seat whose named slot the map does not declare (or has
    already given away) takes the next free slot, and a seat left with no slot at all renders in the
-   labelled OVERFLOW ROW while the floor carries § 5.5's notice *floor map is short N desks*.
+   labelled OVERFLOW ROW BELOW THE FLOOR, under § 5.5's notice *floor map is short N desks*.
    By construction `short` is the count § 5.5 names — the rendered seat count against `S` — since
    the map's slots are exhausted before any seat overflows.
    ⚠ AND WHAT IT IS NOT: placement here is ORDER-DEPENDENT, so it is a pure function of the seat
@@ -722,24 +713,25 @@ const FLEET={
    is card#7341's to build; this preview does not implement it (see the line above). Stated here
    because a porter reading "pure function of (map, seat list)" would otherwise carry the weaker
    guarantee across as the stronger one. */
-/* ⛔ THE ROW'S ORIGIN IS THE THEME'S, NOT THIS FUNCTION'S. It used to be the constant `110,906`
-   for every floor, and that is a claim about art the constant cannot make: sola's tea bar stands
-   at x 50–310, y 844–962, so the first overflow desk's slab was drawn over the counter and its
-   character sat on the cups. Each theme now declares an origin in a region IT says is clear of
-   its own furniture, and the selftest checks that declaration against the furniture the theme
-   actually emits rather than believing it.
-   ⚠ WHAT IS STILL NOT GUARANTEED, so a porter does not read more into this than it holds: the
-   clamp below stops a desk SLAB overlapping its neighbour's, but `deskSVG` hangs the intern tray
-   at `x+w+26` — outside the slot — so at n ≥ 2 a seat with subagents can still reach into the
-   next slot; past roughly n = 12 the clamped slabs are narrower than the character drawn on them;
-   and the clamp bottoms out at 60 rather than going negative, so past roughly n = 77 the slabs
-   overlap again. One row of desks across one floor width has a capacity; § 3.2 does not state
-   what a floor does past it, and neither does this. The floor of 60 is not a guard against an
-   impossible state — it keeps this function's own arithmetic inside the range `deskSVG` can draw,
-   because a negative `width` is not a narrow desk, it is an SVG error that draws nothing. */
-function overflowSlot(T,i,n){
-  const ov=T.overflow, step=Math.min(280,(FW-ov.x-60)/Math.max(1,n));
-  return {x:ov.x+i*step,y:ov.y,w:Math.max(60,Math.min(230,step-18)),lampx:0.9};}
+/* ⛔ THE ROW HAS ITS OWN STRIP, AND THAT IS WHY THIS FUNCTION MAKES NO CLAIM ABOUT ART. § 3.2 puts
+   the overflow row BELOW THE FLOOR, so the only thing in the strip is the row: there is no
+   furniture to land on, no clear run to hunt for, and no per-theme origin to declare. An earlier
+   revision drew the row INSIDE the floor and needed all three — a `T.overflow` cell per theme, a
+   declared clear run, and a pairwise desk-versus-furniture gate to hold them honest. Every one of
+   those was machinery for an out-of-spec placement, and moving the row where § 3.2 puts it deletes
+   the question instead of answering it: collision with the floor is impossible by construction, at
+   ANY row length, because the floor's shapes stop at `FH` and the strip starts there.
+   What this function still does is fit `n` desks across one floor width. The floor of 60 on `w` is
+   not a guard against an impossible state — it keeps this function's own arithmetic inside the
+   range `deskSVG` can draw, because a negative `width` is not a narrow desk, it is an SVG error
+   that draws nothing, and an invisible desk is the silently dropped seat F13 forbids.
+   ⚠ STILL NOT GUARANTEED, and stated so a porter carries it: `deskSVG` hangs the intern tray at
+   `x+w+26`, OUTSIDE the slot, so at n ≥ 2 a seat with subagents reaches into its neighbour's, and
+   past roughly n = 12 the clamped slab is narrower than the character drawn on it. Both are
+   `deskSVG` re-layouts and belong to the build (card#7341), not to this preview. */
+function overflowSlot(i,n){
+  const step=Math.min(280,(FW-BAND_X-60)/Math.max(1,n));
+  return {x:BAND_X+i*step,y:BAND_DESK_Y,w:Math.max(60,Math.min(230,step-18)),lampx:0.9};}
 function placeFloor(T,seats){
   const slots=Object.keys(T.desks), free=new Set(slots), placed=[], spilled=[];
   for(const s of seats){
@@ -752,9 +744,33 @@ function placeFloor(T,seats){
     if(next!==undefined){free.delete(next);placed.push({seat:s,slot:next,D:T.desks[next]});}
     else homeless.push(s);
   }
-  homeless.forEach((s,i)=>placed.push({seat:s,slot:null,D:overflowSlot(T,i,homeless.length)}));
+  homeless.forEach((s,i)=>placed.push({seat:s,slot:null,D:overflowSlot(i,homeless.length)}));
   return {placed,S:slots.length,short:homeless.length};
 }
+
+/* ---------- § 3.2's BAND: the floor's canvas, extended BELOW the floor ----------
+   ⭐ "the seats with no slot are rendered in an explicitly labelled overflow row BELOW THE FLOOR"
+   (D3 § 3.2). Below the floor is a POSITION, and it is the one thing F13's summary row does not
+   carry — so a floor that overflows is drawn on a canvas `BAND_H` taller than `FH`, and the row
+   lives in that appended strip. Nothing on the floor is ever underneath it.
+   The strip's height is fixed rather than fitted because the row's vertical extent does not depend
+   on how many seats are in it: `overflowSlot` varies x and w only, so the tallest thing the band
+   can draw — § 5.1's thought bubble at `y-152`, over the character at `y-72` — is at the same
+   height for a row of 1 and a row of 40. */
+const BAND_H=340;            /* the appended strip */
+const BAND_DESK_Y=FH+230;    /* the row's desks: low enough that the bubble above the tallest of
+                                them clears the band's two header lines */
+const BAND_X=70;             /* and they start at the strip's left margin, because the strip is
+                                EMPTY — there is no furniture below the floor to work around */
+/* Each floor's own canvas height, and the storey origins derived from it. `short > 0` is the ONE
+   test for "this floor overflows", read from the same `placeFloor` the floor draws from — the band
+   the geometry allows for and the band `floorBand` emits can therefore never disagree. */
+const floorH=inst=>FH+(placeFloor(themeFor(inst),FLEET[inst]).short>0?BAND_H:0);
+const OY=i=>ROOF+FLOORS.slice(0,i).reduce((a,inst)=>a+floorH(inst)+SLAB,0);
+/* ⚠ A FUNCTION, not a constant: it is derived from every floor's height, and those move with the
+   fleet. Held as a value it would be a figure computed before its own basis was known — which is
+   what it was when every floor was exactly `FH` tall and the arithmetic could not notice. */
+const BH=()=>ROOF+FLOORS.reduce((a,inst)=>a+floorH(inst),0)+(FLOORS.length-1)*SLAB+LOBBYH;
 /* the desk takes its SLOT GEOMETRY, never a slot key: an overflow desk has geometry and no key,
    and a second `T.desks[...]` lookup here is the second copy of the placement this replaces. */
 function deskSVG(T,D,s){
@@ -906,10 +922,18 @@ function furnitureSola(){
 }
 const FURNITURE={aimla:furnitureAimla,sola:furnitureSola};
 
-/* one floor's interior (no <svg>, no defs — the building wraps it) */
+/* one floor's canvas (no <svg>, no defs — the building wraps it): the FLOOR, and then § 3.2's
+   overflow strip below it. The two are separate functions because the invariant that replaced the
+   old collision gate is a statement about the boundary BETWEEN them — nothing the floor emits
+   reaches below `FH`, nothing the band emits rises above it — and an invariant about two regions
+   needs the two regions to be separately measurable. `tools/design/floor-preview.selftest.mjs` § 8
+   measures exactly these two fragments. */
 function floorInner(seats){
-  const inst=seats[0].__install, T=themeFor(inst);
-  const P=placeFloor(T,seats);
+  const inst=seats[0].__install, T=themeFor(inst), P=placeFloor(T,seats);
+  return floorBody(inst,T,P)+floorBand(T,P);
+}
+/* THE FLOOR: everything between y 0 and y FH, and nothing below it. */
+function floorBody(inst,T,P){
   const ph=SKY[skyPhase()];
   let g="";
   g+=`<rect width="${FW}" height="${WALL}" fill="url(#wallg-${inst})"/>`;
@@ -953,27 +977,10 @@ function floorInner(seats){
       <rect x="${cb.x}" y="${cb.y}" width="${cb.w}" height="${cb.h}" rx="16" fill="none" stroke="${T.accent}" stroke-width="3" opacity=".55"/>
       <line x1="${cb.door[0]}" y1="${cb.y+cb.h}" x2="${cb.door[1]}" y2="${cb.y+cb.h}" stroke="url(#floorg-${inst})" stroke-width="5"/>
       <rect x="${cb.signX-26}" y="${cb.y-12}" width="52" height="20" rx="8" fill="${T.accent}" opacity=".9"/><text x="${cb.signX}" y="${cb.y+3}" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="700" font-size="13" fill="#3a3550">PM</text>`;
-  /* every slot the map declares is drawn, occupied or not; then § 3.2's overflow row. */
+  /* every slot the map declares is drawn, occupied or not. The seats with no slot are NOT here:
+     they are below the floor, in `floorBand`. */
   const bySlot={};for(const p of P.placed)if(p.slot)bySlot[p.slot]=p.seat;
   for(const id of Object.keys(T.desks)) g+=deskSVG(T,T.desks[id],bySlot[id]||null);
-  const over=P.placed.filter(p=>!p.slot);
-  if(over.length){
-    /* § 3.2's overflow rule and § 9 F13, drawn: the surplus seats get the SAME desk, the SAME
-       render and the same drill-down as any other seat — inside an explicitly labelled band, so
-       *this seat has no desk on the map* is legible as a fact about the MAP and not about the
-       seat, and beside § 5.5's persistent notice, which is the client's own narration and names
-       the shortfall as arithmetic (the rendered seat count against `S`). D3 writes the notice's
-       template as *floor map is short N desks*; the singular is the same statement. */
-    const BY=T.overflow.y-132;
-    g+=`<rect x="40" y="${BY}" width="${FW-80}" height="218" rx="18" fill="#12141f" opacity=".55"/>
-        <rect x="40" y="${BY}" width="${FW-80}" height="218" rx="18" fill="none" stroke="${T.accent}" stroke-width="3" stroke-dasharray="12 9" opacity=".75"/>
-        <text x="68" y="${BY+32}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
-        <text x="${FW-68}" y="${BY+32}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
-        <text x="68" y="${BY+56}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · a seat is never dropped (§ 3.2, § 9 F13)</text>`;
-    /* each surplus desk is marked as one — the row is LABELLED for the reader, and a desk in it
-       is identifiable as a desk that had no slot rather than as an ordinary one drawn low. */
-    for(const p of over) g+=`<g class="overflow-desk">${deskSVG(T,p.D,p.seat)}</g>`;
-  }
   if(inst==="aimla"){
     g+=`<path class="threadline" d="M 330 378 C 420 296 500 296 572 342" stroke="#b9a8f5" stroke-width="2.5" fill="none" opacity=".8"/>`;
     const beads=[[380,338],[430,318],[482,314],[534,326]];
@@ -989,10 +996,36 @@ function floorInner(seats){
   return g;
 }
 
+/* § 3.2's OVERFLOW ROW, in the strip appended BELOW the floor (D3 § 3.2, § 9 F13). The surplus
+   seats get the SAME desk, the SAME render and the same drill-down as any other seat — inside an
+   explicitly labelled band, so *this seat has no desk on the map* is legible as a fact about the
+   MAP and not about the seat, and beside § 5.5's persistent notice, which is the client's own
+   narration and names the shortfall as arithmetic (the rendered seat count against `S`). D3 writes
+   the notice's template as *floor map is short N desks*; the singular is the same statement.
+   ⭐ It is drawn from `FH` DOWN, and that is the whole of what used to need a collision gate. A
+   floor with no surplus seat draws nothing here and keeps its `FH` canvas. */
+function floorBand(T,P){
+  const over=P.placed.filter(p=>!p.slot);
+  if(!over.length)return "";
+  const y0=FH;                        /* the strip's top IS the floor's bottom edge */
+  let g=`<rect y="${y0}" width="${FW}" height="${BAND_H}" fill="#0e1018"/>
+      <rect y="${y0}" width="${FW}" height="6" fill="${T.accent}" opacity=".55"/>
+      <rect x="26" y="${y0+18}" width="${FW-52}" height="${BAND_H-40}" rx="18" fill="#161a27"/>
+      <rect x="26" y="${y0+18}" width="${FW-52}" height="${BAND_H-40}" rx="18" fill="none" stroke="${T.accent}" stroke-width="3" stroke-dasharray="12 9" opacity=".75"/>
+      <text x="56" y="${y0+62}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
+      <text x="${FW-56}" y="${y0+62}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
+      <text x="56" y="${y0+88}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · below the floor, never dropped (§ 3.2, § 9 F13)</text>`;
+  /* each surplus desk is marked as one — the row is LABELLED for the reader, and a desk in it is
+     identifiable as a desk that had no slot rather than as an ordinary one drawn low. */
+  for(const p of over) g+=`<g class="overflow-desk">${deskSVG(T,p.D,p.seat)}</g>`;
+  return g;
+}
+
 /* the building: roof + stacked floors + slabs + lobby + elevator cab */
 function buildingSVG(){
   const ph=SKY[skyPhase()];
-  let g=`<svg viewBox="0 0 ${BW} ${BH}" role="img" aria-label="the Mezzanine building">`;
+  const bh=BH();
+  let g=`<svg viewBox="0 0 ${BW} ${bh}" role="img" aria-label="the Mezzanine building">`;
   g+=`<defs>
     ${FLOORS.map(fi=>{const T=themeFor(fi);return `<linearGradient id="wallg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.wall[0]}"/><stop offset="1" stop-color="${T.wall[1]}"/></linearGradient>
     <linearGradient id="floorg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.floor[0]}"/><stop offset="1" stop-color="${T.floor[1]}"/></linearGradient>`;}).join("")}
@@ -1000,11 +1033,10 @@ function buildingSVG(){
     <linearGradient id="skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ph.top}"/><stop offset="1" stop-color="${ph.bot}"/></linearGradient>
     <radialGradient id="glow"><stop offset="0" stop-color="#ffcf7d" stop-opacity=".34"/><stop offset="1" stop-color="#ffcf7d" stop-opacity="0"/></radialGradient>
   </defs>`;
-  g+=`<rect width="${BW}" height="${BH}" fill="url(#skyg)" opacity=".45"/><rect width="${BW}" height="${BH}" fill="#12141f" opacity=".55"/>`;
-  if(ph.stars)for(let i=0;i<26;i++){const sx=(i*181)%BW,sy=(i*97)%BH;g+=`<circle cx="${sx}" cy="${sy}" r="${1.2+(i%2)}" fill="#e8ecff" opacity=".5"/>`;}
-  /* shell */
-  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${BH-ROOF-LOBBYH+FLOORS.length*0+24+FLOORS.length*SLAB+FLOORS.length*FH- (FH+SLAB)*(FLOORS.length-1) - FH + (FLOORS.length*FH+(FLOORS.length-1)*SLAB)}" fill="none"/>`;
-  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${FLOORS.length*FH+(FLOORS.length-1)*SLAB+LOBBYH+24}" fill="#242a3c" rx="14"/>`;
+  g+=`<rect width="${BW}" height="${bh}" fill="url(#skyg)" opacity=".45"/><rect width="${BW}" height="${bh}" fill="#12141f" opacity=".55"/>`;
+  if(ph.stars)for(let i=0;i<26;i++){const sx=(i*181)%BW,sy=(i*97)%bh;g+=`<circle cx="${sx}" cy="${sy}" r="${1.2+(i%2)}" fill="#e8ecff" opacity=".5"/>`;}
+  /* shell — every storey, every slab and the lobby, which is what the building's own height is */
+  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${bh-ROOF+24}" fill="#242a3c" rx="14"/>`;
   /* roof */
   g+=`<rect x="${OX-58}" y="${ROOF-38}" width="${FW+116}" height="26" rx="9" fill="#3a4356"/>
       <rect x="${OX+FW-260}" y="${ROOF-118}" width="120" height="84" rx="8" fill="#3a4356"/><rect x="${OX+FW-250}" y="${ROOF-128}" width="100" height="14" rx="6" fill="#4a5670"/>
@@ -1014,14 +1046,16 @@ function buildingSVG(){
   FLOORS.forEach((inst,i)=>{
     g+=`<g transform="translate(${OX},${OY(i)})">${floorInner(FLEET[inst].map(s=>({...s,__install:inst})))}</g>`;
     g+=`<text x="${OX-14}" y="${OY(i)+60}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="700" font-size="30" fill="#ffcf7d" opacity=".85">${inst.toUpperCase()}</text>`;
-    if(i<FLOORS.length-1)g+=`<rect x="${OX-34}" y="${OY(i)+FH}" width="${FW+68}" height="${SLAB}" fill="#3a4356"/><rect x="${OX-34}" y="${OY(i)+FH}" width="${FW+68}" height="8" fill="#4a5670"/>`;
+    /* the slab sits under the storey's WHOLE canvas — a floor with an overflow strip is taller,
+       and a slab drawn at a fixed `FH` would cut through it. */
+    if(i<FLOORS.length-1)g+=`<rect x="${OX-34}" y="${OY(i)+floorH(inst)}" width="${FW+68}" height="${SLAB}" fill="#3a4356"/><rect x="${OX-34}" y="${OY(i)+floorH(inst)}" width="${FW+68}" height="8" fill="#4a5670"/>`;
   });
   /* elevator shaft guide + cab */
-  const shaftX=OX+38, lastY=OY(FLOORS.length-1);
-  g+=`<line x1="${shaftX+59}" y1="${ROOF-12}" x2="${shaftX+59}" y2="${lastY+FH+LOBBYH-30}" stroke="#4a5670" stroke-width="3" stroke-dasharray="8 10" opacity=".5"/>`;
+  const shaftX=OX+38, lastY=OY(FLOORS.length-1), lastH=floorH(FLOORS[FLOORS.length-1]);
+  g+=`<line x1="${shaftX+59}" y1="${ROOF-12}" x2="${shaftX+59}" y2="${lastY+lastH+LOBBYH-30}" stroke="#4a5670" stroke-width="3" stroke-dasharray="8 10" opacity=".5"/>`;
   g+=`<g id="cab" style="transition:transform 1.1s cubic-bezier(.4,0,.2,1)"><rect x="${shaftX-6}" y="34" width="130" height="176" rx="10" fill="none" stroke="#ffcf7d" stroke-width="5"/><rect x="${shaftX+52}" y="26" width="14" height="8" rx="3" fill="#ffcf7d"/></g>`;
   /* lobby */
-  const ly=lastY+FH;
+  const ly=lastY+lastH;
   g+=`<rect x="${OX-34}" y="${ly}" width="${FW+68}" height="${LOBBYH}" fill="#2b3145"/>
       <rect x="${OX-34}" y="${ly}" width="${FW+68}" height="10" fill="#4a5670"/>
       <rect x="${OX+60}" y="${ly+34}" width="150" height="${LOBBYH-44}" rx="8" fill="#3a4356"/><rect x="${OX+72}" y="${ly+46}" width="126" height="${LOBBYH-66}" rx="5" fill="#8ecfdb" opacity=".35"/>
@@ -1056,7 +1090,8 @@ function render(){
   world.innerHTML=buildingSVG();      /* draws the sky from the HELD room value */
   paintedPhase=skyPhase();            /* …and records which phase was drawn */
   paintRoom();                        /* the hands and their accessible text, same value */
-  const PXg=(v)=>(v/BW*100)+"%",PYg=(v)=>(v/BH*100)+"%";
+  const bh=BH();
+  const PXg=(v)=>(v/BW*100)+"%",PYg=(v)=>(v/bh*100)+"%";
   FLOORS.forEach((inst,fi)=>{
     const ox=OX, oy=OY(fi);
     const PX=v=>PXg(ox+v), PY=v=>PYg(oy+v);
@@ -1068,7 +1103,7 @@ function render(){
     for(const {seat:s0,D} of placeFloor(TH,FLEET[inst]).placed){
       const s={...s0,__install:inst};
       const b=document.createElement("button");b.className="hit";
-      b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=PXg(D.w+((s.subagents||[]).length?90:20)).replace('%','')*1+"%";b.style.width=(( (D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20)) /BW)*100)+"%";b.style.height=((196/BH)*100)+"%";
+      b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=(((D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20))/BW)*100)+"%";b.style.height=((196/bh)*100)+"%";
       b.setAttribute("aria-label",s.seat+" — "+s.render_state);
       b.addEventListener("click",()=>openDrill(inst,s));world.appendChild(b);
       const p=document.createElement("div");p.className="plate";
@@ -1101,7 +1136,7 @@ function render(){
     }
     /* the floor's elevator is a travel control */
     const eb=document.createElement("button");eb.className="hit";
-    eb.style.left=PX(30);eb.style.top=PY(26);eb.style.width=((136/BW)*100)+"%";eb.style.height=((184/BH)*100)+"%";
+    eb.style.left=PX(30);eb.style.top=PY(26);eb.style.width=((136/BW)*100)+"%";eb.style.height=((184/bh)*100)+"%";
     eb.setAttribute("aria-label","elevator — ride to "+(FLOORS[(fi+1)%FLOORS.length]));
     eb.title="ride the elevator";
     eb.addEventListener("click",()=>elevatorTo(FLOORS[(fi+1)%FLOORS.length]));
@@ -1116,9 +1151,11 @@ function render(){
       // only, so the pulse is clipped at the slab — it never bleeds into another floor.
       const clip=document.createElement("div");clip.className="floorclip";
       clip.style.left=PXg(ox);clip.style.top=PYg(oy);
-      clip.style.width=(FW/BW*100)+"%";clip.style.height=(FH/BH*100)+"%";
+      /* the clip is the STOREY's own canvas, band included: a broadcast reaches the install's
+         seats, and an overflow seat is one of them. */
+      clip.style.width=(FW/BW*100)+"%";clip.style.height=(floorH(inst)/bh*100)+"%";
       const ring=document.createElement("div");ring.className="annring";
-      ring.style.left=(220/FW*100)+"%";ring.style.top=(400/FH*100)+"%";
+      ring.style.left=(220/FW*100)+"%";ring.style.top=(400/floorH(inst)*100)+"%";
       clip.appendChild(ring);world.appendChild(clip);
       const star=document.createElement("div");star.className="star";star.textContent="✦";
       const ab=THEMES.aimla.desks.b1;star.style.setProperty("--sx",PX(ab.x+ab.w*0.62));star.style.setProperty("--sy",PY(ab.y-20));
@@ -1312,8 +1349,8 @@ function feedMode(){return !feed.everLive?"cold":feed.live?"live":"down";}
 const vp=document.getElementById("room"), worldEl=document.getElementById("world");
 let z=1,px=0,py=0;
 const vw=()=>vp.getBoundingClientRect().width, vh=()=>vp.getBoundingClientRect().height;
-const worldH=zz=>vw()*(BH/BW)*zz;
-const zAll=()=>vh()/(vw()*(BH/BW));
+const worldH=zz=>vw()*(BH()/BW)*zz;
+const zAll=()=>vh()/(vw()*(BH()/BW));
 function clampPan(){
   const cw=vw()*z, ch=worldH(z);
   px = cw<=vw() ? (vw()-cw)/2 : Math.min(0,Math.max(vw()-cw,px));
@@ -1326,12 +1363,15 @@ function zoomAt(mx,my,nz){
   nz=Math.min(4,Math.max(zAll(),nz));
   px=mx-(mx-px)*nz/z; py=my-(my-py)*nz/z; z=nz; clampPan(); applyView();
 }
+/* "fit floor" fits the STOREY, which on an overflowing floor includes § 3.2's strip — the row is
+   part of the floor's own picture, so a fit that framed `FH` would cut off the seats it exists to
+   show. */
 function focusFloor(inst,animate=true){
-  current=inst; const fi=FLOORS.indexOf(inst);
+  current=inst; const fi=FLOORS.indexOf(inst), fh=floorH(inst);
   const s=vw()/BW;
-  const zF=Math.min(4, vh()/( (FH+70)*s ));
+  const zF=Math.min(4, vh()/( (fh+70)*s ));
   const doIt=()=>{ z=zF;
-    px=vw()/2-(OX+FW/2)*s*z; py=vh()/2-(OY(fi)+FH/2)*s*z; clampPan(); applyView(); syncLobby(); };
+    px=vw()/2-(OX+FW/2)*s*z; py=vh()/2-(OY(fi)+fh/2)*s*z; clampPan(); applyView(); syncLobby(); };
   animate?smooth(doIt):doIt();
 }
 function buildingView(){ smooth(()=>{ z=zAll(); clampPan(); applyView(); }); }
