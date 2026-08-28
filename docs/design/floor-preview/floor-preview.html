@@ -149,6 +149,17 @@
   .kv dd.n{color:var(--faint);font-style:italic}
   .foot{margin-top:18px;color:var(--faint);font-size:12px;max-width:80ch}
   .foot strong{color:var(--dim)}
+  /* the scope declaration, rendered FROM the artifact's own D3_SCOPE table — never re-typed here */
+  .scope{margin-top:9px;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:100%}
+  .scope table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11px}
+  .scope th{text-align:left;background:var(--panel2);color:var(--dim);font-weight:500;
+    padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .scope td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--faint)}
+  .scope tr:last-child td{border-bottom:0}
+  .scope .s{font-family:var(--disp);font-weight:600;color:var(--ink);white-space:nowrap}
+  .scope .st{white-space:nowrap;font-weight:500}
+  .scope .st-implemented{color:var(--ok)} .scope .st-partial{color:var(--blocked)}
+  .scope .st-none{color:var(--stale)}
 </style>
 
 <div class="wrap">
@@ -166,7 +177,7 @@
       <span class="hh"><span class="dot"></span>sweep ok · 6&nbsp;s ago</span>
       <span class="hh"><span class="dot" id="feeddot"></span><span id="feedstatus">feed: connecting</span></span>
     </div>
-    <div class="lright">8 seats · 7 live<br>membership as of 14:29:02</div>
+    <div class="lright"><span id="fleetcount">counting…</span><br>membership as of 14:29:02</div>
   </div>
 
   <div class="room grab" id="room">
@@ -193,7 +204,17 @@
   <section class="drill" id="drill" aria-live="polite"></section>
 
   <div class="foot">
-    <p><strong>This round:</strong> a whole <strong>building</strong>: zoom out (⌂ or wheel) to see every floor stacked in cross-section, zoom in to one floor, and <strong>ride the elevator</strong> — click it, or a floor button — to travel between them. A larger floor you can <strong>zoom into</strong> — the meeting room, the lounge,
+    <p><strong>What of <code>docs/design/FLOOR.md</code> (D3) this artifact implements</strong> — this is a
+    reference implementation of a <em>declared subset</em>, not the build, and the table below is that
+    declaration: one row per membership-tested render surface D3 § 5.4 publishes. It is rendered from the
+    artifact's own <code>D3_SCOPE</code> table rather than re-typed, and
+    <code>tools/design/floor-preview.selftest.mjs</code> set-differences that table against § 5.4's own six
+    surfaces <strong>in both directions</strong> on every run — so a surface D3 gains with no row reds the
+    gate, and a row for a surface D3 does not publish reds it too. <em>Not implemented</em> is a ruling and
+    not a gap: the floor is built once, by card&nbsp;#7341.</p>
+    <div class="scope" id="scope"></div>
+
+    <p style="margin-top:12px"><strong>This round:</strong> a whole <strong>building</strong>: zoom out (⌂ or wheel) to see every floor stacked in cross-section, zoom in to one floor, and <strong>ride the elevator</strong> — click it, or a floor button — to travel between them. A larger floor you can <strong>zoom into</strong> — the meeting room, the lounge,
     the library corner all reward a closer look, and the vector art stays crisp at any depth. <strong>Characters are
     now individuals</strong>: body shape, pattern, ears, sprout, eyes, mouth, accessory and posture are each drawn
     independently from the seat's seed, and every creature carries a seeded <em>vibe</em> (shown in its drill-down,
@@ -385,25 +406,66 @@ const API_ERROR_TYPES={
   unrecognised:"this reporter did not recognise the harness's error member"
 };
 
-/* ⭐ § 5.4's membership rule is over SIX fields, not one — `render_state`, `link_state`,
-   `activity_state`, `unknown_reason`, `api_error_type` and the badges — and this desk renders
-   three of them. Each is ONE ENTRY here, so a second membership-tested field is a row rather
-   than a branch, and the test itself is written once for all of them. */
-const MEMBER_SETS={render_state:STATE_RENDER,unknown_reason:UNKNOWN_REASONS,
-                   api_error_type:API_ERROR_TYPES};
+/* ════════════════ WHAT OF D3 THIS ARTIFACT IMPLEMENTS — the scope declaration ════════════════
+   ⭐ THIS FILE IS A REFERENCE IMPLEMENTATION OF A DECLARED SUBSET OF D3, AND THIS TABLE IS THE
+   DECLARATION. It is the artifact card#7341 builds FROM, so the reader who most needs it is that
+   card's implementer — and what that reader cannot otherwise tell is *absent because out of
+   scope* from *absent because missed*. Every ROW below makes that call explicitly, once.
+
+   The population is not this file's to choose: it is § 5.4's SIX membership-tested render
+   surfaces — the same six `tools/design/verify-floor.py` G7 closes render over — and
+   `tools/design/floor-preview.selftest.mjs` re-derives them from § 5.4 itself and
+   set-differences them against this table IN BOTH DIRECTIONS on every run. So a surface D3 gains
+   with no row here reds the gate, and a row here for a surface D3 does not publish reds it too.
+   A declaration with no check is a comment; this one is checked, and the check is shown failing.
+
+   ⛔ NOT IMPLEMENTED IS A RULING, NOT A GAP TO CLOSE. Making the preview complete against D3
+   would make it a second full implementation of D3's render surfaces — the floor built twice —
+   and card#7341 a port of it rather than the build. There is one build and it is card#7341.
+
+   Cells, every row: `surface` — § 5.4's own name for the set. `status` — one of
+   `implemented` / `partial` / `not implemented`. `table` — the member set this file renders it
+   FROM (and therefore membership-tests it against), or `null`. `note` — for an implemented
+   surface, where its render lives; otherwise the one clause that says why not. */
+const D3_SCOPE=[
+  {surface:"render_state",status:"implemented",table:STATE_RENDER,
+   note:"STATE_RENDER — one row per § 7.1 member, plus UNRECOGNISED_RENDER for § 5.4's eleventh case; every render_state-keyed decision on this page reads a cell of it"},
+  {surface:"link_state",status:"partial",table:null,
+   note:"HALF THERE: the drill-down's `state` and `transport` blocks render the RAW value, and nothing else reads it — no membership test (so an unrecognised link_state does not dim the desk here) and no render of § 7.6's Currency treatment column, which is card#7341's"},
+  {surface:"activity_state",status:"not implemented",table:null,
+   note:"no render at all: the desk switches on `render_state`, which collapses transport over activity (§ 7.6), and § 7.3's *was: … (…)* forms under a currency label are the build's"},
+  {surface:"unknown_reason",status:"implemented",table:UNKNOWN_REASONS,
+   note:"UNKNOWN_REASONS — § 7.1's seven sentences, rendered by unknownReasonLine() on the `unknown` desk"},
+  {surface:"api_error_type",status:"implemented",table:API_ERROR_TYPES,
+   note:"API_ERROR_TYPES — § 7.6's twelve phrases, rendered beside the raw value by apiErrorLine() on the `stalled` desk"},
+  {surface:"badge",status:"not implemented",table:null,
+   note:"§ 7.2's eighteen badges have no render here — no cluster, no glyph, no member set; the whole surface is card#7341's to build from § 7.2"}
+];
+/* ⭐ § 5.4's membership rule is over all SIX surfaces above, not one — and the sets this file
+   actually tests against are exactly the rows that declare a `table`, DERIVED from the table
+   above rather than listed a second time here. So a surface's scope row is the one place its
+   status is written: promoting a row to `implemented` with a member set joins it to the test
+   below, and there is no second list to forget to edit. Each is ONE ENTRY, so a second
+   membership-tested field is a row rather than a branch, and the test is written once for all. */
+const MEMBER_SETS=Object.fromEntries(D3_SCOPE.filter(r=>r.table).map(r=>[r.surface,r.table]));
 const isMember=(field,v)=>Object.prototype.hasOwnProperty.call(MEMBER_SETS[field],v);
 const isRenderState=v=>isMember("render_state",v);
 function renderFor(v){return isRenderState(v)?STATE_RENDER[v]:UNRECOGNISED_RENDER;}
-/* every field of this seat whose value is in no published set — the desk's own § 9 F9 list. */
+/* every MEMBERSHIP-TESTED field of this seat whose value is in no published set — the desk's own
+   § 9 F9 list, over the fields `MEMBER_SETS` holds and no others. */
 function unheardFields(s){
   return Object.keys(MEMBER_SETS)
     .filter(f=>s[f]!==null&&s[f]!==undefined&&!isMember(f,s[f]));
 }
-/* ⛔ § 5.4 / § 7.6: an unrecognised value in ANY of those fields treats the DESK as not-current,
-   not merely the one field that happened to be noticed first. Driving this off the row's cell
-   alone is how `render_state` gets the rule and its five siblings quietly do not — a seat whose
-   `api_error_type` this client has never heard of would otherwise render in full colour, which
-   is AT-D3-11's second RED arriving through a different field. */
+/* ⛔ § 5.4 / § 7.6: an unrecognised value in ANY field this artifact membership-tests treats the
+   DESK as not-current, not merely the one field that happened to be noticed first. Driving this
+   off the row's cell alone is how `render_state` gets the rule and its siblings quietly do not —
+   a seat whose `api_error_type` this client has never heard of would otherwise render in full
+   colour, which is AT-D3-11's second RED arriving through a different field.
+   ⚠ "ANY field this artifact tests" is THREE fields, not § 5.4's six: `MEMBER_SETS` above is
+   D3_SCOPE's `implemented` rows. An unrecognised `link_state` does NOT dim a desk here, and that
+   is the scope table's declaration rather than an exception to § 5.4 — the surface is not
+   membership-tested here at all, which is what its row says and what the gate checks. */
 function isCurrent(s){return renderFor(s.render_state).current&&unheardFields(s).length===0;}
 
 /* § 5.6: a null `unknown_reason` draws NO line — never an invented reason, never a placeholder.
@@ -547,12 +609,13 @@ const SKY={
   unset:{top:"#2a2f42",bot:"#39405a",stars:false,moon:false,sun:false,cityLit:0,flat:true}
 };
 
-/* ---------- geometry: floor + building ---------- */
+/* ---------- geometry: floor + building ----------
+   `FH` is THE FLOOR'S OWN HEIGHT and nothing else. A floor that overflows is drawn on a TALLER
+   canvas — see the band block after `placeFloor`, where the per-floor height, the storey origins
+   and the building's own height are derived from it. */
 const FW=1800,FH=1000,WALL=210;
 const BW=1900,ROOF=150,SLAB=40,LOBBYH=180,OX=50;
 const FLOORS=["aimla","sola"];
-const OY=i=>ROOF+i*(FH+SLAB);
-const BH=ROOF+FLOORS.length*FH+(FLOORS.length-1)*SLAB+LOBBYH;
 
 /* PER-FLOOR THEMES — the BUILDING owns structure (elevator, windows, walls); the floor owns
    everything inside: palette, desk positions, cabin position, furniture set. */
@@ -576,6 +639,27 @@ const THEMES={
     furniture:"sola"
   }
 };
+/* ⛔ THEMES IS KEYED ON INSTALL IDENTITY, NOT ON A PUBLISHED MEMBER SET — which is why the
+   member-set primitive above does not reach it and cannot: there is no set of installs to test
+   membership against. The floors come from the wire; this map is the client's own art, and D3
+   states no render for an install the art has never seen. So an install with no entry is an
+   ORDINARY case, not an impossible one, and `THEMES[inst]` unguarded threw the whole page away
+   on it — at the defs, at the floor's interior and at the overlay pass, three lookups of one
+   fact. All three resolve through this ONE function, so the unthemed render is written once.
+   ⭐ The unthemed floor declares NO DESK SLOTS, and that is not a special case either: § 3.2's
+   overflow rule already says what a floor with fewer slots than seats does. Every seat of an
+   install the art has never seen therefore renders in the labelled overflow row under § 9 F13's
+   notice — visibly unplaced, and never dropped. `furniture:null` is the same choice: a room we
+   have no art for gets no furniture set, rather than another floor's borrowed by default. */
+const UNTHEMED={
+  wall:["#2b3040","#363c50"], floor:["#6e6a62","#57544e"], plank:"#4a4740",
+  rug:{fill:"#5a5768",edge:"#4a4858",cx:900,cy:640,rx:240,ry:84},
+  accent:"#aab1c6",
+  cabin:{x:52,y:300,w:336,h:212,door:[238,310],signX:92},
+  desks:{},
+  furniture:null
+};
+const themeFor=inst=>THEMES[inst]||UNTHEMED;
 const FLEET={
   aimla:[
     {desk:"cabin",seat:"pm",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: kbcard patch --task 7112",started_at:"14:27:41",running:"1m 21s"},context:{used_pct:38.2,used_tokens:76400,total_tokens:200000,source:"harness"},model_label:"claude-fable-5",open_calls:1,open_turn:true,task:{title:"floor UI preview",source:"board_card",ref:"card#7341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:27:41"}},
@@ -589,11 +673,134 @@ const FLEET={
     {desk:"cabin",seat:"sola-pm",render_state:"idle",link_state:"live",action:null,open_calls:0,open_turn:false,context:{used_pct:18.9,used_tokens:189000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:null,subagents:[],quiet_for:"12m 40s",activity:{last_kind:"turn.end",last_event_time:"14:16:22"}},
     {desk:"a1",seat:"kanban",render_state:"working",link_state:"live",action:{tool_name:"Edit",descriptor:"Edit: board webhooks consumer",started_at:"14:28:12",running:"0m 50s"},context:{used_pct:22.4,used_tokens:224000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"autonomy watchdog",source:"issue",ref:"rt#341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:28:12"}},
     {desk:"a2",seat:"sola-backend",render_state:"stale",link_state:"stale",action:null,open_calls:0,open_turn:false,context:null,model_label:null,task:null,subagents:[],delivery:{no_data_since:"14:18",last_receipt_at:"14:18:02"},no_data_for:"11m",activity:{last_kind:"reporter.heartbeat",last_event_time:"14:17:59"}},
-    {desk:"b1",seat:"sola-inventory",render_state:"blocked",link_state:"live",action:null,open_calls:0,open_turn:true,blocked_since:"14:21",context:{used_pct:61.7,used_tokens:617000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"MFA session ruling",source:"thread",ref:"inv#88"},subagents:[],activity:{last_kind:"attention.request",last_event_time:"14:21:07"}}
+    {desk:"b1",seat:"sola-inventory",render_state:"blocked",link_state:"live",action:null,open_calls:0,open_turn:true,blocked_since:"14:21",context:{used_pct:61.7,used_tokens:617000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"MFA session ruling",source:"thread",ref:"inv#88"},subagents:[],activity:{last_kind:"attention.request",last_event_time:"14:21:07"}},
+    /* ⭐ THE F13 SEAT. `b2` is a desk this floor's map does not declare, and sola's four slots
+       are already taken — so this seat has nowhere to sit. It is in the sample deliberately:
+       § 9 F13's overflow row and its *floor map is short N desks* notice are behaviour card#7341
+       has to build, and a behaviour no sample reaches is one no implementer sees. Ride the
+       elevator to sola: the seat is in the labelled band BELOW the floor — where § 3.2 puts it,
+       and where a reader meets it plainly rather than tucked into a gap between the furniture —
+       rendered exactly like any other seat, never dropped and never a crash. Its `subagents[]` carries
+       § 5.6's two null edges side by side: an intern with no `subagent_type` (no type tag at
+       all) and one with no `title` (*untitled*, never an invented one). */
+    {desk:"b2",seat:"sola-mailer",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: php artisan queue:work",started_at:"14:28:41",running:"0m 21s"},context:{used_pct:12.5,used_tokens:125000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"digest send window",source:"issue",ref:"#341"},subagents:[{title:"draft the digest template",subagent_type:null},{title:null,subagent_type:"coder"}],activity:{last_kind:"tool.start",last_event_time:"14:28:41"}}
   ]
 };
-function deskSVG(T,id,s){
-  const D=T.desks[id],x=D.x,y=D.y,w=D.w;
+/* ---------- PLACEMENT: every seat gets a desk, and a seat is NEVER DROPPED (§ 3.2, § 9 F13) ----
+   § 3.2: "A floor's map declares its desk slots" and `S` is their count. THIS FLOOR'S MAP IS THE
+   THEME'S OWN `desks` OBJECT, so `S` is derived from it here rather than written down a second
+   time — the fixed ["a1","b1","cabin","a2"] list this replaces WAS that second copy, and it
+   silently dropped any seat whose `desk` it did not name. F13's *Never* column is one phrase:
+   **dropping a seat**. A seat that exists and is invisible is the same lie as an empty office and
+   is worse for being local.
+   ⛔ PLACEMENT IS COMPUTED HERE AND READ BY EVERYTHING THAT POSITIONS ANYTHING — the desks in the
+   floor SVG, and the buttons, plates, thought bubbles and markers of the overlay pass. It used to
+   be computed twice, and the two copies failed in opposite directions on the same seat: the SVG
+   dropped it, and the overlay pass threw on `TH.desks[s.desk].x`. This is a pure function of
+   (map, seat list), so the two call sites cannot disagree about where a seat is.
+   What this does NOT implement is § 3.2's slot FUNCTION: the sample fleet names each seat's desk,
+   where the built client derives the slot from `h(seat)` and probes forward. What it does take
+   from § 3.2 is the half F13 turns on — a seat whose named slot the map does not declare (or has
+   already given away) takes the next free slot, and a seat left with no slot at all renders in the
+   labelled OVERFLOW ROW BELOW THE FLOOR, under § 5.5's notice *floor map is short N desks*.
+   By construction `short` is the count § 5.5 names — the rendered seat count against `S` — since
+   the map's slots are exhausted before any seat overflows.
+   ⚠ AND WHAT IT IS NOT: placement here is ORDER-DEPENDENT, so it is a pure function of the seat
+   LIST and not of the seat SET that § 3.2 asks for. Two seats naming one slot resolve by array
+   position — the earlier one keeps the slot, the later one takes the next free one — so the same
+   set delivered in a different order can put two seats on different desks. § 3.2's own answer is
+   the slot FUNCTION `h(seat)` with forward probing, which is order-independent by construction and
+   is card#7341's to build; this preview does not implement it (see the line above). Stated here
+   because a porter reading "pure function of (map, seat list)" would otherwise carry the weaker
+   guarantee across as the stronger one. */
+/* ⛔ THE ROW HAS ITS OWN STRIP, AND THAT IS WHY THIS FUNCTION MAKES NO CLAIM ABOUT ART. § 3.2 puts
+   the overflow row BELOW THE FLOOR, so the only thing in the strip is the row: there is no
+   furniture to land on, no clear run to hunt for, and no per-theme origin to declare. An earlier
+   revision drew the row INSIDE the floor and needed all three — a `T.overflow` cell per theme, a
+   declared clear run, and a pairwise desk-versus-furniture gate to hold them honest. Every one of
+   those was machinery for an out-of-spec placement, and moving the row where § 3.2 puts it deletes
+   the question instead of answering it: collision with the floor is impossible by construction, at
+   ANY row length, because the floor's shapes stop at `FH` and the strip starts there.
+   What this function still does is fit `n` desks across one floor width. The floor of 60 on `w` is
+   not a guard against an impossible state — it keeps this function's own arithmetic inside the
+   range `deskSVG` can draw, because a negative `width` is not a narrow desk, it is an SVG error
+   that draws nothing, and an invisible desk is the silently dropped seat F13 forbids.
+   ⚠ STILL NOT GUARANTEED, and stated so a porter carries it: `deskSVG` hangs the intern tray at
+   `x+w+26`, OUTSIDE the slot, so at n ≥ 2 a seat with subagents reaches into its neighbour's, and
+   past roughly n = 12 the clamped slab is narrower than the character drawn on it. Both are
+   `deskSVG` re-layouts and belong to the build (card#7341), not to this preview. */
+function overflowSlot(i,n){
+  const step=Math.min(280,(FW-BAND_X-60)/Math.max(1,n));
+  return {x:BAND_X+i*step,y:BAND_DESK_Y,w:Math.max(60,Math.min(230,step-18)),lampx:0.9};}
+function placeFloor(T,seats){
+  const slots=Object.keys(T.desks), free=new Set(slots), placed=[], spilled=[];
+  for(const s of seats){
+    if(free.has(s.desk)){free.delete(s.desk);placed.push({seat:s,slot:s.desk,D:T.desks[s.desk]});}
+    else spilled.push(s);
+  }
+  const homeless=[];
+  for(const s of spilled){
+    const next=slots.find(k=>free.has(k));
+    if(next!==undefined){free.delete(next);placed.push({seat:s,slot:next,D:T.desks[next]});}
+    else homeless.push(s);
+  }
+  homeless.forEach((s,i)=>placed.push({seat:s,slot:null,D:overflowSlot(i,homeless.length)}));
+  return {placed,S:slots.length,short:homeless.length};
+}
+
+/* ---------- § 3.2's BAND: the floor's canvas, extended BELOW the floor ----------
+   ⭐ "the seats with no slot are rendered in an explicitly labelled overflow row BELOW THE FLOOR"
+   (D3 § 3.2). Below the floor is a POSITION, and it is the one thing F13's summary row does not
+   carry — so a floor that overflows is drawn on a canvas `BAND_H` taller than `FH`, and the row
+   lives in that appended strip. Nothing on the floor is ever underneath it.
+   The strip's height is fixed rather than fitted because the row's vertical extent does not depend
+   on how many seats are in it: `overflowSlot` varies x and w only, so the tallest thing the band
+   can draw — § 5.1's thought bubble at `y-152`, over the character at `y-72` — is at the same
+   height for a row of 1 and a row of 40.
+
+   ⛔ THE BAND'S BUDGET IS FOR THE WHOLE OVERLAY STACK, NOT FOR THE SVG. A desk is drawn in SVG
+   user units; its thought bubble and its nameplate are HTML positioned in the same space but SIZED
+   IN CSS PIXELS, and the two only meet once a browser has composed them. Both figures below were
+   set from `getBoundingClientRect()` in a real browser, and `tools/design/floor-preview.browser.mjs`
+   is what holds them: an earlier revision put the desks at `FH+230` in a `340`-tall strip, which is
+   correct for every shape the SVG emits and put the bubble ON the header's arithmetic line and the
+   nameplate's chip BELOW the strip entirely. Every static gate this repo had said PASS, because the
+   overlay layer was in no denominator.
+   ⚠ AND ONE OF THE TWO FIGURES MOVES WITH THE ROOM'S WIDTH, which is the only reason this needs
+   saying at all. `#world` carries `transform:scale(z)`, so a zoom scales the SVG and the overlays
+   TOGETHER and cancels out of every question here: an overlay's size in USER UNITS is
+   `css_px · BW/room` — a function of the room's width alone, and the same at every zoom, in the
+   fit-floor framing and in the whole-building one. So the band's budget is a claim about a RANGE OF
+   ROOM WIDTHS, and about nothing else; `tools/design/floor-preview.browser.mjs` names that range
+   and measures both ends of it. */
+/* THE ROW'S DESKS — a purely user-unit leg, so no width enters it. § 5.1's bubble is anchored `152`
+   above the desk and grows DOWNWARD from there, so what has to clear the header is the ANCHOR:
+   `300 - 152 = FH+148`, against the header's own deepest static bound `FH+107.5` (the arithmetic
+   line's baseline `y0+88`, plus the 1.5 em § 8 bounds a `<text>` by). 40 user units of margin. The
+   marker (`D.y-104`) and the hit target (`D.y-118`) are lower again and clear it by more. */
+const BAND_DESK_Y=FH+300;
+/* THE APPENDED STRIP — and the deepest thing in the band is the NAMEPLATE, which is the one leg
+   that does move: it sits at `D.y+64` and is `53.8` CSS px tall (measured; three lines, all
+   `nowrap`), so it needs `300 + 64 + 53.8·BW/room` user units. That is `446` at a 1240 px room and
+   `469` at a 972 px one, and `520` is the budget that carries both — down to a room of `655` px,
+   below which the nameplate outgrows the strip. The gate covers the two widths named above; the
+   `655` is arithmetic from the same measurement and is checked, not asserted. */
+const BAND_H=520;
+const BAND_X=70;             /* and they start at the strip's left margin, because the strip is
+                                EMPTY — there is no furniture below the floor to work around */
+/* Each floor's own canvas height, and the storey origins derived from it. `short > 0` is the ONE
+   test for "this floor overflows", read from the same `placeFloor` the floor draws from — the band
+   the geometry allows for and the band `floorBand` emits can therefore never disagree. */
+const floorH=inst=>FH+(placeFloor(themeFor(inst),FLEET[inst]).short>0?BAND_H:0);
+const OY=i=>ROOF+FLOORS.slice(0,i).reduce((a,inst)=>a+floorH(inst)+SLAB,0);
+/* ⚠ A FUNCTION, not a constant: it is derived from every floor's height, and those move with the
+   fleet. Held as a value it would be a figure computed before its own basis was known — which is
+   what it was when every floor was exactly `FH` tall and the arithmetic could not notice. */
+const BH=()=>ROOF+FLOORS.reduce((a,inst)=>a+floorH(inst),0)+(FLOORS.length-1)*SLAB+LOBBYH;
+/* the desk takes its SLOT GEOMETRY, never a slot key: an overflow desk has geometry and no key,
+   and a second `T.desks[...]` lookup here is the second copy of the placement this replaces. */
+function deskSVG(T,D,s){
+  const x=D.x,y=D.y,w=D.w;
   const R=s?renderFor(s.render_state):null, pose=s?poseOf(s):null, occupied=hasCharacter(s);
   let g="";
   g+=`<ellipse cx="${x+w/2}" cy="${y+56}" rx="${w/2+14}" ry="14" fill="rgba(15,12,30,.28)"/>`;
@@ -741,10 +948,18 @@ function furnitureSola(){
 }
 const FURNITURE={aimla:furnitureAimla,sola:furnitureSola};
 
-/* one floor's interior (no <svg>, no defs — the building wraps it) */
+/* one floor's canvas (no <svg>, no defs — the building wraps it): the FLOOR, and then § 3.2's
+   overflow strip below it. The two are separate functions because the invariant that replaced the
+   old collision gate is a statement about the boundary BETWEEN them — nothing the floor emits
+   reaches below `FH`, nothing the band emits rises above it — and an invariant about two regions
+   needs the two regions to be separately measurable. `tools/design/floor-preview.selftest.mjs` § 8
+   measures exactly these two fragments. */
 function floorInner(seats){
-  const byDesk={};for(const s of seats)byDesk[s.desk]=s;
-  const inst=seats[0].__install, T=THEMES[inst];
+  const inst=seats[0].__install, T=themeFor(inst), P=placeFloor(T,seats);
+  return floorBody(inst,T,P)+floorBand(T,P);
+}
+/* THE FLOOR: everything between y 0 and y FH, and nothing below it. */
+function floorBody(inst,T,P){
   const ph=SKY[skyPhase()];
   let g="";
   g+=`<rect width="${FW}" height="${WALL}" fill="url(#wallg-${inst})"/>`;
@@ -778,15 +993,20 @@ function floorInner(seats){
   if(ph.moon)g+=`<circle cx="946" cy="70" r="19" fill="#fff3cf" opacity=".95"/><circle cx="938" cy="64" r="16" fill="url(#skyg)"/>`;
   if(ph.sun){const sy=34+132*ph.sunY;g+=`<circle cx="700" cy="${sy}" r="17" fill="#ffe9a3"/><circle cx="700" cy="${sy}" r="24" fill="#ffe9a3" opacity=".25"/>`;}
   g+=`<rect y="${WALL-8}" width="${FW}" height="8" fill="#6e4c30"/>`;
-  /* the floor's own furniture set */
-  g+=FURNITURE[T.furniture]();
+  /* the floor's own furniture set — a theme with none (the unthemed floor) draws none rather
+     than borrowing another floor's, and this lookup is keyed on the theme's own declaration. */
+  const furnish=FURNITURE[T.furniture];
+  if(furnish)g+=furnish();
   /* the PM cabin, wherever this floor puts it */
   const cb=T.cabin;
   g+=`<rect x="${cb.x}" y="${cb.y}" width="${cb.w}" height="${cb.h}" rx="16" fill="#fffdf6" opacity=".07"/>
       <rect x="${cb.x}" y="${cb.y}" width="${cb.w}" height="${cb.h}" rx="16" fill="none" stroke="${T.accent}" stroke-width="3" opacity=".55"/>
       <line x1="${cb.door[0]}" y1="${cb.y+cb.h}" x2="${cb.door[1]}" y2="${cb.y+cb.h}" stroke="url(#floorg-${inst})" stroke-width="5"/>
       <rect x="${cb.signX-26}" y="${cb.y-12}" width="52" height="20" rx="8" fill="${T.accent}" opacity=".9"/><text x="${cb.signX}" y="${cb.y+3}" text-anchor="middle" font-family="Quicksand,sans-serif" font-weight="700" font-size="13" fill="#3a3550">PM</text>`;
-  for(const id of ["a1","b1","cabin","a2"]) g+=deskSVG(T,id,byDesk[id]||null);
+  /* every slot the map declares is drawn, occupied or not. The seats with no slot are NOT here:
+     they are below the floor, in `floorBand`. */
+  const bySlot={};for(const p of P.placed)if(p.slot)bySlot[p.slot]=p.seat;
+  for(const id of Object.keys(T.desks)) g+=deskSVG(T,T.desks[id],bySlot[id]||null);
   if(inst==="aimla"){
     g+=`<path class="threadline" d="M 330 378 C 420 296 500 296 572 342" stroke="#b9a8f5" stroke-width="2.5" fill="none" opacity=".8"/>`;
     const beads=[[380,338],[430,318],[482,314],[534,326]];
@@ -802,22 +1022,54 @@ function floorInner(seats){
   return g;
 }
 
+/* § 3.2's OVERFLOW ROW, in the strip appended BELOW the floor (D3 § 3.2, § 9 F13). The surplus
+   seats get the SAME desk, the SAME render and the same drill-down as any other seat — inside an
+   explicitly labelled band, so *this seat has no desk on the map* is legible as a fact about the
+   MAP and not about the seat, and beside § 5.5's persistent notice, which is the client's own
+   narration and names the shortfall as arithmetic (the rendered seat count against `S`). D3 writes
+   the notice's template as *floor map is short N desks*; the singular is the same statement.
+   ⭐ It is drawn from `FH` DOWN, and that is the whole of what used to need a collision gate. A
+   floor with no surplus seat draws nothing here and keeps its `FH` canvas. */
+function floorBand(T,P){
+  const over=P.placed.filter(p=>!p.slot);
+  if(!over.length)return "";
+  const y0=FH;                        /* the strip's top IS the floor's bottom edge */
+  /* ⭐ `bandstrip` and `bandhdr` are NOT decoration and are not the stylesheet's: nothing styles
+     them. They are the two regions this band makes a geometric CLAIM about — the strip everything
+     in the band must stay inside, and the header block nothing may cover — named on the elements
+     that ARE those regions, so `tools/design/floor-preview.browser.mjs` can measure the claim in a
+     browser instead of recomputing it from these constants. A gate that re-derived the header's
+     extent from `y0+88` and a font size would be asserting this arithmetic against itself; the
+     rendered text's own rect is the thing a reader actually sees covered or not. */
+  let g=`<rect class="bandstrip" y="${y0}" width="${FW}" height="${BAND_H}" fill="#0e1018"/>
+      <rect y="${y0}" width="${FW}" height="6" fill="${T.accent}" opacity=".55"/>
+      <rect x="26" y="${y0+18}" width="${FW-52}" height="${BAND_H-40}" rx="18" fill="#161a27"/>
+      <rect x="26" y="${y0+18}" width="${FW-52}" height="${BAND_H-40}" rx="18" fill="none" stroke="${T.accent}" stroke-width="3" stroke-dasharray="12 9" opacity=".75"/>
+      <text class="bandhdr" x="56" y="${y0+62}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
+      <text class="bandhdr" x="${FW-56}" y="${y0+62}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
+      <text class="bandhdr" x="56" y="${y0+88}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · below the floor, never dropped (§ 3.2, § 9 F13)</text>`;
+  /* each surplus desk is marked as one — the row is LABELLED for the reader, and a desk in it is
+     identifiable as a desk that had no slot rather than as an ordinary one drawn low. */
+  for(const p of over) g+=`<g class="overflow-desk">${deskSVG(T,p.D,p.seat)}</g>`;
+  return g;
+}
+
 /* the building: roof + stacked floors + slabs + lobby + elevator cab */
 function buildingSVG(){
   const ph=SKY[skyPhase()];
-  let g=`<svg viewBox="0 0 ${BW} ${BH}" role="img" aria-label="the Mezzanine building">`;
+  const bh=BH();
+  let g=`<svg viewBox="0 0 ${BW} ${bh}" role="img" aria-label="the Mezzanine building">`;
   g+=`<defs>
-    ${FLOORS.map(fi=>{const T=THEMES[fi];return `<linearGradient id="wallg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.wall[0]}"/><stop offset="1" stop-color="${T.wall[1]}"/></linearGradient>
+    ${FLOORS.map(fi=>{const T=themeFor(fi);return `<linearGradient id="wallg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.wall[0]}"/><stop offset="1" stop-color="${T.wall[1]}"/></linearGradient>
     <linearGradient id="floorg-${fi}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.floor[0]}"/><stop offset="1" stop-color="${T.floor[1]}"/></linearGradient>`;}).join("")}
     <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a97a50"/><stop offset="1" stop-color="#8a5f3d"/></linearGradient>
     <linearGradient id="skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ph.top}"/><stop offset="1" stop-color="${ph.bot}"/></linearGradient>
     <radialGradient id="glow"><stop offset="0" stop-color="#ffcf7d" stop-opacity=".34"/><stop offset="1" stop-color="#ffcf7d" stop-opacity="0"/></radialGradient>
   </defs>`;
-  g+=`<rect width="${BW}" height="${BH}" fill="url(#skyg)" opacity=".45"/><rect width="${BW}" height="${BH}" fill="#12141f" opacity=".55"/>`;
-  if(ph.stars)for(let i=0;i<26;i++){const sx=(i*181)%BW,sy=(i*97)%BH;g+=`<circle cx="${sx}" cy="${sy}" r="${1.2+(i%2)}" fill="#e8ecff" opacity=".5"/>`;}
-  /* shell */
-  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${BH-ROOF-LOBBYH+FLOORS.length*0+24+FLOORS.length*SLAB+FLOORS.length*FH- (FH+SLAB)*(FLOORS.length-1) - FH + (FLOORS.length*FH+(FLOORS.length-1)*SLAB)}" fill="none"/>`;
-  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${FLOORS.length*FH+(FLOORS.length-1)*SLAB+LOBBYH+24}" fill="#242a3c" rx="14"/>`;
+  g+=`<rect width="${BW}" height="${bh}" fill="url(#skyg)" opacity=".45"/><rect width="${BW}" height="${bh}" fill="#12141f" opacity=".55"/>`;
+  if(ph.stars)for(let i=0;i<26;i++){const sx=(i*181)%BW,sy=(i*97)%bh;g+=`<circle cx="${sx}" cy="${sy}" r="${1.2+(i%2)}" fill="#e8ecff" opacity=".5"/>`;}
+  /* shell — every storey, every slab and the lobby, which is what the building's own height is */
+  g+=`<rect x="${OX-34}" y="${ROOF-24}" width="${FW+68}" height="${bh-ROOF+24}" fill="#242a3c" rx="14"/>`;
   /* roof */
   g+=`<rect x="${OX-58}" y="${ROOF-38}" width="${FW+116}" height="26" rx="9" fill="#3a4356"/>
       <rect x="${OX+FW-260}" y="${ROOF-118}" width="120" height="84" rx="8" fill="#3a4356"/><rect x="${OX+FW-250}" y="${ROOF-128}" width="100" height="14" rx="6" fill="#4a5670"/>
@@ -827,14 +1079,16 @@ function buildingSVG(){
   FLOORS.forEach((inst,i)=>{
     g+=`<g transform="translate(${OX},${OY(i)})">${floorInner(FLEET[inst].map(s=>({...s,__install:inst})))}</g>`;
     g+=`<text x="${OX-14}" y="${OY(i)+60}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="700" font-size="30" fill="#ffcf7d" opacity=".85">${inst.toUpperCase()}</text>`;
-    if(i<FLOORS.length-1)g+=`<rect x="${OX-34}" y="${OY(i)+FH}" width="${FW+68}" height="${SLAB}" fill="#3a4356"/><rect x="${OX-34}" y="${OY(i)+FH}" width="${FW+68}" height="8" fill="#4a5670"/>`;
+    /* the slab sits under the storey's WHOLE canvas — a floor with an overflow strip is taller,
+       and a slab drawn at a fixed `FH` would cut through it. */
+    if(i<FLOORS.length-1)g+=`<rect x="${OX-34}" y="${OY(i)+floorH(inst)}" width="${FW+68}" height="${SLAB}" fill="#3a4356"/><rect x="${OX-34}" y="${OY(i)+floorH(inst)}" width="${FW+68}" height="8" fill="#4a5670"/>`;
   });
   /* elevator shaft guide + cab */
-  const shaftX=OX+38, lastY=OY(FLOORS.length-1);
-  g+=`<line x1="${shaftX+59}" y1="${ROOF-12}" x2="${shaftX+59}" y2="${lastY+FH+LOBBYH-30}" stroke="#4a5670" stroke-width="3" stroke-dasharray="8 10" opacity=".5"/>`;
+  const shaftX=OX+38, lastY=OY(FLOORS.length-1), lastH=floorH(FLOORS[FLOORS.length-1]);
+  g+=`<line x1="${shaftX+59}" y1="${ROOF-12}" x2="${shaftX+59}" y2="${lastY+lastH+LOBBYH-30}" stroke="#4a5670" stroke-width="3" stroke-dasharray="8 10" opacity=".5"/>`;
   g+=`<g id="cab" style="transition:transform 1.1s cubic-bezier(.4,0,.2,1)"><rect x="${shaftX-6}" y="34" width="130" height="176" rx="10" fill="none" stroke="#ffcf7d" stroke-width="5"/><rect x="${shaftX+52}" y="26" width="14" height="8" rx="3" fill="#ffcf7d"/></g>`;
   /* lobby */
-  const ly=lastY+FH;
+  const ly=lastY+lastH;
   g+=`<rect x="${OX-34}" y="${ly}" width="${FW+68}" height="${LOBBYH}" fill="#2b3145"/>
       <rect x="${OX-34}" y="${ly}" width="${FW+68}" height="10" fill="#4a5670"/>
       <rect x="${OX+60}" y="${ly+34}" width="150" height="${LOBBYH-44}" rx="8" fill="#3a4356"/><rect x="${OX+72}" y="${ly+46}" width="126" height="${LOBBYH-66}" rx="5" fill="#8ecfdb" opacity=".35"/>
@@ -850,25 +1104,64 @@ const esc=t=>{const d=document.createElement("i");d.textContent=t;return d.inner
 /* the desk's state line is § 7.1's Label line column, read from the seat's row. */
 function labelFor(s){return renderFor(s.render_state).label(s);}
 
+/* the scope declaration, painted FROM D3_SCOPE. It is a rendering of that table and never a
+   second copy of it: a row edited above changes this panel, the membership test and the gate's
+   set difference together, which is the whole point of the declaration being data. */
+function paintScope(){
+  const el=document.getElementById("scope"); if(!el)return;
+  const cls={implemented:"st-implemented",partial:"st-partial"};
+  el.innerHTML="<table><tr><th>D3 § 5.4 render surface</th><th>in this artifact</th>"
+    +"<th>rendered from / why not</th></tr>"
+    +D3_SCOPE.map(r=>"<tr><td class='s'>"+esc(r.surface)+"</td><td class='st "
+      +(cls[r.status]||"st-none")+"'>"+esc(r.status)+"</td><td>"+esc(r.note)+"</td></tr>").join("")
+    +"</table>";
+}
+
+/* the lobby's right-hand count. It was the literal `9 seats · 8 live` in the markup — a figure
+   DERIVED from `FLEET` and stored beside it. ⚠ It was also CORRECT, and that is the point rather
+   than a reason to leave it: nothing held it correct except somebody remembering to re-count when
+   § 9 F13's sample seat was added, and the next edit to `FLEET` gets no such reminder. A restated
+   figure is not a defect because it is wrong today; it is a defect because nothing makes it wrong
+   LOUDLY tomorrow. Counted here instead, from the same array the floors are drawn from, and `live`
+   is § 7.3's `link_state` member and not a guess at one. */
+const fleetSeats=()=>FLOORS.flatMap(i=>FLEET[i]||[]);
+function paintFleetCount(){
+  const el=document.getElementById("fleetcount"); if(!el)return;
+  const all=fleetSeats(), live=all.filter(s=>s.link_state==="live").length;
+  el.textContent=`${all.length} seat${all.length===1?"":"s"} · ${live} live`;
+}
+
 let current="aimla";
 function render(){
   const world=document.getElementById("world");
   world.innerHTML=buildingSVG();      /* draws the sky from the HELD room value */
   paintedPhase=skyPhase();            /* …and records which phase was drawn */
   paintRoom();                        /* the hands and their accessible text, same value */
-  const PXg=(v)=>(v/BW*100)+"%",PYg=(v)=>(v/BH*100)+"%";
+  const bh=BH();
+  const PXg=(v)=>(v/BW*100)+"%",PYg=(v)=>(v/bh*100)+"%";
   FLOORS.forEach((inst,fi)=>{
     const ox=OX, oy=OY(fi);
     const PX=v=>PXg(ox+v), PY=v=>PYg(oy+v);
-    const TH=THEMES[inst];
-    for(const s0 of FLEET[inst]){
+    const TH=themeFor(inst);
+    /* the SAME placement the floor SVG drew from — one pure function of (map, seat list), so an
+       overflow seat's button, plate, bubble and marker land on the desk that was actually drawn
+       for it. Reading `TH.desks[s.desk]` here was the second derivation, and it threw on exactly
+       the seat the SVG had already dropped. */
+    for(const {seat:s0,slot,D} of placeFloor(TH,FLEET[inst]).placed){
       const s={...s0,__install:inst};
-      const D=TH.desks[s.desk];
-      const b=document.createElement("button");b.className="hit";
-      b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=PXg(D.w+((s.subagents||[]).length?90:20)).replace('%','')*1+"%";b.style.width=(( (D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20)) /BW)*100)+"%";b.style.height=((196/BH)*100)+"%";
+      /* ⭐ EVERY OVERLAY SAYS WHICH REGION IT BELONGS TO, and it says it because it is the only
+         end that KNOWS. These four elements are HTML in CSS pixels over an SVG in user units; a
+         gate reading the composed page can measure where they LANDED but cannot tell whether a
+         plate at the strip's top edge is a band seat sitting correctly or a floor seat that has
+         fallen through — the two are the same rect. `data-band` is that declaration, and
+         `floor-preview.browser.mjs` checks each rect against the region its own `data-band` names,
+         which is what makes the declaration a contract rather than a comment. */
+      const tag=el=>{el.dataset.inst=inst;el.dataset.seat=s.seat;el.dataset.band=slot?"0":"1";};
+      const b=document.createElement("button");b.className="hit";tag(b);
+      b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=(((D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20))/BW)*100)+"%";b.style.height=((196/bh)*100)+"%";
       b.setAttribute("aria-label",s.seat+" — "+s.render_state);
       b.addEventListener("click",()=>openDrill(inst,s));world.appendChild(b);
-      const p=document.createElement("div");p.className="plate";
+      const p=document.createElement("div");p.className="plate";tag(p);
       p.style.left=PX(D.x+D.w/2);p.style.top=PY(D.y+64);
       /* the chip's colour is the row's; its TEXT is the raw wire value (§ 5.4 — an unrecognised
          member's chip CARRIES that string), which is why it is escaped like every other wire
@@ -882,7 +1175,7 @@ function render(){
          and a desk with no character has nothing to anchor to, selected by the SAME primitive as
          the sprite rather than by a second render_state test of its own. */
       if(hasCharacter(s)&&s.task){
-        const bub=document.createElement("div");bub.className="bub";
+        const bub=document.createElement("div");bub.className="bub";tag(bub);
         bub.style.left=PX(D.x+D.w*0.62);bub.style.top=PY(D.y-152);
         bub.innerHTML="<span class='body'>"+esc(s.task.ref+" · "+s.task.title)+"</span><span class='d1'></span><span class='d2'></span>";
         world.appendChild(bub);
@@ -891,14 +1184,16 @@ function render(){
          belongs to A4's *think* POSE over a `working` seat and not to any state (§ 6.2 A4). */
       const pose=poseOf(s), mk=pose==="think"?["…","t"]:R.marker;
       if(mk){
-        const m=document.createElement("div");m.className="mk "+mk[1];
+        const m=document.createElement("div");m.className="mk "+mk[1];tag(m);
         m.textContent=mk[0];
         m.style.left=PX(D.x+D.w*0.62+52);m.style.top=PY(D.y-104);world.appendChild(m);
       }
     }
-    /* the floor's elevator is a travel control */
+    /* the floor's elevator is a travel control — a `.hit` like a desk's, so it carries the same
+       declaration: it belongs to this floor's body, and it is not a seat. */
     const eb=document.createElement("button");eb.className="hit";
-    eb.style.left=PX(30);eb.style.top=PY(26);eb.style.width=((136/BW)*100)+"%";eb.style.height=((184/BH)*100)+"%";
+    eb.dataset.inst=inst;eb.dataset.seat="(elevator)";eb.dataset.band="0";
+    eb.style.left=PX(30);eb.style.top=PY(26);eb.style.width=((136/BW)*100)+"%";eb.style.height=((184/bh)*100)+"%";
     eb.setAttribute("aria-label","elevator — ride to "+(FLOORS[(fi+1)%FLOORS.length]));
     eb.title="ride the elevator";
     eb.addEventListener("click",()=>elevatorTo(FLOORS[(fi+1)%FLOORS.length]));
@@ -913,9 +1208,11 @@ function render(){
       // only, so the pulse is clipped at the slab — it never bleeds into another floor.
       const clip=document.createElement("div");clip.className="floorclip";
       clip.style.left=PXg(ox);clip.style.top=PYg(oy);
-      clip.style.width=(FW/BW*100)+"%";clip.style.height=(FH/BH*100)+"%";
+      /* the clip is the STOREY's own canvas, band included: a broadcast reaches the install's
+         seats, and an overflow seat is one of them. */
+      clip.style.width=(FW/BW*100)+"%";clip.style.height=(floorH(inst)/bh*100)+"%";
       const ring=document.createElement("div");ring.className="annring";
-      ring.style.left=(220/FW*100)+"%";ring.style.top=(400/FH*100)+"%";
+      ring.style.left=(220/FW*100)+"%";ring.style.top=(400/floorH(inst)*100)+"%";
       clip.appendChild(ring);world.appendChild(clip);
       const star=document.createElement("div");star.className="star";star.textContent="✦";
       const ab=THEMES.aimla.desks.b1;star.style.setProperty("--sx",PX(ab.x+ab.w*0.62));star.style.setProperty("--sy",PY(ab.y-20));
@@ -963,6 +1260,14 @@ function render(){
   const d=document.getElementById("drill");d.className="drill";d.innerHTML="";
   placeCab(current,false);
 }
+/* ⛔ THE TWO NULLS OF AN INTERN ARE DIFFERENT RULES AND PART HERE DELIBERATELY. § 5.6: a null
+   `subagents[].subagent_type` means *the type tag beside the label is not drawn* — so nothing
+   stands in for it and the label is rendered alone; `intern` was a fact the wire never sent,
+   stated in the one place a reader would take it for one. § 5.1 gives a null `title` the literal
+   *untitled*, and AT-D3-4's first RED is falling back to `subagent_type`, to the tool name or to
+   *subagent* for it — so `untitled` here is the COMPLIANT render, and treating the two alike
+   would break it to fix its neighbour. One function, so the pair is stated once and checkable. */
+function internLabel(a){return (a.subagent_type?a.subagent_type+" · ":"")+(a.title||"untitled");}
 function kv(rows){return "<dl class='kv'>"+rows.map(([k,v])=>{const n=v===null||v===undefined;
   return "<dt>"+k+"</dt><dd"+(n?" class='n'":"")+">"+(n?"null":esc(String(v)))+"</dd>";}).join("")+"</dl>";}
 function openDrill(install,s){
@@ -987,8 +1292,10 @@ function openDrill(install,s){
     +"<div class='db'><h3>activity</h3>"+kv([["last_kind",s.activity.last_kind],
       ["last_event_time",s.activity.last_event_time+" (seat clock)"],
       ["task",s.task?s.task.ref+" — "+s.task.title:null],["model",s.model_label]])+"</div>"
+    /* the intern list's per-element label is `internLabel` above — § 5.6's and § 5.1's two null
+       rules, which are not the same rule and are written once between them. */
     +"<div class='db'><h3>character</h3>"+kv([["vibe",vibeFor(install,s.seat)+"  (seeded flavour, not wire data)"],
-      ["interns",(s.subagents||[]).length?s.subagents.map((a,i)=>(a.subagent_type||"intern")+" · "+(a.title||"untitled")).join(" | "):null]])+"</div>"
+      ["interns",(s.subagents||[]).length?s.subagents.map(internLabel).join(" | "):null]])+"</div>"
     +"</div>";
   document.getElementById("dx").addEventListener("click",()=>{d.className="drill";d.innerHTML="";});
   d.scrollIntoView({behavior:"smooth",block:"nearest"});
@@ -1099,8 +1406,8 @@ function feedMode(){return !feed.everLive?"cold":feed.live?"live":"down";}
 const vp=document.getElementById("room"), worldEl=document.getElementById("world");
 let z=1,px=0,py=0;
 const vw=()=>vp.getBoundingClientRect().width, vh=()=>vp.getBoundingClientRect().height;
-const worldH=zz=>vw()*(BH/BW)*zz;
-const zAll=()=>vh()/(vw()*(BH/BW));
+const worldH=zz=>vw()*(BH()/BW)*zz;
+const zAll=()=>vh()/(vw()*(BH()/BW));
 function clampPan(){
   const cw=vw()*z, ch=worldH(z);
   px = cw<=vw() ? (vw()-cw)/2 : Math.min(0,Math.max(vw()-cw,px));
@@ -1113,12 +1420,15 @@ function zoomAt(mx,my,nz){
   nz=Math.min(4,Math.max(zAll(),nz));
   px=mx-(mx-px)*nz/z; py=my-(my-py)*nz/z; z=nz; clampPan(); applyView();
 }
+/* "fit floor" fits the STOREY, which on an overflowing floor includes § 3.2's strip — the row is
+   part of the floor's own picture, so a fit that framed `FH` would cut off the seats it exists to
+   show. */
 function focusFloor(inst,animate=true){
-  current=inst; const fi=FLOORS.indexOf(inst);
+  current=inst; const fi=FLOORS.indexOf(inst), fh=floorH(inst);
   const s=vw()/BW;
-  const zF=Math.min(4, vh()/( (FH+70)*s ));
+  const zF=Math.min(4, vh()/( (fh+70)*s ));
   const doIt=()=>{ z=zF;
-    px=vw()/2-(OX+FW/2)*s*z; py=vh()/2-(OY(fi)+FH/2)*s*z; clampPan(); applyView(); syncLobby(); };
+    px=vw()/2-(OX+FW/2)*s*z; py=vh()/2-(OY(fi)+fh/2)*s*z; clampPan(); applyView(); syncLobby(); };
   animate?smooth(doIt):doIt();
 }
 function buildingView(){ smooth(()=>{ z=zAll(); clampPan(); applyView(); }); }
@@ -1162,6 +1472,8 @@ document.querySelectorAll(".feedbtn").forEach(b=>b.addEventListener("click",()=>
    — no step, no transition, no animation-log row — and the heartbeat takes it from there. */
 establishLive();
 render();
+paintScope();
+paintFleetCount();
 focusFloor("aimla",false);
 
 </script>

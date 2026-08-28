@@ -68,6 +68,139 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   the end-of-run sweep restores it. ⚠ **No claim is made that these daemons affected any
   measurement** — they idle at 0% CPU and their contribution has never been measured.
 
+- **card#7965** — **the ratified floor-preview is a reference implementation of a subset of D3 and
+  never said which subset, so an absent render surface was indistinguishable from one that was
+  missed.** The artifact is what card#7341 builds FROM, and the reader who needed that answer is
+  that card's implementer. Three surfaces already said the artifact was *partial*; none said *of
+  what*, and `docs/design/floor-preview/README.md`'s *"encodes, as working code, every design
+  ruling of the 2026-08-26/27 operator sessions"* — true of the operator's **design** rulings —
+  reads as coverage of D3's **render surfaces**. **That conflation was the defect, not the
+  absence.** ⛔ **The alternative was declined on the product, not on cost:** completing the preview
+  against D3 would make it a second full implementation of D3's render surfaces — the floor built
+  twice — and card#7341 a port of it rather than the build. There is one build. So the artifact now
+  carries **one machine-readable scope table**, a row per membership-tested render surface `FLOOR.md`
+  § 5.4 publishes (the same six `verify-floor.py` **G7** closes over): *implemented*, naming the
+  render table it is implemented by; *partial*, for `link_state`, which renders **raw** in two
+  drill-down blocks and is **not** membership-tested; or *not implemented*, naming why in one clause
+  (§ 7.2's eighteen badges, § 7.6's `activity_state`). It is rendered on the page from that same
+  table rather than re-typed, and the membership test itself is **derived** from it, so a row is the
+  one place a surface's status is written. ⭐ **A declaration with no check is a comment, and this is
+  the case where that bites**, so `floor-preview.selftest.mjs` re-derives § 5.4's six from the
+  document — from **both** of § 5.4's enumerations and its own count in words, cross-checked — and
+  set-differences them against the table **in both directions**: a surface D3 gains with no row reds,
+  and a row for a surface D3 does not publish reds. **D3 gaining a seventh surface now reds the gate
+  instead of passing silently**, and each direction has its own anchored mutation control, one of
+  them a D3 that *grew* a surface rather than one that broke.
+  **Three defects in what the artifact does implement, all in the same class and none reachable by
+  the member-set primitive card#7943 landed — they are keyed on IDENTITY, not on an enum member.**
+  (1) A seat's `desk` against the floor map: the SVG iterated a **fixed four-slot list** and
+  silently **dropped** any seat outside it, while the overlay pass read `THEMES[inst].desks[s.desk].x`
+  and **threw the whole render away** — one fact derived twice, failing in opposite directions on the
+  same seat. § 3.2's overflow rule and § 9 **F13** state the behaviour that is neither: the surplus
+  seats render in a **labelled overflow row** with the same desk and the same render, under a
+  persistent notice reading *floor map is short N desks*, and F13's *Never* column is one phrase —
+  **dropping a seat**. Placement is now **one pure function** of (map, seat list) that both the SVG
+  and the overlay pass read, and the map's slot count `S` comes from the map. (2) Three unguarded
+  `THEMES[…]` lookups threw on an install the client's art has never seen; all three now resolve
+  through one function, and the unthemed floor declares **no slots**, so § 3.2's overflow rule is
+  already the whole answer for it — every seat of an unknown install renders, labelled. (3)
+  `subagents[].subagent_type` was defaulted to *"intern"*; § 5.6 says the type tag is **not drawn**,
+  so it is not, and a substitute stated a fact the wire never sent. ⛔ **`title || "untitled"` beside
+  it was NOT changed and must not be**: § 5.1 gives a null title the literal *untitled* and AT-D3-4's
+  first RED is falling back to `subagent_type`, the tool name or *"subagent"* — the two nulls are
+  different rules, and treating them alike would break the compliant render to fix its neighbour.
+  Both are now one function with a control per direction. **The sample fleet carries a seat with no
+  slot on the `sola` floor and interns for both null edges**, because a behaviour no sample reaches
+  is one no implementer sees — the artifact is where card#7341 reads what these render like. The
+  gate carries a planted mutation for every layer, and **how many is counted at run time and printed
+  on the run's own last line** rather than restated in the files that describe it.
+  ⭐ **And the overflow row was drawn INSIDE the floor — on top of sola's tea bar — while every
+  check above passed. D3 § 3.2 had already said where it goes: BELOW THE FLOOR.** Four passes read
+  § 9 **F13**'s summary row, which names the row and its notice but not its position, and § 3.2 at
+  `FLOOR.md:537` is what owns the position. Drawn inside the floor, the row needed machinery to be
+  safe — a per-theme `overflow:{x,y}` origin, a declared "clear run" between the tea bar and the
+  plant, a stated row capacity, and a pairwise desk-versus-furniture collision gate over an
+  arbitrary-shape bbox extractor. **All of it is deleted, because the question stops being asked**:
+  an overflowing floor is now drawn on a canvas one band taller and the row lives in that appended
+  strip, so the floor's shapes stop at `FH`, the band's start there, and collision is impossible by
+  construction **at any row length**. What replaces the collision gate is one invariant with one
+  scalar per floor in each direction — **nothing the floor emits reaches below `FH`, and nothing the
+  band emits rises above it** — with a planted-mutation control for each leg (furniture pushed below
+  the line; the band raised back up into the floor), each seen red first. ⛔ **And an unmeasurable
+  shape now makes that assertion FAIL.** The deleted layer guaranteed *unmeasurable is loud* and the
+  guarantee was false in four demonstrated forms — an arc command, a `<polygon>`, a `NaN` width and
+  an unmodelled `stroke-width` — three of which stayed **green** with an obstacle drawn on the desk,
+  because each fell through a silent `else` and left a shorter list of boxes that still looked
+  clean. Every element is classified now, a tag the measurement does not own is named, and the
+  answer is *not measured* rather than a number. Two of the four are now MEASURED instead — an arc
+  is bounded by ±2r about its endpoints, a stroke pads its shape by half its width — and the other
+  two are planted controls, beside the two generalisations of the same class (a path command the
+  measurement does not implement, a transform it does not model). ⚠
+  **Still not evidence about the picture**: this is arithmetic on the artifact's own emitted
+  coordinates, so z-order, opacity and the difference between a box and the ink in it are outside
+  it, and where a bound cannot be computed exactly it is computed **wide** so that its only possible
+  error is over-reporting.
+  ⭐ **AND THAT LAST SENTENCE IS WHY THE ROW MOVED AND COLLIDED AGAIN — this bullet's own fix was
+  the fourth in one class, and the fifth round stopped patching it.** With the band correctly below
+  the floor, the sample seat's thought bubble landed **on the band's own arithmetic line** (the slot
+  and seat counts, behind an opaque white bubble) and its nameplate hung **out of the strip**, chip
+  and command line over the lobby. Every gate above was green, and the root cause is structural, not
+  arithmetic: **the artifact has two coordinate systems** — SVG user units, and HTML overlays
+  (`.bub`, `.plate`, `.mk`, `.hit`) positioned over that SVG but **sized in CSS pixels** — and
+  **every gate ever built here measured only the SVG layer**, so each round moved SVG content
+  correctly and re-collided with a layer in no denominator. § 8's own overlay leg made the same
+  mistake one level down: it compared the bubble's anchor against `FH`, which is where the strip
+  *begins* — and the strip begins with the header the row must not cover.
+  **The upstream fix is `tools/design/floor-preview.browser.mjs`**: assert geometry from
+  `getBoundingClientRect()` in a real headless browser, where both layers share ONE coordinate
+  space, so *does the bubble cover the header* is a rect intersection between things that were
+  actually laid out — **no transform parser, no arc bounding, no stroke padding and no *not
+  measured* category**, none of which is a question once the browser has done the layout. It asserts
+  its client↔user-unit map against a measured element before deriving any region through it; that
+  **no overlay covers any line of the band's header**, measured with the browser's own glyph widths;
+  that **every overlay is inside the storey region its own `data-band` declares** — the artifact
+  now declares that, and the gate checks the declaration instead of believing it; and that **every
+  child of `#world` is either judged or a declared animation affordance**, so an untagged overlay
+  class reds rather than sitting outside every check. Its population is two room widths × three
+  framings, and **widths are the only axis that can falsify anything**: `#world` scales the SVG and
+  the overlays together, so an overlay's user-unit size depends on the room's width alone — measured
+  across all six cases, not assumed. **No browser is a FAILURE, never a skip.** Its controls re-mint
+  head `fe482eb` whole — both constants at the values that shipped — and require both defects to go
+  red on their own messages, beside a floor-side containment defect, a lying `data-band` and an
+  untagged overlay. The two instances are fixed by giving the band a budget for the **whole overlay
+  stack**: the desks move to `FH+300` (the bubble's anchor clears the header's own deepest bound by
+  40 user units) and the strip to `520` (the nameplate is `53.8` CSS px, so the strip must cover
+  `300 + 64 + 53.8·BW/room`, which carries down to a 655 px room — derived by the gate, not stored).
+  § 8's static invariant is **kept** as the cheap no-browser backstop, with its overlay leg now
+  held against the header's re-derived extent and a control planted at the value the old `>= FH`
+  leg passed. ⚠ The browser gate measures **boxes, not ink**: opacity, z-order and legibility are
+  outside it, and opening the file remains the last word on how it looks.
+  Two adjacent limits are **stated rather than left to be inferred**: `deskSVG` hangs the intern
+  tray *outside* the slot, so at n ≥ 2 a seat with subagents reaches into the next one, and past
+  roughly n = 12 the clamped slab is narrower than the character drawn on it — both are `deskSVG`
+  re-layouts and belong to card#7341's build; and `placeFloor` is **order-dependent**, so it is a
+  pure function of the seat *list* and not of the seat *set*
+  § 3.2 asks for — § 3.2's own answer is the slot function `h(seat)` with forward probing, which
+  this preview does not implement and card#7341 does. **A gate hole in the same class was closed in
+  the gate itself, at every site that had it**: an `indexOf` result was used as a **slice bound**,
+  and `indexOf` answers `-1` for a heading that has moved — `slice(i, -1)` is *the document minus
+  one character*, not *to the end*. A § 5.4 whose closing anchor had moved silently widened the
+  population to the rest of the document, where six surface names are still findable, and the gate
+  printed `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none — **the
+  false-clean shape this whole deliverable exists to prevent, inside it.** Fixing that site alone
+  left the others, and renaming § 7.1's closing anchor `### 7.2 Badges` widened its slice to a
+  quarter of the document with the ten `render_state` members still parsing out of it, so the gate
+  stayed PASS. All of them go through **one `sliceBetween(md, open, close)`** that returns `null`
+  when either anchor is missing, every caller treats `null` as a failure rather than an
+  empty-but-clean parse, and one control renames each closing anchor in turn and **prints** what the
+  replaced shape would have widened to. ⚠ **The widths are not written down here, and that is the
+  point rather than an omission**: an earlier revision of this bullet and of the primitive's own
+  doc-comment each carried one, and both were stale within two commits — a figure restated inside
+  the argument that restated figures drift is that argument demonstrating itself. The run prints
+  them. § 5.5's notice is asserted **in full** against the
+  re-derived shortfall rather than by its opening words, which left the count and the noun free to
+  drift and stay green.
+
 - **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
   on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**
   `… and drops nothing while deferring`
