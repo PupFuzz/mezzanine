@@ -177,7 +177,7 @@
       <span class="hh"><span class="dot"></span>sweep ok · 6&nbsp;s ago</span>
       <span class="hh"><span class="dot" id="feeddot"></span><span id="feedstatus">feed: connecting</span></span>
     </div>
-    <div class="lright">9 seats · 8 live<br>membership as of 14:29:02</div>
+    <div class="lright"><span id="fleetcount">counting…</span><br>membership as of 14:29:02</div>
   </div>
 
   <div class="room grab" id="room">
@@ -756,10 +756,36 @@ function placeFloor(T,seats){
    The strip's height is fixed rather than fitted because the row's vertical extent does not depend
    on how many seats are in it: `overflowSlot` varies x and w only, so the tallest thing the band
    can draw — § 5.1's thought bubble at `y-152`, over the character at `y-72` — is at the same
-   height for a row of 1 and a row of 40. */
-const BAND_H=340;            /* the appended strip */
-const BAND_DESK_Y=FH+230;    /* the row's desks: low enough that the bubble above the tallest of
-                                them clears the band's two header lines */
+   height for a row of 1 and a row of 40.
+
+   ⛔ THE BAND'S BUDGET IS FOR THE WHOLE OVERLAY STACK, NOT FOR THE SVG. A desk is drawn in SVG
+   user units; its thought bubble and its nameplate are HTML positioned in the same space but SIZED
+   IN CSS PIXELS, and the two only meet once a browser has composed them. Both figures below were
+   set from `getBoundingClientRect()` in a real browser, and `tools/design/floor-preview.browser.mjs`
+   is what holds them: an earlier revision put the desks at `FH+230` in a `340`-tall strip, which is
+   correct for every shape the SVG emits and put the bubble ON the header's arithmetic line and the
+   nameplate's chip BELOW the strip entirely. Every static gate this repo had said PASS, because the
+   overlay layer was in no denominator.
+   ⚠ AND ONE OF THE TWO FIGURES MOVES WITH THE ROOM'S WIDTH, which is the only reason this needs
+   saying at all. `#world` carries `transform:scale(z)`, so a zoom scales the SVG and the overlays
+   TOGETHER and cancels out of every question here: an overlay's size in USER UNITS is
+   `css_px · BW/room` — a function of the room's width alone, and the same at every zoom, in the
+   fit-floor framing and in the whole-building one. So the band's budget is a claim about a RANGE OF
+   ROOM WIDTHS, and about nothing else; `tools/design/floor-preview.browser.mjs` names that range
+   and measures both ends of it. */
+/* THE ROW'S DESKS — a purely user-unit leg, so no width enters it. § 5.1's bubble is anchored `152`
+   above the desk and grows DOWNWARD from there, so what has to clear the header is the ANCHOR:
+   `300 - 152 = FH+148`, against the header's own deepest static bound `FH+107.5` (the arithmetic
+   line's baseline `y0+88`, plus the 1.5 em § 8 bounds a `<text>` by). 40 user units of margin. The
+   marker (`D.y-104`) and the hit target (`D.y-118`) are lower again and clear it by more. */
+const BAND_DESK_Y=FH+300;
+/* THE APPENDED STRIP — and the deepest thing in the band is the NAMEPLATE, which is the one leg
+   that does move: it sits at `D.y+64` and is `53.8` CSS px tall (measured; three lines, all
+   `nowrap`), so it needs `300 + 64 + 53.8·BW/room` user units. That is `446` at a 1240 px room and
+   `469` at a 972 px one, and `520` is the budget that carries both — down to a room of `655` px,
+   below which the nameplate outgrows the strip. The gate covers the two widths named above; the
+   `655` is arithmetic from the same measurement and is checked, not asserted. */
+const BAND_H=520;
 const BAND_X=70;             /* and they start at the strip's left margin, because the strip is
                                 EMPTY — there is no furniture below the floor to work around */
 /* Each floor's own canvas height, and the storey origins derived from it. `short > 0` is the ONE
@@ -1008,13 +1034,20 @@ function floorBand(T,P){
   const over=P.placed.filter(p=>!p.slot);
   if(!over.length)return "";
   const y0=FH;                        /* the strip's top IS the floor's bottom edge */
-  let g=`<rect y="${y0}" width="${FW}" height="${BAND_H}" fill="#0e1018"/>
+  /* ⭐ `bandstrip` and `bandhdr` are NOT decoration and are not the stylesheet's: nothing styles
+     them. They are the two regions this band makes a geometric CLAIM about — the strip everything
+     in the band must stay inside, and the header block nothing may cover — named on the elements
+     that ARE those regions, so `tools/design/floor-preview.browser.mjs` can measure the claim in a
+     browser instead of recomputing it from these constants. A gate that re-derived the header's
+     extent from `y0+88` and a font size would be asserting this arithmetic against itself; the
+     rendered text's own rect is the thing a reader actually sees covered or not. */
+  let g=`<rect class="bandstrip" y="${y0}" width="${FW}" height="${BAND_H}" fill="#0e1018"/>
       <rect y="${y0}" width="${FW}" height="6" fill="${T.accent}" opacity=".55"/>
       <rect x="26" y="${y0+18}" width="${FW-52}" height="${BAND_H-40}" rx="18" fill="#161a27"/>
       <rect x="26" y="${y0+18}" width="${FW-52}" height="${BAND_H-40}" rx="18" fill="none" stroke="${T.accent}" stroke-width="3" stroke-dasharray="12 9" opacity=".75"/>
-      <text x="56" y="${y0+62}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
-      <text x="${FW-56}" y="${y0+62}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
-      <text x="56" y="${y0+88}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · below the floor, never dropped (§ 3.2, § 9 F13)</text>`;
+      <text class="bandhdr" x="56" y="${y0+62}" font-family="Quicksand,sans-serif" font-weight="700" font-size="20" fill="${T.accent}" letter-spacing="1.5">OVERFLOW — NO DESK ON THIS FLOOR'S MAP</text>
+      <text class="bandhdr" x="${FW-56}" y="${y0+62}" text-anchor="end" font-family="Quicksand,sans-serif" font-weight="600" font-size="19" fill="#ff9d8a">floor map is short ${P.short} desk${P.short===1?"":"s"}</text>
+      <text class="bandhdr" x="56" y="${y0+88}" font-family="'IBM Plex Mono',monospace" font-size="13" fill="#cfd4e4" opacity=".8">${P.S} slot${P.S===1?"":"s"} on the map · ${P.placed.length} seats on the floor · below the floor, never dropped (§ 3.2, § 9 F13)</text>`;
   /* each surplus desk is marked as one — the row is LABELLED for the reader, and a desk in it is
      identifiable as a desk that had no slot rather than as an ordinary one drawn low. */
   for(const p of over) g+=`<g class="overflow-desk">${deskSVG(T,p.D,p.seat)}</g>`;
@@ -1084,6 +1117,17 @@ function paintScope(){
     +"</table>";
 }
 
+/* the lobby's right-hand count. It was the literal `9 seats · 8 live` in the markup, which is a
+   figure derived from `FLEET` and stored beside it — so adding the F13 seat moved the fleet and
+   left the figure saying 8. Counted here instead, from the same array the floors are drawn from,
+   and `live` is § 7.3's `link_state` member and not a guess at one. */
+const fleetSeats=()=>FLOORS.flatMap(i=>FLEET[i]||[]);
+function paintFleetCount(){
+  const el=document.getElementById("fleetcount"); if(!el)return;
+  const all=fleetSeats(), live=all.filter(s=>s.link_state==="live").length;
+  el.textContent=`${all.length} seat${all.length===1?"":"s"} · ${live} live`;
+}
+
 let current="aimla";
 function render(){
   const world=document.getElementById("world");
@@ -1100,13 +1144,21 @@ function render(){
        overflow seat's button, plate, bubble and marker land on the desk that was actually drawn
        for it. Reading `TH.desks[s.desk]` here was the second derivation, and it threw on exactly
        the seat the SVG had already dropped. */
-    for(const {seat:s0,D} of placeFloor(TH,FLEET[inst]).placed){
+    for(const {seat:s0,slot,D} of placeFloor(TH,FLEET[inst]).placed){
       const s={...s0,__install:inst};
-      const b=document.createElement("button");b.className="hit";
+      /* ⭐ EVERY OVERLAY SAYS WHICH REGION IT BELONGS TO, and it says it because it is the only
+         end that KNOWS. These four elements are HTML in CSS pixels over an SVG in user units; a
+         gate reading the composed page can measure where they LANDED but cannot tell whether a
+         plate at the strip's top edge is a band seat sitting correctly or a floor seat that has
+         fallen through — the two are the same rect. `data-band` is that declaration, and
+         `floor-preview.browser.mjs` set-differences it against the region each rect is actually
+         inside, which is the check that makes the declaration a contract rather than a comment. */
+      const tag=el=>{el.dataset.inst=inst;el.dataset.seat=s.seat;el.dataset.band=slot?"0":"1";};
+      const b=document.createElement("button");b.className="hit";tag(b);
       b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=(((D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20))/BW)*100)+"%";b.style.height=((196/bh)*100)+"%";
       b.setAttribute("aria-label",s.seat+" — "+s.render_state);
       b.addEventListener("click",()=>openDrill(inst,s));world.appendChild(b);
-      const p=document.createElement("div");p.className="plate";
+      const p=document.createElement("div");p.className="plate";tag(p);
       p.style.left=PX(D.x+D.w/2);p.style.top=PY(D.y+64);
       /* the chip's colour is the row's; its TEXT is the raw wire value (§ 5.4 — an unrecognised
          member's chip CARRIES that string), which is why it is escaped like every other wire
@@ -1120,7 +1172,7 @@ function render(){
          and a desk with no character has nothing to anchor to, selected by the SAME primitive as
          the sprite rather than by a second render_state test of its own. */
       if(hasCharacter(s)&&s.task){
-        const bub=document.createElement("div");bub.className="bub";
+        const bub=document.createElement("div");bub.className="bub";tag(bub);
         bub.style.left=PX(D.x+D.w*0.62);bub.style.top=PY(D.y-152);
         bub.innerHTML="<span class='body'>"+esc(s.task.ref+" · "+s.task.title)+"</span><span class='d1'></span><span class='d2'></span>";
         world.appendChild(bub);
@@ -1129,13 +1181,15 @@ function render(){
          belongs to A4's *think* POSE over a `working` seat and not to any state (§ 6.2 A4). */
       const pose=poseOf(s), mk=pose==="think"?["…","t"]:R.marker;
       if(mk){
-        const m=document.createElement("div");m.className="mk "+mk[1];
+        const m=document.createElement("div");m.className="mk "+mk[1];tag(m);
         m.textContent=mk[0];
         m.style.left=PX(D.x+D.w*0.62+52);m.style.top=PY(D.y-104);world.appendChild(m);
       }
     }
-    /* the floor's elevator is a travel control */
+    /* the floor's elevator is a travel control — a `.hit` like a desk's, so it carries the same
+       declaration: it belongs to this floor's body, and it is not a seat. */
     const eb=document.createElement("button");eb.className="hit";
+    eb.dataset.inst=inst;eb.dataset.seat="(elevator)";eb.dataset.band="0";
     eb.style.left=PX(30);eb.style.top=PY(26);eb.style.width=((136/BW)*100)+"%";eb.style.height=((184/bh)*100)+"%";
     eb.setAttribute("aria-label","elevator — ride to "+(FLOORS[(fi+1)%FLOORS.length]));
     eb.title="ride the elevator";
@@ -1416,6 +1470,7 @@ document.querySelectorAll(".feedbtn").forEach(b=>b.addEventListener("click",()=>
 establishLive();
 render();
 paintScope();
+paintFleetCount();
 focusFloor("aimla",false);
 
 </script>

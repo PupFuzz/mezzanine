@@ -139,7 +139,42 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   **Still not evidence about the picture**: this is arithmetic on the artifact's own emitted
   coordinates, so z-order, opacity and the difference between a box and the ink in it are outside
   it, and where a bound cannot be computed exactly it is computed **wide** so that its only possible
-  error is over-reporting — opening the file remains the one check no tool performs.
+  error is over-reporting.
+  ⭐ **AND THAT LAST SENTENCE IS WHY THE ROW MOVED AND COLLIDED AGAIN — this bullet's own fix was
+  the fourth in one class, and the fifth round stopped patching it.** With the band correctly below
+  the floor, the sample seat's thought bubble landed **on the band's own arithmetic line** (the slot
+  and seat counts, behind an opaque white bubble) and its nameplate hung **out of the strip**, chip
+  and command line over the lobby. Every gate above was green, and the root cause is structural, not
+  arithmetic: **the artifact has two coordinate systems** — SVG user units, and HTML overlays
+  (`.bub`, `.plate`, `.mk`, `.hit`) positioned over that SVG but **sized in CSS pixels** — and
+  **every gate ever built here measured only the SVG layer**, so each round moved SVG content
+  correctly and re-collided with a layer in no denominator. § 8's own overlay leg made the same
+  mistake one level down: it compared the bubble's anchor against `FH`, which is where the strip
+  *begins* — and the strip begins with the header the row must not cover.
+  **The upstream fix is `tools/design/floor-preview.browser.mjs`**: assert geometry from
+  `getBoundingClientRect()` in a real headless browser, where both layers share ONE coordinate
+  space, so *does the bubble cover the header* is a rect intersection between things that were
+  actually laid out — **no transform parser, no arc bounding, no stroke padding and no *not
+  measured* category**, none of which is a question once the browser has done the layout. It asserts
+  its client↔user-unit map against a measured element before deriving any region through it; that
+  **no overlay covers any line of the band's header**, measured with the browser's own glyph widths;
+  that **every overlay is inside the storey region its own `data-band` declares** — the artifact
+  now declares that, and the gate checks the declaration instead of believing it; and that **every
+  child of `#world` is either judged or a declared animation affordance**, so an untagged overlay
+  class reds rather than sitting outside every check. Its population is two room widths × three
+  framings, and **widths are the only axis that can falsify anything**: `#world` scales the SVG and
+  the overlays together, so an overlay's user-unit size depends on the room's width alone — measured
+  across all six cases, not assumed. **No browser is a FAILURE, never a skip.** Its controls re-mint
+  head `fe482eb` whole — both constants at the values that shipped — and require both defects to go
+  red on their own messages, beside a floor-side containment defect, a lying `data-band` and an
+  untagged overlay. The two instances are fixed by giving the band a budget for the **whole overlay
+  stack**: the desks move to `FH+300` (the bubble's anchor clears the header's own deepest bound by
+  40 user units) and the strip to `520` (the nameplate is `53.8` CSS px, so the strip must cover
+  `300 + 64 + 53.8·BW/room`, which carries down to a 655 px room — derived by the gate, not stored).
+  § 8's static invariant is **kept** as the cheap no-browser backstop, with its overlay leg now
+  held against the header's re-derived extent and a control planted at the value the old `>= FH`
+  leg passed. ⚠ The browser gate measures **boxes, not ink**: opacity, z-order and legibility are
+  outside it, and opening the file remains the last word on how it looks.
   Two adjacent limits are **stated rather than left to be inferred**: `deskSVG` hangs the intern
   tray *outside* the slot, so at n ≥ 2 a seat with subagents reaches into the next one, and past
   roughly n = 12 the clamped slab is narrower than the character drawn on it — both are `deskSVG`
@@ -147,19 +182,22 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   pure function of the seat *list* and not of the seat *set*
   § 3.2 asks for — § 3.2's own answer is the slot function `h(seat)` with forward probing, which
   this preview does not implement and card#7341 does. **A gate hole in the same class was closed in
-  the gate itself, at all THREE sites that had it**: a section's population was sliced with
-  `md.slice(md.indexOf(open), md.indexOf(close))`, and `indexOf` answers `-1` for a heading that has
-  moved — `slice(i, -1)` is *the document minus one character*, not *to the end*. A § 5.4 whose
-  closing anchor had moved silently widened the population to the rest of the document (306 300
-  characters), where six surface names are still findable, and the gate printed
-  `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none — **the false-clean
-  shape this whole deliverable exists to prevent, inside it.** Fixing that site alone left the other
-  two: renaming § 7.1's closing anchor `### 7.2 Badges` widened its slice from **4 546** characters
-  to **251 401**, and the ten `render_state` members still parsed out of it, so the gate stayed
-  PASS. All three now go through **one `sliceBetween(md, open, close)`** that returns `null` when
-  either anchor is missing, every caller treats `null` as a failure rather than an empty-but-clean
-  parse, and one control renames each of the three closing anchors in turn and prints what the
-  replaced shape would have widened to. § 5.5's notice is asserted **in full** against the
+  the gate itself, at every site that had it**: an `indexOf` result was used as a **slice bound**,
+  and `indexOf` answers `-1` for a heading that has moved — `slice(i, -1)` is *the document minus
+  one character*, not *to the end*. A § 5.4 whose closing anchor had moved silently widened the
+  population to the rest of the document, where six surface names are still findable, and the gate
+  printed `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none — **the
+  false-clean shape this whole deliverable exists to prevent, inside it.** Fixing that site alone
+  left the others, and renaming § 7.1's closing anchor `### 7.2 Badges` widened its slice to a
+  quarter of the document with the ten `render_state` members still parsing out of it, so the gate
+  stayed PASS. All of them go through **one `sliceBetween(md, open, close)`** that returns `null`
+  when either anchor is missing, every caller treats `null` as a failure rather than an
+  empty-but-clean parse, and one control renames each closing anchor in turn and **prints** what the
+  replaced shape would have widened to. ⚠ **The widths are not written down here, and that is the
+  point rather than an omission**: an earlier revision of this bullet and of the primitive's own
+  doc-comment each carried one, and both were stale within two commits — a figure restated inside
+  the argument that restated figures drift is that argument demonstrating itself. The run prints
+  them. § 5.5's notice is asserted **in full** against the
   re-derived shortfall rather than by its opening words, which left the count and the noun free to
   drift and stay green.
 

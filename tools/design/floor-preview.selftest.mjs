@@ -98,24 +98,31 @@ function section(s) { console.log(`\n${s}`); }
 // ---------------------------------------------------------------------------------------------
 /**
  * The text between two anchors, or `null` when either is missing or the closing one does not
- * follow the opening one.
+ * follow the opening one. Either end may be `null`, meaning the document's own start or end — so
+ * a ONE-SIDED slice goes through this too, rather than being the shape below spelled out again.
  *
- * ⛔ THIS EXISTS BECAUSE `md.slice(md.indexOf(open), md.indexOf(close))` IS A TRAP, and this file
- * carried three of them. `indexOf` answers **-1** for an anchor that has been renamed, and
- * `slice(-1, …)` / `slice(…, -1)` do not mean "from the start" and "to the end" — they mean "the
- * last character" and "everything but the last character". A § 7.1 whose closing anchor
- * (`### 7.2 Badges`) had been renamed therefore handed the parse below **251,401** characters of
- * document instead of § 7.1's own 4,546, and the parse found ten member rows somewhere in there
- * and reported agreement. The population silently became the document, in the direction nobody
- * watches. `null` is the honest answer, and every caller here treats it as a FAILURE — never as an
+ * ⛔ THIS EXISTS BECAUSE AN `indexOf` RESULT USED AS A SLICE BOUND IS A TRAP, and this file carried
+ * the shape at every parse site it has. `indexOf` answers **-1** for an anchor that has been
+ * renamed, and `slice(-1, …)` / `slice(…, -1)` do not mean "from the start" and "to the end" — they
+ * mean "the last character" and "everything but the last character". Renaming § 7.1's closing
+ * anchor (`### 7.2 Badges`) therefore handed the parse below a quarter of the document instead of
+ * § 7.1's own few thousand characters, and the parse found ten member rows somewhere in there and
+ * reported agreement. The population silently became the document, in the direction nobody watches.
+ * ⚠ THE FIGURES ARE NOT WRITTEN HERE. They are PRINTED by § 6's anchor controls on every run
+ * ("widened from N chars to M"), because a number restated in a comment arguing that restated
+ * numbers drift is the defect demonstrating itself — and this comment carried a stale one.
+ * `null` is the honest answer, and every caller here treats it as a FAILURE — never as an
  * empty-but-clean parse. § 4's anchor controls plant exactly that rename and require it to go red.
- * @param {string} md @param {string} open @param {string} close @returns {string|null}
+ * @param {string} md @param {string|null} open @param {string|null} close @returns {string|null}
  */
 function sliceBetween(md, open, close) {
-  const i = md.indexOf(open);
-  if (i < 0) return null;
-  const j = md.indexOf(close, i + open.length);
-  if (j < 0) return null;
+  let i = 0;
+  if (open !== null) { i = md.indexOf(open); if (i < 0) return null; }
+  let j = md.length;
+  if (close !== null) {
+    j = md.indexOf(close, i + (open === null ? 0 : open.length));
+    if (j < 0) return null;
+  }
   return md.slice(i, j);
 }
 let controls = 0;
@@ -192,7 +199,7 @@ function makeDom() {
     closest() { return null; }
     setPointerCapture() { }
   }
-  for (const id of ['room', 'world', 'drill', 'floors', 'scope', 'feeddot', 'feedstatus', 'zin', 'zout', 'zfit', 'zall']) {
+  for (const id of ['room', 'world', 'drill', 'floors', 'scope', 'fleetcount', 'feeddot', 'feedstatus', 'zin', 'zout', 'zfit', 'zall']) {
     const e = new El('div'); e.id = id; byId.set(id, e);
   }
   const document = {
@@ -225,7 +232,12 @@ const FLOOR_MD = readFileSync(join(REPO, 'docs', 'design', 'FLOOR.md'), 'utf8');
 const S71_ANCHORS = ['### 7.1 The render per state', '### 7.2 Badges'];
 const s71 = sliceBetween(FLOOR_MD, ...S71_ANCHORS);
 check(s71 !== null, `§ 7.1's own bounds were both found — ${s71 === null ? 'THEY WERE NOT' : `${s71.length} chars`}`);
-const reasonTableAt = s71 === null ? -1 : s71.indexOf('| `unknown_reason` | Sentence |');
+// § 7.1 carries TWO tables and the second one's header is the boundary between them. It is an
+// anchor like any other, so it goes through `sliceBetween` — the `indexOf` this used to hold was
+// the same trap one level in: a renamed `| \`unknown_reason\` | Sentence |` gave the state table
+// "all but the last character of § 7.1" (the reason rows included) and the reason table one
+// character, and neither slice announced it.
+const REASON_HDR = '| `unknown_reason` | Sentence |';
 // The rows BELOW the header separator, and only while they stay contiguous — the header row's
 // own first cell is the field's name (`| \`render_state\` | Desk | …`) and would otherwise read
 // as an eleventh member, which is the shape that makes a parsed count agree with nothing.
@@ -252,8 +264,12 @@ const publishedLine = (cell) => {
   const m = (cell || '').match(/^\*([^*][^*]*)\*/);
   return m ? m[1].replace(/`/g, '') : null;
 };
-const DOC_STATE_ROWS = s71 === null ? [] : rowsOf(s71.slice(0, reasonTableAt));
-const DOC_REASON_ROWS = s71 === null ? [] : rowsOf(s71.slice(reasonTableAt));
+const s71States = s71 === null ? null : sliceBetween(s71, null, REASON_HDR);
+const s71Reasons = s71 === null ? null : sliceBetween(s71, REASON_HDR, null);
+check(s71States !== null && s71Reasons !== null,
+  `§ 7.1's two tables were parted at ${JSON.stringify(REASON_HDR)} — ${s71States === null || s71Reasons === null ? 'THE BOUNDARY WAS NOT FOUND' : `${s71States.length} chars of state rows, ${s71Reasons.length} of reason rows`}`);
+const DOC_STATE_ROWS = s71States === null ? [] : rowsOf(s71States);
+const DOC_REASON_ROWS = s71Reasons === null ? [] : rowsOf(s71Reasons);
 const DOC_STATES = DOC_STATE_ROWS.map((r) => r.member);
 const DOC_REASONS = DOC_REASON_ROWS.map((r) => r.member);
 // § 7.6's twelve `api_error_type` members live in their own section, under a column headed
@@ -261,8 +277,11 @@ const DOC_REASONS = DOC_REASON_ROWS.map((r) => r.member);
 const S76_ANCHORS = ['### 7.6 The three remaining member sets', '## 8. Interns'];
 const s76 = sliceBetween(FLOOR_MD, ...S76_ANCHORS);
 check(s76 !== null, `§ 7.6's own bounds were both found — ${s76 === null ? 'THEY WERE NOT' : `${s76.length} chars`}`);
-const DOC_API_ROWS = s76 === null ? []
-  : rowsOf(s76.slice(s76.indexOf('| `api_error_type` | The line beside the raw value |')));
+const API_HDR = '| `api_error_type` | The line beside the raw value |';
+const s76Api = s76 === null ? null : sliceBetween(s76, API_HDR, null);
+check(s76Api !== null,
+  `§ 7.6's own table was found at ${JSON.stringify(API_HDR)} — ${s76Api === null ? 'IT WAS NOT' : `${s76Api.length} chars`}`);
+const DOC_API_ROWS = s76Api === null ? [] : rowsOf(s76Api);
 // An empty parse is a measurement that never happened. These two counts are D3's own claims
 // ("`render_state` has **ten** members", "The seven `unknown_reason` members"), so a parse that
 // silently returned nothing cannot pass for agreement.
@@ -633,9 +652,14 @@ function docSurfaces(floorMd) {
   const PUB = '**"The client does not know" is a membership test';
   const ruleText = sliceBetween(s54, RULE, PUB);
   if (ruleText === null) return null;
-  const pubAt = s54.indexOf(PUB);
-  const end = s54.indexOf('\n  **', pubAt + 4);          // the next bold paragraph ends this one
-  const pubText = s54.slice(pubAt, end < 0 ? undefined : end);
+  // ⚠ THE FOURTH SITE OF THE SAME CLASS, and it was safe only by a chain: `s54.indexOf(PUB)` as a
+  // slice bound is fine ONLY because `sliceBetween` above already refused a missing `PUB` — a
+  // guarantee carried by a different variable, three lines away, that a later edit to either line
+  // silently breaks. It goes through the primitive instead, where the guarantee is the slice's own.
+  // The next bold paragraph ends this one; there may not BE a next one, and `null` for the closing
+  // anchor is that case rather than a `-1` to remember to test for.
+  const pubText = sliceBetween(s54, PUB, '\n  **') ?? sliceBetween(s54, PUB, null);
+  if (pubText === null) return null;
   // Link TARGETS are not prose: `#72-badges-every-member-has-a-render` would otherwise answer for
   // the word `badges` that the sentence itself is supposed to carry.
   const names = (t) => [...new Set([...t.replace(/\]\([^)]*\)/g, '')
@@ -753,8 +777,10 @@ if (control(hitsOf(SCRIPT, ROW_ANCHOR), 'a scope row for a surface D3 does not p
 // THREE sites with the identical shape. The fix was the `sliceBetween` primitive at the top of
 // this file, so this control is one loop over the three anchor pairs rather than three patches:
 // each closing anchor is renamed in turn, and the slice must come back `null` rather than widening
-// to whatever `indexOf`'s -1 hands it. The widths are printed because the number is the finding —
-// § 7.1's own 4,546 characters against a quarter of a million.
+// to whatever `indexOf`'s -1 hands it. ⚠ The widths are PRINTED, on every run, because the number
+// IS the finding and a number restated in a comment about restated numbers is the defect writing
+// itself down: the last revision of this file carried a figure here that the run had already
+// moved past.
 for (const [label, [open, close]] of [
   ['§ 7.1', S71_ANCHORS], ['§ 7.6', S76_ANCHORS], ['§ 5.4', S54_ANCHORS],
 ]) {
@@ -770,6 +796,27 @@ for (const [label, [open, close]] of [
   check(trueSlice !== null && preFix.length > trueSlice.length * 5,
     `${label}: and the shape this replaces widened from ${trueSlice ? trueSlice.length : '?'} chars to ${preFix.length} — still PASS`);
 }
+// ⭐ AND THE ONE-SIDED FORM, which is where the remaining three sites of the class went. `null` for
+// an end means the document's own end — and the whole risk of widening a primitive is that the new
+// branch is the one nobody exercises, so a `null` end must NOT be allowed to make a MISSING anchor
+// look like a satisfied one. Both directions, on the two real anchors, with positive controls
+// showing the slice lands where it is supposed to rather than merely being non-null.
+for (const [label, anchor, held] of [
+  ['§ 7.1\'s two tables', REASON_HDR, s71], ['§ 7.6\'s own table', API_HDR, s76],
+]) {
+  if (!control(hitsOf(FLOOR_MD, anchor), `${label}, parted at ${JSON.stringify(anchor.slice(0, 28))}`)) continue;
+  const MOVED = held === null ? '' : held.replace(anchor, anchor.replace('| `', '| `RENAMED-'));
+  check(sliceBetween(MOVED, null, anchor) === null && sliceBetween(MOVED, anchor, null) === null,
+    `${label}: a renamed boundary makes BOTH one-sided slices NULL — the open end never covers for a missing anchor`);
+  // …and what the shape this replaces would have handed them instead: one character, and all but
+  // one character, neither of which announces itself.
+  check(MOVED.slice(0, MOVED.indexOf(anchor)).length === MOVED.length - 1
+    && MOVED.slice(MOVED.indexOf(anchor)).length === 1,
+  `${label}: and the shape it replaces would have handed back ${MOVED.length - 1} chars and 1 char — silently`);
+}
+check(sliceBetween('abcdef', null, 'cd') === 'ab' && sliceBetween('abcdef', 'cd', null) === 'cdef'
+  && sliceBetween('abcdef', null, null) === 'abcdef',
+'sliceBetween lands a one-sided slice exactly — "ab", "cdef", and the whole string for two nulls');
 // § 5.4's own derivation, not only its slice: the whole layer above must go red, not just return.
 {
   const [, close] = S54_ANCHORS;
@@ -866,10 +913,14 @@ function f13(source, report, mode) {
 f13(SCRIPT, true, 'undeclared-desk');
 f13(SCRIPT, true, 'unthemed-install');
 // The control for each half, planted at the shape it actually had.
-const PLACE_ANCHOR = 'for(const {seat:s0,D} of placeFloor(TH,FLEET[inst]).placed){\n      const s={...s0,__install:inst};';
+const PLACE_ANCHOR = 'for(const {seat:s0,slot,D} of placeFloor(TH,FLEET[inst]).placed){\n      const s={...s0,__install:inst};';
 if (control(hitsOf(SCRIPT, PLACE_ANCHOR), 'the unguarded desk lookup')) {
+  // ⚠ `slot` is re-declared in the planted shape ON PURPOSE. The overlay pass reads it (each
+  // overlay declares the storey region it belongs to), so a replacement that dropped it would
+  // throw a ReferenceError on the FIRST seat — and this control asserts a THROW, so it would go
+  // green having never reached the undeclared desk key it exists to exercise.
   const UNGUARDED = SCRIPT.replace(PLACE_ANCHOR,
-    'for(const s0 of FLEET[inst]){\n      const s={...s0,__install:inst};const D=TH.desks[s.desk];');
+    'for(const s0 of FLEET[inst]){\n      const s={...s0,__install:inst};const D=TH.desks[s.desk];const slot=s.desk;');
   const failed = f13(UNGUARDED, false, 'undeclared-desk');
   check(failed.some((f) => f.includes('without throwing')),
     `the unguarded desk lookup goes RED, the way the defect did — ${JSON.stringify(failed.find((f) => f.includes('without throwing')) || null)}`);
@@ -1155,6 +1206,9 @@ function boundary(probe, say) {
     .concat([['(unthemed)', probe.UNTHEMED, probe.FLEET[probe.FLOORS[0]]]]);
   record(floors.length >= 2, `the floor population is the artifact's own (${floors.map((f) => f[0]).join(', ')})`);
   let banded = 0;
+  // …and one real band fragment is kept, so the header's own extent can be re-derived from what the
+  // artifact EMITS rather than from a copy of `y0+88` and a font size held here.
+  let bandFragment = '';
   for (const [name, T, rawSeats] of floors) {
     const seats = rawSeats.map((s) => ({ ...s, __install: name }));
     const P = probe.placeFloor(T, seats);
@@ -1170,6 +1224,7 @@ function boundary(probe, say) {
       continue;
     }
     banded++;
+    bandFragment = bandSvg;
     const band = extentOf(bandSvg);
     record(band.ok, `${name}: every shape the BAND emits was measured (${measured(band)})`);
     if (band.ok) {
@@ -1197,15 +1252,28 @@ function boundary(probe, say) {
   }
   record(wide.length === 0,
     `the band clears the floor for a row of n = 1..12 widest-case seats — the invariant does not depend on the row's length${wide.length ? ` — ${wide[0]}` : ''}`);
-  // ⚠ THE OVERLAY PASS IS IN NEITHER FRAGMENT, and is named rather than left implied: the buttons,
-  // nameplates, thought bubbles and markers are HTML positioned in the BUILDING's coordinates, so
-  // no measurement above can see them. The topmost of them over a desk is § 5.1's bubble, and its
-  // offset is READ OUT OF THE ARTIFACT rather than restated here — a second copy of that number
-  // would be a drift waiting to happen, and a shape this pattern no longer matches reads NaN and
-  // reds rather than passing.
+  // ⚠ THE OVERLAY PASS IS IN NEITHER FRAGMENT, and this is the ONE fact about it this file can
+  // state. The buttons, nameplates, thought bubbles and markers are HTML in CSS pixels over an SVG
+  // in user units; their SIZES are a browser's answer and not this file's, which is why
+  // `tools/design/floor-preview.browser.mjs` exists and why it is the gate that judges the picture.
+  // What is arithmetic — and therefore belongs here, as the cheap backstop that runs with no
+  // browser — is the bubble's ANCHOR, which is a pure user-unit offset above the desk.
+  //
+  // ⛔ AND THE THRESHOLD IS THE HEADER, NOT `FH`. An earlier revision compared the anchor against
+  // `FH` and passed a bubble that sat squarely on the band's own arithmetic line: `FH` is where the
+  // STRIP begins, and the strip begins with two lines of text the row must not cover. The header's
+  // extent is re-derived from the emitted band — its own `.bandhdr` elements, bounded by the same
+  // `textBox` every other `<text>` on this floor goes through — rather than restated from `y0+88`
+  // and a font size, which would be this file asserting the artifact's arithmetic against itself.
   const bub = Number((SCRIPT.match(/bub\.style\.top=PY\(D\.y-(\d+)\)/) || [])[1]);
-  record(Number.isFinite(bub) && Number.isFinite(probe.BAND_DESK_Y) && probe.BAND_DESK_Y - bub >= FH,
-    `a band desk's thought bubble is inside the strip too — anchored at ${probe.BAND_DESK_Y - bub} (desk ${probe.BAND_DESK_Y} less the artifact's own ${bub}) against FH ${FH}`);
+  const hdrSvg = [...String(bandFragment).matchAll(/<text\b([^>]*class="bandhdr"[^>]*)>/g)]
+    .map((m) => textBox(m[1]));
+  record(hdrSvg.length >= 2 && hdrSvg.every((b) => b && Number.isFinite(b.y1)),
+    `the band's header block was found and bounded — ${hdrSvg.length} line(s), ${hdrSvg.filter((b) => !b).length} unmeasurable`);
+  const hdrBottom = hdrSvg.length && hdrSvg.every((b) => b) ? Math.max(...hdrSvg.map((b) => b.y1)) : null;
+  record(Number.isFinite(bub) && Number.isFinite(probe.BAND_DESK_Y) && hdrBottom !== null
+    && probe.BAND_DESK_Y - bub >= hdrBottom,
+  `a band desk's thought bubble is anchored BELOW the band's header — ${probe.BAND_DESK_Y - bub} (desk ${probe.BAND_DESK_Y} less the artifact's own ${bub}) against the header's deepest bound ${hdrBottom === null ? 'NOT MEASURED' : hdrBottom.toFixed(1)}`);
   return failed;
 }
 boundary(P, check);
@@ -1224,8 +1292,15 @@ for (const [anchor, planted, what, want] of [
   // …and the same direction one layer in: the band where it belongs, but its DESKS too high in it,
   // so what crosses the line is the character and the bubble anchored above the desk. This is the
   // control for the overlay leg, which the band's own top cannot fail for.
-  ['const BAND_DESK_Y=FH+230;', 'const BAND_DESK_Y=FH+100;',
-    "the band's desks raised so their bubbles hang over the floor", 'thought bubble is inside the strip'],
+  ['const BAND_DESK_Y=FH+300;', 'const BAND_DESK_Y=FH+100;',
+    "the band's desks raised so their bubbles hang over the floor", 'anchored BELOW the band'],
+  // ⭐ AND THE CONTROL THAT SEPARATES THE NEW THRESHOLD FROM THE OLD ONE. `FH+200` puts the
+  // bubble's anchor at `FH+48` — inside the strip, so the leg this replaces (anchor ≥ `FH`) stayed
+  // GREEN on it, and squarely on the band's header, which is the defect. A strengthened check whose
+  // only control also fails the weak version has not been shown to be stronger.
+  ['const BAND_DESK_Y=FH+300;', 'const BAND_DESK_Y=FH+200;',
+    "the band's desks at FH+200 — clear of the floor, ON the header: the value the OLD `>= FH` leg passed",
+    'anchored BELOW the band'],
   // …and the UNMEASURABLE forms, each planted into a floor that must then refuse to report a clean
   // measurement rather than a shorter list of boxes. Of the four forms in which the deleted layer's
   // "unmeasurable is loud" guarantee was demonstrably false, two are now MEASURED and have their
@@ -1319,6 +1394,33 @@ if (control(hitsOf(SCRIPT, INTERN_ANCHOR), "each of the intern label's two nulls
   internLabels(load(BOTH).probe, (cond, what) => { if (!cond) failedBoth.push(what); });
   check(failedBoth.some((f) => f.includes('null title')),
     `and a null title falling back to the type goes RED too — ${JSON.stringify(failedBoth.find((f) => f.includes('null title')) || null)}`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 10. The lobby's seat count — a figure DERIVED from the fleet, never a figure beside it
+// ---------------------------------------------------------------------------------------------
+// The header read the literal `9 seats · 8 live`, written into the markup next to the `FLEET` it
+// was derived from. Adding § 9 F13's sample seat moved the fleet and left the figure stating the
+// old one — a derived value does not announce that its basis moved. It is counted from `FLEET` now,
+// and `live` is § 7.3's `link_state` member rather than a guess at one.
+section('10. the lobby count is derived from FLEET, not written beside it');
+{
+  const seats = P.FLOORS.flatMap((i) => P.FLEET[i] || []);
+  const want = `${seats.length} seats · ${seats.filter((s) => s.link_state === 'live').length} live`;
+  const painted = load(SCRIPT).dom.byId.get('fleetcount');
+  check(!!painted && painted.textContent === want,
+    `the lobby's count is the fleet's own — want ${JSON.stringify(want)}, painted ${JSON.stringify(painted ? painted.textContent : null)}`);
+  // ⛔ AND IT IS SHOWN TO FOLLOW THE DATA. Comparing a derivation to the same derivation is not
+  // evidence that the page is deriving anything: a re-frozen literal would satisfy the check above
+  // exactly as well. So one seat's `link_state` is moved off `live` and the painted string is
+  // required to MOVE with it.
+  const ANCHOR = 'seat:"sola-mailer",render_state:"working",link_state:"live"';
+  if (control(hitsOf(SCRIPT, ANCHOR), "a sample seat's link_state moved off `live`")) {
+    const MOVED = load(SCRIPT.replace(ANCHOR, ANCHOR.replace('link_state:"live"', 'link_state:"stale"')));
+    const moved = MOVED.dom.byId.get('fleetcount');
+    check(!!moved && moved.textContent !== want && /^\d+ seats · \d+ live$/.test(moved.textContent),
+      `…and it MOVES when the fleet does — ${JSON.stringify(want)} becomes ${JSON.stringify(moved ? moved.textContent : null)}`);
+  }
 }
 
 // ⭐ THE COUNTS ARE COUNTED, NOT WRITTEN DOWN. This line is the ONE place the number of checks and

@@ -71,19 +71,44 @@ and § 3.2 answers it in a word the summary row of § 9 F13 does not carry: the 
 floor**. So an overflowing floor is drawn on a canvas one band taller and the row lives in that
 appended strip, and the gate holds the boundary between them: **nothing the floor emits reaches
 below `FH`, and nothing the band emits rises above it** — one scalar per floor in each direction,
-at any row length. ⛔ **A shape it cannot measure makes that FAIL**, by name, rather than dropping
+at any row length — plus the one overlay fact that is pure arithmetic, the thought bubble's anchor
+above a band desk, which is held against **the band header's own re-derived extent and not against
+`FH`**: `FH` is where the strip begins, and the strip begins with the two header lines the row must
+not cover, so the weaker threshold passed a bubble sitting squarely on them.
+⛔ **A shape it cannot measure makes that FAIL**, by name, rather than dropping
 out of the measurement: *not measured* is never *clear*. And it holds § 5.6's two intern nulls
 apart: a null `subagent_type` draws **no type tag**, a null `title` draws ***untitled***. It proves
 every one of those can fail with anchored source mutations — the furniture pushed below the line,
 the band raised above it, and each shape form the measurement could once have skipped silently.
 **How many checks and how many planted controls is printed on the run's own last line**, counted
 rather than written down, so no file here carries a figure that drifts from it.
-⚠ **It is still not visual evidence.** There is no browser and no HTML parser behind it — no
-layout, no paint, nothing seen. What it asserts is the values the artifact emits, and the boundary
-layer only adds arithmetic on those same emitted coordinates: z-order, opacity and the difference
-between a box and the ink inside it are all outside it. Where a bound cannot be computed exactly it
-is computed **wide**, so the only error it can make is to over-report a crossing. How any of it
-*looks* is verified by opening the file, which is the one check no tool here performs.
+⚠ **It is not evidence about the composed page, and it cannot be.** There is no browser behind it —
+no layout, no paint, nothing seen. What it asserts is the values the artifact emits, and its
+boundary layer only adds arithmetic on those same emitted coordinates.
+
+**The second check is `tools/design/floor-preview.browser.mjs`** (`node`, no dependencies, a real
+headless browser), and it exists because **this artifact has two coordinate systems**: the floor,
+the desks and the band are SVG **user units**; the thought bubbles, nameplates, markers and hit
+targets are HTML positioned over that SVG but **sized in CSS pixels**. A user unit and a CSS pixel
+are not the same length, so nothing that reads SVG attributes can answer *does the bubble cover the
+header* — and four review rounds of card#7965 each moved SVG content correctly and each re-collided
+with the layer no gate measured, with every static check green every time. The overflow row landed
+on sola's tea bar; moved below the floor per § 3.2, its thought bubble landed on the band's own
+arithmetic line and its nameplate hung out of the strip, over the lobby.
+
+The fix is not a better model of the two systems — it is to **stop having two**. In a composed page
+`getBoundingClientRect()` returns both layers in ONE space, so the questions become direct rect
+intersections between things that were actually laid out: **no overlay covers any line of the band's
+header, and every overlay is inside the storey its own `data-band` declares**. There is no transform
+parser, no arc bounding, no stroke padding and no *not measured* category in it — those were all
+machinery for measuring a picture without drawing it. Its population is **two room widths × each
+floor's own fit-floor framing, plus the whole-building framing**; widths are the axis that can
+falsify anything, because `#world` scales the SVG and the overlays together, so an overlay's size in
+user units is a function of the room's width alone — which the gate **measures** rather than
+assumes. Its controls re-mint both of the round's defects from their own pre-fix constants and
+require each to go red. ⚠ It measures **boxes, not ink**: opacity, z-order, fill and legibility are
+outside it, and two rects that do not intersect can still look wrong — so opening the file remains
+the last word on how it *looks*.
 
 The kanban cards carry the full rulings and their reasons: #7341 (floor build + viewport),
 #7897 (communication layer + meeting-room triggers), #7898 (art direction + characters),
