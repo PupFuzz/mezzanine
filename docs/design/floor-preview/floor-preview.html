@@ -50,10 +50,19 @@
   .plate .gl{font-family:var(--mono);font-size:8.5px;padding:2px 8px;border-radius:12px;letter-spacing:.5px;display:inline-block;margin-top:2px;box-shadow:0 1px 3px rgba(10,12,24,.5)}
   /* one chip class per render_state — the chip renders the STATE (D3 § 5.1 "pose and glyph |
      render_state"), never a pose. The think pose has no chip of its own: it is A4's condition
-     over a `working` seat, and it is rendered as a pose (the … marker and the state line). */
+     over a `working` seat, and it is rendered as a pose (the … marker and the state line).
+     ALL TEN of § 7.1's members have a class here, not the four the sample fleet happens to
+     contain, and each is named by exactly one row of STATE_RENDER below (card#7943). */
   .g-working{background:#1d4030;color:#8ce8b0}
   .g-idle{background:#293046;color:#b8c3dd} .g-blocked{background:#443413;color:#ffd07a}
-  .g-stale{background:#43221e;color:#ff9d8a}
+  .g-stalled{background:#4a2130;color:#ffa8bd} .g-unknown{background:#2f2a45;color:#c3b8ff}
+  .g-catching-up{background:#1e3a44;color:#8ecfdb}
+  .g-stale{background:#43221e;color:#ff9d8a} .g-offline{background:#20232e;color:#8a90a6}
+  .g-disabled{background:#33303a;color:#b0a8bb} .g-retired{background:#2b2620;color:#c9b89a}
+  /* § 5.4's UNRECOGNISED chip is deliberately outside the palette of the ten and is the only
+     dashed one: a member this client has never heard of must not read, at a glance, as one of
+     the members it knows. Its text carries the raw string (chipText below). */
+  .g-unrecognised{background:#3a2a0c;color:#ffcf7d;border:1px dashed #ffcf7d}
   .plate .ln{display:block;font-family:var(--mono);font-size:9px;color:#cfd4e4;margin-top:2px;
     text-shadow:0 1px 3px rgba(10,12,24,.85);max-width:180px;overflow:hidden;text-overflow:ellipsis}
 
@@ -65,7 +74,15 @@
   .bub .d1{width:7px;height:7px}.bub .d2{width:4px;height:4px}
   .mk{position:absolute;transform:translateX(-50%);font-family:var(--disp);font-weight:700;font-size:18px;pointer-events:none;
     text-shadow:0 1px 4px rgba(10,12,24,.8)}
-  .mk.b{color:var(--blocked)}.mk.t{color:#c3b8ff}
+  /* .b and .t are A7's and A4's, and they pulse (below). .u and .w are the markers § 7.1 gives
+     `unknown` and `catching_up` and § 5.4 gives an unrecognised member: they are STATIC, because
+     motion on this page needs a § 6.2 row and neither A9 nor A15 is drawn here yet. § 6.4 makes
+     the still form a first-class rendering rather than a degradation. */
+  .mk.b{color:var(--blocked)}.mk.t{color:#c3b8ff}.mk.u{color:#b8c3dd}.mk.w{color:var(--lamp)}
+  /* § 7.3 / § 5.4: a desk whose pose may NOT be read as *now* — `catching_up`, `disabled`,
+     `retired`, and any unrecognised member — carries a visible treatment. Colour is drained; no
+     motion is stopped here because none of those rows carries a busy pose to begin with. */
+  .desat{filter:saturate(.3) brightness(.86)}
   .env{position:absolute;pointer-events:none;font-size:18px;filter:drop-shadow(0 2px 4px rgba(10,12,24,.6));opacity:0}
   .envnote{position:absolute;pointer-events:none;font-family:var(--mono);font-size:8.5px;color:#9aa2bb;text-shadow:0 1px 3px rgba(10,12,24,.8)}
   .floorclip{position:absolute;overflow:hidden;pointer-events:none}
@@ -220,26 +237,211 @@ const VIBES=["quiet perfectionist","chirpy optimist","plans twice, ships once","
   "collects rubber ducks","hums while compiling","never lost a semicolon","keeps the plants alive"];
 const vibeFor=(i,s)=>VIBES[draw(seatKey(i,s),"vibe",VIBES.length)];
 
-/* ---------- pose: what the character DOES, derived from the state the wire sent ----------
-   ⛔ `thinking` is NOT a render_state. D2 sends ten members (D3 § 7.1) and `thinking` is in
-   none of them; it is A4's holding CONDITION over a `working` seat — `render_state ==
-   "working"` AND `open_calls == 0` AND `open_turn == true` (D3 § 6.2 A4, § 5.1 "the *thinking*
-   pose — a turn open with no call | open_turn … read WITH open_calls"). So the pose is DERIVED
-   here, once, and the drawing layer never sees a state name: a `thinking` on the wire would be
-   an unrecognised member (§ 5.4), not a pose. */
-const POSE={working:"work",idle:"sleep",blocked:"attention",stale:"empty"};
+/* ---------- THE RENDER TABLE: one row per D3 § 7.1 member, in § 7.1's fixed order ----------
+   § 7.1 defines TEN `render_state` members and gives every one of them a distinct render. THIS
+   OBJECT IS THE ONE PLACE THAT MEMBER SET IS WRITTEN in this file, and every render_state-keyed
+   decision below reads a CELL of it: the chip and its colour, the monitor's tint, the pose, the
+   marker, the state line, whether the desk draws a character at all, and — through
+   `RENDER_STATES` — § 4.1's fixed member order in the lobby summary.
+
+   ⛔ WHAT THIS REPLACES, so it is not re-minted (card#7943). SIX copies of one member set lived
+   in this file — `POSE`, `NO_CHARACTER`, `RENDER_STATES`, `SCREENC`, `GL` and a `labelFor`
+   switch — and four of them covered only the four members the frozen sample fleet happens to
+   contain. A seat in any of the other six threw a TypeError out of an array destructure (killing
+   the whole render) or emitted `undefined` into the DOM as `fill="undefined"` and a blank state
+   line — a SILENT wrong render, which is the worse half. DO NOT ADD A SECOND MEMBER SET ANYWHERE
+   IN THIS FILE, in any spelling: a set literal, a switch over the field, and iterating
+   `RENDER_STATES` over a wire value (which is a FILTER — see the lobby summary) are all the same
+   copy. A new § 7.1 member is a ROW here and nothing else;
+   `tools/design/floor-preview.selftest.mjs` re-derives the ten from FLOOR.md § 7.1's own table
+   and reds when this object disagrees, and reds again on a row that omits a cell or names a chip
+   class the stylesheet does not define.
+
+   A value that is NOT one of the ten renders as UNRECOGNISED (§ 5.4, § 9 F9, AT-D3-11) — never
+   as the nearest known member, never as a healthy-looking default, and never as a crash.
+
+   The cells:
+     desk    — § 7.1's Desk column as a closed vocabulary: "character" | "empty-chair" |
+               "cleared-desk". EVERYTHING anchored to the character selects on this one cell and
+               never on a second test of its own: the sprite, and § 5.1's thought bubble (rule 3 —
+               a bubble over an empty chair would draw a thinker who is not there).
+     pose    — what the character does. `null` where there is no character, because § 7.5 is
+               explicit that an empty chair "has no pose at all".
+     marker  — [glyph, class] floated beside the desk, or null. The `…` of the *think* pose is
+               NOT a row: it is A4's condition over a `working` seat, derived in poseOf().
+     chip    — the plate chip's colour class. The chip's TEXT is deliberately not a cell — it is
+               the raw member string (chipText), so a chip can never disagree with the wire.
+     screen  — the monitor's tint; `lit` is its brightness.
+     current — false where § 7.3 says the pose may not be read as *now*. It is ONE of two inputs
+               to isCurrent(), which also fails a desk carrying an unrecognised value in any
+               membership-tested field (§ 5.4); the desk is then desaturated.
+     label   — § 7.1's Label line column, VERBATIM, as a function of the seat. The suite parses
+               that column out of FLOOR.md and compares the rendered line to it literally.
+
+   ⛔ `thinking` is NOT a render_state. D2 sends these ten and `thinking` is in none of them; it
+   is A4's holding CONDITION over a `working` seat — `render_state == "working"` AND
+   `open_calls == 0` AND `open_turn == true` (§ 6.2 A4, § 5.1 "the *thinking* pose — a turn open
+   with no call | open_turn … read WITH open_calls"). So the pose is DERIVED, once, in poseOf(),
+   and the drawing layer never sees a state name: a `thinking` on the wire is an unrecognised
+   member (§ 5.4), not a pose. */
+const STATE_RENDER={
+  working:{desk:"character",pose:"work",marker:null,chip:"g-working",screen:"#8ce8b0",lit:true,current:true,
+    /* § 5.1: `action` is null when no call is open, and the desk then shows its state line —
+       never a stale last action. On a `working` seat that line IS A4's condition, in words, and
+       it is selected by the SAME primitive as the pose rather than by a second test. */
+    label:s=>poseOf(s)==="think"?"turn open, no call":(s.action?s.action.descriptor:"")},
+  /* § 7.1's line is *finished — nothing done for 4m 12s*, and `finished — ` is the load-bearing
+     half: `idle` is a POSITIVE OBSERVATION — the seat cleanly finished a turn — not a silence.
+     The bare age reads as the silence § 7.5's asleep-versus-gone bullet exists to refuse. */
+  idle:{desk:"character",pose:"sleep",marker:null,chip:"g-idle",screen:"#3c445c",lit:false,current:true,
+    label:s=>"finished — nothing done for "+s.quiet_for},
+  /* § 2.4: a seat-clock timestamp is rendered LABELLED as one, wherever it appears. */
+  blocked:{desk:"character",pose:"attention",marker:["!","b"],chip:"g-blocked",screen:"#ffd07a",lit:true,current:true,
+    label:s=>"waiting on a human since "+s.blocked_since+" (seat clock)"},
+  /* § 7.1: head in hands, and `api_error_type` is ALWAYS on the line — see apiErrorLine below
+     for the raw-value-plus-membership form § 5.4 and § 7.6 require of it. */
+  stalled:{desk:"character",pose:"hands",marker:null,chip:"g-stalled",screen:"#ff9d8a",lit:true,current:true,
+    label:s=>apiErrorLine(s.api_error_type)},
+  unknown:{desk:"character",pose:"still",marker:["?","u"],chip:"g-unknown",screen:"#3c445c",lit:false,current:true,
+    label:s=>unknownReasonLine(s.unknown_reason)},
+  catching_up:{desk:"character",pose:"still",marker:["⟳","u"],chip:"g-catching-up",screen:"#8ecfdb",lit:false,current:false,
+    /* § 7.1: a labelled seat-clock TIMESTAMP, never a duration — the only quantity that would
+       make it a duration is a seat clock subtracted from the server's (§ 2.4).
+       ⛔ `activity.last_event_time` is NULLABLE (D2 § 8.2.1), and D3 states no line for a
+       `catching_up` seat that has one. § 5.6's row for the member does state the render — *the
+       seat-clock line beside the last kind is not drawn* — and its default is that a null is the
+       absence it is, so the TIMESTAMP is dropped and the state keeps its line. The refused
+       alternative is the four characters `null` on a desk label, which decision 13 and § 7.5's
+       *Zeroed* bullet both forbid; *not reported* is the form § 5.6 reserves for an element whose
+       own space is drawn unconditionally, and a fragment inside a sentence is not one. */
+    label:s=>s.activity&&s.activity.last_event_time
+      ?"replaying history — last event "+s.activity.last_event_time+" (seat clock)"
+      :"replaying history"},
+  /* § 7.1 writes both dark lines as *no data since 14:18 — NO DATA FOR 11m*: the age carries its
+     own words, because `— 11m` beside a timestamp reads as a second time rather than a duration.
+     `delivery.no_data_since` is non-null whenever `link_state ∈ {stale, offline}` (§ 5.1), so
+     `stale` needs no null branch and `offline`'s is not an inconsistency — it is § 7.1's own
+     provisioned-never-reported case, which is an `offline` seat and never a `stale` one. */
+  stale:{desk:"empty-chair",pose:null,marker:null,chip:"g-stale",screen:"#3c445c",lit:false,current:false,
+    label:s=>"no data since "+s.delivery.no_data_since+" — no data for "+s.no_data_for},
+  offline:{desk:"empty-chair",pose:null,marker:null,chip:"g-offline",screen:"#242a33",lit:false,current:false,
+    /* § 7.1: the provisioned-never-reported seat has a NULL `delivery.no_data_since` (and a null
+       receipt), and its line then reads *no data yet* ALONE — never "no data since null", and
+       never an age beside it (§ 3.4, § 5.6). */
+    label:s=>s.delivery&&s.delivery.no_data_since
+      ?"no data since "+s.delivery.no_data_since+" — no data for "+s.no_data_for:"no data yet"},
+  disabled:{desk:"character",pose:"still",marker:null,chip:"g-disabled",screen:"#1b1f2b",lit:false,current:false,
+    /* § 7.1: monitor OFF, character present — a seat that is off and a seat that is gone must not
+       look alike (D1 § 6.14), which is why this row draws a character and `offline` does not. */
+    label:()=>"reporting disabled"},
+  retired:{desk:"cleared-desk",pose:null,marker:null,chip:"g-retired",screen:"#22262f",lit:false,current:false,
+    /* § 3.5: the `seat.retired` MESSAGE carries `at` and `reason` and NO `by`; the operator
+       appears when the delta carrying `retired.by` lands, whichever arrives first. So the line is
+       built from what has actually arrived rather than asserting a shape the wire may not have. */
+    label:s=>"retired "+s.retired.at+(s.retired.by?" by "+s.retired.by:"")
+      +(s.retired.reason?" — "+s.retired.reason:"")}
+};
+/* § 5.4 / § 9 F9 / AT-D3-11: a `render_state` this client does not know renders as EXPLICITLY
+   UNRECOGNISED, carrying the raw string, and the desk is treated as NOT-CURRENT. It is
+   deliberately not one of the ten and deliberately not the nearest one — mapping `pondering` to
+   `working` is the most flattering possible guess and is AT-D3-11's first RED. The character is
+   still drawn, for two reasons: it is the seat's IDENTITY redrawn, which § 5.4 admits explicitly
+   and which says nothing about state; and an empty chair IS the render of `stale` and `offline`
+   (§ 7.1), so drawing one here would be the nearest-member guess arriving through the desk
+   instead of through the chip. § 7.5 refuses an absent desk for the same reason. */
+const UNRECOGNISED_RENDER={desk:"character",pose:"still",marker:["⚠","w"],chip:"g-unrecognised",
+  screen:"#3c445c",lit:false,current:false,
+  label:()=>"this client does not recognise this state — not current"};
+/* § 7.1's fixed member order IS this object's key order, and § 4.1's lobby summary iterates it. */
+const RENDER_STATES=Object.keys(STATE_RENDER);
+
+/* D3 § 7.1's seven `unknown_reason` members — one glyph, seven explanations. */
+const UNKNOWN_REASONS={
+  no_data_yet:"no data yet — this seat has never reported",
+  turn_aborted_calls:"the last turn ended with calls aborted",
+  turn_killed_by_clear:"the last turn was killed by a /clear",
+  turn_ended_with_session:"the last turn ended with its session",
+  stalled_left_live:"rate-limited, then the seat went quiet",
+  stalled_session_ended:"rate-limited, then the session ended",
+  session_closed_turn_open:"the session closed with a turn still open"
+};
+/* D3 § 7.6's twelve `api_error_type` members — D1 § 6.4's set, which is where D2 sources it.
+   The column these come from is headed *The line beside the raw value*, which is the whole shape
+   of the render: the raw value, and one of these beside it. The last two are one distinction and
+   not a duplicate — `unknown` is the harness saying it does not know what went wrong, and
+   `unrecognised` is D1's coercion target for a member the reporter has never heard of. */
+const API_ERROR_TYPES={
+  rate_limit:"rate limit",
+  overloaded:"the API was overloaded",
+  server_error:"the API returned a server error",
+  authentication_failed:"authentication failed",
+  billing_error:"a billing error",
+  invalid_request:"the request was rejected as invalid",
+  model_not_found:"the model was not found",
+  max_output_tokens:"the turn hit its output-token ceiling",
+  oauth_org_not_allowed:"this organisation is not permitted",
+  account_on_hold:"the account is on hold",
+  unknown:"the harness reported the error as unknown",
+  unrecognised:"this reporter did not recognise the harness's error member"
+};
+
+/* ⭐ § 5.4's membership rule is over SIX fields, not one — `render_state`, `link_state`,
+   `activity_state`, `unknown_reason`, `api_error_type` and the badges — and this desk renders
+   three of them. Each is ONE ENTRY here, so a second membership-tested field is a row rather
+   than a branch, and the test itself is written once for all of them. */
+const MEMBER_SETS={render_state:STATE_RENDER,unknown_reason:UNKNOWN_REASONS,
+                   api_error_type:API_ERROR_TYPES};
+const isMember=(field,v)=>Object.prototype.hasOwnProperty.call(MEMBER_SETS[field],v);
+const isRenderState=v=>isMember("render_state",v);
+function renderFor(v){return isRenderState(v)?STATE_RENDER[v]:UNRECOGNISED_RENDER;}
+/* every field of this seat whose value is in no published set — the desk's own § 9 F9 list. */
+function unheardFields(s){
+  return Object.keys(MEMBER_SETS)
+    .filter(f=>s[f]!==null&&s[f]!==undefined&&!isMember(f,s[f]));
+}
+/* ⛔ § 5.4 / § 7.6: an unrecognised value in ANY of those fields treats the DESK as not-current,
+   not merely the one field that happened to be noticed first. Driving this off the row's cell
+   alone is how `render_state` gets the rule and its five siblings quietly do not — a seat whose
+   `api_error_type` this client has never heard of would otherwise render in full colour, which
+   is AT-D3-11's second RED arriving through a different field. */
+function isCurrent(s){return renderFor(s.render_state).current&&unheardFields(s).length===0;}
+
+/* § 5.6: a null `unknown_reason` draws NO line — never an invented reason, never a placeholder.
+   § 7.1 gives a member its sentence; a value in no set carries its RAW STRING and the
+   unrecognised marker (§ 5.4), and `isCurrent` above has already dimmed the desk it sits on. */
+function unknownReasonLine(r){
+  if(r===null||r===undefined)return "";
+  return isMember("unknown_reason",r)?UNKNOWN_REASONS[r]
+    :String(r)+" (unrecognised unknown_reason)";
+}
+/* ⭐ § 5.4 settles the reading an earlier revision of this file got backwards, and settles it in
+   a sentence written to pre-empt exactly that: "`api_error_type` is rendered verbatim AND
+   membership-tested, which is not a contradiction: the line carries the raw string EITHER WAY,
+   and membership decides only whether it carries its plain-language sentence or the UNRECOGNISED
+   marker beside the raw value. Reading the two rules as alternatives is what would make one of
+   them dead." § 5.2's drill-down table has no `api_error_type` row at all, so this desk line is
+   the field's ONLY surface and the membership test has nowhere else to live.
+   ⚠ § 7.1's Label line cell writes the example as *API error — rate limit* — the phrase with the
+   raw value ELIDED. That cannot be squared with "carries the raw string either way", with
+   § 7.6's column heading *The line beside the raw value*, or with § 5.1's *rendered verbatim*.
+   Two rule statements and a column heading outrank one abbreviated example, so the raw value is
+   rendered and the tension is reported to D3's owner rather than resolved here.
+   § 5.6: a null draws no error text — the desk keeps its pose and its label without one. */
+function apiErrorLine(t){
+  if(t===null||t===undefined)return "API error";
+  return "API error — "+String(t)
+    +(isMember("api_error_type",t)?" ("+API_ERROR_TYPES[t]+")":" (unrecognised)");
+}
+/* the chip's text: the member itself, or § 5.4's unrecognised marker CARRYING THE RAW STRING.
+   `String(v)` is a wire boundary, not a defensive branch: `render_state` is never null per D2,
+   and a preview that crashed proving it would be asserting the very thing it cannot know. */
+function chipText(v){return isRenderState(v)?v.toUpperCase():"UNRECOGNISED · "+String(v);}
+
 function poseOf(s){
   if(s.render_state==="working"&&s.open_calls===0&&s.open_turn===true)return "think";  /* A4 */
-  return POSE[s.render_state];
+  return renderFor(s.render_state).pose;
 }
-/* D3 § 7.1's Desk column: three of the ten members draw no character — `stale` and `offline` are an
-   EMPTY CHAIR and `retired` is a CLEARED DESK. Everything anchored to the character is selected by
-   THIS ONE predicate and never by a second test of its own: the sprite, and § 5.1's thought bubble,
-   which is anchored to the character and therefore absent wherever the character is (§ 5.1 rule 3 —
-   a bubble over an empty chair would draw a thinker who is not there). Keyed on the member set, so
-   a sample seat in a fourth character-less state needs no edit here. */
-const NO_CHARACTER=new Set(["stale","offline","retired"]);
-function hasCharacter(s){return !!s&&!NO_CHARACTER.has(s.render_state);}
+function hasCharacter(s){return !!s&&renderFor(s.render_state).desk==="character";}
 
 function creatureSVG(install,seat,pose,size){
   const k=seatKey(install,seat);
@@ -300,6 +502,9 @@ function creatureSVG(install,seat,pose,size){
   if(acc===3)g+=`<path d="M50 ${cy+SH.ry*0.62} l-8 -5 v10 z M50 ${cy+SH.ry*0.62} l8 -5 v10 z" fill="#d9808f"/><circle cx="50" cy="${cy+SH.ry*0.62}" r="2.4" fill="#c96a7e"/>`;
   if(acc===4)g+=`<path d="M${cx0-SH.rx*0.72} ${ey-4} Q50 ${ty-6} ${cx0+SH.rx*0.72} ${ey-4}" stroke="#3a3550" stroke-width="3" fill="none"/><rect x="${cx0-SH.rx*0.72-4}" y="${ey-6}" width="8" height="12" rx="4" fill="#3a3550"/><rect x="${cx0+SH.rx*0.72-4}" y="${ey-6}" width="8" height="12" rx="4" fill="#3a3550"/>`;
   if(pose==="attention"){g+=`<ellipse cx="${cx0+SH.rx-4}" cy="${cy-SH.ry+18}" rx="7" ry="5" fill="${body}" transform="rotate(-30 ${cx0+SH.rx-4} ${cy-SH.ry+18})"/>`;}
+  /* D3 § 7.1's `stalled` desk: HEAD IN HANDS — both paws up at the face. It is a pose and not a
+     glyph, so it survives motion being switched off (§ 6.4) exactly as the slumped `idle` does. */
+  else if(pose==="hands"){g+=`<ellipse cx="${cx0-SH.rx*0.66}" cy="${ey+5}" rx="7" ry="5.5" fill="${body}" transform="rotate(-24 ${cx0-SH.rx*0.66} ${ey+5})"/><ellipse cx="${cx0+SH.rx*0.66}" cy="${ey+5}" rx="7" ry="5.5" fill="${body}" transform="rotate(24 ${cx0+SH.rx*0.66} ${ey+5})"/>`;}
   else{g+=`<ellipse cx="${cx0-SH.rx+6}" cy="${cy+14}" rx="7" ry="5" fill="${body}" transform="rotate(20 ${cx0-SH.rx+6} ${cy+14})"/><ellipse cx="${cx0+SH.rx-6}" cy="${cy+14}" rx="7" ry="5" fill="${body}" transform="rotate(-20 ${cx0+SH.rx-6} ${cy+14})"/>`;}
   g+=`</g></g>`;
   if(busyTop) return `<g class="busywiggle" style="animation-delay:-${draw(k,"wph",46)/20}s">${g}</g>`;
@@ -387,17 +592,9 @@ const FLEET={
     {desk:"b1",seat:"sola-inventory",render_state:"blocked",link_state:"live",action:null,open_calls:0,open_turn:true,blocked_since:"14:21",context:{used_pct:61.7,used_tokens:617000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"MFA session ruling",source:"thread",ref:"inv#88"},subagents:[],activity:{last_kind:"attention.request",last_event_time:"14:21:07"}}
   ]
 };
-/* D3 § 7.1's ten render_state members, in the document's own fixed order. § 4.1 requires the
-   lobby's per-floor summary to use THIS order; nothing here may carry a member set of its own. */
-const RENDER_STATES=["working","idle","blocked","stalled","unknown","catching_up","stale",
-                     "offline","disabled","retired"];
-/* the monitor's tint, per render_state. Keyed on the four members this sample fleet contains —
-   a sample seat in a fifth state owes a row here and in GL, both drawn from RENDER_STATES. */
-const SCREENC={working:"#8ce8b0",idle:"#3c445c",blocked:"#ffd07a",stale:"#3c445c"};
-
 function deskSVG(T,id,s){
   const D=T.desks[id],x=D.x,y=D.y,w=D.w;
-  const state=s?s.render_state:null, pose=s?poseOf(s):null, occupied=hasCharacter(s);
+  const R=s?renderFor(s.render_state):null, pose=s?poseOf(s):null, occupied=hasCharacter(s);
   let g="";
   g+=`<ellipse cx="${x+w/2}" cy="${y+56}" rx="${w/2+14}" ry="14" fill="rgba(15,12,30,.28)"/>`;
   if(occupied)g+=`<ellipse class="glowpulse" cx="${x+w*D.lampx}" cy="${y-4}" rx="72" ry="44" fill="url(#glow)"/>`;
@@ -414,7 +611,10 @@ function deskSVG(T,id,s){
   }
   const mx=x+w*0.14,my=y-34;
   g+=`<rect x="${mx}" y="${my}" width="58" height="40" rx="7" fill="#232838" stroke="#4a5170" stroke-width="2"/>`;
-  g+=`<rect x="${mx+5}" y="${my+5}" width="48" height="26" rx="4" fill="${state?SCREENC[state]:"#3c445c"}" opacity="${state==="working"||state==="blocked"?.95:.6}"/>`;
+  /* the monitor's tint and brightness are two cells of the seat's row — never a member set of
+     their own, and never a member-set test spelled as a conditional. An UNOCCUPIED desk slot has
+     no seat and therefore no row: it draws the dark default. */
+  g+=`<rect x="${mx+5}" y="${my+5}" width="48" height="26" rx="4" fill="${R?R.screen:"#3c445c"}" opacity="${R&&R.lit?.95:.6}"/>`;
   g+=`<rect x="${mx+24}" y="${my+40}" width="10" height="8" rx="2" fill="#4a5170"/>`;
   const lx=x+w*D.lampx;
   g+=`<line x1="${lx}" y1="${y+2}" x2="${lx-10}" y2="${y-22}" stroke="#8a6a3e" stroke-width="4" stroke-linecap="round"/>`;
@@ -435,7 +635,11 @@ function deskSVG(T,id,s){
     });
     if(extra>0)g+=`<text x="${tx+tw+14}" y="${ty+8}" font-family="Quicksand,sans-serif" font-weight="700" font-size="14" fill="#cfd4e4">+${extra}</text>`;
   }
-  return g;
+  /* § 7.3 / § 5.4: a desk whose pose may not be read as *now* carries a visible treatment. The
+     row's `current` cell is one of two inputs — isCurrent() also fails the desk on an
+     unrecognised value in ANY membership-tested field it renders, so a state added to the table
+     declares its own currency and a member added to D1 cannot slip past it in full colour. */
+  return R&&!isCurrent(s)?`<g class="desat">${g}</g>`:g;
 }
 
 function bookshelf(x,y){
@@ -642,18 +846,9 @@ function buildingSVG(){
 }
 
 /* ---------- overlays, lobby buttons, drill-down ---------- */
-/* the chip: one entry per render_state present in the sample fleet, drawn from RENDER_STATES. */
-const GL={working:["WORKING","g-working"],idle:["IDLE","g-idle"],
-          blocked:["BLOCKED","g-blocked"],stale:["STALE","g-stale"]};
 const esc=t=>{const d=document.createElement("i");d.textContent=t;return d.innerHTML;};
-function labelFor(s){switch(s.render_state){
-  /* D3 § 5.1: `action` is null when no call is open, and the desk then shows its state line —
-     never a stale last action. On a `working` seat that line IS A4's condition, in words — and
-     it is selected by the SAME primitive as the pose, not by a second test of its own. */
-  case "working":return poseOf(s)==="think"?"turn open, no call":(s.action?s.action.descriptor:"");
-  case "idle":return "nothing done for "+s.quiet_for;
-  case "blocked":return "waiting on a human since "+s.blocked_since;
-  case "stale":return "no data since "+s.delivery.no_data_since+" — "+s.no_data_for;}}
+/* the desk's state line is § 7.1's Label line column, read from the seat's row. */
+function labelFor(s){return renderFor(s.render_state).label(s);}
 
 let current="aimla";
 function render(){
@@ -675,8 +870,12 @@ function render(){
       b.addEventListener("click",()=>openDrill(inst,s));world.appendChild(b);
       const p=document.createElement("div");p.className="plate";
       p.style.left=PX(D.x+D.w/2);p.style.top=PY(D.y+64);
-      const [gt,gc]=GL[s.render_state];
-      p.innerHTML="<span class='nm'>"+esc(s.seat)+"</span><br><span class='gl "+gc+"'>"+gt+"</span><span class='ln'>"+esc(labelFor(s))+"</span>";
+      /* the chip's colour is the row's; its TEXT is the raw wire value (§ 5.4 — an unrecognised
+         member's chip CARRIES that string), which is why it is escaped like every other wire
+         string on this page rather than emitted as the literal it used to be. */
+      const R=renderFor(s.render_state);
+      p.innerHTML="<span class='nm'>"+esc(s.seat)+"</span><br><span class='gl "+R.chip+"'>"
+        +esc(chipText(s.render_state))+"</span><span class='ln'>"+esc(labelFor(s))+"</span>";
       world.appendChild(p);
       /* D3 § 5.1: the thought bubble is the desk's ONE rendered form of `task` — there is no task
          chip beside it. A null `task` draws NOTHING (never an empty bubble, never a placeholder),
@@ -688,10 +887,12 @@ function render(){
         bub.innerHTML="<span class='body'>"+esc(s.task.ref+" · "+s.task.title)+"</span><span class='d1'></span><span class='d2'></span>";
         world.appendChild(bub);
       }
-      const pose=poseOf(s);
-      if(pose==="attention"||pose==="think"){
-        const m=document.createElement("div");m.className="mk "+(pose==="attention"?"b":"t");
-        m.textContent=pose==="attention"?"!":"…";
+      /* the marker beside the desk is the row's own [glyph, class] — except the `…`, which
+         belongs to A4's *think* POSE over a `working` seat and not to any state (§ 6.2 A4). */
+      const pose=poseOf(s), mk=pose==="think"?["…","t"]:R.marker;
+      if(mk){
+        const m=document.createElement("div");m.className="mk "+mk[1];
+        m.textContent=mk[0];
         m.style.left=PX(D.x+D.w*0.62+52);m.style.top=PY(D.y-104);world.appendChild(m);
       }
     }
@@ -734,12 +935,29 @@ function render(){
   });
   const f=document.getElementById("floors");f.innerHTML="";
   for(const inst of FLOORS){
-    const c={};FLEET[inst].forEach(s=>c[s.render_state]=(c[s.render_state]||0)+1);
-    /* D3 § 4.1: a count per render_state member present, in § 7.1's FIXED member order. */
-    const line=RENDER_STATES.filter(k=>c[k]).map(k=>c[k]+" "+k).join(" · ");
+    /* D3 § 4.1: a count per render_state member present, in § 7.1's FIXED member order — and
+       THEN whatever the floor holds that is in no member set at all, in the order it holds them.
+       ⛔ Iterating § 7.1's order alone is a FILTER, and it drops an unrecognised seat out of its
+       own floor's summary — four seats at the desks, three on the line. That is the card#7943
+       class arriving through a COUNT instead of through a lookup, and AT-D3-15 — the lobby never
+       invents a count — is what it breaks, in the direction nobody watches.
+       ⭐ It was MASKED, and by the very defect above: the desk loop runs over every floor before
+       this one runs at all, so at the pre-fix revision an unrecognised seat anywhere threw out of
+       `GL[...]` and no lobby line was ever drawn to be wrong. Removing the crash is what makes
+       this the live failure mode, which is why it had to be fixed in the same change and not
+       filed as a follow-up: a fix that converts a loud failure into a silent one is not a fix.
+       `Object.create(null)` because the keys are wire strings: a seat in `constructor` must be
+       counted, not silently added to a function. */
+    const seen=Object.create(null);
+    FLEET[inst].forEach(s=>{seen[s.render_state]=(seen[s.render_state]||0)+1;});
+    const unheard=FLEET[inst].map(s=>s.render_state)
+      .filter((v,i,a)=>!isRenderState(v)&&a.indexOf(v)===i);
+    const line=RENDER_STATES.filter(k=>seen[k]).map(k=>seen[k]+" "+k)
+      .concat(unheard.map(v=>seen[v]+" unrecognised ("+String(v)+")")).join(" · ");
     const b=document.createElement("button");b.className="fbtn";
     b.setAttribute("aria-pressed",String(inst===current));
-    b.innerHTML="<span>"+esc(inst)+"</span><span class='c'>"+line+"</span>";
+    /* the line now carries raw wire strings, so it is escaped like every other one. */
+    b.innerHTML="<span>"+esc(inst)+"</span><span class='c'>"+esc(line)+"</span>";
     b.addEventListener("click",()=>elevatorTo(inst));f.appendChild(b);
   }
   const d=document.getElementById("drill");d.className="drill";d.innerHTML="";
