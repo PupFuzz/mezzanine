@@ -60,7 +60,7 @@
 // anchor is asserted to occur exactly once, and the named check is REQUIRED to go red. Two of them
 // are the two defects this round fixes, re-minted from their own pre-fix constants.
 
-import { readFileSync, writeFileSync, mkdtempSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -179,6 +179,11 @@ function measure(chrome, source, framing, windowW) {
 // The geometry
 // ---------------------------------------------------------------------------------------------
 const inter = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+/** ⚠ The half-pixel is for the map's own float noise — a region is computed through a scale factor
+ *  and the rect it is compared to is the browser's own rounding of the same arithmetic — and it is
+ *  named because a tolerance is a hole in a check. It is worth what it costs: the SMALLER of the
+ *  two defects this gate exists for overlaps by 6 px and the larger hangs out by 18 px, so the
+ *  hole is an order of magnitude below anything that is a picture someone sees. */
 const inside = (a, box, slack = 0.5) => a.l >= box.l - slack && a.r <= box.r + slack
   && a.t >= box.t - slack && a.b <= box.b + slack;
 const fmt = (r) => `[${r.l.toFixed(1)},${r.t.toFixed(1)}–${r.r.toFixed(1)},${r.b.toFixed(1)}]`;
@@ -414,6 +419,12 @@ check(judge({ err: 'boom', consts: {} }, 'threw', () => { }).length > 0,
   '…and so is a probe that threw inside the page');
 
 // ---------------------------------------------------------------------------------------------
+// ⛔ THE RENDER FILES ARE REAPED. Each case writes a ~115 KB copy of the artifact into a temp dir
+// and there is one per render; a verifier that is run on every review of this artifact and leaves
+// its scratch behind is an inode leak with a review cadence. The directory is this run's own
+// `mkdtemp`, so nothing outside it is reachable from here.
+try { rmSync(TMP, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+
 console.log(`\n${failures ? 'FAIL' : 'PASS'}  ${checks} checks, ${controls} planted controls`
   + `, ${renders} browser renders  (${HTML_PATH})`);
 process.exit(failures ? 1 : 0);

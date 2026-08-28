@@ -656,9 +656,15 @@ function docSurfaces(floorMd) {
   // slice bound is fine ONLY because `sliceBetween` above already refused a missing `PUB` — a
   // guarantee carried by a different variable, three lines away, that a later edit to either line
   // silently breaks. It goes through the primitive instead, where the guarantee is the slice's own.
-  // The next bold paragraph ends this one; there may not BE a next one, and `null` for the closing
-  // anchor is that case rather than a `-1` to remember to test for.
-  const pubText = sliceBetween(s54, PUB, '\n  **') ?? sliceBetween(s54, PUB, null);
+  // ⛔ AND BOTH BOUNDS ARE REQUIRED, which is the part worth arguing. The shape this replaces read
+  // "…to the end of § 5.4 if there is no next bold paragraph", and a first pass at the migration
+  // preserved that as a fallback — which puts back, inside the very function that removed it, the
+  // thing the primitive exists to forbid: a MISSING closing anchor and a paragraph that genuinely
+  // runs to the end of the section become the same answer, and the population moves without
+  // saying so. It is a smaller widening than the document-wide one (§ 5.4 is already bounded) and
+  // it is the same defect. If D3 ever ends § 5.4 on this paragraph, the honest output is this
+  // parse going red and a human reading it — not a quietly different denominator.
+  const pubText = sliceBetween(s54, PUB, '\n  **');
   if (pubText === null) return null;
   // Link TARGETS are not prose: `#72-badges-every-member-has-a-render` would otherwise answer for
   // the word `badges` that the sentence itself is supposed to carry.
@@ -774,9 +780,11 @@ if (control(hitsOf(SCRIPT, ROW_ANCHOR), 'a scope row for a surface D3 does not p
 }
 // DIRECTION 3 — THE DERIVATION'S OWN ANCHORS, at EVERY site that takes a slice of D3. Neither
 // direction above is worth anything if the slice they run over is not § 5.4 — and § 5.4 was one of
-// THREE sites with the identical shape. The fix was the `sliceBetween` primitive at the top of
-// this file, so this control is one loop over the three anchor pairs rather than three patches:
-// each closing anchor is renamed in turn, and the slice must come back `null` rather than widening
+// several sites with the identical shape, three of them SECTION bounds and the rest one-sided
+// (the loop below this one). The fix was the `sliceBetween` primitive at the top of this file, so
+// the controls are two loops over the anchors rather than a patch per site: how many sites there
+// are is a thing that MOVES, and a count of them written here is the next stale figure.
+// Each closing anchor is renamed in turn, and the slice must come back `null` rather than widening
 // to whatever `indexOf`'s -1 hands it. ⚠ The widths are PRINTED, on every run, because the number
 // IS the finding and a number restated in a comment about restated numbers is the defect writing
 // itself down: the last revision of this file carried a figure here that the run had already
@@ -805,7 +813,13 @@ for (const [label, anchor, held] of [
   ['§ 7.1\'s two tables', REASON_HDR, s71], ['§ 7.6\'s own table', API_HDR, s76],
 ]) {
   if (!control(hitsOf(FLOOR_MD, anchor), `${label}, parted at ${JSON.stringify(anchor.slice(0, 28))}`)) continue;
-  const MOVED = held === null ? '' : held.replace(anchor, anchor.replace('| `', '| `RENAMED-'));
+  // ⛔ …and the section it is planted INTO must exist, or every check below is true of the empty
+  // string: `sliceBetween('', …)` is null both ways, so a vacuous control would report both
+  // directions working over a section that was never read. The same shape this file caught in its
+  // own bounds check last round.
+  check(held !== null && held.length > 0, `${label}: the section it is planted into was read — ${held === null ? 'IT WAS NOT' : `${held.length} chars`}`);
+  if (held === null || !held.length) continue;
+  const MOVED = held.replace(anchor, anchor.replace('| `', '| `RENAMED-'));
   check(sliceBetween(MOVED, null, anchor) === null && sliceBetween(MOVED, anchor, null) === null,
     `${label}: a renamed boundary makes BOTH one-sided slices NULL — the open end never covers for a missing anchor`);
   // …and what the shape this replaces would have handed them instead: one character, and all but
@@ -1400,9 +1414,11 @@ if (control(hitsOf(SCRIPT, INTERN_ANCHOR), "each of the intern label's two nulls
 // 10. The lobby's seat count — a figure DERIVED from the fleet, never a figure beside it
 // ---------------------------------------------------------------------------------------------
 // The header read the literal `9 seats · 8 live`, written into the markup next to the `FLEET` it
-// was derived from. Adding § 9 F13's sample seat moved the fleet and left the figure stating the
-// old one — a derived value does not announce that its basis moved. It is counted from `FLEET` now,
-// and `live` is § 7.3's `link_state` member rather than a guess at one.
+// was derived from. ⚠ It was CORRECT when this check was written — verified against `fe482eb` —
+// and that is exactly why it is worth replacing rather than a reason not to bother: what held it
+// correct was somebody remembering to re-count when § 9 F13's sample seat was added, and a derived
+// value does not announce that its basis has moved. It is counted from `FLEET` now, and `live` is
+// § 7.3's `link_state` member rather than a guess at one.
 section('10. the lobby count is derived from FLEET, not written beside it');
 {
   const seats = P.FLOORS.flatMap((i) => P.FLEET[i] || []);

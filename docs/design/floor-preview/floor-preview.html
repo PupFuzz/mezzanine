@@ -1117,10 +1117,13 @@ function paintScope(){
     +"</table>";
 }
 
-/* the lobby's right-hand count. It was the literal `9 seats · 8 live` in the markup, which is a
-   figure derived from `FLEET` and stored beside it — so adding the F13 seat moved the fleet and
-   left the figure saying 8. Counted here instead, from the same array the floors are drawn from,
-   and `live` is § 7.3's `link_state` member and not a guess at one. */
+/* the lobby's right-hand count. It was the literal `9 seats · 8 live` in the markup — a figure
+   DERIVED from `FLEET` and stored beside it. ⚠ It was also CORRECT, and that is the point rather
+   than a reason to leave it: nothing held it correct except somebody remembering to re-count when
+   § 9 F13's sample seat was added, and the next edit to `FLEET` gets no such reminder. A restated
+   figure is not a defect because it is wrong today; it is a defect because nothing makes it wrong
+   LOUDLY tomorrow. Counted here instead, from the same array the floors are drawn from, and `live`
+   is § 7.3's `link_state` member and not a guess at one. */
 const fleetSeats=()=>FLOORS.flatMap(i=>FLEET[i]||[]);
 function paintFleetCount(){
   const el=document.getElementById("fleetcount"); if(!el)return;
@@ -1151,8 +1154,8 @@ function render(){
          gate reading the composed page can measure where they LANDED but cannot tell whether a
          plate at the strip's top edge is a band seat sitting correctly or a floor seat that has
          fallen through — the two are the same rect. `data-band` is that declaration, and
-         `floor-preview.browser.mjs` set-differences it against the region each rect is actually
-         inside, which is the check that makes the declaration a contract rather than a comment. */
+         `floor-preview.browser.mjs` checks each rect against the region its own `data-band` names,
+         which is what makes the declaration a contract rather than a comment. */
       const tag=el=>{el.dataset.inst=inst;el.dataset.seat=s.seat;el.dataset.band=slot?"0":"1";};
       const b=document.createElement("button");b.className="hit";tag(b);
       b.style.left=PX(D.x-10);b.style.top=PY(D.y-118);b.style.width=(((D.w+((s.subagents||[]).length?60+34*Math.min(8,s.subagents.length):20))/BW)*100)+"%";b.style.height=((196/bh)*100)+"%";
