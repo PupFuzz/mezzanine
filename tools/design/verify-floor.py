@@ -30,11 +30,17 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G10 null-render closure, both directions      a member D2 section 8.2.1 marks `Null? yes` with no
                                                stated null render, or a null render for a member D2
                                                does not mark nullable
-  G11 the composed `api_error_type` line        a WORKED EXAMPLE that contradicts the rule statement
-                                               governing it: section 7.1's `stalled` cell against
-                                               section 7.6's member/phrase table, and section 5.1's
-                                               *rendered verbatim* illustration against the MEMBERS
-                                               rather than the phrases
+  G11 a worked example against its rule         a WORKED EXAMPLE that contradicts the rule statement
+                                               governing it, over TWO facts. (a) the composed
+                                               `api_error_type` line: section 7.1's `stalled` cell
+                                               against section 7.6's member/phrase table, and
+                                               section 5.1's *rendered verbatim* illustration
+                                               against the MEMBERS rather than the phrases.
+                                               (b) WHERE the `activity_state` currency label is
+                                               drawn: section 7.6's five rows must agree with each
+                                               other, and every worked instance elsewhere -- found
+                                               structurally, by a *was:* span or the words `activity
+                                               state` -- must state the placement they agree on
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -1756,6 +1762,118 @@ if _collide:
                 f"KEY, so the verbatim test above cannot tell the two apart on that row and would "
                 f"pass on the phrase — the exact substitution it exists to catch")
 
+# ---- G11, second FACT: WHERE the `activity_state` currency label is drawn ----
+# The same class as the two above -- a worked example against the rule statement governing it -- on a
+# different fact, and it went undetected for exactly the same reason the composed line did: the two
+# sites disagreed and NOTHING could difference them.  Section 7.6's `activity_state` table OWNS the
+# render form and says the *was: X (...)* form goes UNDER the label, in five rows.  Section 7.3's
+# `catching_up` and `disabled` rows said IN THE LABEL ONLY -- a ONE-element reading, under which a
+# `catching_up` desk's single line carries `activity.last_event_time` twice, once as its own
+# timestamp and once inside the *was:* parenthetical.  A third instance was in section 7.6's OWN
+# `link_state` table.  card#7966 ruled section 7.6 the owner and corrected all three; this holds them.
+#
+# NOTHING BELOW IS STORED.  The placement phrase is READ OUT of section 7.6's five rows -- so if that
+# table is ever amended, this gate requires the worked instances to follow the amendment rather than
+# the string that happened to be right today.
+PREPOSITIONS = ("in", "under", "on", "inside", "beside", "below", "above", "within", "beneath")
+PLACEMENT_RE = re.compile(r"\b(?:%s) the label\b" % "|".join(PREPOSITIONS))
+ACT_HDR = r"^\| `activity_state` \| What it says the seat is doing \| Rendered as \|"
+_act_rows = table_rows(raw, ACT_HDR) or []
+_act_placements, _act_rows_seen = set(), 0
+for _r in _act_rows:
+    _c = cells(_r)
+    if len(_c) >= 3 and re.match(r"^`[a-z_]+`$", _c[0]):
+        _act_rows_seen += 1
+        _act_placements |= set(PLACEMENT_RE.findall(_c[2]))
+if _act_rows_seen != 5:
+    fail.append(f"G11 CONTROL: {_act_rows_seen} `activity_state` rows parsed out of section 7.6, not "
+                f"the five it publishes — the RULE this leg holds its instances against was never "
+                f"read, and an empty rule accepts every instance in silence")
+elif len(_act_placements) != 1:
+    fail.append(f"G11 CONTROL: section 7.6's five `activity_state` rows state "
+                f"{len(_act_placements)} different placements for the currency label "
+                f"({sorted(_act_placements)}) — the rule statement disagrees with ITSELF, so no "
+                f"instance below can be judged against it. That is a rule-against-rule amendment to "
+                f"section 7.6 and is raised here rather than picked")
+else:
+    PLACEMENT = next(iter(_act_placements))
+
+    def placement_ok(cell_text):
+        """Every placement this cell states must be section 7.6's.  A cell that states none is not
+        an instance of this rule and passes without being asked to carry the phrase."""
+        return all(m == PLACEMENT for m in PLACEMENT_RE.findall(cell_text))
+
+    # THE CAPABILITY TEST, run every time and BOTH WAYS, on strings composed from the phrase just
+    # read rather than typed here.  The defect arm substitutes a preposition the rule does NOT use --
+    # chosen from the recognizer's own alternation, so nothing here stores which one is right; the
+    # pre-fix cells read *in the label only* against section 7.6's *under*.  It must REJECT that and
+    # ACCEPT the same cell built with section 7.6's own phrase; without the second arm a predicate
+    # that refused everything would look like a working guard.
+    _was = "as *was: working (last event 12:47, seat clock)*"
+    _other = next(p for p in PREPOSITIONS if not PLACEMENT.startswith(p + " "))
+    _defect_cell = f"{_other} the label only, {_was}"
+    if placement_ok(_defect_cell):
+        fail.append(f"G11 CONTROL: the placement test ACCEPTS {_defect_cell!r}, whose preposition is "
+                    f"not section 7.6's — the shape of the one-element reading card#7966 corrected, "
+                    f"which puts `activity.last_event_time` on the desk twice. A check that admits "
+                    f"its own defect is a decoration")
+    if not placement_ok(f"{PLACEMENT}, {_was}"):
+        fail.append(f"G11 CONTROL: the placement test REJECTS a cell built from section 7.6's own "
+                    f"phrase {PLACEMENT!r}. It is refusing everything, so its verdict on the "
+                    f"instances below carries no information either way")
+
+    # THE POPULATION, derived STRUCTURALLY from every table in the document rather than listed here:
+    # a cell is an instance of section 7.6's form if it carries a *was:* span or names the `activity
+    # state` in words.  Two tables are excluded BY ROLE, and both exclusions are load-bearing:
+    #
+    #   * section 7.6's own `activity_state` rows are the RULE, not an instance of it.  They are
+    #     checked above, by having to agree with EACH OTHER.
+    #   * section 12's guard-class table DESCRIBES this gate.  Its row for G11 necessarily QUOTES the
+    #     defect -- "section 7.3's rows read *in the label only*" -- because that is what a row
+    #     documenting a guard says, and a recognizer that reads it as an instance FAILS ON THE
+    #     CORRECTION ITSELF: the more thoroughly the defect is written up, the redder the gate, while
+    #     a silent fix scores clean.  It fired exactly that way on this leg's own documentation row
+    #     before the carve-out existed.  Section 12 renders nothing, so nothing is lost by it, and
+    #     G9 already recognises those rows by the same role for the same kind of reason.
+    _instances = 0
+    for _start, _hdr, _rows in DOC_TABLES:
+        if re.search(ACT_HDR, _hdr) or re.search(GUARD_TABLE_HEADER, _hdr):
+            continue
+        for _j, _row in enumerate(_rows):
+            for _cell in cells(_row):
+                # ⛔ THE TEST IS "STATES NO CONTRADICTING PLACEMENT", NOT "STATES THE PLACEMENT",
+                # and the difference is a hole this gate DECLARES rather than closes.  A stricter
+                # tier -- every cell carrying a *was:* span must contain section 7.6's phrase
+                # verbatim -- was written, run, and REMOVED, because it fired on section 7.1's own
+                # `catching_up` cell, which says the form is "drawn under this line" while POINTING
+                # AT section 7.3 and section 7.6.  That cell is correct; it MENTIONS the form in
+                # order to say the timestamp is not the Label line's, and no structural test here
+                # can tell a mention from a placement.  Enforcing the literal would have made this a
+                # STYLE rule that reds on a correct paraphrase -- the inverted shape where a careful
+                # write-up scores worse than a careless one.  The cost is stated in section 12's
+                # limit (3): a cell that re-words the placement out of the recognizer's vocabulary
+                # escapes by matching nothing.
+                if "*was:" not in _cell and "activity state" not in _cell:
+                    continue
+                _found = PLACEMENT_RE.findall(_cell)
+                if not _found:
+                    continue
+                _instances += 1
+                if not placement_ok(_cell):
+                    fail.append(
+                        f"G11: line {_start + 3 + _j} renders section 7.6's `activity_state` form "
+                        f"and places it {sorted(set(_found))}, where section 7.6's own five rows "
+                        f"say {PLACEMENT!r}. The currency label is a SECOND rendered element, drawn "
+                        f"under section 7.1's Label line and not inside it — the one-element "
+                        f"reading makes a `catching_up` desk carry `activity.last_event_time` "
+                        f"twice in one line (card#7966). EITHER SITE may be the one that moved: "
+                        f"section 7.6 owns the form, so an amendment there is followed here, and a "
+                        f"drift here is the defect. Read both before editing either")
+    if _instances == 0:
+        fail.append("G11 CONTROL: no worked instance of section 7.6's `activity_state` placement "
+                    "was found anywhere in this document, so this leg is clean over an empty "
+                    "population — which is what a silently-narrowed recognizer looks like")
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -1805,6 +1923,21 @@ print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase p
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "
       f"rejected it")
+# Reported per BRANCH, because the two ways this leg can fail to run are different findings and a
+# single "NOT MEASURED" would report the wrong one -- and because claiming the predicate rejected its
+# own defect on a run where the predicate never executed is a false line in a gate's own output.
+if _act_rows_seen != 5:
+    print(f"G11 the `activity_state` currency label's PLACEMENT: NOT MEASURED — {_act_rows_seen} "
+          f"section 7.6 rows parsed, not five, so the RULE was never read and no instance was judged")
+elif len(_act_placements) != 1:
+    print(f"G11 the `activity_state` currency label's PLACEMENT: NOT MEASURED — section 7.6's five "
+          f"rows state {sorted(_act_placements)}, so the rule disagrees with ITSELF and no instance "
+          f"can be judged against it")
+else:
+    print(f"G11 the `activity_state` currency label's PLACEMENT: {_act_rows_seen} section 7.6 rows "
+          f"read and agreeing on {next(iter(_act_placements))!r}; worked instances found elsewhere "
+          f"in the document by structure and held against it: {_instances}; the predicate was fed "
+          f"its own defect on this run and rejected it")
 print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nullable, "
       f"{len(null_rendered)} given a null render by section 5.6, "
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")

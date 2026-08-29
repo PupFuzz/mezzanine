@@ -62,9 +62,84 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   invented; **`working`** renders a descriptor § 5.1 assigns to the monitor, and states nothing for
   the A4 seat whose turn is open with no call, where that descriptor does not exist; and
   **`catching_up`** carries a second wording of the labelled seat-clock timestamp § 7.6 fixes once.
-  All three turn on one question D3 does not answer — whether § 7.3's currency label and § 7.1's
-  Label line are one rendered element or two — which is **rule against rule**, so the new convention
-  reserves it rather than letting this change pick it.
+  All three turned on one question D3 did not answer — whether § 7.3's currency label and § 7.1's
+  Label line are one rendered element or two — which is **rule against rule**, so the convention
+  reserved it rather than letting the first round pick it.
+  ⭐ **That question is now ANSWERED, and the answer closes two of the three: TWO rendered elements.**
+  § 7.6's `activity_state` table — the section that **owns** that render form — says *under the label*
+  in five rows; § 7.3's `catching_up` and `disabled` rows said *in the label only*. Rule against rule
+  was rule against **defect**, and the sanity check is what makes it more than a word choice: read as
+  one element, a `catching_up` desk's single line would carry *replaying history — last event 12:47
+  (seat clock)* **and** *was: working (last event 12:47, seat clock)* — the same field, twice, in one
+  line. **Both cells are corrected to *under the label***, and the sibling sweep found a **third** the
+  ruling had not seen: § 7.6's own `link_state` table said *activity state in the label only* for
+  `catching_up` too. § 7.3 now states the two-element rule and names § 7.6 as the form's owner, and
+  § 7.6 says it owns it — so the next divergence has a governing statement to lose against instead of
+  a second opinion to argue with.
+  ⇒ **`catching_up`'s Label line drops the restated timestamp** — *replaying history*, the state
+  sentence, with `activity.last_event_time` left to the currency label that owns it. **Not drift: a
+  real redundancy the one-element reading hid**, because under that reading the repetition read as a
+  paraphrase rather than as one field rendered twice on one desk.
+  ⇒ **`working`'s Label line is *working*, the state's own sentence** — and the alternative was
+  refused on the document's own rules rather than on taste. It may not be the descriptor (§ 5.1 gives
+  that to the **monitor**, and that row's null case sends the monitor back to *the desk's state line*,
+  so a repeat would point the fallback at a copy of what it stands in for and would say nothing at all
+  for the A4 seat whose `action` is null); it may not be *turn open, no call* or any other wording of
+  `open_turn` / `open_calls`, which A3 / A4's pose already renders; and it may not be **nothing**,
+  because **AT-D3-5 and AT-D3-13 both assert all ten members are pairwise distinguishable BY LABEL
+  LINE**. A bare state word is the only string left that renders `render_state` and no second fact.
+  ⛔ **`blocked` is NOT fixed here, and that is the finding rather than an omission.** It renders
+  *waiting on a human since 14:31 (seat clock)* from a timestamp **D2 publishes no member for** — the
+  open attention request lives in `detail`, the drill-down's source, not the desk's. Dropping the time
+  deletes the one thing a raised hand is for and inventing a field is what the preview already had to
+  do, so it is a **D2 gap, not a D3 drafting error**, carried as its own item (**card#8075**) and live
+  for the build (card#7341). The cell is untouched; § 7.1's remainder paragraph is the notice, and it
+  **stays** — a document naming its own known-contradictory cell is the whole point of that paragraph,
+  and the alternative is a document that reads complete while a cell is known wrong.
+  ⚠ **The downstream carve-out moved again, and for the second time the exemption's REASON was what
+  expired**: `working` is no longer in `floor-preview.selftest.mjs`'s `LABEL_NOT_COMPARABLE` (two
+  members, now **one** — `unknown` alone, whose literals are the sibling table's). Its stated reason
+  was *"the line is a wire field, not a fixed string"*, and D3 has now ruled that the line is not the
+  wire field. Both newly-comparable literals owe proof the comparison can fail **on them**, so both
+  got a planted control that re-mints the pre-fix expression from the artifact's own code: `working`
+  reds at *want "working", got "Bash: composer test"*, `catching_up` at *want "replaying history", got
+  "replaying history — last event 12:47 (seat clock)"*. Both run on **every** invocation.
+  The artifact (`floor-preview.html`) follows D3 rather than the gate being relaxed to follow it:
+  both labels are now constants. ⛔ **One honest consequence, declared rather than hidden:** the
+  descriptor now has **no desk render in the preview at all**, because that file draws the monitor as
+  a tint and not as text — § 5.1's monitor is unbuilt there, which is card#7341's to draw, and the
+  timestamp's new home is a surface the artifact's own `D3_SCOPE` already declares *not implemented*.
+  ⭐ **And the placement got a GATE, because a corrected string with nothing holding it is how the
+  first two instances arrived.** `verify-floor.py`'s **G11** — still eleven guard classes, this is a
+  second **fact** inside the one class it already names, *a worked example against the rule statement
+  governing it* — now re-derives the placement phrase from § 7.6's five `activity_state` rows and
+  holds every worked instance against it. **Nothing is stored:** the five rows must agree with **each
+  other** (if they do not, the tool reports the rule as disagreeing with **itself** and judges no
+  instance — that is a rule-against-rule amendment, not a defect in any example), the population is
+  found **structurally** (any table cell carrying a *was:* span or naming the `activity state`, so a
+  fourth site is in it the moment it exists), a run finding **none** reds rather than reporting clean
+  over an empty set, and the predicate's own defect arm substitutes a preposition the rule does **not**
+  use, picked from the recognizer's alternation. Seen red **six** ways, each on its own message with
+  `FLOOR.md`'s md5 verified identical after every restore: each § 7.3 row reverted; § 7.6's
+  `link_state` row reverted; one § 7.6 rule row drifted; **all five rule rows moved with the instances
+  left behind — three reds, which is the leg following the OWNER rather than a string typed into the
+  tool**; and the rule table's header renamed so the rule is never read at all.
+  ⚠ **One carve-out, and it is a finding rather than a convenience: § 12's own guard-class rows are
+  excluded by role.** A row documenting a guard necessarily **quotes the defect it guards** — § 12's
+  G11 row quotes *in the label only* in order to say what was wrong — so a recognizer that read it
+  **fails on the correction and passes a silent fix**, getting redder the more honestly the write-up
+  is done. It fired exactly that way on this leg's own documentation row before the carve-out existed.
+  § 12 renders nothing; G9 already excludes those rows by the same role.
+  ⚠ **And one hole is DECLARED rather than closed**, because the fix for it was worse: the leg asks
+  whether a cell **contradicts** § 7.6, never whether it states the placement at all, so a cell that
+  re-words the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter
+  tier — every cell carrying a *was:* span must contain § 7.6's phrase — was written, run, and
+  **removed**: it red on § 7.1's own corrected `catching_up` cell, which says the form is drawn
+  *under this line* while pointing at § 7.3 and § 7.6. That cell is right; it **mentions** the form in
+  order to say the timestamp is not the Label line's, and no structural test here can tell a mention
+  from a placement, so the literal rule would have red on a careful paraphrase and passed a careless
+  overwrite. All three limits are written into § 12's own Status cell rather than left in a commit
+  message.
 - **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
   was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
   observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —
