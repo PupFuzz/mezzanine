@@ -384,7 +384,7 @@ const EDGE_CASES = [
   ['stalled', { api_error_type: 'quantum_flux' }, 'API error — quantum_flux (unrecognised)', false, 'a THIRTEENTH api_error_type carries its raw string with the unrecognised marker, and the desk stops being current'],
   ['unknown', { unknown_reason: null }, '', true, 'a null unknown_reason draws no line rather than an invented reason'],
   ['unknown', { unknown_reason: 'reasons' }, 'reasons (unrecognised unknown_reason)', false, 'an unrecognised unknown_reason carries its raw string, and the desk stops being current'],
-  ['catching_up', { activity: { last_kind: 'tool.start', last_event_time: null } }, 'replaying history', false, 'a null activity.last_event_time drops the TIMESTAMP and keeps the state — never the four characters `null` on a desk label'],
+  ['catching_up', { activity: { last_kind: 'tool.start', last_event_time: null } }, 'replaying history', false, 'activity.last_event_time never reaches this LINE at all — null or not, it is the currency label\'s (§ 7.3 / § 7.6, a second element under this one), so the row that would re-mint it here reds on both this case and the member case above'],
   ['retired', { retired: { at: '2026-08-20', reason: 'host decommissioned' } }, 'retired 2026-08-20 — host decommissioned', false, 'the seat.retired MESSAGE carries no `by`, and the line is built from what arrived'],
 ];
 // Values that are NOT § 7.1 members. `pondering` is AT-D3-11's own; `thinking` is the one the
@@ -395,19 +395,21 @@ const STRANGERS = ['pondering', 'thinking', 'constructor', '__proto__', 'toStrin
 // § 7.1's Label line column, per member, as the literal string the desk owes.
 const DOC_LABEL = {};
 for (const row of DOC_STATE_ROWS) DOC_LABEL[row.member] = publishedLine(row.cells[2]);
-// The three members for which § 7.1 publishes PROSE rather than a literal, each with the reason
-// it is exempt. An unlisted member whose column parses to nothing is a FAILURE above, never a
-// silent skip — that is how this exemption stays three members wide instead of growing quietly.
+// The ONE member for which § 7.1 publishes PROSE rather than a literal, with the reason it is
+// exempt. An unlisted member whose column parses to nothing is a FAILURE above, never a silent
+// skip — that is how this exemption stays one member wide instead of growing quietly.
+// ⭐ It had THREE entries and now has one, and both removals are D3 amendments rather than
+// decisions taken here. `stalled` went with card#7966's first round: § 7.1's cell read
+// *API error — rate limit* — § 7.6's phrase with the RAW VALUE ELIDED — which no rule statement
+// admitted, so the literal could not be compared and the properties both readings agree on were
+// asserted instead; D3 now publishes the COMPOSED line once, at § 7.6, and the cell is a worked
+// instance of it. `working` went with the same card's second round: its cell read *the action's
+// descriptor*, a wire field, and D3 has now ruled that line is NOT the descriptor (§ 5.1 assigns
+// that to the monitor) but the state's own sentence — a constant, and therefore comparable.
+// An exemption outliving the contradiction that justified it is a permanently weakened check
+// wearing a stale reason, which is why removing each was part of the fix that ended its reason.
 const LABEL_NOT_COMPARABLE = {
-  working: '"the action\'s descriptor" — the line is a wire field, not a fixed string',
   unknown: '"one sentence per `unknown_reason` (below)" — the literals are that table\'s, checked in § 1',
-  // ⚠ § 7.1's cell for `stalled` reads *API error — rate limit*: the § 7.6 phrase with the RAW
-  // VALUE ELIDED. That contradicts § 5.4 ("the line carries the raw string either way"), § 7.6's
-  // column heading ("The line beside the raw value") and § 5.1 ("rendered verbatim"). The
-  // artifact follows the two rule statements and the heading; the literal is therefore NOT
-  // comparable, and the properties both readings agree on are asserted instead, below. The
-  // tension is reported to D3's owner rather than settled here.
-  stalled: '§ 7.1\'s example elides the raw value that § 5.4, § 5.1 and § 7.6 all require — reported to D3, asserted by property',
 };
 
 const KNOWN_CHIPS = P.STATE_RENDER ? Object.values(P.STATE_RENDER).map((r) => r.chip) : [];
@@ -505,14 +507,14 @@ function sweep(source, report) {
       }
     }
     say(!r.markers.some((k) => k.glyph === 'undefined'), `${member}: no marker reads "undefined"`);
-    if (member === 'stalled') {
-      // The two properties § 7.1's abbreviated example and D3's rule statements BOTH agree on.
-      say(r.label.includes(extra.api_error_type),
-        `stalled: the line carries the raw \`api_error_type\` verbatim (§ 5.1, § 5.4) — got ${JSON.stringify(r.label)}`);
-      const phrase = P.API_ERROR_TYPES ? P.API_ERROR_TYPES[extra.api_error_type] : null;
-      say(!!phrase && r.label.includes(phrase),
-        `stalled: and § 7.6's phrase beside it — want ${JSON.stringify(phrase)} inside the line`);
-    }
+    // ⭐ `stalled` carried two extra PROPERTY assertions here — the raw value present, § 7.6's
+    // phrase present — and they existed only as the substitute for a literal comparison D3's own
+    // contradiction made impossible. D3 now publishes the composed line at § 7.6 and § 7.1's cell
+    // is a worked instance of it, so the comparison above holds the WHOLE line, which contains
+    // both properties and their order and separators as well (card#7966). Keeping them would be a
+    // weaker restatement of a check three lines up, still carrying the reason it was weaker.
+    // The other three branches of that composition are literals in EDGE_CASES: a second known
+    // member, a thirteenth value with § 5.4's marker, and a null.
     say(lobbyTotal(r.lobby) === aimlaSeats,
       `${member}: the lobby line counts every seat on the floor (${aimlaSeats}) — got ${lobbyTotal(r.lobby)}`);
     say(r.lobby !== null && r.lobby.includes(member), `${member}: the lobby names the member itself`);
@@ -611,6 +613,51 @@ if (control(hitsOf(SCRIPT, LABEL_ANCHOR), "§ 7.1's `idle` label cell reverted t
   const failedUnderBareAge = sweep(SCRIPT.replace(LABEL_ANCHOR, 'label:s=>"nothing done for "+s.quiet_for'), false);
   check(failedUnderBareAge.some((f) => f.startsWith('idle:') && f.includes('verbatim')),
     `the sweep goes RED when a label cell stops being § 7.1's line — e.g. ${JSON.stringify(failedUnderBareAge.find((f) => f.includes('verbatim')) || null)}`);
+}
+// ⭐ AND ITS OWN CONTROL FOR `stalled`, which joined that comparison in card#7966 and had until
+// then been EXEMPT from it. The exemption's own justification — "the literal is not comparable" —
+// is exactly the shape that outlives its reason, so the member's first run inside the comparison
+// is the one that owes proof the comparison can fail ON IT. The mutation re-mints the pre-fix
+// defect from the artifact's own composition rather than from a string typed here: the phrase
+// substituted for the raw value, which is precisely what § 7.1 published from its first revision on.
+const STALLED_ANCHOR = 'return "API error — "+String(t)\n'
+  + '    +(isMember("api_error_type",t)?" ("+API_ERROR_TYPES[t]+")":" (unrecognised)");';
+if (control(hitsOf(SCRIPT, STALLED_ANCHOR), 'the composed `api_error_type` line § 7.6 publishes')) {
+  const failedUnderElision = sweep(SCRIPT.replace(STALLED_ANCHOR,
+    'return "API error — "+(isMember("api_error_type",t)?API_ERROR_TYPES[t]:String(t));'), false);
+  check(failedUnderElision.some((f) => f.startsWith('stalled:') && f.includes('verbatim')),
+    `the sweep goes RED when the line elides the raw value — e.g. ${JSON.stringify(failedUnderElision.find((f) => f.startsWith('stalled:') && f.includes('verbatim')) || null)}`);
+}
+// ⭐ AND ITS OWN CONTROL FOR `working`, on the same standing as `stalled`'s above: it joined this
+// comparison in card#7966's second round and had until then been EXEMPT, on the reason "the line is
+// a wire field, not a fixed string". D3 has now ruled that line is NOT the wire field — § 5.1 gives
+// the descriptor to the MONITOR — so the exemption's reason is spent and the member's first run
+// inside the comparison owes proof the comparison can fail ON IT. The mutation re-mints the exact
+// pre-fix expression rather than an invented one: the A4 string D3 publishes nowhere, with the
+// monitor's descriptor as its other branch.
+const WORKING_ANCHOR = 'label:()=>"working"},';
+if (control(hitsOf(SCRIPT, WORKING_ANCHOR), "§ 7.1's `working` label cell reverted to its pre-fix expression")) {
+  const failedUnderDescriptor = sweep(SCRIPT.replace(WORKING_ANCHOR,
+    'label:s=>poseOf(s)==="think"?"turn open, no call":(s.action?s.action.descriptor:"")},'), false);
+  check(failedUnderDescriptor.some((f) => f.startsWith('working:') && f.includes('verbatim')),
+    `the sweep goes RED when the working label renders the monitor's descriptor — e.g. ${JSON.stringify(failedUnderDescriptor.find((f) => f.startsWith('working:') && f.includes('verbatim')) || null)}`);
+}
+// ⭐ AND ONE FOR `catching_up`, whose literal MOVED in the same round rather than joining: the line
+// used to carry `activity.last_event_time`, which § 7.3's currency label — a second element under
+// it — carries as *was: X (last event 12:47, seat clock)*. One field, two renders on one desk. The
+// mutation re-mints the pre-fix expression, both branches of it. ⚠ Only ONE of the two cases can
+// catch it and that is stated rather than glossed: the null EDGE_CASE runs the pre-fix expression's
+// OTHER branch, which returns the bare state and therefore still AGREES — so the red is owed by the
+// member case, whose `last_event_time` is real. A control that quietly leaned on the edge case would
+// be resting on the arm that cannot move.
+const CATCHING_UP_ANCHOR = 'label:()=>"replaying history"},';
+if (control(hitsOf(SCRIPT, CATCHING_UP_ANCHOR), "§ 7.1's `catching_up` label cell reverted to its pre-fix expression")) {
+  const failedUnderDoubledStamp = sweep(SCRIPT.replace(CATCHING_UP_ANCHOR,
+    'label:s=>s.activity&&s.activity.last_event_time'
+    + '?"replaying history — last event "+s.activity.last_event_time+" (seat clock)"'
+    + ':"replaying history"},'), false);
+  check(failedUnderDoubledStamp.some((f) => f.startsWith('catching_up:') && f.includes('verbatim')),
+    `the sweep goes RED when the catching_up label restates the currency label's timestamp — e.g. ${JSON.stringify(failedUnderDoubledStamp.find((f) => f.startsWith('catching_up:') && f.includes('verbatim')) || null)}`);
 }
 // The two derivations that are pure comparison get their own discriminating controls, because a
 // comparison that has only ever been shown agreeing is not evidence that it can disagree.

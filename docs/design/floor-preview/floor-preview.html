@@ -307,10 +307,19 @@ const vibeFor=(i,s)=>VIBES[draw(seatKey(i,s),"vibe",VIBES.length)];
    member (§ 5.4), not a pose. */
 const STATE_RENDER={
   working:{desk:"character",pose:"work",marker:null,chip:"g-working",screen:"#8ce8b0",lit:true,current:true,
-    /* § 5.1: `action` is null when no call is open, and the desk then shows its state line —
-       never a stale last action. On a `working` seat that line IS A4's condition, in words, and
-       it is selected by the SAME primitive as the pose rather than by a second test. */
-    label:s=>poseOf(s)==="think"?"turn open, no call":(s.action?s.action.descriptor:"")},
+    /* § 7.1: the state's own sentence, a CONSTANT, and card#7966 ruled out both of the strings
+       this row used to produce. `action.descriptor` is the MONITOR's (§ 5.1), and that row's own
+       null case sends the monitor back to "the desk's state line" — this one — so a label that
+       repeated the descriptor pointed the fallback at a copy of what it stands in for, and said
+       NOTHING for the A4 seat whose `action` is null. And *turn open, no call* was a second
+       wording of `open_turn`/`open_calls`, which A3/A4's pose already renders: one fact, two
+       forms, which § 2.4 refuses. A bare state word is the only string that renders
+       `render_state` and no second fact — and a label line this state must have, because AT-D3-5
+       and AT-D3-13 assert all ten are pairwise distinguishable BY LABEL LINE.
+       ⛔ The descriptor has no desk render in this artifact as a result: the monitor is drawn
+       here as a tint, not as text, so `action.descriptor` appears in the drill-down only. That is
+       § 5.1's monitor being unbuilt here, not a fact dropped — it is card#7341's to draw. */
+    label:()=>"working"},
   /* § 7.1's line is *finished — nothing done for 4m 12s*, and `finished — ` is the load-bearing
      half: `idle` is a POSITIVE OBSERVATION — the seat cleanly finished a turn — not a silence.
      The bare age reads as the silence § 7.5's asleep-versus-gone bullet exists to refuse. */
@@ -326,18 +335,18 @@ const STATE_RENDER={
   unknown:{desk:"character",pose:"still",marker:["?","u"],chip:"g-unknown",screen:"#3c445c",lit:false,current:true,
     label:s=>unknownReasonLine(s.unknown_reason)},
   catching_up:{desk:"character",pose:"still",marker:["⟳","u"],chip:"g-catching-up",screen:"#8ecfdb",lit:false,current:false,
-    /* § 7.1: a labelled seat-clock TIMESTAMP, never a duration — the only quantity that would
-       make it a duration is a seat clock subtracted from the server's (§ 2.4).
-       ⛔ `activity.last_event_time` is NULLABLE (D2 § 8.2.1), and D3 states no line for a
-       `catching_up` seat that has one. § 5.6's row for the member does state the render — *the
-       seat-clock line beside the last kind is not drawn* — and its default is that a null is the
-       absence it is, so the TIMESTAMP is dropped and the state keeps its line. The refused
-       alternative is the four characters `null` on a desk label, which decision 13 and § 7.5's
-       *Zeroed* bullet both forbid; *not reported* is the form § 5.6 reserves for an element whose
-       own space is drawn unconditionally, and a fragment inside a sentence is not one. */
-    label:s=>s.activity&&s.activity.last_event_time
-      ?"replaying history — last event "+s.activity.last_event_time+" (seat clock)"
-      :"replaying history"},
+    /* § 7.1: the state's own sentence and NOTHING ELSE — no timestamp, and therefore no null
+       branch and no seat-clock label. This line used to carry `activity.last_event_time`, and
+       card#7966 ruled why it may not: § 7.3's currency label is a SECOND rendered element drawn
+       UNDER this one (§ 7.6's activity_state table owns that form and said *under the label* in
+       five rows), and it carries the very same field as *was: X (last event 12:47, seat clock)*.
+       One field, one desk, two renders — which § 2.4's one-rendered-form-per-fact rule refuses
+       across the two elements exactly as it refuses across two surfaces.
+       ⛔ THE TIMESTAMP IS NOT LOST HERE — it moved to an element this artifact declares it does
+       NOT implement: D3_SCOPE's `activity_state` row, *not implemented*, whose note names § 7.3's
+       *was: … (…)* forms as the BUILD's (card#7341). Absent because out of scope, and the scope
+       table is where that is said. */
+    label:()=>"replaying history"},
   /* § 7.1 writes both dark lines as *no data since 14:18 — NO DATA FOR 11m*: the age carries its
      own words, because `— 11m` beside a timestamp reads as a second time rather than a duration.
      `delivery.no_data_since` is non-null whenever `link_state ∈ {stale, offline}` (§ 5.1), so
@@ -483,11 +492,16 @@ function unknownReasonLine(r){
    marker beside the raw value. Reading the two rules as alternatives is what would make one of
    them dead." § 5.2's drill-down table has no `api_error_type` row at all, so this desk line is
    the field's ONLY surface and the membership test has nowhere else to live.
-   ⚠ § 7.1's Label line cell writes the example as *API error — rate limit* — the phrase with the
-   raw value ELIDED. That cannot be squared with "carries the raw string either way", with
-   § 7.6's column heading *The line beside the raw value*, or with § 5.1's *rendered verbatim*.
-   Two rule statements and a column heading outrank one abbreviated example, so the raw value is
-   rendered and the tension is reported to D3's owner rather than resolved here.
+   ⭐ THE COMPOSITION BELOW IS § 7.6'S, PUBLISHED THERE AND NOT INVENTED HERE. It used to be:
+   the order and the separators of <raw value> + <phrase | unrecognised> were stated by no site in
+   D3 at all, so this file composed them and § 7.1's Label line cell composed them differently —
+   *API error — rate limit*, the phrase with the raw value ELIDED, which could not be squared with
+   "carries the raw string either way", with § 7.6's column heading *The line beside the raw
+   value*, or with § 5.1's *rendered verbatim*. That tension was reported up rather than resolved
+   here, and card#7966 resolved it at D3: § 7.6 now publishes the composed line ONCE and § 7.1's
+   cell is a worked instance of it. So this function renders D3's published form, and
+   floor-preview.selftest.mjs compares the whole line to § 7.1's cell literally — the exemption
+   that stood in for that comparison is gone with the contradiction that justified it.
    § 5.6: a null draws no error text — the desk keeps its pose and its label without one. */
 function apiErrorLine(t){
   if(t===null||t===undefined)return "API error";
