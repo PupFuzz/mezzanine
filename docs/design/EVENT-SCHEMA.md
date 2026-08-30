@@ -3335,7 +3335,7 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > days, but a **quiet** seat — one emitting little more than its 1,440 daily heartbeats — takes far
 > longer. A heartbeat is not a ~500 B typical event: its `data` alone allows 1.5 KiB of counters plus
 > 512 B of predicates plus 256 B of selftest, and the worked example in
-> [§ 6.14](#614-reporterheartbeat) serializes to **1,487 B**. At 1,487 B, 1,440/day is
+> [§ 6.14](#614-reporterheartbeat) serializes to **9,999 B**. At 1,487 B, 1,440/day is
 > **~2.1 MB/day**, so a heartbeat-only seat fills 32 MiB in **~15.7 days**. Two earlier readings of
 > this same paragraph were wrong in the same direction — 50+ days from a 500 B assumption, then
 > ~25 days from a "~900 B" measurement of the worked example **taken with its 524 B `counters` object
