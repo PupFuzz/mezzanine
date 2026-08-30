@@ -1,0 +1,84 @@
+# harness-fixture-drift.yml — the vendored hook fixtures must BE D1 § 17, on every PR that
+# touches either end of that seam.
+#
+# WHY IT EXISTS. `fleet-reporter/fixtures/hooks/*.json` vendors `docs/design/EVENT-SCHEMA.md`
+# § 17's captured harness payloads verbatim, and until card#7946 nothing checked that the two
+# agreed. The two ends are guarded by tools that each see ONE of them: the reporter's own
+# `harness_payload_keys` check reads the FIXTURES (so it validates the copy against itself),
+# and `tools/design/verify-harness-facts.py` reads the APPENDIX (so it validates the original
+# against the harness binary). Neither can see the seam, so § 17 could be edited alone and
+# every check stayed green — which is not a hypothesis: it happened during card#7930, under
+# the implementer's own hands, and was caught only because they were editing both ends.
+#
+# WHY IT IS ITS OWN WORKFLOW rather than a step in `fleet-reporter.yml`. Two reasons, both
+# about the verdict meaning something:
+#   * INDEPENDENCE. Steps in a job are sequential, so a drift verdict living behind the
+#     reporter's multi-minute acceptance suite is a verdict that never arrives when that
+#     suite is red for an unrelated reason. This job answers its own question in seconds.
+#   * TRIGGER SCOPE. This guard reads the appendix and the fixtures; the acceptance suite
+#     runs on any change under `fleet-reporter/**`. Sharing one `paths:` list would mean
+#     either running the heavy suite for a one-line change to this guard, or running this
+#     guard from a path list that is wider than what it reads. The two lists are genuinely
+#     different populations, not a restatement of one.
+#
+# THE PATH LIST IS THE LOAD-BEARING PART. A drift guard wired to only ONE side's paths is
+# dark in exactly the case that produced the defect — the appendix edited alone. Both ends
+# are listed, and so are the guard, its selftest and the shared § 17 parser, so a change to
+# the gate itself is gated by the gate's own acceptance suite.
+#
+# ⚠ THIS IS NOT A REQUIRED STATUS CHECK, AND ADDING IT HERE DOES NOT MAKE IT ONE.
+# `docs/VERSIONING.md § Branch model` is explicit that requiring a check is a repository-
+# settings act and that "a workflow that is added later is not automatically required". A red
+# here does not block a merge until someone adds the context to both rulesets.
+
+name: harness fixture drift
+
+on:
+  pull_request:
+    paths:
+      - 'docs/design/EVENT-SCHEMA.md'
+      - 'fleet-reporter/fixtures/**'
+      - 'bin/harness-fixture-drift.py'
+      - 'bin/harness-fixture-drift.selftest.py'
+      - 'tools/design/d1_appendix.py'
+      # The selftest asserts that the appendix has ONE parser in this repo — that this file's
+      # consumer has not re-minted its own. Without this path that binding only runs when the
+      # side that did not drift is edited.
+      - 'tools/design/verify-harness-facts.py'
+      - '.github/workflows/harness-fixture-drift.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'docs/design/EVENT-SCHEMA.md'
+      - 'fleet-reporter/fixtures/**'
+      - 'bin/harness-fixture-drift.py'
+      - 'bin/harness-fixture-drift.selftest.py'
+      - 'tools/design/d1_appendix.py'
+      - 'tools/design/verify-harness-facts.py'
+      - '.github/workflows/harness-fixture-drift.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # NO setup-python STEP, deliberately, matching card-token-lint.yml: the runner's stock
+      # python3 and the standard library are the whole dependency, so there is no third-party
+      # action pin to keep honest.
+      - name: Record the interpreter
+        run: python3 --version
+
+      # THE GUARD'S OWN ACCEPTANCE SUITE FIRST, and it is not ceremony: a drift guard that has
+      # never been seen to fail is a decoration, and this suite drives every drift arm and
+      # every fail-loud arm against the REAL script over planted copies of the two ends. If it
+      # is red, the verdict below is worth nothing and must not be read as a pass.
+      - name: The guard's own acceptance suite (every arm seen to fail, plus a passing control)
+        run: python3 bin/harness-fixture-drift.selftest.py
+
+      - name: The vendored fixtures must BE D1 § 17
+        run: python3 bin/harness-fixture-drift.py
