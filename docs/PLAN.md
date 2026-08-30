@@ -5,6 +5,15 @@ built, *in what order*, and *why the order is what it is*. The proposal (the ope
 artifact) owns the vision; this document owns the execution. Where the two disagree, this one
 is newer and wins — and the disagreement should be fixed in the proposal.
 
+⚠ **The proposal is NOT in this repository**, and every citation of it here and in `docs/design/`
+should be read as pointing outside what a reader can open. That is a real limit rather than a
+formality: on 2026-08-30 a load-bearing D3 rule was found attributed to *"the operator, via the
+proposal"* — a rule the operator disclaims, cited to a source nobody could check, which is why nobody
+had (`docs/design/FLOOR.md § 6.1`). **A citation a reader cannot open is not a citation.** Where a
+decision rests on an operator ruling, cite the **card** it was given on;
+`docs/design/FLEET-STATE.md § 14` item 3 is the worked example of the other honest response —
+declining to invent the proposal's content rather than paraphrasing it from memory.
+
 Status: **adopted 2026-08-23** · owner: aimla-pm · work tracked on kanban **board 14**.
 
 ---
@@ -154,8 +163,11 @@ Status: **merged 2026-08-23** (PR #8).
 drill-down panel (current task linked to card/thread, recent-activity timeline, context gauge,
 subagents as interns at a side table — their titles from the Task dispatch, programmatic).
 Identity mapping: how a seat becomes a desk and an install becomes a floor, stable across
-restarts. The honesty principle from the proposal binds every animation: driven by a real event,
-or absent.
+restarts. The honesty principle binds every animation **that makes a claim**: driven by a real event,
+or absent — **`docs/design/FLOOR.md § 6.1` owns that rule and its provenance**, and this line restates
+neither. *Amended 2026-08-30:* it read *"the honesty principle **from the proposal**"*, sourcing a
+load-bearing rule to a document no reader of this repository can open; D3 records what the rule
+actually rests on and what the operator ruled on card#7953.
 
 Status: **in review** — drafted; the adversarial review loop runs before merge.
 
@@ -263,7 +275,9 @@ Adopted from kanban-solo's #344 answer (measured, not folklore), with one delibe
 
 A fleet member can log in through MFA on the public host, see the aimla floor with four desks
 showing live, honest state (working / idle / blocked, current task title, context gauge), click
-a desk and see the drill-down with real subagent titles — with every animation traceable to a
-real event, the reporter proven harmless to its host seat, and the schema's compatibility story
+a desk and see the drill-down with real subagent titles — with every animation that **claims**
+anything traceable to a real event (`docs/design/FLOOR.md § 6.1`; ambient decoration that claims
+nothing is permitted and bounded there), the reporter proven harmless to its host seat, and the
+schema's compatibility story
 already in force. The building (multi-floor) may still be one floor deep; the *architecture*
 may not be one floor deep.
