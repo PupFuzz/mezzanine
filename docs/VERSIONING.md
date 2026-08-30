@@ -88,6 +88,16 @@ having passed.
 > a workflow that is added later is not automatically required, and a required check that
 > never runs (a path-filtered workflow producing no run at all) reads as *pending*, not
 > *passed*. Re-read this section whenever a workflow is added.
+>
+> ⚠ **Re-read 2026-08-30 on adding `release-pr-guard` (card#8174), as that instruction
+> requires. Measured live the same day: both rulesets still require exactly
+> `["card-token-lint"]`, so the new gate RUNS BUT DOES NOT BLOCK** — it reds a bad release PR
+> and nothing stops that PR merging anyway. Making it required is a one-line ruleset edit
+> adding the context **`release-pr-guard`** (the *job* id, which is what a ruleset matches —
+> not the workflow's display name). It is deliberately safe to require: it carries **no
+> `branches:` filter**, precisely so it produces a completed run on every PR rather than the
+> no-run-reads-as-pending deadlock the paragraph above describes; on a PR that does not target
+> `main` it reports *NOT APPLICABLE* and exits 0.
 
 > ✅ **Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`.** It was briefly
 > squash-only, which made core rule 5 unsatisfiable: a `sync/main-to-dev-post-v<version>` PR
@@ -134,10 +144,22 @@ deletes the PR's head branch the moment it merges. A `dev`-headed release PR the
 deletes `dev` on merge — the integration branch, every open PR's base, gone as a side effect
 of a successful release.
 
-The ruleset's `deletion` rule on `dev` is a real backstop and would likely refuse it, but do
-not lean on that: it has never been exercised on this path, "the ruleset probably catches it"
-is a guess about an interaction, and the throwaway branch costs one command. The rule is
-cheap; the failure is not recoverable in the moment you notice it.
+The ruleset's `deletion` rule on `dev` is a real backstop, but do not lean on it: "the ruleset
+probably catches it" is a guess about an interaction, and the throwaway branch costs one
+command. The rule is cheap; the failure is not recoverable in the moment you notice it.
+
+> ⛔ **This is no longer hypothetical. The path was taken on 2026-08-30**, when PR #38 merged
+> `dev` → `main` and `dev` survived. Read that survival carefully: what is *observed* is that
+> `dev` still exists at `7139cd7` with `delete_branch_on_merge` enabled and a `deletion` rule
+> on the branch (all three re-verified live 2026-08-30). What is *inferred* is that the rule is
+> what refused the delete — no refusal was witnessed, so this is one data point that the
+> backstop holds, not a demonstration of it, and the sentence above stands unchanged.
+>
+> ✅ **Since card#8174 the head is also checked mechanically**, by
+> [`release-pr-guard`](../.github/workflows/release-pr-guard.yml) — see the note under
+> [§ Release flow](#release-flow) for exactly which steps it covers and which it does not.
+> It refuses any head that is not the release branch, generically: `delete_branch_on_merge`
+> deletes *whatever* branch heads the PR, and `dev` is only the most expensive instance.
 
 ---
 
@@ -173,6 +195,23 @@ cheap; the failure is not recoverable in the moment you notice it.
     merge commit (core rule 5, and the ⚠ blocking it today).
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
+
+> ✅ **Four of these steps are now mechanically checked** — added by card#8174 after PR #38
+> merged on 2026-08-30 breaking three documented rules at once and merging green.
+> [`bin/release-pr-guard.py`](../bin/release-pr-guard.py), on every PR whose base is `main`,
+> asserts **step 2/7's head branch**, **step 3's `VERSION` bump** (strictly greater than
+> `main`'s) and **step 4's changelog section**. That file's docstring is the contract; this
+> list stays the authority, and where the two disagree **this document wins and the guard is
+> the defect**.
+>
+> ⛔ **Steps 5, 6, 8, 9, 11 and 12 remain unenforced, and deliberately so.** The deploy and
+> wire verdicts are human judgement stated in prose — a gate that grepped for a phrase would
+> report having checked a judgement when it had checked a string. "Wait for CI" is about other
+> checks; "a human merges it" cannot be enforced at all here, because one GitHub identity is
+> shared by the agent and the operator, and that is the whole reason card#8174 gates *what* is
+> merged rather than *who* merges it. **Nor is the bump SIZE checked** — nothing mechanical can
+> tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
+> covering exactly the four steps named above and nothing else.
 
 > ⚠ **One-time, at the first push that carries `auto-tag-version.yml` onto `main`.** The
 > workflow tags on *any* push to `main`, which includes the scaffolding seed merge
