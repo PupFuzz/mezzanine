@@ -75,6 +75,33 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   opens `floor-preview.html`, which is how `.glowpulse` sat unnoticed (card#7929: wiring the verifiers
   is necessary and not sufficient). Review is what stands there, and saying so is the condition of
   taking the option. **No change to `floor-preview.html`** — card#7953 ruled all three sites stay.
+- **card#7929** — **`tools/design/` was the only directory in this repository CI never entered:
+  246 KB of verification code referenced by zero workflows and zero hooks, while D1/D2/D3 cited
+  those tools as *"reds the gate"* in the PRESENT TENSE some fifty times between them.** The
+  convention behind it was a runbook sentence in `tools/design/README.md`, and **a runbook
+  protects nobody who does not follow it** — every D-document PR to that point merged on a gate
+  that never fired. **Four gates now run on every pull request**: `verify-event-schema.py`,
+  `verify-fleet-state.py`, `verify-floor.py`, and `floor-preview.selftest.mjs`, all pure repo
+  reads on stock `python3`/`node` — no credential, no network, no interpreter pin to keep honest.
+  ⛔ **Two are deliberately NOT wired, and named rather than skipped**: `verify-harness-facts.py`
+  is fail-closed on the installed Claude Code build D1 declares, and `floor-preview.browser.mjs`
+  on a headless Chromium; a stock runner carries neither, so wiring either would red every PR on
+  correct work — **and a gate that reds on correct work gets disabled**. Wiring them as a SKIP
+  would be worse: an *"N/A"* that reads green is a check reported as passed that never ran, which
+  is this very defect one layer down. ⚠ **No `paths:` filter, for a MEASURED reason** —
+  `verify-event-schema.py` resolves `docs/VERSIONING.md`'s path references and reds on any that is
+  missing, so a PR deleting `bin/release-pr-guard.py` breaks D1's gate while touching nothing under
+  `docs/design/`; a filter would pass that PR and leave the next unrelated one holding the red.
+  **No `branches:` filter either** — a filtered workflow produces no run, which as a required check
+  reads as PENDING, not passed. **`verify-design-docs.selftest.py` keeps the three document gates
+  from becoming decorations**: it copies the tracked tree, plants a defect of each verifier's own
+  headline class and requires a red naming the plant, asserting a DIFFERENTIAL rather than an
+  absolute pass so a PR that legitimately reds a verifier still gets its real message instead of a
+  control failure. ⚠ **A hole neither gate closes is declared rather than left implicit**:
+  `verify-floor.py`'s G1 holds `§ 6.2`'s closed animation set against the DOCUMENT only and the
+  artifact gate reads no animation at all, so **an animation in `floor-preview.html` with no row in
+  `§ 6.2` is invisible to both** — which is how `.glowpulse` sat unnoticed (card#8161).
+
 - **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
   nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
   documented rules at once: the head was the integration branch (which `delete_branch_on_merge`
