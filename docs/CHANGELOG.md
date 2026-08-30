@@ -10,6 +10,44 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#8161** — **D3's honesty principle was attributed to the operator, who disclaims it, and
+  cited to a document nobody in this repository can open.** `FLOOR.md § 6.1` read *"Every animation is
+  driven by a real event, or absent. — operator, via the proposal"*; the operator's verbatim ruling of
+  2026-08-30 (card#7953) is *"I never forbade motion that is neither held by a delivered field nor
+  caused by a delivered motion. Actually a little extra motion once in awhile is a nice touch.
+  Therefore blinking LEDs on a server rack is ok as long as it is not distracting"*, and **the
+  proposal is not in this repo** (tree-wide search at `dev`, with a control filename returning 0). ⛔
+  **The attribution is why the rule was never re-argued** — a rule an operator handed down is not
+  reopened, and a source no reader can fetch is not checked, so the design's own argument for it went
+  unexamined for four revisions while the ratified reference artifact rendered motion the document
+  forbade. ⭐ **The rule now has ONE home** — `§ 6.1`, as *this document's* design principle borrowed
+  from the prior art `README.md` names — and the three other sites **point** rather than restate
+  (`README.md`, whose *"borrowed from prior art"* framing was the honest one and is now the model;
+  `docs/PLAN.md § 2`; `FLOOR.md § 0` item 3). **No site attributes it to the operator.**
+  ⭐ **§ 6.3 relaxed, by SCOPING rather than loosening**: `§ 6.2` stays the closed set — for motion
+  that makes a **claim**, which is the half a viewer must be able to trust, so a `working` desk still
+  means working. Decorative motion is admitted and decided by **three property tests**, not a list of
+  names: does anything **read** it (decision 21's surviving constraint — the wall clock was refused
+  because `AT-D3-6` reads it and *"a frozen clock is not a defect and not a lie — it is the claim"*);
+  would it **assert something false on a dead feed**; could a viewer read it as one of the seventeen
+  (motion on an element a row draws is claim-bearing whatever drives it, which is what keeps
+  `AT-D3-1`'s idle-breathing RED red). ⚠ ***"Not distracting"* is given an operational form** or it is
+  a condition no reviewer can apply: **≥ 2 s cycle, opacity/scale only with no change of position, and
+  never a row's visual vocabulary** — a bound written to admit what the operator ratified (`.glowpulse`
+  at 2.4 s, 85%→55%) rather than to re-litigate it, with the 2 s carried in `§ 12` as **Chosen** and
+  saying so. Position is excluded because *an avatar walking IS the status*, which is also why moving
+  clouds and passing NPCs stay refused — by the amplitude bound, not by the claim test. **Three things
+  the card did not ask for and the amendment owes anyway:** `§ 6.2`'s *"everything that moves without a
+  delivered field is driven by the heartbeat"* note — which asks in its own text to be re-derived at
+  every amendment — **went false** and is re-derived with what `AT-D3-6` does and does not lose;
+  `§ 6.4`'s reduced-motion mechanism is **per-§ 6.2-row**, so decorative motion was outside it and now
+  stops under `reduce` explicitly; and `§ 6.3` bullet 2 (*motion driven by a timer*) would have
+  re-forbidden every decorative loop, since a loop with no driver is exactly what decoration is.
+  ⚠ **Stated rather than covered over: no mechanised check reaches decorative motion** — it writes no
+  animation-log row, so `AT-D3-1` cannot see it, and `verify-floor.py` reads the document and never
+  opens `floor-preview.html`, which is how `.glowpulse` sat unnoticed (card#7929: wiring the verifiers
+  is necessary and not sufficient). Review is what stands there, and saying so is the condition of
+  taking the option. **No change to `floor-preview.html`** — card#7953 ruled all three sites stay.
 - **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
   nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
   documented rules at once: the head was the integration branch (which `delete_branch_on_merge`
