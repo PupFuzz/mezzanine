@@ -6,9 +6,12 @@ card owes nothing. `docs/PLAN.md § 4` owns that rule and the reasoning behind i
 why the bullet must be line-initial; `docs/VERSIONING.md` owns when a release collects these
 entries and retitles the section.
 
-Nothing has been released yet, so `[Unreleased]` is the only section.
+Sections are newest-first: `[Unreleased]` collects what has landed on `dev` since the last
+release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4).
 
 ## [Unreleased]
+
+## [0.2.0] — 2026-08-30
 
 - **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
   nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
