@@ -1,0 +1,103 @@
+# release-pr-guard.yml — refuse a PR into the release branch that is not shaped like a release.
+#
+# WHAT IT DOES. On a PR whose base is the release branch (`main`), it asserts the three
+# mechanically checkable rules of `docs/VERSIONING.md § Release flow`: the head is the
+# throwaway `release/v<version>` branch, `VERSION` is strictly greater than the release
+# branch's, and `docs/CHANGELOG.md` carries a section for the new version. A PR into any other
+# base is NOT APPLICABLE and passes trivially.
+#
+# WHY IT EXISTS. On 2026-08-30, PR #38 merged `dev` -> `main` green with none of the three: the
+# head was the integration branch (which `delete_branch_on_merge` would have DELETED — a
+# ruleset backstop `docs/VERSIONING.md` explicitly says not to lean on happened to catch it),
+# `VERSION` was unmoved, and there was no changelog section. The tagger then failed AFTER the
+# merge, which is a correct report arriving at the one moment it costs the most. Twelve
+# documented steps had nothing behind them; these three now do.
+#
+# WHY A CONTENT GATE, NOT AN ACTOR GATE. One GitHub identity is shared by the agent and the
+# operator here, so no rule about WHO may merge can tell them apart. This gate asks WHAT is
+# being merged, which is actor-independent and free. `bin/release-pr-guard.py`'s docstring
+# carries the full reasoning and the list of what it deliberately does NOT assert.
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK BEYOND THE FETCH BELOW. Pure git plus stdlib Python.
+#
+# ---------------------------------------------------------------------------------------------
+# NO `branches:` FILTER — AND THE REASON DIFFERS FROM `card-token-lint.yml`'s.
+# That workflow omits the filter because `branches:` and `types:` are INDEPENDENT filters, so a
+# base allowlist would drop every event from a STACKED PR whose base is a feature branch. That
+# argument does not apply here: this gate has nothing to say about a stacked PR, and its whole
+# subject IS the main-targeted case, so a `branches: [main]` filter would look exactly right.
+# It is still wrong, for two reasons this gate has and that one does not:
+#
+#   1. THE REQUIRED-CHECK PENDING TRAP. `docs/VERSIONING.md § Branch model` records it: "a
+#      required check that never runs (a path-filtered workflow producing no run at all) reads
+#      as PENDING, not passed". `card-token-lint` is already required on BOTH branches, so
+#      making this one required is the obvious next step — and under a `branches: [main]`
+#      filter that step would deadlock every feature PR into `dev` forever, with no run to
+#      point at. Producing a completed, deliberately-trivial run on every PR is what keeps this
+#      gate safe to require. Applicability is therefore decided INSIDE the guard, which prints
+#      NOT APPLICABLE and exits 0.
+#   2. A BASE CHANGE IS HOW A PR ENTERS SCOPE. A PR opened into `dev` and later retargeted to
+#      `main` fires `edited`. Under a base filter, the events from its `dev` life are dropped
+#      and the `edited` that retargets it is evaluated against the NEW base, so the run would
+#      appear — but the PR's last GREEN check would be a NOT-APPLICABLE run from before. The
+#      filterless form makes every state of that PR carry a run that judged the base it
+#      actually had at the time.
+#
+# `edited` is load-bearing for that second reason, which is NOT card-token-lint's reason for
+# subscribing to it (there it is the PR title, half its linted surface). `synchronize` is how
+# the author's fix — the bump, the changelog section, the branch rename — gets re-judged.
+
+name: Release-PR guard
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  release-pr-guard:
+    # GitHub-hosted, matching the rest of this repo's CI. Stock `python3` and stock `git` are
+    # the whole dependency: no setup-python step and no interpreter pin to keep honest.
+    runs-on: ubuntu-latest
+    steps:
+      # THE PR HEAD SHA, NOT THE MERGE REF. The default `pull_request` checkout is the
+      # GitHub-computed merge commit, which (a) is computed asynchronously and can be absent or
+      # stale, and (b) is unavailable outright when the PR conflicts — precisely when a release
+      # PR most needs judging. Rule R2 is a statement about what the HEAD carries
+      # (`docs/VERSIONING.md § Release flow` step 3), so the head sha is both the correct
+      # subject and the only unambiguous one. Depth 1 is enough: the guard reads file content
+      # at a revision, never history.
+      - name: Checkout the PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      # The base branch tip has to be fetched explicitly — the checkout above brought exactly
+      # one commit. Depth 1 is enough for `git show <ref>:VERSION`. The ref comes from the
+      # event through `env:`, so nothing here hardcodes a branch name and a PR into `dev`
+      # fetches `dev` harmlessly. If this fetch ever fails the guard reports an unresolvable
+      # base rev and exits 2 — a red, never a skip.
+      - name: Fetch the base branch tip
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
+      # The guard's own prove-it-can-fail fixtures run HERE, against THIS checkout — the same
+      # bytes that are about to judge somebody's PR. § 9 replays PR #38's real shape and
+      # requires all three rules to red; § 3 requires a well-formed release PR to pass, so the
+      # reds are evidence rather than a check that always fails.
+      - name: Self-test (RED fixtures for every rule and every fail-loud path, plus controls)
+        run: python3 bin/release-pr-guard.selftest.py
+
+      # Refs go through `env:`, NEVER string-interpolated into the shell: `${{ }}` inside `run:`
+      # is a script-injection sink. `--opt=$VAR` rather than `--opt "$VAR"` for the reason
+      # measured on card-token-lint — a value starting with `-` is consumed as an OPTION by the
+      # space form and reds the gate with an argparse error naming nothing the author did wrong.
+      - name: Judge this PR against the release rules
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: python3 bin/release-pr-guard.py --base-ref="$BASE_REF" --head-ref="$HEAD_REF" --base-rev="origin/$BASE_REF"

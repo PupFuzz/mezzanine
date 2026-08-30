@@ -10,6 +10,38 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
+  nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
+  documented rules at once: the head was the integration branch (which `delete_branch_on_merge`
+  would have DELETED — the ruleset backstop the doc says *"do not lean on"* is what appears to have
+  held, and that path had never been taken before), `VERSION` was unmoved, and there was no
+  changelog section. `auto-tag-version` then failed **after** the merge — a correct report arriving
+  at the one moment it costs the most, because the commit is already on `main` and the only remedy
+  left is another release PR. ⭐ **The fix gates WHAT is merged, not WHO merges it**: one GitHub
+  identity is shared by the agent and the operator here, so no actor-based control — CODEOWNERS, a
+  bypass list, a required reviewer — can tell them apart, and every such rule would either block the
+  operator or admit the agent. A content gate is actor-independent, free, and states its verdict
+  while the fix is still one commit. **`bin/release-pr-guard.py` + `.github/workflows/
+  release-pr-guard.yml`** assert three rules on any PR whose base is `main`, and nothing at all on a
+  PR into `dev`: **R1** the head ref equals `release/` + the tag this PR would mint, **R2** `VERSION`
+  is strictly greater than `main`'s by semver precedence, **R3** `docs/CHANGELOG.md` carries a
+  section naming the new version. ⛔ **Every fact it needs is DERIVED, never retyped** — the release
+  branch from `on.push.branches` in `auto-tag-version.yml`, the tag form from `.release-pr.json`'s
+  `tag_format`, and the accepted `VERSION` spelling from that same workflow's own validation regex,
+  because a private looser copy of it would green a release the tagger then reds post-merge, which is
+  #38's harm shape rebuilt by the gate meant to prevent it. Every extraction failure is **exit 2, no
+  fallback to a guess**, and exit 2 is kept distinct from exit 1 so a broken guard does not send an
+  author to rename a branch that was fine. ⭐ **Refuses PR #38's real shape on all three rules**,
+  measured against the real commits (head `7139cd7`, `main` `556ac3f`) as well as a hermetic replay;
+  a well-formed release PR passes, so the reds are evidence rather than a check that always fails.
+  Every rule and every fail-loud path was seen red against a single-variable mutation of that
+  control, and the selftest caught one real defect while doing it: the R3 boundary was refusing a
+  legitimate `## v0.2.0` heading. ⚠ **The gate runs but does not BLOCK** — both rulesets still
+  require only `card-token-lint`; requiring context `release-pr-guard` is a one-line ruleset edit,
+  and the workflow deliberately carries **no `branches:` filter** so it is safe to require (a
+  filtered required check produces no run, which reads as *pending*, never *passed*). Steps 5, 6, 8,
+  9, 11 and 12 stay unenforced on purpose, named in `docs/VERSIONING.md` rather than covered by a
+  gate that would claim to have checked a judgement when it had checked a string.
 - **card#7966** — **D3's § 7.1 Label line column published strings that its own rule statements
   forbid, and the reason no gate could say so is that the COMPOSITION of those strings was published
   nowhere.** Two known instances, one root cause, and a sweep of all ten cells that found three more.
