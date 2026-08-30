@@ -4909,6 +4909,19 @@ rather than built, and neither is a change to any fact:
 reporter against it. The reporter vendors them as `fixtures/hooks/<HookEventName>.json`
 ([§ 2.1](#21-one-file-four-subcommands)).
 
+**That vendored copy is DERIVED from this appendix, not maintained beside it.**
+`bin/harness-fixture-drift.py` regenerates the whole `fleet-reporter/fixtures/hooks/`
+directory from the payloads below — grouped by `hook_event_name`, in the order they appear
+here, each group tagged with the `_source` its region declares (`capture` in this section,
+`docs-cited-stub` in § 17.1) — and refuses a committed byte that differs. It runs in CI on any
+change to **either** end, and `--write` brings the fixtures back to whatever this appendix
+says; a fixture is a generated file and hand-editing one is how the next divergence starts.
+**Until card#7946 there was no such check, and editing this appendix alone left the fixtures
+stale with every gate green**: the reporter's `harness_payload_keys` check reads the
+*fixtures*, this document's verifiers read the *appendix*, and neither could see the seam
+between them. That is not a hypothesis — it happened during card#7930 and was caught only
+because one person happened to be editing both ends.
+
 | | |
 |---|---|
 | Harness | **Claude Code 2.1.247** (`claude --version`) |

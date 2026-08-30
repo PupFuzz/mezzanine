@@ -31,8 +31,11 @@ Environment:
   MEZZ_CLAUDE_VERSIONS   directory holding the installed bundles.  Default: the directory
                          the `claude` on PATH resolves into, else ~/.local/share/claude/versions.
 """
-import json, os, re, shutil, sys, pathlib
+import os, re, shutil, sys, pathlib
 from functools import lru_cache
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from d1_appendix import AppendixError, parse_appendix   # the ONE § 17 parser (see § 1 below)
 
 ROOT = pathlib.Path(__file__).parent.parent.parent
 DOC  = ROOT / "docs/design/EVENT-SCHEMA.md"
@@ -361,18 +364,20 @@ text = DOCTEXT
 lines = text.split("\n")
 
 # ---------- 1. fixture keys must be real keys of their hook ------------------------
-# population: every JSON object in the appendix that carries hook_event_name.
-fixtures = []
-for m in re.finditer(r"```json\n(\{.*?\})\n```", text, re.S):
-    try:
-        o = json.loads(m.group(1))
-    except Exception:
-        continue
-    if isinstance(o, dict) and "hook_event_name" in o:
-        fixtures.append((text[:m.start()].count("\n") + 1, o))
-notes.append(f"captured-payload fixtures found: {len(fixtures)}")
-if not fixtures:
-    fail.append("no captured-payload fixtures found — the MEASURED claims have no measurement")
+# POPULATION: every payload the appendix publishes, read by `d1_appendix.py` — the ONE
+# parser for § 17 in this repo, shared with `bin/harness-fixture-drift.py`.  It used to be
+# spelled here as well, and two spellings of one grammar are free to disagree about what the
+# appendix contains: the first thing a disagreement produces is one gate reporting clean over
+# a population the other one can see.  It refuses rather than narrowing — a payload block it
+# cannot parse or cannot classify raises instead of dropping out of the count.
+try:
+    APPENDIX = parse_appendix(text)
+except AppendixError as e:
+    print(f"FAILURES (1):\n  - D1 § 17 cannot be read, so no fixture can be checked: {e}")
+    sys.exit(1)
+fixtures = [(p.line, p.obj) for p in APPENDIX.payloads]
+notes.append(f"captured-payload fixtures found: {len(fixtures)} "
+             f"(D1 § {APPENDIX.number}, parsed by tools/design/d1_appendix.py)")
 for line, o in fixtures:
     h = o["hook_event_name"]
     if h not in HOOKS:
@@ -405,12 +410,12 @@ for h in sorted(sub & set(HOOKS)):
     if h not in fixture_hooks:
         fail.append(f"subscribed hook {h!r} has NO fixture -- neither a capture nor a "
                     f"DOCS-CITED stub, so the drift guard would skip it")
-i171, i172 = text.find("### 17.1"), text.find("### 17.2")
-stub_block = text[i171:i172]
-def _off(lineno):
-    return sum(len(x) + 1 for x in lines[:lineno])
-stubs    = {o["hook_event_name"] for l, o in fixtures if i171 < _off(l) < i172}
-captures = [(l, o) for l, o in fixtures if not (i171 < _off(l) < i172)]
+# The capture/stub split is the APPENDIX's, read off the region each payload sits in — not
+# re-derived here from a `text.find("### 17.1")` literal, which is a second anchor for the
+# same fact and the one that goes stale the day the document is renumbered.
+stub_block = APPENDIX.stub_section
+stubs    = {p.hook for p in APPENDIX.stubs}
+captures = [(p.line, p.obj) for p in APPENDIX.captures]
 notes.append(f"  of which DOCS-CITED stubs: {len(stubs)} ({', '.join(sorted(stubs))})")
 if stubs and "**not** a capture" not in stub_block:
     fail.append("stub fixtures are not labelled as stubs -- a stub read as a capture is a "

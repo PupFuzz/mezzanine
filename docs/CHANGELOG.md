@@ -10,6 +10,33 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7946** — **`fleet-reporter/fixtures/hooks/` vendored D1 § 17 verbatim and nothing
+  checked that the two agreed.** Editing § 17 alone left the fixtures stale with EVERY CHECK
+  GREEN: the reporter's own `harness_payload_keys` check reads the FIXTURES (so it validates
+  the copy against itself) and `verify-harness-facts.py` reads the APPENDIX (so it validates
+  the original against the harness binary) — neither can see the seam. ⭐ **That is measured,
+  not hypothesised: it diverged during card#7930, under the implementer's own hands, with
+  every gate green, and was caught only because they happened to be editing both ends.**
+  **`bin/harness-fixture-drift.py` + `.github/workflows/harness-fixture-drift.yml`** close it
+  by making the fixtures a DERIVATION rather than a copy: the guard regenerates all fifteen
+  files from the appendix — payloads grouped by `hook_event_name`, in document order, tagged
+  with the `_source` their region declares — and requires the committed bytes to be exactly
+  that, with `--write` repairing from the authority instead of by hand. ⛔ **Nothing about
+  § 17 is retyped in the guard**: the appendix is located by its own heading and its section
+  number is derived, the capture/stub split is read off which side of the DOCS-CITED heading
+  a payload sits on, and every failure to READ the authority is **exit 2 with the reason** —
+  heading renamed or duplicated, stub subsection gone, a payload parked where no region
+  classifies it, an empty region — kept distinct from exit 1 so a broken gate never reads as
+  a wrong fixture. **§ 17's grammar now has ONE spelling in this repo**: the shared parser
+  `tools/design/d1_appendix.py`, which `verify-harness-facts.py` now uses in place of its own
+  copy (same output, verified against 2.1.247 before and after), because a second parser is
+  free to disagree about what the appendix contains and that disagreement is this same defect
+  one level up. **Every arm was seen to fail** — nine drift arms, eleven fail-loud arms, and a
+  meta-control that mutates each of the fifteen fixtures in turn and requires each to red
+  ALONE naming itself, so the one green over fifteen files cannot be a comparison that
+  silently skipped one. ⚠ **The gate runs but does not BLOCK** — both rulesets still require
+  only `card-token-lint`. ⚠ **Nothing had drifted at the time of the fix**: today's fixtures
+  are byte-identical to the appendix, so this closes the hole rather than repairing a break.
 - **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
   nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
   documented rules at once: the head was the integration branch (which `delete_branch_on_merge`
