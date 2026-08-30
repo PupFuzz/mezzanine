@@ -11,4 +11,23 @@
 
 Each verifier hard-codes its own document and none of them is modified when another lands: widening a working guard to a second document is a change to that guard and belongs in its own round.
 
-All were seen to fail on planted defects before being trusted (D1 review rounds 1–3; D2's and D3's plant runs are recorded on their own PRs). Run the verifier for a document before approving any change to it. D1's AT-21 is the separate BUILD-time obligation; these are the review-time guards.
+## When these run — CI, not memory (card#7929)
+
+`.github/workflows/design-doc-verifiers.yml` runs **four** of the six gates above on every pull request, and that workflow is where this fact lives: D1/D2/D3 say a tool "reds the gate" in the present tense some fifty times between them, and those sentences are true because of that file — not because of this paragraph, and not because anyone remembered. Until it landed `tools/design/` was the only directory in this repository CI never entered. The convention was the sentence that used to sit here, *run the verifier for a document before approving any change to it*: a runbook, which protects nobody who does not follow it. Every D-document PR before that workflow merged on a gate that never fired.
+
+| gate | wired | if not, why |
+| --- | --- | --- |
+| `verify-event-schema.py` | ✅ | |
+| `verify-fleet-state.py` | ✅ | |
+| `verify-floor.py` | ✅ | |
+| `floor-preview.selftest.mjs` | ✅ | |
+| `verify-harness-facts.py` | ❌ | fail-closed on the installed Claude Code build D1 declares, and no runner carries one. The tool is RIGHT — being fail-closed is the property that makes it trustworthy — so the gap is the runner's, not the tool's; closing it needs ground truth a runner can read, which is a decision and its own card. |
+| `floor-preview.browser.mjs` | ❌ | fail-closed on a headless Chromium resolved from `--chrome`, `$CHROME` or `~/.cache/ms-playwright`, and a stock `ubuntu-latest` satisfies none of the three. Pointing `$CHROME` at an unverified runner path is how a gate red-locks CI. |
+
+⛔ **Neither absent gate is wired as a SKIP.** An "N/A" that reads green is a check reported as passed that never ran — the very defect this workflow closes, re-minted one layer down. They are absent and NAMED, here and in the workflow header, and running them by hand stays a human obligation until each has a card that makes its instrument available on a runner.
+
+`verify-design-docs.selftest.py` is what stops the three document gates becoming decorations. It copies the tracked tree, plants a defect of each verifier's own headline class — a stated figure perturbed away from the thing that re-derives it — and requires that verifier to red with a message naming the plant. It asserts a **differential**, a red the control does not carry, never an absolute pass: an absolute control would conflate the gate's health with the document's, so a PR that legitimately reds a verifier would bury the author's real message under a control failure. The plants store no figure's value — each is re-read and incremented, so a legitimate edit to one moves the plant instead of turning the harness red — and an anchor that matches nothing is a hard error, never a skip. The two `.mjs` gates need no harness around them: each carries its planted controls internally and prints the count on every run.
+
+⚠ **A declared hole — no gate reads ANIMATION out of the shipped artifact.** `verify-floor.py`'s G1 holds § 6.2's closed animation set against **the document alone**: its `DOC` is `FLOOR.md` and it never opens `docs/design/floor-preview/floor-preview.html`. `floor-preview.selftest.mjs`, the gate that *does* judge that artifact, holds render surfaces, label lines, member sets and overflow geometry — and no animation at all. So an animation living in the artifact with no row in § 6.2's table is invisible to both, which is how `.glowpulse` (a 2.4 s loop at three sites) sat unnoticed until a human opened the file. Ambient motion is since **permitted** (card#7953), so that instance is not a defect to remove — it is the worked example of the blind spot. Closing it means a new guard class holding one document's closed set against a second artifact, which the paragraph above puts in its own round rather than this one.
+
+All four wired gates were seen to fail on planted defects before being trusted (D1 review rounds 1–3; D2's and D3's plant runs are recorded on their own PRs), and all four are re-proven on **every** CI run rather than once at birth — the three document gates by the harness above, the artifact gate by its own controls. D1's AT-21 is the separate BUILD-time obligation; these are the review-time guards.
