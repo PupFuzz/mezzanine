@@ -27,8 +27,9 @@ it, and what it must never draw.
    for itself are enumerated as a **closed list** in [§ 2.1](#21-the-seven-client-computed-values-closed),
    and every one of them is presentation — a clock offset, an age, a desk position, an animation
    selection, a per-floor count over the objects it already holds, a sort order, and the client's own
-   narration of what it did and saw ([§ 5.5](#55-the-clients-own-narration)), which is labelled as the
-   client's own everywhere it renders. A client-side
+   narration of what it did, what it saw, and what it reads on its own clock
+   ([§ 5.5](#55-the-clients-own-narration)),
+   which is labelled as the client's own everywhere it renders. A client-side
    state machine over activity facts is forbidden, and so is re-deriving `render_state`
    ([D2 § 4.1](FLEET-STATE.md#41-two-axes-and-a-badge-set): "a precedence re-implemented in JavaScript
    is a second copy free to drift").
@@ -63,10 +64,12 @@ it, and what it must never draw.
 8. **The subagent cap stays at 8, and the arithmetic is published**
    ([§ 8](#8-interns--subagent-rendering-and-the-cap)). That closes
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9, which asked D3 to decide it.
-9. **Assets carry their provenance as a gate, not as a footnote.** Floor art is CC0, characters are a
-   port of munder-difflin's procedural generator under MIT with attribution, and the upstream's
-   commercial tilesets are never vendored (D-07). [§ 10](#10-art-and-assets--provenance-as-a-gate)
-   states the manifest, the licence allowlist and the two checks that fail the build.
+9. **Assets carry their provenance as a gate, not as a footnote.** Every asset file declares **where
+   it came from** — `first-party` or `licensed`, a closed set — under a closed licence allowlist, and
+   the upstream's commercial tilesets are never vendored (D-07).
+   [§ 10](#10-art-and-assets--provenance-as-a-gate) states the manifest, the allowlist and the two
+   checks that fail the build; [§ 10.4](#104-the-art-direction-as-a-specification) states the look
+   those assets serve, ratified by the operator on 2026-08-26/27.
 10. **Where the D2 contract cannot answer a UI need, nothing is invented.** Where the need can be met
     by fetching an object D2 already serves, this document fetches
     ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold),
@@ -165,7 +168,7 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
 | 6 | **Sort orders** | floors by `install_id` ascending; desks by slot; timeline as served | Deterministic ordering of received objects |
-| 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the client's event log, the *membership as of* stamp, the overflow determination, and [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup | the client's own connection state, its own request outcomes, and the seat set it holds ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
+| 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the client's event log, the *membership as of* stamp, the overflow determination, [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup, and the **wall clock's reading and the sky phase** — the viewer's own clock, sampled only where [§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 4 says it is, and never on a timer | the client's own connection state, its own request outcomes, the seat set it holds, and the **viewer's own clock** ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
 
 **Forbidden, named because each is a computation an implementer would otherwise reach for:** deriving
 `render_state` from the two axes; inferring `idle`, `busy` or "gone" from the absence of deltas;
@@ -289,6 +292,17 @@ connected client has never seen. **This document adds no message. It fetches.**
 `server_time` — which is all of them ([D2 § 8.2](FLEET-STATE.md#82-rest),
 [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) — and applied to every age the page renders.
 The `feed.heartbeat` at 15 s is what keeps it fresh on an otherwise-silent fleet.
+
+**One clock on this page is not the corrected one, and this section says so rather than leaving it to
+be inferred from silence.** [§ 6.2](#62-the-animation-table--the-closed-set)
+[A17](#62-the-animation-table--the-closed-set)'s **wall clock** reads the **viewer's own machine**: not
+`server_time`, not corrected by the offset above, and not one of the ages or timestamps below. It is a
+fact about the viewer's environment rather than about the fleet, so it is admitted at
+[§ 5.5](#55-the-clients-own-narration) with the client's other non-wire renderings and carries that
+section's labelling, and A17 is where its *sampling* is fixed to a delivered message. **This section
+owns every value the corrected clock produces, and that clock produces nothing on the wall** — the two
+never mix, and a reader landing here would otherwise take the corrected-server-clock answer by
+omission.
 
 - Ages re-render **every 1 s**, which is the unit the smallest age is rendered in: slower would show a
   second that has already passed, faster would repaint for nothing.
@@ -460,10 +474,10 @@ would let a live desk carry the receipt age honestly.
 | **full** snapshot applied | everything | no animation ([§ 6.5](#65-a-snapshot-never-animates)) |
 | `ADMIT` (b) applied | **that install's desks only** | the scoped read of [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`. It is not a population statement, so it removes no desk ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) and does not advance the *membership as of* stamp ([§ 5.5](#55-the-clients-own-narration)); no animation, for the same reason a snapshot fires none |
 | `seat.delta` applied | that desk only, and the drill-down if it is open on that seat | `changed[]` selects the animations ([§ 6.2](#62-the-animation-table--the-closed-set)); a delta that patches a field to the value it already held still counts as a change, which is what `changed[]` is for ([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)) |
-| `fleet.health` / `feed.heartbeat` | the banner row, the fleet counts, the clock offset | the heartbeat is the liveness pulse's driver ([§ 6.2](#62-the-animation-table--the-closed-set) row A14) |
+| `fleet.health` / `feed.heartbeat` | the banner row, the fleet counts, the clock offset — and, on the heartbeat alone, the **room render**: the wall clock and the windows' sky | the heartbeat drives both of the table's message-fired rows ([§ 6.2](#62-the-animation-table--the-closed-set) rows A14 and A17), which is why those two stop together when it does. `fleet.health` is not periodic ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) and moves no clock |
 | `seat.retired` | that desk, immediately | D2 publishes it in the same transaction as the delta ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)); the client may receive either first and both are idempotent |
 | `fleet.reload` | a full-page banner; **delta application stops** | [D2 § 8.1](FLEET-STATE.md#81-two-surfaces-two-compatibility-postures): a client that sees an unknown `feed_version` stops applying deltas and tells the user to reload |
-| 1 s tick | every age readout, and nothing else | not a state change; no animation may be driven by it ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) |
+| 1 s tick | every age readout, and nothing else | not a state change; no animation may be driven by it ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)). **In particular not the wall clock**, which advances on the heartbeat above and on nothing else — an age is a subtraction from a timestamp the client holds and is honest between messages; a clock hand moved by this tick would be motion with no delivered cause ([§ 6.2](#62-the-animation-table--the-closed-set) A17) |
 
 ---
 
@@ -585,7 +599,7 @@ is **rendered, not disappeared**:
 | Fact | Render |
 |---|---|
 | `render_state: "retired"` | the desk stays in its slot, cleared: no character, chair pushed in, the nameplate marked **retired** |
-| `retired.at` / `.by` / `.reason` | rendered on the desk's label line and in full in the drill-down: *retired 2026-08-20 09:11 by aimla-pm — host decommissioned* |
+| `retired.at` / `.by` / `.reason` | **two surfaces, two strings, and neither is the other abbreviated.** The **desk's label line** carries the one-line summary [§ 7.1](#71-the-render-per-state)'s `retired` row publishes — *retired 2026-08-20 by aimla-pm — host decommissioned*, the date **without a time**. The **drill-down** carries the full record — *retired 2026-08-20 09:11 by aimla-pm — host decommissioned* — with `retired.at` to the minute. That is [§ 4.2](#42-the-floor)'s standing split between what the floor shows and what approaching shows, applied to this plate. An earlier revision of this cell asserted **one** string for **both** surfaces, and the words *"and in full in"* are what made it self-refuting: a string that is *in full* on one surface is not the summary on the other, so the two sites published two strings for one line and each read as complete. **Neither string carries a clock-basis label, and that is derived rather than omitted** — [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares `retired.at` a **server**-clock value, and [§ 2.4](#24-the-clock-and-every-age-on-the-page) labels a **seat** clock precisely because it is another machine's claim; this page's own corrected clock needs none, exactly as [§ 7.1](#71-the-render-per-state)'s `stale` line carries *no data since 14:18* unlabelled |
 | `link_state` / `activity_state` underneath | still rendered in the drill-down, labelled *at retirement, and since* — D2 keeps deriving them and `retired` short-circuits only the **render** ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) |
 | the `seat.retired` message | the desk transitions immediately, with the reason and the time — the two its payload carries ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): `install_id`, `seat_id`, `reason`, `at`, and **no `by`**). The **operator** appears when the delta carrying `retired.by` lands, whichever of the two arrives first; both are idempotent ([§ 2.5](#25-what-re-renders-and-when), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained)) |
 | 14 days later | the seat leaves the snapshot by D2's read filter, and [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s last row removes the desk **on a *full* snapshot apply only**, with a log line |
@@ -617,12 +631,47 @@ route of its own, because closing it must not cost a re-subscribe.
 | feed status | the client's own connection state ([§ 9](#9-failure-paths-and-their-observables)) | *live* · *polling (feed down)* · *reconnecting* · *reload required*, with the resync count beside it |
 | the event log | the client's own record ([§ 5.5](#55-the-clients-own-narration)), newest first, capped at 200 lines | text only. **The lobby is a renderer of that record and not its home** — § 5.5 owns what the record is and what goes into it; what this row states is that the lobby is where it is read, so a desk that moved, appeared or vanished has a written cause somebody can find |
 
+**The ratified building cross-section is a *rendering* of this table, and changes nothing in it.**
+[§ 10.4](#104-the-art-direction-as-a-specification)'s reference draws the lobby as a building seen in
+section — one **floor plate per install**, stacked, with an elevator as the way between them — and
+that was checked against this table row by row rather than assumed: the plates are
+`installs[].install_id` in the same ascending order, each plate carries the same **per-floor state
+summary** over the seats the client already holds in [§ 7.1](#71-the-render-per-state)'s fixed member
+order, the fleet totals and the membership stamp are the same two readouts, and **the plate is the
+link** exactly as the list row was. No new field is read, no count is recomputed, and
+[§ 4.4](#44-routes-and-what-each-one-fetches)'s three routes are untouched — an elevator ride and a
+zoom-to-floor are [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera arriving at
+`/floor/{install_id}`, which is the route this document already declares and which must still
+deep-link on a cold start. **A cross-section that had replaced the summary with the desks themselves
+would have been a different change** — it would have made the lobby's counts a thing a viewer counts
+by eye, and [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) exists because counting by eye is
+where an invented count comes from. It does not, so this row stands.
+**One consequence for the ratified sky, stated here because a reader deciding what a plate draws will
+be standing on this paragraph:** a plate carries the summary, not the room, so **the lobby draws no
+wall clock** — that element is the floor's ([§ 6.2](#62-the-animation-table--the-closed-set) A17).
+Whether the cross-section draws sky behind the building is a rendering choice this table does not
+make; what is **not** a choice is where it comes from if it is drawn, which is A17's row and A17's
+driver. A second sky on a second driver would be two renderings of one fact, and the one on the timer
+would keep moving after the feed died.
+
 ### 4.2 The floor
 
 One install. `S` desk slots from the map, one desk per seat
 ([§ 3.2](#32-the-desk-slot-function)), a side table per desk for interns
 ([§ 8](#8-interns--subagent-rendering-and-the-cap)), and a persistent status strip carrying the same
 fleet indicators the lobby shows.
+
+**And the room they are in, which is enumerated here rather than left to the art direction, because
+this is the list an implementer reads top-down when deciding what the floor screen contains — and a
+room element nobody schedules is a room element nobody builds.** The floor draws a **wall clock** and
+**windows** whose sky carries the time of day; both are
+[§ 6.2](#62-the-animation-table--the-closed-set) [A17](#62-the-animation-table--the-closed-set)'s and
+neither has any other driver — they step on each delivered `feed.heartbeat` and **stop when it stops**,
+which is [§ 9](#9-failure-paths-and-their-observables) F1's observable and the reason the row exists.
+Everything else in the room is **scenery and carries no fact**, so
+[§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet allows it no
+motion of its own: moving clouds and swaying plants are named on that list. The lobby's plates carry a
+summary rather than a room and draw no clock at all ([§ 4.1](#41-the-lobby--the-building-summary)).
 
 The desk is the unit. Everything on it is [§ 5.1](#51-the-desk)'s table; every motion on it is
 [§ 6.2](#62-the-animation-table--the-closed-set)'s table; every degraded treatment is
@@ -632,7 +681,11 @@ The desk is the unit. Everything on it is [§ 5.1](#51-the-desk)'s table; every 
 state (pose + glyph), whether the state is current (the currency treatment), the seat name (nameplate),
 and whether anything is wrong (badge cluster). Everything else — the descriptor, the task, the gauge
 numerals, the ages — is desk-adjacent text at a size that rewards approaching, and all of it is in the
-drill-down at full fidelity.
+drill-down at full fidelity. **The task's thought bubble ([§ 5.1](#51-the-desk)) sits across that
+split rather than on one side of it, and deliberately:** its *presence* is readable standing back — a
+desk with a task and a desk without are different shapes — while its *text* rewards approaching like
+the rest of this paragraph's list. Presence is exactly the fact `task` being non-null carries, so
+nothing is claimed at the distance the text cannot be read at.
 
 ### 4.3 The desk drill-down panel
 
@@ -699,14 +752,37 @@ desks it had not asked about.
   for that install — the same facts as text, one row per seat, no map. A scaled-down floor whose
   nameplates and badges are unreadable is a floor that shows state without letting anyone read it,
   which is worse than the honest list.
-- **Capabilities the implementer must have, and nothing further:** a 2-D tile renderer able to draw the
-  map and sprite frames at the floor's scale; a WebSocket client speaking the Pusher protocol
-  (Reverb's, [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)); and `prefers-reduced-motion`
-  support. No framework, bundler or state library is specified
-  ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)).
+  **Being crisp at any zoom does not license shrinking this number**, and the sentence is here
+  because *"it is vector now, so it scales"* is exactly the argument the next reader will make. The
+  floor is not 1,280 × 800 because of pixel density; it is 1,280 × 800 because a **nameplate and a
+  badge cluster have to be readable**, and a legible glyph has a minimum size in the viewer's eye
+  that no amount of resolution independence changes. Resolution independence removes the
+  *resampling* failure; it does not remove the *legibility* failure, and this rule was always about
+  the second.
+- **Capabilities the implementer must have, and nothing further:** a renderer able to draw the map and
+  the characters **at any camera zoom without resampling artefacts** — that is, a
+  **resolution-independent** one, which is a property rather than a technology and is the property
+  [§ 10.4](#104-the-art-direction-as-a-specification)'s art direction depends on; a WebSocket client
+  speaking the Pusher protocol (Reverb's,
+  [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)); and `prefers-reduced-motion` support. No
+  framework, bundler or state library is specified
+  ([§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)), and stating
+  the capability as a property rather than as *a 2-D tile renderer drawing sprite frames* — which is
+  what this bullet said while the art direction was pixel art — is what keeps that non-goal true.
+- **The camera is navigation, and navigation is never state.** The ratified reference
+  ([§ 10.4](#104-the-art-direction-as-a-specification)) zooms out to a building overview, zooms to a
+  floor, and pans by wheel and drag. **A camera move animates nothing in
+  [§ 6.2](#62-the-animation-table--the-closed-set)'s sense**: it renders no fact, it has no driving
+  D2 field, and it gets **no row in that table** — it is the viewer moving their own head, not the
+  fleet doing anything. Anything a camera move appeared to *start* would be an animation with no
+  causing message, which [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) forbids, and the
+  reason to pin it here rather than leave it obvious is that a zoom transition is the single most
+  natural thing to add to a table of animations it does not belong in.
 - **Colour is never the only carrier of a fact.** Every state has a pose or glyph and a text label;
   every badge has a name in the drill-down. A palette is a rendering choice; a state legible only by
-  hue is a state some viewers cannot read.
+  hue is a state some viewers cannot read. **A seat's own hue is not a fact at all** — it is seeded
+  appearance ([§ 10.4](#104-the-art-direction-as-a-specification)), and nothing on the page may read
+  a state out of it.
 
 ---
 
@@ -729,7 +805,7 @@ one, so the two documents can be read side by side.
 | currency treatment — whether the pose may be read as *now* | `link_state` | `"live"` | never null ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 | the underlying activity, shown **under a label** when the desk is not `live` | `activity_state` | `"working"` | never null |
 | the *why we do not know* line | `unknown_reason` | `null` | non-null only when `activity_state == "unknown"`; then one of seven reasons, each with its own sentence ([§ 7.1](#71-the-render-per-state)) |
-| the rate-limit line on a `stalled` desk | `api_error_type` | `null` | non-null only when `activity_state == "stalled"`; rendered verbatim, e.g. *rate limit* |
+| the rate-limit line on a `stalled` desk | `api_error_type` | `null` | non-null only when `activity_state == "stalled"`; **rendered verbatim** — e.g. `rate_limit`, the wire's own member, and **never** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s phrase *rate limit* standing in for it, which is what this cell's own illustration did from this document's first revision onward, while the sentence around it said *verbatim*. [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes the composed line the phrase sits beside it in |
 | the monitor's content — what the seat is doing right now | `action.tool_name`, `action.descriptor` | `"Bash"`, `"Bash: composer test"` | `action` is null when no call is open: the monitor shows the desk's state line instead, never a stale last action |
 | the action's start, as the seat's claim | `action.started_at` | `"2026-08-23T14:23:09.882Z"` | rendered *seat clock*, never as an age ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) |
 | the action's elapsed time | `action.started_received_at` | `"2026-08-23T14:23:14.201Z"` | rendered ***running for 2m 05s***, the fourth of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four durations. It is the basis of the **only** honest elapsed time over an action, because both ends are the server clock; version-bearing, so it ticks |
@@ -738,7 +814,7 @@ one, so the two documents can be read side by side.
 | the *thinking* pose — a turn open with no call | `open_turn` | `true` | never null; read **with** `open_calls`, and both are D2's facts, not an inference ([§ 6.2](#62-the-animation-table--the-closed-set) row A4) |
 | the side table's stools | `subagents`, `subagents[].title`, `subagents[].subagent_type`, `subagents[].started_at`, `subagents[].call_id` | `"draft the D1 event schema"`, `"coder"` | a null `title` renders **untitled** and never an invented one ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
 | the *+N more* tag on the side table | `subagents_open` | `1` | never null; the tag appears only when it exceeds the array's length |
-| the task chip | `task.title`, `task.source`, `task.ref`, `task.as_of`, `task.degraded` | `"ingest endpoint"`, `"board_card"`, `"card#7338"` | `task` null ⇒ **no chip**, never a placeholder title |
+| the **thought bubble** — the desk's one rendered form of `task`, anchored to the character ([the rule below](#51-the-desk)) | `task.title`, `task.source`, `task.ref`, `task.as_of`, `task.degraded` | `"ingest endpoint"`, `"board_card"`, `"card#7338"` | `task` null ⇒ **no bubble**, never a placeholder title. A desk that draws no character draws no bubble either — the same absence for a different reason, and the rule below is where both are stated |
 | the context gauge | `context.used_pct` | `73.2` | `context` null ⇒ the gauge renders as *not reported*, **never as 0 %** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) |
 | the gauge's numerals and its own age | `context.used_tokens`, `context.total_tokens`, `context.source`, `context.sampled_at`, `context.sampled_received_at` | `146401`, `200000`, `"harness"` | tokens are nullable; the bar still renders from `used_pct`, which is not |
 | the model label | `model_label` | `"claude-opus-5"` | null ⇒ omitted |
@@ -751,6 +827,90 @@ one, so the two documents can be read side by side.
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
 | the *this state is N s behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns this render — the four things it draws, the two surfaces it draws them on, and why the **badge** and not the number decides the treatment — and this row states none of it a second time. What is this table's own is the **source**: the treatment reads `badges`, which is version-bearing and therefore delivered, and the number is `derivation.fold_lag_ms`, one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten and therefore **`fetch-fresh`**. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | the retirement plate | `retired.at`, `retired.by`, `retired.reason` | `null` | present for 14 days after retirement ([§ 3.5](#35-retirement-and-the-only-removal)) |
+
+⭐ **The `task` row's rendered form is a THOUGHT BUBBLE anchored to the character, and it REPLACES the
+text chip an earlier revision of that row named — it does not join it.** The operator's ask was for
+*bubbles of people thinking what task they are working on*, and card#7897's ruling admitted it as a
+**form** amendment on the test that decides one: the driving fields are the same five, every honesty
+property is the one the chip already carried, and **no
+[§ 6.2](#62-the-animation-table--the-closed-set) row is added** — because nothing about the bubble
+moves. **This paragraph is the document's one statement of the element**; the render rows, the null
+table, [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) and
+[AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) name it and point here rather than restating it.
+
+1. **One rendered form on the desk, which is the rule the amendment can break quietly.** The desk
+   draws the bubble and draws nothing else for `task`. A chip surviving beside a bubble would be one
+   fact drawn twice, which [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s
+   one-rendered-form-per-fact rule refuses for the same reason it refuses a second wording of an age.
+   The drill-down still carries `task` ([§ 4.3](#43-the-desk-drill-down-panel),
+   [§ 5.2](#52-the-drill-down)) and that is not a second form: it is the same fact at full fidelity on
+   a surface the viewer opened, which is [§ 4.2](#42-the-floor)'s standing split between what the
+   floor shows and what approaching shows.
+2. **A null `task` is NO bubble** — never an empty bubble, never a placeholder title, never the last
+   title the client held ([§ 5.6](#56-the-null-render-for-every-nullable-member),
+   [decision 13](#13-decisions-taken-revisable-at-review)). The bubble says **which**, never **how
+   much**: neither its presence nor its position encodes a quantity, and its size is a function of
+   **the text it holds** and of nothing about the seat — a bubble that grew with a token count, a
+   call count or an age would be
+   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s third forbidden form
+   with the motion taken out of it.
+3. ⭐ **A desk that draws no character draws no bubble.** The bubble is anchored to the character, and
+   [§ 7.1](#71-the-render-per-state)'s **Desk** column is where which desks have one is read — the
+   states that draw an empty chair or a cleared desk have none to anchor to. A bubble floating over an
+   empty chair would draw a thinker who is not there, which is
+   [§ 7.5](#75-what-a-degraded-desk-may-never-look-like)'s asleep-versus-gone confusion arriving
+   through a different element. **This is the one place the form change is not free, and the cost is
+   stated rather than hidden:** a dark desk that used to carry a chip now carries none, and the seat's
+   last known task is read in the drill-down under that panel's own currency treatment instead. The
+   **fact** is not lost; what is lost is **the desk's claim about a seat nobody can hear**, which is
+   the claim [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) exists to take away.
+4. **The text is `task.ref` and `task.title`, truncated visibly or not at all, in a box sized from the
+   MEASURED text.** Both members are bounded by
+   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object), so the worst case is real rather than
+   hypothetical: a box of fixed width would meet it by **silently clipping**, and a title clipped with
+   no mark is read as the whole title — a claim about the wire the wire did not make. So a title too
+   long for the bubble is truncated **with a mark**, the untruncated value is in the drill-down, and
+   the box is never sized from a guess at the text's width. **This document publishes no character
+   count** for that cap and [§ 12](#12-every-number-and-where-it-comes-from) carries no row for one:
+   what D3 requires is that a cap **exist**, that the box be **measured**, and that the truncation be
+   **marked**. The cap's value is a function of the art's type size and the zoom it is read at,
+   neither of which [§ 10.4](#104-the-art-direction-as-a-specification) specifies, so a number written
+   here would be a number about a drawing this document does not own.
+5. **Two bubbles that would overlap are separated DETERMINISTICALLY, and the separation carries no
+   fact.** The resolution is a pass over the **base** rects — the desks' own geometry, in a fixed
+   order — rather than over already-displaced ones, so two browsers rendering one fleet place them
+   identically with nothing stored, which is [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s
+   property one element over, and a bubble does not jitter when a neighbour's title changes. A
+   displaced bubble is a **layout** artifact: its offset says nothing about its seat, exactly as
+   [§ 6.2](#62-the-animation-table--the-closed-set)'s per-seat loop phase says nothing about its seat,
+   and for the same reason.
+6. ⛔ **The bubble does not move — it appears, changes and disappears on the frame the delta is
+   applied, with no fade, no drift, no bob and no float.** That is why it needs no
+   [§ 6.2](#62-the-animation-table--the-closed-set) row and why the amendment is a form change at all.
+   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet admits
+   motion through exactly one door — a § 6.2 row, with the field that drives it — and an element whose
+   motion would say nothing has no business opening it.
+
+⛔ **What was NOT adopted from the upstream form, named because the ruling that ordered this amendment
+named it as adoptable.** card#7897 directs this document to take three first-party behaviours from
+the upstream bubble: the deterministic overlap resolver, the character cap with measured-box sizing,
+and a **fade-in 0.15 s → linger 1.2 s → fade-out 0.3 s** state machine whose re-show swaps the text
+without re-fading. The first two are rules 5 and 4 above. **The third is refused, on this document's
+own rules rather than on a preference.** Upstream's bubble reports a **tool call** — an instant — so a
+linger and a fade-out are how a momentary event leaves a screen; this one reports **`task`, a standing
+fact**, and three things break when a standing fact is drawn with a transient's state machine. *(a)*
+The two fades are motion with no row, which rule 6 has just refused. *(b)* The linger is a **timer**,
+[§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form,
+and it is the same shape as the reference artifact's viewer-clock interval that
+[§ 10.4](#104-the-art-direction-as-a-specification) refuses by name. *(c)* Worst, and the reason this
+is a correctness refusal rather than a stylistic one: the fade-out **destroys rule 2**. Once a bubble
+hides itself on a timer, *no bubble* stops meaning *`task` is null* and starts meaning *`task` is
+null, **or** the linger expired* — and a null render two different facts produce is not a null render
+at all. **What survives of the third behaviour is its point, and it survives for free:**
+re-show-swaps-text-without-re-fading exists upstream to stop a busy seat's label strobing, and a
+bubble that never fades cannot strobe — its text changes on the frame the delta is applied, which is
+what [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s last bullet already
+requires of every rendered value on this page.
 
 ### 5.2 The drill-down
 
@@ -812,6 +972,19 @@ seat did and when, and nothing is guessed onto it.
   ([D2 decision 29](FLEET-STATE.md#13-decisions-taken-revisable-at-review)); this document adds no
   field D2 did not send. There is no host name, no IP, no path, no prompt text and no file content on
   any screen, because none of them is on the wire.
+  **The one thing this rule does not reach, said here rather than left to be argued at the render
+  site: a rendering of the seat's own IDENTITY.** A desk's slot, and a character's shape, hue and
+  seeded **vibe line** ([§ 10.4](#104-the-art-direction-as-a-specification)), are all pure functions
+  of `(install_id, seat_id)` — two fields the wire **does** send
+  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)) — so none of them is a fact the client
+  invented; each is the identity redrawn. What the rule above does bind is the **direction**: an
+  appearance-class rendering may **never become a fact about state**, so it carries a label saying it
+  is seeded, and it drives **no pose, no currency label, no badge and no animation**. That is the
+  same boundary [§ 5.5](#55-the-clients-own-narration) draws for the client's own narration, arriving
+  from the other side — the narration is *the client talking about itself*, this is *the client
+  drawing the seat's name* — and neither is ever a state. A vibe line that changed with
+  `render_state` would be state-bearing text with no field, which is exactly what this section
+  refuses.
 - **A token, a token prefix, a token hash, or any part of one.** They are not on the read surfaces
   ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)) and nothing on any screen may display one even
   if a future field carried it.
@@ -848,6 +1021,7 @@ the client's own, and never becomes a fact about a seat.**
 | ***membership as of HH:MM:SS*** | the moment of the last full snapshot **apply** | the age of the *membership* picture, rendered separately from the age of the *state* picture ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
 | ***the client holds N of M seats — refreshing*** | the per-floor counts it holds, against `fleet.seats_total` | the only narration line that names a wire number, and it names it **as the wire's**: [§ 4.1](#41-the-lobby--the-building-summary) renders the disagreement rather than picking a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)) |
 | ***floor map is short N desks*** | the rendered seat count against `S`, the map's own slot count ([§ 3.2](#32-the-desk-slot-function)) | a fact about the map and this client's layout, not about any seat ([§ 9](#9-failure-paths-and-their-observables) F13) |
+| the **wall clock** and the windows' **sky** ([§ 6.2](#62-the-animation-table--the-closed-set) A17) | the **viewer's own clock**, read at the moment a `feed.heartbeat` arrives — never the server clock, never corrected by [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, and never a seat's | a fact about **the viewer's machine**, labelled on the page as the viewer's own local time so that nothing about it reads as wire data. It is the one line here rendered by an animation rather than as text, which is why the rule below is stated in terms of *drives* rather than *appears in*: the heartbeat drives A17 and this value is what A17 **sets**. Its stopping is the point ([§ 9](#9-failure-paths-and-their-observables) F1) and it carries no *as of* stamp of its own — the feed-status line above is where this page says how current it is |
 
 **None of these is a state, and none of them may become one.** A narration line never drives a desk's
 pose, a currency label, a badge or an animation — the only effect the client's own connection state has
@@ -855,6 +1029,25 @@ on a desk is [§ 9](#9-failure-paths-and-their-observables) F1's, which is *none
 continuing to tick from the timestamps the client already holds. That is the same boundary
 [§ 2.1](#21-the-seven-client-computed-values-closed) draws between presentation and state, applied to
 the one surface where the client is allowed to talk about itself.
+**The wall clock row is inside that rule, not an exception to it, and the difference is causal
+direction.** A narration may not *drive* an animation, because motion on this page is a claim that the
+fleet did something and the client's own state is not the fleet's.
+[A17](#62-the-animation-table--the-closed-set) is driven by a delivered `feed.heartbeat` — the same
+message that drives [A14](#62-the-animation-table--the-closed-set) — and the viewer's clock is only the
+**value it sets**, exactly as [A5](#62-the-animation-table--the-closed-set)'s cross-fade is driven by a
+delta and sets the glyph the delta named. Reverse the direction — let the viewer's clock decide *when*
+to render — and it is a timer, which
+[§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) forbids and this row does not
+touch. Everything else in the rule binds it unchanged: it drives no pose, no currency label and no
+badge, and it never becomes a fact about a seat.
+
+**There is a second such surface and it is not this one:** the seat's **seeded appearance**, including
+the **vibe line** in the drill-down ([§ 10.4](#104-the-art-direction-as-a-specification)). It is not
+narration — it says nothing about what the client did or saw — and it is not a wire fact either; it
+is `(install_id, seat_id)` redrawn, which [§ 5.4](#54-what-is-never-rendered) admits and labels. The
+rule it inherits from this section is the last one above, unchanged and for the same reason: **it
+never drives a pose, a currency label, a badge or an animation.** Two surfaces, two different
+justifications, one boundary.
 
 ### 5.6 The null render, for every nullable member
 
@@ -890,7 +1083,7 @@ it.
 | `action.parent_call_id` | no parent is named. The call is not drawn as an intern on the strength of a missing field |
 | `subagents[].title` | **untitled**, with the `call_id` in the drill-down — the honest orphan D1 § 6.8 and D2 § 8.2.1 both refuse to paper over ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
 | `subagents[].subagent_type` | the type tag beside the label is not drawn. The stool and its label are unaffected |
-| `task` | **no task chip at all**, never a placeholder title ([§ 5.1](#51-the-desk)) |
+| `task` | **no thought bubble at all**, never an empty bubble and never a placeholder title ([§ 5.1](#51-the-desk)). A desk with no character draws no bubble either, which is a **different** absence and is § 5.1's to state — this cell states the one a null produces |
 | `task.ref` | the title renders with **no link and no reference text** — not an empty link, not *(no reference)*. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the base-URL question, which is a different absence |
 | `context` | the gauge reads ***not reported*** and **the bar is absent** — not a bar at 0 % ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like), [decision 13](#13-decisions-taken-revisable-at-review)) |
 | `context.used_tokens` | the numerals read *not reported*; **the bar still renders**, because `used_pct` is not nullable ([§ 5.1](#51-the-desk)) |
@@ -1004,10 +1197,10 @@ it carries the same fact.
 |---|---|---|---|---|---|---|---|---|
 | **A1** | `edge` | `arrive` — the character walks in and sits | desk | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value leaves `offline` | on arrival at the desk | the character is simply present | the seat has not left `offline` |
 | **A2** | `edge` | `depart` — the character stands and walks out, leaving the chair empty | desk | `render_state` | a delta whose new `render_state` is `offline` | at the door | the chair is empty and labelled | the seat is still reporting |
-| **A3** | `held` | `work` — typing at the keyboard, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
-| **A4** | `held` | `think` — leaning back, watching the monitor, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
+| **A3** | `held` | `work` — typing at the keyboard, with the eye **blink** and the gentle in-place **wiggle**, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
+| **A4** | `held` | `think` — leaning back, watching the monitor, with the same **blink** and **wiggle**, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
-| **A6** | `held` | `idle` — the chair turns from the desk, the monitor dims. **No loop.** | desk | `render_state` | `render_state == "idle"` | when it is not | identical — this state has no motion by design | the seat has not cleanly finished a turn |
+| **A6** | `held` | `idle` — the character is **slumped asleep on the desk**, the monitor dimmed, with drifting **z**'s, 4 fps loop | desk | `render_state` | `render_state == "idle"` | when it is not | the **static slumped pose**, z's drawn once and still | the seat has not cleanly finished a turn. **A sleeper is never a gone seat** — [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) owns that rule |
 | **A7** | `held` | `attention` — a raised hand and a marker above the desk, 4 fps loop | desk | `render_state` | `render_state == "blocked"` | when it is not | a static raised-hand pose and the marker | no `attention.request` is open ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | **A8** | `held` | `stalled` — head in hands, static, with the `api_error_type` line | desk | `render_state`, `api_error_type` | `render_state == "stalled"` | when it is not | identical | no `turn.end(api_error)` is standing |
 | **A9** | `held` | `unknown` — a question marker over an occupied desk | desk | `render_state`, `unknown_reason` | `render_state == "unknown"` | when it is not | identical | the seat's last turn record supports a positive reading |
@@ -1018,21 +1211,188 @@ it carries the same fact.
 | **A14** | `edge` | `feed-pulse` — a one-frame pulse on the feed indicator | status strip | `feed.heartbeat` | each `feed.heartbeat` message received | after one frame | a *last message HH:MM:SS* readout that updates instead | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables)) |
 | **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
 | **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) | on arrival | the desk appears in its new slot on the next render | no arrival collided |
+| **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room** — its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s cross-section renders a per-floor *summary* rather than the rooms, so it draws no wall clock at all; if it draws sky behind the building, that sky is this row's, on this row's driver, and never a second one of its own | `feed.heartbeat` | each `feed.heartbeat` message received, on any subscribed channel. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
 
-**A14 is the only thing on the page that moves unconditionally, and it is driven by a message.** That is
-deliberate: the one always-moving element is the one whose motion *is* the claim that the feed is alive,
-so when the feed dies it stops, and the page's stillness becomes true rather than ambiguous.
+**Two rows move with no seat's state behind them — A14 and A17 — and both are driven by
+`feed.heartbeat`, so when the feed dies they stop together and the page goes still.** That is the
+property, and it is what an earlier revision of this note was protecting when it read *"A14 is still
+the only thing on the page that moves unconditionally"*: that sentence went false the moment A17 was
+written, and it is quoted here as the claim being amended rather than deleted, because the property
+under it is the one [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) rests on and it is
+**stronger** now than it was — *everything on this page that moves without a delivered field holding it
+is driven by the heartbeat*. The reason is still the class column: a `held` loop runs only while a
+delivered field has a value, so **every** loop on the floor — A3, A4, A6, A7, A15 — is conditional on
+something the wire delivered, and a desk with nothing delivered behind it is still; the only rows
+conditional on **no seat's state at all** are these two `edge` rows, and the heartbeat that fires them
+is the heartbeat whose absence *is* the feed-down condition. **This claim is re-derived at every
+amendment rather than carried over** — it was re-derived when A6 gained a loop and survived, and
+re-derived when A17 landed and did not, which is exactly the kind of claim an amendment falsifies
+silently.
+
+**One clock, every floor, and it freezes only when every channel is silent.** The heartbeat is **per
+channel**, which is per install ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)), so a client
+holding four installs samples up to four times in a 15 s window. That changes nothing about the value —
+there is one viewer clock, so two floors can never disagree about the time — and it makes the stopping
+condition the right one: the clock stops when **no message of any kind** is arriving, which is
+[§ 9](#9-failure-paths-and-their-observables) F1's condition to the letter. One install going dark is a
+fact about that floor's desks and their `link_state`, and the clock must not claim it.
+
+⭐ **What A17's clock is for, written down because it is the thing a maintainer will undo.** The wall
+clock on this floor is not there to tell the time — the viewer's own machine already does that, in the
+corner of the same screen. **It is there to show the room is live**, and its stopping is the whole of
+its value. Someone will see the hands freeze on a dead feed, read it as a bug, and fix it with a
+10-second timer off the viewer's clock. That edit is
+[§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s **second** forbidden form,
+it re-mints a mover that keeps moving after the feed dies, and it costs
+[AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) its instrument: with a clock still ticking the
+page never goes still, and *the page is still* is how a human reads *the feed is down* before reading
+anything. **A frozen clock here is not a defect and not a lie — it is the claim.** AT-D3-6's RED is
+that exact edit, so the regression trips a test rather than a review.
+
+**Five things A17's row does not carry on its own. Each is a defect if it is left out.**
+
+1. ⚠ **No second hand: minute resolution only.** [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)
+   sends `feed.heartbeat` every **15 s**, so a second hand driven by A17 would advance in 15-second
+   jumps — and a clock that looks broken is precisely what gets "fixed" with the timer the paragraph
+   above refuses. **A minute hand steps once a minute; the heartbeat merely samples it four times, and
+   three of those four samples find the minute unchanged and move nothing.** Stating it that way round
+   is not pedantry — it is what makes the render indistinguishable from a continuous clock at floor
+   zoom, which is the resolution this row is sized to, and it is what
+   [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) has to assert: *the clock advanced on
+   every heartbeat* is **false of a correct client**, and the only way to make it true is the second
+   hand this constraint refuses, so a test asserting it would push an implementer into the very defect
+   it was written to catch. That test runs its heartbeat phase **across a minute boundary** instead.
+   [§ 12](#12-every-number-and-where-it-comes-from) carries the 15 s, and it is load-bearing for a
+   rendered element now rather than for the feed indicator alone.
+2. ⚠ **The clock reads the VIEWER's own clock, and only its *sampling* is event-driven.** It is not the
+   server clock, it is **not** corrected by [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s
+   `clock_offset_ms`, and it is none of that section's ages or timestamps — every one of those is a
+   wire value or a subtraction from one, and this is neither. It is a fact about the viewer's own
+   environment, so it is admitted where the client's other non-wire renderings are, at
+   [§ 5.5](#55-the-clients-own-narration), under that section's boundary: it is labelled as the
+   viewer's own, and it **never becomes a fact about a seat** — no pose, no currency label, no badge.
+   What A17 does is fire on a delivered message and **set** the clock to whatever the viewer's machine
+   then reads; the viewer's clock is the **value**, never the driver, and § 5.5 says so where a reader
+   will meet it.
+3. ⚠ **The clock is not an authority on the time and grows no *as of* stamp of its own.** When the feed
+   is down the reading is stale by construction — that is the design, not a gap in it. What tells the
+   viewer so is the feed-status narration [§ 5.5](#55-the-clients-own-narration) and
+   [§ 9](#9-failure-paths-and-their-observables) F1 already require, on the status strip, in words. A
+   stamp on the clock face would be a **second** rendering of the one fact those two already carry,
+   which [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule refuses for
+   the same reason it refuses a second wording of an age.
+4. ⚠ **A render *sets* the clock and the sky rather than animating them — and only a render that
+   establishes or re-establishes a LIVE feed sets them.**
+   [§ 6.5](#65-a-snapshot-never-animates) owns that property and works the cases through; both halves
+   of it are constraints on this row. **The permitting half:** § 6.5 forbids an **`edge` animation** on
+   a snapshot, a poll, a resync, a per-seat fetch or a reconnect, and setting a value on the first
+   paint is not one — which is what keeps
+   [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s instrument half — *no `edge` row at all* on
+   `fx-snapshot-4` — true of a correct client with a clock on its wall. **The refusing half, which is
+   the one this row would be undone by:** a render the client makes **because** the feed is silent sets
+   nothing — above all [§ 9](#9-failure-paths-and-their-observables) F1's **10 s** poll, which exists
+   only in the feed-down state, and a room re-set on it is a room advancing on that poll's timer for as
+   long as the feed is dead. A17 fires only on a heartbeat, and nothing else may move the value it
+   sets.
+
+5. ⚠ **The hands' minute is readable as text, exactly once — and that text is what a test asserts on.**
+   This row renders an **analog** element: hands, and a sky. Neither is a string, so a test written
+   against *the rendered wall-clock string* would assert on a thing this document never specified, and
+   an implementer building hands would invent the target — which is the seam an acceptance test exists
+   to close, not to open. So the clock element carries an **accessible text form of the same minute**
+   (its accessible name — an `aria-label`, or an SVG `<title>`), **set in the same render that sets the
+   hands, and by nothing else** — constraint 4 above owns which renders those are, and this constraint
+   names no driver of its own. **The text is whatever the hands read, always:** it is not a second
+   value driven in parallel and kept in step, so there is no render at which the two can disagree, and
+   [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) reads it. **It is not a second rendered
+   form of the fact**
+   ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-form-per-fact rule, which constraint 3 above
+   applies to this clock): it is the *same* rendering
+   delivered to assistive technology, which a pair of hands is otherwise unreadable to — the reasoning
+   [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) applies to motion, one
+   modality over. It carries **the minute and nothing else** — no seconds, no date, no *as of* stamp
+   and no *live* or *stale* wording, each of which constraint 3 refuses on the clock face and which are
+   refused here for the same reason. **The alternative was asserting on the hands' geometry**, and it
+   was rejected because an angle is a fact about a drawing rather than about the time: two renderers
+   drawing the same minute differently would disagree, and the assertion would be pinned to one of
+   them.
+
+   ⚠ **Why the text is bound to the hands and not to a driver, written down because this constraint
+   once did the opposite.** It read *set by the same A17 firing that moves the hands and by nothing
+   else* — which names the **firing** as the only setter, while constraint 4 above gives the hands
+   **two** setters: the firing, and [§ 6.5](#65-a-snapshot-never-animates)'s establishing render, which
+   moves the hands and writes **no** animation-log row ([§ 11](#11-acceptance-tests): *a firing writes a
+   row, where the setting of § 6.5 writes none*). A client built from that sentence draws a connect
+   snapshot with hands on the current minute and an accessible name that was never set, and a
+   **successful reconnect** with hands on the new minute and an accessible name still holding the
+   minute from before the disconnect — **two renderings of one fact, disagreeing**, which is the
+   *exactly once* premise of this very constraint and
+   [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-form-per-fact rule broken by the sentence
+   that invoked them. It is worst on the path this row exists to make visible: a reconnect onto a feed
+   that then dies ([§ 9](#9-failure-paths-and-their-observables) F1) freezes the hands at the reconnect
+   minute and the text at an **older** one, so the viewer who cannot see the hands is told a *different*
+   wrong time from the one on the wall. Binding the text to the hands rather than to a named driver is
+   what closes it, and it stays closed if the driver set ever moves again — which is why this
+   constraint points at constraint 4 instead of restating it.
+
+   ⚠ **An unset clock's accessible text is *not reported*.** *The minute and nothing else* says what
+   the text carries when there **is** a minute and is silent when there is none, and there is such a
+   case: on a cold start onto a dead feed no render has established a live feed, so the clock has never
+   been set and [§ 6.5](#65-a-snapshot-never-animates) draws it **unset**. The text says so in words —
+   [decision 13](#13-decisions-taken-revisable-at-review)'s ***not reported***, **never an empty
+   string** (an element with no accessible name is a clock assistive technology cannot find, which is
+   the unreadability this constraint exists to remove) and **never a plausible time** — which
+   [§ 6.5](#65-a-snapshot-never-animates) calls *exactly the zero that rule refuses* where it draws the
+   hands, and it is the same zero one modality over. The
+   hands are drawn unset and the text reads unset: the same fact, in the same render, one modality
+   apart — which is the whole of this constraint applied to the case where the fact is that there is
+   nothing to report.
+
+**Per-seat loop phase, from the appearance seed — and it carries no information.** Loops are
+**phase-offset per seat**, so a floor of busy desks does not blink and wiggle in lockstep; the offset
+is drawn from the same `(install_id, seat_id)` seed as the character itself
+([§ 10.4](#104-the-art-direction-as-a-specification)). **This is stated rather than left as an art
+note, because a per-seat offset is precisely the thing a careful reader would suspect of being data.**
+It is not: [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) forbids motion
+whose **rate, amplitude or direction** encodes a quantity, and phase is none of the three — the rate
+stays [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2's fixed 4 fps for every loop and
+every seat, the amplitude is the row's own, and the offset is derived from **identity**, which does not
+change while the seat exists and therefore cannot report anything that does. A phase drawn from a
+seat's *state*, its context percentage or its call count would be forbidden by the same rule that
+permits this one.
 
 ### 6.3 Forbidden forms, named so they cannot be written in good faith
 
-- **Ambient life.** No idle breathing, blinking, foot-tapping, coffee sipping, passing NPCs, flickering
-  monitors, moving clouds or swaying plants. Every one of them is motion a viewer cannot distinguish at
-  a glance from state-bearing motion, which is precisely what makes the floor readable-at-a-glance in
-  the first place. The cost is accepted and stated: a still floor looks still, and a still floor **is**
-  a still fleet.
+- **Motion that is neither held by a delivered field nor caused by a delivered message — *ambient
+  life*.** That property is the rule; the named forms are its examples, and they remain forbidden
+  **as** examples: idle breathing, blinking, foot-tapping, coffee sipping, passing NPCs, flickering
+  monitors, moving clouds, swaying plants. The reason is unchanged and is the reason the property is
+  the right way to say it — **a viewer cannot distinguish such motion at a glance from state-bearing
+  motion**, which is precisely what makes the floor readable-at-a-glance in the first place. The cost
+  is accepted and stated: a still floor looks still, and a still floor **is** a still fleet.
+  **The property is what decides a case the list of names cannot.** A blink that runs on every desk in
+  every state is ambient and is forbidden — nothing delivers it, and it is the first name on the list
+  above. A blink that runs **only while a `§ 6.2` row's hold condition holds** is not ambient at all:
+  it is the drawn form of that row, held by a delivered field, stopping when the field stops, and the
+  honesty principle is satisfied by the very mechanism that has always satisfied it. **The bullet is
+  therefore sharper than the list it started as, never looser** — it now refuses one motion the list
+  never named (any un-held loop, whatever it depicts) and admits none the list forbade except by
+  writing it into a row, where a reviewer sees the field that drives it. **The only door in is a
+  `§ 6.2` row.** That table stays closed, `tools/design/verify-floor.py` reds when an animation id is
+  named anywhere in this document without one, and nothing in this bullet weakens that.
 - **Motion driven by a timer.** Nothing may be driven by the 1 s age tick, by a render loop's frame
   count, or by wall-clock time, except a state-held loop's own frames at the fixed rate of
   [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2.
+  **Driven by is not the same as read at, and the wall clock is where the difference is worth the
+  sentence.** [A17](#62-the-animation-table--the-closed-set) fires on a delivered `feed.heartbeat` and
+  *reads* the viewer's clock for the value it sets, the way
+  [A5](#62-the-animation-table--the-closed-set) reads a delivered tool name for the glyph it swaps to.
+  A timer that fired A17 every 10 s **would** be this bullet's motion, and it is the specific edit
+  [§ 6.2](#62-the-animation-table--the-closed-set)'s note and
+  [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s RED exist to catch — the clock would keep
+  moving after the feed died, which is the property that bullet's *ambient life* sibling above is also
+  written to refuse. **The test is what would happen on a dead feed: motion that stops is caused;
+  motion that continues was on a timer.**
 - **Motion whose rate, amplitude or direction encodes a quantity.** A faster typing loop for a busier
   seat, a gauge that drifts upward between samples, a badge that pulses harder as a counter rises: each
   invents a number the wire never sent.
@@ -1053,7 +1413,25 @@ part of the contract rather than an afterthought: a fact carried only by motion 
 cannot read, and this floor's facts are the whole product.
 [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) asserts that every `render_state` member is
 distinguishable with motion off — which also means the floor is legible in a screenshot, which is how
-most of it will be reviewed.
+most of it will be reviewed. **That test's population is the ten states, so it does not reach
+[A17](#62-the-animation-table--the-closed-set)**, whose room render belongs to no state and whose
+driver none of its fixtures deliver;
+[AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s floor half replays the `reduce` condition
+over a heartbeat feed and is where that row's form is asserted, together with
+[A14](#62-the-animation-table--the-closed-set)'s, whose driver is the same message.
+**Which test asserts which is stated rather than assumed, and so is the remainder** — because a column
+covered by *one* test is how an uncovered row goes unnoticed, and a sentence claiming the whole column
+is asserted is the same defect one register up. Those two tests reach the rows a `render_state`
+selects and the two the heartbeat fires. **The other five are specified and unasserted:**
+[A5](#62-the-animation-table--the-closed-set),
+[A10](#62-the-animation-table--the-closed-set),
+[A11](#62-the-animation-table--the-closed-set),
+[A12](#62-the-animation-table--the-closed-set) and
+[A16](#62-the-animation-table--the-closed-set) fire on a `changed[]` member or a seat-set change that
+**no fixture of either test delivers under `reduce`** — AT-D3-13 renders static fixtures and applies no
+delta, and AT-D3-6 delivers heartbeats and then nothing. Their reduced-motion forms are a contract this
+document states and no acceptance test checks; that is written down rather than covered over, and
+[§ 14](#14-open-questions-for-the-review-loop) item 15 carries what would close it.
 
 ### 6.5 A snapshot never animates
 
@@ -1072,6 +1450,42 @@ animation on a snapshot*, never *no motion after a snapshot* — the second woul
 [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) is explicit that a still
 floor is read as a still fleet.
 
+**And it renders the room, by the same reasoning applied to an `edge` row's value rather than to a
+held one's condition — under a property rather than a list of the renders above.** The rule is one
+sentence: **[A17](#62-the-animation-table--the-closed-set)'s wall clock and sky are set by a render
+that establishes or re-establishes a LIVE feed, and by nothing else — a render the client makes
+*because* the feed is down never sets them.** So the connect sequence's snapshot
+([§ 2.2](#22-connect-snapshot-deltas) from step 1) and a **successful** reconnect set the room to
+whatever the viewer's clock then reads, with no step, no transition and **no animation-log row**,
+because nothing happened to any seat and nothing is being claimed;
+**[§ 9](#9-failure-paths-and-their-observables) F1's 10 s poll sets nothing**, and neither does a
+backgrounded tab's return (F15) that finds the feed still down. A resync fetch and a per-seat insert set nothing either — they establish no feed, they
+arrive while one is already live, and the heartbeat is already setting the room within 15 s, so a
+second door buys a correct client nothing and costs an incorrect one its stopped clock.
+**Setting a value on first paint is not an animation of it**; what § 6.5 forbids is the *firing*, and
+A17 fires only on a `feed.heartbeat`. The distinction is the same one this section already draws for a
+held render, one class over: a floor that refused to set its clock until the first heartbeat would show
+a stopped clock on a healthy fleet for up to 15 s after every reconnect, which is the feed-down claim
+made falsely — the exact inverse of the defect A17 exists to prevent.
+
+**Why the property and not the list, stated because the list is what an earlier revision of this
+paragraph wrote.** It read *"set on each of the five renders above"*, and the five contain **a poll
+response** — a response that exists in exactly one situation, F1's feed-down state, on a **10 s**
+cadence. A client obeying that sentence would re-read the viewer's clock and re-set the wall clock
+every 10 s for the whole duration of a dead feed: the ratified reference's own interval, restored
+verbatim under the name *setting* rather than *animating*, inside the amendment that removed it. That
+is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form
+arriving through the recovery path instead of through the animation table, and the poll **is** the
+timer. The property refuses it by what the render means rather than by which name it goes under, and a
+list of five renders would in any case have been a fifth thing to keep true.
+
+**Before the first such render the room has no value, and it is rendered as having none.** On a cold
+start onto a dead feed — F4's *no floor to keep* case, or a socket that never opens — no render has
+established a live feed, so the clock has never been set: it is drawn **unset**, and the windows with
+it, which is [decision 13](#13-decisions-taken-revisable-at-review)'s rule one surface over — *a null
+is rendered as not reported, never as a zero*, and a plausible time on a page that has never been live
+is exactly the zero that rule refuses.
+
 ---
 
 ## 7. Degradation — how a degraded seat is unmistakable
@@ -1081,18 +1495,72 @@ floor is read as a still fleet.
 `render_state` has **ten** members ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) and every one has a
 distinct render. The order below is the fixed order the lobby's per-floor summary uses.
 
+⭐ **The Label line column is a WORKED INSTANCE, never a rule — and this is the convention that
+settles it when a cell and a rule disagree.** Every cell below renders forms and fields that other
+sections own: [§ 2.4](#24-the-clock-and-every-age-on-the-page) for every age and every timestamp's
+clock basis, [§ 5.1](#51-the-desk) for which element draws which field,
+[§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) for the currency label a non-`live` desk
+carries, [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) for the
+composed error line, [§ 3.5](#35-retirement-and-the-only-removal) for the retirement plate. So
+**where a cell here and a rule statement there disagree, the rule statement governs and the cell is
+the defect, corrected to match.** A worked example is a *rendering* of a rule this table does not
+own, and an implementer who copies the example over the rule ships the one string nobody ratified —
+which is not hypothetical: `stalled`'s cell elided a value three rule statements and its own
+**Never** column require, and `retired`'s was correct while
+[§ 3.5](#35-retirement-and-the-only-removal), which restated it, had drifted. Both are corrected,
+each naming what it was corrected against.
+⛔ **Where two rule statements disagree with each other — rule against rule, not rule against
+example — neither this table nor its reader settles it.** That is an amendment to whichever section
+owns the fact, and it is raised rather than picked: picking makes one of two ratified statements
+silently dead, and the reader who follows the other one is left building against a rule this
+document still publishes.
+
+⚠ **card#7966's sweep of all ten cells against their governing statements raised three in that
+second case, and this paragraph is where they are named rather than left for the implementer to
+discover** — a clean column with an unnamed remainder reports where the sweep stopped rather than
+the state of the table, so the paragraph stays as cells are disposed of rather than disappearing
+with them. **Two of the three are now closed, and the ruling that closed them is one sentence:
+[§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s currency label and this column are
+TWO rendered elements**, the currency label drawn **under** the Label line — which
+[§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s `activity_state`
+table, the section that owns that render form, had said in five rows all along while § 7.3's
+`catching_up` and `disabled` rows said *in the label only*. Rule against rule became rule against
+**defect**, and the defect was corrected.
+
+- **`catching_up` — closed.** Both strings were right and they are different elements; what the
+  two-element reading exposed is what the one-element reading hid, a desk drawing
+  `activity.last_event_time` **twice**. The Label line keeps the state sentence and the currency
+  label keeps the time.
+- **`working` — closed.** With the elements parted, the question narrowed to what the *label* says
+  when the monitor already shows the descriptor [§ 5.1](#51-the-desk) assigns it, and the answer is
+  the state's own sentence — never a second copy of the descriptor, and never nothing, because two
+  acceptance tests assert a label line for all ten. That cell states the reasoning in full.
+- ⛔ **`blocked` — OPEN, and it is not a drafting error in this document.** It renders *waiting on a
+  human since 14:31 (seat clock)* from **no field at all**: no
+  [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) row carries that timestamp and
+  [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object declares no such member, the open
+  attention request living in `detail`, which is the drill-down's source and not the desk's — so it
+  stands against [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field)'s own rule that a
+  rendered fact with no field is a fact the client invented. **It cannot be fixed inside D3**, and
+  both local repairs are refused rather than untried: dropping the time deletes the one thing a
+  raised hand is for, and inventing a field is what a preview already had to do. So it is a **D2
+  gap** — either D2 publishes a member or D3 stops claiming it — carried as its own tracked item,
+  **card#8075**, and it is a live correctness defect for the build (card#7341), which would
+  otherwise mint the invented field a second time. The cell is left exactly as it stands until that
+  item rules; **this bullet, not the cell, is the notice.**
+
 | `render_state` | Desk | Label line | Animation | Never |
 |---|---|---|---|---|
-| `working` | character at the keyboard | the action's descriptor | A3, or A4 when the turn is open with no call | rendered without its currency treatment when the seat is not `live` |
-| `idle` | chair turned, monitor dimmed, character present | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 (none) | rendered as absent. Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
+| `working` | character at the keyboard | *working* — the state's own sentence, and the whole of what this line carries for this member. It is **not** the action's descriptor: [§ 5.1](#51-the-desk) assigns that to the **monitor**, and the same row sends a null `action` back to *"the desk's state line"*, which is this one — so a Label line repeating the descriptor would leave that fallback pointing at a copy of the thing it exists to stand in for, and would say nothing at all for the A4 seat whose turn is open with no call, where `action` is null and no descriptor exists. It is also not *turn open, no call*, nor any other wording of `open_turn` / `open_calls`: [§ 6.2](#62-the-animation-table--the-closed-set)'s A3 / A4 pose already renders that pair, and a second wording of it here is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken by the element that was meant to fix it. **A bare state word is the only string that renders `render_state` and no second fact** — and a label line this state must have, because [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) and [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) both assert that all ten are pairwise distinguishable **by label line**, which is why *a `working` desk draws no label line* was the option refused rather than the one taken | A3, or A4 when the turn is open with no call | rendered without its currency treatment when the seat is not `live` |
+| `idle` | **character present, slumped asleep on the desk**, monitor dimmed | *finished — nothing done for 4m 12s*, the quiet age in [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one stated form | A6 | rendered as absent, and **never as an empty desk** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)). Idle is a **positive observation**, not a silence ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)) |
 | `blocked` | raised hand, marker above the desk | *waiting on a human since 14:31 (seat clock)* | A7 | shown as working, whatever `open_calls` says ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function): `blocked` outranks `working`) |
-| `stalled` | head in hands | *API error — rate limit* | A8 | folded into `unknown`; `api_error_type` is always on the line |
+| `stalled` | head in hands | *API error — rate_limit (rate limit)* — a **worked instance** of the composed line [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes, which is where its order and its separators are stated; the raw wire value is on the line and § 7.6's phrase is beside it | A8 | folded into `unknown`; `api_error_type` is always on the line — **which the Label line cell beside this one denied from this document's first revision onward**, publishing the phrase with the raw value elided. One row contradicting itself is the cheapest proof available, and [§ 5.4](#54-what-is-never-rendered), [§ 5.1](#51-the-desk) and § 7.6's own column heading all say the same thing louder |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
-| `catching_up` | character present, replay marker, desaturated | *replaying history — last event 12:47 (seat clock)* — a labelled seat-clock **timestamp**, because the only quantity that would make it a duration is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
+| `catching_up` | character present, replay marker, desaturated | *replaying history* — the state's own sentence and **nothing else**. `activity.last_event_time` belongs to the **currency label**, the second element drawn under this line as *was: working (last event 12:47, seat clock)* ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim), [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)) — so this line carried it too, the desk drew **one timestamp twice**, and [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule reaches across the two elements exactly as it reaches across two surfaces. That the duplicate was invisible for so long is what the one-element reading bought: read as one line, the repetition was a paraphrase; read as two, it is the same field rendered twice on one desk | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
 | `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 11m* — **the worked label line for this state**, derived from [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** marker rather than restating it, read at a corrected clock of **14:29**: the timestamp is the version-bearing `delivery.no_data_since` and the ticking age is `delivery.last_receipt_at`. The age is inside this state's own window and not merely large — [D2 § 4.5](FLEET-STATE.md#45-link-states) puts `stale` past 300 s and `offline` past 900 s, so a worked 41m here would have been an `offline` seat wearing the `stale` row's label | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
 | `offline` | empty chair, desk dark | *no data since 12:23 — no data for 2h 06m* — the same worked pair for this state, at the same **14:29** so the two rows describe one moment rather than two, silent past 900 s (**`dark-only`** for the age, [§ 2.4](#24-the-clock-and-every-age-on-the-page)). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none (A2 played on the way in) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) |
-| `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
+| `retired` | desk cleared, chair pushed in, plate stamped | *retired 2026-08-20 by aimla-pm — host decommissioned* — the desk's **one-line summary**, the date **without a time**. The drill-down carries the full record instead, with `retired.at` to the minute, and [§ 3.5](#35-retirement-and-the-only-removal) publishes the two side by side so that neither site reads as complete on its own | A13 | made to vanish ([§ 3.5](#35-retirement-and-the-only-removal)) |
 
 **The seven `unknown_reason` members, each with its sentence** — one glyph, seven explanations, exactly
 as [D2 § 4.3](FLEET-STATE.md#43-the-derivation-function) intends ("the *rendering* is one glyph… the
@@ -1164,16 +1632,31 @@ panel whose job is to date degradations. `badge_first_seen` is a stored column
 
 [D2 § 3.4](FLEET-STATE.md#34-what-this-rule-forbids-concretely) forbids "rendering an activity state
 without its currency label when the seat is `catching_up`, `stale`, `offline` or badged `fold_lag`".
+
+⭐ **The currency label is a SECOND rendered element, drawn UNDER
+[§ 7.1](#71-the-render-per-state)'s Label line — not a second thing that line carries.** Two
+elements: the Label line is the `render_state`'s own sentence, and beneath it, on a desk that is not
+`live`, the currency label carries the `activity_state` as *was: X (last event …, seat clock)*.
+**[§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s `activity_state`
+table owns that form** and the *was:* strings in the rows below are worked instances of it, not a
+second statement — the parenthetical's own rule is that table's and is stated once there rather than
+five times. This paragraph exists because both rows below read ***in the label only*** until
+card#7966: one element, which would put the same `activity.last_event_time` in the Label line and in
+the *was:* form of a `catching_up` desk — **one timestamp drawn twice**, which
+[§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule refuses. The
+one-element reading was not merely unsupported by § 7.6's five rows; it was **absurd on its own worked
+strings**, which is why the rule statement won and both cells were corrected.
+
 The rendering rule:
 
 | Condition | The desk shows | The activity state | Treatment |
 |---|---|---|---|
 | `link_state == "live"`, no `fold_lag` | its activity render | as the pose | full colour, motion permitted |
-| `catching_up` | the replay render (A15) | in the label only, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
+| `catching_up` | the replay render (A15) | under the label, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
 | `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
 | badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N s behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
-| `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | in the label only, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
+| `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | under the label, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
 
 **`config_invalid` and `disabled` are this document's own additions to D2's four, and both are named
 as ones.** [D2 § 3.4](FLEET-STATE.md#34-what-this-rule-forbids-concretely) lists `catching_up`,
@@ -1237,7 +1720,27 @@ places on this document by name:
 - **Empty.** A `stale` or `offline` desk is a *rendered* empty chair with a *no data since* line, not an
   absent desk. An absent desk and a quiet fleet are the two things D1 § 9.1's rendering clause and
   [D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path) exist to keep apart.
-- **Zeroed.** A null `context` renders *not reported*; a null `task` renders no chip; a null
+- ⭐ **Asleep. A sleeping character and a gone seat must never be confusable, and this is a rule rather
+  than an art note.** [§ 6.2](#62-the-animation-table--the-closed-set) A6 draws `idle` as a character
+  **slumped asleep at its own desk** — and `idle` means *the seat cleanly finished a turn*, which is a
+  **positive observation** the fleet made ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)).
+  `stale`, `offline` and `unknown` mean the opposite: nobody can say what the seat is doing.
+  **So `stale` and `offline` render the empty chair of [§ 7.1](#71-the-render-per-state) — the seat
+  itself, with nothing in it — and never a sleeper**, however restful a dark desk looks; and `unknown`
+  keeps its question marker over an **occupied** desk, because its seat is present and its last turn
+  is what is unreadable. **This is where the honest-looking mistake lives**: *asleep* and *gone quiet*
+  are the same picture in most offices, and a floor that drew them alike would turn the one degradation
+  the whole of [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) exists to surface into the
+  most reassuring thing on the screen. The distinction survives motion being switched off, because
+  A6's reduced-motion form is the **static slumped pose** and the empty chair has no pose at all
+  ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) — a sleeper is a
+  *character*, an empty chair is an *absence*, and neither needs the z's to be told from the other.
+  [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) and
+  [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) both assert it, with motion on and with
+  motion off. *(The ratified art draws that chair as a cushion — the noun in the render tables is the
+  chair, and one noun is what keeps the two documents one document.)*
+- **Zeroed.** A null `context` renders *not reported*; a null `task` renders no bubble
+  ([§ 5.1](#51-the-desk)); a null
   `subagents[].title` renders *untitled*; a null `counters` object renders *unreadable*. **A null is
   never drawn as a zero**, because a zero is a measurement and a null is the absence of one — the same
   clean-zero defect `docs/KANBAN.md § G-1` records, arriving through a gauge.
@@ -1271,7 +1774,7 @@ publishes; the **order** is D2's, is not restated here, and is not what is below
 | `link_state` | What it says about the seat | Currency treatment |
 |---|---|---|
 | `live` | receipt within 300 s, enabled, not draining | none — the pose may be read as *now* ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) row 1) |
-| `catching_up` | the spool is draining: `oldest_unsent_age_s > 300` — D2's own derivation input, **`named-not-rendered`** here | the replay render, desaturated, activity state in the label only ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
+| `catching_up` | the spool is draining: `oldest_unsent_age_s > 300` — D2's own derivation input, **`named-not-rendered`** here | the replay render, desaturated, activity state under the label ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 | `stale` | silent past 300 s | empty chair, dimmed, *no data since … — no data for …* ([§ 7.1](#71-the-render-per-state)) |
 | `offline` | silent past 900 s, or never reported | empty chair, dark, *no data since … — no data for …* / *no data yet* ([§ 7.1](#71-the-render-per-state), [§ 3.4](#34-a-new-seats-first-appearance)) |
 | `disabled` | `enabled == false` — reporting switched off, still heartbeating | *reporting disabled*, monitor off, motion stops ([§ 7.1](#71-the-render-per-state), [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
@@ -1280,7 +1783,12 @@ publishes; the **order** is D2's, is not restated here, and is not what is below
 and given their entry and exit edges by [D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge).
 The desk never switches on this field — it switches on `render_state`, which collapses transport over
 activity ([D2 § 4.2](FLEET-STATE.md#42-render-precedence)) — so what each member owes is a render
-**under a currency label** when the seat is not `live`. **The *was:* form's parenthetical is
+**under a currency label** when the seat is not `live`. **This table OWNS that render form**, and the
+five rows below say *under the label* in five voices for one reason: the currency label is a **second
+rendered element**, drawn beneath [§ 7.1](#71-the-render-per-state)'s Label line rather than inside
+it. [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s rows are worked instances of this
+form; where one of them and this table disagree, this table governs (card#7966, and it did — two of
+those rows read *in the label only*). **The *was:* form's parenthetical is
 `activity.last_event_time` as a labelled seat-clock timestamp — *(last event 12:47, seat clock)* — and
 never an elapsed time**, because the only elapsed time it could carry is a seat clock subtracted from
 the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)); it is written *(…)* in the rows below
@@ -1320,6 +1828,29 @@ The last two rows are one distinction and it is worth the two lines: *the harnes
 went wrong* and *the reporter has never heard of what the harness said* are different facts about
 different components, and D1 minted a twelfth member precisely so a consumer would not have to collapse
 them.
+
+⭐ **The composed line, published here ONCE, because the order and the separators were the half that
+was never written down anywhere.** The table above fixes the *phrase*; [§ 5.1](#51-the-desk) and
+[§ 5.4](#54-what-is-never-rendered) fix that the *raw value* is on the line; **how the two are put
+together was published by no site at all**, which is what let a second reading be minted in a worked
+example. On a `stalled` desk the line reads:
+
+**API error — *the raw value* (*the phrase*)** — the raw value first and verbatim, then the phrase
+from the table above in parentheses. A value in **no** row above takes **(unrecognised)** in place of
+the phrase and keeps its raw string exactly as [§ 5.4](#54-what-is-never-rendered) requires; and where
+`api_error_type` is null the line reads **API error** alone — the error text
+[§ 5.6](#56-the-null-render-for-every-nullable-member) says is not drawn, on a desk that keeps its
+pose and its label without one.
+
+[§ 7.1](#71-the-render-per-state)'s `stalled` cell is a **worked instance** of that form and not a
+second statement of it — *API error — rate_limit (rate limit)*, this line with the table's first row
+substituted in. That cell published *API error — rate limit* from this document's first revision until card#7966: the phrase with the
+raw value **elided**, contradicting the sentence above this table, this table's own column heading,
+[§ 5.4](#54-what-is-never-rendered), [§ 5.1](#51-the-desk) and its own **Never** column, all at once.
+Nothing could difference the two sites while the composition lived at neither, which is why it is
+stated here rather than corrected there alone; `tools/design/verify-floor.py` G11 now holds the
+instance against this table, and `tools/design/floor-preview.selftest.mjs` compares the artifact's
+rendered line to that cell literally rather than exempting it.
 
 ---
 
@@ -1406,7 +1937,7 @@ indistinguishable from a fleet that has gone home.
 
 | # | Failure | Detected by | User-visible observable | Recovery | Never |
 |---|---|---|---|---|---|
-| F1 | **Feed silent** | no message of any kind for **45 s** ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): 3 heartbeat intervals) | the status strip reads **feed down — polling**, [A14](#62-the-animation-table--the-closed-set)'s pulse has stopped, every desk keeps its last state and **its quiet age keeps growing** — an age is the corrected server clock minus a timestamp the client holds, so it ticks whether or not anything arrives, which is the point. The `fetch-fresh` values of [§ 2.4](#24-the-clock-and-every-age-on-the-page) do **not** tick: each 10 s poll **re-stamps** them | poll `GET /api/fleet/snapshot` every **10 s** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) and attempt reconnect | claiming *live*. A dashboard that silently degrades from live to polled is one whose age nobody can trust |
+| F1 | **Feed silent** | no message of any kind for **45 s** ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed): 3 heartbeat intervals) | the status strip reads **feed down — polling**, [A14](#62-the-animation-table--the-closed-set)'s pulse has stopped, **the wall clock and the sky have stopped with it** ([A17](#62-the-animation-table--the-closed-set)) — the two rows the heartbeat fires stop together, and a stopped clock is this row's observable in the form a viewer reads before reading anything, which is what [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) asserts. **The clock freezes at the last heartbeat, not at 45 s**: it is already up to 15 s behind on a healthy feed, so the freeze is legible only as it lengthens, and the strip's own words are what make the verdict at 45 s. Every desk keeps its last state and **its quiet age keeps growing** — an age is the corrected server clock minus a timestamp the client holds, so it ticks whether or not anything arrives, which is the point. The `fetch-fresh` values of [§ 2.4](#24-the-clock-and-every-age-on-the-page) do **not** tick: each 10 s poll **re-stamps** them | poll `GET /api/fleet/snapshot` every **10 s** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) and attempt reconnect | claiming *live*. A dashboard that silently degrades from live to polled is one whose age nobody can trust |
 | F2 | **Delta gap** — `state_version` jumped | `delta.state_version > local + 1` | no desk-level effect; the status strip's **resyncs: N** increments and the client's event log records the seat ([§ 5.5](#55-the-clients-own-narration)) | `GET /api/fleet/seats/{i}/{s}?resync_from=<last applied>`, apply, continue. The parameter is required: it is the **only** write path for D2's `feed_gap_detected` counter ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)) | applying the delta anyway. A silently divergent desk is permanently wrong on a quiet seat |
 | F3 | **Connection closed `resync_required`** — backpressure | the close frame ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)) | **reconnecting** in the status strip; the floor keeps rendering with growing ages | re-run [§ 2.2](#22-connect-snapshot-deltas) from step 1 | blanking the floor while reconnecting |
 | F4 | **Snapshot `503 fleet_unavailable`** | the status code and body ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) | a full-width statement: **fleet state is unavailable — the store could not be read at 14:23:14**, over a floor that keeps its last state and is labelled *last known good*. On a cold start there is no floor to keep, and the screen says so in words | retry the snapshot with backoff; the socket stays open and will carry `fleet.health` | **an empty office.** This is [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange)'s forbidden outcome at the render layer |
@@ -1442,84 +1973,384 @@ to D2 for the rule that would close it properly.
 munder-difflin's procedural generator (MIT, with attribution). The upstream's commercial tilesets are
 never vendored.* This section turns that decision into obligations an implementer can fail.
 
+**D-07's last sentence is untouched and always will be; its middle clause was superseded on
+2026-08-27.** The operator ratified a new art direction ([§ 10.4](#104-the-art-direction-as-a-specification)),
+under which the ported pixel generator is **interim placeholder art** and the product ships
+**original, high-resolution, resolution-independent** art of its own. `docs/PLAN.md § 0`'s register
+carries the supersession as an append beside D-07 rather than as an edit to it, because a register
+records what was decided when. **What this does to this section is one thing and it is the whole of
+§ 10.1's change:** **Gate 2** used to enforce that the character tree held **no art at all**, which was
+the mechanised form of *the sprites are generated*. Art now ships as files, so an absence is the wrong
+assertion — and the right one is not a weaker version of it but a different one: **no asset without
+declared provenance.**
+
 ### 10.1 The manifest, and the two gates
 
-Every asset file in the repository has a row in **`ATTRIBUTION.md`**, and the row carries all of:
+Every asset file in the repository has a row in **`docs/ATTRIBUTION.md`**, and the row carries all of:
+*(The directory is `docs/` because `docs/PLAN.md § 0` **D-09** reserves the repository root for AI-parsed
+`CLAUDE*.md` files and puts human-readable documents under `docs/`; `README.md` already writes the path that
+way. Written in full here because this document names `resources/characters/LINEAGE.md` in full and the bare
+filename beside it read as a root path — card#7340.)*
 
 | Column | Example | Why it is required |
 |---|---|---|
 | path | `resources/floor/tiles/office-16.png` | the row's subject |
-| source URL | `https://opengameart.org/content/…` | where it came from, checkable by a human |
+| **origin** | `first-party` | **where the asset came from, as a value from a closed set of exactly two** — see below. It is the column that makes *"where did this picture come from"* a membership test rather than prose a reader has to interpret |
+| source URL | `https://opengameart.org/content/…` | where it came from, checkable by a human. Its **meaning depends on `origin`**, which is the point of typing that column |
 | author | *(as the source states)* | the attribution obligation's subject |
 | licence identifier | `CC0-1.0` | an SPDX identifier, not prose. "Free to use" is not a licence |
 | retrieved | `2026-08-23` | a licence can change; the row records which one was accepted |
 | SHA-256 of the file as vendored | `a3f1…` | so a later edit or replacement of the bytes is visible without re-reading the source |
 
-**Gate 1 — every asset has a row.** The build fails when any file under the asset trees has no
-`ATTRIBUTION.md` row, or when a row's SHA-256 does not match the file. A missing row is an asset whose
-licence nobody recorded, which is the only way an incompatible asset ever ships.
+**`origin` is a closed set of exactly two, and a row outside it fails the build:**
 
-**Gate 2 — no vendored character art.** The character sprites are **generated**, not vendored
-([§ 10.2](#102-characters-the-munder-difflin-port)), so the assertion the gate makes is an **absence**:
-this is the mechanised form of *"the upstream's commercial tilesets are never vendored"*. A denylist
-can only refuse the copies someone thought to enumerate — and *"no raster or vector image file"* is a
-denylist wearing a description, because the tree is **not** empty (it holds the ported source and
-`LINEAGE.md`, [§ 10.2](#102-characters-the-munder-difflin-port)), so the gate must **classify** files,
-and every classifier written as a list of image extensions passes a `.webp`, an `.avif`, a sprite sheet
-named `.dat`, and base64 image data inside a `.ts`. So the gate is an **allowlist**, in two clauses,
-and it fails on anything neither clause admits:
+| `origin` | What it claims | What the row must then carry |
+|---|---|---|
+| **`first-party`** | drawn or written **for this repository** | the source URL is an **in-repo reference** — the repository's own URL, which is what the existing first-party rows already write — and the author is this repository's contributors. **The URL half is the gated half**, and it is the only one: a row claiming `first-party` while pointing at somebody else's URL contradicts itself, and that contradiction is the one a machine can catch. Its licence is ordinarily the repository's own (`MIT`), and that is a **convention, not a check** — the closed allowlist already bounds it, and a gate demanding `MIT` here would red on an original asset somebody deliberately dedicated `CC0-1.0`, which is strictly more permissive and harms nothing. Stated rather than implied, because a rule presented as gate-enforced when it is not is worse than one honestly labelled |
+| **`licensed`** | obtained from **outside** | a genuine **external** source URL — not this repository's — an SPDX identifier in the closed allowlist, and a `retrieved` date |
 
-1. **File types.** Every file under the character tree carries one of **`.ts`, `.js`, `.md`** — the
-   ported generator's source and its lineage file, and nothing else. Any other extension fails the
-   build, named. An allowlist refuses the format nobody anticipated; that is the property the
-   empty-tree argument was reaching for and the extension denylist gave away.
-2. **Embedded bytes.** No file in that tree carries a `data:image/` URI or a single base64-shaped
-   literal longer than **1,024 B**. Clause 1 cannot see image bytes pasted *inside* a file it admits,
-   and that is the one route an implementer taking the shortcut would actually take.
+A row with **no** `origin`, or an `origin` outside those two, fails Gate 1 by name. The set is closed
+for the same reason the licence allowlist is: a third value invented at a call site is a value nobody
+decided, and *"where did this come from"* answered in free text is a question nobody can re-ask a year
+later.
 
-**The residue is named rather than implied.** Neither clause can refuse a generator that *fetches*
+**Gate 1 — every asset has a row, and the row says where the asset came from.** The build fails when
+any file under the asset trees has no `docs/ATTRIBUTION.md` row, when a row's SHA-256 does not match
+the file, when a row's licence is outside the closed allowlist, or when a row's `origin` is missing,
+outside the set, or contradicted by the row's own source URL. A missing row is an asset whose licence
+nobody recorded, which is the only way an incompatible asset ever ships.
+
+**Gate 2 — every asset is a file Gate 1 can see.** This is the gate that changed, and it changed its
+**assertion**, not its strictness. It used to assert an **absence** — no image file under the
+character tree at all — which was the mechanised form of *the sprites are generated*. Under
+[§ 10.4](#104-the-art-direction-as-a-specification) art ships as files, so that assertion is simply
+false about the product being built, and a gate asserting something false is worse than no gate: the
+next reader trusts its green. What replaces it is **not** a relaxed version of the absence. It is the
+claim Gate 1 needs in order to mean anything — *every asset is a file with a path, so every asset has
+a row*. Three clauses, and the **allowlist shape** the old text argued for at length is unchanged and
+is the reason this gate is still worth having: a denylist can only refuse the copies someone thought
+to enumerate, and every classifier written as a list of image extensions passes the format nobody
+anticipated. So the gate is an **allowlist**, and it fails on anything no clause admits.
+
+⚠ **Gate 2's population is Gate 1's population: ALL of the repo-root `resources/`.** Until card#7913
+it was `resources/characters/` while Gate 1 already walked everything, which was correct while Gate 2
+asserted an **absence peculiar to that tree** and became a leftover the moment the sentence above
+rewrote its claim as a **universal** one — *every asset is a file Gate 1 can see* says nothing about
+characters. The consequence was that `resources/floor/`, the tree about to receive this project's
+**first vendored third-party art** ([§ 10.3](#103-the-floor-map), card#7341), was the one tree Gate 2
+did not inspect: a `.psd` there passed with a valid row, and image bytes pasted into a `.js` there had
+no path, no row, and nothing to object. **The widening landed before that tree exists rather than on
+top of its contents.** And note what "widen Gate 2" actually means, because it is the thing that is
+easy to get half-right: **Gate 2 has TWO scoping knobs — the tree AND this clause's file-type
+allowlist — and moving one without the other is not a widening.** With the tree widened and the
+allowlist left alone, every Tiled artifact fails clause 1 by name for a reason that has nothing to do
+with what it contains; measured on a correct, CSV-only map set with no base64 anywhere, **four of five
+files RED, not one of them for an embedded-bytes reason.**
+
+1. **File types.** Every file under `resources/` carries one of **`.ts`, `.js`, `.md`, `.svg`,
+   `.png`, `.tmx`, `.tmj`, `.tsx`, `.tsj`** — and each member is here for a stated reason, because an
+   allowlist whose members have no reasons is a denylist that has not noticed yet:
+   - **`.ts`, `.js`** — the generator's source. The seed machinery survives the art change unchanged
+     ([§ 10.2](#102-characters-the-munder-difflin-port)); appearance is still computed from the key.
+   - **`.md`** — the lineage file.
+   - **`.svg`** — the ratified direction is **vector-first**, and vector is what
+     [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s resolution-independence requirement
+     actually needs. It is also **text**, so clause 2 can read inside it, which no raster format
+     permits.
+   - **`.png`** — the one raster admitted, for artwork that genuinely cannot be vector. Lossless, so
+     an asset is not re-encoded into a worse copy of itself on each pass through a tool; universally
+     decodable with no pipeline of its own; and already the format [§ 10.3](#103-the-floor-map)'s
+     Tiled tilesets ship in, so admitting it adds no decoder the floor did not already need.
+   - **`.tmx`, `.tmj`** — Tiled's map, in its XML and JSON spellings. [§ 10.3](#103-the-floor-map)
+     makes Tiled the map format, inherited from `docs/PLAN.md § 3`; a map is an asset like any other
+     and owes a row like any other. **Both** spellings, because the choice between them is the
+     implementer's and a list that admitted one would decide it here by accident.
+   - **`.tsx`, `.tsj`** — Tiled's *tileset*, same two spellings. A tileset is a separate file
+     precisely so the tileset image is referenced by path rather than embedded, which is the property
+     clause 3 checks; refusing the extension would push implementers toward embedding the tileset in
+     the map, i.e. toward the thing this gate exists to refuse.
+   - ⚠ **`.tsx` is Tiled's Tileset XML here, and TypeScript-JSX everywhere else in the world.** The
+     suffix genuinely means two things and this list admits only the first. Under `resources/` the
+     collision is **harmless today** — this repository's generator is plain `.ts`/`.js`
+     ([§ 10.2](#102-characters-the-munder-difflin-port)) and nothing under the asset root is JSX — and
+     it is written down anyway, because an allowlist that silently admits a second file type under one
+     suffix is a trap for the next reader. What actually happens to a React component dropped under
+     `resources/` is that clause 1 admits it by suffix and clause 3's XML parser then **fails it by
+     name**: a red for an odd-looking reason, but a red, not a hole.
+   - **Everything else fails the build, named** — `.avif`, `.webp`, `.jpg`, `.psd`, `.dat`, and the
+     extension nobody has thought of. `.webp` and `.avif` are refused not because they are bad but
+     because **a second raster format buys nothing and doubles the surface**; `.jpg` because lossy
+     re-encoding of original art is a quality loss discovered after it ships; `.psd` and `.dat`
+     because a working file and an unnamed blob are not deliverables.
+   - **Widening this list is a change to this section**, made here with a reason beside it, and it is
+     *not* the licence allowlist and not an operator gate — it is a format decision, whose cost when
+     wrong is a build reddening on correct work. That is why every member above carries its argument:
+     so the next person can disagree with the argument rather than with the list.
+2. **Embedded bytes, and its purpose is sharper now than when it was written.** No text-bearing file
+   under `resources/` carries a `data:image/` URI or a single base64-shaped literal longer than
+   **1,024 B**. It used to exist because clause 1 could not see image bytes pasted *inside* a file it
+   admitted. Now that images are admitted as files, its job is the load-bearing one: **an asset
+   embedded inside another file has no path of its own, therefore no manifest row, therefore no
+   provenance** — and it is invisible to Gate 1 by construction, because Gate 1 walks paths. Clause 2
+   is what forces every asset to be a file Gate 1 can see. It is also why `.svg` being text matters
+   twice: an SVG that inlines a `data:image/png;base64,…` blob is a raster asset wearing a vector
+   file's extension, and clause 2 is the only thing in this document that can tell them apart.
+   ⚠ **The clause must not fire on legitimate SVG.** Path data (`d="M12.5 3.2c-1.1…"`) is long,
+   mixed-case and full of digits, and a base64 heuristic loose about its alphabet reds on a complex
+   first-party drawing — **and a gate that reds on correct work gets switched off**, which costs more
+   than the gate ever bought. The base64 alphabet is `A–Z a–z 0–9 + / =` and nothing else; path data
+   is broken up by `.`, `-`, `,` and spaces, so a run of it is not a run of that alphabet.
+   `bin/asset-provenance.selftest.py` carries the discriminating pair — **a genuinely complex
+   first-party SVG passes, and an SVG with an inlined `data:image/…` blob fails** — because either
+   half alone is not evidence.
+   ⭐ **The 1,024 B ceiling has NO carve-out for the map formats, and clause 3 is why it needs none.**
+   Tiled's default layer encoding is base64, so widening this clause to `resources/` without clause 3
+   would put the two in collision over a correct map — and the obvious repair, exempting `.tmj`/`.tmx`
+   from this clause, **re-opens the hole this clause exists to close**: image bytes pasted into an
+   exempted map have no path either. Clause 3 takes the base64 away instead, so a correct map carries
+   no base64 run at all and there is nothing left to exempt.
+   ⚠ **And this clause's stated residue was understated, so it is corrected here rather than left to
+   be discovered.** A run must contain an uppercase, a lowercase **and** a digit to be called a
+   literal rather than a row of `// ======` dividers — a narrowing that is still right, because a
+   gate that calls a comment a picture gets switched off. What was wrong was the claim about what it
+   gives up: the code called the evasion *"a deliberate shortcut nobody takes by accident"*, and
+   **ordinary machine output takes it by accident.** Tiled's uncompressed base64 layer data is
+   little-endian `uint32` GIDs, so with small GIDs three bytes in four are zero and the run is drawn
+   from a narrow slice of the alphabet. Measured over a uniform 1,200-tile map at every GID in
+   `0..255`: the run is **6,400 B in all 256 cases**, 142 carry no digit and 28 no lowercase, and
+   **154 of the 256 pass this clause at any length** — including **GID 1, the first tile of the
+   tileset.** The verdict turns on which tile the artist happened to place, which changes no rendered
+   pixel. That is the finding that chose clause 3 over a carve-out: **an exemption would have had to
+   be reasoned against a number that is noise.** For the map formats clause 3 closes it; **for every
+   other text-bearing format the residue stands and is real**, and it is now stated at its true size.
+3. **Tiled artifacts state their own encoding, so the gate reads it.** Every `.tmx` / `.tmj` /
+   `.tsx` / `.tsj` under `resources/` stores its tile layer data **plainly, as CSV**, and **embeds no
+   tileset image**. The check reads the `encoding` and `compression` each tile layer declares, and
+   whether each `<image>` names a `source` — **out of the artifact itself.** There is no heuristic
+   here, no alphabet, and no ceiling to tune: every verdict is a value the file states about itself,
+   so nothing in this clause turns on a measurement that can move.
+   - **Why CSV.** Not because base64 is dangerous — because a base64 layer is a 25 KB run of clause
+     2's exact alphabet inside a file clause 1 admits, and the residue above shows clause 2 cannot be
+     relied on to judge it either way. Requiring the plain encoding removes the collision at its
+     source. The cost is file size and it is not a real cost here: the map is text either way, it is
+     read once at load, and a CSV map is reviewable in a diff, which a base64 blob is not.
+   - **Why the embedded image is the half that matters.** Tiled can store an image's *bytes* inside a
+     map or tileset instead of referencing a file. That is image bytes with **no path, therefore no
+     row, therefore no provenance** — clause 2's subject exactly, arriving in a format clause 2 was
+     never scoped to read. It is the **true positive** this widening buys, and it is the reason
+     exempting the map formats from clause 2 was the wrong shape of answer.
+   - **One admitted layer form per format, deliberately.** `.tmj` stores its GIDs as a JSON **array**
+     (the JSON format documents `csv` as the **default** for `encoding`, so a correct CSV layer need
+     not carry the key at all — the check therefore keys on the shape of `data`, which the format
+     does guarantee, and never requires the key); `.tmx` declares `encoding="csv"`. TMX has
+     a third, ancient form — one `<tile>` element per GID — which is **plain and is not a hazard**,
+     and is refused anyway for the reason clause 1 is an allowlist: one admitted shape per format,
+     each with a reason, beats a set nobody decided. **The refusal message says which reason applies**,
+     so nobody reads it as a security finding.
+   - **A file this clause cannot parse is a RED, never a skip.** A malformed `.tmj`, or a `.tsx` that
+     is really a React component, is a file clause 1 admitted and nothing understood — which is not a
+     file Gate 1 can see. Naming what it could not establish is the check's correct output, and the
+     [§ 11](#11-acceptance-tests) fixtures watch both parsers fail on their own.
+
+**What this change COSTS, named rather than left to be discovered.** The old Gate 2 was
+**self-verifying**: it asserted an absence, and an absence needs no truthful claim from anybody — the
+gate could see for itself that the tree held no art. The new one rests on a **row being true**. An
+implementer who vendors somebody's commercial art, drops it in as `.png` and writes `first-party` /
+`MIT` in its row **passes both gates**. That is a real loss of assurance and it is not recovered by
+anything below; what stands in its place is weaker and is worth naming exactly:
+
+- the **closed licence allowlist**, which refuses the honest-but-incompatible case even when the row
+  is true;
+- the closed **`origin`** set with its per-value checks, which cannot detect a lie but can detect an
+  **inconsistency** — the vendored asset whose author cell names somebody outside this project, or
+  whose source URL is external while its origin says `first-party`;
+- the lineage file's *what was deliberately not taken and why*
+  ([§ 10.2](#102-characters-the-munder-difflin-port)), which is a human statement and is the only
+  artifact here that addresses intent at all;
+- the **IP line** ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate));
+- and **review**, which is now doing more of the work than it was and should be told so.
+
+The honest summary is that these gates now prove **an asset was declared**, not that the declaration
+was true. That is a smaller claim than the one they used to make, and the reason to take the trade
+anyway is that the alternative — a gate that keeps asserting an absence the product no longer has —
+proves nothing at all while looking exactly as green.
+
+**The residue is named rather than implied.** No clause can refuse a generator that *fetches*
 upstream art at run time — nothing that inspects a tree can. That is refused by the lineage file's
 *what was deliberately not taken and why* ([§ 10.2](#102-characters-the-munder-difflin-port)) and by
 review, and it is said here so nobody reads Gate 2 as a proof that no upstream pixel can reach the
-screen.
+screen. **Clause 3 adds one residue of its own, and it is a small one:** it reads *structure*, not
+pixels. It can say that a map's layer data is stored plainly and that every `<image>` names a file;
+it cannot say that the file named is the file the row describes, and it has nothing at all to say
+about a map that is correct in every particular and references somebody else's tileset. That is
+Gate 1's row and review's job, as above.
 
 **The licence allowlist is closed: `CC0-1.0` and `MIT`.** Anything else — `CC-BY-*`, `CC-BY-SA-*`,
 any `-NC` or `-ND` term, "free for personal use", or an asset with no stated licence — is refused by
 Gate 1 and is an **operator decision to widen**, never an implementer's. The repository is MIT (D-02)
 and public (`PupFuzz/mezzanine`), so an asset whose terms are stricter than the repository's is a term
-the repository cannot honour.
+the repository cannot honour. **This is the one allowlist in this document the amendment did not
+touch**, and it is stated here, once, rather than restated beside the `origin` set and again beside
+the file-type list.
 
 ### 10.2 Characters: the munder-difflin port
 
+**The port is MACHINERY, not the look. Read this subsection as answering one question — *what did the port actually buy, now that its art
+is not the product's art?*** The answer is *the seed machinery and the generator algorithm*, and
+nothing in the port's licence work is undone by the art direction changing.
+
 - **What is ported is the generator, not its art.** The upstream project ships a procedural character
   generator under MIT *and* commercial tilesets under terms that do not permit redistribution. This
-  document's requirement is that the port takes the **algorithm and the MIT-licensed source only**, and
-  that the character tree contains no image file at all ([§ 10.1](#101-the-manifest-and-the-two-gates)
-  Gate 2).
+  document's requirement is that the port takes the **algorithm and the MIT-licensed source only**.
+  *(This bullet used to end "…and that the character tree contains no image file at all". That
+  sentence was true of the pixel-art design and is false of the ratified one; it is gone from here,
+  from Gate 2, from [AT-D3-12](#at-d3-12-asset-provenance-gates-bite), from `docs/ATTRIBUTION.md`,
+  from `resources/characters/LINEAGE.md` and from `bin/asset-provenance.py`'s module docstring, which
+  is the whole of the population that carried it.)*
+- **The port's pixel art is INTERIM PLACEHOLDER art**, superseded by
+  [§ 10.4](#104-the-art-direction-as-a-specification). It renders today, from the seat key, in a plain
+  browser; it is not the look this product ships. **No rework of card#7340's lineage or licence work is
+  owed by that** — the obligations below are obligations of the *port*, and the port is still here.
+- **The identity property is unchanged and is the load-bearing half.** A character's appearance is
+  derived from `(install_id, seat_id)` ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so a
+  seat looks the same on every browser and every reload **with nothing stored** — the same property,
+  and the same reasoning, as the desk slot function. That property belongs to the *seed machinery*,
+  which the art direction does not touch: [§ 10.4](#104-the-art-direction-as-a-specification) changes
+  what is drawn, never what selects it.
 - **The port carries a lineage file** — `resources/characters/LINEAGE.md` — recording the upstream
   repository URL, the **commit SHA** the port was taken from, the files ported, the MIT copyright line
   and licence text as required by MIT, and, explicitly, **what was deliberately not taken and why**.
-  The last item is the one that makes a later reader able to tell a port from a fork.
-- **The MIT notice ships with the distribution**, in `ATTRIBUTION.md` and in the lineage file. MIT's
+  The last item is the one that makes a later reader able to tell a port from a fork, and it is
+  **unchanged in every particular** — it is also, now, one of the few things standing where Gate 2's
+  absence used to stand ([§ 10.1](#101-the-manifest-and-the-two-gates)).
+- **The MIT notice ships with the distribution**, in `docs/ATTRIBUTION.md` and in the lineage file. MIT's
   obligation is to reproduce the copyright notice and permission notice; a link is not a reproduction.
-- **The seed is the seat's identity.** A character is generated from `(install_id, seat_id)`
-  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so a seat looks the same on every browser and
-  every reload without any stored appearance — the same property, and the same reasoning, as the desk
-  slot function.
-- **The upstream repository and commit are not recorded anywhere in this repository**, so the port
-  cannot begin until they are ([§ 14](#14-open-questions-for-the-review-loop) item 7). Stating that is
-  the point: an implementer holding only this document must not guess which project D-07 names.
+- **The upstream repository and commit are recorded** — closed by card#7340 on 2026-08-25 and carried
+  in the two files above ([§ 14](#14-open-questions-for-the-review-loop) item 7's generator half).
+  What is still open there is the **tileset**, not the generator.
 
 ### 10.3 The floor map
 
 - **Tiled** (`.tmx`/`.tmj`) is the map format, per `docs/PLAN.md § 3`'s P3 acceptance line ("CC0 tiles;
   Tiled map"). It is the one format choice this document makes, and it is inherited from the plan
   rather than minted here.
+- **The map is exported with the tile layer format set to CSV, and the tileset references its image by
+  path rather than embedding it** — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 fails the
+  build otherwise. Both are Tiled export settings, not code.
 - The map declares an **object layer named `desks`** whose objects are the slots of
   [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The shipped `aimla` map
   declares **12**.
 - The map declares nothing about state. No slot is bound to a `seat_id`, because a map that named seats
   would be a second home for identity and would have to be edited every time a seat is provisioned.
+
+### 10.4 The art direction, as a specification
+
+**This subsection exists because until it did, the only carrier of the ratified look was an
+artifact — `docs/design/floor-preview/`, ratified by the operator on 2026-08-27 — and an artifact is
+not a specification.** A reference artifact answers *what does it look like*; it cannot answer *what
+may I change*, and an implementer holding only D3 (the standalone-implementer standard, D-14) could
+read every pixel of it and still not know which of them are rulings. Every bullet below is an
+**operator ruling** of the 2026-08-26 / 2026-08-27 sessions, not a suggestion, and the reference
+artifact is the worked example of it.
+
+- **Visual target: high-resolution, whimsical, modern, warm** — Ghibli-adjacent in *feel*, never in
+  content ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)). **Not pixel art.** The look
+  must be **resolution-independent**, which is not a style note but the capability
+  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) requires and the reason `.svg` heads
+  [§ 10.1](#101-the-manifest-and-the-two-gates) Gate 2's admitted formats: the camera zooms from a
+  whole building to one desk, and art that resamples on the way is art that is wrong at every zoom but
+  one.
+- **The seeded appearance space, and it is a space rather than a palette.** Appearance is drawn from
+  `fnv1a32(install_id, seat_id)` ([§ 3.2](#32-the-desk-slot-function)'s hash, already published here),
+  one independent draw per field, across **ten** dimensions: **7** silhouettes × **16** hues ×
+  **5** size buckets, plus pattern (**3**), ears (**4**), sprout (**5**), eye style (**4**), mouth
+  (**4**), accessory (**5**) and posture tilt (**3**). The operator's ruling is what makes this a
+  requirement rather than a flourish — *"we need more different characters, not just different colors.
+  Each agent and subagent needs their own appearance and personality"*, and then *"the AIMLA floor has
+  a repeated body. Be more creative on the different bodies and colors."* **Colour alone is not
+  variety**, and a body repeated across a floor is the defect that ruling names.
+- **Interns seed from the parent seat plus the intern index** — the key `seat~internN` — so siblings
+  at one side table differ from each other and from their seat
+  ([§ 8](#8-interns--subagent-rendering-and-the-cap)). One sprite **per open subagent**; the cap and
+  its arithmetic are § 8.1's and are **not** changed by anything here.
+- ⭐ **The salt is a design choice, and this is the rule that must survive this document's author.**
+  The per-field salts (the reference's `s18` for silhouette, `s3` for hue) were **searched against the
+  real roster** so that the known fleet renders all-distinct bodies and hues. **Determinism is
+  untouched** — one salt, picked once, fixed forever; the function stays pure and the appearance stays
+  a function of the key alone. **If the operator reports visible repetition, the response is to widen
+  the space or re-pick the salt — never to special-case a seat.** A special-cased seat is a *stored
+  appearance wearing a disguise*: it breaks [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s
+  property that two browsers agree with nothing stored, and it breaks it invisibly, because the seat
+  that was special-cased looks right on the machine where the special case lives.
+- **The collision acceptance is MEASURED, not asserted.** Full-tuple appearance collisions must be
+  vanishingly rare at fleet scale — call it **50** seats. What can be computed from the reference's
+  own field cardinalities is the size of the space: **8,064,000** distinct tuples
+  (7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3), and, **as an estimate that assumes the ten draws are
+  independent and uniform**, a birthday expectation of **1** collision in about **6,583** fleets of
+  50 seats. **That estimate is not the acceptance.** The assumption it rests on is exactly what a
+  *searched* salt perturbs, and a searched salt is what the bullet above requires — so the figure the
+  build owes is a **measurement**: run the shipped generator over the real roster and over a synthetic
+  roster at 50 seats, count full-tuple collisions, and record the count with the roster it was
+  measured against. State the measurement; do not restate the estimate as though it were one.
+- **The seeded vibe line.** A short flavour line in the drill-down, drawn from the same seed — the
+  operator's *"each agent and subagent needs their own appearance and personality"*. It is
+  **appearance-class text**: [§ 5.4](#54-what-is-never-rendered) admits it as a rendering of identity
+  rather than a fact about state, and [§ 5.5](#55-the-clients-own-narration) binds it with the rule it
+  shares with the client's own narration. Concretely, three obligations, and the first is the one a
+  reader arriving from § 5.4 must find here too: **it is labelled on the page as seeded flavour**, so
+  nothing about it can be mistaken for wire data; it **never drives a pose, a currency label, a badge
+  or an animation**; and it **never changes with state** — a line that moved when `render_state` moved
+  would be state-bearing text with no field, which is the defect § 5.4 exists to refuse. **Vibe
+  collisions between seats are expected and fine** (the list is short and the line is flavour);
+  **appearance** collisions on the full tuple are not, which is what the bullet above measures.
+- ⭐ **The LIVE WALL CLOCK and the day/night SKY are admitted — driven by `feed.heartbeat`, which is
+  the operator's ruling of 2026-08-27 on card#7341 and is [A17](#62-the-animation-table--the-closed-set)'s
+  row.** The reference moves clock hands and re-renders the sky on a **10-second interval from the
+  viewer's local clock**, and *that* form stays forbidden: it is
+  [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s **second** forbidden
+  form, motion driven by wall-clock time, and that bullet is not widened by this ruling. What changed
+  is the **driver**, not the rule. **The three options the ruling chose between are recorded at
+  [decision 21](#13-decisions-taken-revisable-at-review)**, which is where the reasoning lives; what
+  belongs here is what the art direction may draw. The clock and the sky are **elements of the room**,
+  drawn where a floor's room is drawn — the floor screen, whose own enumeration of what it contains
+  names them ([§ 4.2](#42-the-floor)); the lobby's plates carry a summary rather than a room and draw
+  no clock at all, and § 4.1 says what governs their sky if they have one. They **step on each
+  delivered heartbeat**, so on a dead feed they stop with the rest of the page. **A build must not
+  ship the reference's interval verbatim**, and must not add a second hand: both are
+  [§ 6.2](#62-the-animation-table--the-closed-set)'s to state and the row's five constraints say why.
+- ⭐ **The seat's task is drawn as a THOUGHT BUBBLE over the character, and that is a ruling rather
+  than a drawing choice** — the operator's *bubbles of people thinking what task they're working on*,
+  admitted by card#7897 as a form amendment. An implementer holding the reference artifact alone could
+  read the bubble as decoration an ordinary text chip would satisfy, which is the misreading this
+  subsection exists to prevent. **What may be drawn freely** is the bubble's shape, its tail, its
+  palette and its type. **What may not**: it carries no motion of any kind, it replaces the chip
+  rather than joining it, a null task draws nothing, and it is not drawn on a desk with no character
+  to anchor to. Those four are [§ 5.1](#51-the-desk)'s, stated there in full with the upstream
+  behaviour that was refused and why, and this bullet states none of them a second time.
+- **What is deliberately NOT specified here:** the palette's hex values, the drawing itself, the file
+  layout of the art, and the renderer. [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s
+  non-goal stands — **no framework, bundler or state library is specified**, and this subsection does
+  not sneak one in by naming SVG: SVG is a *file format on the asset side*, admitted by
+  [§ 10.1](#101-the-manifest-and-the-two-gates) and required by
+  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s property, not a rendering stack.
+
+### 10.5 The IP line — stated, and unenforceable by gate
+
+**Verbatim operator direction (card#7898):** drawing **from** the Pokémon or Ghibli aesthetic is fine;
+shipping actual Pokémon or Ghibli **characters** is IP infringement and never ships. Generalised,
+because the franchise named is an example and not the rule: **no character owned by another
+rights-holder ships in this product, whatever the franchise, however transformed the drawing.**
+Original creatures only — or commissioned or licensed art carrying its own provenance row
+([§ 10.1](#101-the-manifest-and-the-two-gates)).
+
+**No gate can test this, and saying so is part of stating it.** Nothing in
+`bin/asset-provenance.py` — nothing that inspects file types, hashes, licence identifiers or an
+`origin` column — can look at a drawing and recognise somebody else's character in it. A row reading
+`first-party` / `MIT` over a traced Pikachu passes every check in this document. **Its enforcement is
+review**, by a human who looks at the picture, and that is the whole of it. This is written down
+rather than left implicit for the reason [§ 10.1](#101-the-manifest-and-the-two-gates)'s cost
+paragraph gives: **a rule presented as gate-enforced when it is not is worse than one honestly
+labelled**, because the next reader sees a green build and concludes the question was asked.
 
 ---
 
@@ -1614,8 +2445,28 @@ one** `entered` row and **at most one** `left` row, and a `left` row's `episode_
 | `class` | `edge` | `held` | `held` |
 | `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
 | `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
-| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the three states with no motion by design (`idle`, `stalled`, `unknown`), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
+| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the **two** states with no motion by design (`stalled` and `unknown` — `idle` was the third until [A6](#62-the-animation-table--the-closed-set) gained its sleeping loop), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
 | `at` | the **corrected server-clock instant** the row was written ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, applied) — the client's own record of when it drew this, labelled as the client's own and rendered on no screen | as `edge` | as `edge` |
+
+**Two rows in [§ 6.2](#62-the-animation-table--the-closed-set) belong to no seat, and the tuple says
+what they carry rather than leaving an implementer to guess it twice.**
+[A14](#62-the-animation-table--the-closed-set) draws on the status strip and
+[A17](#62-the-animation-table--the-closed-set) draws the room; both fire on a `feed.heartbeat` and
+neither renders anything about any seat. On their rows **`seat_id` is `null`**, and **`install_id`
+names the channel the causing heartbeat arrived on** — the heartbeat is **per channel**
+([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)), so that field is always available and is
+provenance for `cause` rather than a claim that anything happened to that install's desks. A client
+holding four installs therefore writes up to four such rows per 15 s window, one per channel, each with
+its own `episode_id`, and that is what the log should show: A17 **fired** four times because four
+messages arrived — a firing writes a row, where the setting of
+[§ 6.5](#65-a-snapshot-never-animates) writes none. The two are covered by **one** line here because
+they are one under-specification —
+A14 has carried it since the table had one message-fired row, and it is **reachable today rather than
+theoretical**: [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched)'s render
+half replays `fx-membership` with the animation log collected, and that fixture's third leg delivers a
+`feed.heartbeat` — so a conformant client writes an A14 row (and now an A17 row) into a log that had
+nothing to say what two of their fields carry. That test's own GREEN is scoped to
+[A1](#62-the-animation-table--the-closed-set) and is unaffected by them.
 
 A **held** row is written when the render is **entered** and again when it is **left**, so the log
 records which states a desk held and for how long — and *for how long* is
@@ -1644,7 +2495,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-membership` | **three legs.** (a) a delta for a seat absent from `fx-snapshot-4`; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on that install's channel **during** the ADMIT (b) round trip, at `state_version` one above what (b) returns |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped |
 | `fx-refusals` | the four responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, a `fleet.health` with `db: "down"`, and a `fleet.reload` |
-| `fx-nulls` | **two** seats, because the **36** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 36, and neither covers them alone |
+| `fx-nulls` | **two** seats, because the **36** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 36, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
 
 ### AT-D3-1 no animation without its event
 
@@ -1716,7 +2567,12 @@ all.*
   [D2 § 8.3.1](FLEET-STATE.md#831-worked-delta): `changed` is the patch's keys). A predicate demanding
   `render_state` in that delta would fail a correct client on the fixture it replays.
 - **RED:** add an ambient idle-breathing loop to the character sprite — the single most natural thing to
-  add to a pixel-art office — and re-run. The log gains rows whose `animation_id` has no row in
+  add to an office full of creatures, and **more tempting since [A3](#62-the-animation-table--the-closed-set)
+  and [A4](#62-the-animation-table--the-closed-set) gained a blink**: the difference between the
+  ratified blink and this defect is not what it depicts, it is that one is **held by
+  `render_state`** and the other runs always
+  ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) — and re-run. The log
+  gains rows whose `animation_id` has no row in
   [§ 6.2](#62-the-animation-table--the-closed-set) at all, and whose `cause` is `null` under either
   class's rule — there is no message that caused it and no delivered field holding it — and the test
   fails twice over.
@@ -1744,8 +2600,11 @@ all.*
   work was **killed**. That is the false idle, arriving through the render layer after D1 and D2 both
   removed it from theirs.
 - **Discriminating control:** `fx-snapshot-4`'s ordinary seat driven to a clean `turn.end` **does**
-  render `idle` and does log an **A6 `held` `entered` row** (`motion: false` — A6 has no motion by
-  design, opening a fresh `episode_id`), preceded by the **A3 `left` row** whose cause is that same
+  render `idle` and does log an **A6 `held` `entered` row** (`motion: true` under ordinary motion —
+  A6 holds the sleeping loop since the 2026-08-27 amendment, and this control asserted
+  `motion: false` while it was the *no-loop* row; the value is what
+  [§ 6.2](#62-the-animation-table--the-closed-set) says, not a constant — opening a fresh
+  `episode_id`), preceded by the **A3 `left` row** whose cause is that same
   `turn.end` delta's `state_version` and whose `episode_id` is the one A3's `entered` row opened at
   the snapshot apply — assert the pairing, not merely that both rows exist, because two rows in the
   right order with unrelated episodes is a log that cannot say the loop this seat was running is the
@@ -1812,12 +2671,28 @@ all.*
   drawn static; asserting the absence of a row instead would pass a client that never rendered the seat
   at all, and asserting it over *every* `held` row instead would be satisfied for free by the exit
   rows, whose `motion` is `false` by definition.
+  **Plus the sleeper assertion, which this test owns because it is a degradation claim:** the `stale`
+  and `offline` desks render the **empty chair** and **no character at all** — specifically **not** the
+  sleeping figure [A6](#62-the-animation-table--the-closed-set) draws for `idle`
+  ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) — asserted against a `live` `idle` seat
+  rendered in the same run, so the test compares the two pictures rather than describing one. Assert
+  it on the **render**, not on the animation log: a client that drew a sleeper on a `stale` desk and
+  logged nothing would satisfy a log-scoped assertion for free.
 - **RED — render the axis, not the collapse:** switch the desk on `activity_state` instead of
   `render_state` → the `stale` and `offline` seats render `idle` (their activity state is preserved
-  underneath), which is `D2-MUST` #2 broken at the last layer after two documents held it.
+  underneath), which is `D2-MUST` #2 broken at the last layer after two documents held it. **Under the
+  ratified art this RED is now also the sleeper defect**, and that is the reason it is worth watching a
+  second time: the `stale` desk does not merely mislabel itself, it draws a character **peacefully
+  asleep at a desk nobody has heard from in eleven minutes**, which is the most reassuring possible
+  rendering of the fleet's worst state.
 - **Second RED — the frozen fold:** drop the `fold_lag` treatment → a desk showing two-minute-old work
   beside a fresh receipt age, with every instrument on the page agreeing that everything is fine. This
   is [AT-D2-21](FLEET-STATE.md#at-d2-21-a-frozen-fold-cannot-look-healthy)'s defect at the render layer.
+- **Third RED — the sleeper on a dark desk:** render `stale` and `offline` with A6's sleeping pose
+  instead of the empty chair, keeping every label correct → the labels still read *no data since …*
+  and the picture says the seat is resting. Watch it: it is the one defect in this test a viewer
+  standing back cannot catch, because at floor-reading distance the label is the part they are not
+  reading.
 - **Discriminating control:** the `live` `working` seat of `fx-snapshot-4` renders full colour, with
   motion, and no currency label — so the test measures degradation and not a treatment applied to
   everything.
@@ -1827,14 +2702,68 @@ all.*
 *Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the floor half
 at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the panel half at step 10.*
 
-- **Build — the floor half:** apply `fx-snapshot-4`, deliver heartbeats for 60 s of simulated time,
-  then deliver nothing for 60 s more. **Reads:** the **status strip**, the **age readout**, the
-  **animation set** ([A14](#62-the-animation-table--the-closed-set)'s pulse).
+- **Build — the floor half:** apply `fx-snapshot-4`, deliver heartbeats at D2's 15 s cadence for 60 s
+  of simulated time, then deliver nothing for 60 s more. Run it twice: once ordinarily, and once under
+  `prefers-reduced-motion: reduce`. **The simulated viewer clock starts at `HH:MM:30`, and that is a
+  fixture fact rather than a detail:** the four heartbeats then land at `:45`, `HH:MM+1:00`, `:15` and
+  `:30`, so the heartbeat phase **crosses exactly one minute boundary** — which is what makes the
+  advance assertion below both satisfiable by a correct client and capable of failing a wrong one
+  ([§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 1: this clock has **no second
+  hand**, so its rendered value can change at most once a minute and a phase inside one minute would
+  assert nothing). ⭐ **The polls the client issues during the silence are ANSWERED by the stub**, each
+  with a current snapshot, and that is load-bearing rather than harness housekeeping: a poll response
+  is the one render [§ 6.5](#65-a-snapshot-never-animates) singles out as never setting the room, so a
+  silence in which the polls go unanswered exercises none of that rule and the freeze assertion below
+  passes on a client that re-sets its clock every 10 s of a dead feed. **Reads:** the **status strip**,
+  the **age readout**, the
+  **animation set** ([A14](#62-the-animation-table--the-closed-set)'s pulse and
+  [A17](#62-the-animation-table--the-closed-set)'s room render), the **floor layout**.
 - **GREEN — the floor half:** at 45 s of silence the status strip reads **feed down — polling**,
   [A14](#62-the-animation-table--the-closed-set)'s
-  pulse has stopped, a `GET /api/fleet/snapshot` is issued and repeats every 10 s, and **every desk's
+  pulse has stopped — **in the `reduce` run there is no pulse to stop and the assertion is on that
+  row's reduced form instead**, which the room bullet below states — a `GET /api/fleet/snapshot` is
+  issued and repeats every 10 s, and **every desk's
   quiet-age readout has continued to grow throughout** — assert the rendered age strings, not the
   internal timestamps.
+- ⭐ **GREEN — the floor half, the establishing render, and the read is taken BEFORE the first
+  heartbeat:** immediately after `fx-snapshot-4` is applied and before any heartbeat is delivered, the
+  clock's accessible text reads `HH:MM` — the minute the simulated viewer clock holds at its `HH:MM:30`
+  start — and **agrees with the hands**, which the same render set
+  ([§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 5: the text is set in the same
+  render that sets the hands). **The moment of the read is the assertion.** `fx-snapshot-4` establishes
+  a live feed, so [§ 6.5](#65-a-snapshot-never-animates) **sets** the room with **no A17 firing** and
+  no animation-log row; a test whose first read of the text falls inside the heartbeat phase cannot
+  tell a client that set the text on that establishing render from one that left it unset until a
+  firing arrived, because by then a firing has set it either way. The advance half below then runs from
+  a value that already exists, which is what keeps its *advances exactly once* a statement about the
+  minute rather than about the text appearing for the first time.
+- **GREEN — the floor half, the frozen room, and this is the assertion the whole design of
+  [A17](#62-the-animation-table--the-closed-set) is for:** **what is read is the clock's accessible
+  text** — its `aria-label` or `<title>`, the one machine-readable rendering of where the hands are
+  ([§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 5), never an internal timer's state:
+  a client whose clock element is still being repainted from a live source is exactly what this asserts
+  against, and only a rendered value can tell the two apart. **The advance half:** across the four
+  heartbeats of the build's phase the rendered minute advances **exactly once** — on the heartbeat that
+  crosses `HH:MM+1:00` — and does **not** move on the other three, nor on any simulated second between
+  heartbeats. Both halves of that sentence are load-bearing: the *once* is what a correct
+  minute-resolution clock does — assert *advances on every heartbeat* instead and a conformant client
+  fails, with the second hand constraint 1 refuses as the only repair — while the *not on the other
+  three, and not between* is what catches a clock rendering anything finer than the minute or moving on
+  a schedule of its own. **What it does not catch is a timer whose phase happens to coincide with the
+  boundary, and that is the freeze half's job**, which is why the two are one test rather than two.
+  **The freeze
+  half:** after the feed stops, the rendered minute is **identical at every subsequent read, out to the
+  end of the run, including across the `HH:MM+2:00` boundary the silence spans**, and the sky is the
+  same phase it held at the last heartbeat. **The two directions are one test on purpose** — a client
+  that never advanced the clock at all would satisfy the freeze and prove nothing, and the advance half
+  is what stops it. Under `prefers-reduced-motion: reduce` the same advance happens with **no
+  transition** — the hand jumps, the sky steps — and the freeze is identical, which is
+  [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s requirement that the
+  reduced form carry the same fact; in that run [A14](#62-the-animation-table--the-closed-set)'s
+  reduced form is asserted with it — the *last message HH:MM:SS* readout its row substitutes for the
+  pulse **stops updating** at the last heartbeat and reads that instant for the rest of the run, which
+  is A14's own fact in the form § 6.4 requires and the only place in this document it is asserted.
+  **Assert the rendered values throughout, never an internal timer's.**
 - **Build — the panel half:** the same run **with the drill-down open on `aimla-pm`**. It is a second
   half rather than a line in the first because the panel does not exist until step 10, and a test
   gated at step 8 that read it would be a gate on an artifact nobody has built. **Reads:** the
@@ -1848,8 +2777,52 @@ at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the p
   exactly like a fleet where nothing has happened.
 - **Second RED — the optimistic strip:** leave the indicator on *live* while polling → a polled floor
   claiming to be a live one.
+- ⭐ **Third RED — the clock back on a timer, which is the one a maintainer's *fix* will write:** drive
+  [A17](#62-the-animation-table--the-closed-set) from a 10-second interval off the viewer's clock — the
+  ratified reference's own mechanism, and the obvious repair for a clock that "looks frozen" — and
+  re-run. The clock keeps ticking through the 60 s of silence, so the GREEN's *identical at every
+  subsequent read* fails **at the `HH:MM+2:00` boundary the silence phase spans** — and *that boundary
+  is why the silence phase is a minute long*: a minute-resolution clock on a timer renders the same
+  minute as a frozen one until the next boundary, so a shorter silence would have let the timer version
+  pass the freeze assertion, which is the one defect this test exists to catch; **the room never goes
+  still, and the
+  most legible feed-down signal on the page is gone while every other assertion in this test still
+  passes.** That last clause is why this RED is named here rather than left to
+  [AT-D3-1](#at-d3-1-no-animation-without-its-event): the timer version writes an
+  [A17](#62-the-animation-table--the-closed-set) row for an animation that *does* have a table row, so
+  the closed-set test is satisfied by it, and the only thing that catches it is an assertion about what
+  happens when nothing arrives. **Watch this one fail before trusting the freeze** — a clock asserted
+  frozen by a client that never moves it is a decoration reporting that the harness ran.
+- ⭐ **Fourth RED — the room set on the poll, which is the same defect wearing the word *setting*:**
+  set the wall clock and sky from each answered poll response during the silence — the reading an
+  earlier revision of [§ 6.5](#65-a-snapshot-never-animates) permitted by listing *a poll response*
+  among the renders that set the room — and re-run. The client is otherwise correct: it stops firing
+  A17, the strip reads **feed down — polling**, the pulse has stopped, and every other assertion in
+  this test still passes. But the room advances every **10 s** for the whole feed-down state, so the
+  freeze fails at the `HH:MM+2:00` boundary exactly as the timer version does. **The two REDs are the
+  same regression reached by two different doors**, which is why both are named: the third comes in
+  through the animation table, the fourth through the recovery path, and a client repaired against
+  only one of them is still a client whose clock never stops.
+- ⭐ **Fifth RED — the accessible text driven by the firing alone, which is what this document asked
+  for until card#7936:** set the clock's accessible text in the A17 heartbeat handler only, leaving
+  [§ 6.5](#65-a-snapshot-never-animates)'s establishing render to move the hands by themselves — the
+  reading [§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 5 permitted when it named the
+  firing as the only setter — and re-run. The hands are right at every read, the advance half passes,
+  the freeze half passes, and **every other assertion in this test still passes**: the only one that
+  fails is the establishing-render GREEN above, and it fails at the one read taken before any firing
+  has happened, where the hands show `HH:MM` and the text shows nothing. **Watch this one fail before
+  trusting the agreement assertion, and watch *where* it fails** — from inside the heartbeat phase a
+  client that sets the text on both paths and one that sets it on neither are indistinguishable, so an
+  agreement assertion read only there is a decoration reporting that the harness ran. This RED is also
+  the reason the assertion is worth its line: the same client, reconnected rather than cold-started,
+  holds hands on the reconnect minute against a text still carrying the pre-disconnect minute, and
+  [§ 9](#9-failure-paths-and-their-observables) F1 then freezes the two at **different** wrong times.
 - **Discriminating control:** deliver heartbeats every 15 s for the whole run → the indicator never
-  leaves *live* and no poll is issued.
+  leaves *live*, no poll is issued, and the wall clock **advances once per minute throughout — on each
+  heartbeat that crosses a minute boundary and on no other, and never between heartbeats**, which is a
+  minute-resolution clock still being driven ([§ 6.2](#62-the-animation-table--the-closed-set) A17
+  constraint 1). Stated that way, the control discriminates: the run that freezes and the run that does
+  not differ in the rendered minute, not merely in whether the harness delivered anything.
 
 ### AT-D3-7 a delta gap resyncs exactly one seat
 
@@ -2006,36 +2979,77 @@ observable on **no** surface built before step 10.*
 *Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the manifest
 half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 0, the lineage half at
 step 1. The gates themselves are step 0 and must exist before any asset does; the **lineage file**
-and the **character tree** are step 1's artifacts, so a lineage assertion at step 0 asserts the contents of a
-file no step has yet created — and an empty character tree satisfies Gate 2's absence clause for
-free, which is why that clause is asserted by the half that has a tree to read.*
+and the **character tree** are step 1's artifacts, so a lineage assertion at step 0 asserts the
+contents of a file no step has yet created.*
+
+*⚠ **Its RED set was rebuilt on 2026-08-27** with [§ 10.1](#101-the-manifest-and-the-two-gates)'s
+gates. The old third RED planted a `sprites.webp` in the character tree to fail an **absence** clause
+that no longer exists; leaving it would have left this test passing over a rule the document had
+deleted — a green that reports the harness ran. What replaces it tests the rule that is actually
+there: not *is there art*, but **does every asset declare where it came from**.*
 
 - **Build — the manifest half:** run the asset gates against the repository
   ([§ 10.1](#101-the-manifest-and-the-two-gates)). **Reads:** the **provenance gates**.
-- **GREEN — the manifest half:** every asset file has an `ATTRIBUTION.md` row; every row's SHA-256
-  matches its file; every licence identifier is in the allowlist.
-- **Build — the lineage half:** run the same gates once the port has landed
-  ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
+- **GREEN — the manifest half:** every asset file has a `docs/ATTRIBUTION.md` row; every row's SHA-256
+  matches its file; every licence identifier is in the closed allowlist; and **every row's `origin` is
+  one of the two members and is consistent with the row's own source URL** — `first-party` against an
+  in-repo reference, `licensed` against a genuine external one.
+- **Build — the lineage half:** run the same gates over the repository, now that the ported character
+  tree exists ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
   **character tree**.
 - **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
-  notice; and the **character tree** the port has just written contains **no** image file — Gate 2's
-  absence clause, asserted here rather than at step 0, where a tree that does not exist yet satisfies
-  it for free.
+  notice; and every file under **`resources/`** carries an admitted extension, no embedded image
+  bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path —
+  Gate 2's three clauses, asserted here rather than at step 0, because a tree that does not
+  exist yet satisfies all three for free.
 - **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
   the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
   upstream commit nobody recorded is a port nobody can tell from a fork
   ([§ 10.2](#102-characters-the-munder-difflin-port)).
 - **RED — the unlisted asset:** add a tile with no row → Gate 1 fails naming the path. **Second RED —
-  the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256 check fails.
-  **Third RED — the vendored character, both clauses:** drop a `sprites.webp` into the character tree
-  — a format an image-extension *denylist* would not have listed → Gate 2 clause 1 fails naming the
-  path; then paste a 40 KB base64 PNG into `characters/atlas.ts`, a file clause 1 admits → clause 2
-  fails on the embedded literal. Both halves are watched, because the first is what an earlier draft of
-  this gate reduced to and the second is the shortcut that draft left open.
-  **Fourth RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
+  the undeclared picture:** drop a `creature.svg` into the character tree with **no manifest row** →
+  Gate 1 fails naming it. This is the RED the amendment is *for*: under the old gate the file was
+  refused for being an image, so the manifest was never the thing tested; now art is admitted and the
+  **row** is the only thing standing between it and the build.
+  **Third RED — the `origin` column, three ways, because a typed column with one RED is a column
+  tested at one value:** a row with **no** `origin` → Gate 1 fails naming the missing cell; a row whose
+  `origin` is `vendored` — a plausible third word nobody decided → fails as outside the closed set;
+  and a row claiming **`first-party`** while its source URL points at somebody else's repository →
+  fails on the contradiction, which is the only lie in this class a machine can catch at all
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)'s cost paragraph says why the rest cannot be).
+  **Fourth RED — the swapped bytes:** replace a listed file's contents, leaving the row → the SHA-256
+  check fails. **Fifth RED — the unanticipated format:** drop a `sprites.avif` into the character tree
+  **with a complete, honest manifest row** → Gate 2 clause 1 fails naming the extension. The row being
+  *correct* is the point of this one: it tests the file-type allowlist and nothing else, where the old
+  `sprites.webp` case tested an absence that has been repealed.
+  **Sixth RED — the embedded asset:** paste a 40 KB base64 PNG into `characters/atlas.ts`, a file
+  clause 1 admits → clause 2 fails on the embedded literal; **and** inline a
+  `data:image/png;base64,…` blob inside an otherwise-legitimate `.svg` → clause 2 fails again, on the
+  format the amendment newly admits. Both are watched: an embedded asset has no path, so no row, so no
+  provenance, and it is invisible to Gate 1 by construction.
+  **Seventh RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
   fails.
-- **Discriminating control:** the clean tree passes all four, so the gates are known to be capable of
-  reporting *provenance is complete*.
+  **Eighth RED — the base64 layer, which is Tiled's own export default:** export `aimla.tmj` with the
+  tile layer format left at base64 → clause 3 fails naming the layer and its encoding, and the same
+  defect in `aimla.tmx` fails too, on a different parser. Watched, because clause 2 **cannot** be
+  trusted to catch it: a base64 run drawn from an alphabet with no digit passes the entropy heuristic
+  at any length, which is the whole reason clause 3 reads the declared encoding rather than the bytes
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)).
+  **Ninth RED — the embedded tileset image, the true positive of this clause:** give `office.tsx` an
+  `<image>` with no `source=` and the PNG's bytes inline → clause 3 fails naming the tileset, and the
+  `data:` URI spelling of the same thing in a `.tsj` fails identically. It is the same hazard as the
+  sixth RED — an asset with no path has no row and so no provenance — arriving in the one file format
+  where the embedding is a legitimate Tiled feature rather than a mistake.
+- **Discriminating controls — three, and the second is the one that keeps this gate switched on:**
+  *(a)* the clean tree passes every check, so the gates are known to be capable of reporting
+  *provenance is complete*; *(b)* **a genuinely complex first-party `.svg` — long, mixed-case,
+  digit-dense path data — PASSES clause 2.** Without (b) the sixth RED is satisfied by a gate that
+  refuses every SVG ever drawn, and **a gate that reds on correct work gets disabled**, which is a
+  worse outcome than the one it was protecting against. *(c)* **a correct CSV map set — `.tmj`, `.tmx`
+  and `.tsx` together — PASSES clause 3**, and the `.tmj` in it carries **no `encoding` key at all**,
+  which is the shape the format spec's default permits and the harder one for the check to accept. Without
+  (c) the eighth and ninth REDs are satisfied by a clause that refuses every Tiled map ever exported.
+  All three run in `bin/asset-provenance.selftest.py`; any one alone is not evidence.
 
 ### AT-D3-13 every state is legible without motion
 
@@ -2054,12 +3068,27 @@ building. It is not split, because no half of it is observable earlier.*
   of `turn_killed_by_clear`) — two, and the ten are covered. **Reads:** the **desk render**, the
   **animation set**, the **animation log**.
 - **GREEN:** all **ten** `render_state` members are pairwise distinguishable from the static images
-  alone, and each carries its label line; every animation row's reduced-motion form is what appears;
+  alone, and each carries its label line — **including the `idle` / `stale` / `offline` triple, named
+  here because it is the pair-set the ratified art makes hardest and the one
+  [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) turns into a rule**: `idle` is the **static
+  slumped sleeper** and `stale` and `offline` are the **empty chair**, so with the z's switched off
+  the difference is a character being there or not, and the assertion is that the three static images
+  differ, not that three labels do; every animation row's reduced-motion form is what appears;
   the log gains **no `edge` row**, and every `held` row with **`phase: entered`** reads
   **`motion: false`** — which is the assertion that the reduced-motion form was *selected*, where an
   empty log would equally have reported a renderer that drew nothing at all. The phase scope is
   load-bearing rather than pedantic: a `left` row's `motion` is `false` by definition, so a predicate
   over *every* `held` row is satisfied in part by rows that prove nothing about reduced motion.
+  **And *every animation row* means every row these fixtures exercise — the ten states' rows. It does
+  not reach [A17](#62-the-animation-table--the-closed-set)**, whose room render belongs to no state and
+  which no fixture here fires, because none of them delivers a heartbeat; A17's reduced-motion form is
+  asserted where its driver actually runs, in
+  [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s floor half, which replays this test's
+  `reduce` condition over a heartbeat feed. **Scoping the sentence is the point of writing it:** a
+  claim that reads as total over a table it never touched is how an unasserted row goes unnoticed —
+  and [A17](#62-the-animation-table--the-closed-set) is not the only row outside this test's reach:
+  [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) names the five that no test
+  reaches at all, so this sentence is not read as *everything else is covered*.
 - **RED:** distinguish `working` from `idle` by motion alone — the same pose, one animated — and the two
   become one desk in a screenshot, which is how most of this floor will be reviewed and how all of it
   will be read by anyone who has motion disabled.
@@ -2079,7 +3108,9 @@ across the two surfaces and a single list read as though the desk could show the
   plus the operator health view for the `counters` assertion. **Reads:** the **drill-down**, the
   **uncapped intern list**.
 - **GREEN — `nulls-a`, the containers, desk half:** the context gauge reads **not reported** and the
-  bar is absent — **not** 0 %; there is no task chip; the monitor shows the state line rather than a
+  bar is absent — **not** 0 %; there is **no thought bubble**, and `nulls-a`'s desk **draws a
+  character** (fixture table above), so that absence is `task`'s and not the empty chair's
+  ([§ 5.1](#51-the-desk)); the monitor shows the state line rather than a
   blank; `model_label` is omitted rather than empty; the side table shows no stools rather than zero
   stools; and `retired` being null draws no plate.
 - **GREEN — `nulls-a`, the containers, panel half:** `session` renders *no session open*; the
@@ -2208,7 +3239,7 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 
 | Value | Number | Basis | Where |
 |---|---|---|---|
-| Feed heartbeat | 15 s | **Cited** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
+| Feed heartbeat | 15 s | **Cited** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed). **It is now the cadence of a rendered element and not only of the feed indicator**: [§ 6.2](#62-the-animation-table--the-closed-set) A17 steps the wall clock and the sky on it, which is what fixes that clock at **minute** resolution — a second hand advancing in 15 s jumps is the *looks broken* that gets repaired with a timer. If D2 ever moves this number, the clock's resolution is the second thing to re-derive | [§ 2.4](#24-the-clock-and-every-age-on-the-page), [§ 6.2](#62-the-animation-table--the-closed-set) |
 | Feed presumed dead | 45 s | **Cited** — D2 § 8.3, three heartbeat intervals | [§ 9](#9-failure-paths-and-their-observables) |
 | REST poll while the feed is down | 10 s | **Cited** — [D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path) | [§ 9](#9-failure-paths-and-their-observables) |
 | Delta coalescing tick | 250 ms | **Cited** — D2 § 8.3, below the ~300 ms at which a human notices latency | [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) |
@@ -2241,7 +3272,10 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | The worked slot assignment | 0 · 2 · 3 · 7 | **Measured** — FNV-1a-32 of the four keys, mod 12, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
 | Collision chance per arrival | `N/S` = **1 in 3** on the shipped map | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
 | Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. Re-derived once the tileset is chosen and a desk's rendered width is a measured number rather than a design intent | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
-| Gate 2's embedded-literal bound | **1,024 B** | **Chosen** — above any legitimate base64 literal in generator source (a seed table, a palette) and far below the smallest useful sprite sheet, so clause 2 cannot fire on the port and cannot miss a vendored sheet. **What re-derives it:** the longest literal the port actually contains, measurable the moment the port lands ([§ 14](#14-open-questions-for-the-review-loop) item 7) | [§ 10.1](#101-the-manifest-and-the-two-gates) |
+| **Seeded appearance dimensions** | **10** | **Chosen** — the independent draw fields of the ratified art direction (silhouette, hue, size, pattern, ears, sprout, eye style, mouth, accessory, tilt). One dimension is a palette; ten is a space, and the operator's ruling was that colour alone is not variety. **What re-derives it:** the shipped generator's own field list | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **The full appearance tuple's space** | **8,064,000** | **Derived** — 7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3, the ten cardinalities above multiplied out | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Expected full-tuple collisions at 50 seats** | **1 in 6,583** | **Derived**, and explicitly **not** the acceptance — a birthday estimate over the space above, resting on an assumption (ten independent, uniform draws) that a **searched** salt is precisely what perturbs. § 10.4 requires the real figure to be **measured** over the shipped generator and the real roster, and the measurement is what the acceptance reads | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and now **re-derived against a real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **62 B** (in `index.js`, measured 2026-08-27), sixteen times under the ceiling — and far below the smallest useful sprite sheet, so clause 2 cannot fire on the port and cannot miss a vendored one. This row previously deferred that measurement to *"the moment the port lands"*; the port landed on 2026-08-25 and the number is above. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
 | D2 § 8.2.1's nullable members | **36** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
 | Client event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
 
@@ -2268,6 +3302,7 @@ belongs in its own round.
 | **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one — **per member, not per row**: each member must carry a marker **legal for that member**, where `dark-only` is granted to `delivery.last_receipt_at` alone (re-derived from § 6.5's own carve-out sentence, not written into the tool) and `fetch-fresh` governs the rest; a row carrying `dark-only` must source that member; and a row of a table that renders on the **desk** — [§ 5.1](#51-the-desk) and [§ 7.1](#71-the-render-per-state), the two the column map flags as desk surfaces — must carry `dark-only` specifically for it, because on the desk that is the marker in force. The row-scoped test this replaces could be satisfied by a marker belonging to a **different surface** — § 5.1's receipt-age row survived deleting `dark-only` because the same row mentions `fetch-fresh` for the drill-down. Also: this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk. **And the rule's own statement of its scope is closed against the gate, both directions:** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s marker-rule sentence enumerates the tables the rule holds over, which is a second home for this gate's column map and is the home that went false twice — five tables named while § 5.6 sat outside the gate, seven named while § 7.1 rendered the receipt age on the desk. Neither side is stored: the map is the tool's, the list is read out of the document. **The table population is DERIVED, not listed:** every markdown table in this document is found structurally, a table under a § 5 heading that the gate has no source column for **reds** rather than being skipped, and membership in that population is keyed on a row's **line number** rather than on its text, so a row byte-identical to a checked one cannot be pasted into an unchecked table and test as already-checked. A table row anywhere else naming one of the ten **reds** unless it declares itself **`named-not-rendered`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) — a marker in such a row exempts nothing, and the only two rows entitled to carry one without rendering are found by **role**: the marker table's own rows, whose key cell *is* the marker, and this table's rows, found by this table's header | **tool-checked**, with **one** stated limit: **prose**. The gate held a list of five table headers until § 5.6 was added with six ten-sourcing rows and no marker — the list did not contain it, nothing reddened, and § 2.4 went on claiming the rule held over every § 5 row. A stored population does not fail visibly; it under-reads. Both halves of that are now inverted — the population is re-derived every run and the rows that used to be *announced* as outside it are **failures** unless the document declares them — and the second finding of the same shape, § 7.1's two desk renders of the receipt age, is why the outside-the-map rule no longer accepts a bare marker token: a token-presence test admits a row naming the marker for a surface it does not render on. What remains outside is a bookkeeping member reintroduced in **prose**, and every prose mention is printed **in full**, leaf spellings included. Not a capped sample: the residue printer used to print the first twelve of nineteen beside the true count, which reads as a complete list and is how the seven it hid stayed hidden |
 | **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 36 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
+| **G11 a worked example against the rule statement that governs it** | **The class is [§ 7.1](#71-the-render-per-state)'s stated convention made checkable**, and it now holds **two** facts, each with its own owning table and its own instances. **(a) The composed `api_error_type` line:** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s twelve member/phrase pairs, re-derived from that table, against the two sites that render one — [§ 7.1](#71-the-render-per-state)'s `stalled` **worked instance**, which must carry a member **verbatim** with that member's phrase **beside** it, and [§ 5.1](#51-the-desk)'s *rendered verbatim* row, whose illustration must be a **member** and never one of the phrases. The instance that shipped: the cell published *API error — rate limit* — the phrase with the raw value elided — against five statements including its own **Never** column, and nothing could difference the two sites because the **composition** was published at neither. **(b) WHERE the `activity_state` currency label is drawn:** the placement phrase is re-derived from [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s five `activity_state` rows — which must **agree with each other**, or the rule is reported as disagreeing with itself and no instance is judged — and every worked instance elsewhere in the document must state that same placement. Its population is found **structurally**, not listed: any table cell carrying a *was:* span or naming the `activity state` in words. The instance that shipped: [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s `catching_up` and `disabled` rows read *in the label only* — a **one**-element reading under which a `catching_up` desk draws `activity.last_event_time` twice — and § 7.6's own `link_state` row had drifted with them. Every predicate is **fed its own defect on every run** and must reject it, because a comparison only ever shown agreeing is not evidence it can disagree; the placement predicate's defect arm builds its counter-example by substituting a preposition the rule does **not** use, chosen from the recognizer's own alternation, so the tool stores no answer | **tool-checked**, with **three** stated limits. *(1)* It holds each fact at the sites that **render** it in a table, and cannot see one minted in **prose**. *(2)* **This table's own rows are excluded by role**, and the exclusion is a finding rather than a convenience: a row documenting a guard necessarily **quotes the defect it guards** — the (b) row above quotes *in the label only* in order to say what was wrong — so a recognizer that read it would **fail on the correction and pass a silent fix**, getting redder the more honestly the defect is written up. It fired exactly that way on this row before the carve-out existed. § 12 renders nothing, so nothing is lost; G9 excludes the same rows by the same role. *(3)* **The placement leg asks whether a cell CONTRADICTS § 7.6, never whether it states the placement at all**, so a cell re-wording the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter tier was written and **removed**: it red on § 7.1's own `catching_up` cell, which says the form is drawn *under this line* while pointing at § 7.3 and § 7.6 — correct, and a **mention** rather than a placement, which no structural test here can tell apart. Enforcing the literal would have made a style rule that reds on a careful paraphrase and passes a careless overwrite |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every animation has an event, never that the floor is legible |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -2295,7 +3330,7 @@ review can reverse it deliberately rather than discover it later.
 |---|---|---|---|---|
 | 1 | **The client derives no state; the seven things it computes are enumerated as a closed list** ([§ 2.1](#21-the-seven-client-computed-values-closed)) | let the client compute what it needs and rely on review to catch the rest | A closed list is checkable against a candidate computation; "only presentation" is not. D2 already refuses a re-derived `render_state` for the same reason — a second copy of a precedence is free to drift, and the first thing it drifts on is `stale`-vs-`idle` | a genuinely-presentational computation someone wants is a review conversation instead of a commit. That is the cost, and it is the point |
 | 2 | **The animation table is closed, and an animation without a row is a defect** ([§ 6.2](#62-the-animation-table--the-closed-set)) | state the honesty principle as a principle and trust it | A principle nobody can fail is a principle nobody keeps. A closed table plus the animation log makes the rule a test ([AT-D3-1](#at-d3-1-no-animation-without-its-event)) rather than an intention | every new effect costs a table row and a driving field. A flourish with no field is exactly what is being refused |
-| 3 | **No ambient life at all** — no breathing, blinking, NPCs or moving scenery | permit decorative motion that carries no state | Motion is the floor's vocabulary. A viewer cannot tell decorative motion from state-bearing motion at a glance, which is the range this screen is read at, so decoration would spend the vocabulary on nothing | a still floor looks still. That is accepted: a still floor **is** a still fleet, which is the reading we want |
+| 3 | **No motion that is neither held by a delivered field nor caused by a delivered message** — breathing, blinking, NPCs and moving scenery are the named examples, and they stay forbidden as examples ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)). **Amended 2026-08-27**, under the ratified art direction: this row read *no ambient life at all*, which forbade the operator-ratified blink-while-busy and sleeping-idle renders by naming two motions rather than the property that made them wrong | permit decorative motion that carries no state; or, at the amendment, carve the ratified motions out as named exceptions | Motion is the floor's vocabulary. A viewer cannot tell decorative motion from state-bearing motion at a glance, which is the range this screen is read at, so decoration would spend the vocabulary on nothing. **The property is what does that work**, and a name never did: a blink in every state is indistinguishable from a signal, and a blink held by `render_state == "working"` **is** a signal. An exception list would have said which motions were allowed rather than why, and the next one would have had to be argued from precedent | a still floor looks still. That is accepted: a still floor **is** a still fleet, which is the reading we want. **The amendment's own cost:** the rule is now a property a reviewer must apply rather than a list they can check, so the door is [§ 6.2](#62-the-animation-table--the-closed-set)'s closed table — a motion is admitted by being written into a row with its driving field, and by nothing else |
 | 4 | **A state-held loop is permitted, at a fixed rate that encodes nothing** | fire an animation only on edges, never hold one | A `working` desk must look different from an `idle` one at a glance and across a room, and a pose alone is weaker at distance than a pose that moves. The rate is pinned to the coalescing tick so the loop cannot claim more than the feed can carry | a loop is running while the underlying claim is bounded only by D2's ceilings. That is why every loop stops the moment its state's currency is in doubt ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 | 5 | **A snapshot, poll, resync, insert or reconnect never animates** ([§ 6.5](#65-a-snapshot-never-animates)) | animate the difference between the old and new object | The difference between two client states is not a fact about a seat. Animating it would play an arrival at every desk on every reconnect and make the floor's motion mean "the network hiccupped" | a state change that arrives via a snapshot rather than a delta is not announced. It is rendered — just not narrated — and the drill-down and the log carry the detail |
 | 6 | **The desk slot is a pure hash function of `(install_id, seat_id)`** ([§ 3.2](#32-the-desk-slot-function)) | sorted order; arrival order; a server-assigned slot | Sorted order shifts the whole floor when a seat is provisioned; arrival order is not a function of the rendered set, so two browsers disagree; a server slot is a field this document may not mint. The hash gives every client the same answer with no stored state at all | an arrival can displace an incumbent on a collision — bounded to the chain, rendered as a move, and with its frequency stated as `N/S` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
@@ -2304,15 +3339,17 @@ review can reverse it deliberately rather than discover it later.
 | 9 | **Install membership is snapshot-only; the snapshot that discovers one is triggered by a rendered disagreement, never by a timer; and a discovered install is then ADMITTED rather than merely rendered** ([§ 4.1](#41-the-lobby--the-building-summary), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`) | poll the snapshot on a timer; or leave discovery to a reconnect and the manual refresh alone | A discovery poll invents a cadence D2 does not state and fetches the whole fleet on a schedule. But `fleet.seats_total` already rides every heartbeat, so the client can **prove** its population is short within 15 s — and a floor that renders *the client holds 3 of 4 seats* and then does nothing about it is a floor that reports a defect it could have fixed with one request. Rendering *membership as of HH:MM:SS* keeps the staleness visible in the meantime | one snapshot fetch per distinct disagreement, **plus one ADMIT fetch per install ever admitted** — bounded by how often the fleet's own count moves and by how often an install is provisioned, not by a clock. An earlier draft of this row said a new install stays invisible until a reconnect or a manual refresh; that was contradicted by the discrepancy check two sections away, and the check is the half worth keeping. A later draft made the discrepancy fetch the discovery path and stopped there — **discovery without a subscription is a one-frame photograph**, and the per-distinct-`(N, M)` rule guaranteed there was no second chance at one, which is why the subscribe-then-fetch-then-drain ordering is now a named primitive every entry path cites rather than three steps living inside the connect sequence |
 | 10 | **The removal of a desk happens only on a *full* snapshot apply — never on `ADMIT` (b)'s scoped read of one install** | remove on `render_state: "retired"`, or on any signal | A removal driven by an absence is the inference this design refuses everywhere else. Only a fresh, complete population can honestly say a seat is no longer in it | a seat retired more than 14 days ago lingers until the next snapshot. It renders as `retired` throughout, which is true |
 | 11 | **The subagent array cap stays at 8** ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | raise it to 15, the largest value the 8 KiB bound admits | The drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table, where 15 stools is D2's "a list, not a desk" at a smaller number; and the 2,080 B of spare is the margin the next field addition needs | a fleet that routinely runs more than 8 concurrent dispatches reads *+N more* on the floor and opens the panel for the detail. Both halves of what would change this are measurable after P3 |
-| 12 | **`prefers-reduced-motion` is a first-class rendering with its own column** | disable animation and accept that some states collapse | Two states distinguished only by motion are one state in a screenshot and one state to any viewer with motion disabled — and screenshots are how most of this floor will be reviewed | every animation row owes a static form, which is one more column to keep true and is checked by [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) |
+| 12 | **`prefers-reduced-motion` is a first-class rendering with its own column** | disable animation and accept that some states collapse | Two states distinguished only by motion are one state in a screenshot and one state to any viewer with motion disabled — and screenshots are how most of this floor will be reviewed | every animation row owes a static form, which is one more column to keep true — **and five of them are owed with no test behind them**. It is checked by [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) for the rows a `render_state` selects, and by [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s floor half for [A17](#62-the-animation-table--the-closed-set)'s room render and [A14](#62-the-animation-table--the-closed-set)'s readout, which no state selects and which no fixture of AT-D3-13 fires. **A5, A10, A11, A12 and A16 are reached by neither** — no fixture of either test applies the delta or the seat-set change that fires them under `reduce` — so their reduced forms are stated and unasserted, which [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) names and [§ 14](#14-open-questions-for-the-review-loop) item 15 owns. **One test does not cover the column, and saying which covers what — including which rows nothing covers — is what stops an uncovered row from being assumed** |
 | 13 | **A null is rendered as *not reported*, never as a zero** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)), and **[§ 5.6](#56-the-null-render-for-every-nullable-member) states the behaviour per member for all 36** rather than leaving the rule to be applied by guess | coalesce nulls to sensible defaults so the layout never shifts; or state the rule and leave each member's rendering to the implementer | A zeroed gauge is a measurement the wire never made; a placeholder task title is a claim nobody sent. `docs/KANBAN.md § G-1`'s clean zero is the same defect one layer out | the layout must accommodate absent elements, which is a design constraint on the desk rather than a rendering convenience — and 36 stated null renders are 36 more cells a change must keep true, which is what G10 is for. **The per-member table is the half that was missing**: the headline rule was stated and certified from R1, while two dozen members it governs had no stated behaviour, so the implementer reaching for the obvious default would have written the very zero it forbids |
 | 14 | **The floor requires 1,280 × 800 and falls back to a list, not a scaled floor** | scale the map to the viewport | A floor whose nameplates and badges are unreadable shows state without letting anyone read it, which is worse than the honest list of the same facts | small viewports get no floor. The list carries every fact, and the number is re-derived once a desk has a measured width |
 | 15 | **No framework, renderer or bundler is specified** | pin the stack so the implementer has one less decision | None of this document's properties depends on one, and a spec that pinned a stack would expire with it. What *is* pinned is the asset pipeline, because that is where a licence violation enters | two implementers could make different stack choices. Neither can make different **honesty** choices, which is what this document is for |
-| 16 | **Character art is generated from the seat key, never vendored** ([§ 10.2](#102-characters-the-munder-difflin-port)) | vendor a sprite sheet and map seats onto it | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets. Generating also makes a seat's appearance a function of its identity, so it survives reloads with no stored state — the same property the desk slot has | the generator must be ported before any character renders, and Gate 2 refuses the shortcut ([§ 10.1](#101-the-manifest-and-the-two-gates)) |
-| 17 | **Provenance is a build gate, not a document** | keep `ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
+| 16 | **A seat's appearance is a pure function of the seat key, and every asset declares its origin** ([§ 10.2](#102-characters-the-munder-difflin-port), [§ 10.4](#104-the-art-direction-as-a-specification)). **Amended 2026-08-27:** this row read *character art is generated from the seat key, never vendored*, and mechanised the second clause as Gate 2's absence. The ratified direction ships original high-resolution art as files, so the absence is gone; **the identity property is not, and it is the half that was always load-bearing** | vendor a sprite sheet and map seats onto it; or, at the amendment, keep the absence and let the art land outside the asset trees | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets, which is untouched. Deriving appearance from `(install_id, seat_id)` is what makes a seat look the same on every browser with **nothing stored** — the same property the desk slot has — and that is independent of whether the drawing is code or a file. Keeping the absence would have pushed the art to a tree no gate watches, which is strictly worse than admitting it under a provenance row | Gate 2 no longer proves an absence, so it no longer refuses the shortcut for free — [§ 10.1](#101-the-manifest-and-the-two-gates) names in full what that costs and what stands in its place. **And the identity clause is now the one that can be broken quietly**: a special-cased seat looks correct on the machine where the special case lives, which is why [§ 10.4](#104-the-art-direction-as-a-specification) forbids it by name rather than by implication |
+| 17 | **Provenance is a build gate, not a document** | keep `docs/ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the socket, since an authorized handshake opened it | D2 refuses machine tokens on the socket precisely because an open connection has no revocation story — and the browser's session has the same property, which D2 does not address ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
-| 20 | **The animation table carries two classes — `edge` and `held` — and the animation log records them under different causality rules, a `held` render's entry and exit paired by an `episode_id` rather than by the animation and seat.** The class split is [§ 6.2](#62-the-animation-table--the-closed-set)'s and the log schema is [§ 11](#11-acceptance-tests)'s; this row records the decision and states neither a second time | one schema for all sixteen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and four more fields in the log (`phase`, `episode_id`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in every field, from which *for how long* was unrecoverable. **`episode_id` is the third such widening and the one that ends the sequence**, because it is the first to give the log an identity for the thing the questions are actually asked about. Each of the first two — the class split, then `phase` — fixed the shape of a row while leaving the log keyed on `(animation_id, install_id, seat_id)`, a triple that is not unique per episode on this document's own headline fixture: `fx-clear-trace` enters A4 twice on one seat, so *which exit ended which entry* and *for how long* had no answer the log could give. Adding a fourth field to the row was cheaper than the alternative on offer, which was to declare the fixture out of scope for the pairing predicate and leave the headline test asserting less than it claims |
+| 20 | **The animation table carries two classes — `edge` and `held` — and the animation log records them under different causality rules, a `held` render's entry and exit paired by an `episode_id` rather than by the animation and seat.** The class split is [§ 6.2](#62-the-animation-table--the-closed-set)'s and the log schema is [§ 11](#11-acceptance-tests)'s; this row records the decision and states neither a second time | one schema for all seventeen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and four more fields in the log (`phase`, `episode_id`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in every field, from which *for how long* was unrecoverable. **`episode_id` is the third such widening and the one that ends the sequence**, because it is the first to give the log an identity for the thing the questions are actually asked about. Each of the first two — the class split, then `phase` — fixed the shape of a row while leaving the log keyed on `(animation_id, install_id, seat_id)`, a triple that is not unique per episode on this document's own headline fixture: `fx-clear-trace` enters A4 twice on one seat, so *which exit ended which entry* and *for how long* had no answer the log could give. Adding a fourth field to the row was cheaper than the alternative on offer, which was to declare the fixture out of scope for the pairing predicate and leave the headline test asserting less than it claims |
+| 21 | **The ratified wall clock and day/night sky advance on `feed.heartbeat`, so they stop when the feed does** ([§ 6.2](#62-the-animation-table--the-closed-set) A17). **Operator ruling, 2026-08-27, card#7341**, taken between three stated options | **(A)** ship them **static**, set once per render — what [§ 10.4](#104-the-art-direction-as-a-specification) required until this ruling; **(B)** carve an exception into [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) for viewer-clock decoration, keeping the reference's 10 s interval | Option B is the widening the art amendment existed **not** to do, and it is not a small one: a timer-driven clock is a mover that **keeps moving after the feed dies**, so the page never goes still and [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) loses the observable it asserts — a named acceptance test's instrument, spent on decoration. Option A is honest and costs the reference its sense of a place. **The heartbeat driver is neither a compromise nor a third-best**: the clock earns an ordinary [§ 6.2](#62-the-animation-table--the-closed-set) row driven by a message D2 declares, and **a stopped clock is A14's claim in the form every human reads instinctively**, so the element that would have destroyed the feed-down signal now carries it. The visual cost is near nil — the clock is **sampled** every 15 s and, at minute resolution, **steps once a minute**, which at floor zoom is indistinguishable from a continuous one; the sky is a slow gradient | **The clock is wrong by up to 15 s and is stale by construction whenever the feed is down** — accepted, and it is why the clock carries no *as of* stamp and is never an authority on the time ([§ 5.5](#55-the-clients-own-narration)). The real cost is that a **frozen clock looks like a bug**, and the repair a maintainer reaches for is the interval this ruling refused; the whole of the mitigation is that the reasoning is written at [§ 6.2](#62-the-animation-table--the-closed-set), the driven-versus-read distinction at [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith), and **two REDs** at [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) — one for that exact edit, and one for the same regression arriving through the recovery path, where the room is *set* on each 10 s poll rather than animated on a timer |
+| 22 | **`task` is rendered as a STATIC thought bubble anchored to the character, replacing the text chip, and the upstream bubble's fade/linger/fade state machine is refused** ([§ 5.1](#51-the-desk)). **Operator vision + card#7897's ruling, 2026-08-27**; the ruling directed the state machine's adoption and this row is where the refusal is recorded rather than left in a PR | **(A)** adopt the upstream machine as directed — fade in, linger, fade out, re-show swaps the text — which needs a [§ 6.2](#62-the-animation-table--the-closed-set) row the ruling also forbids; **(B)** keep the chip and add the bubble beside it, so nothing already asserted has to move | Option A is not a style question. The linger is a timer ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form), and the fade-out **collapses a null render**: once the bubble hides itself, *no bubble* means *`task` is null* **or** *the linger expired*, and a null render two facts produce is not one. Upstream's machine is right **for upstream** — its bubble reports a tool call, an instant, where ours reports a standing fact. Option B is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken on purpose, and it is the failure this amendment is most likely to reach by accident rather than by argument | **A dark desk loses a readout it used to have.** `stale`, `offline` and `retired` draw no character ([§ 7.1](#71-the-render-per-state)), so they now draw no task at all where a chip once sat; the value is in the drill-down under that panel's currency treatment. That is the amendment's only truth-content cost and it is on the side of claiming less. **And a static bubble is the thing a maintainer will "fix"** — a bubble that never animates reads as unfinished next to the reference's other motion, and the repair reached for is a float or a fade, which is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet arriving through an element nobody thinks of as an animation |
 
 ---
 
@@ -2403,15 +3440,32 @@ reason to leave two readings live.
    already owns. **Closes it:** an operator ruling before a second install exists, because the answer
    changes what a floor route means.
 
-7. **⇢ Operator / review — the art sources are not named in this repository.**
-   D-07 names *CC0 tilesets* and *munder-difflin's procedural generator* and this repository records no
-   tileset, no upstream URL and no commit. **Blocks:** card #7340 (the character port) cannot start, and
-   the 1,280 × 800 viewport floor cannot be re-derived from a measured desk width
-   ([§ 12](#12-every-number-and-where-it-comes-from)). **In the meantime:** the licence allowlist, the
-   manifest and both gates are specified and testable without knowing which assets will be listed
-   ([§ 10](#10-art-and-assets--provenance-as-a-gate)). **Closes it:** the upstream repository and commit
-   for the generator, and the chosen tileset — recorded in `ATTRIBUTION.md` and
-   `resources/characters/LINEAGE.md`, not in a message.
+7. **◑ HALF CLOSED — the generator's source is recorded; the tileset is still unnamed.**
+   D-07 names *CC0 tilesets* and *munder-difflin's procedural generator*, and this item was opened
+   because the repository recorded neither. **It is closed for the generator and open for the tileset,
+   and it stays one item because it is one question — *which upstream art does D-07 mean* — asked of two
+   assets.** Splitting it would file one class twice and would let the closed half's evidence read as
+   though it settled the open one.
+
+   **✅ The generator half, closed by card#7340 (2026-08-25).** The upstream repository
+   (`https://github.com/chaitanyagiri/munder-difflin`), the **pinned commit**
+   `eb3df9fa70b63b68495a965c45f158105e87b2e6`, the MIT licence and its reproduced notice are recorded
+   in `resources/characters/LINEAGE.md` and `docs/ATTRIBUTION.md` — **in the repository, not in a
+   message**, which is what this item asked for. That lineage file also records what was deliberately
+   **not** taken and why: the LimeZu-bound sprite path, three ISC-derived files (ISC is permissive and
+   MIT-compatible and is still **not** in [§ 10.1](#101-the-manifest-and-the-two-gates)'s closed
+   allowlist, so taking them is an operator decision nobody has made), and The Office's cast identities.
+
+   **⇢ The tileset half, still open, still an operator/review question.** No tileset is chosen and none
+   is recorded. **Still blocks:** card #7341 (floor v1), and the 1,280 × 800 viewport floor still cannot
+   be re-derived from a measured desk width ([§ 12](#12-every-number-and-where-it-comes-from)) —
+   that derivation needs a tile size, which is the half that did not close. **In the meantime:** the
+   licence allowlist, the manifest and both gates are specified, built and seen to fail
+   ([§ 10](#10-art-and-assets--provenance-as-a-gate)), and the asset root is the repo-root `resources/`
+   **entire**, so whichever directory the tileset lands in is covered by Gate 1 on the day it lands —
+   there is no tree list to remember to extend first, and a tileset with no row fails the build.
+   **Closes it:** the chosen CC0 tileset, recorded in `docs/ATTRIBUTION.md` with its source URL, author,
+   SPDX identifier and hash — not in a message.
 
 8. **✅ CLOSED — the `subagents` cap is 8.**
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9 handed this to D3.
@@ -2540,6 +3594,27 @@ reason to leave two readings live.
     half worth stating: an install provisioned while a client is connected enters the rendered set
     mid-session however step 2 is fixed, and that is the call-site D2 § 8.4 never had.
 
+15. **⇢ Review — five reduced-motion forms are specified and no acceptance test asserts them.**
+    [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) makes the column part of
+    the contract, and two tests exercise it: [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion)
+    over the rows a `render_state` selects, and
+    [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s floor half over the two rows the
+    heartbeat fires.
+    [A5](#62-the-animation-table--the-closed-set), [A10](#62-the-animation-table--the-closed-set),
+    [A11](#62-the-animation-table--the-closed-set), [A12](#62-the-animation-table--the-closed-set) and
+    [A16](#62-the-animation-table--the-closed-set) are reached by neither, because every one of them
+    fires on a `changed[]` member or a seat-set change that no fixture of either test delivers under
+    `reduce`. **Blocks:** nothing that ships — the forms are stated in the table and an implementer can
+    build them; what is missing is the check that they were built. **In the meantime:** this is named
+    here and at § 6.4 rather than covered by a totality sentence, which is how the gap was found — a
+    claim that *every row of the column is asserted somewhere* was written into this document by the
+    amendment that added A17, one paragraph after the same over-claim had been corrected in
+    AT-D3-13. **Closes it:** a `reduce` re-run of the fixtures that already fire those five —
+    `fx-clear-trace` (A5), `fx-interns` (A10), `fx-collision` (A16), and a delta moving `badges` and
+    `context` (A11, A12) — asserting each row's stated static form. It is one build's worth of fixture
+    replay rather than a new instrument, and it is a **review** call rather than a D2 request because
+    nothing upstream is missing.
+
 ---
 
 ## Appendix A — every obligation addressed to this document
@@ -2658,14 +3733,14 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 
 | Order | Artifact | Gate |
 |---|---|---|
-| 0 | `ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **BLOCKED on [§ 14](#14-open-questions-for-the-review-loop) item 7** — the upstream repository and commit are recorded nowhere in this repository, so the port cannot start and this step cannot be entered ([§ 10.2](#102-characters-the-munder-difflin-port)). Once it can: renders in a plain browser from the seat key alone; both clauses of Gate 2 hold; and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, which is the half of that test with a file to read |
+| 0 | `docs/ATTRIBUTION.md`, the asset manifest, and both **provenance gates** | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
+| 1 | the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes (card #7340) | **✅ LANDED 2026-08-25**, closing [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, every clause of Gate 2 holds, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
 | 2 | the fixture harness and the **animation log** ([§ 11](#11-acceptance-tests)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(instrument half)** — its discriminating control, which reads the log and nothing else: a harness that records nothing must not be able to report clean |
 | 3 | the **client protocol**: subscribe, buffer, snapshot, drain, apply, resync, insert ([§ 2](#2-the-client-end-to-end)) — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby merely renders at step 9 | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
 | 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
 | 5 | the **desk render**: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
 | 6 | the **animation set** ([§ 6.2](#62-the-animation-table--the-closed-set)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(closed-set half)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all — plus [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), whose whole claim is about motion and is unobservable before there is any, and the render halves of [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(render half)** and [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(render half)** |
-| 7 | the **floor layout**: the map, the slot function, overflow (card #7341) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
+| 7 | the **floor layout**: the map, the slot function, overflow (card #7341). The map is what draws the room the desks stand in, **including its wall clock and its windows** — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step draws them and sets them on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
 | 8 | the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised), and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** |
 | 9 | the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
 | 10 | the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-is-rendered-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) |

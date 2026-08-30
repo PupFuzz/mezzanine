@@ -13,11 +13,11 @@ a data file that tooling reads, not documentation. Everything from
 [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) onward is
 specific to Mezzanine and has no counterpart there.
 
-> **Status.** This repo is scaffolding. `VERSION` is `0.1.0`, and **nothing has been
-> released** — no tag, no changelog, no deployed artifact. The rules below are written to
-> bind from the first release, not to describe a history that already exists. Two of them
-> name a thing that does not exist yet (`docs/CHANGELOG.md`, `fleet-reporter/`); each says so
-> where it is stated, rather than linking to it as if it were there.
+> **Status.** `VERSION` is `0.1.0` and **nothing has been released** — no tag, no deployed
+> artifact. The rules below are written to bind from the first release, not to describe a
+> history that already exists. `docs/CHANGELOG.md` now exists and is being written to per PR
+> (`docs/PLAN.md § 4`, which owns its format); `fleet-reporter/` still does not, and the one
+> rule that names it says so where it is stated rather than linking to it as if it were there.
 
 ---
 
@@ -35,12 +35,11 @@ specific to Mezzanine and has no counterpart there.
    its changelog entry *is* the release act; a feature PR that also moves `VERSION` has
    quietly cut a release nobody reviewed as one.
 3. **Every tag `v<version>` owes a changelog entry** describing the bundle of PRs it carries.
-   The changelog will live at `docs/CHANGELOG.md`. **It does not exist yet and this policy
-   does not create it:** its format is an open question with kanban-solo on roundtable #344 —
-   headings, ordering, and whether entries are authored per-PR or collected at release time
-   are #344's to settle, and this doc deliberately does not pre-empt any of it. What is
-   settled is the obligation. Until #344 lands, the release PR's own body carries the notes,
-   so no release ships undescribed in the meantime.
+   The changelog lives at [`docs/CHANGELOG.md`](CHANGELOG.md). **This policy owns the
+   obligation and not the format**: roundtable #344 settled headings, ordering and per-PR
+   versus at-release authorship, and `docs/PLAN.md § 4` is where that answer was adopted,
+   including the card-level entry rule and the size gate this project added to it. Read § 4
+   before writing an entry; it is deliberately not restated here.
 4. **Tags are minted by CI on `main`. Nobody hand-tags.** After a human merges the release PR
    into `main`, [`auto-tag-version.yml`](../.github/workflows/auto-tag-version.yml) fires on the
    push, reads `VERSION`, and puts a lightweight tag `v<VERSION>` on the merge commit — so
@@ -148,8 +147,9 @@ cheap; the failure is not recoverable in the moment you notice it.
    current one).
 2. **Branch `release/v<version>` off `dev`.**
 3. **Bump `VERSION`** to the new semver.
-4. **Write the changelog entry** (core rule 3 — `docs/CHANGELOG.md` once #344 settles its
-   format; the PR body until then).
+4. **Retitle `## [Unreleased]` in [`docs/CHANGELOG.md`](CHANGELOG.md) and open a fresh empty
+   one** (core rule 3; `docs/PLAN.md § 4` owns the format). The release collects entries that
+   the feature PRs already wrote — it does not author them.
 5. **State the deploy verdict for BOTH targets** — see
    [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets). A release
    that says nothing about a target has not said "nothing to do" about it.

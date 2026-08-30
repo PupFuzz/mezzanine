@@ -1,0 +1,20 @@
+{
+  "_source": "capture",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000000",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000000.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000000",
+      "permission_mode": "acceptEdits",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "Stop",
+      "stop_hook_active": false,
+      "last_assistant_message": "<assistant text, never transits>",
+      "background_tasks": [],
+      "session_crons": []
+    }
+  ]
+}

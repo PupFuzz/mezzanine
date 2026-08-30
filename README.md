@@ -4,8 +4,12 @@
 every PM, solo, and implementation agent rendered as a character at a desk, showing what
 they are actually doing right now — with a drill-down into their tasks and subagents.
 
-> Status: **scaffolding.** No application code yet. The only thing that runs is the kanban
-> automation in `.github/workflows/` — see [Kanban](#kanban) below.
+> Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
+> shell with no dashboard behind it yet. The **procedural character generator** exists in
+> [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw a
+> seat's character from its identity alone; open `tools/characters/harness.html` over a local
+> static server to see it. The kanban automation in `.github/workflows/` also runs; see
+> [Kanban](#kanban) below.
 
 ## What it is
 
@@ -28,20 +32,64 @@ motion on the floor is driven by a real event. Nothing is canned status theater.
 Telemetry is **programmatic end to end** — the harness fires the hooks and the reporter
 posts the JSON. No model is asked to describe itself.
 
-## Repo layout (planned)
+## Repo layout
 
 ```
-app/, resources/, routes/   Laravel host + MFA-gated shell
-resources/js/floor/         Pixi.js office floor (scene, characters, camera)
+server/                     the Laravel host + MFA-gated shell   ← exists
+server/resources/js/floor/  Pixi.js office floor (scene, characters, camera)
+resources/characters/       the procedural character generator + LINEAGE.md ← exists
+resources/floor/            the CC0 tileset + Tiled map (card #7341)
 fleet-reporter/             cross-platform hook bundle + installer
-docs/                       design notes, feed schema, ATTRIBUTION
+docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
+bin/, tools/                kanban + design-doc automation, CI gates, harnesses ← exists
 ```
+
+The application lives under `server/` and not at the repo root, which already holds this
+README, `VERSION`, `bin/`, `docs/` and `tools/`. That path is pinned as a decision
+(`docs/PLAN.md` D-16) because the CI lanes, the deploy script and the ingest/store cards all
+key on it.
+
+**`resources/` at the repo root is the asset root**, and it is deliberately *outside* `server/`:
+every file under it owes a row in `docs/ATTRIBUTION.md`, and `bin/asset-provenance.py` fails
+the build when one does not. The generator has no dependency on Laravel, on Pixi, or on
+anything else — so it sits beside the app rather than inside it, and a future rebuild of the
+presentation layer does not move it. Laravel's own `server/resources/` (views, CSS, app JS) is
+not an asset tree and owes no provenance rows.
+
+### Running the server locally
+
+```
+cd server
+composer install
+cp .env.example .env && php artisan key:generate    # .env is never committed
+php artisan migrate
+php artisan test
+```
+
+Every page requires a second factor, so a freshly created account is sent to the enrolment
+screen and reaches nothing else until it finishes there.
 
 ## Licensing and attribution
 
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships
-`docs/ATTRIBUTION.md` naming every upstream. Character art is generated procedurally in
-code; office tiles are CC0. No commercially-licensed assets are vendored here.
+`docs/ATTRIBUTION.md` naming every upstream. Office tiles are CC0. **No commercially-licensed
+assets are vendored here.**
+
+The character generator is a **port** of munder-difflin's (MIT), at a pinned commit:
+`resources/characters/LINEAGE.md` records the upstream, the commit, the reproduced MIT notice,
+and — the part that makes it a port rather than a fork — what was deliberately not taken and
+why. **Its pixel art is interim** — the operator ratified a high-resolution, whimsical, modern
+art direction on 2026-08-26/27 (`docs/design/FLOOR.md § 10.4`); what the port bought and keeps
+is the **seed machinery**, so a seat's appearance is a pure function of `(install_id, seat_id)`
+and looks the same on every browser with nothing stored.
+
+Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
+needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`
+or `licensed` checked against the row's own source URL — and **every asset must be a file that
+gate can see**, i.e. a known format, with a path, never bytes pasted inside another file where
+it would have no row at all. **What the gates do NOT prove is that a row is true**;
+`docs/ATTRIBUTION.md` says so under *What a green gate does not mean*, and review is what
+stands there.
 
 ## Branch model
 

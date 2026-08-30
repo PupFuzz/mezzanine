@@ -1,0 +1,44 @@
+{
+  "_source": "capture",
+  "shapes": [
+    {
+      "session_id": "11111111-2222-4333-8444-000000000003",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000003.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000001",
+      "permission_mode": "acceptEdits",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PostToolUseFailure",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "exit 3",
+        "description": "Exit with status 3"
+      },
+      "tool_use_id": "toolu_01FIXTURE0000000001",
+      "error": "Exit code 3",
+      "is_interrupt": false,
+      "duration_ms": 260
+    },
+    {
+      "session_id": "11111111-2222-4333-8444-000000000003",
+      "transcript_path": "~/.claude/projects/-home-agent-proj/11111111-2222-4333-8444-000000000003.jsonl",
+      "cwd": "/home/agent/proj",
+      "prompt_id": "aaaaaaaa-bbbb-4ccc-8ddd-000000000001",
+      "permission_mode": "acceptEdits",
+      "effort": {
+        "level": "high"
+      },
+      "hook_event_name": "PostToolUseFailure",
+      "tool_name": "Read",
+      "tool_input": {
+        "file_path": "/nonexistent/definitely/missing.txt"
+      },
+      "tool_use_id": "toolu_01FIXTURE0000000002",
+      "error": "File does not exist. Note: your current working directory is /home/agent/proj.",
+      "is_interrupt": false,
+      "duration_ms": 18
+    }
+  ]
+}

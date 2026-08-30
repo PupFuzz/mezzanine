@@ -31,6 +31,33 @@ reopen an entry by talking to its decider.
 | D-13 | After the P0 designs land, the project **splits to a dedicated Mezzanine agent** running a **sandbox** instance; **prod** is a separate deployment driven by `bin/deploy.sh` (pattern requested from kanban-solo's kanban-board project) | operator | 2026-08-23 |
 | D-14 | Design docs are written to the **standalone-implementer standard** (§ 2, "The bar") — complete enough that an AI agent with no access to this project's conversational history implements from the document alone | operator | 2026-08-23 |
 | D-15 | The fleet-state store is **MySQL on a dedicated DB host**; provisioning it is a deployment task downstream of D2's schema, owned by the Mezzanine build agent (D-13) | operator | 2026-08-23 |
+| D-16 | The Laravel application lives in **`server/`**, not at the repo root — the root already owns `README.md`, `VERSION`, `bin/`, `docs/`, `tools/` and `fleet-reporter/`, and the downstream consumers (CI lanes #7344, `bin/deploy.sh` #7459, ingest #7338, store/feed #7339) each need one stable path to key on | pm | 2026-08-25 |
+
+### Amendments — a decision is superseded by an APPEND, never by an edit
+
+**A register records what was decided when.** Rewriting a row to say what is true now destroys
+the only thing a register is for, so a superseding decision is recorded beneath the table with
+its date, its decider and the scope of what it moved. The original row above stands as written.
+
+- **D-07 · art direction superseded (the middle clause only) — operator, 2026-08-27.**
+  D-07 reads *"Floor art from **CC0 tilesets**; characters ported from munder-difflin's
+  procedural generator (MIT, with attribution). The upstream's commercial tilesets are never
+  vendored."* The operator ratified a new art direction on **2026-08-26** (card#7898) and
+  ratified a working reference for it on **2026-08-27** (`docs/design/floor-preview/`, card#7341),
+  in these words: *"I actually don't want to copy the munder difflin 'minecraft' style. I want
+  high resolution images that are whimsical but look modern."* **What moves:** the ported pixel
+  generator's **art** is now **interim placeholder art**; the product ships original,
+  high-resolution, resolution-independent art of its own, specified at
+  [`docs/design/FLOOR.md § 10.4`](design/FLOOR.md#104-the-art-direction-as-a-specification).
+  **What does NOT move, and each is load-bearing:** the **first** clause (floor art from CC0
+  tilesets) is untouched; the **last** clause (*the upstream's commercial tilesets are never
+  vendored*) is untouched and permanent; the port's MIT attribution obligations are untouched;
+  and the **seed machinery** — appearance derived from `(install_id, seat_id)` — is what the port
+  actually bought and is untouched, because the art direction changes what is drawn, never what
+  selects it. **No rework of card#7340's lineage or licence work is owed.** The consequence for
+  the asset gates is D3's to state and is stated at
+  [`§ 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates): they move from asserting an
+  absence to asserting declared provenance, at a named cost.
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
@@ -148,7 +175,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **websocket handshake**, and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
 | | fleet-state store + Reverb feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
-| | MySQL provisioning on the dedicated DB host (new card, D-15) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse a hostile export before any suite is trusted |
+| | MySQL provisioning on the dedicated DB host (new card, D-15) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
@@ -199,8 +226,18 @@ Adopted from kanban-solo's #344 answer (measured, not folklore), with one delibe
   (sandbox owner + implementer); aimla-pm drops to coordinator (reviews, cross-project routing,
   this plan's upkeep). The new seat inherits this plan as its orientation — which is a reason
   this document stays current rather than aspirational.
-- Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server; `.env` from a
-  staged example; seat-token store with 0600 posture; the same release≠deploy rule as
+- **Trusted proxies must be set to the actual reverse proxy at first deploy, and never to `*`.**
+  D1 § 12.3's failed-authentication limit is keyed on the **source IP**, and Laravel resolves that
+  from `X-Forwarded-For` only for proxies it trusts. The app currently trusts none, which is
+  correct for an unproxied host and fails safe either way: behind an untrusted proxy every request
+  appears to come from the proxy and the limit is merely coarse, whereas `trustProxies('*')` would
+  let any client forge the header and defeat the key entirely — the limit would then be a
+  decoration, which is the one thing § 12.3 says it must not be. The deploy host is not
+  provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
+- Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
+  `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
+  `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
+  credential; seat-token store with 0600 posture; the same release≠deploy rule as
   `docs/VERSIONING.md` — a release states which of the **two deploy targets** (server app;
   per-seat reporter) it touches, and prod only ever moves by `bin/deploy.sh`.
 - **Reporter rollout order:** aimla's four seats first (all on one box — cheap), then the
@@ -214,9 +251,10 @@ Adopted from kanban-solo's #344 answer (measured, not folklore), with one delibe
 | Risk | Standing answer |
 |---|---|
 | Old reporter → new ingest skew | D1's versioning + support window; loud reject; VERSIONING owns the policy |
-| False idles on busy seats | the kill-vs-complete gate (#7337) blocks trusting the signal until passed |
+| False idles on busy seats | the kill-vs-complete gate (#7337) blocks trusting the signal until passed. **Run 2026-08-25: it FAILED and the bar stands** — the reporter was right and the design's guarantee did not hold on the installed harness. D1/D2 amended (`D2-MUST` #1's background-task condition, § 6.6's kill signature, § 8.6's cross-session exclusion); the reporter's own § 6.6 mapping is **not yet updated** |
 | Secrets in telemetry | minimized payload at the reporter (D-06); RED fixtures for the sanitizer |
 | Board-14 mention-vs-closure (#343) | inherited from the bridge writeback; first-release card enumeration discipline until the upstream fix lands |
+| **Harness facts drifting under the design** | D1 § 6.0's re-capture obligation, widened to **any** version change after a PATCH bump moved the call lifecycle (#7337). `tools/at1-kill-vs-complete/` re-runs the proof; the version is read from the running binary, never from config |
 | Windows divergence | validation seat is a P1 gate, not a P4 afterthought |
 | Doc structure churn | root `CLAUDE*` files wait on #346; nothing to migrate later |
 | Scope creep toward the watchdog | out of plan; only the REST snapshot is Mezzanine's part |

@@ -1,0 +1,169 @@
+# `fleet-reporter` — the seat telemetry producer
+
+The producer half of [`docs/design/EVENT-SCHEMA.md`](../docs/design/EVENT-SCHEMA.md) (D1). One
+zero-dependency Node ≥ 18 file, installed on every agent machine, invoked by Claude Code hooks
+and by the statusLine integration. **D1 is the contract; this directory implements it and
+restates none of it.** Where a rule is cited below it is cited by section, never paraphrased.
+
+| File | What it is |
+|---|---|
+| `fleet-reporter.js` | the whole producer — four subcommands, no npm dependencies |
+| `fixtures/hooks/<HookEventName>.json` | D1 § 17's captured payloads, **part of the installed artifact** (§ 2.1), because `selftest` runs at install time on the seat and its `harness_payload_keys` check needs them there |
+| `fleet-reporter.selftest.py` | the hermetic acceptance suite — no network, no credential, no board |
+
+## The four subcommands (§ 2.1)
+
+```
+node fleet-reporter.js hook <HookName>   # one process per hook fire: read stdin, append, exit 0
+node fleet-reporter.js statusline        # sample context, pass the seat's status line through
+node fleet-reporter.js flusher           # one long-lived process per seat: POST batches, heartbeat
+node fleet-reporter.js selftest          # the six checks § 6.14 declares; exits non-zero on any fail
+```
+
+The reporter's contract with the harness is narrow and stable: **it is invoked with the hook
+name as `argv[2]` and the hook's JSON payload on stdin.** Hook wiring, the per-OS install path,
+and the service registration for the flusher belong to the installer (card #7336).
+
+## Configuration
+
+One file, written at install time, and the **only** source of the reporter's identity (§ 3.1) —
+never inferred from hostname, cwd, username, process tree, or any harness variable (§ 3.4).
+Linux/macOS `~/.config/fleet-reporter/config.json` (0600), Windows
+`%APPDATA%\fleet-reporter\config.json`.
+
+`FLEET_REPORTER_CONFIG` overrides the **path** and nothing else — no value in the config comes
+from the environment, so a wrong path is a loud `config_readable` failure rather than a silently
+different identity.
+
+Two keys are additions to § 3.1's table and are marked as such in the code:
+`harness_label` (see "What D1 left open", below) and nothing else.
+
+## Running the acceptance suite
+
+```
+python3 fleet-reporter/fleet-reporter.selftest.py
+```
+
+Python 3 stdlib plus `node` and `openssl` on PATH. It takes a few minutes: it drives the real
+script as real subprocesses several thousand times, and stands up a TLS ingest stub on
+127.0.0.1 with a throwaway self-signed certificate, trusted through the reporter's **own**
+`ca_file` key — so the transport path runs with certificate verification ON rather than being
+proven by turning it off.
+
+**The last block signals processes, and only ever its own.** § 2.3 has every hook fork a real
+detached flusher when it finds no live one, so a run can leave live daemons behind; the suite
+ends by sweeping `/proc` for flusher processes whose `FLEET_REPORTER_CONFIG` sits under *this
+run's* temp directory, failing if it finds any and then reaping them. A daemon from another
+checkout, another developer, or a concurrent run of this same file cannot match. On a platform
+with no `/proc` the sweep prints `SKIP` and is listed as *not measured* under the evidence
+block — never as a pass.
+
+**Every safety property is driven twice**: once against a deliberately defective copy of the
+reporter, which must go RED, and once against the real one. A plant that matches nothing raises
+rather than passing, because a RED that has quietly become a GREEN is worse than no test. The
+suite prints a per-property RED/GREEN evidence block at the end.
+
+## What D1 left open, and what was chosen
+
+Two kinds of thing are listed together here, because a reviewer looking for "where does this code
+differ from D1" wants one table rather than two. **Gaps** are places D1 is *silent*; each is marked
+`D1-SILENT` at its site in the source with the reasoning. **Amendments** are places D1 *spoke* and
+this change edited it — those are edits to `docs/design/EVENT-SCHEMA.md` in this same commit, not
+unilateral divergences left standing, and each says what would have broken.
+
+| Gap or amendment | Choice |
+|---|---|
+| **Amendment — § 6.1's `harness_label` pattern was `^[A-Za-z0-9._-]+$`, which cannot accept the value that same row mandates** (`claude-code/2.1.240` contains `/`) | D1 § 6.1's pattern widened to `^[A-Za-z0-9._/-]+$`; the reporter's `^[A-Za-z0-9._/-]{1,32}$` was already right and is unchanged. **The doc was the wrong side.** Left alone this is not cosmetic: the ingest is a separate card with D1 as its authority, so a server implementing § 6.1 literally rejects the first seat whose installer writes the mandated value — `422 invalid_event`, all 200 events in that batch rejected (§ 12.4), permanent quarantine (§ 11.5). Guarded by a selftest row that re-reads the pattern *and* the example out of the doc row and asserts the one against the other, so the two cannot drift apart again |
+| **Amendment — § 6.1's `project_label` said only "sanitized basename of cwd"**, which a reporter can implement literally and still violate § 1 | D1 § 6.1 now states the rule: `null` when the cwd is the home directory, whose basename is the OS username on all three platform shapes. See "Decisions", below |
+| **Amendment — § 9.3 gained `spool_append_failed.<tree>` and `spool_append_retried.<tree>`** | the append primitive counts its own failures, so § 0 item 9's "a counter for every discarded event" holds for the write path and not only the read path. `spool_append_failed` raises the existing `lossy` member; no new `degraded` member, so § 9.3's "twelve members, and the array's bound is twelve" is untouched |
+| `harness_label`'s source (§ 6.1 mandates `claude-code/<version>` but names no source; no hook payload carries one and no `CLAUDE_CODE_VERSION` exists in a hook-visible environment) | read from an installer-written `harness_label` config key; honestly `null` plus a counter until the installer writes it |
+| The index journal has no record for sessions, turns or compactions, but § 8.2's 16-session cap, § 8.4's superseded-session rule, § 6.2's `turns` and § 6.4's `duration_ms` all need them | four reporter-internal record kinds added (`session_open`/`session_close`, `turn_open`/`turn_close`, `compaction_open`/`compaction_close`), plus `prompt_id` on `open` and `outcome` on `close`. None reaches the wire, so none costs a schema version |
+| A hook with multiple captured payload shapes (§ 17 reproduces 3 for `PreToolUse`) cannot be "the payload verbatim" in one file | the fixture is `{"_source": …, "shapes": [ …verbatim payloads… ]}`, and the key check asserts against the union |
+| Which of the two `/clear` signals emits the boundary events when both fire | whichever reaps first emits them; the second finds the session tombstoned, counts `reap_noop_second_signal`, and emits nothing — so no call is closed twice |
+| Rule 6's rejoin separator on Windows | `/` for `~`, `.` and root-relative tokens (D1's own `~/…/design/…` output), `\` for a `X:` root (D1's own named root prefix) |
+| Order of `attention.resolved` vs `turn.start` on `UserPromptSubmit` | resolution first, matching every close-before-trigger ordering in § 8.3 |
+
+## Decisions a maintainer should not silently reverse
+
+**§ 11.5's "≥ 50 queued events" flush trigger is deliberately NOT implemented, and the constant it
+would have used is deleted rather than parked.** § 11.5 states the trigger as *"≥ 50 queued events
+**or** 10 s elapsed"*; only the 10 s leg exists. Wiring the other leg is not a three-line change: the
+flusher's whole duty cycle is one pass every `FLUSH_MS`, so an early trigger needs the loop woken at
+some sub-10 s tick and a queue depth read on each of those ticks — ten times the wakeups, and either
+ten times the fold/snapshot I/O or a restructure splitting a cheap depth probe out of the full pass.
+The benefit is bounded by the 10 s leg either way: a burst is flushed at most 10 s late, never lost,
+and nothing in D1 depends on the earlier flush. **The constant was deleted because a defined-and-
+unread `FLUSH_MIN_EVENTS: 50` is worse than its absence** — it reads as an implemented trigger to
+anyone grepping for it, which is how the gap survived review once already. A maintainer who wants the
+leg should re-derive the number from § 11.5 along with the loop change that makes it mean something.
+
+**`project_label` is `null` when the cwd is the home directory, and that is a § 1 obligation rather
+than a nicety.** `path.basename` runs before `sanitize`, so § 7.3 rule 6 (`/home/<u>/` → `~/`) is
+structurally unable to fire on this field: by the time the sanitizer sees the value the path
+structure it matches on is gone and only a bare username token is left. The comparison is against
+`os.homedir()` — never a hard-coded list of home parents, which is one platform behind by
+construction. Reverting this puts the seat owner's OS username on the wire, which § 1 names a
+non-goal outright.
+
+**Latency is measured and printed; it is asserted only under `FLEET_REPORTER_PERF=1`.**
+D1 § 2.2 derives P-5's 250 ms budget against "Node cold start on a modern machine is 30-60 ms
+and dominates". On the machines this was built on, the interpreter's own start-up is 195-207 ms,
+so an *absolute* assertion is red regardless of what this code contains — a check pinned red by
+the interpreter discriminates nothing.
+
+The obvious repair — subtract a node baseline and assert the difference — was **tried and
+measured not to work**. With baseline and reporter samples interleaved so both see the same
+contemporaneous load:
+
+| Condition | attributable **median** | attributable **p99 difference** |
+|---|---|---|
+| idle | 53 ms | 75 ms |
+| six busy cores | 82 ms | **−1070 ms** |
+| six busy cores, repeat | 163 ms | **+520 ms** |
+
+Identical code. The p99 difference is noise outright; the median is the better statistic and
+still triples under load, which would cross the ~190 ms headroom on a busy CI runner. An
+assertion that reds under load is worse than no assertion: it teaches the next maintainer to
+re-run until green, or to loosen the bound until it stops complaining.
+
+So the default suite run prints both figures and asserts neither, and the gate lives in a
+dedicated non-concurrent perf run (`FLEET_REPORTER_PERF=1`, run as its own CI step). **If you
+find this failing, do not raise the bound** — either the machine is loaded, in which case the
+number is not about the code, or the reporter genuinely regressed, in which case the fix is in
+the reporter. What is *always* asserted, because neither is load-sensitive, is that every hook
+exits 0 and prints nothing on stdout, on every adverse path.
+
+**The suite's flusher lock is frozen against the clock the invocation will READ, not against
+wall time — and the run then sweeps for daemons anyway.** `Seat.freeze_flusher` writes
+`flusher.lock` so a hook observes a live owner (§ 2.3) instead of forking a real flusher into
+the middle of an exact-count assertion. That is the product's own liveness mechanism, not a
+back door, and nothing in the reporter is disabled by it — but its *freshness* is judged with
+`now()`, which is whatever `FLEET_REPORTER_NOW_MS` says. A wall-clock freeze under a hook pinned
+two hours ahead therefore reads as a lock two hours dead, and § 4's aged-out drop leaked one
+real detached daemon per run that way. So the freeze is applied in `Seat.env()` — the one place
+that knows the invocation's clock — against that clock, which makes the lock 0 s old however the
+hook is pinned. ⚠ **Per `env()` call, which is per hook everywhere except the two writer bursts:**
+AT-10 and AT-16 call `env()` once to build a worker's environment and then drive 40 and 15 hooks
+off that one freeze, so for those two paths the window is *narrowed, not closed*. Measured under
+the bursts' own concurrency, the lock's age at the last hook is 22.6 s (AT-10) and 6.5 s (AT-16)
+against `LOCK_STALE_MS` 90 s — a 4x margin, and AT-10 would have to grow ~4x before a hook read
+its own lock as stale. It is left open on purpose: closing it needs a second freeze implementation
+inside generated worker source that could only re-stamp on *wall* time, which is the defect this
+entry exists to remove. § 17 is the guard, and it fails loudly rather than leaking silently.
+**Do not "fix" a future recurrence by re-freezing more often on wall time:** that
+changes nothing for a pinned invocation, which is where the leak actually was. And the sweep
+stays regardless of the freeze, because prevention that fails is silent: a leaked daemon idles at
+0% CPU and nothing reports it. The sweep is the part that makes the next regression loud.
+
+**`redactSecrets` has two independent legs and both are guarded.** Known VALUES the process
+holds, and known SHAPES (`CRED_PREFIX_RE`). A shape list is permanently one credential format
+behind — it does not match a bare 32-character hex string — so the value leg is the only guard
+for a secret with no recognisable prefix, and § 5 of the suite tests it *in isolation* with a
+control proving the shape leg cannot see the value. Every configured secret is registered
+(`registerConfigSecrets`), including `proxy_url` userinfo, rather than only the seat token.
+
+## What is NOT built here
+
+The ingest endpoint, the server-side call ledger, orphan timeouts, staleness and the predicate
+alarm — D1 § 16 artifacts 5–7, which belong to D2 and to the ingest card. This directory is
+artifacts 0–4.

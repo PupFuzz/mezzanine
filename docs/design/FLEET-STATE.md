@@ -405,13 +405,15 @@ derive_activity(seat) -> (state, unknown_reason)
     T = an open turn on the seat's current session      (sessions.turn_open = 1)
     L = the seat's last turn record, SEAT-scoped and outliving its session:
         the row of `sessions` for this seat with the greatest `last_turn_ended_at`,
-        read as (last_turn_end_reason, last_turn_aborted_count, stalled_cleared_by);
+        read as (last_turn_end_reason, last_turn_aborted_count, stalled_cleared_by,
+                 last_turn_background_tasks_open);
         null when the seat has no turn record at all
 
   1. if A                      -> ("blocked",  null)
   2. if S                      -> ("stalled",  null)
   3. if C > 0 or T             -> ("working",  null)
   4. if L.end_reason == "stop_hook" and L.aborted_count == 0
+       and L.background_tasks_open == 0
                                -> ("idle",     null)
   5. if L is null              -> ("unknown",  "no_data_yet")
   6. otherwise                 -> ("unknown",  unknown_reason_for(L))
@@ -429,6 +431,23 @@ whichever session produced it. [§ 4.8](#48-what-may-never-mint-a-state) row 5 s
 the other side, and the discriminating fixture is `clean_turn_then_exit`
 ([§ 11](#11-acceptance-tests)). D1 does not state whether `idle` survives a `session.end`; the reading
 above is filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-review-loop), item 10.
+
+> **`L.background_tasks_open` is the one component of `L` a `session.end` DOES clear, and the
+> asymmetry is the whole content of the rule (card #7337).** Rule 4 gained that condition because a
+> dispatched subagent runs as a **background task** on the installed harness: the parent's turn ends
+> *clean* — `end_reason: "stop_hook"`, `aborted_call_ids: []`, `C == 0` — while the subagent is alive
+> and before its first call opens, so rules 3 and 4 together rendered a **working seat as `idle`**
+> ([D1 § 6.4](EVENT-SCHEMA.md#64-turnend), measured twice). **A seat with a live subagent is
+> working**, so the count enters the idle test.
+>
+> But a background task cannot outlive the session that spawned it. Keeping the count on `L` past
+> that session's end would hold a stale `1` against a seat that is genuinely quiet — after a
+> `/clear`, exactly the case this card was about — and render `unknown` where *idle* is **true**.
+> That would be the opposite defect: **suppressing an honest state to satisfy a test's wording.** So
+> the end-reason and aborted-count components survive their session, for the reasons above, and the
+> background count does not. Both halves are asserted by
+> [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle), which is where the difference is checkable
+> rather than argued.
 
 **Why precedence and not a state machine.** Two of these facts are genuinely simultaneous. A permission
 prompt fires while the tool call it is about is already open ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest):
@@ -513,7 +532,8 @@ facts*. This table is therefore complete by construction: every writer of every 
 | **enter** | `tool.start` | opens a call (`C+1`) |
 | **enter** | `turn.start` | `T := true`; also clears a `stalled` session ([D1 § 6.4](EVENT-SCHEMA.md#64-turnend)) |
 | **enter** | `subagent.spawn` | none of its own — it shares the dispatch call's `call_id` ([D1 § 6.7](EVENT-SCHEMA.md#67-subagentspawn)); it fills the intern label |
-| **exit → `idle`** | `turn.end` with `end_reason == "stop_hook"` and `aborted_call_ids == []`, once `C == 0` | `T := false`, `L := clean` |
+| **exit → `idle`** | `turn.end` with `end_reason == "stop_hook"`, `aborted_call_ids == []` and **`background_tasks_open == 0`**, once `C == 0` | `T := false`, `L := clean` |
+| **NOT an exit** | `turn.end` that is clean in every other respect but carries `background_tasks_open > 0` — a dispatched subagent is still running ([§ 4.3](#43-the-derivation-function), card #7337) | `T := false`, `L := clean-but-background`; the seat leaves `working` for `unknown`, and returns to `working` on the subagent's first `tool.start` |
 | **exit → `unknown`** | `turn.end` with any other `end_reason` (other than `api_error`) | `T := false`, `L := dirty` |
 | **exit → `stalled`** | `turn.end` with `end_reason == "api_error"` | `S := set`, `T := false` |
 | **exit → `blocked`** | `attention.request` | `A := set` |
@@ -526,7 +546,8 @@ facts*. This table is therefore complete by construction: every writer of every 
 | **enter** | the only entry is rule 4 of [§ 4.3](#43-the-derivation-function): a `turn.end(stop_hook, [])` with no open calls and no open turn |
 | **exit** | `turn.start` (→ `working`), `tool.start` (→ `working`), `attention.request` (→ `blocked`) |
 | **exit** | a later turn on any of the seat's sessions ending dirty — `L` is seat-scoped and the newest record wins ([§ 4.3](#43-the-derivation-function)) |
-| **not an exit** | `session.end`, including the flusher's 90-minute `inferred_silence` close. It clears `T`, `C` and `S` and changes no fact rule 4 reads, so a cleanly-finished seat stays `idle` ([§ 4.3](#43-the-derivation-function), [§ 4.8](#48-what-may-never-mint-a-state) row 5) |
+| **not an exit** | `session.end`, including the flusher's 90-minute `inferred_silence` close. It clears `T`, `C`, `S` and **`L.background_tasks_open`** — the last because a background task cannot outlive its session — and changes no other fact rule 4 reads, so a cleanly-finished seat stays `idle` ([§ 4.3](#43-the-derivation-function), [§ 4.8](#48-what-may-never-mint-a-state) row 5) |
+| **entry** | that same `session.end`, when the seat's last turn was clean apart from an open background task: clearing the count makes rule 4 true, and it **is** true — the session ended, so nothing is running ([§ 4.3](#43-the-derivation-function), card #7337 — this is the transition AT-D2-2 asserts is a PASS rather than a defect) |
 | **not an exit** | a `link_state` change out of `live`. The activity state is **masked, not cleared** — [§ 4.2](#42-render-precedence) renders the transport state and `activity_state` still rides the object ([AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle)) |
 
 An idle seat that goes quiet **stays `idle` while it keeps heartbeating** and becomes `stale` when the
@@ -797,8 +818,10 @@ so that **changing a constant later does not retroactively rewrite history** —
 ### 4.8 What may never mint a state
 
 `D2-MUST` #1 exists because a `/clear` SIGKILLs an in-flight subagent tool call (measured upstream,
-26/26 — [D1 § 8.1](EVENT-SCHEMA.md#81-the-problem-restated)) and the killed call produces no completion
-signal. D1 makes that discriminable on the wire; this section is D2 not throwing it away.
+26/26 — [D1 § 8.1](EVENT-SCHEMA.md#81-the-problem-restated)) and **no signal identifies that kill as a
+kill on its own** — the close hook the harness does fire for it reports an ordinary failure
+([D1 § 6.6](EVENT-SCHEMA.md#66-toolend)'s kill signature is what recovers the fact). D1 makes it
+discriminable on the wire; this section is D2 not throwing it away.
 
 | Pattern | What it must **not** produce | What it produces here |
 |---|---|---|
@@ -806,6 +829,7 @@ signal. D1 makes that discriminable on the wire; this section is D2 not throwing
 | `turn.end` with `aborted_call_ids` non-empty, whatever the `end_reason` | `idle` | `unknown` (`turn_aborted_calls`) |
 | `tool.end` with `outcome: "aborted"` (any `abort_reason`, including `interrupted`) | a completion, or any input to the idle rule | a closed call with `outcome: aborted`; the turn's own `aborted_call_ids` is what the idle rule reads |
 | a burst of reap-produced `tool.end`s followed by `turn.end` then `session.end` | an idle transition between them | one derivation pass per applied event; `working → unknown`, with **no intermediate `idle`** — because rule 4 requires the *last turn's* `end_reason` to be `stop_hook` and it never is on this path |
+| a **clean** `turn.end` carrying `background_tasks_open > 0` — the parent finished, its dispatched subagent did not | `idle`; the seat is **working** | `unknown` until the subagent's next `tool.start` returns it to `working`. Rule 4 reads the count ([§ 4.3](#43-the-derivation-function), card #7337); `unknown` rather than `working` because the fold states what the events support, and between those two events no open call and no open turn exists to support `working` |
 | `session.end` **over a dirty, `api_error` or absent turn record** | `idle`, or a row removal | the session's facts close (`T`, `C`, `S`); the seat derives `unknown` with the reason `L` selects. A `session.end` over a **clean** record is not in this row: it changes no fact rule 4 reads, so the seat stays `idle` ([§ 4.3](#43-the-derivation-function)) |
 | a `session.end` with `end_reason: "other"` | a badge, a degradation, or any inference about the seat's health | nothing at all beyond closing the session. `other` is **a common value, not a residue** — a non-interactive `claude -p` session ends this way and it was the majority of D1's capture run ([D1 § 6.2](EVENT-SCHEMA.md#62-sessionend)) — so it is stored in `sessions.end_reason` and read by no rule, no badge and no predicate in this document |
 | a `tool.end` whose `match` is `synthesized` — a close with no open ([D1 § 6.6](EVENT-SCHEMA.md#66-toolend)) | a negative open count, or a dropped close | a call row **created already closed** with `synthesized = 1`; the flag is stored and rendered in the drill-down, so the anomaly is a visible flag rather than an absorbed one, and the ledger stays total |
@@ -918,7 +942,7 @@ can only say `no`.
 |---|---|---|---|---|
 | `seat_live` | `now − last_receipt_at ≤ 300 s` / `>` | per sweep pass, per seat — ~5,760/seat/day | **constant-`false` across ≥ 5,760 evaluations in a rolling 7 days**, per seat — a seat that has not been live in a seat-day of passes. Constant-**`true`** is deliberately **not** a criterion: a fleet in which no seat is ever stale for a week is the good outcome, and an alarm that fires on the healthy case is worse than no alarm, because it is the one that gets trained away. The `true`/`false` discrimination of this predicate is proved by test ([AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways)), not by production constancy | a fixture seat whose last receipt is back-dated past 300 s must flip the branch in the next pass; a fixture seat receiving normally must not |
 | `activity_recent` | `now − last_activity_received_at ≤ 900 s` / `>` | per sweep pass, per seat | **constant across ≥ 5,760 evaluations in a rolling 7 days**, in **either** direction — and unlike `seat_live` above, both directions are right here. Constant-`true` means a seat has done something in the activity set every 15 minutes for a week without a single quiet quarter-hour, which no real desk does and a receipt-fed activity column does exactly; constant-`false` means a week with no activity at all on a seat that is still reporting. Neither is the healthy case, so neither alarm fires on one | the heartbeat-only fixture of [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy) drives `false` while `seat_live` stays `true`; a working fixture drives `true`. **If these two predicates ever move together, activity is being written from receipt** — that is the discriminating pair, and it is the mechanised form of [§ 3](#3-delivery-is-not-activity) |
-| `turn_clean` | a `turn.end` had `end_reason == "stop_hook"` and `aborted_call_ids == []` / it did not | per `turn.end` — ~200–600/seat/day ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)) | **0 % or 100 % across ≥ 200 evaluations in a rolling 24 h.** The 100 % end is kept deliberately, against `seat_live`'s rule, and the asymmetry has a reason: 200 consecutive clean turns is a *plausible* healthy day, so this criterion can fire on a good seat — but the thing it would be missing if it did not is the false-idle defect itself, D1's headline failure arriving through a derivation that has stopped seeing aborts. A criterion that can cry wolf on the one defect both documents exist to prevent is the trade this document takes, and it is recorded here rather than left as an inconsistency with the row above | AT-D2-2's `/clear` fixture drives `false`; AT-D2-1's ordinary turn drives `true`. Constant-`true` means the abort path is not reaching the derivation — the false-idle defect returning; constant-`false` means idle has become unreachable, which is what a wrongly-scoped reap looked like in D1's own review |
+| `turn_clean` | a `turn.end` satisfied [§ 4.3](#43-the-derivation-function) rule 4's turn-side conditions — `end_reason == "stop_hook"`, `aborted_call_ids == []` and `background_tasks_open == 0` / it did not | per `turn.end` — ~200–600/seat/day ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)) | **0 % or 100 % across ≥ 200 evaluations in a rolling 24 h.** The 100 % end is kept deliberately, against `seat_live`'s rule, and the asymmetry has a reason: 200 consecutive clean turns is a *plausible* healthy day, so this criterion can fire on a good seat — but the thing it would be missing if it did not is the false-idle defect itself, D1's headline failure arriving through a derivation that has stopped seeing aborts. A criterion that can cry wolf on the one defect both documents exist to prevent is the trade this document takes, and it is recorded here rather than left as an inconsistency with the row above | AT-D2-2's `/clear` fixture drives `false`; AT-D2-1's ordinary turn drives `true`. Constant-`true` means the abort path is not reaching the derivation — the false-idle defect returning; constant-`false` means idle has become unreachable, which is what a wrongly-scoped reap looked like in D1's own review |
 | `call_closed_by_wire` | a call closed by a `tool.end` / by a server orphan or quiescence | per call close — ~1,000–3,000/seat/day | **≥ 5 % server-closed across ≥ 1,000 in 24 h** is the alarm direction here (not constancy): server closes should be rare | drive a fixture with the reap disabled → the share jumps; the healthy fixture keeps it near zero. This is the server-side twin of D1's `late_completion` signal |
 | `attention_resolved_by_wire` | resolved by an `attention.resolved` / by the server ceiling | per resolution — 0–50/seat/day | **any** server-ceiling resolution in 24 h is surfaced; constant-server over ≥ 10 alarms | stub the resolution events → ceiling branch; ordinary approval → wire branch |
 | `ingest_receiving` | any batch received fleet-wide in the last 300 s / none | per sweep pass, fleet-wide | **constant-`false` for 2 consecutive passes** alarms | stop the ingest → `false` within 300 s; a single live seat → `true`. This is the predicate that separates "every seat died" from "our pipe is broken", and without it a fleet-wide ingest outage renders as 40 independently-stale desks |
@@ -1020,8 +1044,13 @@ believed they had already done:
 - `DB_CONNECTION` is **not** forced, deliberately, and the omission is commented as load-bearing:
   nothing in this repo's CI selects a backend by exporting it today, but forcing it is exactly the shape
   that turned another repo's MariaDB matrix into a SQLite run reporting green.
-- The proof is a **hostile export**, not a clean run: `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test`
-  must abort on the guard. Watched failing once, or the guard is decoration.
+- The proof is **deleting one half of a pair**, not a hostile export and not a clean run (corrected
+  2026-08-25, card#7334 — this bullet said the opposite). Under an intact pin
+  `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test` **passes, and must**: the `<server>` twin beats
+  the export, so the resolved value never moves and the guard has nothing to refuse. To watch the guard
+  refuse, delete the `<server>` half of one pin under an export of that key — that is the only lever
+  that moves the resolved value. A guard watched failing under a lever that cannot move it is not
+  watched failing at all. See [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites).
 
 **Production migrations** additionally require `--force` (Laravel's own production confirmation) and
 `APP_ENV=production` — and `migrate:fresh`, `db:wipe` and `migrate:refresh` are **removed from the
@@ -1039,6 +1068,7 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 | `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on a hot path; it is kept for the drill-down, for replay and for forensics |
 | String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MySQL counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
 | Nullability | a column is `NULL` only where D1's field table says the wire value is nullable, or where the fact genuinely does not exist yet | a nullable column that "means zero" is a read-time fallback, which is a defect to trace to its write site |
+| Wire integers | every integer column the fold writes is `UNSIGNED`, and the fold reads a wire integer through **one** range rule applied after the encoding is resolved: a JSON number and its string spelling are the same value, and a value outside `0 … PHP_INT_MAX` is `NULL` and never a raise | [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10 does not type-check per-kind `data` fields, so the fold is the first plane that reads them and a reporter bug can put any scalar on any of them. Two encoding-specific tests are two rules free to disagree — and the disagreement is invisible, because it takes a reporter that writes the field the other way. `NULL` and not a raise because every one of these columns is nullable and [§ 6.5](#65-the-fold)'s poison-event rule would otherwise quarantine a whole event over one out-of-range field |
 
 ### 6.4 DDL
 
@@ -1156,6 +1186,15 @@ CREATE TABLE sessions (
   last_turn_aborted_count SMALLINT UNSIGNED NULL,
   last_turn_tool_calls    SMALLINT UNSIGNED NULL,
   last_turn_failed_calls  SMALLINT UNSIGNED NULL,
+  last_turn_background_tasks_open SMALLINT UNSIGNED NULL,
+                                    -- The FOURTH component of § 4.3's `L`, and the one card #7337
+                                    -- added to the derivation without adding here (card #7339).
+                                    -- Rule 4 -- the only rule in this document that can produce
+                                    -- `idle` -- tests it, and a `session.end` CLEARS it while the
+                                    -- end reason and aborted count survive their session (§ 4.4).
+                                    -- That asymmetry is why it has to be a projected column: an
+                                    -- immutable `events` row cannot be cleared, and § 6.3 forbids
+                                    -- reading a state-model field out of `data` on a hot path.
   stalled_since DATETIME(3) NULL,
   stalled_cleared_by ENUM('turn_start','session_end','left_live') NULL,
                                     -- one member per exit of § 4.4's `stalled` block, which has
@@ -1436,6 +1475,14 @@ loop:
        recompute derive_activity() + link_state + render_state
        if any VERSION-BEARING field changed (the set is named below): state_version += 1
        if render_state changed:                    INSERT seat_state_transitions
+                        -- BOTH CONDITIONS COME OFF ONE PAIR OF SNAPSHOTS, and a row is never
+                        -- written at a version that was not bumped for it: render_state IS a
+                        -- member of the version-bearing set below, so the second condition is a
+                        -- SUBSET of the first, and a writer that owes a row for a cause other than
+                        -- a render change (the poison-event rule below) bumps for that row too.
+                        -- Otherwise the row sits at a version the client already holds and § 8.5's
+                        -- `delta.state_version == local + 1` rule can never deliver it: the
+                        -- drill-down would have the row and the feed would have nothing.
        if rows is non-empty:
          UPDATE seat_state SET fold_cursor_event_id    = last row's id,
                                fold_cursor_received_at = last row's received_at, ...
@@ -1613,6 +1660,15 @@ leave a client's action field permanently stale ([§ 10](#10-worked-example-the-
 has five such changes inside one `working` state). A transition row, conversely, exists to answer *why
 did this desk change state*, and one row per tool call would bury that in noise.
 
+**Different populations, but NESTED ones: every transition row is written at a version bumped for it.**
+`render_state` is on the version-bearing side of the subtraction, so a render change is a version
+change by construction and the row lands at the new value — and the one writer that owes a row
+without a render change, the poison-event rule below, bumps for its row as well. The nesting is the
+property, not the two conditions: a row at a version the client already holds is unreachable through
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s `delta.state_version == local + 1`
+rule, so the desk's drill-down would record a change the feed could never deliver. An implementer
+computing the two conditions from two separate reads has no way to see that they have diverged.
+
 **Arrival order for visiting, `(event_time, seq_epoch, seq)` for applying.** The fold *reads* in
 `events.id` order because `seq` cannot carry a cursor at all: it can have permanent holes
 ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over `seq` could wait
@@ -1675,7 +1731,10 @@ seat, a poison event costs one desk, and that desk says so (`derivation_error`).
 **The poison-event rule.** If `project()` raises, the transaction is rolled back, the event is retried
 alone once, and on a second raise the cursor advances past it, `fold_error` increments,
 `seat_state.fold_errors` increments, the seat badges `derivation_error` and a transition row records the
-cause. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
+cause — **at a bumped `state_version`, like every other transition row**. A repeat error on a seat
+already badged `derivation_error` moves nothing version-bearing, so without that bump its row would be
+written at the version the last one already announced and no client would ever be told the event was
+skipped. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
 which is only true because the log is the source of truth and the projections are derived.
 
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
@@ -1756,8 +1815,10 @@ first week of live data.
 | a large fleet (50 seats) | **~6.8 GB** | × 50 |
 
 **Transitions are sized from the render-change rate, not from the delta rate**, and the two are
-different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written only when
-`render_state` changes, while a delta is emitted whenever a **version-bearing** field of the
+different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written when
+`render_state` changes — plus the rows a rule writes for its own cause with no render change, which
+are rare enough (a fold error, an operator retire) to leave the sizing below unmoved — while a delta
+is emitted whenever a **version-bearing** field of the
 [§ 8.2.1](#821-the-seat-state-object) object moves ([§ 6.5](#65-the-fold) names the set). At D1's ceiling a seat's render changes are
 ~1,200/day of turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) plus
 ~200/day of attention edges plus a handful of staleness and ceiling transitions — **~1,400/seat/day**,
@@ -1817,13 +1878,13 @@ rather than assumed:
 
 ### 7.1 D1's server-side counters — where they live
 
-[D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) defines **seventeen** counters the ingest and the
+[D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters) defines **eighteen** counters the ingest and the
 derivation keep — plus one gauge, `clock_skew_ms`, which the table below also has to place — each with
 the condition that increments it and the consequence it carries. **Those definitions are not restated
 here.** This section says only where each one is stored, which surface exposes it, and which badge it
 raises — the questions D1 leaves to the store.
 
-**Seventeen, not the sixteen an earlier revision stated in two places.** D1 § 12.7 has seventeen
+**Eighteen, not the sixteen an earlier revision stated in two places.** D1 § 12.7 has eighteen
 *rows*, and its first row carries **two** counter names (`accepted` / `duplicates`), so subtracting the
 one gauge from the row count lands one short — a count of rows is not a count of names. The set
 equality was always tool-checked and was always right; only the prose count was wrong, in this
@@ -1839,6 +1900,7 @@ is now re-derived from D1 on every run in both places.
 | `duplicate_open` | `seat_counters` | seat detail | — |
 | `late_open` | `seat_counters` | seat detail | — |
 | `late_completion` | `seat_counters`; the call also carries `late_completed` | seat detail | — (a **design signal**, read as a rate, not a badge) |
+| `late_close_cross_session` | `seat_counters` | seat detail | — **never a badge, and never folded into `late_completion`**: on this harness every `/clear` that kills a call produces one ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)), so it tracks `/clear` volume rather than a defect. Folding the two would peg the eagerness signal above it at one-per-clear forever |
 | `orphan_timeout_closes` | `seat_counters`; the call carries `abort_reason: orphan_timeout` | seat detail | — |
 | `session_reopened` | `seat_counters`; `sessions.reopened` | seat detail | — |
 | `seq_gap` | `seat_counters` | snapshot (badge) + seat detail | **`seq_gap`** — this plane's own badge ([§ 7.2](#72-this-planes-own-counters-and-badges)), **never** D1's `lossy`; see the note below |
@@ -2603,6 +2665,14 @@ This is [D1 § 8.7](EVENT-SCHEMA.md#87-worked-flow--a-clear-during-a-subagents-b
 this document's fold. It is the golden fixture of [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle), and
 it is the whole of `D2-MUST` #1 made concrete.
 
+> **This fixture is a test of the FOLD, not a claim about what the harness emits, and D1 § 8.7 no
+> longer reproduces on the installed build (card #7337).** The fold's obligation is to derive
+> correctly from whatever stream it is given, so a stream the harness has stopped producing is still
+> a valid input and this example still says exactly what the fold does with it. The stream the
+> harness *does* produce now — the parent's turn ending clean while its subagent runs on as a
+> background task — is [AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle)'s Case β, and it exercises a
+> different rule-4 condition. Both are required; neither replaces the other.
+
 `E0` is a `turn.start` immediately preceding D1's trace, so the seat begins in a state rather than in
 mid-air. **The seat's state before E0 is stated rather than left open**, because the trace's transition
 count depends on it: this is a **fresh seat with no prior events**, so its `activity_state` is
@@ -2729,6 +2799,24 @@ and the gate on trusting the derived signal at all.*
 - **Discriminating control:** the same fixture with the reap events' `outcome` changed to `completed`
   and `aborted_call_ids` emptied → the seat **does** mint idle, proving the test measures the abort
   discrimination and not the shape of the trace.
+- **Case β — the background-task lifecycle, and the assertion that is NOT "no idle anywhere"**
+  (card #7337). Replay a stream in which the parent's turn ends **clean** — `stop_hook`,
+  `aborted_call_ids: []`, `C == 0` — while carrying `background_tasks_open: 1`, its dispatched
+  subagent then opens a call, and a `/clear` reaps that call and ends the session. This is what the
+  installed harness emits ([D1 § 6.4](EVENT-SCHEMA.md#64-turnend)), and it puts the two halves of
+  rule 4 on opposite sides of one trace:
+  - **GREEN, first half:** **no `idle` row while the subagent is alive** — not on the parent's clean
+    `turn.end`, and not in the window between it and the subagent's first `tool.start`. The seat
+    goes `working → unknown → working`.
+  - **GREEN, second half:** an `idle` row **after** the `session.end` is a **PASS**. Nothing is
+    running by then, the session that owned the background task has ended, and *idle* is true.
+    ⛔ **Do not assert its absence** — an acceptance test that demands `unknown` there is demanding
+    a state the seat is not in, and satisfying it would mean suppressing an honest reading.
+  - **RED:** drop `background_tasks_open == 0` from rule 4 → the first half fails and the idle
+    appears on the parent's clean `turn.end`. **Second RED:** keep the condition but let
+    `session.end` preserve `L.background_tasks_open` → the second half fails and the seat renders
+    `unknown` on a genuinely quiet desk. Both REDs are necessary: they fail in opposite directions,
+    which is what shows the rule is a discrimination rather than a bias toward one answer.
 
 ### AT-D2-3 stale, offline and disabled are rendered, never idle
 
@@ -2944,17 +3032,26 @@ and the gate on trusting the derived signal at all.*
   `config('database.redis.default.database')` and `config('database.redis.cache.database')` resolve to
   the pinned values; the connection's resolved `time_zone` is `+00:00`; every isolation-critical key has
   both an `<env force="true">` and a matching `<server>` entry with equal values.
-- **RED — the hostile export, which is the only proof that counts:**
-  `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **aborts on the guard before the first
-  migration**, naming the resolved value it found. A clean run proves nothing here — three separate
-  mechanisms (an export, a `force`-only pin, a `_URL` key) leave the declaration looking correct, so the
-  guard must be watched refusing.
+- **The hostile export is a GREEN, not a RED — corrected 2026-08-25 (card#7334; this row previously
+  said the opposite).** `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **passes, and passing is
+  the correct outcome**: with BOTH halves of each pin present the export is *defeated*, so the resolved
+  value never leaves `mezzanine_test` and the guard has nothing to refuse. ⛔ **The old text asserted
+  the guard would abort here, which it cannot do while the pin is intact** — an implementer running it
+  sees a pass and must then either report a false pass or "fix" a pin that was already correct. It was
+  a check that could never fire, which is the mirror of the check-that-cannot-fail this section exists
+  to prevent. **The mechanism, measured:** PHPUnit's `<env>` writes only `putenv`/`$_ENV`, a shell
+  export lands in `$_SERVER`, and Laravel reads `$_SERVER` **first** — so the `<server>` twin is what
+  makes a pin bite, and the export losing IS the pin working. ⇒ **Assert the green here** (resolved
+  value unchanged under a hostile export), and read the guard's refusal from the two REDs below, which
+  move the resolved value for real.
 - **Second RED — the `_URL` mechanism:** with the pins intact, set `DB_URL` to a URL naming
   `mezzanine` → the guard must still abort, because it reads the resolved value and not the declared
   one. Repeat with `REDIS_URL`.
-- **Third RED — the pair:** delete the `<server>` half of one pin under an export of that key → the
-  shape test fails, naming the key. That is the silent-divergence mode where one line of a two-line pin
-  is edited and everything still reads correctly.
+- **Third RED — the pair, and it is the PRIMARY refusal proof now that the export is a green:** delete
+  the `<server>` half of one pin under an export of that key → the export wins, the resolved value moves,
+  and the shape test fails naming the key. That is both the silent-divergence mode (one line of a
+  two-line pin edited, everything still reading correctly) **and the only lever that demonstrates the
+  guard refusing** — deleting a half is what lets an export reach the resolved value at all.
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 
@@ -3538,7 +3635,7 @@ prints by name on every run rather than reporting a clean over it.
 | S13 | § 10.2 | A missing `seq` inside an epoch is a real gap → `seq_gap`, seat `lossy`; a spool-overflow drop produces **no** gap and the two losses must not be conflated | [§ 7.1](#71-d1s-server-side-counters--where-they-live), [AT-D2-18](#at-d2-18-seq-gaps-collisions-and-epoch-resets-are-visible) |
 | S14 | § 10.4 | `batch_id` remembered for 24 h; a repeat returns the previous response; per-event dedup remains the correctness mechanism | [§ 6.4](#64-ddl) `batches` (a timestamp comparison, never a deletion) |
 | S15 | § 12.5 | Orphan timeouts 15 min / 60 min; the close is **server-side only, with no wire event synthesized**; a late `completed`/`failed` carrying `tombstone_ref` **overrides** the abort and counts `late_completion` | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 4.8](#48-what-may-never-mint-a-state), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
-| S16 | § 12.7 | The seventeen server-side counters (and the `clock_skew_ms` gauge), each with its consequence | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
+| S16 | § 12.7 | The eighteen server-side counters (and the `clock_skew_ms` gauge), each with its consequence | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
 | S17 | § 6.14 | `enabled: false` renders **disabled** — a seat that is off and a seat that is gone must not look alike | [§ 4.2](#42-render-precedence), [§ 4.5](#45-link-states) |
 | S18 | § 6.14, § 9.3 | The `degraded` array is the badge source so a consumer never re-derives badges from raw counters; twelve members, closed | [§ 7.2](#72-this-planes-own-counters-and-badges) (server badges kept **separate**, never merged into D1's array), [§ 7.3](#73-how-the-reporters-own-counters-are-handled) |
 | S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened` | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |
@@ -3591,7 +3688,7 @@ everything from step 3 onward.
 
 | Order | Artifact | Gate |
 |---|---|---|
-| 0 | the pinned test database, the paired `phpunit.xml` entries and the resolved-value guard | **[AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)** RED (hostile export) then GREEN — first, because every test below runs against a database, and a suite that cannot prove its isolation must not run |
+| 0 | the pinned test database, the paired `phpunit.xml` entries and the resolved-value guard | **[AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)** RED (delete one half of a pin under an export — NOT the hostile export alone, which correctly passes) then GREEN — first, because every test below runs against a database, and a suite that cannot prove its isolation must not run |
 | 1 | migrations: `installs`, `seats`, `events`, `batches` | the ingest can write and the dedup key holds — [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) |
 | 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens` | schema only |
 | 3 | `project()` — the per-kind projections, with the LWW comparator | [AT-D2-11](#at-d2-11-out-of-order-batches-converge) |
@@ -3607,7 +3704,7 @@ everything from step 3 onward.
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both
 documents exist in this order); **AT-D2-4** (a heartbeat-only seat never looks busy — the maxim, made
-into a test); and **AT-D2-14** (the pin bites under a hostile export — because every other result here
+into a test); and **AT-D2-14** (the pin bites — proven by deleting half a pin, not by a hostile export, which an intact pin correctly defeats — because every other result here
 is only as trustworthy as the database it was produced against).
 
 **A note on order.** Steps 3 and 4 are separable and must stay so: `project()` writes facts and
