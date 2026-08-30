@@ -203,8 +203,9 @@ def load_tag_format(repo: Path) -> str:
     try:
         cfg = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise Unmeasurable(f"{RELEASE_CONFIG} is not valid JSON ({exc}) — the tag format cannot "
-                          f"be read, so the expected release-branch name cannot be composed.")
+        raise Unmeasurable(
+            f"{RELEASE_CONFIG} is not valid JSON ({exc}) — the tag format cannot be read, so "
+            f"the expected release-branch name cannot be composed.") from exc
     fmt = cfg.get("tag_format")
     if not isinstance(fmt, str) or "{{version}}" not in fmt:
         raise Unmeasurable(
@@ -267,16 +268,18 @@ def read_at(repo: Path, rev: str, path: str) -> str | None:
 
 
 def read_version(repo: Path, rev: str, role: str, version_re: re.Pattern) -> str:
+    """`rev` is a RESOLVED commit sha (see `resolve_rev`), which is why messages abbreviate it."""
     raw = read_at(repo, rev, "VERSION")
     if raw is None:
         raise Unmeasurable(
-            f"VERSION does not exist at the {role} revision ({rev}). It is the single source "
+            f"VERSION does not exist at the {role} revision ({rev[:7]}). It is the single source "
             f"of truth for the repo's version ({CANON_DOC} § The core rules, rule 1); this "
             f"guard cannot guess one.")
     version = raw.strip("\n")
     if not version_re.match(version):
         raise Unmeasurable(
-            f"VERSION at the {role} revision ({rev}) is not an accepted version string: "
+            f"VERSION at the {role} revision ({rev[:7]}) is not an accepted version "
+            f"string: "
             f"{version!r}. The accepted spelling is `{version_re.pattern}`, extracted from "
             f"{TAG_WORKFLOW} — the same check that will judge it after the merge, which is why "
             f"this is refused here rather than left to red a commit already on the release "
