@@ -295,9 +295,13 @@ rule violations anyone could have committed at the time.
   per-seat reporter) it touches, and prod only ever moves by `bin/deploy.sh`.
 - **Reporter rollout order:** aimla's four seats first (all on one box — cheap), then the
   operator-named Windows seat as the P1 validation gate, then other installs as they opt in.
-- The first release (`v0.1.0`) waits for: the changelog file existing (§ 4), the release being
-  deliberate (`auto-tag-version` tags *any* push to `main` — the bootstrap trap is documented),
-  and the first-release `--base` dispatch (G-2).
+- **The first-release preconditions are all SPENT** — `v0.1.0` was tagged 2026-08-24 and
+  `v0.2.0` on 2026-08-30. The changelog file exists (§ 4; `docs/CHANGELOG.md` since
+  2026-08-25), and the first-release `--base` dispatch is history: an ordinary release passes
+  no `base` at all, and `docs/KANBAN.md § G-2` owns the cases where `--base` is still the
+  escape — do not restate them here. The one thing that did **not** expire with them is the
+  bootstrap trap (`auto-tag-version` tags *any* push to `main`, not only a release PR);
+  `docs/VERSIONING.md` owns that standing rule.
 
 ## 6. Risks & standing cautions
 
