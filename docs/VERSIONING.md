@@ -13,11 +13,18 @@ a data file that tooling reads, not documentation. Everything from
 [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) onward is
 specific to Mezzanine and has no counterpart there.
 
-> **Status.** `VERSION` is `0.1.0` and **nothing has been released** — no tag, no deployed
-> artifact. The rules below are written to bind from the first release, not to describe a
-> history that already exists. `docs/CHANGELOG.md` now exists and is being written to per PR
-> (`docs/PLAN.md § 4`, which owns its format); `fleet-reporter/` still does not, and the one
-> rule that names it says so where it is stated rather than linking to it as if it were there.
+> **Status — re-measured 2026-08-30, cutting `v0.2.0`.** `VERSION` is `0.2.0`. **One tag
+> exists**: `v0.1.0`, minted by `auto-tag-version` on `556ac3f` — the scaffolding seed merge
+> (PR #11, 2026-08-24), which is exactly the bootstrap case the ⚠ under
+> [§ Release flow](#release-flow) warns about, not a release anybody reviewed as one. It is
+> immutable and is never moved; `v0.2.0` is the first tag this flow actually produces.
+> **Nothing is deployed**: `bin/deploy.sh` does not exist and `docs/PLAN.md § 5` records the
+> prod host as unprovisioned (D-08), so both target verdicts in
+> [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) are still
+> *first install*, never *upgrade*. `docs/CHANGELOG.md` exists and is written to per PR
+> (`docs/PLAN.md § 4`, which owns its format); **`fleet-reporter/` now exists too** — the
+> ⚠ inside [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line)
+> records what that section's rules bind to today.
 
 ---
 
@@ -88,6 +95,42 @@ having passed.
 > a workflow that is added later is not automatically required, and a required check that
 > never runs (a path-filtered workflow producing no run at all) reads as *pending*, not
 > *passed*. Re-read this section whenever a workflow is added.
+>
+> ⚠ **Re-read 2026-08-30 on adding `release-pr-guard` (card#8174), as that instruction
+> requires. Measured live that morning: both rulesets still required exactly
+> `["card-token-lint"]`, so the new gate ran but did NOT block.** It is deliberately safe to
+> require: it carries **no `branches:` filter**, precisely so it produces a completed run on
+> every PR rather than the no-run-reads-as-pending deadlock the paragraph above describes; on a
+> PR that does not target `main` it reports *NOT APPLICABLE* and exits 0.
+>
+> ✅ **SUPERSEDED the same day — re-measured 2026-08-30 while cutting `v0.2.0`
+> (`GET /repos/PupFuzz/mezzanine/rulesets`), and the ruleset edit HAS landed.** Both branches
+> now require **`["card-token-lint", "release-pr-guard"]`**, by the *job* id — which is what a
+> ruleset matches, never the workflow's display name. The gate now blocks. **The paragraph
+> above is kept rather than deleted because it is the reason the requirement was safe to add;
+> read it as history, and this block as the state.**
+
+**Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
+2026-08-30 and both load-bearing on the release flow:
+
+| Ruleset | Target | What it does | Bypass |
+|---|---|---|---|
+| *Release tags — v\* immutable after creation* | `refs/tags/v*` | blocks `update` and `deletion` | **none** |
+| *Release review — main requires an approval or a deliberate admin bypass* | `refs/heads/main` | `pull_request`: 1 approving review, `dismiss_stale_reviews_on_push`, `merge` only | `RepositoryRole`, mode `always` |
+
+The tag ruleset is the mechanical backstop for § Anti-patterns' *"Don't reuse or move a tag"*
+and core rule 4's *"never moves an existing tag"*, and it has **no bypass actor at all** — the
+strictest rule in this repo. ⚠ **It blocks `update` and `deletion` but NOT `creation`, which is
+exactly right and must stay that way**: a `creation` rule here would silently brick
+`auto-tag-version`, whose entire job is to create `v<VERSION>` on a push to `main`.
+
+⛔ **The review ruleset does NOT close step 9's actor gap, and must not be read as doing so.**
+It requires an approval, but the bypass actor is a *repository role* in mode `always`, and
+`bin/release-pr-guard.py` records why that is unavoidable here: **one GitHub identity is shared
+by the agent and the operator**, so any actor-based control either blocks the operator or admits
+the agent. What the ruleset buys is a **deliberate act** — approve, or knowingly bypass as
+admin — rather than a silent merge. That is friction on the path PR #38 took, not a wall across
+it, and it is why the release gate asks *what* is merged rather than *who* merges it.
 
 > ✅ **Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`.** It was briefly
 > squash-only, which made core rule 5 unsatisfiable: a `sync/main-to-dev-post-v<version>` PR
@@ -134,10 +177,22 @@ deletes the PR's head branch the moment it merges. A `dev`-headed release PR the
 deletes `dev` on merge — the integration branch, every open PR's base, gone as a side effect
 of a successful release.
 
-The ruleset's `deletion` rule on `dev` is a real backstop and would likely refuse it, but do
-not lean on that: it has never been exercised on this path, "the ruleset probably catches it"
-is a guess about an interaction, and the throwaway branch costs one command. The rule is
-cheap; the failure is not recoverable in the moment you notice it.
+The ruleset's `deletion` rule on `dev` is a real backstop, but do not lean on it: "the ruleset
+probably catches it" is a guess about an interaction, and the throwaway branch costs one
+command. The rule is cheap; the failure is not recoverable in the moment you notice it.
+
+> ⛔ **This is no longer hypothetical. The path was taken on 2026-08-30**, when PR #38 merged
+> `dev` → `main` and `dev` survived. Read that survival carefully: what is *observed* is that
+> `dev` still exists at `7139cd7` with `delete_branch_on_merge` enabled and a `deletion` rule
+> on the branch (all three re-verified live 2026-08-30). What is *inferred* is that the rule is
+> what refused the delete — no refusal was witnessed, so this is one data point that the
+> backstop holds, not a demonstration of it, and the sentence above stands unchanged.
+>
+> ✅ **Since card#8174 the head is also checked mechanically**, by
+> [`release-pr-guard`](../.github/workflows/release-pr-guard.yml) — see the note under
+> [§ Release flow](#release-flow) for exactly which steps it covers and which it does not.
+> It refuses any head that is not the release branch, generically: `delete_branch_on_merge`
+> deletes *whatever* branch heads the PR, and `dev` is only the most expensive instance.
 
 ---
 
@@ -173,6 +228,23 @@ cheap; the failure is not recoverable in the moment you notice it.
     merge commit (core rule 5, and the ⚠ blocking it today).
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
+
+> ✅ **Four of these steps are now mechanically checked** — added by card#8174 after PR #38
+> merged on 2026-08-30 breaking three documented rules at once and merging green.
+> [`bin/release-pr-guard.py`](../bin/release-pr-guard.py), on every PR whose base is `main`,
+> asserts **step 2/7's head branch**, **step 3's `VERSION` bump** (strictly greater than
+> `main`'s) and **step 4's changelog section**. That file's docstring is the contract; this
+> list stays the authority, and where the two disagree **this document wins and the guard is
+> the defect**.
+>
+> ⛔ **Steps 5, 6, 8, 9, 11 and 12 remain unenforced, and deliberately so.** The deploy and
+> wire verdicts are human judgement stated in prose — a gate that grepped for a phrase would
+> report having checked a judgement when it had checked a string. "Wait for CI" is about other
+> checks; "a human merges it" cannot be enforced at all here, because one GitHub identity is
+> shared by the agent and the operator, and that is the whole reason card#8174 gates *what* is
+> merged rather than *who* merges it. **Nor is the bump SIZE checked** — nothing mechanical can
+> tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
+> covering exactly the four steps named above and nothing else.
 
 > ⚠ **One-time, at the first push that carries `auto-tag-version.yml` onto `main`.** The
 > workflow tags on *any* push to `main`, which includes the scaffolding seed merge
@@ -219,10 +291,15 @@ Then **exercise the real surface**: a floor that renders is the check, not a gre
 
 ## Wire compatibility — the reporter-to-ingest contract has its own version line
 
-> **None of this is built yet.** `fleet-reporter/` and the ingest endpoint do not exist in
-> this repo today. This section is the contract they are built to, written before the first
-> line of either, because the compatibility rule is much cheaper to honour from commit one
-> than to retrofit onto a fleet of already-installed reporters.
+> ⚠ **Both ends now exist — re-measured 2026-08-30, cutting `v0.2.0`.** This section was
+> written before either, because the compatibility rule is much cheaper to honour from commit
+> one than to retrofit onto a fleet of already-installed reporters. It is no longer a contract
+> for unwritten code: `fleet-reporter/fleet-reporter.js` (card#7335) is the producer and
+> `POST /api/ingest/events` (card#7338) is the receiver. Per **rule 2**, the accepted set is
+> declared in exactly one machine-readable place —
+> [`server/app/Ingest/SchemaVersions.php`](../server/app/Ingest/SchemaVersions.php), reported
+> by `GET /api/ingest/health` — and **this document deliberately does not restate it**; read it
+> there, or ask a running ingest. Read the rules below as binding on live code from `v0.2.0`.
 
 **Why the repo's SemVer cannot cover this.** `fleet-reporter` runs on seats that upgrade
 independently of the server. At any given moment an *old* reporter is POSTing to a *new*

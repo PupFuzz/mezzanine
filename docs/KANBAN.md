@@ -39,7 +39,7 @@ for the CI token until a dry-run dispatch reports a non-zero census.
 | `bin/promote-cards-by-token.selftest.sh` | The mover's hermetic acceptance suite — stubbed `curl`, fixture git repo, no network, no board. Runs in the release workflow before any write. |
 | `bin/card-token-lint.py` | The lint the PR gate runs. Extracts the accept grammar from the mover at run time; it does not carry its own copy. |
 | `bin/card-token-lint.selftest.py` | The lint's RED fixtures plus a meta-control. Runs in the PR gate. |
-| `.release-pr.json` | Board id, the released stage, and the shipped-stage source set. Read by the mover. |
+| `.release-pr.json` | Board id, the released stage, and the shipped-stage source set. Read by the mover — and, for `tag_format` only, by `bin/release-pr-guard.py` (card#8174), so that key has two readers and this table is not the whole list. Its own `_note` is. |
 
 ---
 

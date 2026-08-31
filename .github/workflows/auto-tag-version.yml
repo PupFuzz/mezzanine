@@ -25,6 +25,18 @@
 #     a red check on an already-merged commit; NOT failing costs a version number that points
 #     at two different trees, and nothing downstream can tell which one it was handed.
 #
+# ⚠ TWO LINES IN THIS FILE ARE READ AS AUTHORITIES BY ANOTHER GATE (card#8174).
+# `bin/release-pr-guard.py` extracts, at run time, (a) the branch list in the `push:` trigger
+# below — that trigger IS the operational definition of "the branch where a push mints a tag",
+# and it is the only machine-readable statement of it in this repo — and (b) the `VERSION`
+# validation regex in the run script. It extracts (b) rather than keeping its own copy because
+# that regex is what judges `VERSION` AFTER a merge: a guard with a looser private copy would
+# green a release this job then reds post-merge, which is the exact harm it exists to prevent.
+# REFORMATTING EITHER IS SAFE BUT NOT FREE: the guard fails LOUD (exit 2, "the trigger moved")
+# rather than falling back to a guess, so a red release-pr-guard on an unrelated PR after a
+# tidy-up here is that extraction, not a broken PR. Teach the guard the new shape; do not give
+# it a private copy of what this file says.
+#
 # NO NEW SECRET. The built-in GITHUB_TOKEN pushes the tag, which is why this job needs
 # `contents: write` where every other workflow in this repo is read-only. A push made with
 # GITHUB_TOKEN does not trigger further workflows — fine here, since nothing is chained off
