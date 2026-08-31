@@ -193,7 +193,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
 | **P4 building** | elevator, floor-per-PM, solo floor (#7343) | #7341 | schema already multi-install; second floor renders from a second install's feed |
 | | CI lanes for app code (#7344) | first PHP/JS code | required-check list updated the same PR (see `docs/VERSIONING.md` — a new workflow is not auto-required) |
-| **cont.** | changelog + card-entry gate (new card, per #344) | — | § 4; gate seen to fail once before trusted |
+| **cont.** | changelog + card-entry gate (card#8174, per #344) — ✅ **landed 2026-08-30** as `release-pr-guard` R4 (the card's bullet) and R5 (the size gate § 4 had claimed since D-11) | — | § 4; every arm seen to red on a planted defect first — eight guard mutations, each producing a targeted failure |
 | | `CLAUDE*.md` structure (new card, blocked on #346) | #346 answer | index + chapters per sola-inventory's pattern |
 | | `bin/deploy.sh` prod deploy (new card, blocked on kanban-solo sample) | sample + P2 server | prod moves only via the script; seen to fail on a broken precondition before trusted |
 
@@ -203,22 +203,63 @@ cutover work, which outranks all of this whenever it is live.
 
 ## 4. Documentation & release discipline
 
-Adopted from kanban-solo's #344 answer (measured, not folklore), with one deliberate addition:
+Adopted from kanban-solo's #344 answer (measured, not folklore), with one deliberate addition.
 
-- **The enforced unit is the card, not the PR.** A PR whose title/subjects carry `card#NNNN` owes
-  a line-initial `- **card#NNNN** — …` bullet under `## [Unreleased]` in `docs/CHANGELOG.md`,
-  **in the same PR**. Tokenless PRs owe nothing. Bold-anywhere is not accepted — line-initial is
-  the rule, and their incident log records why (a prose mention discharged another card's
-  obligation).
+⚠ **Every rule in this section was prose with nothing behind it until 2026-08-30.** A sweep of
+`dev` that day found **30 cards named in commit subjects and 25 bulleted** — card#7335 (the whole
+fleet-reporter), #7455, #7456, #7457, #7521 and #7929 had merged with **no changelog entry at
+all**, and the first release would have collected a changelog missing an entire subsystem. The six
+were backfilled in PR #44 and the hole was closed in card#8174: the rules below now name the check
+that enforces each of them, and the ones nothing enforces say so. ⚠ **Replayed on the real commits
+the six split three and three** — the gate refuses #7335, #7456 and #7929 as they merged, while
+#7455, #7457 and #7521 predate the changelog file itself (created 2026-08-25) and are exit 2, not
+rule violations anyone could have committed at the time.
+
+- **The enforced unit is the card, not the PR.** A PR whose **head branch or title** carries
+  `card#NNNN` owes a line-initial `- **card#NNNN** — …` bullet under `## [Unreleased]` in
+  `docs/CHANGELOG.md`, **in the same PR**. Tokenless PRs owe nothing. Bold-anywhere is not
+  accepted — line-initial is the rule, and their incident log records why (a prose mention
+  discharged another card's obligation).
+  ⛔ **Enforced by `bin/release-pr-guard.py` R4** on every PR. Two surfaces, not three: the
+  branch and the title are the two the correlators parse
+  (`bin/card-token-lint.py § SURFACES`), and keying on commit **subjects** — which this bullet
+  said before card#8174 — would drag every back-merge into scope and demand it re-add bullets
+  the release had just retitled away. Two carve-outs, both argued in the guard's docstring: a PR
+  whose base is `main` owes nothing under `[Unreleased]` (step 4 has just emptied it), and a PR
+  that **removes** a card's existing bullet is exempt for that card (a revert of unreleased work
+  owes the deletion of an entry, not one more — and the removal is the only way to claim it).
 - **Written at PR time; the release only collects.** The release retitles `[Unreleased]` and
   opens a fresh empty one.
-- **The gate fails closed on every unmeasurable state** (shallow clone, no tag, missing floor —
-  exit 1, never skip). This is the property most worth copying, and it gets a seen-to-fail
-  exercise before it is trusted.
+- **The gate fails closed on every unmeasurable state** (a history too truncated to see past the
+  size window, no `[Unreleased]` heading, an unreadable authority — never a skip). Note the
+  shape: it is *unmeasurable*, not *shallow* — R5 measures a shallow clone that can still answer,
+  because refusing every one of them would red work that is fine. This is the property most worth
+  copying, and it
+  gets a seen-to-fail exercise before it is trusted. ⭐ **Ours splits the verdict further than
+  theirs:** exit **1** is "this PR breaks a rule" and exit **2** is "the guard could not
+  measure", because the two send different people to different files.
 - **Our addition — a size gate.** The toolkit pairs "never truncate" with no size check; theirs
   is at 59.5% of the contents-API's silent 1 MiB truncation cliff. A new project should not adopt
-  anti-trim without the check, so ours gates `docs/CHANGELOG.md` growth with headroom (the
-  moodle `doc-size-threshold` pattern: threshold = cliff − 14 days of measured growth).
+  anti-trim without the check, so `docs/CHANGELOG.md`'s size is gated with headroom:
+  **threshold = cliff − the bytes the file actually grew in the last 14 days**, so it reds while
+  a fortnight of runway is still left to archive released sections.
+  ⛔ **Enforced by `bin/release-pr-guard.py` R5** on every PR. It owns the numbers and this
+  section deliberately does not restate them — the growth term is **measured from git history on
+  every run**, never stored, because a written rate stops being a measurement the moment growth
+  changes. R5 refuses only a PR that makes an over-threshold file **bigger**; over threshold
+  while flat or shrinking is a loud warning, so the archiving PR is never blocked by the
+  condition it fixes.
+  ⚠ **This bullet claimed the gate in the present tense from 2026-08-23 (D-11) until 2026-08-30,
+  and no such gate existed** — every `CHANGELOG` reference in `bin/`, `tools/` and `.github/` was
+  the release guard's section-existence check. It exists now; the note stays because a decisions
+  register that asserted a shipped gate for a week is the more useful thing to remember than the
+  gate. The `doc-size-threshold` prior art this was adapted from lives outside this repository
+  and **its content is not readable from here** — per the ⚠ at the top of this document, treat
+  the name as provenance and the formula above, which is implemented and tested, as the rule.
+  ⚑ **Measured 2026-08-30, and it is closer than the wording suggests:** the file went 1,182 B →
+  150,881 B in six days (mean ≈ 25 KB/day, peak day 43.5 KB). At that mean the 1 MiB cliff is
+  roughly **five weeks** out, not years — the size gate is a live concern, which is why it was
+  built rather than withdrawn.
 - **Cite only the card the PR is about.** The same `card#N` token drives the changelog obligation
   *and* the board writeback (#343's mention-vs-closure defect). A card cited "for context" is a
   spurious changelog obligation and a wrongly-moved card at once. Nothing enforces this yet —
