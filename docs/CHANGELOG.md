@@ -14,9 +14,39 @@ holds this file's SIZE under `1 MiB − the bytes it grew in the last 14 days`, 
 there is still time to archive released sections rather than after the contents API has begun
 returning it empty.
 
-Nothing has been released yet, so `[Unreleased]` is the only section.
+Sections are newest-first: `[Unreleased]` collects what has landed on `dev` since the last
+release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4).
 
 ## [Unreleased]
+
+- **card#8174 (part 2)** — **`docs/CHANGELOG.md`'s per-PR bullet rule and `docs/PLAN.md § 4`'s
+  changelog size gate were both stated in the present tense and neither existed.** The bullet rule
+  — every PR whose title or branch carries a `card#NNNN` token owes a line-initial
+  `- **card#NNNN** — …` entry under `## [Unreleased]`, in the same PR — was prose for seven days,
+  and a sweep of `dev` found **six cards across seven merged commits** with no entry, including the
+  entire fleet-reporter (`card#7335`) and all three D-documents. ⛤ **Stated precisely, because the
+  first count was wrong: those six split three and three.** `docs/CHANGELOG.md` was created
+  2026-08-25 (`ceea110`); `card#7455`, `#7521` and `#7457` merged BEFORE it existed, so they broke
+  no rule and R4 correctly reports *cannot measure* on them. **Three of three card-bearing PRs that
+  merged after the rule existed missed the bullet** — a worse compliance rate than the inflated
+  figure suggested, not a better one. **R4** now asserts the rule on every PR, reading its card
+  grammar at run time from `CARD_RE` in `bin/promote-cards-by-token` — the same line
+  `card-token-lint.py` reads, so the accept-set has one home and no copy to drift. Two carve-outs,
+  both keyed on something observable rather than on a declared intent: a PR into `main` owes nothing
+  (release step 4 has just emptied the section **by construction**), and a PR that REMOVES a card's
+  bullet is exempt for that card (a revert of unreleased work owes the deletion, not a second
+  entry) — which cannot be claimed without deleting a visible line. **R5** implements `§ 4`'s own
+  formula literally — `threshold = 1 MiB − the bytes this file grew in the last 14 days`, growth
+  **re-measured from git history on every run and never stored** — and refuses only a PR that makes
+  an already-over-threshold file bigger, so the archiving PR that fixes it is not itself refused.
+  It was built rather than withdrawn because the file went 1,182 B → 150,881 B in five days, which
+  puts the contents-API truncation cliff about five weeks out rather than years. **Nine mutations
+  were each seen to red**, and R4 was replayed against real history: it refuses PR #41 exactly as it
+  merged and passes at the commit that backfilled it. ⛤ **Two defects in the guard itself surfaced
+  only on the real surface, not in review:** `git fetch --depth=1` **re-shallows a repository cloned
+  in full** — a six-commit branch collapsed to two, so R5 would have exited 2 on every PR while
+  `fetch-depth: 0` sat above it looking correct — and one selftest arm asserted something false
+  about itself, since a `--depth 3` clone of a three-commit history is a complete clone.
 
 - **card#7947** — **`verify-harness-facts.py`'s `COMMON` was a hand-transcribed list of nine
   harness payload key names, and it backed most of that gate's fixture-key assertions.** The build
@@ -173,6 +203,7 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   `verify-floor.py`'s G1 holds `§ 6.2`'s closed animation set against the DOCUMENT only and the
   artifact gate reads no animation at all, so **an animation in `floor-preview.html` with no row in
   `§ 6.2` is invisible to both** — which is how `.glowpulse` sat unnoticed (card#8161).
+## [0.2.0] — 2026-08-30
 
 - **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
   nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
@@ -186,9 +217,8 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   bypass list, a required reviewer — can tell them apart, and every such rule would either block the
   operator or admit the agent. A content gate is actor-independent, free, and states its verdict
   while the fix is still one commit. **`bin/release-pr-guard.py` + `.github/workflows/
-  release-pr-guard.yml`** assert three rules on any PR whose base is `main` — and, since this card's
-  second landing below, two more on **every** PR: **R1** the head ref equals `release/` + the tag
-  this PR would mint, **R2** `VERSION`
+  release-pr-guard.yml`** assert three rules on any PR whose base is `main`, and nothing at all on a
+  PR into `dev`: **R1** the head ref equals `release/` + the tag this PR would mint, **R2** `VERSION`
   is strictly greater than `main`'s by semver precedence, **R3** `docs/CHANGELOG.md` carries a
   section naming the new version. ⛔ **Every fact it needs is DERIVED, never retyped** — the release
   branch from `on.push.branches` in `auto-tag-version.yml`, the tag form from `.release-pr.json`'s
@@ -207,51 +237,6 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
   filtered required check produces no run, which reads as *pending*, never *passed*). Steps 5, 6, 8,
   9, 11 and 12 stay unenforced on purpose, named in `docs/VERSIONING.md` rather than covered by a
   gate that would claim to have checked a judgement when it had checked a string.
-  ⭐ **Second landing — the same defect shape one branch over, measured at SIX instances.**
-  `docs/CHANGELOG.md`'s preamble and `docs/PLAN.md § 4` both state that a card-bearing PR owes a
-  line-initial `- **card#NNNN**` bullet **in the same PR**, and nothing on any surface checked it: a
-  sweep of `dev` found **30 cards named in commit subjects and 25 bulleted**, so card#7335 (the whole
-  fleet-reporter), #7455, #7456, #7457, #7521 and #7929 had merged with no entry at all and the first
-  release would have collected a changelog missing an entire subsystem (backfilled in PR #44; this is
-  the hole that let them through). ⚠ **Replayed against the real commits, the six split three and
-  three**: R4 refuses #7335, #7456 and #7929 as they actually merged and passes each again after the
-  backfill, while #7455, #7457 and #7521 merged *before `docs/CHANGELOG.md` existed* (created
-  2026-08-25) and get exit 2 — a real gap in the released record, but not a rule R4 could have
-  enforced at the time. **R4** now requires that bullet on **every** PR whose head ref or
-  title names a card, and **R5** — the size gate `docs/PLAN.md § 4` and D-11 had asserted in the
-  present tense since 2026-08-23 while **no such gate existed** — requires `docs/CHANGELOG.md` to
-  stay under `1 MiB − the bytes it actually grew in the last 14 days`, a threshold **measured from
-  git history on every run** rather than stored, because a written growth rate stops being a
-  measurement the moment growth changes. ⚑ **That gate is not a distant tripwire:** the file went
-  1,182 B → 150,881 B in six days, so at the measured mean the contents API's silent truncation cliff
-  is about five weeks out, not years. ⛔ **Both new rules are built around the shape that gets a gate
-  switched off — reddening correct work.** R4 does not apply when the base is `main` (release flow
-  step 4 has just emptied `[Unreleased]`, so requiring a bullet there would red the correctly
-  executed step), and a PR that **removes** a card's bullet is exempt for that card — a revert of
-  unreleased work owes the deletion of an entry, not one more, and the removal is the only way to
-  claim the exemption, keyed on an observable rather than on a title or a branch name the author can
-  type (the precedent is `release-consistency.yml`'s `BASE_REF`-keyed back-merge exemption). A
-  back-merge or a rebase is out of scope at the **trigger** rather than by exemption, which is
-  precisely why the surfaces are the branch and the title and not commit **subjects**. R5 refuses only
-  a PR that makes an over-threshold file **bigger**, so the archiving PR that fixes it is never
-  blocked by the condition it fixes. ⭐ **Every new arm was seen to fail first**: eight single-variable
-  mutations of the guard — R4 asserting nothing, the line-initial rule dropped, the exemption made
-  unconditional, the title surface dropped, the base-ref carve-out removed, R5 made decoration, its
-  14-day window ignored, and a shallow clone treated as measurable — each produced a targeted red
-  naming the property it removed, and the same plants run in CI as fixtures. R4's refusal was also
-  replayed against the **real merge commits** above, and R5's against a 760 KB plant on this branch.
-  ⛔ **Two defects the real-surface run found in this change itself, neither visible from the
-  fixtures.** *(1)* The workflow fetched the base with `--depth=1`, and **a shallow FETCH silently
-  re-shallows a repository cloned in FULL** — measured: a six-commit head branch collapsed to two
-  and `is-shallow-repository` flipped to true, so R5 would have exited 2 on **every** PR while the
-  new `fetch-depth: 0` looked like it had handled it. The `--depth` is gone and § 8 now asserts its
-  absence. *(2)* Refusing **every** shallow clone was too broad and would have redded work that is
-  fine — this repository's own working checkout is shallow at the root commit. R5 now refuses only
-  the ambiguous case (**shallow *and* nothing found before the cutoff**), because a graft removes
-  only commits older than its boundary and so cannot have hidden a commit that WAS found; the
-  selftest arm that covers it now asserts its own premise, after a mutation showed the "shallow"
-  fixture it was built on was a complete clone.
-  ⚠ **Still does not BLOCK** — the rulesets require only `card-token-lint`.
 - **card#7966** — **D3's § 7.1 Label line column published strings that its own rule statements
   forbid, and the reason no gate could say so is that the COMPOSITION of those strings was published
   nowhere.** Two known instances, one root cause, and a sweep of all ten cells that found three more.
