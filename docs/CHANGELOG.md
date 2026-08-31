@@ -18,6 +18,39 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#7947** — **`verify-harness-facts.py`'s `COMMON` was a hand-transcribed list of nine
+  harness payload key names, and it backed most of that gate's fixture-key assertions.** The build
+  declares those fields ONCE, on a base schema every hook declaration intersects
+  (`<base>().and(<obj>({hook_event_name:…}))`), and the tool's key walker only ever entered the
+  hook-SPECIFIC half — so the transcription was never compared against the binary at all. ⛔ **That
+  is measured, not argued: 126 of the gate's 186 fixture-key assertions resolved against that
+  list**, and a copy of the real 2.1.247 bundle with `cwd:e()` rewritten to `dwc:e()` inside the
+  base schema — two bytes, the file's only difference from the installed build — **passed the
+  pre-change gate, `HARNESS-FACT CHECKS PASS`, exit 0**. A renamed common key could not red it,
+  which is the decoration canon #9 names; it is the fifth instance of the class card#7930 fixed
+  four of, and the largest by assertion count. **The base schema is now RESOLVED out of the
+  binary** at each hook's own declaration site — module-scoped like § 6's enum resolution, because
+  `h=` has 5009 assignments in a 2.1.247 bundle — and `hook_event_name` is a CAPTURE of the text
+  the hook pattern matched rather than a second spelling of it: **104 of the 186 assertions now
+  resolve against the derived base set and 22 against the captured discriminant. No harness key
+  name is written anywhere in the file.** ⭐ **Seen to fail, on the real bundle, before being
+  trusted**: the planted rename reds with 22 failures each naming `'cwd'` and the fixture that
+  carries it; a declaration stripped of its base prefix aborts naming `['Setup']` rather than
+  guessing which common fields it has; and the new fabricated-builder control, pointed at a REAL
+  builder, aborts saying it would confirm anything. **Both in-tool control legs name no field** —
+  one spelled `"cwd" in common` would be the transcribed list back again, wearing an assert.
+  ⚠ **One primitive fixed on the way, because the derivation made it hot**: the key walker
+  re-sliced the whole remaining 47 MB of bundle at every depth-0 comma (`re.match(pat, s[i:])`) —
+  the same defect `_assignments` records one screenful below, wearing a slice instead of an
+  unanchored `\b`. Anchored as `pattern.match(s, i)` the whole gate went **8.9 s → 4.9 s** on
+  2.1.247, so the added derivation costs less than nothing. ⚠ **Still NOT wired into CI, and not
+  proposed for it** — the gate is fail-closed on the installed build D1 declares and card#7929's
+  reasoning is unchanged, so this was validated locally against **Claude Code 2.1.247**, the build
+  D1's five declaration sites agree on, and against two planted copies of it. ⚠ **The derivation
+  deliberately did NOT move into `tools/design/d1_appendix.py`**: that library is the one parser
+  for § 17's MARKDOWN and has two callers because both need that grammar, whereas
+  `bin/harness-fixture-drift.py` never opens a bundle — hoisting a binary extractor into it would
+  put a second, unrelated subject in a shared library to serve one caller.
 - **card#8075** — **D3 § 7.1's `blocked` desk rendered *since 14:31* from NO D2 MEMBER, and the
   ratified floor-preview had already invented `blocked_since` to draw it.** D2 § 8.2.1's seat object
   declared nothing carrying when a wait began: the open attention request lives in § 8.2.3's

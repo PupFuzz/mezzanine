@@ -12,9 +12,11 @@ Two bindings, one rung apart:
     review rounds -- omitting exactly the two the `elicitation` branch depends on.
 
 Ground truth is the INSTALLED HARNESS BINARY's own declarations, re-derived on every run.
-Nothing here is a stored number, and every extractor carries a control that ABORTS rather
-than reporting clean when it cannot discriminate (canon #9: a check that cannot fail is a
-decoration).
+Nothing here is a stored FACT -- not a number, not a key name, not a minified identifier --
+and every extractor carries a control that ABORTS rather than reporting clean when it cannot
+discriminate (canon #9: a check that cannot fail is a decoration).  "Number" is what that
+sentence said until card#7947, and a transcribed list of the harness's nine COMMON payload
+key names sat below it the whole time, backing most of the fixture-key assertions in § 1.
 
 WHICH build is ground truth is D1's fact, not this tool's: the version is READ from the
 document's own declaration sites and this file states it nowhere.  A version typed here
@@ -110,10 +112,21 @@ else:
     BIN = None
 
 # ---------- re-derive the harness ground truth (never a stored figure) -------------
-COMMON = {"session_id","transcript_path","cwd","prompt_id","permission_mode",
-          "agent_id","agent_type","effort","hook_event_name"}
+# ONE spelling of "a payload field name", used by both entry points below.  Two spellings
+# are free to disagree about what a field is, and the first thing that produces is one
+# walker seeing a key the other one drops.
+_FIELD     = r"[a-z_]+"
+_FIELD_RE  = re.compile(r",(%s):" % _FIELD)      # `,key:` — every field after the first
+_FIRST_RE  = re.compile(r"\{\s*(%s):" % _FIELD)  # `{key:` — the first, which has no comma
+
 def _keys_after(s, start):
-    """Collect `,key:` at brace/paren depth 0, walking forward from a declaration."""
+    """Collect `,key:` at brace/paren depth 0, walking forward from a declaration.
+
+    `_FIELD_RE.match(s, i)`, never `re.match(pat, s[i:])`: the slice copies the whole
+    remaining bundle -- ~47 MB per depth-0 comma here -- and this walker is called once per
+    hook declaration and once per base schema. Same defect as the one `_assignments` below
+    records; it just wore a slice instead of an unanchored `\\b`.
+    """
     d = i = 0; i = start; out = set()
     while i < len(s) and i < start + 4000:
         c = s[i]
@@ -124,7 +137,7 @@ def _keys_after(s, start):
                 break
             d -= 1
         elif c == "," and d == 0:
-            m = re.match(r",([a-z_]+):", s[i:])
+            m = _FIELD_RE.match(s, i)
             if m:
                 out.add(m.group(1))
         i += 1
@@ -133,16 +146,82 @@ def _keys_after(s, start):
 TXT = BIN.read_bytes().decode("latin-1") if (BIN and BIN.exists()) else ""
 
 HOOK_DECL = {}          # hook -> [offset just past its `hook_event_name:<lit>("X")`]
+HOOK_COMMON = {}        # hook -> the field names it inherits from the build's base schema
 
 # The wrapper is zod's `literal()`, whose minified NAME changes every build.  Match the
-# shape and let the control below prove the match discriminates.
-HOOK_DECL_RE = re.compile(r'hook_event_name:[A-Za-z_$][\w$]*\("([A-Za-z]+)"\)')
+# shape and let the control below prove the match discriminates.  The discriminant key's
+# own name is a CAPTURE, not a second spelling: what goes into each hook's key set is the
+# text this pattern matched in the bundle, so a build that renamed it yields zero hooks
+# and the control below aborts, rather than the sets quietly carrying a dead name.
+HOOK_DECL_RE = re.compile(r'(hook_event_name):[A-Za-z_$][\w$]*\("([A-Za-z]+)"\)')
+
+# ---------- the BASE payload schema: derived, never transcribed -------------------
+# Every hook declaration in the builds measured has the shape
+#   <base>().and(<obj>({hook_event_name:<lit>("X"), ...hook-specific fields...}))
+# so the fields EVERY hook carries -- the session/cwd/agent/effort family -- are declared
+# exactly once, on `<base>`, and `_keys_after` above only ever walks the hook-specific half.
+# Those common fields back most of this gate's fixture-key assertions, and until card#7947
+# they were a hand-transcribed list sitting in this file: a stored fact backing the
+# MAJORITY of the population, checked against nothing.  Rename one in the harness and every
+# assertion resting on it would have kept passing against a name the build no longer
+# declares -- the check could not fail, which is the decoration canon #9 names.  Derived
+# now, from the same reference site the hook keys come from.
+BASE_AND_RE  = re.compile(r'([A-Za-z_$][\w$]*)\(\)\.and\([A-Za-z_$][\w$]*\(\{$')
+BASE_DECL_RE = re.compile(r'\s*[A-Za-z_$][\w$]*\(\(\)\s*=>\s*[A-Za-z_$][\w$]*\(\{')
+
+@lru_cache(maxsize=None)
+def base_schema_keys(name, near):
+    """The field names the base schema `<name>` declares, read in `near`'s own module.
+
+    `<name>` is a generated identifier -- `h` at 2.1.247 -- and is derived from the
+    reference site for the same reason no other minified name is pinned here.  Resolution
+    is MODULE-SCOPED like § 6's: `h=` has 5009 assignments in a 2.1.247 bundle, so the
+    first one in file order is some other module's.
+
+    An EMPTY resolution is no answer, never "this build declares no common fields": that
+    would silently narrow every hook's key set and turn a renamed field into a clean run.
+    """
+    for pos in _bindings_near(name, near):
+        m = BASE_DECL_RE.match(TXT[pos:pos + 200])
+        if not m:
+            continue
+        brace = pos + m.end() - 1
+        keys = _keys_after(TXT, brace + 1)
+        first = _FIRST_RE.match(TXT, brace)     # `_keys_after` reads `,key:` — the first
+        if first:                               # field of an object literal has no comma
+            keys.add(first.group(1))
+        if keys:
+            return frozenset(keys)
+    raise ValueError(
+        f"the hook declarations name {name!r} as the schema their common fields come from, "
+        f"but no `{name}=` in the module that references it declares an object with fields "
+        f"-- the common key names cannot be re-derived from this build, so this reports "
+        f"nothing rather than binding to a list nobody read out of the binary")
 
 def harness_truth():
-    hooks = {}
+    hooks, bases, unbased = {}, {}, []
     for m in HOOK_DECL_RE.finditer(TXT):
-        HOOK_DECL.setdefault(m.group(1), []).append(m.end())
-        hooks.setdefault(m.group(1), set()).update(_keys_after(TXT, m.end()))
+        key, hook = m.group(1), m.group(2)
+        HOOK_DECL.setdefault(hook, []).append(m.end())
+        hooks.setdefault(hook, set()).update(_keys_after(TXT, m.end()) | {key})
+        # BASE_AND_RE is `$`-anchored, so this window only has to be longer than the prefix
+        # it matches (`h().and(t({` is 11 chars at 2.1.247); it is not a search radius.
+        b = BASE_AND_RE.search(TXT[max(0, m.start() - 64):m.start()])
+        if b:
+            bases.setdefault(hook, set()).add((b.group(1), m.start()))
+        else:
+            unbased.append(hook)
+    # A declaration this does not recognise is NOT a hook without common fields.  Folding
+    # the common set into it anyway would assert keys the build may not declare; leaving
+    # them out would red its fixtures for the wrong reason.  Neither is a measurement, so
+    # name what cannot be read and stop.
+    if unbased:
+        raise SystemExit(
+            "harness-truth extractor: hook declaration(s) "
+            f"{sorted(set(unbased))} are not of the `<base>().and(<obj>({{hook_event_name:…}}))` "
+            "form this derives the common payload fields from. The bundler's shape changed; "
+            "teach BASE_AND_RE the new one. This does not guess which common fields those "
+            "hooks carry.")
     # CONTROL (canon #9): the extractor must be shown capable of the other answer, or its
     # "every key resolves" verdict is a decoration.  SessionStart's key IS `source`; the
     # string `session_start_reason` occurs nowhere in this build.  If the extractor cannot
@@ -151,7 +230,40 @@ def harness_truth():
     if "source" not in ss or "session_start_reason" in ss:
         raise SystemExit("harness-truth extractor failed its control: "
                          f"SessionStart keys = {sorted(ss)}")
-    return {k: v | COMMON for k, v in hooks.items()}
+    out, base_only = {}, set()
+    for hook, keys in hooks.items():
+        common = frozenset().union(*(base_schema_keys(n, at) for n, at in bases[hook]))
+        HOOK_COMMON[hook] = common
+        base_only |= common - keys
+        out[hook] = keys | common
+    # CONTROL for the base resolver, in two legs that name no field -- a control spelled as
+    # `"cwd" in common` would be the transcribed list back again, wearing an assert.
+    #   1. NEGATIVE: a builder name the module does not declare must RAISE.  A resolver that
+    #      answers for a name that is not there would "confirm" any name, including the one
+    #      a renamed field left behind.
+    probe = sorted({n for s in bases.values() for n, _ in s})[0] + "_no_such_builder"
+    at = next(iter(next(iter(bases.values()))))[1]
+    try:
+        got = base_schema_keys(probe, at)
+    except ValueError:
+        pass
+    else:
+        raise SystemExit(f"base-schema extractor control FAILED: fabricated builder {probe!r} "
+                         f"resolved to {sorted(got)!r} instead of raising -- it would "
+                         f"'confirm' whatever name the hook declarations happened to carry")
+    #   2. LOAD-BEARING: the base must contribute at least one field NO hook declares in its
+    #      own half.  If every common field were also a hook-specific one, this resolver
+    #      would be indistinguishable from returning nothing, and a rename inside it would
+    #      hide behind the hook halves.
+    if not base_only:
+        raise SystemExit("base-schema extractor control FAILED: every field it resolved is "
+                         "also declared by a hook's own half, so nothing in this run "
+                         "distinguishes it from an extractor that resolved nothing")
+    notes.append(f"common payload fields re-derived from the build's base schema: "
+                 f"{len(frozenset().union(*HOOK_COMMON.values()))} across {len(out)} hooks, "
+                 f"{len(base_only)} of them declared by no hook's own half "
+                 f"(fabricated-builder control raised)")
+    return out
 
 # ---------- re-derive harness ENUM VALUE SETS from the binary ----------------------
 # Identifier resolution is MODULE-SCOPED, never global-first-match.  The bundler's names
@@ -378,14 +490,24 @@ except AppendixError as e:
 fixtures = [(p.line, p.obj) for p in APPENDIX.payloads]
 notes.append(f"captured-payload fixtures found: {len(fixtures)} "
              f"(D1 § {APPENDIX.number}, parsed by tools/design/d1_appendix.py)")
+asserted = via_base = 0
 for line, o in fixtures:
     h = o["hook_event_name"]
     if h not in HOOKS:
         fail.append(f"L{line}: fixture claims hook {h!r}, which the installed harness does not declare")
         continue
     for k in o:
+        asserted += 1
+        if k in HOOK_COMMON[h]:
+            via_base += 1
         if k not in HOOKS[h]:
             fail.append(f"L{line}: fixture {h} carries key {k!r}, absent from the harness's own schema")
+# Reported because it is the size of what the derivation carries: these are the assertions
+# that used to resolve against a list typed into this file and now resolve against the
+# build's own base schema.  A run where it is 0 is a run that says nothing about the base
+# resolver, whatever else it reports.
+notes.append(f"fixture-key assertions resolved against the DERIVED base schema: "
+             f"{via_base}/{asserted}")
 
 # ---------- 2. every hook the doc names is classified -----------------------------
 subtbl = re.search(r"\| Hook \| What the reporter does with it \| Events \|\n\|[-|]+\|\n(.*?)\n\n",
