@@ -18,6 +18,37 @@ Nothing has been released yet, so `[Unreleased]` is the only section.
 
 ## [Unreleased]
 
+- **card#8075** — **D3 § 7.1's `blocked` desk rendered *since 14:31* from NO D2 MEMBER, and the
+  ratified floor-preview had already invented `blocked_since` to draw it.** D2 § 8.2.1's seat object
+  declared nothing carrying when a wait began: the open attention request lives in § 8.2.3's
+  `detail`, which is the drill-down's source and not the desk's — so the one rendered fact on that
+  desk stood against § 5's own rule that a rendered fact with no field is a fact the client invented.
+  ⭐ **The measurement that decided it, and it points the opposite way from the cheap fix**: a
+  NON-live blocked desk already carries a real time through § 7.3's currency label, and a live one
+  carries no currency label at all — so dropping the timestamp would have made the **stale** desk the
+  better-informed of the two. The other candidate member is worse than absent: `activity.last_event_time`
+  equals the request's time at the instant the hand goes up and then moves with the next activity
+  event of any kind, silently re-dating a forty-minute wait. **card#8075's ruling took the expensive
+  answer**: D2 § 8.2.1 now declares **`blocked_since`** — `rfc3339_ms`, nullable, non-null only when
+  `activity_state == "blocked"`, carrying the open request's `event_time` on the seat's own clock,
+  the same basis § 4.7 already measures the 60-minute attention ceiling from. It is a **PROMOTION,
+  not a new fact**: `attention_requests.opened_at` is a stored column the seat row already points at
+  through `open_attention_ref`, so no DDL, no event and no derivation rule moved, and § 8.2.3's
+  *"~1.5 KiB of counters on every seat"* objection is priced on a drill-down payload, not on a member
+  that is `null` on every seat that is not blocked. **The preview's invented field is reconciled in
+  this change** — the spelling it minted is the ruled one, and both it and its README now say which
+  it is. D3 carries the render row (§ 5.1), the null render (§ 5.6), the seat-clock listing (§ 2.4)
+  and the § 7.1 cell's citation; the card#7966 bullet that held that cell OPEN is closed.
+  ⛔ **What was deliberately NOT built: a server-clock twin, and therefore no age.** The desk draws a
+  labelled seat-clock timestamp and § 2.4's four durations are still four; *waiting for 40m* would
+  need a basis D2 does not publish, and minting one is a product question this card did not put.
+  **Every derived figure moved and every one was re-measured, not re-typed** — the seat object
+  1,807→1,828 B, the worst case 5,529→5,572 B, the worst-case delta 6,112→6,171 B and with it D3
+  § 8.1's whole cap arithmetic (spare 2,080→2,021 B; the cap could still reach 15, and 16 still
+  breaches). ⭐ **The gate's own count of the population it checks was stale the moment the member
+  landed**: § 12 said *73 field names* beside a tool that re-derives 74 and reported clean, so
+  `verify-fleet-state.py` G2 now holds that number against the table too. **Both directions of G2
+  and the new count guard were each planted and watched red** before being trusted.
 - **card#7946** — **`fleet-reporter/fixtures/hooks/` vendored D1 § 17 verbatim and nothing
   checked that the two agreed.** Editing § 17 alone left the fixtures stale with EVERY CHECK
   GREEN: the reporter's own `harness_payload_keys` check reads the FIXTURES (so it validates
