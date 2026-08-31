@@ -13,11 +13,11 @@ a data file that tooling reads, not documentation. Everything from
 [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) onward is
 specific to Mezzanine and has no counterpart there.
 
-> **Status — re-measured 2026-08-30, cutting `v0.2.0`.** `VERSION` is `0.2.0`. **One tag
-> exists**: `v0.1.0`, minted by `auto-tag-version` on `556ac3f` — the scaffolding seed merge
-> (PR #11, 2026-08-24), which is exactly the bootstrap case the ⚠ under
-> [§ Release flow](#release-flow) warns about, not a release anybody reviewed as one. It is
-> immutable and is never moved; `v0.2.0` is the first tag this flow actually produces.
+> **Status — re-measured 2026-08-31, after `v0.2.0` landed.** `VERSION` is `0.2.0`. **Two tags
+> exist**: `v0.1.0` on `556ac3f` — the scaffolding seed merge (PR #11, 2026-08-24), which is
+> the bootstrap case the ⚠ under [§ Release flow](#release-flow) records, not a release anybody
+> reviewed as one — and `v0.2.0` on `804c31a` (PR #40, 2026-08-30), the first tag this flow
+> produced deliberately. Both are immutable and are never moved.
 > **Nothing is deployed**: `bin/deploy.sh` does not exist and `docs/PLAN.md § 5` records the
 > prod host as unprovisioned (D-08), so both target verdicts in
 > [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) are still
@@ -58,8 +58,9 @@ specific to Mezzanine and has no counterpart there.
    branch, merged with a **merge commit — never squashed**. Squashing a back-merge copies
    the content without the ancestry, so `main`'s tip never becomes an ancestor of `dev` and
    the *next* release PR's three-dot diff re-shows the previous release's `VERSION` bump as
-   an incoming change. See the ⚠ under [§ Branch model](#branch-model): today `dev`'s ruleset
-   mechanically forbids this, and that has to be resolved before the first release.
+   an incoming change. `dev` was briefly squash-only, which made this rule unsatisfiable; that
+   was resolved on 2026-08-23 and `dev` now allows `merge` too — see the ✅ under
+   [§ Branch model](#branch-model).
 
 ---
 
@@ -219,13 +220,14 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 10. **CI takes it from there on the push to `main`:** `auto-tag-version.yml` mints
     `v<version>`, and
     [`release-promote-cards.yml`](../.github/workflows/release-promote-cards.yml) promotes the
-    board-14 cards named in the released range. Neither is done by hand. ⚠ **The first-ever
-    release is different** — the card mover derives its range from the previous release tag
-    and there is none yet, so it must be run via `workflow_dispatch` with an explicit `base`
-    (`docs/KANBAN.md § G-2`; `§ G-16` explains why that dispatch only exists once the
-    workflow is on `main`).
+    board-14 cards named in the released range. Neither is done by hand, and **an ordinary
+    release passes no `base`** — both a push run and a dispatch derive the range themselves.
+    When a range genuinely cannot be derived the mover exits 2 rather than guessing, and
+    `--base` is the escape; `docs/KANBAN.md § G-2` owns the three cases where that happens.
+    **Do not restate them here** — a second copy of that rule is what went stale last time.
 11. **Open the back-merge `sync/main-to-dev-post-v<version>` → `dev`** and merge it with a
-    merge commit (core rule 5, and the ⚠ blocking it today).
+    merge commit — never a squash (core rule 5). `dev` allows `merge` since 2026-08-23, so
+    nothing blocks this; the post-`v0.2.0` back-merge landed this way.
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
 
@@ -246,13 +248,17 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
 > covering exactly the four steps named above and nothing else.
 
-> ⚠ **One-time, at the first push that carries `auto-tag-version.yml` onto `main`.** The
-> workflow tags on *any* push to `main`, which includes the scaffolding seed merge
-> `docs/KANBAN.md § G-16` recommends cutting before the first release PR. Whatever `VERSION`
-> reads at that moment is what gets minted — so a seed merge carrying `0.1.0` mints `v0.1.0`
-> on a scaffolding commit, and the first real release PR then **cannot** also ship `0.1.0`:
-> the workflow refuses to move an existing tag and reds the release, correctly. Decide which
-> commit is `v0.1.0` before pushing either one.
+> ⚠ **The bootstrap trap — it FIRED, and what it left is immutable.** `auto-tag-version` tags
+> on *any* push to `main`, not only a release PR, using whatever `VERSION` reads at that
+> commit. The scaffolding seed merge (PR #11, 2026-08-24) carried `0.1.0`, so it minted
+> `v0.1.0` on `556ac3f` — a scaffolding commit nobody reviewed as a release. The `refs/tags/v*`
+> ruleset blocks `update` and `deletion` with **no bypass actor**, so that tag stays where it
+> is; `v0.2.0` is the first tag this flow produced deliberately.
+>
+> **The rule is not spent, only its first instance is.** Any non-release push to `main` mints
+> `v<VERSION>` at that commit, and a later release PR shipping that same version then
+> **cannot** tag it — the workflow refuses to move an existing tag and reds, correctly. So
+> bump `VERSION` before pushing anything to `main` that is not the release it names.
 
 ---
 

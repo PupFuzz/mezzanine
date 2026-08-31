@@ -149,21 +149,23 @@ one. Two more halves must both be present in the mapping: `stages.started` **and
 `started_from_stages` absent the move is refused outright.
 
 ### G-16 — `workflow_dispatch` only resolves from the DEFAULT branch
-The release workflow advertises a dry-run dispatch so the whole path can be rehearsed before
-the irreversible one. **That dispatch does not exist until the workflow file is on the default
-branch (`main`).** With the file only on `dev`, the API answers:
+**A `workflow_dispatch` does not exist until its file is on the default branch (`main`)** — a
+`pull_request` workflow registers from the PR head, a `workflow_dispatch` one does not. While
+the file is only on `dev`, `actions/workflows` does not list it and the API answers:
 
 ```
 HTTP 404: workflow release-promote-cards.yml not found on the default branch
 ```
 
-and `actions/workflows` lists only the lint — a `pull_request` workflow registers from the PR
-head, a `workflow_dispatch` one does not.
+**For `release-promote-cards.yml` this is SPENT.** It reached `main` in `1f86523`
+(2026-08-22), before `v0.1.0`, so its dry-run dispatch resolves today and **no seeding merge is
+owed**. The rule is kept because it binds **every workflow added from here on**: a new
+`workflow_dispatch` stays invisible to the API until its file reaches `main`, which for
+ordinary feature work means the next release.
 
-**The release path is not broken by this.** A `push: main` trigger fires from the pushed
-commit's own tree, so the workflow arrives and runs on the very merge that lands it. What is
-blocked is *rehearsing* it. Seed `.github/workflows/` onto `main` as its own merge, before any
-release PR, if you want the dry-run before the real thing.
+**The release path is never blocked by this.** A `push: main` trigger fires from the pushed
+commit's own tree, so a workflow arrives and runs on the very merge that lands it. Only
+*rehearsing* ahead of time is blocked.
 
 ### G-5 — `.release-pr.json` `promote.api_base` is a credential-exfiltration surface
 It is PR-editable, and it is where `KANBAN_WRITEBACK_TOKEN` gets sent. That is why the

@@ -36,7 +36,7 @@ on:
         required: false
         default: ''
       base:
-        description: 'Explicit range base (a tag or sha). Blank = derive. REQUIRED for the first-ever release — this repo has no release tag yet, and the mover refuses a full-history sweep rather than guessing one.'
+        description: 'Override the derived range base (a tag or sha). Blank = derive it: the push `before` sha, else the previous release tag. Needed only when derivation is impossible or wrong — `main` was force-pushed, a shallow/tagless clone, or deliberately re-promoting an OLDER release. An un-derivable range exits 2 rather than guessing (docs/KANBAN.md G-2).'
         required: false
         default: ''
       dry_run:
