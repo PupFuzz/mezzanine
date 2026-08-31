@@ -1,10 +1,17 @@
 # release-pr-guard.yml — refuse a PR into the release branch that is not shaped like a release.
 #
-# WHAT IT DOES. On a PR whose base is the release branch (`main`), it asserts the three
-# mechanically checkable rules of `docs/VERSIONING.md § Release flow`: the head is the
-# throwaway `release/v<version>` branch, `VERSION` is strictly greater than the release
-# branch's, and `docs/CHANGELOG.md` carries a section for the new version. A PR into any other
-# base is NOT APPLICABLE and passes trivially.
+# WHAT IT DOES — two families of rule, applicable on different conditions.
+# On a PR whose base is the release branch (`main`) it asserts the three mechanically checkable
+# rules of `docs/VERSIONING.md § Release flow` (R1-R3): the head is the throwaway
+# `release/v<version>` branch, `VERSION` is strictly greater than the release branch's, and
+# `docs/CHANGELOG.md` carries a section for the new version. A PR into any other base is NOT
+# APPLICABLE to those three.
+# On EVERY PR it asserts `docs/PLAN.md § 4`'s changelog discipline (R4-R5): a PR whose head ref
+# or title names a card carries that card's line-initial `- **card#NNNN**` bullet under
+# `## [Unreleased]`, and `docs/CHANGELOG.md` stays below the contents-API truncation cliff with
+# a fortnight of measured growth to spare. R4 was added after a 2026-08-30 sweep found SIX
+# cards merged into `dev` with no changelog entry at all — including the whole fleet-reporter —
+# because nothing on any surface had ever checked the rule both docs state.
 #
 # WHY IT EXISTS. On 2026-08-30, PR #38 merged `dev` -> `main` green with none of the three: the
 # head was the integration branch (which `delete_branch_on_merge` would have DELETED — a
@@ -43,9 +50,11 @@
 #      filterless form makes every state of that PR carry a run that judged the base it
 #      actually had at the time.
 #
-# `edited` is load-bearing for that second reason, which is NOT card-token-lint's reason for
-# subscribing to it (there it is the PR title, half its linted surface). `synchronize` is how
-# the author's fix — the bump, the changelog section, the branch rename — gets re-judged.
+# `edited` is load-bearing for that second reason — and, since R4 landed, for card-token-lint's
+# reason too: `edited` also fires on a TITLE change, and the title is one of R4's two surfaces,
+# so retitling a PR to name a card creates a changelog obligation that must be re-judged.
+# `synchronize` is how the author's fix — the bump, the changelog section, the missing bullet,
+# the branch rename — gets re-judged.
 
 name: Release-PR guard
 
@@ -67,23 +76,38 @@ jobs:
       # stale, and (b) is unavailable outright when the PR conflicts — precisely when a release
       # PR most needs judging. Rule R2 is a statement about what the HEAD carries
       # (`docs/VERSIONING.md § Release flow` step 3), so the head sha is both the correct
-      # subject and the only unambiguous one. Depth 1 is enough: the guard reads file content
-      # at a revision, never history.
+      # subject and the only unambiguous one.
+      #
+      # FULL HISTORY, AND R5 IS WHY. Depth 1 was enough while the guard only read file content
+      # at a revision. R5 asks a question about HISTORY — how many bytes `docs/CHANGELOG.md`
+      # grew in the last fourteen days — and a truncated history answers "no commit before the
+      # cutoff" in exactly the words it uses for a file younger than the window. The guard
+      # refuses to guess between the two and exits 2 there (`bin/release-pr-guard.py §
+      # size_before`), so this is not an optimisation that could be quietly reverted: at depth 1
+      # this workflow reds on every PR.
       - name: Checkout the PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
 
-      # The base branch tip has to be fetched explicitly — the checkout above brought exactly
-      # one commit. Depth 1 is enough for `git show <ref>:VERSION`. The ref comes from the
-      # event through `env:`, so nothing here hardcodes a branch name and a PR into `dev`
-      # fetches `dev` harmlessly. If this fetch ever fails the guard reports an unresolvable
-      # base rev and exits 2 — a red, never a skip.
+      # The base branch tip has to be fetched explicitly — the checkout above brought the head's
+      # history, not the base's. The ref comes from the event through `env:`, so nothing here
+      # hardcodes a branch name and a PR into `dev` fetches `dev` harmlessly. If this fetch ever
+      # fails the guard reports an unresolvable base rev and exits 2 — a red, never a skip.
+      #
+      # ⛔ NO `--depth`, AND THAT IS NOT A LEFTOVER. This line carried `--depth=1` while the
+      # guard only read `<ref>:VERSION`, and adding R5 turned it into a defect: MEASURED on
+      # 2026-08-30, `git fetch --depth=1` re-shallows a repository that was cloned in FULL, and
+      # the graft boundary it writes is global to history traversal — a six-commit head branch
+      # became a two-commit one and `is-shallow-repository` flipped to true, so R5 would have
+      # exited 2 on every PR while the `fetch-depth: 0` above looked like it had handled this.
+      # A shallow FETCH silently undoes a full CHECKOUT. `bin/release-pr-guard.selftest.py § 8`
+      # asserts this line carries no `--depth`, because nothing else would catch its return.
       - name: Fetch the base branch tip
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+        run: git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
       # The guard's own prove-it-can-fail fixtures run HERE, against THIS checkout — the same
       # bytes that are about to judge somebody's PR. § 9 replays PR #38's real shape and
@@ -93,11 +117,16 @@ jobs:
         run: python3 bin/release-pr-guard.selftest.py
 
       # Refs go through `env:`, NEVER string-interpolated into the shell: `${{ }}` inside `run:`
-      # is a script-injection sink. `--opt=$VAR` rather than `--opt "$VAR"` for the reason
-      # measured on card-token-lint — a value starting with `-` is consumed as an OPTION by the
-      # space form and reds the gate with an argparse error naming nothing the author did wrong.
-      - name: Judge this PR against the release rules
+      # is a script-injection sink. That matters most for the TITLE, which R4 reads and which is
+      # attacker-controlled free text on a fork PR — `${{ github.event.pull_request.title }}`
+      # inline in a `run:` block is the textbook injection. `--opt=$VAR` rather than
+      # `--opt "$VAR"` for the reason measured on card-token-lint — a value starting with `-` is
+      # consumed as an OPTION by the space form and reds the gate with an argparse error naming
+      # nothing the author did wrong, and a PR title is far likelier to start with `-` than a
+      # branch name is.
+      - name: Judge this PR against the release and changelog rules
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: python3 bin/release-pr-guard.py --base-ref="$BASE_REF" --head-ref="$HEAD_REF" --base-rev="origin/$BASE_REF"
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 bin/release-pr-guard.py --base-ref="$BASE_REF" --head-ref="$HEAD_REF" --title="$PR_TITLE" --base-rev="origin/$BASE_REF"

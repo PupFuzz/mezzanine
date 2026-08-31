@@ -18,8 +18,11 @@ complete but not glanceable: you cannot look at it and see *who is working, who 
 and who is stuck.* Mezzanine is that view — an office building where each PM gets a floor,
 solo agents share one, and workers sit at desks doing visibly real things.
 
-The guiding rule, borrowed from prior art: **an avatar walking IS the status.** Every
-motion on the floor is driven by a real event. Nothing is canned status theater.
+The guiding rule, borrowed from prior art: **an avatar walking IS the status.** Every motion
+that *means* something is driven by a real event — a desk changes because the wire said so, and
+nothing on it is canned status theater. The room around the desks may carry a little warmth that
+means nothing at all — a lamp's glow, an LED on a rack. `docs/design/FLOOR.md § 6` owns the rule,
+the test that tells the two apart, and the bound on the warmth.
 
 ## Architecture — three planes
 

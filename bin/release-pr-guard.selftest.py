@@ -28,7 +28,10 @@ NO NETWORK, NO CREDENTIAL, NO BOARD. This runs on a public runner.
 """
 from __future__ import annotations
 
+import atexit
+import datetime as dt
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -39,9 +42,32 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 GUARD = REPO / "bin" / "release-pr-guard.py"
 WORKFLOW = REPO / ".github" / "workflows" / "release-pr-guard.yml"
-AUTHORITIES = (".release-pr.json", ".github/workflows/auto-tag-version.yml")
+# `bin/promote-cards-by-token` is here because R4 extracts the card-token grammar from it — the
+# same line `bin/card-token-lint.py` reads. Copied in for the same reason as the other two: the
+# extraction under test must be the extraction that runs in CI.
+AUTHORITIES = (".release-pr.json", ".github/workflows/auto-tag-version.yml",
+               "bin/promote-cards-by-token")
 
 fails = 0
+
+# Every fixture is a real git repo in a temp dir, and this file now builds about forty of them
+# per run — several carrying a 600 KB changelog, all carrying a copy of the 44 KB mover. Left
+# behind they are thousands of inodes per run on a shared box; the run that added § 11 filled
+# this machine's /tmp inode table to 88%. Removed at exit rather than at each use so a failing
+# arm can still be inspected mid-run, and `RELGUARD_KEEP_FIXTURES=1` keeps them for debugging.
+FIXTURES: list[Path] = []
+
+
+def _sweep_fixtures() -> None:
+    if os.environ.get("RELGUARD_KEEP_FIXTURES"):
+        print(f"release-pr-guard.selftest: kept {len(FIXTURES)} fixture dir(s) "
+              f"(RELGUARD_KEEP_FIXTURES is set)")
+        return
+    for d in FIXTURES:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+atexit.register(_sweep_fixtures)
 
 
 def ok(msg: str) -> None:
@@ -75,8 +101,20 @@ def changelog_with(version: str) -> str:
             f"- **card#8174** — a line.\n")
 
 
-def git(repo: Path, *args: str) -> None:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+def unreleased_with(*cards: str, extra: str = "") -> str:
+    """A changelog whose `[Unreleased]` section carries a line-initial bullet per card."""
+    body = "".join(f"- **card#{c}** — what card#{c} did.\n" for c in cards)
+    return f"# Changelog\n\n## [Unreleased]\n\n{body}{extra}"
+
+
+def git(repo: Path, *args: str, when: dt.datetime | None = None) -> None:
+    env = None
+    if when is not None:
+        # Both dates pinned: R5's window is measured against the COMMITTER date, and a fixture
+        # that set only the author date would look aged while testing nothing.
+        env = dict(os.environ, GIT_AUTHOR_DATE=when.isoformat(),
+                   GIT_COMMITTER_DATE=when.isoformat())
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         raise SystemExit(f"fixture git failed: {' '.join(args)}\n{r.stderr}")
 
@@ -84,27 +122,53 @@ def git(repo: Path, *args: str) -> None:
 def make_repo(*, base_version: str | None = "0.1.0",
               head_version: str | None = "0.2.0",
               head_changelog: str | None = None,
+              base_changelog: str = UNRELEASED_ONLY,
+              older_changelog: str | None = None,
+              older_days_ago: int = 30,
               base_branch: str = "main",
               head_branch: str = "release/v0.2.0") -> Path:
     """A two-branch fixture repo carrying this repo's real authority files.
 
-    `None` for a version or the changelog means the FILE IS ABSENT at that side — the
-    unmeasurable states § 6 exercises, which is why they are expressed as absence rather than
+    `None` for a version or the head changelog means the FILE IS ABSENT at that side — the
+    unmeasurable states § 7 exercises, which is why they are expressed as absence rather than
     as an empty string.
+
+    `older_changelog` prepends one commit dated `older_days_ago` days back, which is how § 11
+    puts a changelog size OUTSIDE R5's fourteen-day window: with it the growth R5 measures is
+    head-minus-that, without it the file has no history before the cutoff and the growth is its
+    whole size. Same head bytes, two verdicts — that difference IS the window.
     """
     repo = Path(tempfile.mkdtemp(prefix="relguard-fx-"))
+    FIXTURES.append(repo)
     git(repo, "init", "-q", "-b", base_branch)
     git(repo, "config", "user.email", "selftest@example.invalid")
     git(repo, "config", "user.name", "selftest")
+    (repo / "docs").mkdir(exist_ok=True)
+
+    if older_changelog is not None:
+        # A commit BEFORE the pre-window one, touching something else. It exists so that a
+        # clone deep enough to reach `older` is still genuinely SHALLOW — without it, a
+        # `--depth 3` clone of a three-commit history is a COMPLETE clone and git writes no
+        # graft at all, which would have made § 11's "shallow but sufficient" arm assert
+        # something false about itself. Measured, not assumed: that arm did not red under a
+        # mutation that refuses every shallow clone, which is how the fixture's own claim was
+        # caught.
+        (repo / ".seed").write_text("seed\n", encoding="utf-8")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "seed",
+            when=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=older_days_ago * 2))
+        (repo / "docs" / "CHANGELOG.md").write_text(older_changelog, encoding="utf-8")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "older",
+            when=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=older_days_ago))
+
     for rel in AUTHORITIES:
         dst = repo / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPO / rel, dst)
-    (repo / "docs").mkdir(exist_ok=True)
-
     if base_version is not None:
         (repo / "VERSION").write_text(base_version + "\n", encoding="utf-8")
-    (repo / "docs" / "CHANGELOG.md").write_text(UNRELEASED_ONLY, encoding="utf-8")
+    (repo / "docs" / "CHANGELOG.md").write_text(base_changelog, encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "base")
 
@@ -123,16 +187,37 @@ def make_repo(*, base_version: str | None = "0.1.0",
     return repo
 
 
+def shallow_clone(repo: Path, head_branch: str, base_branch: str = "main",
+                  depth: int = 1) -> Path:
+    """A truncated clone of a fixture. `depth` is the variable § 11 moves: R5 refuses only the
+    shallow clone that cannot see past the cutoff, not every shallow clone."""
+    dst = Path(tempfile.mkdtemp(prefix="relguard-shallow-")) / "clone"
+    FIXTURES.append(dst.parent)
+    r = subprocess.run(["git", "clone", "-q", "--depth", str(depth), "--branch", head_branch,
+                        f"file://{repo}", str(dst)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"fixture shallow clone failed:\n{r.stderr}")
+    # The base fetch uses the SAME depth as the clone, for the reason the workflow's own comment
+    # records: a shallower fetch writes a graft boundary that is global to history traversal and
+    # would truncate the HEAD branch too. Hardcoding `--depth=1` here made the depth-3 arm below
+    # fail — the fixture was faithfully reproducing the defect that measurement then found in
+    # the workflow.
+    git(dst, "fetch", "-q", "--no-tags", f"--depth={depth}", "origin",
+        f"+refs/heads/{base_branch}:refs/remotes/origin/{base_branch}")
+    return dst
+
+
 def guard(repo: Path, *, base_ref: str = "main", head_ref: str = "release/v0.2.0",
-          base_rev: str = "main", head_rev: str = "HEAD") -> subprocess.CompletedProcess:
+          title: str = "", base_rev: str = "main",
+          head_rev: str = "HEAD") -> subprocess.CompletedProcess:
     return run("--repo", str(repo), "--base-ref", base_ref, "--head-ref", head_ref,
-               "--base-rev", base_rev, "--head-rev", head_rev)
+               "--title", title, "--base-rev", base_rev, "--head-rev", head_rev)
 
 
 def rules_flagged(r: subprocess.CompletedProcess) -> list[str]:
-    """Which of R1/R2/R3 the run actually named — an exit code alone would not distinguish a
+    """Which of R1-R5 the run actually named — an exit code alone would not distinguish a
     guard that reds for the right reason from one that reds for any reason."""
-    return sorted(set(re.findall(r"::error::release-pr-guard: (R[123])", r.stdout)))
+    return sorted(set(re.findall(r"::error::release-pr-guard: (R[1-5])", r.stdout)))
 
 
 # =============================================================================================
@@ -443,6 +528,23 @@ if run_lines:
        (False, False), ("--base-ref=" in unsafe and "--head-ref=" in unsafe, "${{" not in unsafe))
 eq("the workflow passes the base ref through env:", True, "BASE_REF: ${{" in wf)
 eq("the workflow passes the head ref through env:", True, "HEAD_REF: ${{" in wf)
+# R4 reads the PR TITLE, which on a fork PR is attacker-controlled free text — the one input
+# here where `${{ }}` inline in a `run:` block is a live injection sink rather than a
+# discipline. Asserted on the invocation line itself (the `${{` check above covers it), and
+# separately that the title reaches the guard at all: a title that never arrives makes R4
+# silently half-blind, which is a false-clean and not a failure anyone would see.
+eq("the workflow passes the PR title through env: (R4's second surface)",
+   True, "PR_TITLE: ${{" in wf)
+if run_lines:
+    eq("  … and hands it to the guard as --title= (option-safe, like the two refs)",
+       True, "--title=" in run_lines[0])
+# R5 measures fourteen days of history. At depth 1 the guard exits 2 on EVERY PR (§ 11), so
+# this line is not an optimisation someone could quietly revert without noticing.
+eq("the workflow checks out FULL history (R5 measures growth, which needs it)",
+   True, bool(re.search(r"^\s*fetch-depth:\s*0\s*$", wf, re.M)))
+eq("  CONTROL: that check rejects the depth-1 spelling it replaced",
+   False, bool(re.search(r"^\s*fetch-depth:\s*0\s*$", "        with:\n          fetch-depth: 1\n",
+                         re.M)))
 # `edited` is load-bearing here for a DIFFERENT reason than in card-token-lint.yml: `edited`
 # fires when a PR's BASE is changed, and a PR retargeted from dev to main is the one transition
 # that turns this gate on. Without it, that PR is judged by a run that decided NOT APPLICABLE.
@@ -460,6 +562,19 @@ eq("  CONTROL: that check can see a branches: filter when one is present (positi
    True, bool(re.search(r"^\s*branches:", "on:\n  pull_request:\n    branches: [main]\n", re.M)))
 eq("the workflow fetches the base ref before measuring against it",
    True, "git fetch" in wf)
+# ⛔ …and does NOT pass `--depth` to that fetch. MEASURED: `git fetch --depth=1` re-shallows a
+# repository cloned in full, and the boundary is global to history traversal — a six-commit head
+# branch collapsed to two and `is-shallow-repository` flipped to true, which would have made R5
+# exit 2 on every PR while `fetch-depth: 0` above looked like it had handled it. This assertion
+# is the only thing standing between that one-word optimisation and a gate that always reds.
+fetch_lines = [ln for ln in wf.splitlines()
+               if "git fetch" in ln and ln.lstrip().startswith("run:")]
+eq("exactly one fetch line", 1, len(fetch_lines))
+if fetch_lines:
+    eq("  … with NO --depth (a shallow fetch silently undoes the full checkout)",
+       False, "--depth" in fetch_lines[0])
+    eq("  … CONTROL: that check catches the spelling it replaced",
+       True, "--depth" in "run: git fetch --no-tags --depth=1 origin \"+refs/heads/x:y\"")
 eq("the workflow checks out the PR HEAD sha, not the merge ref",
    True, "pull_request.head.sha" in wf)
 eq("the workflow runs THIS selftest before judging anybody's PR",
@@ -487,6 +602,275 @@ fx = make_repo(base_version="0.1.0", head_version="0.2.0",
                head_changelog=changelog_with("0.2.0"), head_branch="release/v0.2.0")
 r = guard(fx, base_ref="main", head_ref="release/v0.2.0")
 eq("  CONTROL: the same PR done correctly PASSES", 0, r.returncode)
+
+
+# =============================================================================================
+print("== 10. R4 — the card's changelog bullet, and every carve-out that lets one go ==")
+# THE DEFECT THIS ARM GUARDS: on 2026-08-30 a sweep of `dev` found 30 cards named in commit
+# subjects and 25 bulleted — card#7335 (the WHOLE fleet-reporter), #7455, #7456, #7457, #7521
+# and #7929 had merged with no changelog entry. Nothing checked it. Every red below is a plant
+# of that exact shape, and § 10's own control comes first so the reds are evidence.
+# The fixture's own branch NAME is irrelevant to R4 — the guard is told the head REF as an
+# argument (that is what a PR event carries) and reads content at `HEAD`. Every arm below sets
+# the ref it means, so the dict fixes only the two sides' content and the base branch.
+R4FX = dict(base_version="0.1.0", head_version="0.1.0", base_branch="dev")
+
+
+def r4(repo, **kw):
+    kw.setdefault("base_ref", "dev")
+    kw.setdefault("head_ref", "card-8174-changelog-gate")
+    kw.setdefault("base_rev", "dev")
+    return guard(repo, **kw)
+
+
+# --- THE CONTROL: a card-bearing feature PR that DID write its bullet passes.
+fx = make_repo(**R4FX, head_changelog=unreleased_with("8174"))
+r = r4(fx)
+eq("a feature PR naming card#8174 WITH its bullet → exit 0", 0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
+
+# --- THE PLANT: the same PR with the bullet gone. The changelog is NOT empty — it carries some
+# OTHER card's bullet — so this fails on the card's identity, not on "the file looks bare".
+fx = make_repo(**R4FX, head_changelog=unreleased_with("7929"))
+r = r4(fx)
+eq("the bullet missing (another card's bullet present) → RED", 1, r.returncode)
+eq("  … R4 alone (single-variable off the control above)", ["R4"], rules_flagged(r))
+eq("  … and the message names the card and the exact line to add",
+   True, "card#8174" in r.stdout and "`- **card#8174** — `" in r.stdout)
+eq("  … and names the surface that created the obligation",
+   True, "head ref 'card-8174-changelog-gate'" in r.stdout)
+
+# --- The rule is LINE-INITIAL, which docs/PLAN.md § 4 says in as many words (their incident:
+# a prose mention discharged another card's obligation). Both near-miss shapes must still red.
+fx = make_repo(**R4FX,
+               head_changelog="# Changelog\n\n## [Unreleased]\n\n  - **card#8174** — indented.\n")
+r = r4(fx)
+eq("an INDENTED bullet does not satisfy R4 (line-initial is the rule)", ["R4"], rules_flagged(r))
+fx = make_repo(**R4FX,
+               head_changelog="# Changelog\n\n## [Unreleased]\n\n- see **card#8174** for why.\n")
+r = r4(fx)
+eq("bold-ANYWHERE in a bullet does not satisfy R4", ["R4"], rules_flagged(r))
+
+# --- Section scoping: a bullet under a RELEASED section is a released entry, not this PR's.
+fx = make_repo(**R4FX, head_changelog=("# Changelog\n\n## [Unreleased]\n\n"
+                                       "## [0.1.0] - 2026-08-30\n\n- **card#8174** — old.\n"))
+r = r4(fx)
+eq("a bullet under a RELEASED section does not discharge the Unreleased obligation",
+   ["R4"], rules_flagged(r))
+
+# --- The TITLE is the second surface, and it stands alone.
+fx = make_repo(**R4FX, head_branch="chore/tidy", head_changelog=unreleased_with())
+r = r4(fx, head_ref="chore/tidy", title="ci(release): gate the bullet (card#8174)")
+eq("a token in the TITLE alone creates the obligation → RED", ["R4"], rules_flagged(r))
+eq("  … and the message says the title is what named it", True, "PR title" in r.stdout)
+fx = make_repo(**R4FX, head_branch="chore/tidy", head_changelog=unreleased_with("8174"))
+r = r4(fx, head_ref="chore/tidy", title="ci(release): gate the bullet (card#8174)")
+eq("  … and the same PR WITH the bullet passes (the title surface discriminates)",
+   0, r.returncode)
+
+# --- Spelling: the branch says `card-8174`, the bullet says `card#8174`. One obligation.
+fx = make_repo(**R4FX, head_branch="card-8174-x", head_changelog=unreleased_with("8174"))
+r = r4(fx, head_ref="card-8174-x")
+eq("branch-ergonomic `card-8174` is discharged by a `card#8174` bullet (id, not spelling)",
+   0, r.returncode)
+# CONTROL: the guard is not simply ignoring the branch — the same branch with no bullet reds.
+fx = make_repo(**R4FX, head_branch="card-8174-x", head_changelog=unreleased_with())
+r = r4(fx, head_ref="card-8174-x")
+eq("  CONTROL: the same branch with no bullet DOES red (the surface is really read)",
+   ["R4"], rules_flagged(r))
+
+# --- Two cards named, one bulleted: the message must name the MISSING one and only it.
+fx = make_repo(**R4FX, head_branch="card-8174-x", head_changelog=unreleased_with("8174"))
+r = r4(fx, head_ref="card-8174-x", title="two cards (card#7929)")
+eq("a second card named in the title is a second obligation → RED", ["R4"], rules_flagged(r))
+eq("  … naming card#7929 and NOT card#8174 (which is discharged)",
+   (True, False),
+   ("no line-initial `- **card#7929**`" in r.stdout,
+    "no line-initial `- **card#8174**`" in r.stdout))
+
+# --- A card-ish token the GRAMMAR does not accept invents no obligation. That is
+# card-token-lint's defect to report; R4 refusing to guess an id is the honest half.
+fx = make_repo(**R4FX, head_branch="chore/tidy", head_changelog=unreleased_with())
+r = r4(fx, head_ref="chore/tidy", title="cards #8174 and other prose")
+eq("`cards #8174` (plural — the correlators drop it) creates NO R4 obligation", 0, r.returncode)
+r = r4(fx, head_ref="chore/tidy", title="card#8174 and other prose")
+eq("  CONTROL: the parseable spelling in the same slot DOES create one",
+   ["R4"], rules_flagged(r))
+
+# --- THE REVERT CARVE-OUT. The exemption is the REMOVAL, not a title or a branch name: the
+# bullet exists at the base and does not at the head.
+fx = make_repo(**R4FX, base_changelog=unreleased_with("8174"),
+               head_changelog=unreleased_with())
+r = r4(fx)
+eq("a PR that REMOVES card#8174's bullet is exempt → exit 0", 0, r.returncode)
+eq("  … and SAYS it exempted rather than staying silent",
+   True, "R4 exempt: card#8174" in r.stdout)
+# CONTROL, single-variable: the same head with a base that never had the bullet is the
+# ordinary miss and must red. Without this the exemption would be indistinguishable from R4
+# simply not firing.
+fx = make_repo(**R4FX, base_changelog=unreleased_with(), head_changelog=unreleased_with())
+r = r4(fx)
+eq("  CONTROL: same head, base with no bullet → RED (the exemption discriminates)",
+   ["R4"], rules_flagged(r))
+
+# --- THE BASE-REF CARVE-OUT. On the release path step 4 has just emptied `[Unreleased]`, so a
+# release PR whose title cites a card must NOT be asked for a bullet under it.
+fx = make_repo(base_version="0.1.0", head_version="0.2.0",
+               head_changelog=changelog_with("0.2.0"))
+r = guard(fx, base_ref="main", head_ref="release/v0.2.0",
+          title="Release v0.2.0 (card#8174)")
+eq("a release PR citing a card is NOT asked for an [Unreleased] bullet → exit 0",
+   0, r.returncode)
+eq("  … and says so rather than passing silently", True, "R4 NOT APPLICABLE" in r.stdout)
+# CONTROL: the same title and the same (empty-Unreleased) changelog on a FEATURE PR reds — so
+# the pass above is the base ref's doing, not the fixture's.
+fx = make_repo(**R4FX, head_changelog=changelog_with("0.2.0"))
+r = r4(fx, head_ref="chore/tidy", title="Release v0.2.0 (card#8174)")
+eq("  CONTROL: the same title + changelog into `dev` DOES red (base ref is what carved it out)",
+   ["R4"], rules_flagged(r))
+
+# --- THE BACK-MERGE / REBASE CASE is out of scope at the TRIGGER, not by an exemption: the
+# documented sync branch names no card on either surface. This is why R4 reads the head ref and
+# the title and NOT commit subjects — a back-merge CONTAINS card-bearing subjects.
+fx = make_repo(**R4FX, head_branch="sync/main-to-dev-post-v0.1.0",
+               head_changelog=unreleased_with())
+r = r4(fx, head_ref="sync/main-to-dev-post-v0.1.0", title="Back-merge main to dev post v0.1.0")
+eq("the documented back-merge branch names no card → R4 never fires", 0, r.returncode)
+eq("  … and says it is not applicable, naming the tokenless reason",
+   True, "R4 NOT APPLICABLE — neither the head ref nor the PR title names a card" in r.stdout)
+
+# --- FAIL LOUD: a changelog with no `## [Unreleased]` heading cannot be judged by R4's rule.
+fx = make_repo(**R4FX, head_changelog="# Changelog\n\n## [0.1.0]\n\n- **card#8174** — x.\n")
+r = r4(fx)
+eq("no `## [Unreleased]` heading + a named card → exit 2, not a verdict", 2, r.returncode)
+eq("  … and says the rule is scoped to that section", True, "R4's rule is scoped" in r.stderr)
+
+# --- FAIL LOUD: the card grammar is EXTRACTED, and every failure to extract it is exit 2.
+fx = make_repo(**R4FX, head_changelog=unreleased_with("8174"))
+(fx / "bin/promote-cards-by-token").unlink()
+r = r4(fx)
+eq("card-grammar authority absent → exit 2, no private copy of the grammar", 2, r.returncode)
+eq("  … and names the authority it could not read", True, "authority not found" in r.stderr)
+fx = make_repo(**R4FX, head_changelog=unreleased_with("8174"))
+p = fx / "bin/promote-cards-by-token"
+p.write_text(p.read_text() + "\nCARD_RE='\\bcard([0-9]+)'\n", encoding="utf-8")
+r = r4(fx)
+eq("card-grammar authority DUPLICATED → exit 2 (ambiguity is not a pass)", 2, r.returncode)
+eq("  … and refuses to hardcode the grammar", True, "rather than hardcoding" in r.stderr)
+
+
+# =============================================================================================
+print("== 11. R5 — changelog SIZE against a threshold derived from the file's own growth ==")
+# `docs/PLAN.md § 4` promised this gate ("our addition — a size gate") and D-11 recorded it as
+# shipped; it did not exist until this card. The threshold is cliff (1 MiB) minus the bytes the
+# file grew in the last 14 days, measured from history on every run — so the arms below are
+# differential on the HISTORY, not just on the size.
+BIG = 600_000
+BIGGER = 700_000
+CLIFF = 1024 * 1024
+
+
+def sized_changelog(nbytes: int, *cards: str) -> str:
+    head = unreleased_with(*(cards or ("8174",)))
+    pad = nbytes - len(head.encode("utf-8"))
+    return head + ("x" * max(0, pad))
+
+
+R5FX = dict(base_version="0.1.0", head_version="0.1.0", base_branch="dev")
+
+# --- CONTROL: a small changelog is nowhere near the threshold.
+fx = make_repo(**R5FX, head_changelog=unreleased_with("8174"))
+r = r4(fx)
+eq("a small changelog → exit 0, R5 silent", 0, r.returncode)
+eq("  … and the run PRINTS the threshold it derived (no silent verdict)",
+   True, f"threshold {CLIFF:,} B" in r.stdout or "threshold " in r.stdout)
+
+# --- THE PLANT: 600,000 B with no history older than the window. All of it counts as
+# fourteen-day growth, so the threshold is 1 MiB - 600,000 B and the head is over it.
+fx = make_repo(**R5FX, head_changelog=sized_changelog(BIG))
+r = r4(fx)
+eq("600,000 B grown entirely inside the window → RED", 1, r.returncode)
+eq("  … R5 alone (the bullet is present, so R4 is silent)", ["R5"], rules_flagged(r))
+eq("  … and the message names the size, the threshold and the cliff",
+   (True, True, True),
+   (f"{BIG:,} B at the head" in r.stdout, f"{CLIFF - BIG:,} B threshold" in r.stdout,
+    f"{CLIFF:,} B" in r.stdout))
+eq("  … and names the remedy as a HUMAN decision, not one the gate makes",
+   True, "archive released sections" in r.stdout)
+
+# --- THE DIFFERENTIAL THAT PROVES THE WINDOW IS REAL: the SAME head bytes, but 590,000 of them
+# already existed 30 days ago. Growth is then 10,000 B, the threshold rises, and it passes.
+fx = make_repo(**R5FX, head_changelog=sized_changelog(BIG),
+               older_changelog=sized_changelog(590_000), older_days_ago=30)
+r = r4(fx)
+eq("the same 600,000 B, but 590,000 of it OUTSIDE the 14-day window → exit 0", 0, r.returncode)
+eq("  … and the run says it measured the growth from that older commit",
+   True, "grew 10,00" in r.stdout)
+# CONTROL: move the same older commit INSIDE the window and the identical head reds again.
+fx = make_repo(**R5FX, head_changelog=sized_changelog(BIG),
+               older_changelog=sized_changelog(590_000), older_days_ago=3)
+r = r4(fx)
+eq("  CONTROL: the same older commit dated 3 days back (inside the window) → RED again",
+   ["R5"], rules_flagged(r))
+
+# --- R5 REFUSES ONLY THE PRs THAT MAKE IT WORSE. An over-threshold file that reds every PR in
+# the repo reds the archiving PR too, and that is the gate people switch off.
+fx = make_repo(**R5FX, base_changelog=sized_changelog(BIG),
+               head_changelog=sized_changelog(BIG))
+r = r4(fx)
+eq("over threshold but this PR does not grow it → exit 0", 0, r.returncode)
+eq("  … as a WARNING that still states the measurement",
+   True, "R5 WARNING (not a failure)" in r.stdout)
+fx = make_repo(**R5FX, base_changelog=sized_changelog(BIGGER),
+               head_changelog=sized_changelog(BIG))
+r = r4(fx)
+eq("the ARCHIVING PR (over threshold, shrinking) is never blocked by R5", 0, r.returncode)
+# CONTROL: one byte of growth on the same over-threshold file is the refused case.
+fx = make_repo(**R5FX, base_changelog=sized_changelog(BIG),
+               head_changelog=sized_changelog(BIG + 1))
+r = r4(fx)
+eq("  CONTROL: the same file plus ONE byte → RED (the grew-test discriminates)",
+   ["R5"], rules_flagged(r))
+
+# --- FAIL LOUD: a shallow clone cannot be measured, and an unmeasurable size is not a small
+# size. This is the false-clean the whole rule turns on: `git log` reports "nothing before the
+# cutoff" for a truncated history in the same words it uses for a young file.
+fx = make_repo(**R5FX, head_branch="card-8174-changelog-gate",
+               head_changelog=sized_changelog(BIG))
+sh = shallow_clone(fx, "card-8174-changelog-gate", base_branch="dev")
+r = guard(sh, base_ref="dev", head_ref="card-8174-changelog-gate", base_rev="origin/dev")
+eq("a SHALLOW clone with nothing before the cutoff → exit 2, never a pass", 2, r.returncode)
+eq("  … and says an unmeasurable size is not a small size",
+   True, "an unmeasurable size is not a small size" in r.stderr)
+# CONTROL: the same fixture at full depth reaches a verdict (exit 1 here — it IS over
+# threshold), so the 2 above is the clone's doing and not the fixture's.
+r = r4(fx)
+eq("  CONTROL: the same repo at full depth reaches a RULE verdict, not a 2", 1, r.returncode)
+
+# --- …and shallowness ALONE is not the refusal. Refusing every shallow clone would be the easy
+# rule and would red work that is fine — this repo's own working checkout is shallow at the root
+# commit and can answer for every date after it. ONE fixture, TWO clones, depth the only
+# variable: at depth 1 the pre-window commit is unreachable (ambiguous, exit 2), at depth 3 it
+# is reachable, so truncation cannot have hidden it and the same shallow repo is measured.
+fx = make_repo(**R5FX, head_branch="card-8174-changelog-gate",
+               head_changelog=sized_changelog(BIG),
+               older_changelog=sized_changelog(590_000), older_days_ago=30)
+sh = shallow_clone(fx, "card-8174-changelog-gate", base_branch="dev", depth=1)
+r = guard(sh, base_ref="dev", head_ref="card-8174-changelog-gate", base_rev="origin/dev")
+eq("shallow, pre-window commit CUT OFF → exit 2 (the ambiguous case)", 2, r.returncode)
+sh = shallow_clone(fx, "card-8174-changelog-gate", base_branch="dev", depth=3)
+# ASSERT THE FIXTURE'S OWN PREMISE. "Shallow but sufficient" is only a test of anything if the
+# clone really is shallow; a `--depth N` clone of an N-commit history is COMPLETE and git writes
+# no graft, which is what this arm was silently doing before the fixture grew a seed commit.
+eq("  (fixture premise) the depth-3 clone is genuinely SHALLOW", "true",
+   subprocess.run(["git", "-C", str(sh), "rev-parse", "--is-shallow-repository"],
+                  capture_output=True, text=True).stdout.strip())
+r = guard(sh, base_ref="dev", head_ref="card-8174-changelog-gate", base_rev="origin/dev")
+eq("shallow, but the pre-window commit IS reachable → measured, exit 0", 0, r.returncode)
+eq("  … and it measured the growth from that commit, not from zero",
+   True, "grew 10,00" in r.stdout)
 
 
 print()

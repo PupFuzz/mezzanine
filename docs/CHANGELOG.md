@@ -6,11 +6,203 @@ card owes nothing. `docs/PLAN.md § 4` owns that rule and the reasoning behind i
 why the bullet must be line-initial; `docs/VERSIONING.md` owns when a release collects these
 entries and retitles the section.
 
+⛔ **Enforced since 2026-08-30 by `bin/release-pr-guard.py` R4**, on every PR — for seven days
+before that it was prose, and six cards' work merged with no entry at all. The two cases that
+owe nothing are a PR into `main` (the release retitles this section) and a PR that REMOVES a
+card's bullet (a revert of unreleased work); both are argued in that file's docstring. **R5**
+holds this file's SIZE under `1 MiB − the bytes it grew in the last 14 days`, so it reds while
+there is still time to archive released sections rather than after the contents API has begun
+returning it empty.
+
 Sections are newest-first: `[Unreleased]` collects what has landed on `dev` since the last
 release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4).
 
 ## [Unreleased]
 
+- **card#8174 (part 2)** — **`docs/CHANGELOG.md`'s per-PR bullet rule and `docs/PLAN.md § 4`'s
+  changelog size gate were both stated in the present tense and neither existed.** The bullet rule
+  — every PR whose title or branch carries a `card#NNNN` token owes a line-initial
+  `- **card#NNNN** — …` entry under `## [Unreleased]`, in the same PR — was prose for seven days,
+  and a sweep of `dev` found **six cards across seven merged commits** with no entry, including the
+  entire fleet-reporter (`card#7335`) and all three D-documents. ⛤ **Stated precisely, because the
+  first count was wrong: those six split three and three.** `docs/CHANGELOG.md` was created
+  2026-08-25 (`ceea110`); `card#7455`, `#7521` and `#7457` merged BEFORE it existed, so they broke
+  no rule and R4 correctly reports *cannot measure* on them. **Three of three card-bearing PRs that
+  merged after the rule existed missed the bullet** — a worse compliance rate than the inflated
+  figure suggested, not a better one. **R4** now asserts the rule on every PR, reading its card
+  grammar at run time from `CARD_RE` in `bin/promote-cards-by-token` — the same line
+  `card-token-lint.py` reads, so the accept-set has one home and no copy to drift. Two carve-outs,
+  both keyed on something observable rather than on a declared intent: a PR into `main` owes nothing
+  (release step 4 has just emptied the section **by construction**), and a PR that REMOVES a card's
+  bullet is exempt for that card (a revert of unreleased work owes the deletion, not a second
+  entry) — which cannot be claimed without deleting a visible line. **R5** implements `§ 4`'s own
+  formula literally — `threshold = 1 MiB − the bytes this file grew in the last 14 days`, growth
+  **re-measured from git history on every run and never stored** — and refuses only a PR that makes
+  an already-over-threshold file bigger, so the archiving PR that fixes it is not itself refused.
+  It was built rather than withdrawn because the file went 1,182 B → 150,881 B in five days, which
+  puts the contents-API truncation cliff about five weeks out rather than years. **Nine mutations
+  were each seen to red**, and R4 was replayed against real history: it refuses PR #41 exactly as it
+  merged and passes at the commit that backfilled it. ⛤ **Two defects in the guard itself surfaced
+  only on the real surface, not in review:** `git fetch --depth=1` **re-shallows a repository cloned
+  in full** — a six-commit branch collapsed to two, so R5 would have exited 2 on every PR while
+  `fetch-depth: 0` sat above it looking correct — and one selftest arm asserted something false
+  about itself, since a `--depth 3` clone of a three-commit history is a complete clone.
+
+- **card#7947** — **`verify-harness-facts.py`'s `COMMON` was a hand-transcribed list of nine
+  harness payload key names, and it backed most of that gate's fixture-key assertions.** The build
+  declares those fields ONCE, on a base schema every hook declaration intersects
+  (`<base>().and(<obj>({hook_event_name:…}))`), and the tool's key walker only ever entered the
+  hook-SPECIFIC half — so the transcription was never compared against the binary at all. ⛔ **That
+  is measured, not argued: 126 of the gate's 186 fixture-key assertions resolved against that
+  list**, and a copy of the real 2.1.247 bundle with `cwd:e()` rewritten to `dwc:e()` inside the
+  base schema — two bytes, the file's only difference from the installed build — **passed the
+  pre-change gate, `HARNESS-FACT CHECKS PASS`, exit 0**. A renamed common key could not red it,
+  which is the decoration canon #9 names; it is the fifth instance of the class card#7930 fixed
+  four of, and the largest by assertion count. **The base schema is now RESOLVED out of the
+  binary** at each hook's own declaration site — module-scoped like § 6's enum resolution, because
+  `h=` has 5009 assignments in a 2.1.247 bundle — and `hook_event_name` is a CAPTURE of the text
+  the hook pattern matched rather than a second spelling of it: **104 of the 186 assertions now
+  resolve against the derived base set and 22 against the captured discriminant. No harness key
+  name is written anywhere in the file.** ⭐ **Seen to fail, on the real bundle, before being
+  trusted**: the planted rename reds with 22 failures each naming `'cwd'` and the fixture that
+  carries it; a declaration stripped of its base prefix aborts naming `['Setup']` rather than
+  guessing which common fields it has; and the new fabricated-builder control, pointed at a REAL
+  builder, aborts saying it would confirm anything. **Both in-tool control legs name no field** —
+  one spelled `"cwd" in common` would be the transcribed list back again, wearing an assert.
+  ⚠ **One primitive fixed on the way, because the derivation made it hot**: the key walker
+  re-sliced the whole remaining 47 MB of bundle at every depth-0 comma (`re.match(pat, s[i:])`) —
+  the same defect `_assignments` records one screenful below, wearing a slice instead of an
+  unanchored `\b`. Anchored as `pattern.match(s, i)` the whole gate went **8.9 s → 4.9 s** on
+  2.1.247, so the added derivation costs less than nothing. ⚠ **Still NOT wired into CI, and not
+  proposed for it** — the gate is fail-closed on the installed build D1 declares and card#7929's
+  reasoning is unchanged, so this was validated locally against **Claude Code 2.1.247**, the build
+  D1's five declaration sites agree on, and against two planted copies of it. ⚠ **The derivation
+  deliberately did NOT move into `tools/design/d1_appendix.py`**: that library is the one parser
+  for § 17's MARKDOWN and has two callers because both need that grammar, whereas
+  `bin/harness-fixture-drift.py` never opens a bundle — hoisting a binary extractor into it would
+  put a second, unrelated subject in a shared library to serve one caller.
+- **card#8075** — **D3 § 7.1's `blocked` desk rendered *since 14:31* from NO D2 MEMBER, and the
+  ratified floor-preview had already invented `blocked_since` to draw it.** D2 § 8.2.1's seat object
+  declared nothing carrying when a wait began: the open attention request lives in § 8.2.3's
+  `detail`, which is the drill-down's source and not the desk's — so the one rendered fact on that
+  desk stood against § 5's own rule that a rendered fact with no field is a fact the client invented.
+  ⭐ **The measurement that decided it, and it points the opposite way from the cheap fix**: a
+  NON-live blocked desk already carries a real time through § 7.3's currency label, and a live one
+  carries no currency label at all — so dropping the timestamp would have made the **stale** desk the
+  better-informed of the two. The other candidate member is worse than absent: `activity.last_event_time`
+  equals the request's time at the instant the hand goes up and then moves with the next activity
+  event of any kind, silently re-dating a forty-minute wait. **card#8075's ruling took the expensive
+  answer**: D2 § 8.2.1 now declares **`blocked_since`** — `rfc3339_ms`, nullable, non-null only when
+  `activity_state == "blocked"`, carrying the open request's `event_time` on the seat's own clock,
+  the same basis § 4.7 already measures the 60-minute attention ceiling from. It is a **PROMOTION,
+  not a new fact**: `attention_requests.opened_at` is a stored column the seat row already points at
+  through `open_attention_ref`, so no DDL, no event and no derivation rule moved, and § 8.2.3's
+  *"~1.5 KiB of counters on every seat"* objection is priced on a drill-down payload, not on a member
+  that is `null` on every seat that is not blocked. **The preview's invented field is reconciled in
+  this change** — the spelling it minted is the ruled one, and both it and its README now say which
+  it is. D3 carries the render row (§ 5.1), the null render (§ 5.6), the seat-clock listing (§ 2.4)
+  and the § 7.1 cell's citation; the card#7966 bullet that held that cell OPEN is closed.
+  ⛔ **What was deliberately NOT built: a server-clock twin, and therefore no age.** The desk draws a
+  labelled seat-clock timestamp and § 2.4's four durations are still four; *waiting for 40m* would
+  need a basis D2 does not publish, and minting one is a product question this card did not put.
+  **Every derived figure moved and every one was re-measured, not re-typed** — the seat object
+  1,807→1,828 B, the worst case 5,529→5,572 B, the worst-case delta 6,112→6,171 B and with it D3
+  § 8.1's whole cap arithmetic (spare 2,080→2,021 B; the cap could still reach 15, and 16 still
+  breaches). ⭐ **The gate's own count of the population it checks was stale the moment the member
+  landed**: § 12 said *73 field names* beside a tool that re-derives 74 and reported clean, so
+  `verify-fleet-state.py` G2 now holds that number against the table too. **Both directions of G2
+  and the new count guard were each planted and watched red** before being trusted.
+- **card#7946** — **`fleet-reporter/fixtures/hooks/` vendored D1 § 17 verbatim and nothing
+  checked that the two agreed.** Editing § 17 alone left the fixtures stale with EVERY CHECK
+  GREEN: the reporter's own `harness_payload_keys` check reads the FIXTURES (so it validates
+  the copy against itself) and `verify-harness-facts.py` reads the APPENDIX (so it validates
+  the original against the harness binary) — neither can see the seam. ⭐ **That is measured,
+  not hypothesised: it diverged during card#7930, under the implementer's own hands, with
+  every gate green, and was caught only because they happened to be editing both ends.**
+  **`bin/harness-fixture-drift.py` + `.github/workflows/harness-fixture-drift.yml`** close it
+  by making the fixtures a DERIVATION rather than a copy: the guard regenerates all fifteen
+  files from the appendix — payloads grouped by `hook_event_name`, in document order, tagged
+  with the `_source` their region declares — and requires the committed bytes to be exactly
+  that, with `--write` repairing from the authority instead of by hand. ⛔ **Nothing about
+  § 17 is retyped in the guard**: the appendix is located by its own heading and its section
+  number is derived, the capture/stub split is read off which side of the DOCS-CITED heading
+  a payload sits on, and every failure to READ the authority is **exit 2 with the reason** —
+  heading renamed or duplicated, stub subsection gone, a payload parked where no region
+  classifies it, an empty region — kept distinct from exit 1 so a broken gate never reads as
+  a wrong fixture. **§ 17's grammar now has ONE spelling in this repo**: the shared parser
+  `tools/design/d1_appendix.py`, which `verify-harness-facts.py` now uses in place of its own
+  copy (same output, verified against 2.1.247 before and after), because a second parser is
+  free to disagree about what the appendix contains and that disagreement is this same defect
+  one level up. **Every arm was seen to fail** — nine drift arms, eleven fail-loud arms, and a
+  meta-control that mutates each of the fifteen fixtures in turn and requires each to red
+  ALONE naming itself, so the one green over fifteen files cannot be a comparison that
+  silently skipped one. ⚠ **The gate runs but does not BLOCK** — both rulesets still require
+  only `card-token-lint`. ⚠ **Nothing had drifted at the time of the fix**: today's fixtures
+  are byte-identical to the appendix, so this closes the hole rather than repairing a break.
+- **card#8161** — **D3's honesty principle was attributed to the operator, who disclaims it, and
+  cited to a document nobody in this repository can open.** `FLOOR.md § 6.1` read *"Every animation is
+  driven by a real event, or absent. — operator, via the proposal"*; the operator's verbatim ruling of
+  2026-08-30 (card#7953) is *"I never forbade motion that is neither held by a delivered field nor
+  caused by a delivered motion. Actually a little extra motion once in awhile is a nice touch.
+  Therefore blinking LEDs on a server rack is ok as long as it is not distracting"*, and **the
+  proposal is not in this repo** (tree-wide search at `dev`, with a control filename returning 0). ⛔
+  **The attribution is why the rule was never re-argued** — a rule an operator handed down is not
+  reopened, and a source no reader can fetch is not checked, so the design's own argument for it went
+  unexamined for four revisions while the ratified reference artifact rendered motion the document
+  forbade. ⭐ **The rule now has ONE home** — `§ 6.1`, as *this document's* design principle borrowed
+  from the prior art `README.md` names — and the three other sites **point** rather than restate
+  (`README.md`, whose *"borrowed from prior art"* framing was the honest one and is now the model;
+  `docs/PLAN.md § 2`; `FLOOR.md § 0` item 3). **No site attributes it to the operator.**
+  ⭐ **§ 6.3 relaxed, by SCOPING rather than loosening**: `§ 6.2` stays the closed set — for motion
+  that makes a **claim**, which is the half a viewer must be able to trust, so a `working` desk still
+  means working. Decorative motion is admitted and decided by **three property tests**, not a list of
+  names: does anything **read** it (decision 21's surviving constraint — the wall clock was refused
+  because `AT-D3-6` reads it and *"a frozen clock is not a defect and not a lie — it is the claim"*);
+  would it **assert something false on a dead feed**; could a viewer read it as one of the seventeen
+  (motion on an element a row draws is claim-bearing whatever drives it, which is what keeps
+  `AT-D3-1`'s idle-breathing RED red). ⚠ ***"Not distracting"* is given an operational form** or it is
+  a condition no reviewer can apply: **≥ 2 s cycle, opacity/scale only with no change of position, and
+  never a row's visual vocabulary** — a bound written to admit what the operator ratified (`.glowpulse`
+  at 2.4 s, 85%→55%) rather than to re-litigate it, with the 2 s carried in `§ 12` as **Chosen** and
+  saying so. Position is excluded because *an avatar walking IS the status*, which is also why moving
+  clouds and passing NPCs stay refused — by the amplitude bound, not by the claim test. **Three things
+  the card did not ask for and the amendment owes anyway:** `§ 6.2`'s *"everything that moves without a
+  delivered field is driven by the heartbeat"* note — which asks in its own text to be re-derived at
+  every amendment — **went false** and is re-derived with what `AT-D3-6` does and does not lose;
+  `§ 6.4`'s reduced-motion mechanism is **per-§ 6.2-row**, so decorative motion was outside it and now
+  stops under `reduce` explicitly; and `§ 6.3` bullet 2 (*motion driven by a timer*) would have
+  re-forbidden every decorative loop, since a loop with no driver is exactly what decoration is.
+  ⚠ **Stated rather than covered over: no mechanised check reaches decorative motion** — it writes no
+  animation-log row, so `AT-D3-1` cannot see it, and `verify-floor.py` reads the document and never
+  opens `floor-preview.html`, which is how `.glowpulse` sat unnoticed (card#7929: wiring the verifiers
+  is necessary and not sufficient). Review is what stands there, and saying so is the condition of
+  taking the option. **No change to `floor-preview.html`** — card#7953 ruled all three sites stay.
+- **card#7929** — **`tools/design/` was the only directory in this repository CI never entered:
+  246 KB of verification code referenced by zero workflows and zero hooks, while D1/D2/D3 cited
+  those tools as *"reds the gate"* in the PRESENT TENSE some fifty times between them.** The
+  convention behind it was a runbook sentence in `tools/design/README.md`, and **a runbook
+  protects nobody who does not follow it** — every D-document PR to that point merged on a gate
+  that never fired. **Four gates now run on every pull request**: `verify-event-schema.py`,
+  `verify-fleet-state.py`, `verify-floor.py`, and `floor-preview.selftest.mjs`, all pure repo
+  reads on stock `python3`/`node` — no credential, no network, no interpreter pin to keep honest.
+  ⛔ **Two are deliberately NOT wired, and named rather than skipped**: `verify-harness-facts.py`
+  is fail-closed on the installed Claude Code build D1 declares, and `floor-preview.browser.mjs`
+  on a headless Chromium; a stock runner carries neither, so wiring either would red every PR on
+  correct work — **and a gate that reds on correct work gets disabled**. Wiring them as a SKIP
+  would be worse: an *"N/A"* that reads green is a check reported as passed that never ran, which
+  is this very defect one layer down. ⚠ **No `paths:` filter, for a MEASURED reason** —
+  `verify-event-schema.py` resolves `docs/VERSIONING.md`'s path references and reds on any that is
+  missing, so a PR deleting `bin/release-pr-guard.py` breaks D1's gate while touching nothing under
+  `docs/design/`; a filter would pass that PR and leave the next unrelated one holding the red.
+  **No `branches:` filter either** — a filtered workflow produces no run, which as a required check
+  reads as PENDING, not passed. **`verify-design-docs.selftest.py` keeps the three document gates
+  from becoming decorations**: it copies the tracked tree, plants a defect of each verifier's own
+  headline class and requires a red naming the plant, asserting a DIFFERENTIAL rather than an
+  absolute pass so a PR that legitimately reds a verifier still gets its real message instead of a
+  control failure. ⚠ **A hole neither gate closes is declared rather than left implicit**:
+  `verify-floor.py`'s G1 holds `§ 6.2`'s closed animation set against the DOCUMENT only and the
+  artifact gate reads no animation at all, so **an animation in `floor-preview.html` with no row in
+  `§ 6.2` is invisible to both** — which is how `.glowpulse` sat unnoticed (card#8161).
 ## [0.2.0] — 2026-08-30
 
 - **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
@@ -1151,6 +1343,73 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   than silently applying nowhere, and an **operator-run** credential prerequisite the rig refuses to
   script. Whether the harness behaviour changed between 2.1.240 and 2.1.245 is **not established**.
 
+- **card#7335** — **the producer half of D1**: `fleet-reporter/` — one zero-dependency Node file
+  driven by Claude Code hooks and by the statusLine integration, D1 § 17's captured payloads
+  vendored beside it, and a hermetic acceptance suite. This is D1 § 16's artifacts 0–4; the ingest,
+  the server-side ledger and the staleness/predicate alarms are D2's and card #7338's. Built to the
+  card's three properties, each driven RED before GREEN. **Never blocks the seat** — one try/catch
+  per entry point with `process.exit(0)` in a `finally`, no stdout from a hook on any path, every
+  write a synchronous append; the network modules are required **lazily**, which makes that property
+  structural rather than observed (a hook process never loads an HTTP client at all) and takes 67 ms
+  of module loading off every hook fire. **Survives the bridge being down** — hour-bucketed
+  append-only spool, per-bucket read offsets, exponential backoff with full jitter, and a poison-pill
+  rule that costs one bad batch its own events and never the stream behind it; every discard is
+  counted, and a 30-hook outage followed by a restore delivers every event by id. **Programmatic end
+  to end** — every field is read from a hook payload or from process state, no model is asked to
+  describe itself, and the descriptor allowlist is the control with redaction as the second layer.
+  ⛔ **Five defects the suite found, every one of them silent in production**: a new flusher could
+  never claim ownership of `state.json`, so the cursor and `seq` never persisted and every restart
+  re-sent the spool from `seq` 1 — **dedup absorbs duplicate events but not a duplicated ordering
+  key**; a single `(bucket, offset)` cursor permanently skipped any bucket older than itself, losing
+  the straggler writes § 11.1's deletion grace exists for, with nothing counted; corrupt spool lines
+  were re-quarantined and re-counted on every retry pass, inflating the loss numbers the floor
+  renders precisely during an outage; `selftest`'s own sanitizer fixtures incremented the seat's live
+  `sanitizer_redactions`, a diagnostic moving an operational counter; and the statusLine passthrough
+  threw `ERR_UNKNOWN_ENCODING` and swallowed it, blanking the status line of every seat that had one.
+  ⭐ **Review then found that the known-VALUE leg of `redactSecrets` had no live subject at all.** The
+  function has two independent legs — values the process holds, and shapes (`CRED_PREFIX_RE`) — and
+  every credential in the suite carried a shape the regex already matches, so **deleting the value
+  leg outright left the whole section green**, reproduced before it was fixed. The only secret ever
+  registered was `config.token`, which by validation always carries the `mzn_` prefix, while
+  `proxy_url` is `https://user:password@host:port` and § 3.1 constrains nothing inside it — an
+  arbitrary password, matched by no prefix in the shape list, held in memory by every hook process.
+  `registerConfigSecrets` now registers every configured secret, and the new test isolates the leg
+  with a control in each direction. ⚠ **Two false-clean traps caught while building it are named
+  rather than passed over**: the first sweep read the spool line the harness itself had planted, so
+  RED and GREEN reported the same hit; and the corrupt line was initially placed behind a valid
+  event, where the disposal rule commits it only on a successful POST, so against an unreachable
+  proxy it never reached the sink and the sweep was reading a file that did not exist.
+  ⛔ **A failed spool append lost the event UNCOUNTED** — against D1 § 0 item 9 (*a counter for every
+  discarded event*) and § 11.4 (*nothing is discarded uncounted*), and reproduced rather than
+  inferred: with the current bucket made a directory and `counters/` + `log/` left writable, a real
+  `PreToolUse` gave rc 0, zero spooled events and a counter sink reading `"c":{}` — **the seat
+  renders healthy while dropping events**. **Fixed in the PRIMITIVE rather than at the four
+  call-sites, only one of which was correct**: `appendLine` counts its own failure keyed by subtree
+  and retries once through an uncached open, which previously spent exactly one event per transient
+  error. Two more of that round: the bucket name is now derived immediately before the write, which
+  the primitive's own header had always claimed and only `journal()` implemented; and
+  `projectLabel()` returned `basename(cwd)` *before* sanitizing, so § 7.3 rule 6 could never match a
+  bare username token and `cwd=$HOME` put **the OS username on the wire** — literally conformant with
+  § 6.1 and a § 1 non-goal violation.
+  ⇒ **D1 was the wrong side once**: § 6.1's `harness_label` pattern could not accept the value that
+  same row mandates (`claude-code/2.1.240` contains `/`), and left alone, an ingest implementing
+  § 6.1 literally would 422 the first correctly-configured seat, reject all 200 events in the batch
+  and quarantine them permanently. The pattern is widened, and the check now re-reads the pattern AND
+  the example out of the doc row and asserts them against each other, so the two copies cannot drift
+  again. ⚠ **The latency assertion moved behind `FLEET_REPORTER_PERF=1` on measurement, not
+  preference**: subtracting a baseline was tried and MEASURED to fail — interleaving baseline and
+  reporter samples so both see the same load gives an attributable median of **53 ms** idle against
+  **82 ms** and **163 ms** under six busy cores, with the p99 difference swinging **−1,070 ms** to
+  **+520 ms** on identical code, so the p99 is noise outright and the median — the better statistic —
+  still triples under load. What is asserted on every run is what is not load-sensitive: every hook
+  exits 0 and prints nothing on stdout on every adverse path. ⚠ **`K.FLUSH_MIN_EVENTS` was DELETED
+  rather than wired** — § 11.5's early-flush leg needs the flusher's whole duty cycle restructured,
+  the 10 s leg bounds the delay either way, and a defined-but-unread constant reads as an implemented
+  trigger to anyone grepping for it. ⚠ **Named rather than assumed**: a real Windows install
+  (card #7336), a real `/clear` against a real subagent (AT-1, card #7337), the `proxy_url` CONNECT
+  path, and reachability against a real ingest host are all unverified here. Suite: 189 → 217 checks,
+  exit 0 (219 under `FLEET_REPORTER_PERF=1`).
+
 - **card#7334** — Laravel application skeleton in `server/`, with mandatory MFA on stock
   packages (Fortify + `pragmarx/google2fa`). MFA gates three surfaces independently — the
   browser pages, the websocket handshake (`/broadcasting/auth`), and the REST snapshot route
@@ -1166,3 +1425,274 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   pinned commit, the reproduced MIT notice, and what was deliberately not taken), and
   `bin/asset-provenance.py` + its RED fixtures enforcing `docs/design/FLOOR.md § 10.1`'s two
   gates and AT-D3-12's lineage half. The new workflow is **not** a required status check.
+
+- **card#7456** — **D2, the fleet-state model and feed contract** (`docs/design/FLEET-STATE.md`):
+  everything between a durably-accepted batch and the floor — the per-seat state model, the MySQL
+  store on its dedicated host, the fold, retention, the server-side counters and the two read
+  surfaces, with twenty-three acceptance tests each carrying its RED, plus the mechanical verifier
+  `tools/design/verify-fleet-state.py`. D1 owns the wire and is cited, never restated: its five
+  `D2-MUST` constraints and the **twenty-nine** further places D1 addresses this document are
+  enumerated in Appendix A, one row each, pointing at the section that discharges them.
+  ⭐ **State is a PURE FUNCTION of stored facts, not a stored state machine** — five facts, one
+  precedence, recomputed each fold pass, because a machine has states that can be entered and not
+  left (the one-way trapdoor D1 had to fix twice) and a function over bounded facts cannot; every
+  open fact carries a stated ceiling and `offline` quiescence is the backstop under all of them.
+  ⛔ **DELIVERY IS NEVER ACTIVITY**: every receipt-derived timestamp is named for receipt and may
+  drive only transport states, activity claims come only from the seat's own turn and tool events,
+  and `reporter.heartbeat` is explicitly not one. The fleet PM channel's maxim — that a stamp which
+  refreshes only when a seat posts *"corroborates; it cannot exonerate"* — is quoted verbatim and
+  attributed, and **AT-D2-4's RED is the single line that would break it**.
+  ⇒ Also settled rather than deferred: the feed's ordering key is a server-minted `state_version` and
+  **not** D1's `(seq_epoch, seq)`, because orphan closes, staleness, ceilings and quiescence mint
+  transitions with no wire event behind them, so a `seq`-ordered feed could not sequence precisely
+  the transitions that fire when a seat goes quiet; `blocked` outranks `working`, stated loudly
+  because it is the one place two D1 rules are simultaneously true and D1 states no precedence;
+  fail-posture is stated per path and never inherited; and **`events` is deliberately NOT
+  partitioned** — MySQL requires every unique key to contain every partitioning column, so a RANGE
+  partition would force the dedup key to include the date and `D2-MUST` #3's dedup would silently
+  stop working. Retention is 14 days because the dedup guarantee IS the unique key on `events`, so
+  the chain 8 d spool < 10 d dedup < 14 d retention is one inequality that moves together. **Four D1
+  amendment needs are RECORDED in § 14 rather than edited into D1** — closed later on card#7521.
+  ⛔ **Six of round 1's 35 findings needed design changes rather than wording**, chief among them
+  that **the frozen-fold detector was written only by the fold, so it died with the thing it
+  detects**: `fold_lag_ms` is now computed at read time from a basis the ingest and the fold write
+  separately, and its operand is the OLDEST unfolded event rather than the newest, which reads ~0 on
+  a busy seat. § 4.5's five self-referential link-state predicates became an ordered cascade with a
+  total function and a defined value for a silent seat, and leaving `live` now CLEARS `stalled` and
+  `blocked` at the stale boundary while only MASKING `idle`, with the asymmetry and its reason
+  stated.
+  ⚠ **The review loop's stop-observable fired on the INSTRUMENT, so the instrument was repaired
+  first** and the document fixes were validated under the repaired tool. G5 was a bare substring
+  search over the whole cited section — vacuous for 24 of 50 § 12 rows, and **a live 2 s → 7 s drift
+  passed green**; G6 built its cited set from the whole row, so D2's own § links satisfied a
+  D1-citation requirement; G3 hard-coded 8940/86400, 8192 and the seat counts 4/50/200. Each is now
+  re-derived from its definition site and PERTURBED per row to prove the match can fail, with the
+  residue printed honestly — **64 of 81 proven discriminating, 17 not** — instead of counted as
+  passes. **G8 checked writers against rows and not rows against writers**, so a § 7.2 counter no
+  rule increments was invisible (measured: re-adding `offline_quiesced_attention` passed green); the
+  mirror direction's first run found five pre-existing rows with no writer. **The mirror then had to
+  be tightened from a bare name match to WRITERSHIP** — a declaration list satisfied the old
+  predicate, and so, per the second gate, did a sentence DENYING the counter exists — after which its
+  first run named four more, one of them the live sixth instance the previous pass could not see.
+  ⛔ **A sibling audit of one shape — a D2 claim about D1 content asserted without reading D1 — found
+  the delta-volume population missing `compaction.start` / `.end`**, which § 3.2 declares ARE
+  activity events: 8,940 → **8,980/seat-day**, with an independent cross-check the document now
+  carries (every D1 kind but the heartbeat, so D1's own ceiling sum 10,420 − 1,440 = 8,980). All
+  eight occurrences and every dependent figure were re-derived rather than restated, and G3 re-adds
+  the sum from the document's own components and is proven capable of the other answer.
+  ⇒ **AT-D2-14's hostile export is a GREEN, and the row asserting an abort was a check that could
+  never fire.** The row claimed the test-store guard aborts under `DB_DATABASE=mezzanine php artisan
+  test`. It cannot, while the pin is intact: PHPUnit's `<env>` writes only `putenv`/`$_ENV`, a shell
+  export lands in `$_SERVER`, and Laravel reads `$_SERVER` first — so the `<server>` twin beats the
+  export, **the resolved value never moves, and the guard has nothing to refuse**. Measured during
+  card #7334's build: the suite PASSES under that export. **A check that can never fire is the mirror
+  of the check that cannot fail**, so the row now asserts the green and reads the refusal from the
+  third RED, which deletes half a pin — the only lever that moves the resolved value. The sibling
+  audit found the same false claim in four more places, all corrected: § 6.2's proof bullet, the
+  AT-run-order row, the closing summary, and `docs/PLAN.md § 3`'s acceptance line for the
+  MySQL-provisioning card (card #7523), **where it would have sent a future builder chasing a refusal
+  that cannot happen and then weakening a correct pin to produce it**.
+
+- **card#7457** — **D3, the floor UI specification** (`docs/design/FLOOR.md`): everything after a D2
+  JSON object reaches a browser — the lobby, the floor and the desk drill-down, the identity mapping,
+  the closed animation table, degraded rendering, every failure path with its observable, asset
+  provenance as a build gate, and seventeen acceptance tests each with its RED. D2 owns the state
+  model and is cited, never restated; the **thirty-eight** places D2 addresses this document and the
+  **twelve** more D1 does are enumerated in Appendix A, one row each. Ships
+  `tools/design/verify-floor.py` — eight guard classes, every population re-derived from D2 rather
+  than stored in the checker, each watched failing against a planted defect before its pass was
+  claimed.
+  ⭐ **THE CLIENT DERIVES NO STATE, and the seven things it computes for itself are a CLOSED list**
+  (§ 2.1): every rendered fact names the D2 field it comes from, and the verifier reds when a source
+  cell names a field D2 does not send. A closed list is checkable against a candidate computation;
+  *"only presentational"* is not.
+  ⭐ **The honesty principle is a TABLE, not a principle** — sixteen animations, each with the wire
+  field or message that drives it and the exact edge that starts it, and **an animation with no row
+  is a defect**. The renderer must log `(animation_id, seat, cause)` for every animation it starts,
+  which is what makes **AT-D3-1** able to fail: its RED is adding idle breathing to the character
+  sprite, the single most natural thing to add to a pixel-art office and the thing that would quietly
+  make the floor's motion meaningless. ⛔ **No ambient life at all** — motion is the floor's
+  vocabulary and decoration would spend it on nothing; a state-held loop may say WHICH state, never
+  HOW MUCH, at one frame per D2's 250 ms coalescing tick, so no loop can appear more informative than
+  the feed that drives it. ⚠ **§ 6.1 landed carrying the attribution card#8161 later withdrew**
+  (*"— operator, via the proposal"*, at two sites), and § 6.3's blanket refusal of decorative motion
+  is scoped there too; this bullet describes the document as it shipped.
+  ⭐ **Identity is a pure function, not a stored position** — the desk slot is FNV-1a-32 of D1's
+  config-resident `(install_id, seat_id)` with deterministic probing, so two browsers, two reloads
+  and two server restarts agree with no server field and no local storage; sorted order and arrival
+  order are both refused with their failure modes (a sorted floor shifts wholesale when a seat is
+  provisioned; arrival order is not a function of the rendered set, so two browsers disagree). The
+  cost is paid openly: on a collision an arriving seat can displace an incumbent, bounded to the
+  chain, **animated as a move** because nothing on this floor moves without a cause, with the
+  frequency stated as `N/S` — 4 seats over 12 slots, **1 in 3** on the shipped map.
+  ⇒ **The subagent cap STAYS at 8**, closing D2 § 14 item 9, and the arithmetic is re-derived by the
+  gate rather than transcribed: **2,080 B** spare (8,192 − 6,112), ⌊2,080 ÷ 263⌋ = **7** more would
+  fit, the cap **could** reach **15** at 7,953 B, and 16 breaches at 8,216 B — **24 B over**. It
+  stays at 8 on a D2 fact rather than a taste judgement: **the drill-down does not read
+  `subagents[]`** — it reads the seat-detail response, whose open-call list D2 § 8.2.3 serves *"in
+  full (not capped at 8)"* — so the array's only consumer is the floor's side table, and the spare is
+  the margin the next field addition will need.
+  ⛔ **Asset provenance is two build gates, one of them an ABSENCE**: every asset file owes an
+  `ATTRIBUTION.md` row carrying source URL, author, SPDX identifier, retrieval date and the vendored
+  file's SHA-256, a missing row or a mismatched hash failing the build; and because character art is
+  GENERATED from the seat key by the ported MIT generator, the second gate asserts **there is no
+  image file in the character tree at all** — a hash denylist could only refuse the copies someone
+  thought to enumerate, an empty tree refuses the one nobody anticipated. The licence allowlist is
+  closed at `CC0-1.0` and `MIT`, and widening it is an operator decision, not an implementer's.
+  ⚠ **Nothing is invented where the contract cannot answer**: five gaps are filed as D2 amendment
+  needs, each with what is rendered in the meantime — the timeline and detail endpoints have no field
+  tables, the feed has no message for a seat or install entering the population, D2 refuses machine
+  tokens on the socket for a revocation property the browser's own session shares and D2 does not
+  address, no compaction fact reaches a consumer, and `fleet.reload.reason` has no member set. The
+  task-title fallback is **tier 3 only**, carried forward as an open question, because the proposal's
+  three tiers are not in this repository and inventing them from the phrase would put a guessed rule
+  in a contract.
+  ⚠ **The closing rounds' recurring finding was RESTATEMENT — a fact spelled at N sites drifts — so
+  six facts were each given one owner and a guard**: the dark-only desk render (12 sites), where the
+  derivation lag renders (5 sites), the animation log's episode schema, record-versus-lobby, § 2.4's
+  marker rule, and the AT build-order rule (6 instances); G9's population is derived rather than
+  stored; and **G6's Appendix-A recognizer stopped being the literal `D3`** — it is now `D3` plus the
+  render-directed phrasings D2 and D1 actually use, matched **wrap-tolerantly**, because grepping for
+  `D3` alone reported clean while D2 § 4.7 and § 4.8 placed three render obligations this document
+  neither listed nor discharged, and a line-scoped list would have left the check clean over a phrase
+  typeset across a wrap exactly as before.
+
+- **card#7521** — **D1 and D2 are reconciled: the eight § 14 items D2 filed against D1 are closed at
+  the positions § 14 itself named**, plus four Gate-C findings on the D2 side and the doc-sync those
+  amendments oblige. **Item 1** — the flusher's 90-minute `inferred_silence` close emits **no**
+  `turn.end`; the server closes the turn, because a hook-path exception buys nothing the idempotent
+  server close does not already provide and puts a second writer on a fact one writer owns.
+  **Item 2** — both orphan ceilings are measured from the server's `received_at`:
+  `started_at = event_time` is right for a *duration* and wrong for a *ceiling*, because seat clock
+  skew must not move a server ceiling. **Item 4** — the ordering key becomes
+  `(event_time, seq_epoch, seq)`, total across an epoch reset and reducing to the old key whenever
+  the epoch is constant, with § 10.2's out-of-order row moved so the key has one spelling.
+  **Item 5** — sticky-until-restart is confirmed INTENDED, with its reason (a badge that clears
+  itself is indistinguishable from one that never fired) and the consumer clause, and no wire change.
+  **Item 10** — a clean turn's `idle` survives a later `session.end`, the idle rule reading two facts
+  off the `turn.end` that a session end falsifies neither of. **Item 11** — `mzr_` joins rule 3's
+  known-prefix regex.
+  ⭐ **Item 12 took the CLASS fix, not the row fix.** D2 § 14 named two possible closes — re-word
+  § 12.7's consequence column, or state that the server's badges are a separate vocabulary — and the
+  second is the upstream one, so § 12.7's preamble now says as a class that no badge that table names
+  is a member of § 9.3's array. That disposes of the `seq_collision` and `batches_refused.<error>`
+  rows the same item flagged in the same breath; **a row-by-row fix would have left both standing and
+  the next server counter would have minted the contradiction again**.
+  ⛔ **Item 13 is the marker convention, and its root cause was D1 § 1's own false claim**: § 1 said
+  its only D2 marker was `D2-MUST` with *"exactly five such constraints"*, against Appendix A's
+  twenty-nine further obligations. § 1 now declares `D2-MUST` for the five numbered constraints and a
+  `D2:` prefix (or a *constraining D2* note) for every other consumer-addressed obligation, **on the
+  obligation sentence rather than somewhere in its section** — which is the property that let S29 be
+  walked past three times while a section-level check stayed green.
+  ⇒ **The verifier now follows the convention rather than the mention**: G6 builds a second
+  population from markers ON the obligation sentence, splits Appendix A against it, and **fails on a
+  D1 section that mentions D2 without marking which sentence is the obligation** — the S29 shape
+  itself. Measured on the plant rather than argued: with D1 § 12.5's marker stripped and the
+  section's other D2 mention left intact, **the `origin/dev` tool still derived 28 / 1 and carries no
+  such check**. **Manual residue: 14 rows before, 1 after**, and the one left is printed by name on
+  every run even at zero — S25's D1 source is a decision-register row rather than a section number,
+  so no marker convention in D1 can reach it, and minting a normative D1 sentence to make it
+  greppable would have contradicted a recorded decision.
+  ⚠ **Gate-C on the D2 side, where the sharpest of the four is a stored denominator**: two prose
+  comments said the delta-volume sum has *"six"* components against a seven-operand sum the tool
+  itself prints as seven, so the count is struck from the prose and **the neighbouring `< 6` floor is
+  RE-DERIVED rather than kept** — it is now the operand count of the sum's own arithmetic, read
+  independently of the value extraction it guards, because a pinned floor goes on passing after the
+  document grows a component, which is the one change the control exists to catch. Also: § 8.2's
+  `snapshot_denied` pointer sent the reader to § 9 when § 8.6 owns the rule; § 4.6's quiescence write
+  sequence now writes `last_turn_aborted_count: 0`, so the precedence paragraph restates a written
+  rule instead of asserting a value nothing sets; and § 6.5's version/platform volume disposition is
+  re-derived from § 8.3 and § 12 rather than guessed. § 14 items 3, 6, 7 and 9 stay open — **none of
+  them is D1's**.
+
+- **card#7455** — **D1, the keystone P0 design artifact** (`docs/design/EVENT-SCHEMA.md`): the
+  complete contract between `fleet-reporter` — a zero-dependency Node hook bundle on every agent
+  seat, Linux and Windows — and the Mezzanine ingest. Fourteen event kinds with field-level tables
+  and worked payloads, the batch envelope, the client-side sanitizer, the spool and flusher
+  mechanics, the server's response contract, and twenty-two acceptance tests each with its RED,
+  written to `docs/PLAN.md`'s D-14 standalone-implementer bar. `docs/VERSIONING.md § Wire
+  compatibility` keeps the versioning policy and gains **rule 7** (a new event kind and a new
+  closed-enum member are backward-compatible — ignore-or-coerce-and-count on the receiver); § 5
+  records only how these fields comply, and cites rather than restates.
+  ⭐ **Kill-vs-complete is an explicit open/close call ledger, not an inference from turn
+  boundaries.** A `/clear` SIGKILLs an in-flight subagent tool call and no `PostToolUse` ever fires
+  (measured 26/26, roundtable #341/#340), so **absence must never read as completion**: every
+  `PreToolUse` opens a call with a reporter-minted `call_id`, and every session or turn boundary
+  REAPS the calls still open and closes them `aborted` with a stated `abort_reason` and
+  `close_source` ahead of the boundary event, which then names them in `aborted_call_ids`. One
+  consequence makes the whole thing checkable at the wire: **`idle` may be minted ONLY from a
+  `turn.end` with `end_reason` `stop_hook` and an empty `aborted_call_ids`**. The cost accepted is
+  over-eager aborts for a call legitimately outstanding at Stop, bounded by the late-completion rule
+  — a completion is an observation and an abort is an inference, so the observation always overrides,
+  and a rising `late_completion` count is the signal that a reap rule is wrong.
+  ⭐ **Sanitization is an allowlist first and regexes second**: a descriptor is built only from an
+  explicitly allowlisted input key of an explicitly allowlisted tool, and every other tool —
+  including every `mcp__*` tool, whose input schemas third parties define — contributes `tool_name`
+  and no descriptor at all. The redaction pass exists because allowlisted text can still carry a
+  credential, **not as the primary control**, and that ordering is what the RED fixtures test:
+  fixture 8 removes the allowlist alone and must fail alone.
+  ⛔ **Silence is the failure mode this design fears most, so liveness is asserted continuously
+  rather than inferred.** The prior art is a fleet predicate keyed on the undocumented
+  `CLAUDE_CODE_CHILD_SESSION` marker that went constant on a harness upgrade and left two consumers
+  dark for **30 days with no log line**. So identity comes from an install-time config file and never
+  from the environment; no emission is gated on any harness marker (classifiers label, they never
+  suppress); every predicate reports both branch counts and the server alarms when one goes constant;
+  `/clear` is detected by two independent signals whose counters diverging is itself the self-test;
+  and a 60 s heartbeat with a 300 s staleness alarm makes *reporter dark* a rendered state rather
+  than a quiet desk.
+  ⛔ **Round 1 found the schema resting on three false premises about the harness, and each took a
+  redesign rather than a patch**: `session.end` becomes an OBSERVATION (`SessionEnd` exists, so the
+  four-way inference is gone and one inferred member remains, reversible via `session_reopened`, with
+  the supersede-on-different-session rule deleted outright because it made two terminals on one seat
+  abort each other's healthy calls); subagent matching is rebuilt on `agent_id`, so parallel
+  dispatches stop losing their stop edge; and **`blocked` becomes a PAIR** — it had an entry event
+  and no exit event.
+  ⭐ **Round 3's class fix is the one worth carrying: hand-transcribed facts about another product's
+  schema, with nothing binding them to a source and nothing able to red when they diverged.** Round 1
+  found two wrong; **the round-2 fix corrected those instances and minted five more**, so with
+  per-instance patching having failed twice, this round landed the binding first. Fifty-six real hook
+  payloads across ten events were captured from Claude Code 2.1.240, § 6.0's fact layer was rebuilt
+  on them — 36 rows, each **MEASURED** (fixture + version pin), **DOCS-CITED** (source + date) or
+  **UNVERIFIED** (cost + closure act) — sixteen of those payloads are reproduced in § 17, one per
+  distinct shape, sanitized only by replacing ids and paths with placeholders of the same shape and
+  length, beside five labelled stubs for the hooks `claude -p` cannot drive; and a SELFTEST-MUST
+  makes the reporter assert its expected payload keys against those fixtures and red on divergence.
+  ⭐ **What the capture found that no review did**: the dispatch tool's payload `tool_name` is
+  **`Agent`, not `Task`** — keyed on `Task` alone, `subagent.spawn` would never have fired, no
+  `agent_id` would ever have bound, and the descriptor allowlist would have returned null for every
+  dispatch; `Stop` does **not** fire inside a subagent (settling the highest-cost open fact);
+  `PostToolUseFailure` carries `is_interrupt`, the harness's own kill-vs-fail discriminator; and a
+  permission-refused call fires no close hook at all. It also **overruled the review** on three key
+  names — `SessionStart.source`, `SessionEnd.reason` and `PreCompact.trigger` are real, while the
+  asserted `session_start_reason` / `session_end_reason` / `compact_reason` occur nowhere in the
+  installed binary.
+  ⛔ **Round 4 bound the VALUE sets as well as the key names, and both of its blockers lived in that
+  gap.** The call index's `open` record carried one `agent_id` field meaning two opposite things —
+  the scope a call was opened in, and the child a dispatch spawned — and splitting it into
+  `agent_scope_id` / `child_agent_id` exposed that **no rule in the design ever closed a call opened
+  inside a subagent**, because `Stop` does not fire there. And `reporter.heartbeat.degraded` was
+  `array<enum>` with its member set stated nowhere and its two examples spelling one member two ways;
+  twelve members are now declared in § 9.3, named after their counters, and **the array's bound is
+  that table's size rather than a chosen 16**. `notification_type` was corrected **14 → 16** against
+  the binary — the omitted pair being `elicitation_dialog` and `elicitation_url_dialog`, the two the
+  `elicitation` branch depends on, which no guard could see because the guard bound key names and not
+  value sets — and `notification_kind.other` was **deleted as structurally unreachable rather than
+  hedged**.
+  ⇒ **`tools/design/verify-event-schema.py` and `verify-harness-facts.py` ship with the document**,
+  re-deriving their ground truth every run rather than storing it; the harness verifier reads key
+  sets and enum value sets out of the installed binary, and **its controls ABORT rather than report
+  clean** — two declarations must resolve to different sets, no set may be empty, and a fabricated
+  field must raise. Every check in both was seen to fail on a planted or real defect before its pass
+  was trusted.
+  ⚠ **One figure was wrong three rounds running, in the same direction each time, so it now has one
+  home and a gate**: the heartbeat's fill time read *"50+ days"* from a 500 B assumption, then
+  *"~25 days"* from a *"~900 B"* measurement of the worked example **taken with its 524 B `counters`
+  object left out**. It serializes to **1,487 B**, so a heartbeat-only seat fills the 32 MiB spool in
+  **~15.7 days** — the conclusion survives with a narrower margin — and `verify-event-schema.py` now
+  re-serializes that example on every run and reds if any figure in the paragraph disagrees. The
+  superseded value was deleted at its three other sites rather than re-synced, so the fill time has
+  one home and the others state the property they actually rest on.
+  ⚠ **The raw 56-payload capture run stays UNCOMMITTED by PM ruling** (2026-08-23): this repository
+  is public and the captures carry a real seat's session ids, cwd paths and prompt text, so § 17's
+  reproduced fixtures plus the binary-derived guard are the durable evidence and the 56-run counts
+  stay labelled run-provenance, **unfalsifiable by design**.

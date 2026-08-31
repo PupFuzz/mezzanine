@@ -2099,6 +2099,7 @@ snapshot repeats per seat and the delta patches.
 | `activity_state` | enum | no | `working`·`idle`·`blocked`·`stalled`·`unknown` | `"working"` |
 | `unknown_reason` | enum | **yes** | the 7 members of [§ 4.3](#43-the-derivation-function); non-null only when `activity_state == "unknown"` | `null` |
 | `api_error_type` | enum | **yes** | D1 § 6.4's 12 members, stored in `sessions.api_error_type` ([§ 6.4](#64-ddl)); non-null **only** when `activity_state == "stalled"`. `D2-MUST` #1 requires it on the object: *"`stalled` carries `api_error_type` so the drill-down can say which error"* | `null` |
+| `blocked_since` | rfc3339_ms | **yes** | seat clock — the `event_time` of the seat's **open** `attention.request`, stored as `attention_requests.opened_at` ([§ 6.4](#64-ddl)) and reached through `seat_state.open_attention_ref`; non-null **only** when `activity_state == "blocked"`, which [§ 4.4](#44-activity-states-every-entry-and-exit-edge) makes exactly the condition *a request is open*. A **narrative timestamp, never an age**, on the same basis [§ 4.7](#47-which-clock-each-ceiling-is-measured-from) measures the attention ceiling from | `null` |
 | `action` | object | **yes** | the newest open call; `null` when none is open | see below |
 | `action.call_id` | ULID | no | 26 chars | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `action.tool_name` | string | no | ≤ 64 B | `"Bash"` |
@@ -2165,6 +2166,25 @@ snapshot repeats per seat and the delta patches.
 | `derivation.fold_lag_ms` | int | no | ≥ 0; **computed, not stored** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) | `117` |
 | `derivation.cursor_event_id` | int | no | ≥ 0 | `9912837` |
 
+**`blocked_since` is a PROMOTION out of [§ 8.2.3](#823-the-seat-detail-response), not a new fact to
+source.** The value has always existed server-side: `detail` carries *"the open attention request if
+any"*, and that request's `opened_at` is a stored column ([§ 6.4](#64-ddl)) the seat row already points
+at through `open_attention_ref`. What changes is the **surface** — one nullable timestamp onto the
+snapshot — and no column, no event, no derivation rule and no ceiling moves with it. § 8.2.3's reason
+for keeping `detail` off the snapshot is priced on *"~1.5 KiB of counters on every seat"*, which is an
+argument about a drill-down payload and not about a member that is `null` on every seat that is not
+blocked; the size table below carries what it actually costs, measured rather than argued. It is
+version-bearing by [§ 6.5](#65-the-fold)'s subtraction — it is not one of the ten — so entering and
+leaving `blocked` is delivered on the edge that already emits a delta for `activity_state`, and
+[§ 8.3](#83-the-websocket-delta-feed)'s volume is unchanged: an attention edge emitted one delta before
+and emits one now, carrying one more member in its patch. **Why it is published rather than left to a
+consumer to reconstruct: nothing else on this object dates the wait.** `activity.last_event_time`
+([§ 3.2](#32-the-activity-event-set) admits `attention.request` to the activity set) equals the
+request's `event_time` at the instant the hand goes up and then **moves with the next activity event of
+any kind**, so a consumer reading it as *since when* would silently re-date a forty-minute wait to the
+last thing that happened near it. A blocked seat is a request for a human, the only ordering such a
+request has is how long it has been open, and this is the one member that carries it.
+
 **`subagents` is capped at 8 with the true count beside it, and that is a stated reduction rule, not a
 silent truncation.** D1's index cap admits up to 64 open calls; a side table rendering 64 interns is a
 list, not a desk. The 8 kept are the most recently started, `subagents_open` always carries the true
@@ -2177,13 +2197,13 @@ insignificant whitespace). Every row below names the block it is measured from, 
 
 | Object | Bytes | How |
 |---|---|---|
-| seat state, typical | **1,807 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,529 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, typical | **1,828 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
+| seat state, worst case | **5,572 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
-| snapshot, 4 seats | **~7.5 KB** typical, **~22 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~91 KB** typical, **~277 KB** worst | — |
+| snapshot, 4 seats | **~7.6 KB** typical, **~23 KB** worst | 302 + n × the above |
+| snapshot, 50 seats | **~92 KB** typical, **~279 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,112 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,171 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -2215,11 +2235,11 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,112 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.34×**, with **2,080 B** spare.
+The worst-case delta at 6,171 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.33×**, with **2,021 B** spare.
 
-**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~91 KB, which
-is one response. Past **200 seats** (~362 KB typical) the snapshot should page by install — stated now
+**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~92 KB, which
+is one response. Past **200 seats** (~366 KB typical) the snapshot should page by install — stated now
 as the trigger, and deliberately not built, because building pagination for a four-seat fleet is
 mechanism for a case that does not exist and the trigger is one number away from being noticed.
 
@@ -2246,7 +2266,7 @@ mechanism for a case that does not exist and the trigger is one number away from
         {
           "install_id": "aimla", "seat_id": "aimla-pm", "state_version": 48219,
           "render_state": "working", "link_state": "live", "activity_state": "working",
-          "unknown_reason": null, "api_error_type": null,
+          "unknown_reason": null, "api_error_type": null, "blocked_since": null,
           "action": {
             "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash",
             "descriptor": "Bash: composer test",
@@ -2304,6 +2324,15 @@ call list in full (not capped at 8), the open attention request if any, and the 
 statistics. It is the drill-down's source and is deliberately **not** in the fleet snapshot: putting
 ~1.5 KiB of counters on every seat of every snapshot would multiply the fleet payload by ~2 to serve a
 panel that is open for one seat at a time.
+
+**One value has been promoted out of `detail` onto the seat object, and the boundary is stated so the
+next one is argued rather than assumed.** [§ 8.2.1](#821-the-seat-state-object)'s `blocked_since` is the
+open attention request's `opened_at` — see that section for why. What stays here is everything whose
+cost is the ~1.5 KiB above: the counter snapshots, the uncapped call list, the turn statistics and the
+**rest** of the open attention request — its `request_id`, `source`, `notification_kind` and
+`call_id`, none of which any desk renders. The rule the promotion is admitted under is that a
+member belongs on the snapshot when **every** desk needs it to render honestly and it is bounded by a
+scalar; a member belongs here when one open panel needs it.
 
 #### 8.2.4 The fleet health object
 
@@ -2407,7 +2436,7 @@ Its members are **edge-triggered**, single digits per seat-day, and no more belo
 the sweeper's own `stale` transition does: 8,980 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,112 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,171 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. Reverb's own configured maximum is read at provisioning
 (**UNVERIFIED** — the host is not built; closure act: read the deployed `config/reverb.php` and record
@@ -2453,7 +2482,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
   "seat_id": "012345678901234567890123456789012345678901234567",
   "state_version": 9007199254740991,
   "at": "2026-08-23T14:23:09.882Z",
-  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
+  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
   "patch": {
     "install_id": "01234567890123456789012345678901",
     "seat_id": "012345678901234567890123456789012345678901234567",
@@ -2463,6 +2492,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
     "activity_state": "working",
     "unknown_reason": "session_closed_turn_open",
     "api_error_type": "authentication_failed",
+    "blocked_since": "2026-08-23T14:23:09.882Z",
     "action": {"call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "0123456789012345678901234567890123456789012345678901234567890123", "descriptor": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:09.882Z", "agent_scope": "subagent", "parent_call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q"},
     "open_calls": 65535,
     "open_turn": true,
@@ -2562,7 +2592,7 @@ A consumer that wants to correlate a rendered state with the wire has both: the 
 newest `(seq_epoch, seq)` the fold has applied.
 
 **Reconnect.** On reconnect the client re-runs [§ 8.4](#84-snapshot-then-deltas) from step 1. A full
-re-snapshot is ~91 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
+re-snapshot is ~92 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
 memory.
@@ -3297,13 +3327,13 @@ document.
 | Store per seat-day | **~9.7 MB** | **Derived** — 7.6 MB of `events` (10,420 × 732 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~136 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.54 / 1.6 / 6.8 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **1,807 B** typical, **5,529 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
-| Fleet snapshot | **7.5 KB** (4 seats) … **91 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
-| Snapshot pagination trigger | 200 seats (~362 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,112 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Seat-state object | **1,828 B** typical, **5,572 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Fleet snapshot | **7.6 KB** (4 seats) … **92 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
+| Snapshot pagination trigger | 200 seats (~366 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
+| Delta message | **323 B** typical, **6,171 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.34× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.33× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Delta coalescing tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds one seat at 4 msg/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -3339,7 +3369,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | Check | What the tool re-derives | Status |
 |---|---|---|
 | **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be | **tool-checked** |
-| **Field table ↔ worked examples, both directions** | the 73 field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way | **tool-checked** |
+| **Field table ↔ worked examples, both directions** | the **74** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
 | **DDL `ENUM` member reachability** | every member of every `ENUM` in [§ 6.4](#64-ddl), counted across the rest of the file; a member occurring only in its own declaration is a member no path can produce | **tool-checked** |
 | **Cross-document enum containment** | D2's `abort_reason` / `close_source` / `resolution` / `resolution_source` extension sets against D1's declared sets, with the counts stated in the DDL comments | **tool-checked** |
 | **Feed message-type closure** | every `t` value named anywhere against [§ 8.3](#83-the-websocket-delta-feed)'s table | **tool-checked** |
@@ -3516,9 +3546,9 @@ D1's: they need an operator answer, a proposal document, or D3.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **2,080 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **2,021 B** of
    spare under the 8 KiB bound. Seven more therefore fit and an eighth does not: **the cap could
-   reach 15**, where the worst-case delta is 7,953 B, and at 16 it is 8,216 B, which **breaches**
+   reach 15**, where the worst-case delta is 8,012 B, and at 16 it is 8,275 B, which **breaches**
    the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 
