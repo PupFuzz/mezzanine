@@ -35,6 +35,7 @@ with certificate verification ON, rather than proving anything by turning it off
 """
 from __future__ import annotations
 
+import atexit
 import calendar
 import http.server
 import json
@@ -271,7 +272,35 @@ def selftest(seat: Seat | None = None, *, reporter: Path = REPORTER):
 
 
 # ── planting a defect on a COPY ────────────────────────────────────────────────────────────
-_plant_dirs: list[str] = []
+# EVERY TEMP DIRECTORY THIS RUN MAKES IS REMOVED AT EXIT. The run made them and recorded them
+# and nothing ever deleted them: 25 planted reporters, 5 planted fixture trees and one suite
+# tree — ~52 MB of seats, spools and logs — left behind per run, measured. Removal is at EXIT
+# rather than per use because the lifetimes are already the run's: a planted copy is driven as a
+# SUBPROCESS and re-read afterwards, and `TMP` holds every seat the end-of-run /proc sweep has
+# to match against. Nothing's identity or lifetime during the run changes, so
+# `spawned_flushers()`'s `TMP`-prefix match still reads a fresh `mkdtemp` per run and reaping
+# stays as safe as it was. `FR_KEEP_TMP=1` keeps them for debugging, as
+# `bin/release-pr-guard.selftest.py` does with its own fixtures.
+TMP_DIRS: list[Path] = []
+
+
+def _sweep_tmp_dirs() -> None:
+    if os.environ.get("FR_KEEP_TMP"):
+        print(f"fleet-reporter.selftest: kept {len(TMP_DIRS)} temp dir(s) "
+              f"(FR_KEEP_TMP is set)")
+        return
+    for d in TMP_DIRS:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+atexit.register(_sweep_tmp_dirs)
+
+
+def tmpdir(prefix: str) -> Path:
+    """A temp directory removed when this process exits (see `_sweep_tmp_dirs`)."""
+    d = Path(tempfile.mkdtemp(prefix=prefix))
+    TMP_DIRS.append(d)
+    return d
 
 
 def plant(*subs: tuple[str, str]) -> Path:
@@ -281,8 +310,7 @@ def plant(*subs: tuple[str, str]) -> Path:
     that quietly becomes a GREEN, which is the exact failure this whole file exists to make
     impossible.
     """
-    d = Path(tempfile.mkdtemp(prefix="fr-plant-"))
-    _plant_dirs.append(str(d))
+    d = tmpdir("fr-plant-")
     shutil.copytree(HERE / "fixtures", d / "fixtures")
     src = REPORTER.read_text(encoding="utf-8")
     for old, new in subs:
@@ -301,8 +329,7 @@ def plant_src(*transforms) -> Path:
     literal anchor for those is a plant that silently matches nothing, i.e. a RED that has
     quietly become a GREEN. Each transform must change the source or this raises.
     """
-    d = Path(tempfile.mkdtemp(prefix="fr-plant-"))
-    _plant_dirs.append(str(d))
+    d = tmpdir("fr-plant-")
     shutil.copytree(HERE / "fixtures", d / "fixtures")
     src = REPORTER.read_text(encoding="utf-8")
     for pattern, repl in transforms:
@@ -323,8 +350,7 @@ def plant_src(*transforms) -> Path:
 
 def plant_fixture(edit) -> Path:
     """Copy the reporter + fixtures, then let `edit(fixtures_dir)` mutate the fixtures."""
-    d = Path(tempfile.mkdtemp(prefix="fr-fixt-"))
-    _plant_dirs.append(str(d))
+    d = tmpdir("fr-fixt-")
     shutil.copytree(HERE / "fixtures", d / "fixtures")
     shutil.copy2(REPORTER, d / "fleet-reporter.js")
     edit(d / "fixtures" / "hooks")
@@ -412,7 +438,7 @@ class Ingest:
         self.httpd.shutdown()
 
 
-TMP = Path(tempfile.mkdtemp(prefix="fr-suite-"))
+TMP = tmpdir("fr-suite-")
 INGEST = Ingest(TMP)
 CA = str(INGEST.crt)
 SID = "11111111-2222-4333-8444-000000000000"
