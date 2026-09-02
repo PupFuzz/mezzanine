@@ -29,7 +29,9 @@ cannot.
 """
 from __future__ import annotations
 
+import atexit
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -80,9 +82,39 @@ def plant(text: str, old: str, new: str, count: int = 1) -> str:
     return text.replace(old, new, count)
 
 
+# STAGED TREES ARE REMOVED AT EXIT, not at each use. Each one is a copy of § 17 plus the whole
+# fixture directory, and this suite stages one per case: 43 directories and ~27 MB per run,
+# measured, left in the system temp directory by every run before this — 502 of them had
+# accumulated on one workstation. Removal is at EXIT because a staged tree has to outlive the
+# call that made it (the guard is driven against it as a SUBPROCESS, and several cases re-read
+# the staged files afterwards), so nothing's lifetime during the run changes; and
+# `HFD_KEEP_STAGED=1` keeps them for debugging, as `release-pr-guard.selftest.py` does with its
+# own fixtures.
+STAGED: list[Path] = []
+
+
+def _sweep_staged() -> None:
+    if os.environ.get("HFD_KEEP_STAGED"):
+        print(f"harness-fixture-drift.selftest: kept {len(STAGED)} staged dir(s) "
+              f"(HFD_KEEP_STAGED is set)")
+        return
+    for d in STAGED:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+atexit.register(_sweep_staged)
+
+
+def tmpdir() -> Path:
+    """A staged temp directory, removed when this process exits (see `_sweep_staged`)."""
+    d = Path(tempfile.mkdtemp(prefix="hfd-"))
+    STAGED.append(d)
+    return d
+
+
 def stage(doc_edit=None, fixture_edit=None) -> tuple[Path, Path]:
     """A throwaway copy of the two ends, with at most one mutation applied to each."""
-    d = Path(tempfile.mkdtemp(prefix="hfd-"))
+    d = tmpdir()
     doc = d / "EVENT-SCHEMA.md"
     fix = d / "hooks"
     text = DOC.read_text(encoding="utf-8")
@@ -315,7 +347,7 @@ for name, kw, needle in LOUD:
     contains(f"  … and says why: {needle}", needle, r.stderr)
 
 # The two paths that are not document content at all.
-d = Path(tempfile.mkdtemp(prefix="hfd-"))
+d = tmpdir()
 r = run(d / "no-such-doc.md", FIXTURES)
 eq("a missing DOCUMENT → exit 2", 2, r.returncode)
 contains("  … and refuses to fall back to the committed fixtures",
@@ -329,7 +361,7 @@ contains("  … and says an absence is not a pass", "is not an empty pass", r.st
 # appendix grammar, so its absence must be exit 2 — a gate that fell back to a private copy
 # would be the duplication this card exists to remove, growing back inside its own guard.
 # Driven by running the script from a tree that has no `tools/design/`.
-lonely = Path(tempfile.mkdtemp(prefix="hfd-")) / "bin"
+lonely = tmpdir() / "bin"
 lonely.mkdir(parents=True)
 shutil.copy2(GUARD, lonely / GUARD.name)
 r = subprocess.run([sys.executable, str(lonely / GUARD.name), f"--doc={DOC}",
