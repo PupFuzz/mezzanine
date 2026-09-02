@@ -6,6 +6,8 @@
     "board_id": 14,
     "released_stage_id": 108,
     "shipped_stage_ids": "107",
-    "api_base": "https://kanban.example.com/api/v3"
+    "api_base": "https://kanban.example.com/api/v3",
+    "_source_note": "Board 14 tracks ONE repo (this one), so \"*\" is an explicit single-repo DECLARATION, not a wildcard match — byte-identical to pre-card#8421 behaviour. A board tracking several repos must instead name \"<owner>/<repo>\", or the mover correlates on a repo-scoped counter and promotes ANOTHER repo's cards. Required by agent-board-toolkit#322; without it that version exits rc 2 and moves nothing.",
+    "source": "*"
   }
 }
