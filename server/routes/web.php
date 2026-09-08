@@ -28,3 +28,18 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'mfa'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard');
 });
+
+/*
+ * THE ADMIN CONSOLE (card#9070) — mounted here, inside GATE 1's stack, because it is a browser
+ * page like the dashboard and earns the same two middleware for the same reason. Its own routes,
+ * and the whole argument for its authorization model (D3) and for what it deliberately does NOT
+ * expose (a seat-create path), are in `routes/admin.php`.
+ *
+ * The prefix and the name prefix are stated HERE rather than inside that file so that every URL
+ * and every route name the console owns is decided in one line, beside the middleware that
+ * guards them.
+ */
+Route::middleware(['auth', 'mfa'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(base_path('routes/admin.php'));

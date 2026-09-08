@@ -19,6 +19,48 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9070** — **the admin console: nobody could sign in to a fresh deploy, and no path created
+  the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a
+  `UserFactory`, a login page and `/two-factor-enroll` — and **no `UserController`, no admin routes,
+  and no artisan command that creates a user.** This ships the **console shell** (`/admin`, its own
+  `server/routes/admin.php`, a nav generated from `App\Admin\ConsoleModules` so `card#9072`'s
+  floors module is an entry rather than an edit), the **user module** (create, edit, retire) and the
+  **agent module** (read seat state, and the existing `mezzanine:retire` act). ⛔ **No floors/desks
+  schema and no seat-create path**, per the operator's (a)/(b) ruling: a seat exists because it
+  *reported* (`docs/design/FLOOR.md § 3.4`), so hand-authoring one is `card#9071`'s deferred
+  decision.
+  ⛤ **`php artisan mezzanine:user:create` is the whole fix for the deployment blocker, and it takes
+  no `--password` option** — an argument lands in argv and in shell history, so it prompts (never
+  echoed) or `--generate`s and prints once. It is also the documented way back from a lockout, which
+  is why retiring the **last** account that can still sign in is a **refusal** and not a warning:
+  there is no registration page and no mailer, so an install with no active account would be
+  unrecoverable except through this command.
+  ⛤ **Accounts RETIRE, they never delete** — `users` gains `retired_at`/`retired_by`/`retired_reason`,
+  the same shape `seats` carries, so an account that minted a token or retired a seat cannot vanish
+  and leave dangling references. A retired account is refused at **every credential path** because
+  the filter lives in the guard's user provider (`App\Auth\ActiveUserProvider`), not at the login
+  route: the login form, the session resolved on every request, and `remember me` all funnel through
+  `newModelQuery()`. Fortify's pending two-factor challenge does **not** (it resolves the challenged
+  user with `$model::find()`); that is measured, named in the test file, and unreachable because
+  `login.id` is only written after a credential check that already went through the provider.
+  ⛤ **A seat retired from the console performs `mezzanine:retire`'s act, not a copy of it** — the
+  transaction moved to `App\Fleet\SeatRetirement` at its second caller, so the console cannot skip
+  the recompute, the `cause: operator` transition row or the `seat.retired` publish. A mutant that
+  writes the three columns directly reds on both.
+  ⚠ **Found while building this, and fixed here: `database/seeders/DatabaseSeeder.php` shipped
+  Laravel's stock body**, which mints `test@example.com` with the factory's password — the literal
+  `password` — and `database/factories/` is in composer's PRODUCTION autoload, so
+  `php artisan db:seed` on a deployed host would have put a publicly-known credential behind the
+  login page. The card's premise was that nothing created a user; something did, and it was the one
+  path that must not be used. The seeder now creates nothing.
+  ⚠ **Canon #20 is asserted on surfaces that could actually carry the value** — the flashed input
+  Laravel re-renders a form from, the validation messages, the command's own output, and a live log
+  file with a canary line proving the capture works. A failed login for an unknown address is
+  word-for-word identical to a wrong password **and now costs the same one bcrypt comparison**,
+  because the stock provider returns before hashing on a miss, which is an enumeration oracle in
+  timing; the residual (the first miss in a fresh worker also pays for a `make()`) is stated on the
+  class rather than claimed away.
+
 - **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
   does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both
   `active`, both have `bypass_actors: []`, and both require the same **five** contexts —

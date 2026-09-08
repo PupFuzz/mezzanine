@@ -290,7 +290,10 @@ rule violations anyone could have committed at the time.
 - Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
-  credential; seat-token store with 0600 posture; the same release≠deploy rule as
+  credential; **`php artisan mezzanine:user:create` run there too, because nothing else creates a
+  user account and a host without one cannot be signed into at all** (card#9070; `README.md`
+  owns the command's options and the lockout-recovery case, and is the surface an operator
+  deploying reads); seat-token store with 0600 posture; the same release≠deploy rule as
   `docs/VERSIONING.md` — a release states which of the **two deploy targets** (server app;
   per-seat reporter) it touches, and prod only ever moves by `bin/deploy.sh`.
 - **Reporter rollout order:** aimla's four seats first (all on one box — cheap), then the

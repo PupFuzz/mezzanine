@@ -5,7 +5,9 @@ every PM, solo, and implementation agent rendered as a character at a desk, show
 they are actually doing right now — with a drill-down into their tasks and subagents.
 
 > Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
-> shell with no dashboard behind it yet. The **procedural character generator** exists in
+> shell with no floor behind it yet, plus the **admin console** at `/admin` (users, and agent
+> manage/remove) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
+> reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **procedural character generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw a
 > seat's character from its identity alone; open `tools/characters/harness.html` over a local
 > static server to see it. The kanban automation in `.github/workflows/` also runs; see
@@ -66,11 +68,53 @@ cd server
 composer install
 cp .env.example .env && php artisan key:generate    # .env is never committed
 php artisan migrate
+php artisan mezzanine:user:create                   # ← the first account; nothing else creates one
 php artisan test
 ```
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment
 screen and reaches nothing else until it finishes there.
+
+### The first account, and the way back from a lockout
+
+**`php artisan mezzanine:user:create` is the only thing that creates a user account.** There is
+no self-service registration (`config/fortify.php` says why), no seeder that mints one, and no
+first-run web page — so on a fresh deployment *nobody can sign in until this command is run on
+the host*, and running it is part of standing the host up, not an optional extra.
+
+```
+php artisan mezzanine:user:create                             # prompts for the password
+php artisan mezzanine:user:create --name=… --email=… --generate   # mints one, prints it ONCE
+```
+
+It takes **no `--password` option, deliberately**: an argument lands in argv, which is
+world-readable in `/proc` for the life of the process and is written verbatim into shell history.
+Give the password at the prompt (never echoed), or use `--generate` and hand the printed value
+over out of band — it is shown once and stored only as a hash.
+
+⛔ **It is also the ONLY way back from a locked-out install**, which is why the console refuses to
+retire the last account that can still sign in. Retiring accounts is deliberately not a deletion
+— the row, its author and its reason are kept — and a retired account can no longer authenticate
+on any path. If an install somehow reaches a state with no account that can sign in, there is no
+password reset (this deployment has no mailer) and no registration page: shell access on the host
+and this command are the recovery.
+
+### The admin console
+
+`/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
+edit, retire) and **agents** (read seat state, and the `mezzanine:retire` operator act); floors
+and the map editor are `card#9072`'s, and pinning a named seat to a chosen desk is deferred to
+`card#9071` because it would store a fact `docs/design/FLOOR.md § 3.2` derives.
+
+**Every account that can reach the console is an operator** — there are no roles, because this
+application has one class of user. ▶ **The trigger that reopens that decision, stated so it is a
+decision and not drift: the first time an account must exist that may NOT administer other
+accounts.** At that point the console's route group needs a real authorization layer;
+`server/routes/admin.php` carries the same trigger beside the middleware it would change.
+
+⛔ **There is no "add an agent" and no "delete a user", and both absences are deliberate.** A seat
+exists because it *reported* (`docs/design/FLOOR.md § 3.4`); an account stops working by being
+retired, and its record survives so that everything it did still resolves.
 
 ## Licensing and attribution
 

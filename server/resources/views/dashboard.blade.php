@@ -7,6 +7,9 @@
          delete before it can start. --}}
     <p>Signed in as {{ auth()->user()->email }}, with a confirmed second factor.</p>
 
+    {{-- The console is reachable from here rather than by knowing its URL (card#9070). --}}
+    <p><a href="{{ route('admin.index') }}">Admin console</a></p>
+
     <form method="POST" action="{{ route('logout') }}">
         @csrf
         <button type="submit">Sign out</button>
