@@ -14,7 +14,8 @@ and nothing here deletes anything outside the temp directory the standard librar
 
 `docs/design/FLOOR.md` AT-D3-12 names the REDs — the unlisted asset, the UNDECLARED PICTURE,
 the `origin` column three ways, the swapped bytes, the unanticipated format, the embedded asset
-(both containers) and the wrong licence. The rest are the failure modes a strict parser has to
+(both containers), the wrong licence, and — since the 2026-08-31 ISC ruling (card#8301) — the ISC
+row whose permission notice nobody reproduced. The rest are the failure modes a strict parser has to
 fail CLOSED on, because a row silently skipped is an asset nobody checked.
 
 ⚠ THE CONTROL THAT MATTERS MOST IS SECTION 6's COMPLEX SVG, and it is a control rather than a
@@ -43,6 +44,13 @@ GATE = Path(__file__).resolve().parent / "asset-provenance.py"
 
 CLEAN_JS = "export const hi = () => 'hello';\n"
 MIT_NOTICE = "The above copyright notice and this permission notice shall be included in all copies."
+# ISC's permission notice, as the licence itself writes it. Written out rather than imported from
+# the gate's own regex, deliberately: a fixture that reuses the pattern under test proves only that
+# the pattern matches itself, and the point of this string is that a manifest carrying the REAL
+# notice satisfies the check.
+ISC_NOTICE = ("Permission to use, copy, modify, and/or distribute this software for any purpose "
+              "with or without fee is hereby granted, provided that the above copyright notice "
+              "and this permission notice appear in all copies.")
 
 # A genuinely complex first-party SVG, built around THE EXACT SHAPE THAT MAKES THIS CONTROL
 # DISCRIMINATING rather than around "looks complicated".
@@ -99,7 +107,8 @@ ran = 0
 
 def build(tmp: Path, files: dict[str, str | bytes],
           rows: list[tuple[str, str, str, str, str, str, str | None]],
-          manifest_body: str | None = None, manifest_notice: bool = True) -> Path:
+          manifest_body: str | None = None, manifest_notice: bool = True,
+          extra_notice: str = "") -> Path:
     """A throwaway repo: the gate at bin/, the given files, and a manifest of the given rows.
 
     A row is (path, origin, url, author, spdx, retrieved, sha). A SHA cell of None means
@@ -126,8 +135,11 @@ def build(tmp: Path, files: dict[str, str | bytes],
     # The notice goes in by default because section 10.2 requires it in BOTH files; the fixture
     # that tests its ABSENCE passes manifest_notice=False.
     notice = MIT_NOTICE + "\n" if manifest_notice else ""
+    # `extra_notice` is how a fixture puts a SECOND licence's notice in the manifest — the ISC
+    # control below is the only caller today. It goes in as text rather than as a flag per licence,
+    # so the next admitted licence needs no new parameter here.
     (repo / "docs" / "ATTRIBUTION.md").write_text(
-        "# Attribution\n\n" + notice + "\n<!-- asset-manifest:begin -->\n\n"
+        "# Attribution\n\n" + notice + extra_notice + "\n<!-- asset-manifest:begin -->\n\n"
         + manifest_body + "\n\n<!-- asset-manifest:end -->\n"
     )
     return repo
@@ -140,7 +152,7 @@ def run(repo: Path) -> tuple[int, str]:
 
 
 def case(name: str, want_code: int, want_text: str | None, files, rows, manifest_body=None,
-         manifest_notice=True, forbid_text: str | None = None) -> None:
+         manifest_notice=True, forbid_text: str | None = None, extra_notice: str = "") -> None:
     """One fixture. `forbid_text` asserts a string is ABSENT from the output.
 
     The absence assertion exists for section 13's evasion pair, where the finding is that one
@@ -150,7 +162,7 @@ def case(name: str, want_code: int, want_text: str | None, files, rows, manifest
     global failures, ran
     ran += 1
     with tempfile.TemporaryDirectory() as td:
-        repo = build(Path(td), files, rows, manifest_body, manifest_notice)
+        repo = build(Path(td), files, rows, manifest_body, manifest_notice, extra_notice)
         code, out = run(repo)
     ok = (code == want_code
           and (want_text is None or want_text in out)
@@ -230,15 +242,32 @@ case("AT-D3-12 wrong licence: CC-BY-NC-4.0",
      1, "is not in the closed allowlist",
      FILES,
      [row("resources/characters/index.js", origin="licensed", url=URL, spdx="CC-BY-NC-4.0"), BASE[1]])
-case("ISC is refused too — permissive, MIT-compatible, and still not on the list",
+case("AT-D3-12 Apache-2.0 is refused — PERMISSIVE AND STILL NOT ON THE LIST. This case is the "
+     "2026-08-31 ISC ruling's guard rail: the criterion is membership of the allowlist, never "
+     "'is it permissive', and a widening by one member must not read as a widening by category",
      1, "is not in the closed allowlist",
      FILES,
-     [row("resources/characters/index.js", origin="licensed", url=URL,
-          author="shahar061", spdx="ISC"), BASE[1]])
-case("CC0-1.0 is accepted — the allowlist admits both its members, not just MIT",
+     [row("resources/characters/index.js", origin="licensed", url=URL, spdx="Apache-2.0"), BASE[1]])
+case("CC0-1.0 is accepted — the allowlist admits all three of its members, not just MIT",
      0, PASS,
      FILES,
      [row("resources/characters/index.js", spdx="CC0-1.0"), BASE[1]])
+case("AT-D3-12 TENTH RED — an ISC row in a manifest that never reproduces ISC's permission "
+     "notice. ISC grants the licence only on condition its notices travel with the copy, so the "
+     "row alone is a declaration the repository has not honoured",
+     1, "does not reproduce the ISC permission notice",
+     FILES,
+     [row("resources/characters/index.js", origin="licensed", url=URL,
+          author="shahar061", spdx="ISC"), BASE[1]])
+case("⭐ ISC IS ACCEPTED (operator ruling 2026-08-31, card#8301) AND is the CONTROL for the tenth "
+     "RED — the same ISC row, now with the notice present, PASSES. It carries both claims because "
+     "they are one fixture: it was a RED here until the ruling, and without it the tenth RED is "
+     "equally satisfied by a gate that still refuses ISC outright. Either half alone is not evidence",
+     0, PASS,
+     FILES,
+     [row("resources/characters/index.js", origin="licensed", url=URL,
+          author="shahar061", spdx="ISC"), BASE[1]],
+     extra_notice=ISC_NOTICE + "\n")
 
 print("\n5. GATE 1 — the other columns are load-bearing, not decoration")
 case("a retrieved date that is not a date",

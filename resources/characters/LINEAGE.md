@@ -184,21 +184,33 @@ been the first half of taking that art.
 walk phases, front and back, composed by the same generator that draws the face. There is no
 sheet to slice because there is no sheet.
 
-### 3. `CharacterSprite.ts`, `SpriteAdapter.ts`, `Character.ts` — an ISC obligation nobody has decided to take on
+### 3. `CharacterSprite.ts`, `SpriteAdapter.ts`, `Character.ts` — an ISC obligation nobody has taken on
 
 All three carry a *"Ported from / Adapted from shahar061/the-office"* line (verified at the
 pinned commit: `CharacterSprite.ts` line 26, and the header comments of the other two).
-`shahar061/the-office` is **ISC** — *"Copyright (c) 2026 shahar061"*, confirmed 2026-08-25 via
-`GET /repos/shahar061/the-office` → `.license.spdx_id == "ISC"`.
+`shahar061/the-office` is **ISC** — *"Copyright (c) 2026 shahar061"*. First confirmed 2026-08-25
+via `GET /repos/shahar061/the-office` → `.license.spdx_id == "ISC"`, and **re-confirmed 2026-09-08
+by reading `LICENSE` itself** rather than the API's classifier field: the file is the canonical ISC
+text, attribution-only, with no carve-out. **Read the file, not the label** — the same repository's
+MIT neighbour `chaitanyagiri/munder-difflin` reports `spdx_id: NOASSERTION` on that API field purely
+because its `LICENSE` appends a note about bundled art, so the field is evidence of a classifier's
+opinion and not of a licence.
 
-ISC is permissive and compatible with MIT in substance. **It is nevertheless not in § 10.1's
-licence allowlist, which is closed to `CC0-1.0` and `MIT`, and § 10.1 states that widening the
-allowlist is an operator decision and never an implementer's.** Taking any of the three would
-create an ISC attribution obligation this repository has not decided to carry. So none was
-taken, and the decision was not made here.
+⚠ **This section's original reason expired on 2026-08-31.** It read: *ISC is nevertheless not in
+§ 10.1's licence allowlist, which is closed to `CC0-1.0` and `MIT`.* The operator **admitted `ISC`
+to that allowlist** on 2026-08-31 (card#8301), so the licence gate no longer refuses these files.
 
-If a future card genuinely needs sprite orchestration or pathfinding from those files, the ask
-is a licence-allowlist ruling from the operator **first** — not a quiet import.
+**None of the three was taken and none is taken now — what changed is only the reason.** The
+standing reasons are the ones this file already gives: `SpriteAdapter.ts` exists solely to slice a
+LimeZu commercial sheet (item 2 above), and nothing in this repository has needed sprite
+orchestration or pathfinding from the other two. What a future card must do is therefore an
+ordinary **port**, not a licence escalation: take the files, record them here and in
+`docs/ATTRIBUTION.md` with `ISC` in the SPDX column, and **reproduce ISC's copyright line and
+permission notice in `docs/ATTRIBUTION.md`** — and here too, since § 10.2 requires a port's notice
+in both files and gives the reason. ISC grants the licence only *"provided that the
+above copyright notice and this permission notice appear in all copies"*, and § 10.1 gates that
+reproduction the moment any row declares `ISC`. Still not a quiet import: the row, the notice and
+this file's record are the price of the widening, not a formality it removed.
 
 ### 4. The Office's fifteen cast identities
 

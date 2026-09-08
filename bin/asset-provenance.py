@@ -7,7 +7,9 @@ WHAT IT DOES.
   a declared asset tree has exactly one row in the manifest (docs/ATTRIBUTION.md); that row's
   SHA-256 matches the file's bytes; its licence identifier is in the CLOSED allowlist; its
   `origin` is one of exactly two values and is CONSISTENT WITH ITS OWN SOURCE URL; and no row
-  names a file that is not there.
+  names a file that is not there.  WHERE ANY ROW DECLARES `ISC` — admitted to the allowlist by
+  operator ruling on 2026-08-31 (card#8301) — the manifest must ALSO REPRODUCE ISC's permission
+  notice, because ISC grants the licence only on condition that its notices appear in all copies.
 
     origin = first-party  drawn or written FOR this repository. The source URL must be an
                           IN-REPO reference (this repository's own URL).
@@ -87,6 +89,11 @@ WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
     row, and every check here passes. What stands in its place is the closed licence allowlist,
     the origin/URL consistency check, the lineage file's deliberate-omissions section, FLOOR
     section 10.5's IP line, and REVIEW. Section 10.1 names the residue in full.
+  * THE ISC NOTICE CHECK IS A PRESENCE CHECK.  It asserts that ISC's permission notice is IN the
+    manifest once some row declares ISC; it cannot tell whether the copyright line beside that
+    notice names the right holder, and it does not ask for one notice per ISC asset. A second ISC
+    asset from a different author is a human obligation and this will not notice it — said out
+    loud because the same trade is what the MIT notice check makes, and neither is a licence audit.
   * IT CANNOT SEE A CHARACTER SOMEBODY ELSE OWNS.  Nothing that reads file types, hashes and
     licence strings can look at a drawing and recognise a Pikachu. FLOOR section 10.5 states
     that rule and states that review, not this script, enforces it.
@@ -228,7 +235,31 @@ TILED_PLAIN_ENCODING = "csv"
 # The licence allowlist is CLOSED. Widening it is an OPERATOR decision (section 10.1), never an
 # implementer's: the repository is MIT and public, so an asset whose terms are stricter than the
 # repository's is a term the repository cannot honour.
-LICENCE_ALLOWLIST = frozenset({"CC0-1.0", "MIT"})
+#
+# ISC WAS ADMITTED BY OPERATOR RULING ON 2026-08-31 (card#8301). It is an OSI-approved,
+# attribution-only permissive licence — functionally MIT, differing mainly in dropping wording the
+# Berne Convention made redundant — so it is not stricter than this repository's own terms, which is
+# the only test this list applies. The list exists to keep COPYLEFT and non-commercial terms out, not
+# to choose between two attribution licences. It does NOT admit permissive licences as a CLASS:
+# Apache-2.0 is permissive and is still refused, because the criterion is membership of this list and
+# widening it is still an operator's act rather than an inference from a family resemblance.
+LICENCE_ALLOWLIST = frozenset({"CC0-1.0", "ISC", "MIT"})
+
+# ISC's grant is CONDITIONAL on its notices travelling with the copy — "provided that the above
+# copyright notice and this permission notice appear in all copies" — exactly as MIT's is. So the
+# moment the allowlist admits ISC it creates an obligation, and an obligation nobody checks is a
+# comment: gate1() requires this sentence in the manifest as soon as ANY row declares ISC. The
+# canonical ISC text is matched, not a licence name, for the same reason section 10.2 matches MIT's
+# permission notice rather than the string "MIT": a link is not a reproduction and neither is a label.
+# It matches the notice's DISTINCTIVE OPENING CLAUSE across line wraps, and tolerates the `and
+# distribute` variant beside the `and/or distribute` one — both are ISC in the wild. What it does NOT
+# separately check is the COPYRIGHT half: the manifest already carries a `Copyright (c) …` line for
+# the MIT port, so a check for one could not tell an ISC copyright line from that one, and a check
+# that cannot discriminate is a decoration (canon: a check that cannot fail is not evidence).
+ISC_NOTICE_RE = re.compile(
+    r"Permission\s+to\s+use,\s+copy,\s+modify,?\s+and(?:/or)?\s+distribute\s+this\s+software",
+    re.IGNORECASE,
+)
 
 # The `origin` set is CLOSED at two, and unlike the licence allowlist it is not an operator gate
 # — it is a TYPE. A third value invented at a row is a value nobody decided, and "where did this
@@ -455,6 +486,23 @@ def gate1(assets: list[str], rows: dict[str, dict[str, str]]) -> None:
     for rel in sorted(rows):
         if rel not in asset_set:
             fail("GATE 1", f"{rel} has an ATTRIBUTION row but no such file under any asset tree")
+
+    # The obligation the 2026-08-31 ISC ruling created, CHECKED rather than merely stated. ISC is
+    # attribution-only: its grant is conditional on the copyright notice and the permission notice
+    # appearing in all copies, so a public repository that redistributes an ISC-licensed asset
+    # without reproducing them is in breach while every other check here is green. The row is the
+    # declaration; the notice is the accompaniment the licence itself requires, and section 10.1
+    # says so beside the allowlist. Keyed on a ROW rather than on a tree, because an ISC asset need
+    # not be a port — a tileset bought into resources/floor/ owes the notice too, and there is no
+    # lineage file over there to hang it off.
+    isc = sorted(rel for rel, row in rows.items() if row["spdx"].strip("`") == "ISC")
+    if isc and not ISC_NOTICE_RE.search((REPO / MANIFEST).read_text(encoding="utf-8")):
+        fail(
+            "GATE 1",
+            f"{len(isc)} row(s) declare ISC ({', '.join(isc)}) but {MANIFEST} does not reproduce the ISC "
+            "permission notice — ISC grants the licence ONLY on condition that the copyright notice "
+            "and this permission notice appear in all copies, and a link is not a reproduction",
+        )
 
 
 # --- gate 2 clause 3: the Tiled artifacts ---------------------------------------------------------

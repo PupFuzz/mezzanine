@@ -12,10 +12,19 @@ repository cannot honour.
 
 ## The rules a row lives under
 
-- **The licence allowlist is closed: `CC0-1.0` and `MIT`.** Anything else — `CC-BY-*`,
-  `CC-BY-SA-*`, any `-NC` or `-ND` term, ISC, "free for personal use", or an asset with no
-  stated licence — is refused. **Widening this list is an operator decision, never an
-  implementer's.**
+- **The licence allowlist is closed: `CC0-1.0`, `ISC` and `MIT`.** Anything else — `CC-BY-*`,
+  `CC-BY-SA-*`, any `-NC` or `-ND` term, `Apache-2.0` and every other permissive licence nobody
+  has ruled on, "free for personal use", or an asset with no stated licence — is refused.
+  **Widening this list is an operator decision, never an implementer's.** `ISC` was admitted by
+  operator ruling on **2026-08-31** (card#8301): it is attribution-only and functionally MIT, so
+  it is not stricter than this repository's own terms, and the list exists to keep **copyleft and
+  non-commercial** terms out rather than to choose between two attribution licences. It admits
+  ISC, **not permissive licences as a class** — `Apache-2.0` still fails.
+- **An `ISC` row obliges the notice, and the gate checks it.** ISC grants the licence only
+  *"provided that the above copyright notice and this permission notice appear in all copies"*, so
+  as soon as any row here declares `ISC`, this file must reproduce ISC's permission notice —
+  matched as the licence's own text, because a link is not a reproduction and neither is the label
+  `ISC`. Same obligation MIT carries below, same reason.
 - **The `origin` column is closed at two, and it is a *type*, not a note.** `first-party` means
   drawn or written **for this repository** — its source URL must be **this repository's own**.
   `licensed` means obtained from **outside** — its source URL must be a genuine external one.
@@ -54,7 +63,7 @@ very fact it exists to check.
 | `resources/characters/portrait-art.js` | licensed | https://github.com/chaitanyagiri/munder-difflin/blob/eb3df9fa70b63b68495a965c45f158105e87b2e6/src/renderer/src/scene/office/portraitArt.ts | Chaitanya Giri (upstream); Mezzanine contributors (port) | MIT | 2026-08-25 | `d19bdd0099f8c4578ced8331792082332325a1448db7ff80d8c33a61d94bca06` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors; hair palette derived from Chaitanya Giri's recipes | MIT | 2026-08-25 | `21810d3b1f4c013eec9fcccc296027b07a4c66e7bdf61b37d528707b46e423ca` |
 | `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `422d0ef0216e16830e05cd3d4300b18748f8eeb616b62b811e313e086a12310b` |
-| `resources/characters/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `f8ba128eac78503153d988ad902f5b1a2a78faf7e278314e5ec80b7792428f5b` |
+| `resources/characters/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `062104b757989712b05ea067eb5f435392af0f03fa98a5a561baf2693148c19a` |
 
 <!-- asset-manifest:end -->
 

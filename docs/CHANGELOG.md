@@ -19,6 +19,33 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#8301** — **`docs/design/FLOOR.md § 10.1`'s closed licence allowlist admits `ISC`**, by
+  operator ruling of 2026-08-31, and `bin/asset-provenance.py`'s `LICENCE_ALLOWLIST` — the gate that
+  actually enforces the list, on every PR via `.github/workflows/asset-provenance.yml` — moved in the
+  same change. It unblocks **card#7341**, whose Tiled map and camera are ISC ports from
+  `shahar061/the-office`. The reason is written beside the member rather than left implied: ISC is
+  OSI-approved and **attribution-only**, functionally MIT, so it is not stricter than this
+  repository's own terms, and the list exists to keep **copyleft and non-commercial** terms out, not
+  to choose between two attribution licences. ⚠ **It admits ISC, not permissiveness as a category** —
+  a new RED fixture holds `Apache-2.0` refused for exactly that reason, so the ruling cannot be read
+  as a class widening. ⛤ **Widening the list CREATED an obligation, so the obligation was gated in
+  the same change:** ISC grants the licence only *"provided that the above copyright notice and this
+  permission notice appear in all copies"*, so Gate 1 now requires ISC's permission notice in
+  `docs/ATTRIBUTION.md` as soon as **any** row declares `ISC` — matched as the licence's own text,
+  because a link is not a reproduction and neither is the label. Without it a row could declare a
+  licence whose condition the repository never met while every check stayed green (§ 10.1 states the
+  residue: it is a presence check, not a licence audit). **Both arms were watched on the real tree
+  with the shipped script**: an `ISC` row + notice → `BOTH ASSET GATES PASS`, exit 0, and the *same*
+  row against the **pre-change** gate → `licence 'ISC' is not in the closed allowlist ['CC0-1.0',
+  'MIT']`, exit 1, which is what attributes the pass to this change; the notice removed → exit 1
+  naming the missing reproduction; `CC-BY-NC-4.0` → still exit 1. 60 selftest fixtures pass (was 58).
+  **`resources/characters/LINEAGE.md § 3` was the doc this invalidated** — three ISC-derived upstream
+  files were refused there *because of the allowlist*, and that reason has expired: they are still not
+  taken, but taking them is now a port decision carrying a notice obligation, not a licence
+  escalation. Its ISC evidence was also re-read at source (`LICENSE`, not the API's `spdx_id`, which
+  is the documented trap on this chain). **Nothing was ported and no ISC asset was added** — that is
+  card#7341's work, deliberately not done here.
+
 - **card#8174 (part 2)** — **`docs/CHANGELOG.md`'s per-PR bullet rule and `docs/PLAN.md § 4`'s
   changelog size gate were both stated in the present tense and neither existed.** The bullet rule
   — every PR whose title or branch carries a `card#NNNN` token owes a line-initial
