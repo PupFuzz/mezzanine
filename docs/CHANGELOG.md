@@ -19,6 +19,74 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
+  does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both
+  `active`, both have `bypass_actors: []`, and both require the same **five** contexts —
+  `asset-provenance`, `card-token-lint`, `design-artifact`, `design-docs`, `release-pr-guard`. The
+  three beyond the two `docs/VERSIONING.md` last recorded were added on **2026-08-31** (the
+  rulesets' own `updated_at`), **and no document moved with them for eight days**, so
+  `.github/workflows/asset-provenance.yml` and `docs/ATTRIBUTION.md` each told a reviewer that a red
+  there was advisory while it was blocking. ⛤ **The list is a REPOSITORY-SETTINGS fact and no file
+  in the checkout can verify a copy of it**, which is why the fix is not three corrected copies:
+  `docs/VERSIONING.md § Branch model` is the single home and now carries the API command that
+  re-derives it, and the other two surfaces **state the rule nowhere and point there instead**. The
+  standing caveat that a later-added workflow is not automatically required is KEPT — it is true,
+  and it is precisely why this drifted. *(Found in review of card#8301's PR; `card#7344`, which the
+  workflow comment named as owning the gap, is the app-code CI-lane card — `docs/PLAN.md`'s build
+  table gives it a required-check obligation for the lanes it will add, not for this one.)*
+
+- **card#8301** — **`docs/design/FLOOR.md § 10.1`'s closed licence allowlist admits `ISC`**, by
+  operator ruling of 2026-08-31, and `bin/asset-provenance.py`'s `LICENCE_ALLOWLIST` — the gate that
+  actually enforces the list, on every PR via `.github/workflows/asset-provenance.yml` — moved in the
+  same change. It unblocks **card#7341**, whose Tiled map and camera are ISC ports from
+  `shahar061/the-office`. The reason is written beside the member rather than left implied: ISC is
+  OSI-approved and **attribution-only**, functionally MIT, so it is not stricter than this
+  repository's own terms, and the list exists to keep **copyleft and non-commercial** terms out, not
+  to choose between two attribution licences. ⚠ **It admits ISC, not permissiveness as a category** —
+  a new RED fixture holds `Apache-2.0` refused for exactly that reason, so the ruling cannot be read
+  as a class widening. ⛤ **Widening the list CREATED an obligation, so the obligation was gated in
+  the same change:** ISC grants the licence only *"provided that the above copyright notice and this
+  permission notice appear in all copies"*, so Gate 1 now requires ISC's permission notice in
+  `docs/ATTRIBUTION.md` as soon as **any** row declares `ISC` — matched as the licence's own text,
+  because a link is not a reproduction and neither is the label. Without it a row could declare a
+  licence whose condition the repository never met while every check stayed green (§ 10.1 states the
+  residue: it is a presence check, not a licence audit).
+  ⛤ **THE OBLIGATION IS GATED IN BOTH FILES THAT OWE IT, AND THE ALLOWLIST IS NOW DERIVED FROM THE
+  OBLIGATION** — corrected on review, because the first cut of this change gated only the manifest.
+  `§ 10.1` and `§ 10.2` both say an ISC **port** under `resources/characters/` owes its notice in
+  `resources/characters/LINEAGE.md` as well, and the lineage half of the check was hard-coded to
+  MIT's text: it asked an ISC port for MIT's notice, found the MIT port's copy, and reported clean.
+  The mirror defect ran the other way — an `MIT` row **outside** the character tree owed a notice in
+  no file at all, because MIT reached the manifest only through the lineage file's mirror. One
+  behaviour, two implementations, two guarantees. There is now **one** notice check, keyed on the
+  licences the rows actually declare, called at both homes; and `LICENCE_ALLOWLIST` is the KEY SET of
+  the SPDX→notice table, so **admitting the next licence is the same edit as deciding what notice it
+  obliges** and cannot be done by forgetting one. `CC0-1.0` maps to `None` — a public-domain
+  dedication obliges no notice — and a control holds that a `CC0-1.0` row in a manifest with no
+  notice at all still passes.
+  **Where each arm was watched, said precisely, because this bullet first said *the real tree* about
+  runs that were fixtures:** the allowlist and both notice homes are held by
+  `bin/asset-provenance.selftest.py` — **`total=64 of POP=64`**, POP re-derived from the suite's own
+  source on every run (58 before this card, 60 at first review). They were **additionally** watched
+  on 2026-09-08 by running the shipped script over a byte-identical copy of this repository's own
+  manifest with `resources/characters/index.js` temporarily flipped to `ISC`: no notice anywhere →
+  exit 1 naming **both** files; the manifest notice alone → exit 1 naming `LINEAGE.md`, **while the
+  pre-review gate reported `BOTH ASSET GATES PASS` on the same bytes**; both notices → exit 0. The
+  two new REDs were each seen going from exit 0 to exit 1 against the pre-change gate, and
+  `CC-BY-NC-4.0` / `Apache-2.0` still exit 1. ⚠ **No `ISC` row is committed** — the manifest declares
+  four rows, all `MIT` — so on the tree that ships, the ISC path is exercised **by fixtures alone**.
+  **`tools/design/verify-floor.py` G5 now binds the doc to the suite:** AT-D3-12's ordinal REDs must
+  run contiguously and each must be carried by a FIXTURE NAME in the suite the test names, both
+  directions. Read out of the suite's `case(...)` calls with `ast`, not grepped — the first cut
+  grepped the file and a mutant that stripped a RED from its fixture still passed, because the
+  suite's own docstring says the words.
+  **`resources/characters/LINEAGE.md § 3` was the doc this invalidated** — three ISC-derived upstream
+  files were refused there *because of the allowlist*, and that reason has expired: they are still not
+  taken, but taking them is now a port decision carrying a notice obligation, not a licence
+  escalation. Its ISC evidence was also re-read at source (`LICENSE`, not the API's `spdx_id`, which
+  is the documented trap on this chain). **Nothing was ported and no ISC asset was added** — that is
+  card#7341's work, deliberately not done here.
+
 - **card#8174 (part 2)** — **`docs/CHANGELOG.md`'s per-PR bullet rule and `docs/PLAN.md § 4`'s
   changelog size gate were both stated in the present tense and neither existed.** The bullet rule
   — every PR whose title or branch carries a `card#NNNN` token owes a line-initial

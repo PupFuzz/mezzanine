@@ -2375,13 +2375,65 @@ it cannot say that the file named is the file the row describes, and it has noth
 about a map that is correct in every particular and references somebody else's tileset. That is
 Gate 1's row and review's job, as above.
 
-**The licence allowlist is closed: `CC0-1.0` and `MIT`.** Anything else — `CC-BY-*`, `CC-BY-SA-*`,
-any `-NC` or `-ND` term, "free for personal use", or an asset with no stated licence — is refused by
+**The licence allowlist is closed: `CC0-1.0`, `ISC` and `MIT`.** Anything else — `CC-BY-*`,
+`CC-BY-SA-*`, any `-NC` or `-ND` term, `Apache-2.0` and every other permissive licence nobody has
+ruled on, "free for personal use", or an asset with no stated licence — is refused by
 Gate 1 and is an **operator decision to widen**, never an implementer's. The repository is MIT (D-02)
 and public (`PupFuzz/mezzanine`), so an asset whose terms are stricter than the repository's is a term
-the repository cannot honour. **This is the one allowlist in this document the amendment did not
-touch**, and it is stated here, once, rather than restated beside the `origin` set and again beside
-the file-type list.
+the repository cannot honour. It is stated here, once, rather than restated beside the `origin` set
+and again beside the file-type list. *(The 2026-08-27 art-direction amendment did not touch this
+list; the 2026-08-31 ruling below is the only thing that ever has.)*
+
+⭐ **`ISC` was admitted by operator ruling on 2026-08-31 (card#8301), and the reason is written here
+because a member with no reason beside it is a list nobody can disagree with.** ISC is an
+OSI-approved, **attribution-only** permissive licence — functionally MIT, differing mainly in
+dropping wording the Berne Convention made redundant — so it is **not stricter than the repository's
+own terms**, which is the only test this list applies. **What the list exists to keep out is
+copyleft and non-commercial terms, not to choose between two attribution licences.** Two things the
+ruling deliberately does **not** do: it does not admit permissive licences **as a class** —
+`Apache-2.0` is permissive and is still refused, because the criterion is *membership of this list*
+and widening it is still the operator's act, not an inference from a family resemblance — and it
+**does not authorise any particular port**. Admitting the licence removes the licence objection and
+nothing else; what an ISC asset costs is exactly what an MIT one costs, that **its copyright notice
+and permission notice be reproduced** in `docs/ATTRIBUTION.md` — and, for a port under
+`resources/characters/`, in `resources/characters/LINEAGE.md` as well. *That second home is
+[§ 10.2](#102-characters-the-munder-difflin-port)'s rule rather than the licence's, and it applies
+to an ISC port for the same reason it applies to the MIT one.*
+
+**That obligation is GATED, in the same change that created it, because a declaration nobody checks
+is a comment.** ISC's grant is *conditional* — the licence is given *"provided that the above
+copyright notice and this permission notice appear in all copies"* — so a public repository that
+redistributes an ISC asset without them is in breach while every other check is green. **The gate
+requires a declared licence's permission notice in EVERY FILE THIS SECTION SAYS OWES IT — the
+manifest as soon as ANY row declares that licence, and `resources/characters/LINEAGE.md` as soon as
+a row UNDER THAT TREE does** — matched as the licence's own text rather than as the label, for the
+reason [§ 10.2](#102-characters-the-munder-difflin-port) already gives about MIT: a link is not a
+reproduction and neither is a name. The manifest half is keyed on a **row**, not on a tree, because
+an asset owing a notice need not be a port — a tileset vendored into `resources/floor/` owes it too
+and has no lineage file to hang it off; the lineage half is keyed on the **character tree**, because
+the second home is what § 10.2 asks of a *port*.
+
+⭐ **The obligation and the allowlist are ONE declaration, and that is the part to preserve.**
+`bin/asset-provenance.py` holds a single table from SPDX identifier to the notice that licence
+obliges (`None` where it obliges none — `CC0-1.0` is a public-domain dedication, granted
+unconditionally), **and the allowlist is that table's key set**. So admitting the next licence *is*
+editing the table, which *is* deciding what notice it obliges: a member cannot be added by an edit
+that forgets one. **This is written down because the flat form minted a hole here once.** Until
+card#8301's review the list and the notice check were two edits, and the check named ONE licence —
+so admitting `ISC` widened the list and left the lineage half asking for MIT's notice. An ISC port
+could land with the manifest notice supplied, `LINEAGE.md` never asked for ISC's at all, and every
+check green; and the mirror defect ran the other way, an `MIT` row outside the character tree owing
+a notice in no file. Both are watched going red in `bin/asset-provenance.selftest.py` — AT-D3-12's
+**eleventh** and **twelfth** REDs — and the first of them is the old ISC *control*, which passed.
+
+⚠ **Its residue, stated rather than discovered:** it is a **presence**
+check. It cannot tell whether the copyright line beside the notice names the right holder, and it
+does not ask for one notice per ISC asset — a second ISC asset from a different author is a human
+obligation this does not see. **The copyright line is required of the lineage file GENERICALLY, not
+per licence**, and for a reason that is not laziness: `Copyright (c) 2026 Someone` is the same shape
+under MIT and under ISC, so a per-licence check for one could not tell an ISC port's copyright line
+from the MIT port's — and a check that cannot discriminate is a decoration. Neither half is a
+licence audit.
 
 ### 10.2 Characters: the munder-difflin port
 
@@ -3210,14 +3262,19 @@ there: not *is there art*, but **does every asset declare where it came from**.*
 - **Build — the manifest half:** run the asset gates against the repository
   ([§ 10.1](#101-the-manifest-and-the-two-gates)). **Reads:** the **provenance gates**.
 - **GREEN — the manifest half:** every asset file has a `docs/ATTRIBUTION.md` row; every row's SHA-256
-  matches its file; every licence identifier is in the closed allowlist; and **every row's `origin` is
+  matches its file; every licence identifier is in the closed allowlist; **every row's `origin` is
   one of the two members and is consistent with the row's own source URL** — `first-party` against an
-  in-repo reference, `licensed` against a genuine external one.
+  in-repo reference, `licensed` against a genuine external one; and, **for every licence any row
+  declares that obliges one, the manifest reproduces that licence's own permission notice**
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)).
 - **Build — the lineage half:** run the same gates over the repository, now that the ported character
   tree exists ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **lineage file**, the
   **character tree**.
-- **GREEN — the lineage half:** the lineage file names the upstream repository, the commit and the MIT
-  notice; and every file under **`resources/`** carries an admitted extension, no embedded image
+- **GREEN — the lineage half:** the lineage file names the upstream repository, the commit, a
+  copyright line, and **the permission notice of every licence the character tree's own rows
+  declare** — the same check the manifest half runs, at the second home
+  [§ 10.2](#102-characters-the-munder-difflin-port) obliges;
+  and every file under **`resources/`** carries an admitted extension, no embedded image
   bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path —
   Gate 2's three clauses, asserted here rather than at step 0, because a tree that does not
   exist yet satisfies all three for free.
@@ -3247,7 +3304,10 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   format the amendment newly admits. Both are watched: an embedded asset has no path, so no row, so no
   provenance, and it is invisible to Gate 1 by construction.
   **Seventh RED — the wrong licence:** set a row's identifier to `CC-BY-NC-4.0` → the allowlist check
-  fails.
+  fails; **and `Apache-2.0`, which is permissive and still unruled, fails identically** — watched
+  since the 2026-08-31 ISC ruling, because the criterion is *membership of the list* and a reader who
+  took that ruling to admit permissive licences as a class would be wrong
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)).
   **Eighth RED — the base64 layer, which is Tiled's own export default:** export `aimla.tmj` with the
   tile layer format left at base64 → clause 3 fails naming the layer and its encoding, and the same
   defect in `aimla.tmx` fails too, on a different parser. Watched, because clause 2 **cannot** be
@@ -3259,7 +3319,25 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   `data:` URI spelling of the same thing in a `.tsj` fails identically. It is the same hazard as the
   sixth RED — an asset with no path has no row and so no provenance — arriving in the one file format
   where the embedding is a legitimate Tiled feature rather than a mistake.
-- **Discriminating controls — three, and the second is the one that keeps this gate switched on:**
+  **Tenth RED — the ISC row whose notice nobody reproduced:** set a row's identifier to `ISC` in a
+  manifest that does not carry ISC's permission notice → Gate 1 fails naming the declaring rows and
+  the missing notice. It is watched **with its own control** — the same `ISC` row with the notice in
+  *both* files it is owed in must PASS — because without that control the RED is equally satisfied
+  by a gate that refuses `ISC` outright, which is exactly what the 2026-08-31 ruling repealed
+  ([§ 10.1](#101-the-manifest-and-the-two-gates)).
+  **Eleventh RED — the same `ISC` row, the manifest notice supplied, and `resources/characters/LINEAGE.md`
+  forgotten:** an ISC port under the character tree owes its notice in **both** files
+  ([§ 10.2](#102-characters-the-munder-difflin-port)), so the lineage check fails naming the file, the
+  licence and the declaring rows. ⛔ **This fixture PASSED until card#8301's review, and it was the
+  tenth RED's control** — the lineage half was hard-coded to MIT's text, so it asked an ISC port for
+  MIT's notice, found the MIT port's copy, and reported clean. Watched going from exit 0 to exit 1.
+  **Twelfth RED — its mirror image, an `MIT` row with no port to hang the obligation off:** an `MIT`
+  asset under `resources/floor/` in a repository with **no character tree at all** and a manifest that
+  never reproduces MIT's notice → Gate 1 fails naming the manifest. It PASSED until the same review,
+  and its `ISC` twin — the identical tree with one cell changed — was already red: one behaviour, two
+  implementations, two different guarantees. Both are why [§ 10.1](#101-the-manifest-and-the-two-gates)
+  now derives the allowlist from the notice table rather than keeping them as two edits.
+- **Discriminating controls — four, and the second is the one that keeps this gate switched on:**
   *(a)* the clean tree passes every check, so the gates are known to be capable of reporting
   *provenance is complete*; *(b)* **a genuinely complex first-party `.svg` — long, mixed-case,
   digit-dense path data — PASSES clause 2.** Without (b) the sixth RED is satisfied by a gate that
@@ -3268,7 +3346,10 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   and `.tsx` together — PASSES clause 3**, and the `.tmj` in it carries **no `encoding` key at all**,
   which is the shape the format spec's default permits and the harder one for the check to accept. Without
   (c) the eighth and ninth REDs are satisfied by a clause that refuses every Tiled map ever exported.
-  All three run in `bin/asset-provenance.selftest.py`; any one alone is not evidence.
+  *(d)* **a `CC0-1.0` row in a manifest carrying NO notice at all PASSES** — a public-domain dedication
+  attaches no attribution condition, and without this control the tenth to twelfth REDs are equally
+  satisfied by a gate that demands a notice from every row it sees, which is a gate that reds on
+  correct work. All four run in `bin/asset-provenance.selftest.py`; any one alone is not evidence.
 
 ### AT-D3-13 every state is legible without motion
 
@@ -3672,9 +3753,12 @@ reason to leave two readings live.
    `eb3df9fa70b63b68495a965c45f158105e87b2e6`, the MIT licence and its reproduced notice are recorded
    in `resources/characters/LINEAGE.md` and `docs/ATTRIBUTION.md` — **in the repository, not in a
    message**, which is what this item asked for. That lineage file also records what was deliberately
-   **not** taken and why: the LimeZu-bound sprite path, three ISC-derived files (ISC is permissive and
-   MIT-compatible and is still **not** in [§ 10.1](#101-the-manifest-and-the-two-gates)'s closed
-   allowlist, so taking them is an operator decision nobody has made), and The Office's cast identities.
+   **not** taken and why: the LimeZu-bound sprite path, three ISC-derived files, and The Office's cast
+   identities. ⚠ **The ISC half of that reason expired on 2026-08-31**, when the operator admitted
+   `ISC` to [§ 10.1](#101-the-manifest-and-the-two-gates)'s allowlist (card#8301). The three files
+   were not taken and are still not taken — what changed is *why*: the licence no longer refuses
+   them, so taking any of them is now an ordinary **port** decision carrying an ISC notice
+   obligation, and `resources/characters/LINEAGE.md § 3` states it that way rather than as a gate.
 
    **⇢ The tileset half, still open, still an operator/review question.** No tileset is chosen and none
    is recorded. **Still blocks:** card #7341 (floor v1), and the 1,280 × 800 viewport floor still cannot

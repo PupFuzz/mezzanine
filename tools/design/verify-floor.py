@@ -15,9 +15,13 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G4  section 12 <-> definition site            each number as a whole token at the section it cites,
                                                then PERTURBED to prove the match can fail there
   G5  acceptance-test closure                   fixture <-> test both ways; every test has a RED;
-                                               AT ids contiguous from 1; the build order gates every
-                                               artifact a test reads; the animation-log schema's two
-                                               homes; the episode walk's own episode and row counts
+                                               AT ids contiguous from 1; ORDINAL REDs contiguous from
+                                               Second, and bound BOTH WAYS to the FIXTURE NAMES of the
+                                               suite a test names (read with `ast`, not grepped -- a
+                                               grep is satisfied by the suite's own docstring); the
+                                               build order gates every artifact a test reads; the
+                                               animation-log schema's two homes; the episode walk's
+                                               own episode and row counts
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
   G7  state and badge render closure            a D2 enum member with no render, or a render for a
                                                member D2 does not declare
@@ -64,6 +68,7 @@ searcher stopped):
 Each check that can be silent about its own subject carries a CONTROL that aborts rather than
 reporting clean when its extractor finds nothing (canon: a check that cannot fail is a decoration).
 """
+import ast
 import re
 import sys
 import pathlib
@@ -559,6 +564,96 @@ else:
         if "**RED" not in body:
             fail.append(f"G5: `{h[1]}` states no RED. A test never seen to fail is not evidence; "
                         f"it is a decoration that reports the harness ran")
+
+# G5, THE RED ENUMERATION -- and its BINDING to the suite that is supposed to run it.
+#
+# The check above asserted PRESENCE: one `**RED` anywhere in the body and the test was satisfied.
+# That is a floor, and AT-D3-12 outgrew it -- it now enumerates TWELVE ordinal REDs, and a presence
+# check reports clean whether the suite carries twelve of them, three, or none.  The failure mode is
+# not hypothetical: card#8301 stripped its own tenth RED in a revert experiment and this gate still
+# printed ALL D3 CHECKS PASS over a document that still described it.  Two things are added, and
+# neither stores a population:
+#
+#   CONTIGUITY.  The ordinals a body uses must run Second, Third, ... with no gap and no repeat.
+#   The FIRST red is deliberately unnumbered in this document's style, so the sequence starts at
+#   Second; a gap means a RED was deleted and its neighbours never renumbered, and a repeat means
+#   two REDs answer to one name, which is the same defect a duplicated AT id would be.
+#
+#   THE BINDING, BOTH DIRECTIONS, over the ORDINALS.  A body that names EXACTLY ONE `*.selftest.*`
+#   file is claiming that file runs its REDs, so every ordinal here must appear in that file as
+#   `<ORDINAL> RED`, and every `<ORDINAL> RED` in that file must appear here.  A doc RED with no
+#   fixture is a claim nothing holds; a fixture ordinal with no doc RED is a test the specification
+#   has stopped describing.  ⚠ WHAT IT DOES NOT COVER, said rather than implied: the UNNUMBERED
+#   REDs, and every fixture that carries no ordinal at all -- the suite deliberately holds more
+#   fixtures than the document enumerates (a strict parser's fail-closed cases, the controls), so
+#   this is a binding over the ordinals and not a bijection over the fixtures.
+G5_ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth",
+               "Ninth", "Tenth", "Eleventh", "Twelfth", "Thirteenth", "Fourteenth", "Fifteenth"]
+_g5_ord_re = re.compile(r"\*\*(%s) RED" % "|".join(G5_ORDINALS), re.I)
+g5_bound, g5_ord_total = [], 0
+for h in at_heads:
+    body = "\n".join(lines[h[3]:h[4]])
+    seen = [m.group(1).capitalize() for m in _g5_ord_re.finditer(body)]
+    if not seen:
+        continue
+    g5_ord_total += len(seen)
+    want = G5_ORDINALS[1:1 + len(seen)]
+    if seen != want:
+        fail.append(f"G5: `{h[1]}` numbers its REDs {seen} -- expected {want}, contiguous from "
+                    f"Second (the first RED is unnumbered in this document's style). A gap means a "
+                    f"RED was deleted without renumbering its neighbours; a repeat means two REDs "
+                    f"answer to one name")
+        continue
+    suites = sorted(set(re.findall(r"`([\w./-]+\.selftest\.(?:py|mjs|sh))`", body)))
+    if len(suites) != 1:
+        g5_bound.append(f"{h[1]}: {len(seen)} ordinal RED(s), bound to no single suite "
+                        f"({suites or 'none named'}) -- enumeration checked, execution NOT")
+        continue
+    src = ROOT / suites[0]
+    if not src.is_file():
+        fail.append(f"G5 CONTROL: `{h[1]}` names `{suites[0]}` as its suite and no such file "
+                    f"exists -- the binding below would be vacuous, which reads as a pass")
+        continue
+    # ⛔ THE ORDINAL IS LOOKED FOR IN THE FIXTURE NAMES, NOT IN THE FILE'S TEXT, and the difference
+    # was measured rather than reasoned: the first revision of this check grepped the whole file and
+    # a MUTANT THAT STRIPPED THE ELEVENTH RED FROM ITS FIXTURE STILL PASSED, because the suite's own
+    # docstring says the words "eleventh RED" in prose. A binding satisfied by a comment binds
+    # nothing. So the names are read out of the suite's `case(...)` / `eq(...)` calls with `ast`,
+    # which is the same population its own `N fixtures run` line counts.
+    if src.suffix != ".py":
+        g5_bound.append(f"{h[1]}: {len(seen)} ordinal RED(s), suite `{suites[0]}` is not Python -- "
+                        f"its fixture names cannot be read structurally, so enumeration is checked "
+                        f"and the binding is NOT")
+        continue
+    try:
+        suite_ast = ast.parse(src.read_text())
+    except SyntaxError as e:
+        fail.append(f"G5 CONTROL: `{suites[0]}` does not parse ({e}) -- its fixture names are "
+                    f"unread, so the binding would be vacuous")
+        continue
+    fixture_names = [n.args[0].value for n in ast.walk(suite_ast)
+                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                     and n.func.id in ("case", "eq") and n.args
+                     and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str)]
+    if not fixture_names:
+        fail.append(f"G5 CONTROL: no fixture name parsed out of `{suites[0]}` -- the binding below "
+                    f"would compare against an empty set, which reads as a pass")
+        continue
+    suite_text = "\n".join(fixture_names)
+    in_suite = {o for o in G5_ORDINALS if re.search(r"\b%s RED\b" % o, suite_text, re.I)}
+    missing = [o for o in seen if o not in in_suite]
+    extra = sorted(in_suite - set(seen), key=G5_ORDINALS.index)
+    if missing:
+        fail.append(f"G5: `{h[1]}` describes {missing} RED(s) that `{suites[0]}` does not carry -- "
+                    f"a RED a document states and no fixture plants is a claim nothing holds")
+    if extra:
+        fail.append(f"G5: `{suites[0]}` carries {extra} RED(s) that `{h[1]}` does not describe -- "
+                    f"the specification has stopped describing a test that still runs")
+    if not missing and not extra:
+        g5_bound.append(f"{h[1]}: {len(seen)} ordinal RED(s) <-> `{suites[0]}`, both directions")
+if not g5_ord_total:
+    fail.append("G5 CONTROL: no ordinal RED parsed anywhere in the acceptance tests -- the "
+                "extractor found nothing, so the contiguity and binding checks below are vacuous")
 
 # G5, second half: AN AT IS GATED AT OR AFTER THE STEP THAT BUILDS EVERY ARTIFACT ITS GREEN READS.
 # Section 11 states the rule over EVERY artifact.  The check used to hold it over ONE -- the drill-down
@@ -1904,6 +1999,12 @@ print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Re
       f"is where an undeclared read hides, and a count would hide it again")
 for _n, _a in g5_unread:
     print(f"    G5 residue — named but not declared as read · {_n}: `{_a}`")
+print(f"    G5 ordinal REDs: {g5_ord_total} across the acceptance tests, each sequence checked "
+      f"CONTIGUOUS from Second. Which of them are bound to a suite is printed rather than counted — "
+      f"a test whose REDs no fixture file claims has had its ENUMERATION checked and its EXECUTION "
+      f"not, and that is a different thing to be told than a number")
+for _b in g5_bound:
+    print(f"    G5 ordinal REDs · {_b}")
 print(f"G6  Appendix A: {n_t} D2 rows + {n_u} D1 rows; render-directed markers found in "
       f"{len(marked)} D2 sections ({sorted(marked)}) and {len(marked_d1)} D1 sections "
       f"({sorted(marked_d1)}); uncovered {len(uncovered)} D2 / {len(uncovered_d1)} D1; "

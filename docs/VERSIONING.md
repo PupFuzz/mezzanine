@@ -104,12 +104,40 @@ having passed.
 > every PR rather than the no-run-reads-as-pending deadlock the paragraph above describes; on a
 > PR that does not target `main` it reports *NOT APPLICABLE* and exits 0.
 >
-> ✅ **SUPERSEDED the same day — re-measured 2026-08-30 while cutting `v0.2.0`
-> (`GET /repos/PupFuzz/mezzanine/rulesets`), and the ruleset edit HAS landed.** Both branches
-> now require **`["card-token-lint", "release-pr-guard"]`**, by the *job* id — which is what a
-> ruleset matches, never the workflow's display name. The gate now blocks. **The paragraph
+> ⚠ **SUPERSEDED the same day — re-measured 2026-08-30 while cutting `v0.2.0`
+> (`GET /repos/PupFuzz/mezzanine/rulesets`), and the ruleset edit HAD landed.** Both branches
+> required **`["card-token-lint", "release-pr-guard"]`**, by the *job* id — which is what a
+> ruleset matches, never the workflow's display name. The gate blocks. **The paragraph
 > above is kept rather than deleted because it is the reason the requirement was safe to add;
-> read it as history, and this block as the state.**
+> read it as history.** *(And this block is history too — see the state below.)*
+>
+> ✅ **THE STATE, re-measured live 2026-09-08 (card#8301). Both rulesets — `21222661`
+> "dev — integration branch" and `21222660` "main — release branch", both `enforcement: active`,
+> both with `bypass_actors: []` — require the SAME FIVE contexts:**
+>
+> > `asset-provenance` · `card-token-lint` · `design-artifact` · `design-docs` · `release-pr-guard`
+>
+> **This list is a RESTATEMENT of a repository-settings fact and this file is its one home** — no
+> other document may carry a copy, because two of them already drifted from it (the copies in
+> `.github/workflows/asset-provenance.yml` and `docs/ATTRIBUTION.md` both still said
+> `asset-provenance` was *not* required, i.e. that a red there did not block a merge, for as long
+> as it had been required). ⛔ **A doc cannot verify this; only the API can.** Re-derive it, never
+> relay it:
+>
+> ```
+> for id in 21222661 21222660; do
+>   gh api repos/PupFuzz/mezzanine/rulesets/$id --jq \
+>     '.name, ([.rules[] | select(.type=="required_status_checks")
+>              | .parameters.required_status_checks[].context] | sort)'
+> done
+> ```
+>
+> **The 2026-08-23 caveat above is not superseded and must stay:** *a workflow that is added later
+> is not automatically required*, and a required check that never runs reads as *pending*, not
+> *passed*. That sentence is exactly why this block goes stale — **three more contexts were added on
+> 2026-08-31** (the rulesets' own `updated_at`: `dev` 15:47, `main` 01:03, both −04:00), one day
+> after the measurement above, **and no document moved with them for eight days** — so **re-read and
+> re-measure this section whenever a workflow is added, and update the copies that point here.**
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:
