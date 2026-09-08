@@ -7,9 +7,11 @@ WHAT IT DOES.
   a declared asset tree has exactly one row in the manifest (docs/ATTRIBUTION.md); that row's
   SHA-256 matches the file's bytes; its licence identifier is in the CLOSED allowlist; its
   `origin` is one of exactly two values and is CONSISTENT WITH ITS OWN SOURCE URL; and no row
-  names a file that is not there.  WHERE ANY ROW DECLARES `ISC` — admitted to the allowlist by
-  operator ruling on 2026-08-31 (card#8301) — the manifest must ALSO REPRODUCE ISC's permission
-  notice, because ISC grants the licence only on condition that its notices appear in all copies.
+  names a file that is not there.  AND WHERE A DECLARED LICENCE OBLIGES A NOTICE — MIT and ISC
+  both grant only "provided that … this permission notice appear in all copies"; CC0-1.0, a
+  public-domain dedication, obliges none — THE MANIFEST MUST REPRODUCE THAT LICENCE'S OWN TEXT.
+  The obligation is read out of one table, LICENCE_NOTICES, from which the allowlist itself is
+  derived, so a licence cannot be admitted without its notice obligation being decided.
 
     origin = first-party  drawn or written FOR this repository. The source URL must be an
                           IN-REPO reference (this repository's own URL).
@@ -70,8 +72,11 @@ WHAT IT DOES.
 
   The lineage check — AT-D3-12's lineage half, and NOT a third gate: section 10.1 names two and
   this invents no more. It reads resources/characters/LINEAGE.md rather than the tree and
-  requires the fields section 10.2 obliges a port to record — upstream URL, the COMMIT, the MIT
-  copyright line and permission notice reproduced in full, and what was deliberately not taken.
+  requires the fields section 10.2 obliges a port to record — upstream URL, the COMMIT, a
+  copyright line, the permission notice OF EVERY LICENCE THE CHARACTER TREE'S ROWS DECLARE
+  reproduced in full, and what was deliberately not taken. That notice requirement runs the SAME
+  check as the manifest's, over the same table: section 10.2 says the notice ships in both files,
+  so one behaviour with two homes is one implementation called twice, never two.
   The commit is the one to watch: a port whose upstream commit nobody recorded is a port nobody
   can tell from a fork.
 
@@ -89,11 +94,11 @@ WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
     row, and every check here passes. What stands in its place is the closed licence allowlist,
     the origin/URL consistency check, the lineage file's deliberate-omissions section, FLOOR
     section 10.5's IP line, and REVIEW. Section 10.1 names the residue in full.
-  * THE ISC NOTICE CHECK IS A PRESENCE CHECK.  It asserts that ISC's permission notice is IN the
-    manifest once some row declares ISC; it cannot tell whether the copyright line beside that
-    notice names the right holder, and it does not ask for one notice per ISC asset. A second ISC
-    asset from a different author is a human obligation and this will not notice it — said out
-    loud because the same trade is what the MIT notice check makes, and neither is a licence audit.
+  * THE NOTICE CHECKS ARE PRESENCE CHECKS.  Each asserts that a declared licence's permission
+    notice is IN the file that owes it; none can tell whether the copyright line beside it names
+    the right holder, and none asks for one notice per asset. A second ISC asset from a different
+    author is a human obligation and this will not notice it. That is the trade every member of
+    LICENCE_NOTICES makes, and no member of it is a licence audit.
   * IT CANNOT SEE A CHARACTER SOMEBODY ELSE OWNS.  Nothing that reads file types, hashes and
     licence strings can look at a drawing and recognise a Pikachu. FLOOR section 10.5 states
     that rule and states that review, not this script, enforces it.
@@ -232,6 +237,20 @@ TILED_EXTENSIONS = TILED_XML_EXTENSIONS | TILED_JSON_EXTENSIONS
 # string is encoded. The key is still checked when present; it is never required.
 TILED_PLAIN_ENCODING = "csv"
 
+# --- the licence allowlist and the notice each member obliges: ONE declaration ------------------
+#
+# ⭐ THE ALLOWLIST IS DERIVED FROM THE NOTICE TABLE — `frozenset(LICENCE_NOTICES)`, below — so there
+# is no second place a licence can be added to. That derivation IS the structure: admitting the next
+# licence means editing the table, which means writing down what notice it obliges, and a member
+# whose obligation nobody decided cannot be created by forgetting one.
+#
+# IT IS WRITTEN THIS WAY BECAUSE THE FLAT FORM MINTED A HOLE, ONCE, HERE. Until card#8301's review
+# this file held a flat allowlist AND a notice check hard-coded to ONE licence's text, so admitting
+# ISC widened the first and left the second saying MIT: an ISC row could be added, the manifest
+# notice supplied, `resources/characters/LINEAGE.md` left without ISC's notice — an obligation
+# section 10.1 and section 10.2 both state — and every check stayed green. The defect was not the
+# missing ISC branch; it was that ADMITTING A LICENCE AND STATING ITS OBLIGATION WERE TWO EDITS.
+#
 # The licence allowlist is CLOSED. Widening it is an OPERATOR decision (section 10.1), never an
 # implementer's: the repository is MIT and public, so an asset whose terms are stricter than the
 # repository's is a term the repository cannot honour.
@@ -243,23 +262,38 @@ TILED_PLAIN_ENCODING = "csv"
 # to choose between two attribution licences. It does NOT admit permissive licences as a CLASS:
 # Apache-2.0 is permissive and is still refused, because the criterion is membership of this list and
 # widening it is still an operator's act rather than an inference from a family resemblance.
-LICENCE_ALLOWLIST = frozenset({"CC0-1.0", "ISC", "MIT"})
-
-# ISC's grant is CONDITIONAL on its notices travelling with the copy — "provided that the above
-# copyright notice and this permission notice appear in all copies" — exactly as MIT's is. So the
-# moment the allowlist admits ISC it creates an obligation, and an obligation nobody checks is a
-# comment: gate1() requires this sentence in the manifest as soon as ANY row declares ISC. The
-# canonical ISC text is matched, not a licence name, for the same reason section 10.2 matches MIT's
-# permission notice rather than the string "MIT": a link is not a reproduction and neither is a label.
-# It matches the notice's DISTINCTIVE OPENING CLAUSE across line wraps, and tolerates the `and
-# distribute` variant beside the `and/or distribute` one — both are ISC in the wild. What it does NOT
-# separately check is the COPYRIGHT half: the manifest already carries a `Copyright (c) …` line for
-# the MIT port, so a check for one could not tell an ISC copyright line from that one, and a check
-# that cannot discriminate is a decoration (canon: a check that cannot fail is not evidence).
+#
+# EACH PATTERN IS THE LICENCE'S OWN TEXT, NEVER ITS NAME — section 10.2's rule, applied to every
+# member: a link is not a reproduction and neither is a label. Each matches the notice's DISTINCTIVE
+# OPENING CLAUSE with `\s+` between words, so a notice an editor wrapped still counts.
+#
+# ⚠ WHAT NO MEMBER CHECKS IS THE COPYRIGHT HALF. `Copyright (c) 2026 Someone` is the same shape
+# whoever wrote it and whichever licence it belongs to, so a check for one beside ISC's notice could
+# not tell it from the MIT port's, and a check that cannot discriminate is a decoration (canon: a
+# check that cannot fail is not evidence). What IS required is that the lineage file carry ONE
+# copyright line at all — COPYRIGHT_LINE_RE, below — and nothing more is claimed than that.
 ISC_NOTICE_RE = re.compile(
+    # "provided that the above copyright notice and this permission notice appear in all copies".
+    # The `and distribute` variant sits beside `and/or distribute`: both are ISC in the wild.
     r"Permission\s+to\s+use,\s+copy,\s+modify,?\s+and(?:/or)?\s+distribute\s+this\s+software",
     re.IGNORECASE,
 )
+MIT_NOTICE_RE = re.compile(r"The above copyright notice and this permission notice shall be included")
+
+# A value of None is A DECISION, READ AS ONE: this licence obliges no reproduced notice. CC0-1.0 is
+# the only such member and the reason is the licence's own — it is a public-domain DEDICATION,
+# granted unconditionally, with no attribution condition for a copy to carry. Every other member
+# here is attribution-only and CONDITIONAL, which is what makes the notice the price of the row.
+#
+# A key absent from this table is a licence outside the allowlist by construction, and gate1()'s
+# allowlist check is what reports it — the notice loop below simply has nothing to say about a
+# licence this repository does not admit.
+LICENCE_NOTICES: dict[str, re.Pattern[str] | None] = {
+    "CC0-1.0": None,
+    "ISC": ISC_NOTICE_RE,
+    "MIT": MIT_NOTICE_RE,
+}
+LICENCE_ALLOWLIST = frozenset(LICENCE_NOTICES)
 
 # The `origin` set is CLOSED at two, and unlike the licence allowlist it is not an operator gate
 # — it is a TYPE. A third value invented at a row is a value nobody decided, and "where did this
@@ -425,6 +459,49 @@ def sha256_of(rel: str) -> str:
     return hashlib.sha256((REPO / rel).read_bytes()).hexdigest()
 
 
+# --- the notice obligation: ONE implementation, used by BOTH homes -----------------------------
+# A licence admitted to the allowlist may carry a CONDITION — MIT and ISC both grant only "provided
+# that the above copyright notice and this permission notice appear in all copies" — and a condition
+# nobody checks is a comment. This is the check, written ONCE and keyed on the DECLARED LICENCE SET
+# rather than on any licence's name, and it is called at both of the homes section 10.1 and section
+# 10.2 oblige: the manifest (over EVERY row) and the lineage file (over the rows under the character
+# tree, which is where a PORT's notice is additionally owed).
+#
+# ⛔ IT WAS TWO IMPLEMENTATIONS UNTIL card#8301's REVIEW, and they had diverged in both directions:
+# the manifest half fired on an ISC ROW but on no MIT row at all (MIT reached the manifest only via
+# the lineage file's mirror, so a `resources/floor/` MIT asset with no character tree needed no
+# notice anywhere), while the lineage half required MIT's notice UNCONDITIONALLY and ISC's never. The
+# measured pair that named it: two trees identical but for the SPDX cell — an MIT floor asset with no
+# notice and no character tree PASSED, the same tree with `ISC` in that cell RED. One behaviour, two
+# triggers, two guarantees. There is now one of each.
+
+def declaring_licences(rows: dict[str, dict[str, str]], under: str | None = None) -> dict[str, list[str]]:
+    """Which licences the rows declare, and which paths declare them. `under` scopes to a tree."""
+    out: dict[str, list[str]] = {}
+    for rel in sorted(rows):
+        if under is not None and not rel.startswith(under):
+            continue
+        out.setdefault(rows[rel]["spdx"].strip("`"), []).append(rel)
+    return out
+
+
+def require_notices(gate: str, doc_rel: str, doc_text: str,
+                    declared: dict[str, list[str]], scope: str) -> None:
+    """Every declared licence that OBLIGES a notice must have it reproduced in doc_rel."""
+    for spdx in sorted(declared):
+        rx = LICENCE_NOTICES.get(spdx)
+        if rx is None or rx.search(doc_text):
+            continue
+        paths = declared[spdx]
+        fail(
+            gate,
+            f"{doc_rel} does not reproduce the {spdx} permission notice — {len(paths)} row(s) "
+            f"{scope} declare {spdx} ({', '.join(paths)}), and {spdx} grants the licence ONLY on "
+            "condition that the copyright notice and this permission notice appear in all copies. "
+            "A link is not a reproduction and neither is the label",
+        )
+
+
 # --- gate 1 --------------------------------------------------------------------------------------
 
 def gate1(assets: list[str], rows: dict[str, dict[str, str]]) -> None:
@@ -487,22 +564,13 @@ def gate1(assets: list[str], rows: dict[str, dict[str, str]]) -> None:
         if rel not in asset_set:
             fail("GATE 1", f"{rel} has an ATTRIBUTION row but no such file under any asset tree")
 
-    # The obligation the 2026-08-31 ISC ruling created, CHECKED rather than merely stated. ISC is
-    # attribution-only: its grant is conditional on the copyright notice and the permission notice
-    # appearing in all copies, so a public repository that redistributes an ISC-licensed asset
-    # without reproducing them is in breach while every other check here is green. The row is the
-    # declaration; the notice is the accompaniment the licence itself requires, and section 10.1
-    # says so beside the allowlist. Keyed on a ROW rather than on a tree, because an ISC asset need
-    # not be a port — a tileset bought into resources/floor/ owes the notice too, and there is no
-    # lineage file over there to hang it off.
-    isc = sorted(rel for rel, row in rows.items() if row["spdx"].strip("`") == "ISC")
-    if isc and not ISC_NOTICE_RE.search((REPO / MANIFEST).read_text(encoding="utf-8")):
-        fail(
-            "GATE 1",
-            f"{len(isc)} row(s) declare ISC ({', '.join(isc)}) but {MANIFEST} does not reproduce the ISC "
-            "permission notice — ISC grants the licence ONLY on condition that the copyright notice "
-            "and this permission notice appear in all copies, and a link is not a reproduction",
-        )
+    # The obligation an attribution licence attaches to the row, CHECKED rather than merely stated.
+    # The row is the DECLARATION; the notice is the accompaniment the licence itself requires, and
+    # section 10.1 says so beside the allowlist. Keyed on the declared licence SET rather than on a
+    # tree, because an asset owing a notice need not be a port — a tileset bought into
+    # resources/floor/ owes it too, and there is no lineage file over there to hang it off.
+    require_notices("GATE 1", MANIFEST, (REPO / MANIFEST).read_text(encoding="utf-8"),
+                    declaring_licences(rows), "in this manifest")
 
 
 # --- gate 2 clause 3: the Tiled artifacts ---------------------------------------------------------
@@ -706,18 +774,24 @@ def gate2(assets: list[str]) -> None:
 # owed by a tree that was ported, not by every tree that holds assets.
 CHARACTER_TREE = "resources/characters"
 LINEAGE = CHARACTER_TREE + "/LINEAGE.md"
-MIT_NOTICE_RE = re.compile(r"The above copyright notice and this permission notice shall be included")
+
+# The facts a PORT owes, whatever it was licensed under. The two licence-specific entries that used
+# to sit here — "the MIT copyright line" and "the MIT permission notice" — are gone from this tuple
+# on purpose: naming ONE licence in a requirement every port carries is what left an ISC port's
+# notice unchecked while an all-CC0 tree was asked for MIT's. The notice half is now keyed on the
+# licences the tree's rows actually declare (below); the copyright line is COPYRIGHT_LINE_RE, which
+# is not licence-specific because the text is not — `Copyright (c) 2026 Someone` is the same shape
+# under MIT and under ISC, and a check that cannot discriminate must not pretend it can.
 LINEAGE_REQUIRED = (
     ("the upstream repository URL", re.compile(r"https?://[^\s)>`]+/[^\s)>`]+")),
     ("the upstream commit SHA (40 hex)", re.compile(r"\b[0-9a-f]{40}\b")),
-    ("the MIT copyright line", re.compile(r"Copyright \(c\) \d{4}\s+\S")),
-    ("the MIT permission notice (a link is not a reproduction)", MIT_NOTICE_RE),
     ("a section saying what was deliberately NOT taken, and why",
      re.compile(r"not\s+taken", re.IGNORECASE)),
 )
+COPYRIGHT_LINE_RE = re.compile(r"Copyright \(c\) \d{4}\s+\S")
 
 
-def lineage_check(assets: list[str]) -> None:
+def lineage_check(assets: list[str], rows: dict[str, dict[str, str]]) -> None:
     if not any(a.startswith(CHARACTER_TREE + "/") for a in assets):
         notes.append(f"{LINEAGE}: no character tree — lineage check has nothing to read")
         return
@@ -730,14 +804,24 @@ def lineage_check(assets: list[str]) -> None:
         if not rx.search(text):
             fail("LINEAGE", f"{LINEAGE} does not carry {what}")
 
-    # Section 10.2: "The MIT notice ships with the distribution, in docs/ATTRIBUTION.md AND in
-    # the lineage file … a link is not a reproduction." Both, not either — so the manifest is
-    # checked for the notice too. This is the one duplication the gate REQUIRES rather than
-    # forbids: a licence notice has to accompany the distribution, and its text is immutable, so
-    # the usual argument against a second copy does not reach it.
-    if MIT_NOTICE_RE.search(text) and not MIT_NOTICE_RE.search((REPO / MANIFEST).read_text(encoding="utf-8")):
-        fail("LINEAGE", f"{MANIFEST} does not reproduce the MIT permission notice that {LINEAGE} carries "
-                        "— section 10.2 requires it in both, and a link is not a reproduction")
+    # Section 10.2: "The notice ships with the distribution, in docs/ATTRIBUTION.md AND in the
+    # lineage file … a link is not a reproduction." BOTH, not either — so the same check that ran
+    # over the manifest in gate1() runs here, over the licences the CHARACTER TREE's own rows
+    # declare. That scope is section 10.2's: the second home is owed by a PORT, and a port is what
+    # this tree is; an ISC tileset under resources/floor/ owes the manifest notice and has no
+    # lineage file to owe a second one to.
+    ported = declaring_licences(rows, under=CHARACTER_TREE + "/")
+    require_notices("LINEAGE", LINEAGE, text, ported, f"under {CHARACTER_TREE}/")
+
+    # The copyright half of the same obligation, required ONCE and only where a notice is owed: an
+    # all-CC0 tree carries no attribution condition and is asked for nothing. It is deliberately not
+    # per-licence — see COPYRIGHT_LINE_RE — so what it claims is that the port recorded A copyright
+    # line, never that it recorded the right holder's. Section 10.5 and review own that.
+    owed = sorted(spdx for spdx in ported if LICENCE_NOTICES.get(spdx) is not None)
+    if owed and not COPYRIGHT_LINE_RE.search(text):
+        fail("LINEAGE", f"{LINEAGE} does not carry a copyright line (`Copyright (c) YYYY <holder>`) "
+                        f"— the other half of the notice {', '.join(owed)} obliges, and a licence "
+                        "reproduced without the copyright it attaches to is half a notice")
 
 
 # --- main -------------------------------------------------------------------------------------
@@ -757,7 +841,7 @@ def main() -> int:
     rows = parse_manifest()
     gate1(assets, rows)
     gate2(assets)
-    lineage_check(assets)
+    lineage_check(assets, rows)
 
     if not args.quiet:
         print("Asset trees measured:")

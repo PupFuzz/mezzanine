@@ -208,9 +208,13 @@ ordinary **port**, not a licence escalation: take the files, record them here an
 `docs/ATTRIBUTION.md` with `ISC` in the SPDX column, and **reproduce ISC's copyright line and
 permission notice in `docs/ATTRIBUTION.md`** — and here too, since § 10.2 requires a port's notice
 in both files and gives the reason. ISC grants the licence only *"provided that the
-above copyright notice and this permission notice appear in all copies"*, and § 10.1 gates that
-reproduction the moment any row declares `ISC`. Still not a quiet import: the row, the notice and
-this file's record are the price of the widening, not a formality it removed.
+above copyright notice and this permission notice appear in all copies"*.
+⭐ **Both homes are GATED, not merely stated** (card#8301, corrected on review): `bin/asset-provenance.py`
+requires the notice in `docs/ATTRIBUTION.md` the moment any row declares `ISC`, **and in this file the
+moment a row under `resources/characters/` does** — one check, keyed on the licences the rows actually
+declare, called at both homes. It was the manifest alone until the review, which meant an ISC port
+could land here with this file never asked for ISC's notice at all. Still not a quiet import: the row,
+the notice and this file's record are the price of the widening, not a formality it removed.
 
 ### 4. The Office's fifteen cast identities
 

@@ -15,8 +15,17 @@ and nothing here deletes anything outside the temp directory the standard librar
 `docs/design/FLOOR.md` AT-D3-12 names the REDs — the unlisted asset, the UNDECLARED PICTURE,
 the `origin` column three ways, the swapped bytes, the unanticipated format, the embedded asset
 (both containers), the wrong licence, and — since the 2026-08-31 ISC ruling (card#8301) — the ISC
-row whose permission notice nobody reproduced. The rest are the failure modes a strict parser has to
-fail CLOSED on, because a row silently skipped is an asset nobody checked.
+row whose permission notice nobody reproduced, in EITHER of the two files that owe it. The rest are
+the failure modes a strict parser has to fail CLOSED on, because a row silently skipped is an asset
+nobody checked.
+
+⛔ TWO OF THESE FIXTURES WERE WRITTEN BECAUSE THIS SUITE REPORTED A FALSE GREEN. The eleventh RED
+(section 4) IS the ISC control as it was first written: an ISC row under the character tree, the
+manifest notice supplied, `LINEAGE.md` never asked for ISC's notice at all — and it PASSED, because
+the lineage half of the check was hard-coded to MIT's text and found the MIT port's copy. The
+twelfth RED is its mirror image, an MIT row OUTSIDE the character tree owing a notice nowhere. Both
+were watched going from exit 0 to exit 1 against the pre-change gate. A control is only a control
+until the day it turns out to have been asserting the wrong thing.
 
 ⚠ THE CONTROL THAT MATTERS MOST IS SECTION 6's COMPLEX SVG, and it is a control rather than a
 RED for a reason. Since the 2026-08-27 amendment the character tree admits `.svg`, and SVG path
@@ -95,8 +104,15 @@ LINEAGE_FIELDS = {
 }
 
 
-def lineage_md(drop: str | None = None) -> str:
-    return "# Lineage\n\n" + "\n".join(v for k, v in LINEAGE_FIELDS.items() if k != drop)
+def lineage_md(drop: str | None = None, extra: str = "") -> str:
+    """The lineage file. `drop` removes one required fact; `extra` adds a second licence's notice.
+
+    `extra` is text rather than a per-licence flag for the same reason `build()`'s `extra_notice`
+    is: the next admitted licence must need no new parameter here.
+    """
+    return ("# Lineage\n\n"
+            + "\n".join(v for k, v in LINEAGE_FIELDS.items() if k != drop)
+            + (("\n" + extra) if extra else ""))
 
 
 CLEAN_MD = lineage_md()
@@ -204,12 +220,12 @@ print("\n2. GATE 1 — every asset has a row, and the row is about THIS file")
 case("AT-D3-12 unlisted asset: a file with no row",
      1, "has no ATTRIBUTION row",
      {**FILES, "resources/characters/extra.js": "export const x = 1;\n"}, BASE)
-case("AT-D3-12 THE UNDECLARED PICTURE: an .svg the amendment ADMITS, with no manifest row. "
-     "Under the old absence gate the file was refused for being an image and the manifest was "
+case("AT-D3-12 SECOND RED — THE UNDECLARED PICTURE: an .svg the amendment ADMITS, with no "
+     "manifest row. Under the old absence gate the file was refused for being an image and was "
      "never the thing tested",
      1, "creature.svg has no ATTRIBUTION row",
      {**FILES, "resources/characters/creature.svg": COMPLEX_SVG}, BASE)
-case("AT-D3-12 swapped bytes: the row stays, the file changes",
+case("AT-D3-12 FOURTH RED — swapped bytes: the row stays, the file changes",
      1, "the bytes moved",
      FILES,
      [row("resources/characters/index.js", sha="0" * 64), BASE[1]])
@@ -218,13 +234,13 @@ case("orphan row: a row whose file is not there",
      FILES, BASE + [row("resources/characters/ghost.js", sha="0" * 64)])
 
 print("\n3. GATE 1 — the ORIGIN column is CLOSED at two, and is checked against the row's own URL")
-case("AT-D3-12 origin RED (a): no origin at all — the row does not say where the asset came from",
+case("AT-D3-12 THIRD RED, origin (a): no origin at all — the row does not say where it came from",
      1, "no origin", FILES,
      [row("resources/characters/index.js", origin=""), BASE[1]])
-case("AT-D3-12 origin RED (b): `vendored` — a plausible third word nobody decided",
+case("AT-D3-12 THIRD RED, origin (b): `vendored` — a plausible third word nobody decided",
      1, "is not in the closed set", FILES,
      [row("resources/characters/index.js", origin="vendored"), BASE[1]])
-case("AT-D3-12 origin RED (c): `first-party` over SOMEBODY ELSE'S URL — the one lie in this "
+case("AT-D3-12 THIRD RED, origin (c): `first-party` over SOMEBODY ELSE'S URL — the one lie in this "
      "class a machine can catch",
      1, "contradicts itself", FILES,
      [row("resources/characters/index.js", origin="first-party", url=URL), BASE[1]])
@@ -238,11 +254,12 @@ case("CONTROL — a genuinely `licensed` row (external URL, allowlisted SPDX) PA
      BASE + [row("resources/characters/tile.png", origin="licensed", url=URL, spdx="CC0-1.0")])
 
 print("\n4. GATE 1 — the licence allowlist is CLOSED")
-case("AT-D3-12 wrong licence: CC-BY-NC-4.0",
+case("AT-D3-12 SEVENTH RED — wrong licence: CC-BY-NC-4.0",
      1, "is not in the closed allowlist",
      FILES,
      [row("resources/characters/index.js", origin="licensed", url=URL, spdx="CC-BY-NC-4.0"), BASE[1]])
-case("AT-D3-12 Apache-2.0 is refused — PERMISSIVE AND STILL NOT ON THE LIST. This case is the "
+case("AT-D3-12 SEVENTH RED, second value — Apache-2.0 is refused: PERMISSIVE AND STILL NOT ON "
+     "THE LIST. This case is the "
      "2026-08-31 ISC ruling's guard rail: the criterion is membership of the allowlist, never "
      "'is it permissive', and a widening by one member must not read as a widening by category",
      1, "is not in the closed allowlist",
@@ -259,15 +276,57 @@ case("AT-D3-12 TENTH RED — an ISC row in a manifest that never reproduces ISC'
      FILES,
      [row("resources/characters/index.js", origin="licensed", url=URL,
           author="shahar061", spdx="ISC"), BASE[1]])
-case("⭐ ISC IS ACCEPTED (operator ruling 2026-08-31, card#8301) AND is the CONTROL for the tenth "
-     "RED — the same ISC row, now with the notice present, PASSES. It carries both claims because "
-     "they are one fixture: it was a RED here until the ruling, and without it the tenth RED is "
-     "equally satisfied by a gate that still refuses ISC outright. Either half alone is not evidence",
-     0, PASS,
+case("AT-D3-12 ELEVENTH RED — THE SAME ISC ROW, THE MANIFEST NOTICE SUPPLIED, AND THE LINEAGE "
+     "FILE FORGOTTEN. It is a port under resources/characters/, so § 10.2 owes the notice in BOTH "
+     "files. ⛔ THIS FIXTURE PASSED UNTIL card#8301's REVIEW — it was the control below, and it was "
+     "a FALSE GREEN: the lineage half of the check was hard-coded to MIT, so it asked an ISC port "
+     "for MIT's notice, found the MIT port's copy, and reported clean. Watched going red",
+     1, "resources/characters/LINEAGE.md does not reproduce the ISC permission notice",
      FILES,
      [row("resources/characters/index.js", origin="licensed", url=URL,
           author="shahar061", spdx="ISC"), BASE[1]],
      extra_notice=ISC_NOTICE + "\n")
+case("⭐ ISC IS ACCEPTED (operator ruling 2026-08-31, card#8301) AND is the CONTROL for the tenth "
+     "AND eleventh REDs — the same ISC row with the notice present in BOTH homes PASSES. It "
+     "carries those claims because they are one fixture: it was a RED here until the ruling, and "
+     "without it "
+     "the REDs above are equally satisfied by a gate that still refuses ISC outright. No half of "
+     "this is evidence alone",
+     0, PASS,
+     {**FILES, "resources/characters/LINEAGE.md": lineage_md(extra=ISC_NOTICE + "\n")},
+     [row("resources/characters/index.js", origin="licensed", url=URL,
+          author="shahar061", spdx="ISC"), BASE[1]],
+     extra_notice=ISC_NOTICE + "\n")
+
+# ⛔ THE PAIR THAT NAMED THE DIVERGENCE, and the reason the notice check is now ONE implementation
+# keyed on the licence table. Two trees identical BUT FOR THE SPDX CELL, neither with a character
+# tree and neither with a notice in the manifest. Before card#8301's review the MIT one PASSED and
+# the ISC one RED: MIT's obligation was reachable only through the lineage file's mirror, so an MIT
+# asset outside the character tree owed a notice NOWHERE, while ISC's fired on the row. Same
+# behaviour, two triggers, two guarantees — which is the defect, not the ISC branch.
+FLOOR_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+case("⛔ AT-D3-12 TWELFTH RED — an MIT row under resources/floor/, NO character tree, and a "
+     "manifest that never reproduces MIT's notice. It PASSED until card#8301's review: MIT "
+     "reached the manifest only via the lineage mirror, so a tree with no port owed nothing. The "
+     "ISC "
+     "twin of this exact fixture was already red, which is what made it a DIVERGENCE",
+     1, "docs/ATTRIBUTION.md does not reproduce the MIT permission notice",
+     {"resources/floor/tile.png": FLOOR_PNG},
+     [row("resources/floor/tile.png", origin="licensed", url=URL, spdx="MIT")],
+     manifest_notice=False)
+case("CONTROL for the twelfth RED — the SAME tree with the notice present PASSES, so the red is "
+     "attributable to the missing notice and not to a fixture with no lineage file in it",
+     0, PASS,
+     {"resources/floor/tile.png": FLOOR_PNG},
+     [row("resources/floor/tile.png", origin="licensed", url=URL, spdx="MIT")])
+case("CONTROL — and the licence with NO notice obligation is asked for none: the same tree, the "
+     "same missing notice, `CC0-1.0` in the SPDX cell, PASSES. CC0 is a public-domain dedication "
+     "with no attribution condition, and without this the check would be indistinguishable from "
+     "one that demands a notice from every row it sees",
+     0, PASS,
+     {"resources/floor/tile.png": FLOOR_PNG},
+     [row("resources/floor/tile.png", origin="licensed", url=URL, spdx="CC0-1.0")],
+     manifest_notice=False)
 
 print("\n5. GATE 1 — the other columns are load-bearing, not decoration")
 case("a retrieved date that is not a date",
@@ -284,8 +343,8 @@ case("no author — the attribution obligation with no subject",
      [row("resources/characters/index.js", author=""), BASE[1]])
 
 print("\n6. GATE 2 clause 1 — an ALLOWLIST of file types, so an unanticipated format is refused")
-case("AT-D3-12 the unanticipated format: sprites.avif with a COMPLETE, HONEST manifest row. "
-     "The row being correct is the point — this tests the file-type allowlist and nothing else",
+case("AT-D3-12 FIFTH RED — the unanticipated format: sprites.avif with a COMPLETE, HONEST "
+     "manifest row. The row being correct is the point — this tests the allowlist and nothing else",
      1, "sprites.avif",
      {**FILES, "resources/characters/sprites.avif": b"\x00\x00\x00 ftypavif"},
      BASE + [row("resources/characters/sprites.avif", origin="licensed", url=URL)])
@@ -308,7 +367,7 @@ case("CONTROL — the two formats the amendment ADMITS pass: a first-party .svg 
 
 print("\n7. GATE 2 clause 2 — an asset with no PATH has no ROW, so it has no provenance")
 BLOB = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\xde\xad\xbe\xef" * 12000).decode()
-case("AT-D3-12 40 KB base64 PNG in a .ts the allowlist admits",
+case("AT-D3-12 SIXTH RED — 40 KB base64 PNG in a .ts the allowlist admits",
      1, "exceeds the 1024 B ceiling",
      {**FILES, "resources/characters/atlas.ts": f"export const A = '{BLOB}';\n"},
      BASE + [row("resources/characters/atlas.ts")])
@@ -317,8 +376,8 @@ case("the same blob broken across lines — caught by the whitespace-stripped pa
      1, "with whitespace stripped",
      {**FILES, "resources/characters/atlas.ts": f"export const A = `\n{WRAPPED}\n`;\n"},
      BASE + [row("resources/characters/atlas.ts")])
-case("AT-D3-12 THE RASTER WEARING A VECTOR'S EXTENSION: an .svg with an inlined "
-     "data:image/png;base64 blob",
+case("AT-D3-12 SIXTH RED, second container — THE RASTER WEARING A VECTOR'S EXTENSION: an .svg "
+     "with an inlined data:image/png;base64 blob",
      1, "carries a data:image/ URI",
      {**FILES, "resources/characters/creature.svg":
       COMPLEX_SVG.replace("<title>", f'<image href="data:image/png;base64,{BLOB}"/><title>')},
@@ -364,17 +423,20 @@ case("AT-D3-12 lineage RED: the COMMIT SHA is dropped, the repository URL kept",
 case("the upstream repository URL is dropped",
      1, "does not carry the upstream repository URL",
      {**FILES, "resources/characters/LINEAGE.md": lineage_md("url")}, BASE)
-case("the MIT copyright line is dropped",
-     1, "does not carry the MIT copyright line",
+case("the copyright line is dropped — the other half of the notice the tree's rows oblige. It is "
+     "asked for GENERICALLY rather than per licence, because `Copyright (c) 2026 Someone` is the "
+     "same shape under MIT and ISC and a check that cannot discriminate must not claim it can",
+     1, "does not carry a copyright line",
      {**FILES, "resources/characters/LINEAGE.md": lineage_md("copyright")}, BASE)
-case("the MIT permission notice is dropped — a link is not a reproduction",
-     1, "does not carry the MIT permission notice",
+case("the MIT permission notice is dropped from the LINEAGE file — a link is not a reproduction. "
+     "The rows under the character tree declare MIT, which is what obliges it here",
+     1, "resources/characters/LINEAGE.md does not reproduce the MIT permission notice",
      {**FILES, "resources/characters/LINEAGE.md": lineage_md("notice")}, BASE)
 case("no statement of what was deliberately NOT taken — the line between a port and a fork",
      1, "deliberately NOT taken",
      {**FILES, "resources/characters/LINEAGE.md": lineage_md("omissions")}, BASE)
 case("the MIT notice is in the lineage file but NOT in the manifest — section 10.2 says both",
-     1, "does not reproduce the MIT permission notice",
+     1, "docs/ATTRIBUTION.md does not reproduce the MIT permission notice",
      FILES, BASE, manifest_notice=False)
 case("the lineage file is missing entirely",
      1, "the port has no record of where it came from",
@@ -469,7 +531,7 @@ B64_TMJ = json.dumps({"type": "map", "width": 40, "height": 30, "tilewidth": 16,
                       "tilesets": [{"firstgid": 1, "source": "office.tsx"}],
                       "layers": [{"type": "tilelayer", "name": "floor", "width": 40, "height": 30,
                                   "encoding": "base64", "data": b64_layer(14)}]})
-case("clause 3 RED — a .tmj whose layer is base64, the encoding Tiled uses by DEFAULT",
+case("AT-D3-12 EIGHTH RED — a .tmj whose layer is base64, the encoding Tiled uses by DEFAULT",
      1, "declares encoding='base64'", tiled_files(**{"resources/floor/aimla.tmj": B64_TMJ}),
      tiled_rows())
 ZLIB_TMJ = json.dumps({"type": "map", "width": 40, "height": 30,
@@ -489,8 +551,8 @@ case("clause 3 RED — a base64 layer buried two GROUP layers deep. A non-recurs
      tiled_files(**{"resources/floor/aimla.tmj": GROUP_TMJ}), tiled_rows())
 B64_TMX = CSV_TMX.replace('<data encoding="csv">\n1,2,3,4,\n5,6,7,8\n</data>',
                           f'<data encoding="base64">{b64_layer(14)}</data>')
-case("clause 3 RED — the same defect in .tmx, which is a different parser and therefore a "
-     "different check that has to be seen failing on its own",
+case("AT-D3-12 EIGHTH RED, second parser — the same defect in .tmx, which is a different "
+     "parser and therefore a different check that has to be seen failing on its own",
      1, "declares encoding='base64'", tiled_files(**{"resources/floor/aimla.tmx": B64_TMX}),
      tiled_rows())
 LEGACY_TMX = CSV_TMX.replace('<data encoding="csv">\n1,2,3,4,\n5,6,7,8\n</data>',
@@ -507,8 +569,8 @@ EMBEDDED_TSX = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                 ' <image format="png" width="32" height="32">\n'
                 f'  <data encoding="base64">{base64.b64encode(TILED_PNG).decode()}</data>\n'
                 ' </image>\n</tileset>\n')
-case("⭐ clause 3 RED — a .tsx whose <image> has NO source= and holds the PNG's bytes inline. "
-     "This is the hole the card exists to close: image bytes with no path, so no manifest row, "
+case("⭐ AT-D3-12 NINTH RED — a .tsx whose <image> has NO source= and holds the PNG's bytes "
+     "inline. This is the hole the card exists to close: image bytes with no path, so no row, "
      "so no provenance — and exempting the map formats from clause 2 would have re-opened it",
      1, "carries an embedded tileset image",
      tiled_files(**{"resources/floor/office.tsx": EMBEDDED_TSX}), tiled_rows())
