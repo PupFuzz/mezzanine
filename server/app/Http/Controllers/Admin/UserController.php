@@ -26,8 +26,10 @@ use Illuminate\Http\Request;
  * future upgrade changed the default, a rejected create form would start re-rendering the
  * password into the HTML and only that assertion would say so.
  *
- * ⛔ THERE IS NO `destroy` AND THERE WILL NOT BE ONE (D2). Retirement is the act; the record
- * survives it. `App\Admin\UserRetirement` owns the rule, including D4's refusal.
+ * ⛔ THERE IS NO `destroy` (D2). Retirement is the act and the record survives it;
+ * `App\Admin\UserRetirement` owns the rule, including D4's refusal. If an erasure is ever
+ * genuinely wanted — the GDPR-shaped kind — D2 puts it in its own louder command, never on a
+ * console button beside "edit".
  *
  * ⚠ NO `Authorize`/policy CALLS ANYWHERE IN THIS CLASS — D3: every authenticated user is an
  * operator, and the whole authorization statement is the route group's middleware.
@@ -43,10 +45,10 @@ class UserController extends Controller
             // layout renders.
             'active' => 'users',
             'users' => User::query()
-                // Active accounts first, then the retired ones, newest retirement first: the
-                // retired rows are kept ON THE PAGE rather than filtered out, because a console
-                // that hid them would give an operator the same view a DELETE would have — which
-                // is the entire thing D2 refuses.
+                // Active accounts first, then the retired ones, each group by name. The retired
+                // rows are kept ON THE PAGE rather than filtered out, because a console that hid
+                // them would give an operator the same view a DELETE would have — which is the
+                // entire thing D2 refuses.
                 ->orderByRaw('retired_at is not null')
                 ->orderBy('name')
                 ->get(),
