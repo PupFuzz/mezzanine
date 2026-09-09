@@ -522,7 +522,8 @@ position and without a server field.
       # no free slot: the overflow rule below
 ```
 
-**Worked assignment — the shipped `aimla` map, S = 12.** Every value below is re-derived by
+**Worked assignment — the `aimla` floor map, S = 12.** The map is a **build artifact**, and
+[§ 10.3](#103-the-floor-map) is where it lives, whether it exists yet, and what holds `S` to it. Every value below is re-derived by
 `tools/design/verify-floor.py` from the function above, not transcribed:
 
 | Seat | `h` | `h mod 12` | Probes | Slot |
@@ -544,7 +545,7 @@ from minting.
 are rendered in an explicitly labelled **overflow row** below the floor — same desk, same render, same
 drill-down — and the floor shows a persistent notice reading *floor map is short N desks*. A silent
 drop would be a seat that exists and is invisible, which is the same lie as an empty office and is
-worse for being local. Map authors should size `S` above the install's planned seat count; the shipped
+worse for being local. Map authors should size `S` above the install's planned seat count; the
 `aimla` map declares 12 for a 4-seat install ([`docs/PLAN.md § 5`](../PLAN.md#5-deployment): aimla's
 four seats first, then a Windows validation seat, then others as they opt in).
 
@@ -571,7 +572,7 @@ make the cost bounded and honest:
    [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) asserts exactly that against the fixture
    above.
 3. **The frequency is stated, not hoped.** The chance that an arriving seat collides is `N/S`; on the
-   shipped map (N = 4, S = 12) that is **1 in 3**, and it displaces only when it also sorts lower —
+   `aimla` map (N = 4, S = 12) that is **1 in 3**, and it displaces only when it also sorts lower —
    so a map author who wants displacement rarer raises `S`, and the formula says by how much.
 
 **Two seats claiming one identity is not a case, and no branch is built for it.** A token binds exactly
@@ -2504,16 +2505,34 @@ nothing in the port's licence work is undone by the art direction changing.
   path rather than embedding it** — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 fails the
   build otherwise. Both are Tiled export settings, not code.
 - The map declares an **object layer named `desks`** whose objects are the slots of
-  [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The shipped `aimla` map
+  [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The `aimla` floor map
   declares **12**.
+- ⛔ **No floor map is vendored in this repository today, and the count above is therefore a figure
+  this document declares rather than a measurement of a file.** A floor's map is the build artifact
+  `resources/floor/<install_id>.tmj` — the floor key of [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)
+  naming the file, in either Tiled spelling, since
+  [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1 admits both and the choice between them stays
+  the implementer's. For the `aimla` floor that artifact is `resources/floor/aimla.tmj`, and
+  **card#7341 vendors it** — with the `docs/ATTRIBUTION.md` row Gate 1 requires, and the tileset
+  [§ 14](#14-open-questions-for-the-review-loop) item 7 is still open on.
+  `tools/design/verify-floor.py` holds both halves — while no map exists it requires this paragraph to
+  say so and reds if a map appears anywhere in the trees this repository authors while it still does
+  (the gate prints the trees it skips), and the day one lands at that path it counts the objects of
+  the `desks` layer and reds if that count and `S` disagree. Which
+  is the point of writing the absence down: until card#9208 this document spoke of *the shipped map*
+  while none was shipped, and the gate "checking" `S` satisfied itself by reading that prose — a gate
+  asserting a document against itself.
 - The map declares nothing about state. No slot is bound to a `seat_id`, because a map that named seats
   would be a second home for identity and would have to be edited every time a seat is provisioned.
 
 ⭐ **A map may be AUTHORED BY AN OPERATOR instead of shipped in the repository, and what that does to
 [§ 10.1](#101-the-manifest-and-the-two-gates)'s two gates is stated here rather than left to be
 discovered.** `card#9085`'s admin console stores one Tiled document per floor, keyed by `install_id`
-([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s floor key), and that store is where a floor's
-map comes from once one has been authored for it. Three consequences:
+([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s floor key). ⚠ **What that store is FOR is a
+question the read-path ruling below reopened rather than settled** — under it the floor renders the
+build artifact and nothing reads the store but the console itself
+([§ 14](#14-open-questions-for-the-review-loop) item 16). Three consequences of the store existing at
+all, which hold either way:
 
 - **Neither gate sees such a map, because neither gate can.** § 10.1 is a statement about "every asset
   file in the repository", and a document in a database column is not a file with a path: Gate 1 has no
@@ -2527,12 +2546,29 @@ map comes from once one has been authored for it. Three consequences:
   authored map references is a repository file like any other and owes its row like any other; a map
   that names a tileset nobody vendored is a broken reference the console cannot see, and saying so is
   this check's correct output rather than a gap in it.
-- **The READ path for an authored map is not specified in this document, and is deliberately not
-  invented here.** How the client obtains one is a server-side read surface, which
-  [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) makes D2's and
-  [§ 1.3](#13-the-boundary-stated-as-a-rule) forbids guessing. Until the floor is built (card#7341)
-  and D2 publishes one, the store has exactly one reader — the console that writes it — and `S` is
-  derived from the document by whoever holds it, never stored beside it.
+- ⭐ **The READ path: THERE IS NONE, and that is a ruling rather than a gap.** The floor map is a
+  **build artifact shipped with the client and never served at runtime** — operator ruling of
+  2026-09-09 on card#9208, recorded with its two rejected shapes and its cost at
+  [D2 § 13](FLEET-STATE.md#13-decisions-taken-revisable-at-review) row 38 and declared on the surface
+  that owns read surfaces at [D2 § 8.2](FLEET-STATE.md#82-rest). What D2 publishes for a floor is the
+  **seat→desk binding alone** — `install_id` and `seat_id`, on every seat object and every seat-scoped
+  message ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) — which is
+  [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s key and the whole of what
+  [§ 3.2](#32-the-desk-slot-function)'s slot function reads off the wire. **This replaces the
+  paragraph that called the read path "deliberately not invented here" pending a D2 amendment**: the
+  amendment need is answered, the answer is *no surface*, and leaving the old wording standing would
+  leave the next reader re-opening a closed question — or, worse, closing it themselves in the client,
+  which is card#8075's defect shape and the reason this one was stopped rather than worked around.
+- **What the ruling costs, in this document's own terms: a floor edit is a redeploy**, and the
+  operator accepted that explicitly. Changing a floor means re-exporting from Tiled, re-vendoring the
+  file, moving its `docs/ATTRIBUTION.md` hash ([§ 10.1](#101-the-manifest-and-the-two-gates) Gate 1
+  reds otherwise), rebuilding the client and deploying it. There is no path by which a running client
+  picks up a new map and none may be added without reversing the ruling — in particular **not** a
+  client-side fetch of a URL nobody declared. Two consequences are stated here rather than discovered
+  on a floor: a floor that outgrows `S` keeps its overflow row and its notice
+  ([§ 3.2](#32-the-desk-slot-function), [§ 9](#9-failure-paths-and-their-observables) F13) until a
+  **deploy**, not until a save; and `S` is still derived from the document by whoever holds it and
+  never stored beside it, because the file is the only home the count has.
 
 ### 10.4 The art direction, as a specification
 
@@ -3641,9 +3677,9 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | A cap of 16 breaches by | **8,275 B**, 83 B over | **Derived** — 8,012 + 263 against 8,192 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | **The chosen cap** | **8** | **Chosen** — the drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table; the spare is worth more unspent. What moves it is measurement after P3 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | FNV-1a-32 constants | offset 2166136261, prime 16777619 | **Cited** — the published FNV-1a-32 parameters; chosen for being short enough to re-implement from this line alone | [§ 3.2](#32-the-desk-slot-function) |
-| Desk slots in the shipped `aimla` map | **12** | **Chosen** — 3× the install's four seats (`docs/PLAN.md § 5`'s rollout order), which leaves room for the Windows validation seat and the next few without an edit | [§ 3.2](#32-the-desk-slot-function) |
+| Desk slots the `aimla` floor map declares | **12** | **Chosen** — 3× the install's four seats (`docs/PLAN.md § 5`'s rollout order), which leaves room for the Windows validation seat and the next few without an edit. ⚠ **Chosen, not measured, and it stays that way until the map is a file**: the gate holds the figure against whichever of the two states [§ 10.3](#103-the-floor-map) declares — the artifact's ABSENCE while there is none, its `desks` layer once there is | [§ 3.2](#32-the-desk-slot-function) |
 | The worked slot assignment | 0 · 2 · 3 · 7 | **Measured** — FNV-1a-32 of the four keys, mod 12, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
-| Collision chance per arrival | `N/S` = **1 in 3** on the shipped map | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
+| Collision chance per arrival | `N/S` = **1 in 3** on the `aimla` map | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
 | Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. Re-derived once the tileset is chosen and a desk's rendered width is a measured number rather than a design intent | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
 | **Seeded appearance dimensions** | **10** | **Chosen** — the independent draw fields of the ratified art direction (silhouette, hue, size, pattern, ears, sprout, eye style, mouth, accessory, tilt). One dimension is a palette; ten is a space, and the operator's ruling was that colour alone is not variety. **What re-derives it:** the shipped generator's own field list | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **The full appearance tuple's space** | **8,064,000** | **Derived** — 7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3, the ten cardinalities above multiplied out | [§ 10.4](#104-the-art-direction-as-a-specification) |
@@ -3672,7 +3708,7 @@ belongs in its own round.
 | **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates. **Plus the build-order half:** every test is gated by at least one [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row, every row gates a test that exists, and **every declared half of every test is gated at or after the step that builds every artifact that half declares it reads** ([§ 11](#11-acceptance-tests) owns the rule; this row describes the gate). **Three** populations re-derived, none stored: the artifact→step map from Appendix B's own bold Artifact names, what each test reads from its `Reads:` clauses, and which half a gate gates from the Gate cell's own qualifier — so renumbering the build order, renaming an artifact or re-splitting a test all move the check with them rather than leaving a stored `10` behind. **An unqualified gate mention gates every half**, which is what stops a step-10 co-gating from discharging a step-3 mention on the same test — the hole a `max()` over the gate steps left open. Residue printed in full: an artifact a test's body emphasises and its `Reads:` clause does not declare. **Plus the record's name:** the phrase *the lobby log* reds wherever it is **used** rather than quoted — the record is the client protocol's artifact ([§ 5.5](#55-the-clients-own-narration)) and the lobby is one renderer of it, so naming the renderer is what gates a test on a screen built six steps after the thing it reads; a wording this document must quote in order to forbid is marked with emphasis, and the recognizer is wrap-tolerant because a phrase broken over a line break is how the last one hid. **Plus the log-schema half:** [§ 11](#11-acceptance-tests)'s animation-log row tuple against the per-class field table beside it, and that table's row count against the number the prose states — one schema, two homes, three revisions so far, and the count read `four` against five rows for a whole revision. **Plus the episode-walk half:** the `fx-clear-trace` walk's own `(A_n, episode N)` pairs re-added into an episode count and a row count and checked against the sentence beneath it, in both directions, plus a `left` pair with no `entered` pair before it — the walk is indented under a list item, which is why nothing had read it while the sentence beside it said *six* and *eleven* over a table yielding five and nine | **tool-checked** |
 | **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*, *readable in its drill-down*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged. **Each phrase is matched wrap-tolerantly, across line breaks**, and that is the load-bearing half rather than a nicety: the scan was line-scoped, [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) is typeset with its phrase broken over a wrap, and adding the phrase to a line-scoped list would have left the check clean over it exactly as before | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
 | **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
-| **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) | **tool-checked** |
+| **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event). **Plus `S` against the MAP, added by card#9208 because the leg it replaces was a decoration:** `S` was read out of § 3.2's own prose and checked against nothing, over a sentence that called the map *shipped* while no `.tmj` existed in the repository — the gate asserting the document against itself. It now resolves the artifact from [§ 10.3](#103-the-floor-map)'s declared path in **either** Tiled spelling (the two re-derived from § 10.1 clause 1's allowlist, not stored in the tool), and takes one of two branches, each able to red: with the file present it counts the objects of the object layer § 10.3 names and reds if that count is not `S`; with it absent it requires § 10.3 to **declare** the absence and sweeps the tree for any map file that would falsify that declaration. § 10.3's own restatement of `S` is closed against § 3.2's in the same leg | **tool-checked**, with a stated limit: while no map is vendored, `S` itself is checked against no file — the branch in force asserts that the document says so, which is the strongest true claim available and is a different claim from *the map has 12 desks* |
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one — **per member, not per row**: each member must carry a marker **legal for that member**, where `dark-only` is granted to `delivery.last_receipt_at` alone (re-derived from § 6.5's own carve-out sentence, not written into the tool) and `fetch-fresh` governs the rest; a row carrying `dark-only` must source that member; and a row of a table that renders on the **desk** — [§ 5.1](#51-the-desk) and [§ 7.1](#71-the-render-per-state), the two the column map flags as desk surfaces — must carry `dark-only` specifically for it, because on the desk that is the marker in force. The row-scoped test this replaces could be satisfied by a marker belonging to a **different surface** — § 5.1's receipt-age row survived deleting `dark-only` because the same row mentions `fetch-fresh` for the drill-down. Also: this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk. **And the rule's own statement of its scope is closed against the gate, both directions:** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s marker-rule sentence enumerates the tables the rule holds over, which is a second home for this gate's column map and is the home that went false twice — five tables named while § 5.6 sat outside the gate, seven named while § 7.1 rendered the receipt age on the desk. Neither side is stored: the map is the tool's, the list is read out of the document. **The table population is DERIVED, not listed:** every markdown table in this document is found structurally, a table under a § 5 heading that the gate has no source column for **reds** rather than being skipped, and membership in that population is keyed on a row's **line number** rather than on its text, so a row byte-identical to a checked one cannot be pasted into an unchecked table and test as already-checked. A table row anywhere else naming one of the ten **reds** unless it declares itself **`named-not-rendered`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) — a marker in such a row exempts nothing, and the only two rows entitled to carry one without rendering are found by **role**: the marker table's own rows, whose key cell *is* the marker, and this table's rows, found by this table's header | **tool-checked**, with **one** stated limit: **prose**. The gate held a list of five table headers until § 5.6 was added with six ten-sourcing rows and no marker — the list did not contain it, nothing reddened, and § 2.4 went on claiming the rule held over every § 5 row. A stored population does not fail visibly; it under-reads. Both halves of that are now inverted — the population is re-derived every run and the rows that used to be *announced* as outside it are **failures** unless the document declares them — and the second finding of the same shape, § 7.1's two desk renders of the receipt age, is why the outside-the-map rule no longer accepts a bare marker token: a token-presence test admits a row naming the marker for a surface it does not render on. What remains outside is a bookkeeping member reintroduced in **prose**, and every prose mention is printed **in full**, leaf spellings included. Not a capped sample: the residue printer used to print the first twelve of nineteen beside the true count, which reads as a complete list and is how the seven it hid stayed hidden |
 | **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 37 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
 | **G11 a worked example against the rule statement that governs it** | **The class is [§ 7.1](#71-the-render-per-state)'s stated convention made checkable**, and it now holds **two** facts, each with its own owning table and its own instances. **(a) The composed `api_error_type` line:** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s twelve member/phrase pairs, re-derived from that table, against the two sites that render one — [§ 7.1](#71-the-render-per-state)'s `stalled` **worked instance**, which must carry a member **verbatim** with that member's phrase **beside** it, and [§ 5.1](#51-the-desk)'s *rendered verbatim* row, whose illustration must be a **member** and never one of the phrases. The instance that shipped: the cell published *API error — rate limit* — the phrase with the raw value elided — against five statements including its own **Never** column, and nothing could difference the two sites because the **composition** was published at neither. **(b) WHERE the `activity_state` currency label is drawn:** the placement phrase is re-derived from [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s five `activity_state` rows — which must **agree with each other**, or the rule is reported as disagreeing with itself and no instance is judged — and every worked instance elsewhere in the document must state that same placement. Its population is found **structurally**, not listed: any table cell carrying a *was:* span or naming the `activity state` in words. The instance that shipped: [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s `catching_up` and `disabled` rows read *in the label only* — a **one**-element reading under which a `catching_up` desk draws `activity.last_event_time` twice — and § 7.6's own `link_state` row had drifted with them. Every predicate is **fed its own defect on every run** and must reject it, because a comparison only ever shown agreeing is not evidence it can disagree; the placement predicate's defect arm builds its counter-example by substituting a preposition the rule does **not** use, chosen from the recognizer's own alternation, so the tool stores no answer | **tool-checked**, with **three** stated limits. *(1)* It holds each fact at the sites that **render** it in a table, and cannot see one minted in **prose**. *(2)* **This table's own rows are excluded by role**, and the exclusion is a finding rather than a convenience: a row documenting a guard necessarily **quotes the defect it guards** — the (b) row above quotes *in the label only* in order to say what was wrong — so a recognizer that read it would **fail on the correction and pass a silent fix**, getting redder the more honestly the defect is written up. It fired exactly that way on this row before the carve-out existed. § 12 renders nothing, so nothing is lost; G9 excludes the same rows by the same role. *(3)* **The placement leg asks whether a cell CONTRADICTS § 7.6, never whether it states the placement at all**, so a cell re-wording the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter tier was written and **removed**: it red on § 7.1's own `catching_up` cell, which says the form is drawn *under this line* while pointing at § 7.3 and § 7.6 — correct, and a **mention** rather than a placement, which no structural test here can tell apart. Enforcing the literal would have made a style rule that reds on a careful paraphrase and passes a careless overwrite |
@@ -3990,6 +4026,24 @@ reason to leave two readings live.
     `context` (A11, A12) — asserting each row's stated static form. It is one build's worth of fixture
     replay rather than a new instrument, and it is a **review** call rather than a D2 request because
     nothing upstream is missing.
+
+16. **⇢ Operator / review — the admin console authors floor maps that nothing renders.**
+    Opened by card#9208's ruling on 2026-09-09, and opened *by* it rather than found under it: the map
+    is a build artifact and no read surface serves one
+    ([§ 10.3](#103-the-floor-map), [D2 § 13](FLEET-STATE.md#13-decisions-taken-revisable-at-review)
+    row 38), while card#9085's console still accepts, validates and stores one Tiled document per
+    floor. So an operator can author a floor, watch it save, and see no change on any floor forever —
+    and nothing on that screen says so. **Blocks:** nothing that ships — no floor renders anything yet
+    (card#7341), and when one does it draws the build artifact. **In the meantime:** the store's only reader is the console that writes
+    it, stated at [§ 10.3](#103-the-floor-map) rather than left as an inference from the ruling.
+    **Closes it:** an operator call between three answers, and it is an operator call because each is
+    a different product — the console keeps the map as the **authoring surface** and its save exports
+    to `resources/floor/` for a build (the ruling's shape, with a workflow attached); or the console
+    stops accepting maps and floor authoring is a repository act (smallest, and it deletes a shipped
+    feature); or the ruling is revisited for a served map (which is candidate (a), already declined
+    once and needing a reason that was not on the table then). ⚠ This document states the question and
+    takes none of the three: two of them are D2 amendments and the third deletes someone else's
+    feature.
 
 ---
 

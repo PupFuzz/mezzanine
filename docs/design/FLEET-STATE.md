@@ -2183,6 +2183,16 @@ All four endpoints require authentication ([§ 9](#9-read-side-authentication)).
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the nine fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 
+**There is no fifth endpoint, and in particular none that serves a floor map.** ⭐ **Operator
+ruling, card#9208 (2026-09-09)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38): the authored
+floor map is a **build artifact of the client**, never served at runtime, so this plane publishes no map
+surface and no map member — what it publishes for a floor is the seat→desk binding of
+[§ 8.2.1](#821-the-seat-state-object) and nothing else. Where the client's map comes from instead, and
+what a floor edit costs under this ruling, is [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)'s.
+**It is written here as a declaration rather than left as an omission**, because an absent read surface
+and an undesigned one are indistinguishable from D3, and the last time that ambiguity stood a renderer
+invented the member it needed (card#8075).
+
 Every snapshot this plane answers counts `snapshot_served`
 ([§ 7.2](#72-this-planes-own-counters-and-badges)); the refusal path is
 [§ 9](#9-read-side-authentication)'s and the rule its `snapshot_denied` twin obeys — zero seat data in
@@ -2282,6 +2292,29 @@ snapshot repeats per seat and the delta patches.
 | `derivation.computed_at` | rfc3339_ms | no | server clock | `"2026-08-23T14:23:14.318Z"` |
 | `derivation.fold_lag_ms` | int | no | ≥ 0; **computed, not stored** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) | `117` |
 | `derivation.cursor_event_id` | int | no | ≥ 0 | `9912837` |
+
+**`install_id` and `seat_id` are the seat→desk binding, and they are the whole of it.**
+⭐ **Declared here by operator ruling, card#9208 (2026-09-09)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38),
+because a floor's whole layout rests on this pair and nothing in this document said so. The two members
+above ride **every** seat object and **every** seat-scoped feed message — `seat.delta` and
+`seat.retired` both carry them ([§ 8.3](#83-the-websocket-delta-feed)) — and D1's identity rule makes
+them config-file resident and stable across session restarts, `/clear`, reboots, host renames and
+harness upgrades ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)). Three consequences, stated so
+that neither end has to guess:
+
+- **No third member is published for the binding, and none is coming** — no slot index, no desk id, no
+  map reference. The desk a seat sits at is a pure function of this pair computed in the client
+  ([FLOOR.md § 3.2](FLOOR.md#32-the-desk-slot-function)); the *mapping* is D3's by
+  [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith), and what this plane
+  owes is the **key it is computed from**. That is why declaring the binding costs this contract no wire
+  member: the members already exist, and what was missing was the statement that they are load-bearing
+  for something other than naming a seat.
+- **Changing either member re-identifies the desk; it is not a rename.** The pair *is* the identity, so
+  a seat whose config file changes one of them arrives as a new seat at a new desk and the old seat is
+  one that stopped reporting. That is D1's rule and D1's cost, cited rather than re-decided here.
+- **Uniqueness is per install, not global** — `UNIQUE KEY uq_seat (install_ref, seat_id)`
+  ([§ 6.4](#64-ddl)). A consumer ordering seats within a floor may rely on `seat_id` being total there
+  and nowhere else.
 
 **`blocked_since` is a PROMOTION out of [§ 8.2.3](#823-the-seat-detail-response), not a new fact to
 source.** The value has always existed server-side: `detail` carries *"the open attention request if
@@ -3569,6 +3602,7 @@ review can reverse it deliberately rather than discover it later.
 | 35 | **`retired` is a `render_state` member, and a retired seat leaves the read surfaces AT `retired_at`** — ⚠ **REVERSED by operator ruling, card#9078 (2026-09-09)**; this row previously decided the opposite and the alternative column is where that reading now lives | keep the seat in the snapshot for the 14-day retention window, rendered `retired` with its `at` / `by` / `reason` — the shape this row chose until the ruling | The window was defended as keeping *"we removed it"* distinguishable from *"it went quiet"*, and that is false on this document's own render table: a quiet seat is visibly present and degraded, so a removed seat being gone is maximally different from it. [§ 4.5](#45-link-states)'s "never vanishes between two refreshes" is a guard against a client INFERRING a removal from missing data, and an operator retirement is an announcement, not an inference — so the invariant is fully served by removing on the explicit event | the retirement record has no rendered home, so the admin console gains one (card#9070) — better than a ghost desk: queryable, unbounded by a window, and it consumes no slot on a finite floor. And the removal path must now be exactly one thing: the announcement |
 | 36 | **A server counter never writes a member of D1's `degraded` array** | follow D1 § 12.7's `seq_gap` row literally and raise `lossy` | D1 contradicts itself here — § 9.3 declares `seq_gap` a server badge and *not* a member, § 12.7 and § 10.2 say the server renders the seat `lossy` — and § 9.3's reading is the one with a mechanism: `lossy` means the reporter discarded events *and counted them*, so a server-raised `lossy` with a zero counter beside it is a badge contradicting its own number | D2 carries its own `seq_gap` badge, so a consumer sees two members where D1's text implies one; filed as an amendment need ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
+| 38 | **The floor map is a build artifact of the client; this plane publishes no read surface for it, and the seat→desk binding is the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⭐ **operator ruling, card#9208 (2026-09-09)**, which the card put as three candidate shapes and the operator answered | (a) a map read surface per install/floor, versioned like [§ 8](#8-the-feed-contract)'s others; (c) the map riding the snapshot as an additive member | Authoring a floor is a **design act**, not a runtime event: an operator authors a map ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) and editing one is the stated remedy for a floor short of desks ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F13) — neither is a fact this plane observes, derives or versions. Serving it would buy a surface, a compatibility posture and a cache for bytes that change on a designer's schedule, and (c) would put them on every snapshot of every seat | **A floor edit is a redeploy** — the operator accepted that explicitly in the ruling. And card#9085's authored-map store gains no reader: a map authored in the console does not reach a floor, which [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 carries as an open question rather than a silent consequence |
 
 ---
 
