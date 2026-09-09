@@ -8,7 +8,9 @@ use Illuminate\Validation\Rule;
 
 /**
  * The one writer of a user account — card#9070 D1's `mezzanine:user:create` and the console's
- * create form both land here.
+ * create form both land here to CREATE one, and the console's edit form lands in `update()` to
+ * change one. Being the one writer is what lets D2's "a retired record does not change" be a rule
+ * held in a single place instead of a check every caller has to remember.
  *
  * ⛔ WHY THE EMAIL IS LOWERCASED ON WRITE, AND WHY THAT IS A CORRECTNESS FIX RATHER THAN TIDINESS.
  * `config/fortify.php` sets `lowercase_usernames => true`, so `Laravel\Fortify\Actions\
@@ -46,6 +48,57 @@ final class UserProvisioning
             'email' => self::canonicalEmail($email),
             'password' => $password,
         ]);
+    }
+
+    /**
+     * ⛔ THE ONE WRITER OF AN EXISTING ACCOUNT'S IDENTITY, AND THE PLACE D2's RECORD IS MADE
+     * IMMUTABLE — added in card#9070's first review round, which measured the hole.
+     *
+     * A RETIRED ACCOUNT IS REFUSED HERE, AT THE WRITE, and the reason it is here rather than in the
+     * controller is the reason the hole existed: the only thing that stopped an operator rewriting
+     * a retired row was `console/users/index.blade.php`'s `@unless`, which hides the Edit link. A
+     * hidden link is a READ-TIME guard for a WRITE-SITE rule, and two authenticated requests walked
+     * straight past it — rename the retired row off its address, then create a fresh account on the
+     * freed address. That is exactly the erasure `App\Http\Controllers\Admin\UserController` says
+     * this console does not have ("never on a console button beside 'edit'"), performed by the
+     * button beside "edit".
+     *
+     * WHAT THE REFUSAL BUYS, stated as the properties it makes true rather than as a rule:
+     *   · `users.email` really is unique across retired rows FOREVER, so the address of a retired
+     *     account cannot be handed to a new one — the migration and `mezzanine:user:create` both
+     *     state that, and neither was true before this guard;
+     *   · the record a later reader resolves an old reference against — who the account WAS, not
+     *     merely who retired it — survives the act, which is the whole difference between
+     *     retirement and deletion.
+     *
+     * ⚠ IT THROWS RATHER THAN RETURNING A VERDICT, because a caller that reaches it with a retired
+     * subject has skipped a check it was supposed to make; the console refuses first and keeps its
+     * own message. If an erasure is ever genuinely wanted, D2 puts it in its own louder command —
+     * and that command changes this class, visibly, rather than slipping through a form.
+     *
+     * @throws \InvalidArgumentException if the account is retired
+     */
+    public static function update(User $user, string $name, string $email, #[\SensitiveParameter] ?string $password = null): User
+    {
+        if ($user->isRetired()) {
+            throw new \InvalidArgumentException(
+                'a retired account is not writable: its record is what survives the act (D2)'
+            );
+        }
+
+        $user->name = trim($name);
+        $user->email = self::canonicalEmail($email);
+
+        // An empty new password means "leave the current one alone" — never "clear it". The
+        // console's edit form states the same thing to the operator; `User::$casts` declares
+        // `password => 'hashed'`, so the assignment below is the only place a plaintext goes.
+        if ($password !== null && $password !== '') {
+            $user->password = $password;
+        }
+
+        $user->save();
+
+        return $user;
     }
 
     /**

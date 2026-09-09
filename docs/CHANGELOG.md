@@ -35,9 +35,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   is why retiring the **last** account that can still sign in is a **refusal** and not a warning:
   there is no registration page and no mailer, so an install with no active account would be
   unrecoverable except through this command.
-  ⛤ **Accounts RETIRE, they never delete** — `users` gains `retired_at`/`retired_by`/`retired_reason`,
+  ⛤ **Accounts RETIRE, they never delete, and a retired record does not change** — `users` gains
+  `retired_at`/`retired_by`/`retired_reason`,
   the same shape `seats` carries, so an account that minted a token or retired a seat cannot vanish
-  and leave dangling references. A retired account is refused at **every credential path** because
+  and leave dangling references. The name and the address are part of that record, so
+  `App\Admin\UserProvisioning::update()` refuses a retired subject **at the write**: without that,
+  a rename followed by a create hands the freed address to a different person and does everything a
+  delete does in two authenticated requests. (Found in review: the only thing refusing it was the
+  `@unless` that hides the console's Edit link — a read-time guard for a write-site rule.)
+  A retired account is refused at **every credential path** because
   the filter lives in the guard's user provider (`App\Auth\ActiveUserProvider`), not at the login
   route: the login form, the session resolved on every request, and `remember me` all funnel through
   `newModelQuery()`. Fortify's pending two-factor challenge does **not** (it resolves the challenged

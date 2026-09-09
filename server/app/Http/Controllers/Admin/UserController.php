@@ -31,6 +31,15 @@ use Illuminate\Http\Request;
  * genuinely wanted — the GDPR-shaped kind — D2 puts it in its own louder command, never on a
  * console button beside "edit".
  *
+ * ⚠ AND THAT SENTENCE ONLY BECAME TRUE IN CARD#9070's FIRST REVIEW ROUND. As first written, the
+ * console's `edit` accepted a RETIRED subject: the erasure WAS the button beside "edit", because
+ * renaming a retired row off its address and then creating a new account on the freed address does
+ * everything a delete does, in two authenticated requests, while leaving a row behind that names
+ * the wrong person. The refusal now lives at the write (`App\Admin\UserProvisioning::update()`),
+ * because the only thing that had ever stopped it was the `@unless` hiding the Edit link — a
+ * read-time guard for a write-site rule, which is the same shape the retired-account filter was
+ * deliberately put in the PROVIDER rather than the login route to avoid.
+ *
  * ⚠ NO `Authorize`/policy CALLS ANYWHERE IN THIS CLASS — D3: every authenticated user is an
  * operator, and the whole authorization statement is the route group's middleware.
  * `routes/admin.php` carries the decision and the trigger that would void it.
@@ -63,7 +72,7 @@ class UserController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $request->merge(['email' => UserProvisioning::canonicalEmail((string) $request->input('email', ''))]);
+        $this->canonicaliseEmailInput($request);
 
         $validated = $request->validate(
             UserProvisioning::identityRules() + [
@@ -82,14 +91,26 @@ class UserController extends Controller
             ));
     }
 
-    public function edit(User $user): View
+    public function edit(User $user): View|RedirectResponse
     {
+        if ($user->isRetired()) {
+            return $this->refuseRetired($user);
+        }
+
         return view('console.users.edit', ['active' => 'users', 'user' => $user]);
     }
 
     public function update(Request $request, User $user): RedirectResponse
     {
-        $request->merge(['email' => UserProvisioning::canonicalEmail((string) $request->input('email', ''))]);
+        // ⛔ BEFORE VALIDATION, BECAUSE THE ANSWER DOES NOT DEPEND ON THE INPUT. A retired account
+        // is not editable at all (D2), so telling the operator their new address is malformed
+        // would be answering the wrong question. `UserProvisioning::update()` refuses the same
+        // subject at the WRITE — this branch exists to say WHY in words, not to be the guard.
+        if ($user->isRetired()) {
+            return $this->refuseRetired($user);
+        }
+
+        $this->canonicaliseEmailInput($request);
 
         // ⚠ THE PASSWORD IS `nullable` ON EDIT AND REQUIRED ON CREATE, and the difference is not
         // cosmetic: this application has no mailer and therefore no password-reset flow
@@ -102,17 +123,42 @@ class UserController extends Controller
             ]
         );
 
-        $user->name = trim($validated['name']);
-        $user->email = $validated['email'];
-
-        if (($validated['password'] ?? '') !== '') {
-            // `User::$casts` declares `password => 'hashed'`; the assignment hashes it.
-            $user->password = $validated['password'];
-        }
-
-        $user->save();
+        UserProvisioning::update($user, $validated['name'], $validated['email'], $validated['password'] ?? null);
 
         return redirect()->route('admin.users.index')->with('status', $user->email.' updated.');
+    }
+
+    /**
+     * D2's refusal, in the words an operator can act on. The refusal itself is
+     * `App\Admin\UserProvisioning::update()`'s; this is the message.
+     */
+    private function refuseRetired(User $user): RedirectResponse
+    {
+        return redirect()->route('admin.users.index')->withErrors([
+            'edit' => 'Refused: '.$user->email.' is retired, and a retired account\'s record does '
+                .'not change. The name and the address are the record — they are what a later '
+                .'reader resolves an old reference against, and freeing the address would let a '
+                .'different person be created under it and become indistinguishable from this one '
+                .'in every earlier record. If this person needs an account again, create one under '
+                .'a different address.',
+        ]);
+    }
+
+    /**
+     * ⚠ CANONICALISE ONLY WHAT IS ALREADY A STRING. `email[]=a@b.com` on either write route used to
+     * cast an ARRAY to a string here, which PHP raises `Array to string conversion` for and the
+     * handler turns into a 500 — on a form that has a validator for exactly this. Left alone, the
+     * `string` rule in `UserProvisioning::identityRules()` refuses it as the input error it is.
+     *
+     * The canonicalisation must still happen BEFORE validation and not after: `Rule::unique()`
+     * compares the value it is GIVEN, so validating `Ops@Example.com` against a stored
+     * `ops@example.com` passes on a case-sensitive collation and then collides on the write.
+     */
+    private function canonicaliseEmailInput(Request $request): void
+    {
+        if (is_string($raw = $request->input('email'))) {
+            $request->merge(['email' => UserProvisioning::canonicalEmail($raw)]);
+        }
     }
 
     public function retire(Request $request, User $user): RedirectResponse

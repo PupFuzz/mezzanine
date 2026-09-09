@@ -28,6 +28,14 @@
                         @endif
                     </td>
                     <td>
+                        {{--
+                            ⚠ THIS IS THE UX, NOT THE GUARD — and the distinction is a review
+                            finding, not a nicety. `App\Admin\UserProvisioning::update()` refuses to
+                            write a retired account; hiding the link here only stops an operator
+                            being offered a form that would be refused. When this `@unless` WAS the
+                            whole rule, a hand-made PATCH renamed a retired row off its address and
+                            a second request created a new account on it.
+                        --}}
                         @unless ($user->isRetired())
                             <a href="{{ route('admin.users.edit', $user) }}">Edit</a>
 

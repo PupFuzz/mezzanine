@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Admin\UserProvisioning;
 use App\Admin\UserRetirement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -262,5 +263,108 @@ class UserManagementTest extends TestCase
             UserRetirement::ALREADY_RETIRED,
             UserRetirement::retire($second->fresh(), 'someone else@example.com', 'a different reason'),
         );
+    }
+
+    // ── A RETIRED RECORD IS IMMUTABLE (D2) ──────────────────────────────────────────────────
+
+    /**
+     * ⛔ THE SCENARIO THIS ARM EXISTS FOR, MEASURED END TO END RATHER THAN REASONED. Round 1's
+     * review found that the only thing stopping an operator rewriting a retired account was the
+     * `@unless` that hides the Edit link — a READ-TIME guard for a WRITE-SITE rule. Two
+     * authenticated requests (rename the retired row off its address, then create a fresh account
+     * on the freed address) performed exactly the erasure `App\Http\Controllers\Admin
+     * \UserController`'s docblock says this console does not have, and falsified the migration's
+     * "an address that belonged to a retired account cannot be handed to a new one".
+     *
+     * Both requests are made here, in that order, against the real routes.
+     */
+    public function test_a_retired_accounts_address_cannot_be_freed_and_handed_to_a_new_account(): void
+    {
+        $operator = $this->operator();
+        $alice = User::factory()->twoFactorConfirmed()->create([
+            'name' => 'Alice', 'email' => 'alice@example.com',
+        ]);
+
+        $this->actingAs($operator)
+            ->post(route('admin.users.retire', $alice), ['reason' => 'dismissed for cause'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($alice->fresh()->isRetired(), 'the precondition');
+
+        // 1 — the rename that would free the address.
+        $this->actingAs($operator)
+            ->patch(route('admin.users.update', $alice), [
+                'name' => 'nobody',
+                'email' => 'freed-slot@example.invalid',
+                'password' => '',
+                'password_confirmation' => '',
+            ])
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHasErrors('edit');
+
+        $alice->refresh();
+
+        $this->assertSame('Alice', $alice->name, 'the retired row keeps its name');
+        $this->assertSame('alice@example.com', $alice->email, 'and its address');
+        $this->assertSame($operator->email, $alice->retired_by);
+        $this->assertSame('dismissed for cause', $alice->retired_reason);
+
+        // 2 — and the address is therefore still taken, which is the property the migration and
+        // `mezzanine:user:create` both state.
+        $this->actingAs($operator)
+            ->post(route('admin.users.store'), [
+                'name' => 'Alice II',
+                'email' => 'alice@example.com',
+                'password' => self::PASSWORD,
+                'password_confirmation' => self::PASSWORD,
+            ])
+            ->assertSessionHasErrors('email');
+
+        $this->assertSame(1, User::query()->where('email', 'alice@example.com')->count());
+    }
+
+    /**
+     * The edit FORM is refused too. Not because rendering it is itself a write, but because a form
+     * that cannot be saved is a console telling an operator to do something it will then refuse —
+     * and the control below is what says this refusal is about retirement rather than a route that
+     * refuses everything.
+     */
+    public function test_the_edit_form_is_refused_for_a_retired_account_and_served_for_an_active_one(): void
+    {
+        $operator = $this->operator();
+        $retired = User::factory()->twoFactorConfirmed()->create();
+        $active = User::factory()->twoFactorConfirmed()->create();
+
+        $this->actingAs($operator)->post(route('admin.users.retire', $retired), ['reason' => 'left']);
+        $this->assertTrue($retired->fresh()->isRetired(), 'the precondition');
+
+        $this->actingAs($operator)
+            ->get(route('admin.users.edit', $retired))
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHasErrors('edit');
+
+        // THE CONTROL — same route, same session, an active subject.
+        $this->actingAs($operator)
+            ->get(route('admin.users.edit', $active))
+            ->assertOk();
+    }
+
+    /**
+     * The rule at its own level, so the refusal is known to come from the WRITE and not from the
+     * controller around it: a future caller that forgets the check gets an exception, not a
+     * silently rewritten audit record. (MINOR-5-shaped: the act holds its own obligation, the
+     * caller keeps the nice message.)
+     */
+    public function test_the_provisioning_act_refuses_to_write_a_retired_account(): void
+    {
+        $retired = User::factory()->create(['retired_at' => now(), 'retired_by' => 'ops@example.com', 'retired_reason' => 'x']);
+        $active = User::factory()->create(['name' => 'Before']);
+
+        // THE CONTROL FIRST — the same call on an active subject writes.
+        UserProvisioning::update($active, 'After', $active->email);
+        $this->assertSame('After', $active->fresh()->name);
+
+        $this->expectException(\InvalidArgumentException::class);
+        UserProvisioning::update($retired, 'nobody', 'freed-slot@example.invalid');
     }
 }

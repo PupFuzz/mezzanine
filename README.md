@@ -94,8 +94,11 @@ over out of band — it is shown once and stored only as a hash.
 
 ⛔ **It is also the ONLY way back from a locked-out install**, which is why the console refuses to
 retire the last account that can still sign in. Retiring accounts is deliberately not a deletion
-— the row, its author and its reason are kept — and a retired account can no longer authenticate
-on any path. If an install somehow reaches a state with no account that can sign in, there is no
+— the whole row is kept: who the account was (its name and address), who retired it and why —
+and a retired account can no longer authenticate on any path. **A retired account is also no
+longer editable**, so its address can never be freed and handed to somebody else; if the person
+needs an account again, create one under a different address. If an install somehow reaches a
+state with no account that can sign in, there is no
 password reset (this deployment has no mailer) and no registration page: shell access on the host
 and this command are the recovery.
 

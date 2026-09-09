@@ -21,6 +21,14 @@ use Illuminate\Support\Facades\Schema;
  * every later record), and the escape — if it is ever wanted — is a decision about erasure, which
  * D2 puts in its own louder command rather than in a console button.
  *
+ * ⛔ THE UNIQUE INDEX IS ONLY HALF OF THAT, AND THE OTHER HALF IS A GUARD, NOT A CONSTRAINT. A
+ * unique index stops two rows sharing an address; it does not stop the retired row being RENAMED
+ * off its address and the address then being handed over. `App\Admin\UserProvisioning::update()`
+ * refuses to write a retired account, which is what makes the sentence above true, and
+ * `Tests\Feature\Admin\UserManagementTest` drives the whole two-request scenario through the real
+ * routes. Before that guard existed the sentence was false and this comment said so anyway — which
+ * is the reason it now names where to check.
+ *
  * THE SHAPE IS COPIED FROM `seats` ON PURPOSE. `retired_by` and `retired_reason` are nullable
  * because a COLUMN cannot be non-null before the act; the ACT still owes both, and
  * `App\Admin\UserRetirement` is the one writer that enforces it — the same split
