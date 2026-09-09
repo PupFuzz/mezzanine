@@ -19,6 +19,51 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#8075** — **the CODE half: `blocked_since` was a published member no server ever
+  populated.** The declaration landed in #46 — D2 § 8.2.1's row (`rfc3339_ms`, nullable, non-null
+  only when `activity_state == "blocked"`), its promotion note, and D3's reconciliation — and
+  **nothing followed it into `App\Read\SeatObject`** — #46's bullet landed in the v0.3.0 cut with no
+  serializer behind it, and this is the half that answers it. **Both halves ship in v0.3.0**, so no
+  released version ever carries the gap; `dev` carried it, between the two. What `dev` carried is a
+  **contract a consumer could read and the server never answered** — a client written against
+  § 8.2.1 asks a `blocked` desk when the hand went up and gets no key at all. The drift guard has
+  been RED on `dev` the whole time
+  (`SeatObjectMatchesTheDocumentTest` — *"§ 8.2.1 declares fields the seat object does not carry"*
+  → `['blocked_since']`), which is the guard doing exactly its job; with no PHP lane in CI
+  (card#7344) nothing announced it, and that is the second thing this gap measures.
+  ⛤ **One read primitive, not a query in two places.** `SeatFacts::blockedSince()` reaches
+  `attention_requests.opened_at` through `seat_state.open_attention_ref` and is its only home —
+  the wire object (`App\Read\SeatObject`, which publishes state and derives none) and the fold's
+  version-bearing FINGERPRINT (`SeatFacts::versionBearing()`) both call it, because a fingerprint
+  that disagreed with the object it is the fingerprint OF would emit deltas for changes the wire
+  does not carry, or withhold them for changes it does.
+  ⚠ **The "only when `blocked`" invariant is ENFORCED in that primitive rather than assumed of the
+  writer** — it gates on `activity_state` before it reads, exactly as `apiErrorType()` does. § 8.2.1
+  promoted this member *because nothing else on the object dates the wait*, so a value that
+  outlived its state would have nothing on the desk to contradict it.
+  ⛤ **Version-bearing, so both edges are delivered**: § 6.5's subtraction keeps it in, so it joins
+  the fingerprint and `SeatDelta::WIRE_MEMBER` in the same change — the guard asserts those two key
+  sets are identical in BOTH directions, so either one alone reds a green test — and the hand going
+  up and the hand coming down each ride the delta `activity_state` already emits.
+  ⭐ **A value test, because the drift guard can only see the NAME.**
+  `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's field list from the document, and a
+  `blocked_since` hard-wired to `null` passes it while drawing a `blocked` desk with no *waiting
+  since* line — the defect the promotion exists to close. `FeedSurfaceTest` now asserts the VALUE
+  against the request the fixture raised, the null against the state § 8.2.1 gates it on, and the
+  delta on both edges; **seen to fail first**, both by removing the member (the drift guard reds
+  naming `['blocked_since']`) and by pinning the primitive to `null` (the value test reds while the
+  drift guard stays green, which is why it exists).
+  ⚠ **One stale pointer fixed on the way, in a file this change was already editing**:
+  `SeatDelta::WIRE_MEMBER`'s docblock credited its guard to `SeatDeltaMapCoversTheFingerprintTest`,
+  a class that exists nowhere — the guard is
+  `SeatObjectMatchesTheDocumentTest::test_the_delta_map_covers_every_version_bearing_member`. The
+  claim is what makes that restatement admissible, so a pointer to nothing is not cosmetic. **The
+  claim was audited for siblings, not just the file**: every `…Test` name referenced from a comment
+  under `server/app`, re-derived from disk against the test classes that exist — this was the only
+  stale one.
+  ⚠ **No DDL, no event, no derivation rule and no ceiling moved** — § 8.2.1's promotion note is
+  explicit that the value has always existed server-side; the only thing that changed is the
+  surface it is published on.
 - **card#9077** — **losing your authenticator was a permanent lockout, and the way out was already
   built.** Measured before the change: `two_factor_recovery_codes` has been a column since the 2FA
   migration, `POST /two-factor-challenge` has always accepted a `recovery_code`, and
