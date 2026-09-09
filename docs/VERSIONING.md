@@ -88,10 +88,12 @@ tidiness — `docs/KANBAN.md § Release PRs into main must land as MERGE COMMITS
 a squashed release would cost the card mover (it collapses the per-PR subjects the mover
 correlates on).
 
-**No ruleset requires a status check** (also measured 2026-08-23; neither branch has classic
-protection either). "Wait for CI" in the release flow below is therefore a *process*
-obligation with nothing mechanical behind it. Do not read a green-looking merge button as CI
-having passed.
+> ⛔ **SUPERSEDED — the state is the ✅ block at the end of this stack; read that, not this.**
+> As measured 2026-08-23: *"No ruleset requires a status check (neither branch has classic
+> protection either). 'Wait for CI' in the release flow below is therefore a process obligation
+> with nothing mechanical behind it."* **It is kept as the head of the history below rather than
+> deleted, and it is marked because it was the one paragraph in this stack that was not** — bold,
+> first, and read by anyone who skims one paragraph of this section (card#9054).
 >
 > ⚠ **Updated 2026-08-23:** `card-token-lint` **is** now a required status check on both
 > branches, so that one check is mechanically enforced. Everything else in CI still is not —

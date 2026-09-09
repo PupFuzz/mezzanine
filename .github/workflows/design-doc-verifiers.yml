@@ -29,9 +29,11 @@
 #
 # NO `branches:` FILTER — the reason `release-pr-guard.yml` records. A path- or branch-filtered
 # workflow that produces NO RUN reads as PENDING for a required check, not passed, so filtering
-# would deadlock every PR it filtered out the moment this becomes required. Producing a completed
-# run on every PR is what keeps a gate safe to require. `branches:` and `types:` are independent
-# filters besides, so a base allowlist would also drop every event from a stacked PR.
+# would deadlock every PR it filtered out wherever these contexts are required, and which contexts
+# those are is a repository-settings fact this file does not restate — `docs/VERSIONING.md
+# § Branch model` is its one home. Producing a completed run on every PR is what keeps a gate safe
+# to require. `branches:` and `types:` are independent filters besides, so a base allowlist would
+# also drop every event from a stacked PR.
 #
 # `synchronize` is the load-bearing type here: the subject is the DIFF, so every push to the head
 # must be re-judged. `edited` is NOT subscribed — unlike `card-token-lint.yml`, no part of this

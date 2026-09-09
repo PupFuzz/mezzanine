@@ -516,8 +516,39 @@ eq("  … on pull_request AND on push to the integration branches",
 # CONTROL: the membership test above must be capable of the other answer.
 eq("  … and that path test REJECTS a path the workflow does not list (control)",
    False, "'docs/design/FLOOR.md'" in wf)
-eq("the workflow does not claim to be a required check it is not",
-   True, "NOT A REQUIRED STATUS CHECK" in wf)
+# ⛔ THE HEADER MUST RESTATE NO REQUIRED-CHECK STATUS AT ALL, in either direction — it points at
+# the one home instead. What stood here asserted that the string "NOT A REQUIRED STATUS CHECK" was
+# PRESENT in the header. That reds only if somebody DELETES the sentence, and never if the sentence
+# goes FALSE — the one direction that costs anything: `asset-provenance.yml` carried the same shape
+# of claim, it was false for the eight days after that context was required, and nothing went red
+# (card#9054). No file in this checkout can verify the required-check list, so the property that IS
+# checkable here is that no copy of it lives in this header.
+REQUIREDNESS_CLAIM = (
+    r"(?i)\bnot a required status check\b",
+    r"(?i)\bis a required status check\b",
+    r"(?i)\bdoes not block a merge\b",
+    r"(?i)\bthe only (mechanically )?required check\b",
+    r"(?i)\bis (already |now )?required on\b",
+    r"(?i)\b(becomes|promoted to) required\b",
+)
+eq("the header states no required-check status of its own",
+   [], [p for p in REQUIREDNESS_CLAIM if re.search(p, wf)])
+eq("  … and points at the one home instead",
+   True, "docs/VERSIONING.md" in wf and "Branch model" in wf)
+# CONTROL: a claim-shaped probe per pattern — including the two this header actually carried until
+# card#9054 — plus a NEGATIVE probe, so the check is seen to discriminate rather than to match.
+CLAIM_PROBES = (
+    ("# ⚠ THIS IS NOT A REQUIRED STATUS CHECK, AND ADDING IT HERE DOES NOT MAKE IT ONE.", 1),
+    ("# A red here does not block a merge until someone adds the context to both rulesets.", 1),
+    ("# ⚠ This IS a required status check.", 1),
+    ("# `card-token-lint` is the only mechanically required check on `dev` and `main`.", 1),
+    ("# `harness-fixture-drift` is already required on `dev` and `main`.", 1),
+    ("# A filter would deadlock every PR the moment this becomes required.", 1),
+    ("# The path list is the load-bearing part, and the guard needs no credential.", 0),
+)
+eq("  … CONTROL: the predicate fires on every claim shape it names, and on nothing else",
+   [n for _, n in CLAIM_PROBES],
+   [len([p for p in REQUIREDNESS_CLAIM if re.search(p, probe)]) for probe, _ in CLAIM_PROBES])
 
 
 print()

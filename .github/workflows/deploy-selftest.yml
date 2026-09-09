@@ -13,15 +13,23 @@
 #
 # NO `paths:` FILTER, DELIBERATELY — the same reasoning as `asset-provenance.yml`: the suite is
 # seconds of bash, and a path-filtered workflow produces NO RUN, which reads as *pending* rather
-# than *passed* if this check is ever promoted to required. It is also not filtered to
-# `bin/deploy*` because the script asserts things about `server/` (migrations that ALTER `events`,
-# `bootstrap/app.php`'s trusted proxies) — a PR that never touches bin/ can still change what the
-# gate would say.
+# than *passed* for a required check. It is also not filtered to `bin/deploy*` because the script
+# asserts things about `server/` (migrations that ALTER `events`, `bootstrap/app.php`'s trusted
+# proxies) — a PR that never touches bin/ can still change what the gate would say.
 #
-# ⚠ THIS IS NOT A REQUIRED STATUS CHECK. `docs/VERSIONING.md § Branch model`: `card-token-lint` is
-# the only mechanically required check on `dev` and `main`, and a workflow added later is not
-# automatically required. A red here does not block a merge — a human has to look. card#7344 owns
-# the required-check list.
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
+# list is a repository-settings fact that no file in the checkout can verify, and copies of it in
+# workflow headers have already gone stale in this repo, in the direction that tells a reviewer to
+# ignore a red. `docs/VERSIONING.md § Branch model` is its one home and carries the command that
+# re-derives it from the API. Read that; do not re-copy it here.
+#
+# This block used to assert the opposite — that `card-token-lint` was *the only* mechanically
+# required check on `dev` and `main`, so a red here did not block a merge, with card#7344 named as
+# owning the list. Measured (card#9054): the *only* was false — `card-token-lint` is one of
+# several — and card#7344 is the app-code CI-lane card, which owns no part of the list, so the
+# comment also pointed a future maintainer at a card that would never address it. What IS true and
+# stays: requiring a check is a repository-settings act, so a workflow added later is not
+# automatically required — which is exactly why a copy here rots.
 #
 # NEEDS NO CREDENTIAL AND NO NETWORK. bash + git + the checkout, nothing else.
 

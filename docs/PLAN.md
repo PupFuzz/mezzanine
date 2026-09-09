@@ -68,6 +68,17 @@ its date, its decider and the scope of what it moved. The original row above sta
   [`§ 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates): they move from asserting an
   absence to asserting declared provenance, at a named cost.
 
+- **D-12 · the required-check clause only — measured, not re-decided; 2026-09-09 (card#9054).**
+  D-12 records *"`card-token-lint` is a required check on both"*. That was the measured state on
+  2026-08-23 and it is no longer the whole list — contexts have been added since, and a reader who
+  takes the row for the current list reads *the only one* into it — the same reading that told
+  reviewers a red `asset-provenance` did not block a merge while it did. **What moves:**
+  nothing that was *decided*. The branch model, the merge methods and ruleset enforcement all
+  stand as written. Only the membership of the list has moved, and it is **not this register's to
+  carry**: it is a repository-settings fact no document in this repo can verify.
+  [`docs/VERSIONING.md § Branch model`](VERSIONING.md) is its one home and carries the API command
+  that re-derives it. Read the list there, never here.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
