@@ -1285,7 +1285,7 @@ print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's manual resi
       "marker convention, so it stays a human read; D1 § 1's `D2:` convention (§ 14 item 13) "
       "closed the rest of what used to be a fourteen-row semantic half. "
       "(b) whether a `Cited` number matches what D1 says, as opposed to appearing at its D2 home. "
-      "(c) every MySQL behavioural claim, which needs a provisioned host.")
+      "(c) every MariaDB behavioural claim, which needs a provisioned host.")
 
 if fail:
     print(f"\nFAILURES ({len(fail)}):")

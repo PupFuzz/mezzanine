@@ -81,7 +81,7 @@ class MySqlColumnTypeTest extends TestCase
     /**
      * ⛔ CARD#9077's RESET-TOKEN TABLE, ON THE STORE IT DEPLOYS TO. `token_hash` is an identifier
      * column in § 6.1's sense — it is LOOKED UP BY EQUALITY and nothing else — so it must compare
-     * exactly. MySQL's default `utf8mb4_0900_ai_ci` is case- AND accent-insensitive, and a digest
+     * exactly. The store's configured collation `utf8mb4_unicode_ci` is case-insensitive, and a digest
      * matched case-insensitively is a digest that matches rows it does not equal: on a 64-character
      * hex value that is a 2^64-fold reduction in the work of finding a colliding lookup key.
      *

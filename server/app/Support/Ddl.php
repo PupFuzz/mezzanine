@@ -11,15 +11,17 @@ use Illuminate\Support\Facades\DB;
  *
  * § 6.1 requires "all identifier columns `ascii_bin`", because "ULIDs, slugs and session ids are
  * ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly". Both halves of
- * that are about MySQL: its default `utf8mb4_0900_ai_ci` is case- and accent-INSENSITIVE, so
- * without the override two ULIDs differing only in case would compare equal and `uq_dedup` would
- * silently merge two distinct events.
+ * that are about the deployed store: its configured collation is `utf8mb4_unicode_ci`
+ * (`config/database.php`), which is case-INSENSITIVE, so without the override two ULIDs differing
+ * only in case would compare equal and `uq_dedup` would silently merge two distinct events.
+ * (§ 6.1 named `utf8mb4_0900_ai_ci` until the 2026-09-09 MariaDB repin, card#7523; that collation
+ * is not native to MariaDB and is no longer named anywhere.)
  *
  * SQLite — the store `phpunit.xml` pins the suite to — has no `ascii_bin`, and emitting it is a
  * hard error. It also does not need it: SQLite's default `BINARY` collation is already exact, so
  * omitting the clause there preserves the comparison semantics § 6.1 is actually buying rather
  * than dropping them. What is lost on SQLite is the byte-per-character storage win, which is a
- * MySQL sizing argument (§ 6.8) and not a correctness one.
+ * store-side sizing argument (§ 6.8) and not a correctness one.
  *
  * This exists as one helper rather than a driver check repeated at each of the ~25 identifier
  * columns, because the version of this that gets it wrong is the one where a column is added

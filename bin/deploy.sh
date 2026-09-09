@@ -60,8 +60,8 @@
 # CARD / DECISION TOKENS, kept in the script on purpose (handover item 4 — they make it
 # answerable): card#7459 (this script) · card#7339 (Reverb feed; the broadcaster) · card#7344 (CI
 # lanes) · D-08 (separate prod host, unprovisioned) · D-13 (prod moves only by this script) ·
-# D-15 (MySQL on a dedicated host) · D-16 (the app lives in server/) · rt#347 (the sample and the
-# binding handover) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
+# D-15 (the store on a dedicated host; MariaDB per its 2026-09-09 amendment) · D-16 (the app
+# lives in server/) · rt#347 (the sample and the binding handover) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
 set -Eeuo pipefail
@@ -213,10 +213,17 @@ phase_a() {
     "\`php artisan key:generate\` (docs/PLAN.md § 5). Minting one HERE would silently" \
     "invalidate every existing session and encrypted column."
   db_conn="$(env_get DB_CONNECTION || true)"
+  # ⚠ 'mysql' HERE IS THE LARAVEL CONNECTION NAME (server/config/database.php), NOT THE SERVER
+  # PRODUCT. D-15's 2026-09-09 amendment repinned the product to MariaDB; the app is still
+  # wired to the `mysql` connection — Tests\TestCase and § 6.2's pin guard both key on
+  # `database.connections.mysql.database` — and Laravel's `mysql` driver speaks to a MariaDB server.
+  # Whether to move to config/database.php's `mariadb` connection is an OPEN DECISION for the
+  # operator: it changes what this script accepts and what those guards key on. It is not taken here.
   [ "$db_conn" = "mysql" ] || refuse "DB_CONNECTION is '${db_conn:-unset}', not 'mysql'" \
-    "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MySQL ≥ 8.0.12 on a dedicated" \
-    "host. sqlite here would be a prod store that silently cannot do what the fold needs" \
-    "(FOR UPDATE SKIP LOCKED) and that no backup or provisioning decision covers."
+    "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MariaDB on a dedicated host, at" \
+    "the version floor § 6.1 states, reached through Laravel's 'mysql' connection. sqlite here" \
+    "would be a prod store that silently cannot do what the fold needs (FOR UPDATE SKIP LOCKED)" \
+    "and that no backup or provisioning decision covers."
   # A cache store that PERSISTS between requests (docs/PLAN.md § 5) — a security obligation, not a
   # tuning choice. App\Auth\ActiveUserProvider pays for its dummy bcrypt ONCE per deployment by
   # keeping it in the cache, so that an unknown address and a known one with a wrong password cost
@@ -236,8 +243,8 @@ phase_a() {
     "FLEET-STATE.md § 6.1: TLS is REQUIRED to the store, certificate verified, with no" \
     "plaintext fallback — the credential and every descriptor cross a network between hosts."
 
-  # NOT CHECKED HERE, on purpose: MySQL's ≥ 8.0.12 floor, the storage engine, the collations and
-  # the session time zone. FLEET-STATE.md § 6.1 assigns every one of them to "verified at
+  # NOT CHECKED HERE, on purpose: § 6.1's MariaDB version floor, the storage engine, the
+  # collations and the session time zone. FLEET-STATE.md § 6.1 assigns every one of them to "verified at
   # provisioning", and a deploy-time re-check would either duplicate that verification or, worse,
   # become the place it is believed to happen while checking something weaker.
   #
@@ -286,7 +293,7 @@ phase_a() {
   # comment AND THE DEPLOY CHECKS IT". This is that check, and it reads the TARGET tree out of the
   # object database (git show) rather than the working copy, so it can refuse BEFORE the checkout
   # and before the window. What it proves is that an algorithm was DECLARED — it cannot prove
-  # MySQL will honour it; a declared INSTANT that the server rejects fails loudly at migrate time,
+  # MariaDB will honour it; a declared INSTANT that the server rejects fails loudly at migrate time,
   # which is the backstop. What it removes is the silent case: an ALTER that nobody thought about,
   # taking the ingest down for the length of a table copy.
   step "Checking migrations against FLEET-STATE.md § 6.9"
@@ -406,7 +413,7 @@ phase_a() {
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
 # DOWN AND STAY DOWN. On any failure after the window opens, the app is NOT brought back up. A
-# migration that failed halfway (MySQL DDL is not transactional — there is no partial-statement
+# migration that failed halfway (MariaDB DDL is not transactional — there is no partial-statement
 # rollback to fall back on), a composer install that produced no vendor/, a daemon that died on
 # start: in each of those the previous code cannot serve (the schema has moved) and the new code
 # is not ready. Bringing the site up would serve the failure. The window stays open, the marker
@@ -428,7 +435,7 @@ MARKER_END
   marker : $MARKER
 
   This is deliberate. Forward-only: nothing was rolled back, because a failed
-  MySQL migration is half-applied and a rollback would be a second guess at a
+  MariaDB migration is half-applied and a rollback would be a second guess at a
   state nobody has read yet. An operator reads it.
 
   Recovery is a human act:
@@ -548,7 +555,7 @@ phase_b_post_checkout() {
   step "Clearing caches (before migrate — see the note above)"
   php artisan optimize:clear
 
-  # FORWARD-ONLY. There is no `migrate:rollback` in this script and there must not be: MySQL DDL
+  # FORWARD-ONLY. There is no `migrate:rollback` in this script and there must not be: MariaDB DDL
   # is non-transactional, so a migration that failed halfway has already applied part of itself
   # and `down()` would be run against a schema neither state describes. § 6.9's rules (algorithm
   # declared, additive nullable columns, bounded backfills) are what make forward-only safe; A10

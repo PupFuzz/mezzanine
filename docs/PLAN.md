@@ -79,6 +79,27 @@ its date, its decider and the scope of what it moved. The original row above sta
   [`docs/VERSIONING.md § Branch model`](VERSIONING.md) is its one home and carries the API command
   that re-derives it. Read the list there, never here.
 
+- **D-15 · the engine only — operator, 2026-09-09 (card#7523).**
+  D-15 reads *"The fleet-state store is **MySQL on a dedicated DB host**; provisioning it is a
+  deployment task downstream of D2's schema, owned by the Mezzanine build agent (D-13)"*. The
+  operator repinned the engine on **2026-09-09**: the store is **MariaDB**, at the version floor
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) pins, replacing MySQL ≥ 8.0.12.
+  **What moves:** the engine and its version floor, and nothing else. **What does NOT move,
+  and each is load-bearing:** the *dedicated DB host* clause is untouched; provisioning
+  is still downstream of D2's schema and still the build agent's (D-13); the pinned database names
+  and the test-isolation posture of
+  [`docs/design/FLEET-STATE.md § 6.2`](design/FLEET-STATE.md#62-database-names-pinned-and-published)
+  are untouched. **Where the consequence is worked out:**
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) — it re-argues every requirement against
+  MariaDB rather than carrying it across, records the engine divergences that were checked and
+  found unreachable from this schema, and records the one item that is **UNSOURCED** (quantified
+  whole-column JSON read/write performance, which needs a benchmark and has not had one).
+  ⚠ **Not settled by this amendment:** whether the application moves from Laravel's `mysql`
+  connection to `config/database.php`'s `mariadb` connection. The app is wired to `mysql` today,
+  `bin/deploy.sh` refuses anything else, and the test-isolation guards key on
+  `database.connections.mysql.database` — so that is a separate decision with its own blast radius,
+  and it is the operator's to take.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
@@ -198,7 +219,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **websocket handshake**, and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
 | | fleet-state store + Reverb feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
-| | MySQL provisioning on the dedicated DB host (new card, D-15) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
+| | MariaDB provisioning on the dedicated DB host (new card, D-15, as amended 2026-09-09) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
@@ -290,12 +311,12 @@ rule violations anyone could have committed at the time.
   ee7df9b9` — **was not reachable from this seat** (no such path on this host; the roundtable repo
   answers 404 to this credential), so the fleet's deploy scripts are *not* yet demonstrably one
   shape and no line of the sample was copied. What was adopted is rt#347's own enumeration of the
-  sample's load-bearing properties: forward-only migrations (MySQL DDL is non-transactional), the
-  load-bearing cache-rebuild order, down-and-stay-down on failure for operator review,
+  sample's load-bearing properties: forward-only migrations (the store's DDL is
+  non-transactional), the load-bearing cache-rebuild order, down-and-stay-down on failure for operator review,
   re-exec-after-checkout, and every "fails once then silently succeeds on a bare re-run" state made
   loud. **Two things are outstanding**: rt#347 item 5 — take the adapted script to kanban-solo on a
   fresh thread once the P2 host exists — and the first real run, which is the only place the
-  live-host leg (systemd units, sudo posture, MySQL, PHP-FPM, `/up` through the real proxy) is
+  live-host leg (systemd units, sudo posture, MariaDB, PHP-FPM, `/up` through the real proxy) is
   exercised at all.
 - **One divergence from the sample's topology, ruled binding by rt#347 item 1:** the deploy
   restarts the long-lived daemons *inside* the window — `mezzanine:fold`, `mezzanine:sweep`,
@@ -308,8 +329,8 @@ rule violations anyone could have committed at the time.
   #7339 flips it with nobody having to remember.
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
-  `APP_DEBUG=true`, empty `APP_KEY`, non-MySQL, TLS-less, a non-persistent `CACHE_STORE`), the PHP
-  floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
+  non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), and a systemd unit that is missing or

@@ -42,7 +42,8 @@ contract every consumer reads.
    never `idle` ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm), `D2-MUST` #2). The same
    property is built one layer out, in the feed itself: a browser can always tell "the fleet is quiet"
    from "the feed died" ([§ 8.3](#83-the-websocket-delta-feed)).
-6. **The store is MySQL 8.0 on a dedicated host** (operator decision, `docs/PLAN.md` D-15). Every
+6. **The store is MariaDB on a dedicated host** (operator decision, `docs/PLAN.md` D-15 and
+   its 2026-09-09 amendment). Every
    query crosses a network, so the design batches writes, reads a snapshot in one query, and states a
    fail-posture for the store being unreachable on every path that touches it ([§ 2.2](#22-fail-posture-per-path)).
 7. **Two read surfaces with two different compatibility postures.** The REST snapshot has an
@@ -69,7 +70,7 @@ contract every consumer reads.
    fleet-reporter ──▶ POST /api/ingest/events        (D1 § 12, card #7338)
                         │        │                                          │
                         │        ▼  one transaction                         │
-                        │   ┌──────────────┐    MySQL 8.0, dedicated host   │
+                        │   ┌──────────────┐    MariaDB, dedicated host     │
                         │   │  events      │◀── durable log, 14-day         │
                         │   │  batches     │    retention, dedup key        │
                         │   └──────┬───────┘                                │
@@ -186,11 +187,11 @@ further out.
 
 | Path | Store/dependency unavailable | Posture | Why this posture and not the other |
 |---|---|---|---|
-| **Ingest write** | MySQL unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing. |
-| **REST snapshot read** | MySQL unreachable | **CLOSED** — `503 fleet_unavailable`, machine-readable, **never `200` with an empty or partial fleet** | An empty fleet is indistinguishable from a calm fleet. This is `docs/KANBAN.md § G-1`'s defect (a 200 with empty data reading as a clean zero) and [`docs/VERSIONING.md § The failure direction`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)'s rule, on the read side. |
-| **REST snapshot read** | MySQL reachable, **some seats' fold cursors stale** | **OPEN, labelled** — serve the state, with `derivation.fold_lag_ms` per seat and `fleet.fold` ≠ `ok` | Frozen state is still the last true state; refusing the whole fleet because one seat's derivation is behind would turn a partial degradation into a total outage. The label is what stops it being read as current. |
-| **WebSocket connect** | Reverb up, MySQL down | **CLOSED** — the connection is accepted and immediately sent `fleet.health` with `db: "down"`; no snapshot is served | Same argument as the REST read. The socket stays up deliberately, because it is the channel that tells the browser *why* there is nothing. |
-| **WebSocket feed** | Reverb down, MySQL up | **OPEN for reading, CLOSED for the live claim** — REST still serves; the client polls at **10 s** and must render a `feed_down` indicator | A dashboard that silently degrades from live to polled is a dashboard whose age nobody can trust. The poll interval matches D1's flush interval, so the polled floor is no more stale than the live one's own input cadence. |
+| **Ingest write** | the store unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing. |
+| **REST snapshot read** | the store unreachable | **CLOSED** — `503 fleet_unavailable`, machine-readable, **never `200` with an empty or partial fleet** | An empty fleet is indistinguishable from a calm fleet. This is `docs/KANBAN.md § G-1`'s defect (a 200 with empty data reading as a clean zero) and [`docs/VERSIONING.md § The failure direction`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)'s rule, on the read side. |
+| **REST snapshot read** | the store reachable, **some seats' fold cursors stale** | **OPEN, labelled** — serve the state, with `derivation.fold_lag_ms` per seat and `fleet.fold` ≠ `ok` | Frozen state is still the last true state; refusing the whole fleet because one seat's derivation is behind would turn a partial degradation into a total outage. The label is what stops it being read as current. |
+| **WebSocket connect** | Reverb up, the store down | **CLOSED** — the connection is accepted and immediately sent `fleet.health` with `db: "down"`; no snapshot is served | Same argument as the REST read. The socket stays up deliberately, because it is the channel that tells the browser *why* there is nothing. |
+| **WebSocket feed** | Reverb down, the store up | **OPEN for reading, CLOSED for the live claim** — REST still serves; the client polls at **10 s** and must render a `feed_down` indicator | A dashboard that silently degrades from live to polled is a dashboard whose age nobody can trust. The poll interval matches D1's flush interval, so the polled floor is no more stale than the live one's own input cadence. |
 | **Fold worker** | dead or lagging | **OPEN for ingest, CLOSED for the currency claim** — receipts keep landing, state freezes, seats badge `fold_lag`, `fleet.fold` goes `stalled` | Refusing ingest because *derivation* is broken would discard data we can still store and later derive. Freezing silently is the failure this whole product exists to prevent, so the freeze is announced. See [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation). |
 | **Fold worker** | a single event raises during projection | **OPEN, counted, quarantined-in-place** — the cursor advances past it, `fold_error` increments, the seat badges `derivation_error`; the event stays in `events` for replay | One malformed event must not wedge a seat's derivation forever — the same judgement [D1 § 11.4](EVENT-SCHEMA.md#114-corruption-the-torn-last-line-and-a-lost-statejson) makes for a torn spool line. Because the log is retained, the fix plus a rebuild recovers the seat exactly. |
 | **Sweep worker** | dead | **OPEN for ingest, CLOSED for the currency claim** — the fleet object's `sweep_last_run_at` keeps its last value and `fleet.sweep` goes `stalled` past **60 s** since it ([§ 8.2.4](#824-the-fleet-health-object)) | Identical reasoning to the fold, and stated separately rather than inherited because the *consequence* differs: a dead fold freezes wire-driven transitions, a dead sweep freezes time-driven ones, and only the second one can leave a dead seat rendering `working`. |
@@ -1031,19 +1032,54 @@ its own volume can reach, that it fires visibly, and that it has been **seen to 
 
 ### 6.1 Deployment posture
 
-**MySQL 8.0 or later, on a host dedicated to it** (`docs/PLAN.md` D-15; the operator's decision, and the
-reason [§ 2.2](#22-fail-posture-per-path) has a row for the store being unreachable at all). The version
-floor is not decorative — four features below are load-bearing:
+**MariaDB, on a host dedicated to it, at the version floor the table below pins**
+(`docs/PLAN.md` D-15 and its 2026-09-09 amendment; the operator's decision, and the reason
+[§ 2.2](#22-fail-posture-per-path) has a row for the store being unreachable at all). The version
+floor is not decorative — the requirements below are load-bearing:
 
 | Requirement | Value | Why it is required, and its state |
 |---|---|---|
-| Engine / version | **MySQL ≥ 8.0.12** | `SELECT … FOR UPDATE SKIP LOCKED` for the fold's seat claim ([§ 6.5](#65-the-fold)); `ALGORITHM=INSTANT` column adds on `events` ([§ 6.9](#69-migrations-on-a-live-events-table)); native `JSON`; `DATETIME(3)`. **DOCS-CITED** (MySQL 8.0 reference manual), **verified at provisioning** — the deploy host is not built yet |
+| Engine / version | **MariaDB ≥ 11.8.6** | `SELECT … FOR UPDATE SKIP LOCKED` for the fold's seat claim ([§ 6.5](#65-the-fold)) — MariaDB 10.6.0; `ALGORITHM=INSTANT` column adds on `events` ([§ 6.9](#69-migrations-on-a-live-events-table)) — MariaDB 10.3.2/10.4 by operation, and with no MySQL-style 64-row-version ceiling before a rebuild; `DATETIME(3)`; and `JSON` **as a type name only** — on MariaDB it is an alias for `LONGTEXT` with an automatic `CHECK (json_valid(…))` and not a binary type, which is sufficient here **only because nothing queries into `data`** (below, and [§ 6.3](#63-conventions)). **DOCS-CITED** (MariaDB Knowledge Base), **verified at provisioning** — the deploy host is not built yet |
 | Storage engine | InnoDB, `ROW_FORMAT=DYNAMIC` | transactions; the fold's cursor advance and its projections are one transaction |
-| Character set | `utf8mb4` / `utf8mb4_0900_ai_ci`; **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly |
-| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MySQL, but a `TIMESTAMP` is — which is why this schema uses no `TIMESTAMP` column anywhere. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
+| Character set | `utf8mb4` / `utf8mb4_unicode_ci` (the value's one home is `server/config/database.php`); **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly. ⭐ **`ascii_bin` is the correctness guard, not the default collation**: `utf8mb4_unicode_ci` is case-INSENSITIVE, and two ULIDs differing only in case must not compare equal in `uq_dedup`. `utf8mb4_0900_ai_ci` — what this row named before the repin — is **not a native MariaDB collation**; it is accepted as an alias onto the UCA-1400 family from 11.4.5, and MariaDB's own ticket cautions the resulting ordering is not guaranteed byte-identical to MySQL's, so the name is not used here at all |
+| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — which is why this schema uses no `TIMESTAMP` column anywhere. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
 | Transport | **TLS required**, certificate verified, no fallback to plaintext | the app and the store are on different machines, so the credential and every descriptor cross a network. Loosening verification "because it is our own network" is the constraint-weakening fix D1 refuses for the reporter's TLS, and it ships to production the same way. Fail **closed**: no TLS, no connection, `503` |
 | Connections | request path: one per request (PHP-FPM), no persistent connections; daemons: one long-lived connection each, with reconnect-on-`gone away` and capped backoff | a persistent pool under FPM keeps `wait_timeout` sessions alive across unrelated requests and makes the time-zone and session-variable posture per-worker rather than per-request |
 | Query budget | the fleet snapshot is **one query**; the fold's per-batch work is **one transaction** | every round trip is a WAN round trip. An N+1 over 50 seats is 50 round trips on the dashboard's critical path |
+
+**The repin, and what was checked before it was made.** Operator ruling, 2026-09-09 (card#7523,
+`docs/PLAN.md` D-15's amendment): the engine moves from **MySQL ≥ 8.0.12** to **MariaDB**, at
+the floor the table's engine row above pins. Every requirement in that table was re-argued
+against MariaDB rather than carried across, and the known divergences between the two engines
+were each checked against **this** repo:
+
+- **`JSON` is an alias for `LONGTEXT` plus an automatic `CHECK (json_valid(…))`, not a binary type**,
+  and the `->` / `->>` arrow operators do not exist before MariaDB 13.1. This schema uses **no
+  SQL-side JSON at all** — every JSON column is written whole, read whole and decoded in PHP
+  ([§ 6.3](#63-conventions)) — so neither the representation nor the missing operators is reachable
+  from any query this design specifies. ⚠ **What is NOT established is performance.** Quantified
+  whole-column JSON read/write against a `LONGTEXT`-backed `JSON` versus MySQL's binary `JSON` is
+  **UNSOURCED**: neither vendor isolates that access pattern and no benchmark has been run here, so
+  this document claims **no parity in either direction**. It needs a measurement, not a citation, and
+  the closure is the same act as every other row's — measured at provisioning against the real store.
+  The same caveat applies to the `data` bytes in [§ 6.8](#68-sizing)'s row-cost model, which was
+  built on a binary-`JSON` assumption and is re-measured there anyway.
+- **Laravel's `mariadb` driver emits a native `uuid` column where `mysql` emits `char(36)`.** This
+  repo declares no `uuid` and no `ulid` column in any migration — its ULIDs are `CHAR(26) ascii_bin`
+  ([§ 6.3](#63-conventions)) — so that divergence has nothing in this schema to act on. Stated
+  narrowly on purpose: what was checked is the absence of those columns, not a general claim
+  that the two drivers emit identical DDL.
+- **MariaDB has no functional / expression indexes.** This schema declares none, and
+  [§ 13](#13-decisions-taken-revisable-at-review) row 13 had already rejected indexing into `data` on
+  grounds that do not depend on the feature existing.
+- **`utf8mb4_0900_*` is not native to MariaDB** — see the character-set row above. The pinned
+  floor accepts the name as an alias, but the name is not used, and the property this schema
+  depends on is `ascii_bin`.
+
+**Unchanged by the repin**, stated so a reader does not re-check them: `ON DUPLICATE KEY UPDATE`,
+single-table `DELETE … ORDER BY … LIMIT`, native `ENUM`, `ROW_FORMAT=DYNAMIC`, `DATETIME(3)` with
+`+00:00` session semantics, and InnoDB deadlock detection with the same error 1213 and the same
+victim heuristic.
 
 ### 6.2 Database names, pinned and published
 
@@ -1132,9 +1168,9 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 | Surrogate keys | `installs.id SMALLINT UNSIGNED`, `seats.id INT UNSIGNED`; every hot table carries `seat_ref` | a natural key on `events` would be `install_id` (≤ 32 B) + `seat_id` (≤ 48 B) on every row and in every index — ~76 B against 4 |
 | ULIDs | `CHAR(26) CHARACTER SET ascii COLLATE ascii_bin` | 26 bytes, exact comparison, legible in a query, and lexicographically ordered by mint time. `BINARY(16)` would save 10 B/row and make every diagnostic query require a conversion function; at 10,420 events/seat/day that saving is ~0.1 MB/seat/day against permanent illegibility |
 | Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP` | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone |
-| Enums | MySQL `ENUM` for closed sets D1 owns; `VARCHAR` + application validation for open ones | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted. So: `ENUM` only where the coercion has already happened at the ingest ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10), which is every enum this schema stores |
-| `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on a hot path; it is kept for the drill-down, for replay and for forensics |
-| String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MySQL counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
+| Enums | MariaDB `ENUM` for closed sets D1 owns; `VARCHAR` + application validation for open ones | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted. So: `ENUM` only where the coercion has already happened at the ingest ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10), which is every enum this schema stores |
+| `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on **any** path — not just not on a hot one — and after the MariaDB repin that is load-bearing rather than incidental: MariaDB's `JSON` is an alias for `LONGTEXT` + `CHECK (json_valid(…))` and has no arrow operators before 13.1 ([§ 6.1](#61-deployment-posture)). Every JSON column is written whole, read whole and decoded in PHP; the column is kept for the drill-down, for replay and for forensics |
+| String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MariaDB counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
 | Nullability | a column is `NULL` only where D1's field table says the wire value is nullable, or where the fact genuinely does not exist yet | a nullable column that "means zero" is a read-time fallback, which is a defect to trace to its write site |
 | Wire integers | every integer column the fold writes is `UNSIGNED`, and the fold reads a wire integer through **one** range rule applied after the encoding is resolved: a JSON number and its string spelling are the same value, and a value outside `0 … PHP_INT_MAX` is `NULL` and never a raise | [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10 does not type-check per-kind `data` fields, so the fold is the first plane that reads them and a reporter bug can put any scalar on any of them. Two encoding-specific tests are two rules free to disagree — and the disagreement is invisible, because it takes a reporter that writes the field the other way. `NULL` and not a raise because every one of these columns is nullable and [§ 6.5](#65-the-fold)'s poison-event rule would otherwise quarantine a whole event over one out-of-range field |
 
@@ -1222,8 +1258,8 @@ CREATE TABLE events (
   KEY ix_seat_recv (seat_ref, received_at),                 -- purge, timeline, staleness
   KEY ix_fold      (seat_ref, id)                           -- the fold's cursor scan
 ) ENGINE=InnoDB;
--- NOT PARTITIONED, deliberately: MySQL requires every unique key to contain every partitioning
--- column (DOCS-CITED, MySQL 8.0 manual, "Partitioning Keys, Primary Keys, and Unique Keys";
+-- NOT PARTITIONED, deliberately: MariaDB requires every unique key to contain every partitioning
+-- column (DOCS-CITED, MariaDB Knowledge Base on partitioning limitations;
 -- verified at provisioning with the version floor of § 6.1), so a RANGE partition on received_at would force uq_dedup to become
 -- (seat_ref, event_id, received_at) -- under which the same event re-sent on a later day no
 -- longer conflicts, and D2-MUST #3's dedup silently stops working. Cheap partition drops are
@@ -1531,7 +1567,7 @@ loop:
                                                  -- lag, and this column is never NULL for a
                                                  -- seat this WHERE clause can select (§ 2.3)
            LIMIT 8
-          FOR UPDATE SKIP LOCKED            -- MySQL 8.0; another worker's seats are skipped
+          FOR UPDATE SKIP LOCKED            -- MariaDB 10.6.0+; another worker's seats are skipped
   for each seat in claim:
      BEGIN
        rows = SELECT * FROM events
@@ -1757,9 +1793,12 @@ greater. Arrival order therefore decides *when* work happens and never *which va
 gives.** An earlier draft justified the cursor by calling `events.id` "gapless", and that is both false
 and the wrong property. It is false because InnoDB burns an AUTO_INCREMENT value on a rolled-back
 transaction and interleaves values across concurrent statements under
-`innodb_autoinc_lock_mode = 2`, the MySQL 8.0 default (**DOCS-CITED**, MySQL 8.0 reference manual;
-**verified at provisioning** with every other MySQL fact of [§ 6.1](#61-deployment-posture)). And it is
-the wrong property because a cursor does not care about holes: it needs **no row with `id ≤ cursor` to
+`innodb_autoinc_lock_mode`, whose value decides how far. ⚠ **MariaDB's default for that variable is
+UNVERIFIED here** — the MySQL 8.0 default of `2` was the earlier citation and it does not survive the
+repin ([§ 6.1](#61-deployment-posture)) — and it deliberately stays unresolved, because the paragraph
+below needs only that the ids are *not* gapless, which the rolled-back transaction already
+settles. It is **verified at provisioning** with every other engine fact of
+[§ 6.1](#61-deployment-posture). And it is the wrong property because a cursor does not care about holes: it needs **no row with `id ≤ cursor` to
 become visible after the cursor has passed it**. AUTO_INCREMENT does not give that either — ids are
 assigned at `INSERT` and rows become visible at `COMMIT`, so two overlapping ingest transactions for
 one seat (an anticipated state: D1 § 10.3's ambiguous-timeout retry) can commit out of id order, and a
@@ -1773,7 +1812,7 @@ has committed or rolled back. 2 s is ~3 orders of magnitude above the ingest tra
 specifies (one multi-row `INSERT` of ≤ 200 events plus one `batches` row,
 [§ 2.1](#21-processes)), and an ingest transaction that exceeds 2 s is a slow-query alarm in its own
 right. The residual is stated rather than hidden: this is a bound, not a proof — an exact guarantee
-would need a commit-ordered column, which MySQL does not offer — and
+would need a commit-ordered column, which MariaDB does not offer — and
 [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) is the test that drives
 two overlapping same-seat ingest transactions against a live fold rather than reasoning about them. The
 lag covers the advance that *reads* rows; the purged-window branch above advances without reading any,
@@ -1894,6 +1933,13 @@ against 8,980 deltas. An earlier draft sized this table at the delta rate; the e
 (it over-sized the store by 1.7 MB/seat-day) but it made two rows of
 [§ 12](#12-every-number-and-where-it-comes-from) claim a derivation they did not have.
 
+⚠ **The `data` bytes in the row cost above were modelled on a BINARY `JSON` column, and MariaDB's
+`JSON` is an alias for `LONGTEXT` ([§ 6.1](#61-deployment-posture)).** How the two compare, in
+stored bytes and in read/write cost, is **UNSOURCED** — neither vendor isolates the whole-column
+access pattern this schema uses, and no benchmark has been run. That is a measurement this
+document does not have rather than a parity it is claiming, and it closes the same way every
+other figure here does: re-measured against the real table at provisioning.
+
 Read the shape rather than the digits: at the fleet sizes this product is for, the entire store fits in
 a few gigabytes, so **no design decision here is made for storage reasons** — not the retention window,
 not the JSON column, not the transitions table. The one number that would change that is the seat count,
@@ -1904,7 +1950,7 @@ row-cost model above, and they are the largest block of hand-verified arithmetic
 `tools/design/verify-fleet-state.py` checks that each of them appears at the
 [§ 12](#12-every-number-and-where-it-comes-from) row that cites this section — it does **not** re-derive
 the row-cost model itself, because the 449 B column sum and the 153 B index-entry figure are properties
-of a MySQL host that does not exist yet ([§ 6.1](#61-deployment-posture)). Both are re-measured at
+of a MariaDB host that does not exist yet ([§ 6.1](#61-deployment-posture)). Both are re-measured at
 provisioning against the real table, which is when they stop being estimates; the closure act is stated
 here rather than left implicit.
 
@@ -1914,7 +1960,10 @@ here rather than left implicit.
 ingest outage. Three rules, and the first one is the one that gets skipped:
 
 1. **Every migration on `events` states its algorithm in a comment and the deploy checks it** —
-   `ALGORITHM=INSTANT` for an added nullable column at the end (MySQL ≥ 8.0.12), `INPLACE` for a
+   `ALGORITHM=INSTANT` for an added nullable column at the end (MariaDB 10.3.2/10.4 by
+   operation, well under
+   [§ 6.1](#61-deployment-posture)'s floor, and with no MySQL-style 64-row-version ceiling forcing a
+   later rebuild), `INPLACE` for a
    secondary index. Anything that would be `COPY` does not ship as a migration; it ships as a documented
    maintenance-window operation or not at all.
 2. **A projection change needs no `ALTER` on `events` at all** — add the column to the projection, then
@@ -2459,7 +2508,7 @@ floor subscribes to what it renders and a future per-install authorization has a
 | `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
-[AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with MySQL down the
+[AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
 connection is accepted and immediately sent `fleet.health` with `db: "down"`, which is the whole reason
 the socket stays up in that posture. It is a separate message type from `feed.heartbeat` even though
 both carry the same object, because the heartbeat is unconditional and periodic — a client that inferred
@@ -3092,7 +3141,7 @@ and the gate on trusting the derived signal at all.*
 
 ### AT-D2-12 the store failing is never a quiet zero
 
-- **Build:** run the app with MySQL stopped.
+- **Build:** run the app with the store stopped.
 - **GREEN:** `POST /api/ingest/events` returns `503` (retryable — the reporter spools and nothing is
   acknowledged); `GET /api/fleet/snapshot` returns `503 fleet_unavailable` with a machine-readable body
   and **no `installs` key at all**; a connected WebSocket client receives `fleet.health` with
@@ -3436,7 +3485,7 @@ document.
 | Rate limit, browser session | 600 req/min | **Chosen** — ~10 req/s, above any human interaction and far below anything the store notices | [§ 9](#9-read-side-authentication) |
 | Task-title tier staleness | 30 min | **Chosen, provisional** — a card title older than half an hour is likely describing the previous task; re-derived once the board producer exists and its poll cadence is known ([§ 14](#14-open-questions-for-the-review-loop) item 3) | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
 | Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h (`call_closed_by_wire`), any server ceiling in 24 h and constant-server over ≥ 10 (`attention_resolved_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
-| MySQL version floor | 8.0.12 | **Cited** — DOCS-CITED (MySQL 8.0 manual) for `SKIP LOCKED`, `ALGORITHM=INSTANT`, `JSON`, `DATETIME(3)`; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
+| Store version floor | 11.8.6 | **Ruled** — operator, card#7523 (2026-09-09), replacing MySQL ≥ 8.0.12. The features under it are DOCS-CITED to the MariaDB Knowledge Base: `SKIP LOCKED` (10.6.0), `ALGORITHM=INSTANT` (10.3.2/10.4 by operation), `DATETIME(3)`, and `JSON` as a `LONGTEXT` alias rather than a binary type; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
 | Redis test databases | 11 / 10 | **Chosen** — against the fleet's published claims (14/15, 13/12, 15/14, 2/3 on roundtable #349) and clear of the `0`/`1` defaults every unpinned seat gets | [§ 6.2](#62-database-names-pinned-and-published) |
 
 **Three figures rest on an estimate and say so at their definition:** everything derived from D1's
@@ -3468,7 +3517,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | Every **Cited** row's agreement with D1 | — | **hand-verified**: the tool checks the number's presence at its D2 home, not its truth at D1's |
 
 **What the tool deliberately does not do.** It does not check prose for meaning, it does not verify
-MySQL behaviour (no host exists), and it does not re-derive the D1 obligations that carry no marker.
+MariaDB behaviour (no host exists), and it does not re-derive the D1 obligations that carry no marker.
 Where a guard class could not be mechanised without implementing the system, the tool implements the
 nearest checkable invariant and **says so in its own output** rather than reporting a clean over a
 population it never measured.
@@ -3494,7 +3543,7 @@ review can reverse it deliberately rather than discover it later.
 | 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
 | 10 | **The live feed is browser-only; machine consumers poll REST** | authenticate the socket with an `mzr_` token too | A long-lived socket needs revocation *on an open connection*, which is a mechanism nobody has asked for; the known machine consumer's decision cadence is minutes | a future consumer needing sub-second fleet state gets polling latency; reversing this means specifying socket re-authorization, not opening a port |
 | 11 | **REST carries the compatibility discipline; the WebSocket does not** | apply `docs/VERSIONING.md § Wire compatibility` to both | Only REST has a consumer that upgrades on someone else's schedule. An N/N-1 window on a channel whose two ends ship in one act is an obligation nobody can exercise, and therefore one nobody maintains | if the delta feed ever gains an independent consumer this is wrong — which is a checkable condition, stated in [§ 8.1](#81-two-surfaces-two-compatibility-postures) as the trigger |
-| 12 | **`events` is not partitioned** | RANGE partition on `received_at` for O(1) purge by `DROP PARTITION` | MySQL requires every unique key to contain every partitioning column, so `uq_dedup` would become `(seat_ref, event_id, received_at)` — under which a re-sent event on a later day no longer conflicts and **`D2-MUST` #3's dedup silently stops working**. A cheap purge is not worth the guarantee it would break | purge is bounded `DELETE`s with a wall-clock budget instead, and `purge_backlog_rows` says when that stops keeping up |
+| 12 | **`events` is not partitioned** | RANGE partition on `received_at` for O(1) purge by `DROP PARTITION` | MariaDB requires every unique key to contain every partitioning column, so `uq_dedup` would become `(seat_ref, event_id, received_at)` — under which a re-sent event on a later day no longer conflicts and **`D2-MUST` #3's dedup silently stops working**. A cheap purge is not worth the guarantee it would break | purge is bounded `DELETE`s with a wall-clock budget instead, and `purge_backlog_rows` says when that stops keeping up |
 | 13 | **`data` stays opaque JSON; the fold projects every field the state model reads** | generated/stored columns or functional indexes over `data` | One home per fact, and a projection change needs no `ALTER` on the largest table — just a rebuild. Indexing into a JSON column would make the log's shape part of the query plan | the projections must be kept in step with D1's field tables, which is what [AT-D2-10](#at-d2-10-rebuild-equals-fold) and the fixtures are for |
 | 14 | **ULIDs stored as `CHAR(26) ascii_bin`** | `BINARY(16)` | 10 B/row cheaper is ~0.1 MB/seat/day against every diagnostic query needing a conversion function, on a store whose total is single-digit gigabytes. Legibility wins where storage is not scarce | ~1.4 % of the store |
 | 15 | **Integer surrogate keys (`seat_ref`) on every hot table** | natural keys (`install_id`, `seat_id`) everywhere | ~76 B against 4 on every event row *and* in every index entry — the one place in this schema where the storage argument actually binds | one join to render a seat name, on a table with tens of rows |
@@ -3583,7 +3632,7 @@ D1's: they need an operator answer, a proposal document, or D3.
    member with `uptime_s` beside it. **No wire change**, and
    [§ 7.3](#73-how-the-reporters-own-counters-are-handled) is unchanged.
 
-6. **⇢ Operator — backups for the store, and where the sandbox's MySQL lives.**
+6. **⇢ Operator — backups for the store, and where the sandbox's MariaDB lives.**
    [§ 6.10](#610-durability-posture) argues that backups are an operational choice rather than a
    correctness requirement, because everything but `events` is rebuildable and `events` expires in 14
    days. That is a recommendation, not a ruling. Separately: prod's store is on a dedicated host
