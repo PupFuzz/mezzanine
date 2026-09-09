@@ -133,9 +133,9 @@ merge to `dev`. `aimla-pm` works cards and submits PRs here to rule on. Upstream
 reports: `sola-pm` = agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge +
 agent-board-toolkit.
 
-**Burn-down (operator, 2026-09-09).** **Sprint 1 is DEFINED** (5 cards, #62); lanes are tag-driven
-(`lane:now`/`lane:next`/`lane:blocked`). A request for the page always means REGENERATE, never
-`cat`. Changing the set + full rule: § Burn-down below the PROJECT ADDENDUM divider.
+**Burn-down (operator, 2026-09-09).** **Sprint 1 is DEFINED**: ONE lane `A` — *MEZZANINE - next
+release to main (v0.3.0)* — holding 5 cards tagged `lane:A`. A request for the page always means
+REGENERATE, never `cat`. Changing the set + full rule: § Burn-down below the PROJECT ADDENDUM divider.
 
 ⚠ This block is injected verbatim every session and is cut at ~1900 B, gates first so a cut can only
 remove elaboration. Keep it under that: `awk '/BEGIN coord:install-rules/,/END coord:install-rules/' CLAUDE.md | wc -c`
@@ -725,11 +725,15 @@ setup and must not be applied here:
 
 ## Burn-down
 
-**Sprint 1 is defined** (2026-09-09, PupFuzz/mezzanine#62). The lanes are **tag-driven**: each lane's
-`members` is `{"tag": true}`, which `sprint-burndown.py` resolves to the tag `<tag_prefix><key>` —
-`lane:now`, `lane:next`, `lane:blocked` (`tag_prefix` is `lane:`). Sprint membership is therefore
-**independent of which column a card sits in**, which is the whole point of the swap away from the
-earlier `filter.column` mirrors.
+**Sprint 1 is defined** (2026-09-09, PupFuzz/mezzanine#62, narrowed to one lane by #64). It is a
+**single lane** keyed `A`, titled *MEZZANINE - next release to main (v0.3.0)*, holding the 5 cards
+committed to that release.
+
+The lane is **tag-driven**: `members` is `{"tag": true}`, which `sprint-burndown.py` resolves to the
+tag `<tag_prefix><key>` — here `lane:A` (`tag_prefix` is `lane:`). Sprint membership is therefore
+**independent of which column a card sits in**, which is the point of the swap away from the earlier
+`filter.column` mirrors. Adding a second lane means adding a `sprint.lanes[]` entry and tagging cards
+`lane:<its key>`; the key is case-sensitive (`lane:A`, not `lane:a`).
 
 **To change the committed set**, retag the cards — do not edit the page:
 
