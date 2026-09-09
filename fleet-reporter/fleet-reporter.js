@@ -952,6 +952,14 @@ function matchClose(ix, sessionId, toolName, harnessRef) {
 const SESSION_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 const TOOL_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
+/* § 6.6's kill signature, LEG 2 — "`error` reports exit 137". The harness's wording is
+ * "Exit code 137" (MEASURED at 2.1.245, card #7337), and the match is deliberately on the CODE
+ * rather than on the sentence: this leg discriminates nothing on its own — the session boundary
+ * beside it is what does the work — so a broad code match costs nothing, while a match pinned to
+ * the harness's exact phrasing would stop firing silently the day that phrasing moved, restoring
+ * the very defect the signature exists to prevent (a `/clear` kill closing `failed`). */
+const EXIT_137_RE = /(?:^|\D)137(?:\D|$)/;
+
 /* § 3.2 — session_id is taken VERBATIM and never parsed, normalised or interpreted. A value
  * failing the pattern becomes null and is counted; the event is still emitted, because an event
  * with an unknown session is worth more than no event. */
@@ -1369,16 +1377,6 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
     case 'PostToolUseFailure': {
       touchSession(ctx, ix, sid);
       const failed = hookName === 'PostToolUseFailure';
-      let outcome = 'completed', abortReason = null;
-      if (failed) {
-        // § 6.6 — is_interrupt is the harness's OWN kill-vs-fail discriminator and this design
-        // uses it rather than re-deriving one. An interrupted call did not fail; it stopped
-        // existing, which is § 8.1's subject exactly.
-        const ii = payload.is_interrupt;
-        if (typeof ii !== 'boolean') count('payload_key_missing.is_interrupt');
-        if (ii === true) { outcome = 'aborted'; abortReason = 'interrupted'; }
-        else outcome = 'failed';
-      }
       const toolName = typeof payload.tool_name === 'string' ? payload.tool_name : 'INVALID_TOOL_NAME';
       const ref = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : null;
       const m = matchClose(ix, sid, toolName, ref);
@@ -1398,6 +1396,39 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         matchKind = 'synthesized';
       } else if (m.tombstone) {
         count('tombstone_late_close');   // the reap was too eager for this call
+      }
+      /* § 6.6's KILL SIGNATURE — two independent signals, and NEITHER MAY BE PROMOTED TO A SOLE
+       * RULE. `is_interrupt` is the harness's own kill-vs-fail discriminator, but it is MEASURED
+       * `false` on the headline kill (a `/clear` SIGKILL reports `Exit code 137` with
+       * `is_interrupt: false`, card #7337 at 2.1.245), so it alone misses that kill and mints the
+       * false idle this ledger exists to prevent. Exit 137 alone is SIGKILL in general — an OOM
+       * kill is a GENUINE failure the agent reads and carries on from, and reading it as `aborted`
+       * would block *idle* on a turn that legitimately finished, the same defect wearing the other
+       * hat. So the second leg is exit 137 AND a session boundary, which is § 8.6's structural
+       * fact: a call belongs to the session it was opened in.
+       *
+       * IT IS EVALUATED HERE, after the close has found its call, and not on the payload alone —
+       * the boundary is a property of the CALL, so it is unknowable until the match is made. */
+      let outcome = failed ? 'failed' : 'completed', abortReason = null;
+      if (failed) {
+        const ii = payload.is_interrupt;
+        if (typeof ii !== 'boolean') count('payload_key_missing.is_interrupt');
+        const err = key(payload, 'error');
+        const exit137 = typeof err === 'string' && EXIT_137_RE.test(err);
+        // BOTH ids must be real for the comparison to mean anything: a null session_id is
+        // `bad_session_id`'s artifact (§ 3.2), not a boundary, and a SYNTHESIZED entry carries
+        // this hook's own session because the open was never seen — in both cases the leg cannot
+        // fire, which the counter below then says out loud rather than assuming away.
+        const crossSession = typeof sid === 'string' && typeof entry.session_id === 'string'
+          && entry.session_id !== sid;
+        if (ii === true || (exit137 && crossSession)) { outcome = 'aborted'; abortReason = 'interrupted'; }
+        else if (exit137) {
+          // § 6.6's STATED RESIDUAL, made visible instead of assumed away: a SIGKILL whose close
+          // did not cross a session boundary closes `failed`. An OOM kill increments this
+          // legitimately, so § 9.3 reads it as a rate rather than an alarm; a `/clear` kill
+          // appearing here is the close beating both `/clear` signals.
+          count('kill_close_same_session');
+        }
       }
       const d = durationFor(entry, payload, atMs);
       if (!m.tombstone) {
@@ -2703,7 +2734,7 @@ const READS = {
   StopFailure: { keys: ['session_id', 'hook_event_name', 'error'], enums: { error: ENUM.stopfailure_error } },
   PreToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_input', 'tool_use_id', 'prompt_id', 'agent_id'], enums: {} },
   PostToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'prompt_id'], enums: {} },
-  PostToolUseFailure: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'is_interrupt', 'prompt_id'], enums: {} },
+  PostToolUseFailure: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_use_id', 'duration_ms', 'is_interrupt', 'error', 'prompt_id'], enums: {} },
   SubagentStart: { keys: ['session_id', 'hook_event_name', 'agent_id'], enums: {} },
   SubagentStop: { keys: ['session_id', 'hook_event_name', 'agent_id'], enums: {} },
   PreCompact: { keys: ['session_id', 'hook_event_name', 'trigger'], enums: { trigger: ENUM.precompact_trigger } },
