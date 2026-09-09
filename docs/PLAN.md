@@ -289,14 +289,33 @@ rule violations anyone could have committed at the time.
   provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
 - **A deployed host installs with `composer install --no-dev`, and that is a security obligation
   rather than a size one.** `database/factories/` and `database/seeders/` are in composer's
-  **`autoload-dev`** block (card#9070's review round moved them), so on a `--no-dev` install the
-  known-credential minter `Database\Factories\UserFactory` — it hashes the literal `password` — is
-  not loadable at all, and neither is any seeder. Install *with* dev dependencies and it is loadable
-  again: the two halves are one obligation. Verified rather than reasoned: a real `--no-dev` install
+  **`autoload-dev`** block (card#9070's review round moved them), so on a `--no-dev` install
+  `Database\Factories\UserFactory` and every seeder are not loadable at all. Install *with* dev
+  dependencies and they are loadable again: the two halves are one obligation. ⚠ **This is now
+  defence in depth rather than the whole defence**, and the change is card#9070's second review
+  round: the factory used to hash the literal `password`, and it now mints a random value per run
+  (`UserFactory::password()`), so there is no known credential left for a dev-dependency install to
+  expose. The obligation stays because it is the cheaper of the two guarantees to lose — nothing
+  reds if a host never honours the flag, and `bin/deploy.sh` does not exist yet to honour it. Verified rather than reasoned: a real `--no-dev` install
   from this lockfile resolves `App\Admin\UserProvisioning` and does **not** resolve
   `Database\Factories\UserFactory`. `server/tests/Feature/Admin/ProductionAutoloadTest` holds the
   repo's half — the namespaces stay dev-only, and nothing under a production autoload root mints a
   credential from a literal.
+- **A deployed host sets `CACHE_STORE` to a store that PERSISTS between requests — `.env.example`
+  ships `database` — and `array` or `null` is a security regression rather than a tuning choice.**
+  The login path's non-enumerability depends on it: `server/app/Auth/ActiveUserProvider` pays for
+  its dummy bcrypt **once per deployment** by keeping it in the cache, so an unknown address and a
+  known one with a wrong password cost the same hashing work. On a store that does not survive the
+  request, every miss mints that hash again — two bcrypts against one — and the timing difference
+  between "no such account" and "wrong password" comes back as a user-enumeration oracle, on an
+  endpoint whose rate limiter keys on **email+IP** and therefore does not throttle probing N
+  addresses from one IP at all. The class's own docblock names this as the one configuration that
+  reintroduces the oracle; this bullet is where an operator standing a host up reads it, because a
+  comment in `app/` is not a deployment obligation. The property itself is held by
+  `server/tests/Feature/Admin/AuthSecretsNeverSurfaceTest::test_a_miss_and_a_hit_cost_the_same_total_hashing_work`
+  and by `::test_the_dummy_hash_survives_the_request_that_minted_it` — the second is the arm that
+  reds when the value stops outliving a request, which is exactly what a non-persistent store does
+  to it.
 - Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no

@@ -5,15 +5,37 @@ namespace Tests\Feature\Admin;
 use PHPUnit\Framework\TestCase;
 
 /**
- * ⛔ NOTHING THAT MINTS A KNOWN CREDENTIAL IS LOADABLE ON A DEPLOYED HOST — the CLASS behind the
- * seeder bug card#9070 found, closed here in its first review round.
+ * ⛔ NOTHING UNDER A PRODUCTION AUTOLOAD ROOT MINTS A KNOWN CREDENTIAL, AND THE TWO MINTING
+ * NAMESPACES ARE NOT ON ONE — the CLASS behind the seeder bug card#9070 found, closed here in its
+ * first review round.
+ *
+ * ⚠ THAT HEADLINE USED TO READ "NOTHING THAT MINTS A KNOWN CREDENTIAL IS LOADABLE ON A DEPLOYED
+ * HOST", AND IT WAS ONE CLAUSE WIDER THAN THE CHECK BELOW. Card#9070's SECOND review round named
+ * the gap: four trees are loaded on a deployed host and reach it through NO AUTOLOADER AT ALL, so
+ * they are in neither `composer.json` block, `--no-dev` does not touch them, and arm 2's
+ * psr-4-derived population cannot see them —
+ *
+ *   `database/migrations/`  the migrator requires these by PATH, and `php artisan migrate` is a
+ *                           production command;
+ *   `routes/`               loaded by path from `bootstrap/app.php`;
+ *   `config/`               loaded by path by the framework's config loader;
+ *   `bootstrap/`            the entry point itself.
+ *
+ * That was a CLAIM defect rather than a live hole, and the difference was measured rather than
+ * assumed: a sweep for the same literal-minting spellings over `app/ database/ routes/ config/
+ * bootstrap/ tests/` finds none outside a comment. It found exactly one when the round began —
+ * `database/factories/UserFactory` — and that one now mints a random value per run instead of the
+ * literal `password`, so the sweep's answer is zero by construction and not by luck.
+ * `docs/PLAN.md § 5`'s wording, "nothing under a production autoload root", was exact all along
+ * and is the sentence this headline now matches.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHAT THE ORIGINAL BUG WAS AND WHY FIXING IT WAS NOT ENOUGH. `database/seeders/DatabaseSeeder.php`
  * shipped Laravel's stock body — `User::factory()->create(['email' => 'test@example.com'])` — and
- * `Database\Factories\UserFactory::definition()` hashes the literal `password`. So
- * `php artisan db:seed` on a deployed host put an account with a publicly known password behind
- * the login page. The seeder was emptied, which closes the INSTANCE.
+ * `Database\Factories\UserFactory::definition()` hashed the literal `password` — it mints a random
+ * value per run since the second review round. So `php artisan db:seed` on a deployed host put an
+ * account with a publicly known password behind the login page. The seeder was emptied, which
+ * closes the INSTANCE.
  *
  * The MECHANISM the change itself named — the minter sitting in composer's PRODUCTION `autoload`
  * block rather than in `autoload-dev` — was untouched, so the N+1th caller re-mints the bug for
@@ -49,7 +71,10 @@ class ProductionAutoloadTest extends TestCase
      *
      * ⚠ WHAT IT DOES NOT CATCH, SAID PLAINLY RATHER THAN LEFT TO BE ASSUMED: a bare
      * `$someHasher->make('literal')` through a variable, or a pre-computed `$2y$…` literal pasted
-     * in whole. It is narrow ON PURPOSE — a detector with false positives stops being run — and it
+     * in whole. And what it catches that it should not: it matches inside COMMENTS, so a docblock
+     * under a production root that merely NAMES one of these spellings reds arm 2. This file's own
+     * docblock contains such a string and is safe only because it lives in `tests/`, which is not
+     * a production root. It is narrow ON PURPOSE — a detector with false positives stops being run — and it
      * is not the only thing standing between a literal credential and a deployed host: the arm above
      * is, by keeping the whole minting namespace off a production install.
      */

@@ -78,6 +78,31 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   that route for both branches, and re-minted if `BCRYPT_ROUNDS` changes); the residual is one cache
   read on the miss path. The arm that missed this counted `check()` and *stubbed* `make()` — it
   counts total hashing work on both paths now, which is the property.
+  ⛔ **AND THE COMMAND PRINTED A PASSWORD IT HAD NOT STORED — found in the second review round, on
+  the one surface this repository calls the only way back from a locked-out install.** Rate,
+  re-derived rather than relayed: 20 000 draws of `Str::password(24)` pushed through a real console
+  formatter came back mismatched 132 times — 0.66%, about one run in 150. `Str::password()`'s alphabet contains `<`, `>` and `\`, and
+  `Illuminate\Console\Command::line()` writes through Symfony's console formatter, whose last act
+  rewrites `\<` and `\>` and whose first consumes anything shaped like a style tag. So the operator
+  was shown a value that would not sign in while the account was created with the unmangled one —
+  an application with no mailer, no password reset and no registration page, and an address burned
+  permanently because a retired row is unrenameable. It had been reporting itself for a round as a
+  flaky test (the end-to-end `--generate` arm failed about one run in forty). Every credential this
+  application prints now goes through `App\Console\SecretLine`, which writes `OUTPUT_RAW` — the
+  bytes given are the bytes written, so nothing has to stay a transformation's inverse — and all
+  three commands that print a secret route through it rather than each being safe or not depending
+  on its own alphabet.
+  ⚠ **Three more from that round.** The retirement act and its command held two spellings of one
+  emptiness test, so `mezzanine:retire --by="   "` walked past the command's `=== ''` refusal into
+  the act's `trim()` throw and gave the operator a stack trace where the documented answer is
+  `INVALID`; the predicate now lives once, in `App\Support\RetirementAttribution`.
+  `UserProvisioning::update()` decided "is this account retired?" on the model implicit route-model
+  binding resolved at the top of the request, so an account retired mid-form could still be
+  renamed — it now re-reads under `lockForUpdate()` inside the transaction that writes, the way the
+  sibling act next to it already did. And `CACHE_STORE` is now a stated deployment obligation
+  beside `--no-dev`: the equal-cost login path depends on a store that persists between requests,
+  and only the `--no-dev` half of the round's two obligations had reached the list an operator
+  standing up a host reads.
 
 - **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
   does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both
