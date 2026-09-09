@@ -103,6 +103,22 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   beside `--no-dev`: the equal-cost login path depends on a store that persists between requests,
   and only the `--no-dev` half of the round's two obligations had reached the list an operator
   standing up a host reads.
+  ⛔ **AND THE THIRD REVIEW ROUND FOUND THE SAME SHAPE IN BOTH ACTS THAT MATTER MOST.** A seat
+  retirement decided its § 2.1 no-op on a read taken *before* its transaction and then UPDATEd on
+  `id` alone, so two retirements of one seat both passed the guard and both wrote — the second
+  overwriting the original author, reason and timestamp, and telling every connected floor the seat
+  retired twice. A double-clicked console button was enough. The guard now lives IN the UPDATE
+  (`whereNull('retired_at')`, the shape `mezzanine:feed-token:revoke` already revokes with), so
+  `0 rows affected` **is** the no-op and no lock is load-bearing for it.
+  ⛔ **And a password reset wrote the hash and nothing else, which is not a recovery from the
+  compromise it exists for.** `SESSION_DRIVER=database` makes a signed-in browser's authority a ROW
+  that survives a password change — Laravel's opt-in for invalidating it, `AuthenticateSession`, is
+  not on this stack — and remember-me is live end to end, so a stolen session cookie or remember-me
+  cookie kept working after the **only** compromise-recovery path this product has (no mailer, no
+  self-service reset). A reset now rotates `remember_token` and deletes that account's
+  `web_sessions` rows, **including the one the request is on**: a stolen session cookie *is* that
+  session's id, so "log the other devices out but keep mine" would keep the attacker's. A self-reset
+  therefore signs the operator out, and the edit form says so.
 
 - **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
   does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both
