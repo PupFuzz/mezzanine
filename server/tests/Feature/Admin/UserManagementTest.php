@@ -6,6 +6,7 @@ use App\Admin\UserProvisioning;
 use App\Admin\UserRetirement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -127,6 +128,115 @@ class UserManagementTest extends TestCase
         $this->post('/logout');
         $this->post('/login', ['email' => $target->email, 'password' => self::PASSWORD]);
         $this->assertAuthenticatedAs($target->fresh());
+    }
+
+    /**
+     * ⛔ A RESET THAT ONLY WRITES THE HASH DOES NOT RECOVER FROM THE COMPROMISE IT EXISTS FOR —
+     * card#9070's third review round. There is no mailer and no self-service reset, so this console
+     * is the product's ONLY recovery path, and a stolen session cookie or remember-me cookie
+     * survived the act performed to take it away.
+     *
+     * ⚠ THE ROW UNDER ASSERTION IS A REAL ONE. `phpunit.xml` pins `SESSION_DRIVER=array`; it is
+     * switched to `database` here — the driver this deploys on — so the row the reset has to
+     * remove is one `Illuminate\Session\DatabaseSessionHandler` wrote on a real authenticated
+     * request, `user_id` and all. Inserting it by hand would only have asserted that a DELETE
+     * deletes, and would not have shown that this DELETE matches what the handler WRITES.
+     *
+     * ⚠ THE CONTROL'S ROW IS A COPY OF THAT ONE, AND THAT LIMIT IS THE HARNESS'S. A second
+     * browser is not producible inside one test — the test application resolves a single session
+     * store for the whole method, so every request in it shares one session id (measured: a second
+     * `actingAs()->get()` rewrites the same row rather than adding one). The bystander's row is
+     * therefore cloned from the row the handler wrote, under a different id and user, so what the
+     * control still establishes is the DELETE's scope: it is keyed on `user_id` and is not a wipe.
+     */
+    public function test_a_password_reset_ends_the_targets_live_sessions_and_remember_me(): void
+    {
+        config(['session.driver' => 'database']);
+
+        $table = config('session.table', 'web_sessions');
+
+        $target = User::factory()->twoFactorConfirmed()->create();
+        $bystander = User::factory()->twoFactorConfirmed()->create();
+
+        $this->actingAs($target)->get(route('admin.users.index'))->assertOk();
+
+        $target->setRememberToken($stolen = 'a-remember-token-from-before-the-reset');
+        $target->save();
+
+        // The precondition, measured rather than assumed: the store really does hold a row for
+        // this account, written by the handler. Without it the assertion below passes on an empty
+        // table. `sole()` rather than `first()` — if there were two, the clone below would be
+        // copying something other than what it says it is.
+        $live = (array) DB::table($table)->where('user_id', $target->getKey())->sole();
+
+        DB::table($table)->insert(
+            ['id' => 'a-second-browser-belonging-to-someone-else', 'user_id' => $bystander->getKey()] + $live,
+        );
+
+        $this->assertSame(1, DB::table($table)->where('user_id', $bystander->getKey())->count());
+
+        $this->actingAs($this->operator())
+            ->patch(route('admin.users.update', $target), [
+                'name' => $target->name,
+                'email' => $target->email,
+                'password' => self::PASSWORD,
+                'password_confirmation' => self::PASSWORD,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            0,
+            DB::table($table)->where('user_id', $target->getKey())->count(),
+            'a stolen session cookie must not outlive the reset performed to take it away',
+        );
+
+        $fresh = $target->fresh();
+
+        $this->assertNotSame($stolen, $fresh->remember_token, 'the remember-me cookie is a second door');
+        $this->assertNotNull($fresh->remember_token);
+        $this->assertTrue(Hash::check(self::PASSWORD, $fresh->password), 'and the reset itself landed');
+
+        // THE CONTROL: nobody else was signed out. A reset that truncated the table would satisfy
+        // the assertion above and be a different defect.
+        $this->assertSame(1, DB::table($table)->where('user_id', $bystander->getKey())->count());
+    }
+
+    /**
+     * The other direction, so the deletion above is known to be bound to the PASSWORD branch: an
+     * edit that changes a name is not a compromise recovery and must not sign the account out.
+     */
+    public function test_an_edit_with_no_new_password_leaves_the_targets_session_alone(): void
+    {
+        config(['session.driver' => 'database']);
+
+        $table = config('session.table', 'web_sessions');
+
+        $target = User::factory()->twoFactorConfirmed()->create(['name' => 'Before']);
+
+        $this->actingAs($target)->get(route('admin.users.index'))->assertOk();
+
+        $remember = $target->fresh()->remember_token;
+
+        $this->assertSame(1, DB::table($table)->where('user_id', $target->getKey())->count());
+
+        $this->actingAs($this->operator())
+            ->patch(route('admin.users.update', $target), [
+                'name' => 'After',
+                'email' => $target->email,
+                'password' => '',
+                'password_confirmation' => '',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $fresh = $target->fresh();
+
+        $this->assertSame('After', $fresh->name, 'the edit did land');
+        $this->assertSame(
+            1,
+            DB::table($table)->where('user_id', $target->getKey())->count(),
+            'a rename must not end the account\'s session',
+        );
+        $this->assertSame($remember, $fresh->remember_token);
     }
 
     // ── RETIRE (D2) ─────────────────────────────────────────────────────────────────────────

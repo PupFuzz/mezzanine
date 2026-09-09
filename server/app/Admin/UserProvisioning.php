@@ -98,6 +98,52 @@ final class UserProvisioning
      * — `App\Http\Controllers\Admin\UserController::update()` — reads `$user->email` afterwards
      * for the flash message, which must be the NEW address.
      *
+     * ⛔ A PASSWORD RESET ALSO ENDS THE SESSIONS AND THE REMEMBER-ME COOKIE THE OLD PASSWORD
+     * BOUGHT — added in card#9070's THIRD review round, which measured that this method wrote the
+     * hash and nothing else.
+     *
+     * This console is the ONLY compromise-recovery path the product has: there is no mailer and
+     * therefore no self-service reset (`App\Admin\UserRetirement`'s D4 block establishes that), so
+     * "reset the password" is the whole of "get this account back". It did not recover it, because
+     * neither thing a live session actually runs on is the password:
+     *
+     *   · A SIGNED-IN BROWSER'S AUTHORITY IS A ROW. `config/session.php` resolves `SESSION_DRIVER`
+     *     to `database`, which is also what `.env.example` ships, and the table name to
+     *     `web_sessions` from its OWN default — no `SESSION_TABLE` is set anywhere, which is why
+     *     the config expression and not the env var is what the code below reads. Nothing in the
+     *     framework removes that row when the hash changes, and Laravel's opt-in for it,
+     *     `Illuminate\Session\Middleware\AuthenticateSession`, is NOT on this application's stack:
+     *     `bootstrap/app.php` aliases `mfa` and `fleet.read` and adds nothing to `web`, and
+     *     `route:list` carries it on ZERO of this application's routes. There was no second
+     *     mechanism doing this elsewhere.
+     *   · REMEMBER-ME IS LIVE END TO END. The checkbox in `resources/views/auth/login.blade.php`,
+     *     `rememberToken()` on the users migration, and `App\Auth\ActiveUserProvider` resolving a
+     *     user BY that token. A stolen remember cookie therefore re-authenticates after the reset
+     *     and mints a fresh session, which is the same access back through a second door.
+     *
+     * ⛔ EVERY ROW GOES, INCLUDING THE ONE THIS REQUEST IS ON. "Log the other devices out but keep
+     * mine" is not available to a recovery act: a stolen session cookie IS this session's id, so
+     * the row an operator resetting their OWN password would be keeping is the row an attacker is
+     * holding a copy of. The cost is one sign-in, paid only on a self-reset, with the password just
+     * set.
+     *
+     * ⚠ `Auth::logoutOtherDevices()` IS NOT THE MECHANISM AND WOULD NOT HAVE WORKED HERE. It takes
+     * the ACTOR's password and re-authenticates the ACTOR, whereas the subject of this act is
+     * normally somebody else; and what it invalidates other sessions WITH is the password hash
+     * `AuthenticateSession` compares — the middleware this application does not run. It would have
+     * been a no-op with a reassuring name.
+     *
+     * ⚠ THE TABLE NAME IS READ FROM THE CONFIG, WHICH IS WHERE THE MIGRATION READS IT —
+     * `config('session.table', 'web_sessions')`, both halves. The rename off Laravel's stock
+     * `sessions` is forced (`docs/design/FLEET-STATE.md` § 6.4 owns that name for the fold's own
+     * projection), so a literal here would be a third copy free to disagree with the store.
+     *
+     * ⚠ WHAT THIS CANNOT DO, SAID RATHER THAN LEFT TO BE ASSUMED: it invalidates sessions only for
+     * a session store that IS this database. Under `SESSION_DRIVER=file` or `redis` the rows live
+     * somewhere this delete cannot reach and it removes nothing, silently. `config/session.php`'s
+     * default and `.env.example` both say `database`; a deployment that changes that takes this
+     * property with it.
+     *
      * @throws \InvalidArgumentException if the account is retired
      */
     public static function update(User $user, string $name, string $email, #[\SensitiveParameter] ?string $password = null): User
@@ -122,6 +168,15 @@ final class UserProvisioning
             // `password => 'hashed'`, so the assignment below is the only place a plaintext goes.
             if ($password !== null && $password !== '') {
                 $user->password = $password;
+
+                // The two credentials the old password bought, taken back in the same transaction
+                // that replaces it — see the docblock for why each one outlives the hash and why
+                // this one deletes the current session's row too.
+                $user->setRememberToken(Str::random(60));
+
+                DB::table(config('session.table', 'web_sessions'))
+                    ->where('user_id', $user->getKey())
+                    ->delete();
             }
 
             $user->save();

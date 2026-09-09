@@ -18,6 +18,13 @@
         <input id="password_confirmation" name="password_confirmation" type="password"
                autocomplete="new-password">
 
+        <p>
+            Setting a new password signs this account out everywhere it is currently signed in and
+            invalidates its &ldquo;remember me&rdquo; cookie. That is what makes it a recovery from
+            a stolen session rather than only a change of secret. Resetting your own password signs
+            you out here too &mdash; sign back in with the one you just set.
+        </p>
+
         <button type="submit">Save</button>
     </form>
 
