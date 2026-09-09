@@ -431,4 +431,55 @@ class UserManagementTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         UserProvisioning::update($retired, 'nobody', 'freed-slot@example.invalid');
     }
+
+    /**
+     * ⛔ THE SAME REFUSAL, AGAINST A SUBJECT THAT WAS ACTIVE WHEN THE REQUEST BOUND IT — the
+     * TIME-OF-CHECK/TIME-OF-USE half, found in card#9070's second review round.
+     *
+     * The arm above hands the act a model that is ALREADY retired, so it can only ever exercise a
+     * check made on the caller's own instance. Implicit route-model binding resolves the subject at
+     * the top of the request, so the instance the console's edit form saves through is a snapshot
+     * from before anything else committed: operator B opens the edit form for `alice`, operator A
+     * retires her, B saves. A guard that tests the SNAPSHOT passes, and the retired row's name and
+     * address are rewritten — the exact erasure D2 exists to prevent, through a narrower door than
+     * the one the first review round closed.
+     *
+     * ⚠ THE SIBLING ACT IN THE SAME CHANGE ALREADY TOOK THE OTHER POSITION.
+     * `App\Admin\UserRetirement::retire()` re-reads its target inside the transaction under the
+     * same lock as the count, and its docblock says why: "the model handed in was loaded before the
+     * request reached here". Two acts on one table disagreeing about one hazard is the finding;
+     * this arm is what stops them disagreeing again.
+     *
+     * ⚠ WHAT THIS DOES AND DOES NOT ESTABLISH. It drives the STALE-READ leg — the check is made
+     * against the store rather than against the caller's snapshot — which is the leg that is
+     * reachable with one request. It does NOT establish the lock: `lockForUpdate()` is a no-op on
+     * the SQLite this suite runs on and is honoured by the MySQL this deploys to
+     * (`docs/PLAN.md` D-15), the same limitation `UserRetirement`'s own docblock names.
+     */
+    public function test_the_provisioning_act_refuses_a_subject_retired_after_the_request_bound_it(): void
+    {
+        $target = User::factory()->create(['name' => 'Before', 'email' => 'target@example.com']);
+        User::factory()->create(); // so D4 never fires and the retirement below really happens
+
+        // The instance implicit route-model binding would have handed the controller.
+        $bound = User::query()->whereKey($target->getKey())->sole();
+        $this->assertFalse($bound->isRetired(), 'the precondition: the bound model still looks active');
+
+        // …and now the OTHER operator's request commits, through the real act.
+        $this->assertSame(
+            UserRetirement::RETIRED,
+            UserRetirement::retire($target, 'ops@example.com', 'left the team'),
+        );
+
+        try {
+            UserProvisioning::update($bound, 'After', 'freed-slot@example.invalid');
+            $this->fail('a retired record was rewritten through a model bound before the retirement');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('retired account is not writable', $e->getMessage());
+        }
+
+        $row = $target->fresh();
+        $this->assertSame('Before', $row->name, 'the record did not change');
+        $this->assertSame('target@example.com', $row->email, 'and the address stayed with it');
+    }
 }

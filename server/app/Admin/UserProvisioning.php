@@ -3,6 +3,7 @@
 namespace App\Admin;
 
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -76,29 +77,57 @@ final class UserProvisioning
      * own message. If an erasure is ever genuinely wanted, D2 puts it in its own louder command —
      * and that command changes this class, visibly, rather than slipping through a form.
      *
+     * ⛔ THE SUBJECT IS RE-READ UNDER A ROW LOCK, INSIDE THE TRANSACTION THAT WRITES — added in
+     * card#9070's SECOND review round, which measured that the guard above was reading a snapshot.
+     * `$user` arrives from implicit route-model binding, resolved at the top of the request, so
+     * `$user->isRetired()` answers a question about the past. Two operators, one retiring `alice`
+     * and one saving her edit form: B binds an active `alice`, A's retirement commits, and B's
+     * `save()` lands on a retired row — the same erasure the refusal above exists to prevent,
+     * through a narrower door. Testing the STORE instead of the snapshot closes the stale read; the
+     * lock closes the race, and it is the same lock `App\Admin\UserRetirement::retire()` takes over
+     * the same rows, so the two acts serialise against each other rather than interleaving.
+     *
+     * ⚠ IT IS A NO-OP ON SQLITE AND HONOURED BY MYSQL (`docs/PLAN.md` D-15), exactly as
+     * `UserRetirement` records of its own lock. The suite therefore drives the stale-read leg —
+     * `UserManagementTest::test_the_provisioning_act_refuses_a_subject_retired_after_the_request_bound_it`
+     * fails without this — and the race leg is reasoned, not executed. Said here rather than left
+     * to be assumed.
+     *
+     * ⚠ THE WRITE STILL GOES THROUGH `$user`, NOT THROUGH THE RE-READ. `save()` sends only DIRTY
+     * attributes, so a snapshot cannot carry a stale `retired_at` back over the row; and the caller
+     * — `App\Http\Controllers\Admin\UserController::update()` — reads `$user->email` afterwards
+     * for the flash message, which must be the NEW address.
+     *
      * @throws \InvalidArgumentException if the account is retired
      */
     public static function update(User $user, string $name, string $email, #[\SensitiveParameter] ?string $password = null): User
     {
-        if ($user->isRetired()) {
-            throw new \InvalidArgumentException(
-                'a retired account is not writable: its record is what survives the act (D2)'
-            );
-        }
+        return DB::transaction(function () use ($user, $name, $email, $password): User {
+            // The STORE's answer, not the request's — see the docblock. `firstOrFail()` rather than
+            // a null branch: nothing in this application deletes a user (D2 — accounts retire), so
+            // a missing row is not a state to handle, it is one to fail loudly on.
+            $current = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
 
-        $user->name = trim($name);
-        $user->email = self::canonicalEmail($email);
+            if ($current->isRetired()) {
+                throw new \InvalidArgumentException(
+                    'a retired account is not writable: its record is what survives the act (D2)'
+                );
+            }
 
-        // An empty new password means "leave the current one alone" — never "clear it". The
-        // console's edit form states the same thing to the operator; `User::$casts` declares
-        // `password => 'hashed'`, so the assignment below is the only place a plaintext goes.
-        if ($password !== null && $password !== '') {
-            $user->password = $password;
-        }
+            $user->name = trim($name);
+            $user->email = self::canonicalEmail($email);
 
-        $user->save();
+            // An empty new password means "leave the current one alone" — never "clear it". The
+            // console's edit form states the same thing to the operator; `User::$casts` declares
+            // `password => 'hashed'`, so the assignment below is the only place a plaintext goes.
+            if ($password !== null && $password !== '') {
+                $user->password = $password;
+            }
 
-        return $user;
+            $user->save();
+
+            return $user;
+        });
     }
 
     /**
