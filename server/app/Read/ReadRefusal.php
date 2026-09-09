@@ -77,14 +77,16 @@ final class ReadRefusal
     }
 
     /**
-     * A seat the read surfaces do not select — it never existed, or § 4.10's read filter has
-     * stopped selecting it 14 days after `retired_at`.
+     * A seat the read surfaces do not select — it never existed, or an operator retired it
+     * (§ 4.10's read filter, which stops selecting it AT `retired_at`; card#9078).
      *
      * The two are ONE answer on purpose. § 4.10 is explicit that the disappearance "must be a
-     * read filter and not a deletion", so the row is still there and an operator query can still
-     * find it — but the READ SURFACE has no more to say about it than about a seat that never
-     * was, and inventing a distinct code here would put the retention boundary on the wire as a
-     * fact a client could branch on. `404` and not `401`: the caller authenticated fine.
+     * read filter and not a deletion", so the row is still there and an operator query — and the
+     * console's retired-seat list — can still find it, but the READ SURFACE has no more to say
+     * about it than about a seat that never was. Inventing a distinct code here would put the
+     * retirement on the wire as a fact a client could branch on, and it is not this surface's to
+     * announce: `seat.retired` is the announcement, in the transaction that performed the act.
+     * `404` and not `401`: the caller authenticated fine.
      */
     public static function seatNotFound(): self
     {

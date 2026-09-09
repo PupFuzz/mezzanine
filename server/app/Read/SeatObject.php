@@ -177,7 +177,9 @@ final class SeatObject
      * The one seat, joined and built — the shape both the delta and the drill-down need.
      *
      * @return array<string, mixed>|null null when the seat row is gone (never for a retired seat:
-     *                                   § 4.10's 14 days is a READ FILTER and this is not it)
+     *                                   § 4.10's disappearance is a READ FILTER and this is not
+     *                                   it — this read is how the retirement's own delta and
+     *                                   `seat.retired` still carry the seat they announce)
      */
     public static function forSeatRef(int $seatRef, int $nowMs): ?array
     {

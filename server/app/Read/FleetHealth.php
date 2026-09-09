@@ -151,7 +151,11 @@ final class FleetHealth
     }
 
     /**
-     * § 8.2.4 / § 4.10: every seat NOT retired more than 14 days ago — the one population.
+     * § 8.2.4 / § 4.10: every seat an operator has not retired — the one population.
+     *
+     * ⚠ card#9078 moved the boundary from `retired_at + 14 days` to `retired_at`, so a retirement
+     * now drops `seats_total` in the same transaction that clears the desk. The two still move
+     * together, which is the property this method exists for.
      *
      * The predicate itself is `App\Read\RetirementFilter`'s, not this class's — see that class
      * for why one home rather than a `where()` per read site.

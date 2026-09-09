@@ -3,6 +3,7 @@
 namespace App\Read;
 
 use App\Fold\Clock;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -15,16 +16,18 @@ use Illuminate\Support\Facades\DB;
  * ⛔ § 4.10's DISAPPEARANCE IS A READ FILTER AND NOT A DELETION, AND `seats()` BELOW IS THAT
  * FILTER — the whole of it, in one place.
  *
- * "Does a retired seat appear in the snapshot? **Yes**, for **14 days** after `retired_at`, with
- * `render_state: "retired"` and a `retired` object … After 14 days the read queries stop
- * selecting it." "Is it purged? **No.** `seats` is retained forever; the 14 days is a READ
- * FILTER, not a deletion, so an operator query can still find the row and its reason."
+ * "Does a retired seat appear in the snapshot? **No** — it leaves at `retired_at`, on the
+ * announcement" (card#9078's operator ruling; the 14-day window it replaced is recorded in
+ * `App\Read\RetirementFilter`). "Is it purged? **No.** `seats` is retained forever; the filter is
+ * a READ FILTER, not a deletion, so an operator query — and the console's retired list, which is
+ * `retiredSeats()` below — can still find the row and its reason."
  *
- * AT-D2-23's PRIMARY RED — "the vanishing desk: drop retired seats from the snapshot query AT
- * `retired_at`" — is a mutation of the predicate below and of nothing else, which is why the
- * predicate is not spread across the two queries that need it. It is `FleetHealth::population()`
- * for the seat set, so the snapshot's seat list and `fleet.seats_total` cannot count different
- * populations; § 8.2.4 argues that case in terms and this is the code-side of it.
+ * AT-D2-23's PRIMARY RED — a retired seat that is STILL in the snapshot, or a seat removed for any
+ * reason other than the announcement — is a mutation of the predicate in `RetirementFilter` and of
+ * nothing else, which is why the predicate is not spread across the queries that need it. It is
+ * `FleetHealth::population()` for the seat set, so the snapshot's seat list and
+ * `fleet.seats_total` cannot count different populations; § 8.2.4 argues that case in terms and
+ * this is the code-side of it.
  *
  * ⚠ NO PAGINATION, DELIBERATELY, AND THE TRIGGER IS STATED. § 8.2.1: "A 50-seat snapshot is
  * ~91 KB, which is one response. Past **200 seats** (~362 KB typical) the snapshot should page by
@@ -68,20 +71,56 @@ final class Snapshot
      */
     public static function seats(): Collection
     {
-        return RetirementFilter::renderable(
-            DB::table('seat_state')
-                ->join('seats', 'seats.id', '=', 'seat_state.seat_ref')
-                ->join('installs', 'installs.id', '=', 'seats.install_ref')
-        )
+        return RetirementFilter::renderable(self::query())
             ->orderBy('installs.install_id')
             ->orderBy('seats.seat_id')
-            ->get([
-                'seat_state.*',
-                'installs.install_id',
-                'seats.seat_id',
-                'seats.retired_at',
-                'seats.retired_by',
-                'seats.retired_reason',
-            ]);
+            ->get(self::COLUMNS);
     }
+
+    /**
+     * The complement of `seats()`: every seat an operator has retired, newest retirement first.
+     *
+     * ⛔ THE RETIREMENT RECORD DOES NOT DISAPPEAR — IT MOVES, and this is where it moved to
+     * (card#9078). The desk goes at `retired_at`; `retired_at` / `retired_by` / `retired_reason`
+     * stay in the store forever (§ 6.7) and the admin console's agent module renders them from
+     * here. That is a better home than a ghost desk: it is queryable, it is not bounded by 14
+     * days, and it does not consume a slot on a floor whose slot count is finite.
+     *
+     * ⚠ SAME JOIN, SAME COLUMNS, OPPOSITE PREDICATE — `self::query()` and `self::COLUMNS` are
+     * shared with `seats()` above rather than written a second time. The two lists are one list
+     * because a console that selected its own would be free to disagree with the floor about what
+     * a seat IS, and the retirement record is exactly the field set that would go missing.
+     *
+     * @return Collection<int, object>
+     */
+    public static function retiredSeats(): Collection
+    {
+        return RetirementFilter::retired(self::query())
+            ->orderByDesc('seats.retired_at')
+            ->orderBy('installs.install_id')
+            ->orderBy('seats.seat_id')
+            ->get(self::COLUMNS);
+    }
+
+    /**
+     * The one join both reads above are built on. `seat_state` first, so that a seat with no
+     * `seat_state` row cannot appear on either list — there is no such seat (§ 6.4 writes the row
+     * at token-issue time), and this is the shape that keeps it true rather than a guard for it.
+     */
+    private static function query(): Builder
+    {
+        return DB::table('seat_state')
+            ->join('seats', 'seats.id', '=', 'seat_state.seat_ref')
+            ->join('installs', 'installs.id', '=', 'seats.install_ref');
+    }
+
+    /** @var list<string> */
+    private const COLUMNS = [
+        'seat_state.*',
+        'installs.install_id',
+        'seats.seat_id',
+        'seats.retired_at',
+        'seats.retired_by',
+        'seats.retired_reason',
+    ];
 }

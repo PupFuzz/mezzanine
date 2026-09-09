@@ -45,9 +45,17 @@ use Illuminate\Support\Facades\DB;
  * the transaction — while a rollback still reaches no client. `App\Events\SeatRetired`'s docblock
  * owns that argument; it is not restated here.
  *
- * ⛔ AND WHAT IS NOT A DELETION. "Is it purged? **No.** `seats` is retained forever (§ 6.7); the 14
- * days is a READ FILTER, not a deletion, so an operator query can still find the row and its
- * reason." Nothing here deletes anything, and `Purge` has no plan row for `seats`.
+ * ⛔ AND WHAT IS NOT A DELETION. "Is it purged? **No.** `seats` is retained forever (§ 6.7); the
+ * disappearance is a READ FILTER, not a deletion, so an operator query can still find the row and
+ * its reason." Nothing here deletes anything, and `Purge` has no plan row for `seats`.
+ *
+ * ⛔ WHAT card#9078's OPERATOR RULING CHANGED, AND WHAT IT DID NOT TOUCH IN THIS CLASS. The desk
+ * now goes at `retired_at` instead of fourteen days later — a change to `App\Read\RetirementFilter`
+ * and to nothing here. THE ACT IS UNCHANGED: the same three columns, the same recompute, the same
+ * `cause: operator` row, the same version bump, the same two publishes, in the same transaction.
+ * That is the point of the ruling rather than an accident of it — "retirement is an ANNOUNCEMENT,
+ * not an inference", and this class is the announcement. `seat.retired` is what a client removes a
+ * desk ON; a seat's absence from a delta, a poll or a scoped read still removes nothing, ever.
  *
  * ⛔ `$by` AND `$reason` ARE THIS ACT'S OBLIGATION, HELD HERE, AND ARE NOT DEFAULTED ANYWHERE.
  * § 4.5 calls retirement "an act with an AUTHOR and a REASON", and § 4.10 puts both on the wire in

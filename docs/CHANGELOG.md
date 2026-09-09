@@ -19,6 +19,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9078** — **a removed seat's desk goes immediately; retirement is an announcement, not an
+  inference.** Operator ruling, which **reverses `docs/design/FLOOR.md` § 3.5** and D2 § 4.10's
+  fourteen-day render window: *"A removal is a deliberate action by the operator. When an agent is
+  removed, its seat and desk should go away immediately."* `App\Read\RetirementFilter::renderable()`
+  now selects on `retired_at IS NULL` alone, so a retired seat leaves the snapshot, `seats_total`,
+  the seat-detail and timeline endpoints and the console's agent list in the same transaction that
+  announces it. **The 14-day window is retired, not kept as a backstop** — two removal paths for one
+  act would leave the second as dead code free to disagree with the first.
+  ⛤ **The record does not disappear, it MOVES**: the admin console's agent page gains a **retired
+  seats** list (`Snapshot::retiredSeats()`, the exact complement of the read the floor renders), so
+  `retired_at` / `retired_by` / `retired_reason` stay answerable with no window at all — a better
+  home than a ghost desk, and it consumes no slot on a finite floor.
+  ⛔ **What did not change, and must not:** removal is driven by the EXPLICIT retirement and never by
+  an absence — not by a delta, a poll, a scoped read, a timeout or silence. A seat that merely goes
+  quiet keeps its desk and renders degraded (`stale` at 300 s, `offline` at 900 s); that arm is
+  asserted, with the whole time axis driven past every ceiling in the design.
+  ⚠ **Docs and acceptance tests were rewritten, not deleted:** D3 § 3.5, § 2.3's backstop row, § 2.5,
+  § 4.2's lobby case, § 5.1, § 5.6, A13, § 7.1, decisions 10 and 35, § 12's number tables and
+  Appendix A; D2 § 4.2, § 4.5, § 4.10, § 6.7, § 8.2.1, § 8.2.4 and § 8.3. **AT-D2-23** and
+  **AT-D3-16** now assert the new rule and carry the old one in their own text — an acceptance test
+  that vanishes with the behaviour it pinned leaves no record that the rule was ever considered.
+  ⚠ **Gotcha for the floor build:** `docs/design/floor-preview/floor-preview.html` still draws a
+  retired desk. It is operator-ratified art direction and re-cutting it is its own change; the
+  artifact gate's `retired` label comparison is exempted with that stated in the gate itself.
 - **card#7459** — **the repo had no production deploy path at all.** `docs/PLAN.md § 5` + D-13 say
   prod moves only via `bin/deploy.sh` and that "hand-deploys to prod are not a path"; the file did
   not exist, so every prod change would have been a hand-deploy by construction. **`bin/deploy.sh`**
