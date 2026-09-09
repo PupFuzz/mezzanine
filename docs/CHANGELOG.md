@@ -19,6 +19,29 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7684** — **The reporter mapped `PostToolUseFailure` by `is_interrupt` alone while D1
+  § 6.6, amended by card#7337, required a two-signal kill signature** — so the code contradicted the
+  spec on the one hook the whole kill-vs-complete contract turns on. `is_interrupt` is MEASURED
+  `false` on the headline kill (a `/clear` SIGKILL reports `Exit code 137` at 2.1.245), which is the
+  hazard § 6.6 names in prose and the mapping then shipped: the killed call closed `failed`. ⭐ **The
+  fix is the conjunction, and neither leg may be promoted**: `is_interrupt`, **or** exit 137 across a
+  session boundary — because exit 137 alone is SIGKILL in general and an **OOM kill is a genuine
+  failure**, which read as `aborted` would block *idle* on a turn that legitimately finished, the
+  same defect wearing the other hat. The second leg is a property of the CALL, not of the payload,
+  so the mapping now runs **after** the close has matched its open entry rather than on the payload
+  alone. ⛔ **The leg that cannot fire says so** rather than being resolved silently: a SIGKILL close
+  that crosses no boundary — an OOM kill, or a `/clear` kill whose close beat both `/clear` signals
+  — and a close whose open was never seen at all both increment `kill_close_same_session`, § 6.6's
+  stated residual made into a rate someone can read. ⭐ **Seen to fail before trusted**: against the
+  pre-fix reporter four of the new checks go red, headed by the `/clear` kill closing
+  `('failed', None)` where § 6.6 requires `('aborted', 'interrupted')`; and both single-leg
+  promotions are driven on planted copies, each producing the wrong close for the opposite reason.
+  Doc-sync: § 6.6's residual records what is now driven **and what a synthetic drive cannot
+  establish** — that the harness ever delivers that order, which still needs a real `/clear`; § 9.3's
+  counter row gains the unknowable-open case; and § 6.0's subscription table and § 6.6's own
+  `is_error` paragraph, which both still restated the pre-amendment `per is_interrupt` mapping, now
+  point at the kill signature instead.
+
 - **card#9070** — **the admin console: nobody could sign in to a fresh deploy, and no path created
   the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a
   `UserFactory`, a login page and `/two-factor-enroll` — and **no `UserController`, no admin routes,
