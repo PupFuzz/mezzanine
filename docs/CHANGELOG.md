@@ -65,6 +65,58 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   **MySqlGrammar**, which is no longer the grammar the prod store is reached by — inert today (the
   `mariadb` driver differs only on `uuid`, which this schema has none of) and named so it does not go
   quiet.
+- **card#9203** — **the PHP floor is now `^8.4.1`, and no surface restates it.** `server/composer.json`
+  declared `"php": "^8.3"` while the committed `server/composer.lock` pinned `symfony/*` v8.1.5, every
+  one of which requires `php >=8.4.1` — so **the repository could not install its own lockfile on the
+  version it declared**. Measured, not inferred: `composer install` on PHP 8.3.33 exits 2 with eighteen
+  *"your php version (8.3.33) does not satisfy"* problems, found by the first run of card#7344's lane.
+  ⛔ **The severity was in `bin/deploy.sh`, and it is what this card closes.** Precondition **A6** exists
+  for one reason — *"composer would refuse anyway, but it would refuse INSIDE the window, after the app
+  was already taken down"* — and it carried its own hand-written copy of the floor, `8.3*|8.4*|8.5*|9.*`.
+  On an 8.3 host that copy **PASSED**: the maintenance window opened, `php artisan down` ran, and
+  `composer install` then failed in-window. Per the deploy contract that is exit **2** — the app is left
+  DOWN, a marker is left on disk, nothing is rolled back and a bare re-run refuses. The guard was not
+  broken; it was faithfully enforcing a claim that had stopped being true. The same restatement had
+  drifted the OTHER way too, unnoticed: the case list accepted `9.*`, which `^8.3` never allowed.
+  ⛤ **A6 now READS the constraint instead of restating it, out of the RELEASE BEING DEPLOYED.** It moved
+  to after A7's ref resolution, out of letter order and commented as such, because it needs `$SHA`: the
+  floor that matters is the target tree's, not the prod checkout's, and those two differ on exactly one
+  deploy — **the one that raises the floor**, which is this one. Reading the checkout would have passed
+  it; reading the target refuses it before anything is touched.
+  ⛤ **`MEZZ_FPM_SERVICE`'s default is derived from the host's PHP** (`php8.4-fpm` on 8.4, `php8.5-fpm` on
+  8.5) rather than the literal `php8.3-fpm` it used to be. An FPM unit tracks the version a host has
+  INSTALLED, not the floor `composer.json` declares, so *any* literal there is wrong for some satisfying
+  host. A host whose CLI and FPM pool are different minors sets `MEZZ_FPM_SERVICE`, and does not get a
+  surprise for forgetting: A13 already requires the unit to exist and be enabled before the window.
+  ⚠ **`composer.lock` was NOT re-resolved.** `composer update --lock` moved exactly two lines — the
+  `content-hash` and the `platform.php` block, which had been saying `^8.3` while the lock's own contents
+  required `>=8.4.1`. **No package version changed** — the whole locked set was diffed name-by-version
+  before and after, and only those two lines moved. A dependency bump was not in this card's scope and
+  would have needed its own review.
+  ⛔ **The check that would have caught the mint now exists: `tools/verify-php-floor.py`.** It asserts that
+  the DECLARED floor can carry every package the LOCK pins, and that the lock is in step with the
+  declaration. `composer validate --strict` was clean for the whole time this was broken — it checks
+  composer.json's content hash, never whether the declared platform can install the locked tree — so the
+  `php-tests` lane now runs both, and derives its own `php-version` pin and cache key from
+  `server/composer.json` instead of carrying the `8.4` it used to spell out. That header's explanation of
+  why it deliberately did not follow the floor is rewritten, not left standing.
+  ⚠ **What is still not covered, stated rather than implied:** the lane pins the floor's MINOR, so it runs
+  the newest 8.4.x and never executes the exact `8.4.1` the declaration promises. That gap is closed
+  statically by the new tool (it reds if any locked package needs more than the declaration) rather than
+  by a patch-level pin, which would freeze CI on a PHP that stops receiving security patches and would
+  depend on `setup-php` resolving an exact patch level.
+  ⛤ **Seen to fail (canon #9).** `bin/deploy.selftest.sh` grew a paired section for A6 — a host one minor
+  below the floor, one PATCH below it, exactly at it, above it on a later minor, above the ceiling, a
+  release that RAISES the floor above what the checkout declares, an unevaluable constraint, an absent
+  `require.php` and an absent `composer.json` — each refusal next to a single-variable control that
+  passes. Restating the floor as the stale `^8.3` inside A6 reds that section — including the card's
+  own case going from *refused* to *proceeds* — and restoring it greens it. The 8.3 fixture is given
+  its own `php8.3-fpm` unit on purpose, so that A6 is the only thing that can refuse it and the exit
+  code cannot go on reading 1 for an unrelated reason.
+  ⚠ **Found and NOT fixed, reported rather than folded in:** `composer.lock` also carries packages capped
+  at PHP 8.5 (`8.1 - 8.5`, `8.2 - 8.5`), so its true installable range is `[8.4.1, 8.6)` while `^8.4.1`
+  promises `[8.4.1, 9.0)`. Nothing can reach that today — 8.6 does not exist — and the new tool checks the
+  floor only, so the ceiling half is unguarded and named here rather than left silent.
 
 - **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
   count.** The table is what an operator provisions a host from, and it listed every process except
@@ -108,14 +160,14 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   ⛤ **The lane runs the repo's own entry point, `composer test`** (`artisan config:clear` then
   `artisan test`), rather than a hand-rolled phpunit command line: `server/composer.json` already
   owns what "run the tests" means here and a second spelling in CI is a second thing to keep in
-  step with it. PHP is pinned to **8.4**, and NOT to the declared floor — the lane's own first run
-  measured why: `composer.lock` carries `symfony/*` v8.1.5 requiring `php >=8.4.1`, so the committed
-  lock CANNOT be installed on the `^8.3` that `composer.json` declares and `bin/deploy.sh` reloads
-  (`php8.3-fpm`). ⚠ **So the lane does NOT test the version the app is configured to deploy onto** —
-  those three surfaces disagree, and that is filed as **card#9203**, a live deploy defect: on an 8.3
-  host `deploy.sh`'s A6 precondition PASSES, the maintenance window opens, and `composer install`
-  then fails INSIDE it. The pin follows the lock because the lock is what `composer install` reads;
-  it moves to whatever the card's ruling picks. With `pdo_sqlite`/`sqlite3`, composer's download
+  step with it. PHP was pinned to **8.4**, and NOT to the declared floor — the lane's own first run
+  measured why: `composer.lock` carried `symfony/*` v8.1.5 requiring `php >=8.4.1`, so the committed
+  lock COULD NOT be installed on the `^8.3` that `composer.json` declared and `bin/deploy.sh` reloaded
+  (`php8.3-fpm`). ⚠ **So the lane did NOT test the version the app was configured to deploy onto** —
+  those three surfaces disagreed, and that was filed as **card#9203**, a live deploy defect: on an 8.3
+  host `deploy.sh`'s A6 precondition PASSED, the maintenance window opened, and `composer install`
+  then failed INSIDE it. **card#9203's entry above is where that ends**: the floor is `^8.4.1`, and the
+  lane now derives its pin from `server/composer.json` rather than spelling one out. With `pdo_sqlite`/`sqlite3`, composer's download
   cache keyed on `composer.lock`, and every action pinned to an exact commit.
   ⛔ **No `paths:` filter, and here that is measured rather than inherited.** The house argument
   applies (a filtered workflow produces NO RUN, which as a required check reads *pending*, never

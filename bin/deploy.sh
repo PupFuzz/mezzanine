@@ -52,7 +52,8 @@
 #                         `docs/design/FLEET-STATE.md § 2.1` + § 8.3
 #                         [default: mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat]
 #   MEZZ_REVERB_SERVICE   systemd unit for Reverb       [default: mezzanine-reverb]
-#   MEZZ_FPM_SERVICE      PHP-FPM unit to reload        [default: php8.3-fpm]
+#   MEZZ_FPM_SERVICE      PHP-FPM unit to reload        [default: php<this host's CLI PHP
+#                         minor>-fpm, e.g. php8.4-fpm — derived, never a literal; see below]
 #   MEZZ_SYSTEMCTL        how to reach systemd          [default: systemctl; on a host where the
 #                         deploy user needs escalation set `sudo -n systemctl` — the `-n` is
 #                         load-bearing, see the sudo precondition below]
@@ -91,7 +92,16 @@ usage() { sed -n '/^# USAGE/,/^# CARD/p' "$0" | grep -v '^# CARD' | sed 's/^# \{
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 DEPLOY_ROOT="${MEZZ_DEPLOY_ROOT:-$(cd "$(dirname "$SELF")/.." && pwd)}"
 REMOTE="${MEZZ_REMOTE:-origin}"
-FPM_SERVICE="${MEZZ_FPM_SERVICE:-php8.3-fpm}"
+# The PHP-FPM unit, DERIVED from the PHP this host actually runs. card#9203: the literal
+# `php8.3-fpm` that used to sit here was one of the three surfaces that drifted apart, and it
+# was the wrong SHAPE of claim as well as the wrong value — an FPM unit tracks the PHP the host
+# has INSTALLED, not the floor `server/composer.json` declares, so a host on 8.5 satisfying a
+# ^8.4.1 floor runs `php8.5-fpm` and ANY literal here would be stale for it. A host whose CLI
+# and FPM pool are different minors names its unit with MEZZ_FPM_SERVICE, and does not get a
+# surprise for forgetting: A13 requires the unit to EXIST and be ENABLED before the window
+# opens, so a wrong derivation refuses the deploy rather than reloading nothing.
+HOST_PHP_VERSION="$(php -r 'echo PHP_VERSION;' 2>/dev/null || true)"
+FPM_SERVICE="${MEZZ_FPM_SERVICE:-php$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,2)-fpm}"
 REVERB_SERVICE="${MEZZ_REVERB_SERVICE:-mezzanine-reverb}"
 # The default daemon set is the supervised population of `FLEET-STATE.md § 2.1` — fold, sweep and
 # the 15 s feed heartbeat, each stated there as "supervised", not scheduled, and each a long-lived
@@ -142,6 +152,55 @@ env_get() {
 }
 
 git_at() { git -C "$DEPLOY_ROOT" "$@"; }
+
+# ── the PHP floor, derived ────────────────────────────────────────────────────────────────────
+# card#9203. `server/composer.json` is the ONE place this project states which PHP it runs on,
+# and A6 below READS it. The restatement is what failed: a hand-written `8.3*|8.4*|…` case list
+# here went on saying the floor was ^8.3 for as long as the committed `composer.lock` could only
+# be installed on >=8.4.1 — so the precondition built to keep `composer install` OUT of the
+# maintenance window PASSED on a host where it was certain to fail INSIDE it, with the app down.
+# The old case list also accepted `9.*`, which `^8.3` never allowed: a restated constraint drifts
+# in both directions at once, and nothing reads both copies.
+#
+# `tools/verify-php-floor.py` derives the same floor in CI and checks it against composer.lock.
+# This script cannot call it — it runs on the prod host, against a tree it has not checked out
+# yet, and putting `python3` on that host's requirement list is an infrastructure decision, not
+# a side effect of a version bump. Both derivations fail SAFE: each refuses on a constraint it
+# cannot interpret rather than guessing one, so a divergence is a loud refusal, never a pass.
+
+# php_require_constraint — read `require.php` from composer.json on stdin; print nothing if it
+# is not there. Scoped to the TOP-LEVEL `require` object on purpose: `require-dev` and a
+# `config.platform.php` both carry a `"php"` key and neither of them is the floor.
+php_require_constraint() {
+  awk '
+    /^[ \t]*"require"[ \t]*:/ && !seen { inreq = 1; seen = 1; next }
+    inreq && /^[ \t]*}/ { inreq = 0 }
+    inreq && match($0, /"php"[ \t]*:[ \t]*"[^"]*"/) {
+      s = substr($0, RSTART, RLENGTH)
+      sub(/^"php"[ \t]*:[ \t]*"/, "", s); sub(/"$/, "", s)
+      print s; exit
+    }
+  '
+}
+
+# ver_ge A B — true when version A is at least version B, compared numerically field by field.
+# A non-numeric suffix (`8.5.0RC1`, `8.4.1-dev`) is truncated at the first non-digit, which
+# treats a release candidate as its release — the permissive direction, and the one composer
+# itself takes with a host PHP.
+ver_ge() {
+  local i x y
+  local -a a b
+  IFS=. read -r -a a <<< "$1"
+  IFS=. read -r -a b <<< "$2"
+  for i in 0 1 2; do
+    x="${a[i]:-0}"; y="${b[i]:-0}"
+    x="${x%%[!0-9]*}"; y="${y%%[!0-9]*}"
+    x="${x:-0}"; y="${y:-0}"
+    [ "$((10#$x))" -gt "$((10#$y))" ] && return 0
+    [ "$((10#$x))" -lt "$((10#$y))" ] && return 1
+  done
+  return 0
+}
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # PHASE A — preconditions. EVERY refusal in this phase happens BEFORE anything is touched.
@@ -248,13 +307,7 @@ phase_a() {
   # provisioning", and a deploy-time re-check would either duplicate that verification or, worse,
   # become the place it is believed to happen while checking something weaker.
   #
-  # A6 — the PHP floor. server/composer.json requires ^8.3; composer would refuse anyway, but it
-  # would refuse INSIDE the window, after the app was already taken down.
-  local phpver; phpver="$(php -r 'echo PHP_VERSION;' 2>/dev/null || echo 0)"
-  case "$phpver" in
-    8.3*|8.4*|8.5*|9.*) : ;;
-    *) refuse "PHP $phpver does not satisfy server/composer.json's ^8.3" ;;
-  esac
+  # The PHP floor is A6, and it is NOT here — it needs $SHA, so it sits after A9. See it there.
 
   # A7 — fetch, and resolve the ref to an exact commit. The fetch is read-only with respect to
   # what is being served (it moves remote-tracking refs, nothing in the worktree), so --dry-run
@@ -288,6 +341,59 @@ phase_a() {
       "Nothing would change. To rebuild dependencies, caches and daemons on the same commit:" \
       "  $0 --ref $REF --redeploy"
   fi
+
+  # A6 — THE PHP FLOOR, read from the RELEASE BEING DEPLOYED. Out of letter order on purpose: it
+  # needs $SHA (A7), and the floor that matters is the TARGET tree's, not this host's checkout.
+  # Those two differ on exactly one deploy — the one that RAISES the floor — and that is the deploy
+  # that would otherwise take the app down and only then discover the host cannot install the new
+  # lock. Reading the checkout would pass it; reading the target refuses it before the window.
+  #
+  # composer would refuse too. It would refuse in PHASE B, with the app already down: exit 2, a
+  # marker on disk, nothing rolled back and a bare re-run refused (card#7459). This check is that
+  # same failure, moved to before anything is touched — and it is DERIVED from composer.json rather
+  # than restated, because a restated copy of it is what card#9203 was.
+  local composer_json floor_constraint floor_op floor_min floor_max phpver
+  composer_json="$(git_at show "$SHA:server/composer.json" 2>/dev/null || true)"
+  [ -n "$composer_json" ] || refuse \
+    "server/composer.json is missing or empty at $(git_at rev-parse --short "$SHA")" \
+    "It is where the PHP floor is declared. Without it this check cannot run, and a deploy" \
+    "that carried on regardless would meet the floor inside the maintenance window."
+  floor_constraint="$(printf '%s\n' "$composer_json" | php_require_constraint)"
+  [ -n "$floor_constraint" ] || refuse \
+    "no \`require.php\` in server/composer.json at $(git_at rev-parse --short "$SHA")" \
+    "This precondition derives the PHP floor from that constraint (card#9203) and will not" \
+    "guess one. Declare it there."
+  case "$floor_constraint" in
+    '^'*)  floor_op='^';  floor_min="${floor_constraint#^}"  ;;
+    '>='*) floor_op='>='; floor_min="${floor_constraint#>=}" ;;
+    *)     floor_op=''; floor_min='' ;;
+  esac
+  # …and the remainder must be a bare dotted version, nothing else. `^8.4.1 || ^9.0` carries the
+  # prefix above and is NOT a constraint this can evaluate: reading it as `^8.4.1` and silently
+  # dropping the alternative is a MISREAD, and a floor check that misreads its constraint is the
+  # defect card#9203 filed, not a fix for it. Refusing beats guessing, always in this direction.
+  case "$floor_min" in
+    ''|*[!0-9.]*|.*|*.) floor_op='' ;;
+  esac
+  [ -n "$floor_op" ] || refuse \
+    "server/composer.json declares a PHP constraint this check cannot evaluate: '$floor_constraint'" \
+    "It understands \`^X.Y.Z\` and \`>=X.Y.Z\`, and refuses everything else rather than read" \
+    "part of it. Widen \`php_require_constraint\` and this case deliberately, or simplify the" \
+    "constraint."
+  # `^X.…` is bounded above at the next major; `>=X.…` is not bounded at all.
+  floor_max=""
+  if [ "$floor_op" = '^' ]; then floor_max="$(( ${floor_min%%.*} + 1 )).0.0"; fi
+  phpver="${HOST_PHP_VERSION:-0}"
+  if ! ver_ge "$phpver" "$floor_min" || { [ -n "$floor_max" ] && ver_ge "$phpver" "$floor_max"; }; then
+    refuse "PHP $phpver does not satisfy server/composer.json's $floor_constraint at $(git_at rev-parse --short "$SHA")" \
+      "\`composer install\` reads that same constraint and would refuse — but it runs in the" \
+      "maintenance window, with the app already down. This refusal is that failure, moved to" \
+      "before anything is touched." \
+      "" \
+      "Either raise this host's PHP to satisfy $floor_constraint, or deploy a release whose" \
+      "floor it already meets."
+  fi
+  say "  ok — PHP $phpver satisfies $floor_constraint, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
 
   # A10 — FLEET-STATE.md § 6.9 rule 1: "Every migration on `events` states its algorithm in a
   # comment AND THE DEPLOY CHECKS IT". This is that check, and it reads the TARGET tree out of the

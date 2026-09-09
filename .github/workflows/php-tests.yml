@@ -45,14 +45,25 @@
 #     minting a lockfile is a dependency-pinning decision on its own, not a side effect of adding
 #     a test lane. That half of the card stays open.
 #
-#   * **Any PHP but 8.4.** Pinned to 8.4 because that is what `server/composer.lock` can actually
-#     be installed on — NOT because 8.4 is the declared floor. It is not: `composer.json` says
-#     `^8.3` and `bin/deploy.sh` reloads `php8.3-fpm`. Those three surfaces disagree, this lane's
-#     first run is what measured it, and the disagreement is FILED — it is a live deploy defect,
-#     because the box `deploy.sh` targets could not install this lock either. A green here
-#     certifies 8.4 and nothing else. Widening means a matrix, and a matrix multiplies the check
-#     CONTEXT (`php-tests (8.4)`, `php-tests (8.5)`, …) — a required-check-list question, not a
-#     free change. One version, one context, on purpose.
+#   * **Any PHP but the one the floor names.** The version is DERIVED from
+#     `server/composer.json`'s `require.php`, by `tools/verify-php-floor.py`, and is not written
+#     anywhere in this file. card#9203 is what the hand-written copy cost: `composer.json` said
+#     `^8.3`, `composer.lock` needed `>=8.4.1`, `bin/deploy.sh` reloaded `php8.3-fpm`, and this
+#     lane's own first run is what measured the disagreement (`composer install` exit 2, eighteen
+#     *"your php version (8.3.33) does not satisfy"* problems). That card raised the floor and
+#     this lane stopped spelling one out: it now runs whatever `server/composer.json`'s
+#     `require.php` names, and moves when that moves. Read the value there, never here.
+#     ⚠ **What that does not cover, stated rather than left to be inferred.** The pin is the
+#     floor's MINOR, so the runner installs the newest patch on that line and nothing here ever
+#     executes the exact minimum the declaration promises. That gap is closed STATICALLY rather
+#     than by a patch-level pin: `tools/verify-php-floor.py` reds when any package in
+#     `composer.lock` needs MORE than the declaration promises — the same defect a runner pinned
+#     to the exact minimum would surface — without freezing this lane on a PHP that has stopped
+#     receiving security patches, and without depending on `setup-php` resolving an exact patch
+#     level.
+#     Widening to several versions means a matrix, and a matrix multiplies the check CONTEXT
+#     (`php-tests (8.4)`, `php-tests (8.5)`, …) — a required-check-list question, not a free
+#     change. One version, one context, on purpose.
 #
 #   * **The store.** The suite runs on in-memory SQLite (`server/phpunit.xml`, per
 #     `docs/design/FLEET-STATE.md § 6.2`) because that is what a runner can run without
@@ -89,23 +100,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+      # ⛔ THE FLOOR IS READ, NEVER RETYPED — card#9203. `server/composer.json`'s `require.php` is
+      # the one place this repository states which PHP it runs on; `bin/deploy.sh` derives its
+      # precondition from it and this lane derives its pin from it, so no copy exists to drift.
+      # A retyped copy is precisely what failed: this file said 8.4 while composer.json said ^8.3
+      # and the lock needed >=8.4.1, and every one of the three was internally consistent.
+      #
+      # The step does two things and reds on either: it CHECKS that the declared floor can carry
+      # every package `composer.lock` pins (the invariant that was false, and that
+      # `composer validate` does NOT check — see the tool's docstring), and it emits the version
+      # for the step below. Running before `setup-php` is deliberate: `python3` is on the runner
+      # image and PHP is not needed to read two JSON files, so a floor that cannot carry the lock
+      # fails in seconds instead of after an install.
+      - name: Derive the PHP floor from server/composer.json, and check it against the lock
+        id: php-floor
+        run: python3 tools/verify-php-floor.py --github-output
+
       # `pdo_sqlite` AND `sqlite3` are both load-bearing and neither is optional: the suite's
       # connection is SQLite (phpunit.xml) and it does not start without them.
-      # ⚠ 8.4, NOT the `^8.3` composer.json declares — and that gap is a FILED DEFECT, not a
-      # preference. `composer.lock` carries symfony/* v8.1.5, which require `php >=8.4.1`, so the
-      # committed lock CANNOT BE INSTALLED on 8.3; this lane's own first run is what measured it
-      # (`composer install` exit 2, eighteen "your php version (8.3.33) does not satisfy"
-      # problems). `bin/deploy.sh` reloads `php8.3-fpm` by default, so the same lock could not be
-      # installed on the box the deploy script targets either.
-      #
-      # This pin follows the LOCK because the lock is what `composer install` reads — the lane
-      # must run the tree that actually exists. When the floor disagreement is resolved (card
-      # filed), whichever version wins is the one to set here, and all three surfaces move
-      # together.
       - name: Set up PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
         with:
-          php-version: '8.4'
+          php-version: ${{ steps.php-floor.outputs.minor }}
           extensions: pdo_sqlite, sqlite3
           coverage: none
           tools: composer:v2
@@ -125,8 +141,21 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ runner.os }}-php8.4-${{ hashFiles('server/composer.lock') }}
-          restore-keys: composer-${{ runner.os }}-php8.4-
+          key: composer-${{ runner.os }}-php${{ steps.php-floor.outputs.minor }}-${{ hashFiles('server/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ steps.php-floor.outputs.minor }}-
+
+      # The OTHER half of card#9203's invariant, and the half `tools/verify-php-floor.py` does
+      # not do: composer's own content hash, which reds when `composer.json` has moved and the
+      # lock was not regenerated. `--no-check-publish` because this package is never published to
+      # a registry, so the publish-readiness rules say nothing about it; `--strict` so a warning
+      # is a failure rather than a line in a log nobody reads. Seen to fail on this tree before it
+      # was added: edit the php constraint, skip `composer update --lock`, and it exits 2.
+      #
+      # ⚠ It is NOT the floor check. It was CLEAN for the whole time card#9203's defect was live:
+      # the hash matched, and composer.json's declared platform simply could not install the lock.
+      - name: The lock must be in step with composer.json
+        working-directory: server
+        run: composer validate --strict --no-check-publish
 
       # No `--no-dev`: phpunit, collision, mockery and faker are all require-dev, and they are
       # the suite. `composer install` (never `update`) so the lock is the authority — a lane that

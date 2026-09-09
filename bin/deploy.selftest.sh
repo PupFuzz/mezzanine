@@ -104,9 +104,12 @@ chmod +x "$T/bin/"*
 # reset_stubs — bash persists `VAR=x func` assignments after the call, so a knob set for one case
 # would silently leak into every later one. Each fixture starts from a known set instead.
 reset_stubs() {
-  export STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.3-fpm"
+  export STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.4-fpm"
   export STUB_DISABLED="" STUB_INACTIVE="" STUB_FAIL_RE="" STUB_HTTP_CODE=200
-  export STUB_PHP_VERSION="8.3.14" MEZZ_DAEMON_SETTLE_S=0
+  # 8.4.7 SATISFIES $FIXTURE_PHP_FLOOR without BEING it, so a case that passes here is not
+  # passing on an accidental exact match; `php8.4-fpm` above is the unit deploy.sh derives
+  # from it (card#9203), so the two move together or every fixture refuses at A13.
+  export STUB_PHP_VERSION="8.4.7" MEZZ_DAEMON_SETTLE_S=0
   unset STUB_UID MEZZ_REVERB_SERVICE MEZZ_DEPLOY_IN_WINDOW
 }
 
@@ -117,6 +120,33 @@ FAKE_KEY='base64:SELFTESTFAKEKEYAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 FAKE_PW='SELFTESTFAKEDBPASSWORD'
 
 gitc() { git -C "$1" -c user.email=selftest@example.invalid -c user.name=selftest "${@:2}"; }
+
+# The floor the FIXTURE declares. deploy.sh's A6 reads its constraint out of the release being
+# deployed rather than carrying a case list of its own (card#9203), so a case below can move
+# the declaration and watch the refusal follow it — which is what makes these assertions
+# evidence of DERIVATION rather than of a literal that happens to agree today. Deliberately
+# NOT read from the real server/composer.json: a fixture tracking the repo's own floor would
+# go green for the wrong reason on the day that floor moved.
+FIXTURE_PHP_FLOOR='^8.4.1'
+
+write_composer_json() { # write_composer_json <tree> <php-constraint>
+  # Pretty-printed, because that is the shape composer itself writes and the shape A6's
+  # reader is built for; a fixture in a shape the real file never takes would test nothing.
+  # The `require-dev` php key is a TRAP, not filler: the floor is `require`'s, and a reader
+  # that grabbed the first "php" it saw anywhere would still pass every case without it.
+  cat > "$1/server/composer.json" <<COMPOSER
+{
+    "name": "selftest/fixture",
+    "require": {
+        "php": "$2",
+        "laravel/framework": "^13.17"
+    },
+    "require-dev": {
+        "php": "NEVER-READ-require-dev-is-not-the-floor"
+    }
+}
+COMPOSER
+}
 
 write_env() { # write_env <root>
   local root="$1"
@@ -151,6 +181,7 @@ mkfix() {
   printf '<?php return Application::configure()->withRouting(health: "/up")->create();\n' \
     > "$SRC/server/bootstrap/app.php"
   printf '{"lockfileVersion":3}\n' > "$SRC/server/package-lock.json"
+  write_composer_json "$SRC" "$FIXTURE_PHP_FLOOR"
   printf 'APP_ENV=\nAPP_DEBUG=\nAPP_KEY=\nAPP_URL=\nDB_CONNECTION=\nDB_PASSWORD=\nMYSQL_ATTR_SSL_CA=\nBROADCAST_CONNECTION=\nCACHE_STORE=\n# COMMENTED_OPTIONAL=\n' \
     > "$SRC/server/.env.example"
   cat > "$SRC/server/database/migrations/2026_01_01_000000_create_fleet_store_tables.php" <<'MIG'
@@ -241,9 +272,6 @@ run_refusal "non-persistent cache store" "CACHE_STORE is 'array'" --dry-run
 mkfix no_tls; sed -i '/^MYSQL_ATTR_SSL_CA=/d' "$ROOT/server/.env"
 run_refusal "no TLS to the store" "MYSQL_ATTR_SSL_CA is unset" --dry-run
 
-mkfix old_php; STUB_PHP_VERSION=8.2.9; run --dry-run
-eq "PHP 8.2: exit 1" 1 "$RC"; has "PHP 8.2: says why" "does not satisfy" "$OUT"
-
 section "REFUSAL — what is being deployed"
 mkfix unreleased
 gitc "$SRC" checkout -q -b hotfix "$V1"
@@ -300,9 +328,113 @@ trust_star() {
 mkfix trust_all trust_star
 run_refusal "trustProxies('*')" "trusts ALL proxies" --dry-run
 
+section "REFUSAL — the PHP floor (A6), DERIVED from the release being deployed"
+# ⛔ card#9203, and this section is what that card exists for. A6 used to carry its OWN copy of
+# the floor — `8.3*|8.4*|8.5*|9.*` — and that copy went on saying ^8.3 for as long as the
+# committed `composer.lock` could only be installed on >=8.4.1. So on an 8.3 host A6 PASSED, the
+# maintenance window OPENED, the app went DOWN, and `composer install` then failed inside it:
+# deploy exit 2, marker on disk, nothing rolled back. The guard was not broken — it was faithfully
+# enforcing a claim that had stopped being true. It now READS `server/composer.json` out of the
+# release being deployed, and every case below moves the DECLARATION and the HOST independently,
+# so a green is evidence that the refusal follows the declaration and not a literal.
+#
+# It also sits here, after A8/A9, rather than up with the .env checks: A6 needs the resolved $SHA,
+# because the floor that matters is the TARGET release's.
+
+# THE CARD'S OWN SCENARIO: one minor below the floor the release declares. The 8.3 host is given
+# its OWN php8.3-fpm unit on purpose, so that A6 is the ONLY thing left that can refuse: without
+# it, A13 refuses the missing unit instead and the exit code alone would go on reading 1 with the
+# floor check gutted. Verified by gutting it (canon #9).
+mkfix php_below_floor
+STUB_PHP_VERSION=8.3.33
+STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.3-fpm"
+run_refusal "PHP 8.3.33 under a ^8.4.1 floor" "does not satisfy server/composer.json's ^8.4.1" --dry-run
+unlogged "PHP below the floor: composer install never ran"             "composer install"
+has "PHP below the floor: says the failure was moved out of the window" "with the app already down" "$OUT"
+
+# One PATCH below it. `^8.4.1` is not `^8.4`, and a check comparing only minors would pass this —
+# which is exactly the difference the ratified floor turns on.
+mkfix php_below_patch; STUB_PHP_VERSION=8.4.0
+run_refusal "PHP 8.4.0 under a ^8.4.1 floor" "does not satisfy server/composer.json's ^8.4.1" --dry-run
+
+# CONTROL — exactly AT the floor, one variable from the case above.
+mkfix php_at_floor; STUB_PHP_VERSION=8.4.1; run --dry-run
+eq  "control: PHP 8.4.1 is exactly the floor, and deploys" 0 "$RC"
+has "control: names the constraint it read and where from" "PHP 8.4.1 satisfies ^8.4.1, declared by server/composer.json" "$OUT"
+
+# CONTROL — above the floor on a LATER minor. The old case list allowed that by ENUMERATING
+# `8.5*`; this allows it by EVALUATING `^8.4.1`, and the FPM unit follows the host with it.
+mkfix php_above_floor
+STUB_PHP_VERSION=8.5.4
+STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.5-fpm"
+run --dry-run
+eq  "control: PHP 8.5.4 satisfies ^8.4.1"                  0 "$RC"
+has "control: the FPM unit is derived from the host's PHP" "+ php8.5-fpm (reload)" "$OUT"
+
+# ⛔ THE CEILING, which the old case list got wrong in the OTHER direction: it listed `9.*`, and
+# `^8.4.1` has never allowed 9. A restated constraint drifts both ways at once, and nothing in
+# the tree read both copies.
+mkfix php_above_ceiling
+STUB_PHP_VERSION=9.0.0
+STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php9.0-fpm"
+run_refusal "PHP 9.0.0 is above a ^8.4.1 ceiling" "does not satisfy server/composer.json's ^8.4.1" --dry-run
+
+# ⛔ READ FROM THE TARGET TREE, NOT THE HOST'S CHECKOUT. The mutator runs before the SECOND
+# commit, so the prod checkout still declares ^8.4.1 while the release being deployed declares
+# ^8.5. A host on 8.4.7 satisfies what it is RUNNING and not what it is being asked to run — and
+# the floor-raising deploy is precisely the one where reading the wrong tree opens the window and
+# only then discovers the new lock will not install.
+raise_floor() { write_composer_json "$1" '^8.5'; }
+mkfix floor_raised_by_release raise_floor
+STUB_PHP_VERSION=8.4.7
+run_refusal "a release that RAISES the floor, on a host below the NEW one" \
+  "does not satisfy server/composer.json's ^8.5" --dry-run
+hasnt "raised floor: it did NOT read the checkout's own ^8.4.1" "composer.json's ^8.4.1" "$OUT"
+
+# CONTROL — the same release, on a host that meets the raised floor.
+mkfix floor_raised_ok raise_floor
+STUB_PHP_VERSION=8.5.4
+STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.5-fpm"
+run --dry-run
+eq "control: the same raised floor deploys on 8.5.4" 0 "$RC"
+
+# A constraint the check cannot evaluate REFUSES rather than guessing: a floor check that misreads
+# its constraint is the defect this card filed, not a fix for it.
+weird_floor() { write_composer_json "$1" '>= 8.4.1 || banana'; }
+mkfix floor_unparseable weird_floor
+run_refusal "a PHP constraint A6 cannot evaluate" "cannot evaluate" --dry-run
+
+# ⛔ And an ALTERNATION is refused, not half-read. `^8.4.1 || ^9.0` carries a prefix the reader
+# recognises, and taking the `^8.4.1` while dropping the `|| ^9.0` would silently narrow a
+# constraint the project deliberately widened — a misread floor is this card's defect, not its fix.
+alternation_floor() { write_composer_json "$1" '^8.4.1 || ^9.0'; }
+mkfix floor_alternation alternation_floor
+STUB_PHP_VERSION=9.0.0
+STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php9.0-fpm"
+run_refusal "an alternation A6 will not half-read" "cannot evaluate" --dry-run
+hasnt "alternation: it did NOT quietly read it as ^8.4.1" "satisfies ^8.4.1" "$OUT"
+
+# No constraint at all is a refusal too, never a silent skip.
+no_php_require() {
+  cat > "$1/server/composer.json" <<'COMPOSER'
+{
+    "name": "selftest/fixture",
+    "require": {
+        "laravel/framework": "^13.17"
+    }
+}
+COMPOSER
+}
+mkfix floor_absent no_php_require
+run_refusal "no require.php in the release's composer.json" "no \`require.php\` in server/composer.json" --dry-run
+
+drop_composer_json() { rm -f "$1/server/composer.json"; }
+mkfix floor_file_absent drop_composer_json
+run_refusal "no server/composer.json in the release at all" "server/composer.json is missing or empty at" --dry-run
+
 section "REFUSAL — the daemons (handover item 1)"
 mkfix unit_missing
-STUB_UNITS="mezzanine-fold mezzanine-feed-heartbeat php8.3-fpm"; run --dry-run
+STUB_UNITS="mezzanine-fold mezzanine-feed-heartbeat php8.4-fpm"; run --dry-run
 eq "missing unit: exit 1" 1 "$RC"
 has "missing unit: names it" "systemd unit 'mezzanine-sweep' does not exist" "$OUT"
 
@@ -315,7 +447,7 @@ mkfix reverb_no_unit; sed -i 's/^BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=re
 run --dry-run
 eq "BROADCAST=reverb without a unit: exit 1" 1 "$RC"
 has "BROADCAST=reverb without a unit: names it" "systemd unit 'mezzanine-reverb' does not exist" "$OUT"
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat mezzanine-reverb php8.3-fpm"; run --dry-run
+STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat mezzanine-reverb php8.4-fpm"; run --dry-run
 eq  "control: with the unit present, reverb deploys"    0 "$RC"
 has "control: and Reverb is IN the restart set"         "systemctl restart mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat mezzanine-reverb" "$OUT"
 
@@ -340,7 +472,7 @@ eq "full run: the failure marker is gone"               "absent" "$([ -e "$ROOT/
 logged   "full run: opened the window"                  "artisan down"
 logged   "full run: closed the window"                  "artisan up"
 logged   "full run: restarted queue workers"            "artisan queue:restart"
-logged   "full run: reloaded PHP-FPM (opcache)"         "reload-or-restart -- php8.3-fpm"
+logged   "full run: reloaded PHP-FPM (opcache)"         "reload-or-restart -- php8.4-fpm"
 logged   "full run: restarted the fold"                 "restart -- mezzanine-fold"
 logged   "full run: restarted the sweep"                "restart -- mezzanine-sweep"
 logged   "full run: restarted the feed heartbeat"       "restart -- mezzanine-feed-heartbeat"
