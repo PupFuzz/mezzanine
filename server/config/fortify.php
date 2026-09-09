@@ -166,7 +166,13 @@ return [
         //     with the feature absent it registers no route (asserted in AuthSurfaceTest).
         //
         // Features::resetPasswords(), Features::emailVerification()
-        //     Both need a configured mailer, which this deployment does not have.
+        //     BOTH ARE A PRODUCT DECISION, NOT A MISSING MAILER — corrected in card#9077, which
+        //     added the one outbound message this application sends (a two-factor reset code), so
+        //     a configured host now HAS a transport and "we cannot" would be false. Each would be
+        //     a new self-service credential path: `resetPasswords()` makes mailbox possession
+        //     sufficient to take an account over completely, where the two-factor reset removes
+        //     one factor and still demands the password. `App\Auth\TwoFactorReset::isAvailable()`
+        //     is what refuses the path that DOES exist on a host with no transport.
         //
         // Features::updateProfileInformation(), Features::updatePasswords()
         //     Account-management surface this application has no screen for.

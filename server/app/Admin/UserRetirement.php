@@ -12,8 +12,12 @@ use Illuminate\Support\Facades\DB;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * D4 · SELF-LOCKOUT IS A REFUSAL, NOT A WARNING. An install whose last active account is retired
  * cannot be administered by anyone: there is no self-service registration
- * (`config/fortify.php` says so and `AuthSurfaceTest` holds it), no mailer and therefore no
- * password-reset path, and every console route is behind `auth`. The only way back is shell
+ * (`config/fortify.php` says so and `AuthSurfaceTest` holds it) and no password-reset path, and
+ * every console route is behind `auth`. ⚠ CARD#9077 ADDED AN EMAILED RESET AND D4 IS UNCHANGED,
+ * which is worth stating rather than leaving to be re-derived: that reset clears a SECOND FACTOR,
+ * never a password, it signs nobody in, and `App\Auth\TwoFactorReset` reads the subject through
+ * `User::scopeActive()` at BOTH ends — so a retired account cannot use it and retirement is not
+ * reversible by anyone holding the mailbox. The only way back is shell
  * access and `mezzanine:user:create`, which is why that command is documented as the escape
  * hatch in `README.md`. A confirm dialog was rejected for this: a dialog is a READ, and it is
  * the operator — the one person already sure — who clicks through it.

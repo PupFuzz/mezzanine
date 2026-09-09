@@ -102,8 +102,9 @@ final class UserProvisioning
      * BOUGHT — added in card#9070's THIRD review round, which measured that this method wrote the
      * hash and nothing else.
      *
-     * This console is the ONLY compromise-recovery path the product has: there is no mailer and
-     * therefore no self-service reset (`App\Admin\UserRetirement`'s D4 block establishes that), so
+     * This console is the ONLY compromise-recovery path the product has for a PASSWORD: there is no
+     * self-service password reset (`App\Admin\UserRetirement`'s D4 block establishes that, and
+     * card#9077's emailed reset clears a second factor rather than a password), so
      * "reset the password" is the whole of "get this account back". It did not recover it, because
      * neither thing a live session actually runs on is the password:
      *

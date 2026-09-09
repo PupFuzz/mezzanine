@@ -21,7 +21,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * (read it in that method's `'symbols'` list). So `mezzanine:user:create --generate` printed a
  * password the operator could not sign in with, while creating the account with the unmangled
  * value: one credential shown, a different one stored, on the command `README.md` calls the only
- * way back from a locked-out install, in an application with no mailer, no password reset and no
+ * way back from a locked-out install, in an application with no password reset and no
  * registration page.
  *
  * The rate, with its derivation rather than as a bare number: draw N values from `Str::password(24)`,

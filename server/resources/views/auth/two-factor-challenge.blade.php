@@ -19,4 +19,15 @@
         <input id="recovery_code" name="recovery_code" type="text" autocomplete="one-time-code">
         <button type="submit">Verify</button>
     </form>
+
+    {{--
+        Card#9077. Until this link existed, the sentence above named the only way out of a lost
+        device and the codes were never displayed anywhere, so for most accounts there was no way
+        out at all. The page it points at explains itself when the host has no outbound mail — which
+        is the default configuration, and is a fact about the host rather than about any account.
+    --}}
+    <p>
+        Lost the device <em>and</em> the recovery codes?
+        <a href="{{ route('two-factor.reset') }}">Have a reset code emailed to the account's address.</a>
+    </p>
 @endsection

@@ -108,8 +108,39 @@ and a retired account can no longer authenticate on any path. **A retired accoun
 longer editable**, so its address can never be freed and handed to somebody else; if the person
 needs an account again, create one under a different address. If an install somehow reaches a
 state with no account that can sign in, there is no
-password reset (this deployment has no mailer) and no registration page: shell access on the host
+password reset and no registration page: shell access on the host
 and this command are the recovery.
+
+### Losing your authenticator
+
+**Two ways back, and the first needs nothing from the host.**
+
+1. **Recovery codes.** Eight are minted when you enrol and they are shown on the enrolment page —
+   *write them down there*. Each signs you in once at the two-factor challenge. They are
+   re-displayable at `/two-factor/recovery-codes` (linked from the dashboard) behind your password,
+   and the same page regenerates them, which invalidates the previous set immediately.
+2. **An emailed reset**, at `/two-factor-reset`, linked from the challenge screen. A code goes to
+   the address **already on the account** — there is no field that could redirect it — and entering
+   it **removes the second factor and signs nobody in**: you then log in with your password and are
+   made to enrol a new authenticator before anything is reachable. The code is single-use, expires
+   in 30 minutes, and is typed into a form rather than clicked in a link, so it never reaches a web
+   server's access log.
+
+⛔ **Path 2 is a deployment dependency, and it is off until an operator satisfies it.** It needs a
+real outbound mail transport: `config/mail.php` and `.env.example` both default to
+`MAIL_MAILER=log`, which writes the whole message — reset code and all — into `storage/logs/`
+instead of sending it. On such a host the reset page says so plainly rather than pretending a code
+was sent. **Prove the host can send before somebody needs it to:**
+
+```
+php artisan mezzanine:mail:preflight                       # what is configured
+php artisan mezzanine:mail:preflight --to=you@example.com   # and whether it actually sends
+```
+
+⚠ **An emailed reset makes mailbox possession enough to strip the second factor.** That is inherent
+to the mechanism and was accepted deliberately; it is why the destination is the stored address and
+never a submitted one, so an attacker must intercept the mail rather than redirect it. An operator
+who does not want that property leaves `MAIL_MAILER` unconfigured and the path stays closed.
 
 ### The admin console
 

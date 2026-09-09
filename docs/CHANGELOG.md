@@ -19,6 +19,48 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9077** — **losing your authenticator was a permanent lockout, and the way out was already
+  built.** Measured before the change: `two_factor_recovery_codes` has been a column since the 2FA
+  migration, `POST /two-factor-challenge` has always accepted a `recovery_code`, and
+  `auth/two-factor-challenge.blade.php` has always said *"Lost the device? Use a recovery code
+  instead"* — while **nothing in the application ever displayed a code.** The offline recovery
+  mechanism was wired end to end and unusable, and the challenge screen offered a path the user had
+  never been given the means to take.
+  ⛤ **Step 1 — the codes are shown.** At enrolment, on the screen that mints them (that branch is
+  only reachable after `two-factor.enable`, which is `auth` + `password.confirm`), and again at
+  `/two-factor/recovery-codes` behind `auth` + `mfa` + `password.confirm`, linked from the
+  dashboard. Regeneration is Fortify's own route and action — one regeneration path, not two — with
+  only its browser landing replaced, because the stock response flashes the raw translation key.
+  ⚠ **The card asked for "shown once, never retrievable again" and this deliberately does not do
+  that**, because the premise was false of this codebase: Fortify stores the codes *encrypted*, not
+  hashed, and already registers `GET /user/two-factor-recovery-codes` returning them as JSON behind
+  the same password confirmation. A view that refused to render them would not have made them
+  unretrievable — it would have left that route the only way to read them and let the application
+  claim a property it does not have.
+  ⛤ **Step 2 — an emailed reset**, on the operator's ruling that it may go to the address already on
+  the account. ⛔ **It clears the enrolment and signs nobody in:** after consuming a code the account
+  has no second factor and takes the same forced-enrolment path a new account takes, password and
+  all. A reset that authenticated would be a password-less login built by accident. The code is
+  100 bits from `random_int()` over Crockford's base32, stored only as a SHA-256, single-use by the
+  claiming `UPDATE`'s own predicate, expiring in 30 minutes, and **typed into a form rather than
+  clicked in a link** so it never reaches an access log or a `Referer`. The destination is read from
+  the user row and there is no request field that could redirect it. Requesting is rate-limited on
+  the *submitted* address AND on the source — two limits, both applied — and every answer is the
+  same sentence whether the address is enrolled, unenrolled, retired or unknown. A retired account
+  is refused at both ends, so retirement is not reversible by anyone holding the mailbox.
+  ⚠⚠ **The security consequence, on the record because it is the point of the feature: an email
+  reset downgrades the second factor to mailbox possession.** Inherent to the mechanism, accepted
+  knowingly, and the reason the address can only be intercepted and never redirected.
+  ⛤ **`MAIL_MAILER=log` is now a REFUSAL rather than a fallback**, and that is a canon #20 fix
+  rather than caution: `LogTransport` writes the whole rendered message — reset code included — into
+  `storage/logs/`, so on the DEFAULT configuration minting a code would have put a live credential
+  in a log file. `php artisan mezzanine:mail:preflight [--to=…]` is the preflight, and `docs/PLAN.md`
+  § 5 carries the deployment obligation.
+  ⚠ **Found while building this and fixed here (canon #7): `code` and `recovery_code` were being
+  flashed into the session on every failed attempt.** Laravel flashes the whole request body on a
+  validation failure and stock `$dontFlash` covers only the three password fields — so a mistyped
+  TOTP code and a WHOLE RECOVERY CODE were already being written into the session, on paths that
+  predate this card.
 - **card#9078** — **a removed seat's desk goes immediately; retirement is an announcement, not an
   inference.** Operator ruling, which **reverses `docs/design/FLOOR.md` § 3.5** and D2 § 4.10's
   fourteen-day render window: *"A removal is a deliberate action by the operator. When an agent is
