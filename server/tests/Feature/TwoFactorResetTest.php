@@ -124,6 +124,12 @@ class TwoFactorResetTest extends TestCase
      */
     private function reEnrol(User $user): void
     {
+        // ⚠ REFRESH FIRST. `consume()` nulled `two_factor_confirmed_at` in the STORE, but this
+        // model still holds the value it was created with — so a `forceFill` of an equal timestamp
+        // leaves the attribute CLEAN and `save()` writes nothing, silently leaving the column null.
+        // The arm then fails on its own setup rather than on the behaviour it is asserting.
+        $user->refresh();
+
         $user->forceFill(Arr::only(User::factory()->twoFactorConfirmed()->raw(), [
             'two_factor_secret',
             'two_factor_recovery_codes',
