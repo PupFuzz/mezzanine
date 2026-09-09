@@ -49,8 +49,7 @@ final class UserRetirement
 
     /**
      * @return self::RETIRED|self::ALREADY_RETIRED|self::REFUSED_LAST_ACTIVE
-     */
-    /**
+     *
      * @throws \InvalidArgumentException if the author or the reason is empty
      */
     public static function retire(User $target, string $by, string $reason): string

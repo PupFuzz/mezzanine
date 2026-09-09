@@ -42,9 +42,16 @@ class ProductionAutoloadTest extends TestCase
     private const DEV_ONLY_NAMESPACES = ['Database\\Factories\\', 'Database\\Seeders\\'];
 
     /**
-     * A credential minted from a LITERAL, in the two spellings this application could use. A
-     * variable argument is not matched, because passing a password in to be hashed is what the
-     * real provisioning path does all day (`App\Admin\UserProvisioning::create()`).
+     * A credential minted from a LITERAL, in the spellings this application could use. A VARIABLE
+     * argument is deliberately not matched: passing a password in to be hashed is what the real
+     * provisioning path does all day (`App\Admin\UserProvisioning::create()`), so matching it would
+     * make this arm red on correct code and be turned off by the first person it failed for.
+     *
+     * ⚠ WHAT IT DOES NOT CATCH, SAID PLAINLY RATHER THAN LEFT TO BE ASSUMED: a bare
+     * `$someHasher->make('literal')` through a variable, or a pre-computed `$2y$…` literal pasted
+     * in whole. It is narrow ON PURPOSE — a detector with false positives stops being run — and it
+     * is not the only thing standing between a literal credential and a deployed host: the arm above
+     * is, by keeping the whole minting namespace off a production install.
      */
     private const LITERAL_CREDENTIAL_RE = '/(?:Hash::make|bcrypt|Hash::driver\([^)]*\)->make)\(\s*[\'"]/';
 

@@ -70,8 +70,10 @@ class ActiveUserProvider extends EloquentUserProvider
      * over the worker's lifetime". THAT WAS FALSE ABOUT THIS DEPLOYMENT, and the review measured
      * it: the memo was an INSTANCE property on a provider the container rebuilds every request
      * (`public/index.php` is the stock non-Octane bootstrap; there is no octane/swoole/roadrunner
-     * in `composer.lock`), and PHP resets statics between requests too — so nothing was amortised
-     * over anything. Every miss paid `make()` AND `check()` while a wrong password on a real
+     * in `composer.lock`) — so nothing was amortised over anything. A `static` would not have saved
+     * it either: on a non-persistent SAPI, class statics initialise per request as well. What was
+     * MEASURED is the instance property and the per-request container; the statics point is the
+     * standard request lifecycle, not something this repository has executed under php-fpm. Every miss paid `make()` AND `check()` while a wrong password on a real
      * account paid one `check()`: two bcrypts against one. The oracle's magnitude was exactly what
      * stock Laravel's is; only its sign had flipped, and the miss path — the one an unauthenticated
      * attacker chooses — had become the expensive one, at 2× CPU, on an endpoint whose limiter keys
