@@ -287,6 +287,16 @@ rule violations anyone could have committed at the time.
   let any client forge the header and defeat the key entirely — the limit would then be a
   decoration, which is the one thing § 12.3 says it must not be. The deploy host is not
   provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
+- **A deployed host installs with `composer install --no-dev`, and that is a security obligation
+  rather than a size one.** `database/factories/` and `database/seeders/` are in composer's
+  **`autoload-dev`** block (card#9070's review round moved them), so on a `--no-dev` install the
+  known-credential minter `Database\Factories\UserFactory` — it hashes the literal `password` — is
+  not loadable at all, and neither is any seeder. Install *with* dev dependencies and it is loadable
+  again: the two halves are one obligation. Verified rather than reasoned: a real `--no-dev` install
+  from this lockfile resolves `App\Admin\UserProvisioning` and does **not** resolve
+  `Database\Factories\UserFactory`. `server/tests/Feature/Admin/ProductionAutoloadTest` holds the
+  repo's half — the namespaces stay dev-only, and nothing under a production autoload root mints a
+  credential from a literal.
 - Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no

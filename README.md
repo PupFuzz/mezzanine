@@ -65,7 +65,7 @@ not an asset tree and owes no provenance rows.
 
 ```
 cd server
-composer install
+composer install                                    # ← local only; a HOST installs --no-dev (below)
 cp .env.example .env && php artisan key:generate    # .env is never committed
 php artisan migrate
 php artisan mezzanine:user:create                   # ← the first account; nothing else creates one
@@ -74,6 +74,12 @@ php artisan test
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment
 screen and reaches nothing else until it finishes there.
+
+⛔ **A deployed host installs with `composer install --no-dev`**, and the reason is a credential
+rather than a few megabytes: `database/factories/` and `database/seeders/` sit in composer's
+`autoload-dev` block, and `Database\Factories\UserFactory` hashes the literal `password`. Under
+`--no-dev` it is not loadable at all; install dev dependencies on a host and it is. `docs/PLAN.md`
+§ 5 carries this as a deployment obligation beside the others.
 
 ### The first account, and the way back from a lockout
 

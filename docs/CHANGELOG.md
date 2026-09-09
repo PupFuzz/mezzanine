@@ -55,10 +55,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   writes the three columns directly reds on both.
   ⚠ **Found while building this, and fixed here: `database/seeders/DatabaseSeeder.php` shipped
   Laravel's stock body**, which mints `test@example.com` with the factory's password — the literal
-  `password` — and `database/factories/` is in composer's PRODUCTION autoload, so
+  `password` — and `database/factories/` was in composer's PRODUCTION autoload, so
   `php artisan db:seed` on a deployed host would have put a publicly-known credential behind the
   login page. The card's premise was that nothing created a user; something did, and it was the one
-  path that must not be used. The seeder now creates nothing.
+  path that must not be used. The seeder now creates nothing — **and, after review, neither half of
+  the mechanism ships either:** `Database\Factories\` and `Database\Seeders\` moved to
+  `autoload-dev`, and `composer install --no-dev` on a host is now a stated deployment obligation
+  (`docs/PLAN.md § 5`, `README.md`). Emptying the seeder closed the instance; this closes the class,
+  so the N+1th caller cannot re-mint it for free. Measured on a real `--no-dev` install from this
+  lockfile: `App\Admin\UserProvisioning` resolves, `Database\Factories\UserFactory` does not.
   ⚠ **Canon #20 is asserted on surfaces that could actually carry the value** — the flashed input
   Laravel re-renders a form from, the validation messages, the command's own output, and a live log
   file with a canary line proving the capture works. A failed login for an unknown address is
