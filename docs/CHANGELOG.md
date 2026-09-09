@@ -19,6 +19,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-09
+
 - **card#9077** — **losing your authenticator was a permanent lockout, and the way out was already
   built.** Measured before the change: `two_factor_recovery_codes` has been a column since the 2FA
   migration, `POST /two-factor-challenge` has always accepted a `recovery_code`, and
