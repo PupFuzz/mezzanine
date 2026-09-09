@@ -133,10 +133,9 @@ merge to `dev`. `aimla-pm` works cards and submits PRs here to rule on. Upstream
 reports: `sola-pm` = agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge +
 agent-board-toolkit.
 
-**Burn-down (operator, 2026-09-09).** The mechanism is adopted; **NO SPRINT IS DEFINED YET** — do
-not call the current page "the sprint". A request for it always means REGENERATE, never `cat`. Full
-rule, incl. the lane swap once a sprint exists: memory `mezzanine-burndown-request-means-regenerate`
-and § Burn-down below the PROJECT ADDENDUM divider.
+**Burn-down (operator, 2026-09-09).** **Sprint 1 is DEFINED** (5 cards, #62); lanes are tag-driven
+(`lane:now`/`lane:next`/`lane:blocked`). A request for the page always means REGENERATE, never
+`cat`. Changing the set + full rule: § Burn-down below the PROJECT ADDENDUM divider.
 
 ⚠ This block is injected verbatim every session and is cut at ~1900 B, gates first so a cut can only
 remove elaboration. Keep it under that: `awk '/BEGIN coord:install-rules/,/END coord:install-rules/' CLAUDE.md | wc -c`
@@ -726,15 +725,26 @@ setup and must not be applied here:
 
 ## Burn-down
 
-The burn-down **mechanism** is adopted (operator, 2026-09-09). **No sprint is defined yet** — the
-lanes `now`/`next`/`blocked` currently mirror board-14 COLUMNS (`in_review` / `prioritized` /
-`blocked_gated`), which is a view of the whole board and scaffolding until a sprint exists. Do not
-describe the present page as "the sprint".
+**Sprint 1 is defined** (2026-09-09, PupFuzz/mezzanine#62). The lanes are **tag-driven**: each lane's
+`members` is `{"tag": true}`, which `sprint-burndown.py` resolves to the tag `<tag_prefix><key>` —
+`lane:now`, `lane:next`, `lane:blocked` (`tag_prefix` is `lane:`). Sprint membership is therefore
+**independent of which column a card sits in**, which is the whole point of the swap away from the
+earlier `filter.column` mirrors.
 
-**Once a sprint is defined**, its committed set is what the page shows: swap each lane's `members`
-from `filter.column` to the sprint-shaped primitives — `tag` (cards tagged into the sprint;
-`tag_prefix` is `lane:`, and the `now` lane already carries `tag: true`) or `gate_card` (everything
-blocking a release).
+**To change the committed set**, retag the cards — do not edit the page:
+
+```
+kbcard patch --task <id> --tags "<full intended set incl. lane:now|lane:next|lane:blocked>"
+```
+
+⚠ `--tags` REPLACES wholesale, so always pass the card's complete intended tag set, not just the
+lane tag. Then regenerate (below). A card also leaves the page by MOVING on the board.
+
+⚠ Cards carry legacy BARE `now`/`next`/`later` tags from an older convention. Those do **not**
+select into a lane — the tool matches `lane:now`, never `now` (`sprint-burndown.py:422`). Do not
+"tidy" them into lane tags without meaning to commit those cards.
+
+`sprint-burndown.py --check` reds when the board no longer agrees with the committed page.
 
 **On request, REGENERATE — never read back the committed page.** "show me the sprint burn-down" and
 "the race-to-release HTML file" are the SAME ask and both mean run it fresh:
