@@ -111,6 +111,49 @@ jobs:
           fi
           exit $rc
 
+      # ⛔ WHICH CREDENTIAL IS THIS, ACTUALLY. Added by card#9146 after the promote chain 403'd on
+      # every card of every release since it was wired, and four rounds of inference across two
+      # agents failed to explain it — because every hypothesis was about the BOARD (role, custom
+      # permissions, the destination stage's lane_type) and none about the CREDENTIAL.
+      #
+      # What finally settled it was one request nobody had made. Measured 2026-09-09 from the seat,
+      # using the writeback token the bridge holds on disk:
+      #
+      #     PATCH /api/v3/tasks/7583.json {"workflow_stage_id":108}   ->  HTTP 200
+      #
+      # 108 is `Released to main`, the terminal stage this chain 403s on, and card 7583 already sat
+      # there so the write was a no-op on success. The actor is user 15, `board_custom`, with exactly
+      # {create,update,move} and no admin — re-read from the API in the same breath as the attempt.
+      # So the board permission model is exonerated: those permissions ARE sufficient.
+      #
+      # ⇒ The only surviving explanation is that `secrets.KANBAN_WRITEBACK_TOKEN` is NOT that
+      # credential. This step is what makes the chain say so itself instead of costing another four
+      # rounds: it asks the API who the secret authenticates as, BEFORE the promote runs.
+      #
+      # ⚠ It prints ONLY the HTTP status and `.data.id`. That endpoint also returns `email` and
+      # `name`, and neither belongs in a job log. The token is passed via env and never enters argv.
+      # Non-fatal by design (`|| true`, no `exit`): this is a diagnostic, and a probe that could fail
+      # the run would turn a reporting aid into a new way for the release to break.
+      - name: Which kanban user does this secret authenticate as
+        env:
+          KANBAN_WRITEBACK_TOKEN: ${{ secrets.KANBAN_WRITEBACK_TOKEN }}
+          KANBAN_API_BASE: ${{ vars.KANBAN_API_BASE }}
+        run: |
+          code="$(curl -sS -o /tmp/whoami.json -w '%{http_code}' \
+                    -H "Authorization: Bearer $KANBAN_WRITEBACK_TOKEN" \
+                    -H 'Accept: application/json' \
+                    "$KANBAN_API_BASE/users/current.json" || echo 000)"
+          echo "identity probe: HTTP $code"
+          if [ "$code" = "200" ]; then
+            id="$(jq -r '.data.id // "absent"' /tmp/whoami.json 2>/dev/null || echo unparseable)"
+            echo "identity probe: this secret authenticates as kanban user id=$id"
+            [ "$id" = "15" ] || echo "::warning::the writeback secret authenticates as user $id, not the writeback service account (15) — a promote 403 is explained by this, not by board permissions (card#9146)"
+          else
+            echo "::warning::identity probe got HTTP $code — the secret is malformed, revoked or expired; a GET failing means this is not about write permissions at all (card#9146)"
+          fi
+          rm -f /tmp/whoami.json
+          true
+
       - name: Promote cards named in the released range
         env:
           # A kanban API token whose user is a MEMBER of board 14 WITH move permission.
