@@ -25,6 +25,13 @@ node_modules/
 !bin/promote-cards-by-token
 auth.json
 
+# the prod deploy's failure marker (bin/deploy.sh, card#7459). It is written INTO the deployed
+# checkout deliberately — an operator who ssh's in to find out what happened lands in the repo
+# root, and a marker under /var would be one more path to know. It is ignored because it is host
+# state, and because the deploy refuses to run against a dirty tree: tracked, it would make every
+# deploy after a failure refuse for the WRONG reason and hide the one it should refuse for.
+.deploy-failed
+
 # python bytecode (the selftests import the lint by path)
 __pycache__/
 *.pyc
