@@ -19,6 +19,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-09
+
 - **card#8075** — **the CODE half: `blocked_since` was a published member no server ever
   populated.** The declaration landed in #46 — D2 § 8.2.1's row (`rfc3339_ms`, nullable, non-null
   only when `activity_state == "blocked"`), its promotion note, and D3's reconciliation — and
