@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Admin\PasswordPolicy;
 use App\Admin\UserProvisioning;
+use App\Console\SecretLine;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
@@ -90,7 +91,11 @@ class CreateUserCommand extends Command
 
         if ($generated) {
             $this->newLine();
-            $this->line(sprintf('  password    %s', $password));
+            // ⛔ NOT `$this->line()` — that writes through the console formatter, which
+            // rewrites `\<` and `\>` and eats anything shaped like a style tag, and
+            // `Str::password()`'s alphabet contains all three characters.
+            // `App\Console\SecretLine` owns the whole argument and the measurement.
+            SecretLine::write($this->output, 'password', $password);
             $this->newLine();
             $this->warn('  This is the only time this value is shown. It is stored only as a hash.');
             $this->warn('  Hand it over out of band and have them change it after the first sign-in.');
