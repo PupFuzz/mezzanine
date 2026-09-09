@@ -45,11 +45,13 @@
 #     minting a lockfile is a dependency-pinning decision on its own, not a side effect of adding
 #     a test lane. That half of the card stays open.
 #
-#   * **PHP other than the floor.** Pinned to 8.3: `server/composer.json` requires `^8.3` and
-#     `bin/deploy.sh`'s `MEZZ_FPM_SERVICE` defaults to `php8.3-fpm`, so this is the version the
-#     app is actually deployed onto. A green here does NOT certify 8.4 or 8.5, which `deploy.sh`
-#     A6 also admits. Widening means a matrix, and a matrix multiplies the check CONTEXT
-#     (`php-tests (8.3)`, `php-tests (8.4)`, …) — which is a required-check-list question, not a
+#   * **Any PHP but 8.4.** Pinned to 8.4 because that is what `server/composer.lock` can actually
+#     be installed on — NOT because 8.4 is the declared floor. It is not: `composer.json` says
+#     `^8.3` and `bin/deploy.sh` reloads `php8.3-fpm`. Those three surfaces disagree, this lane's
+#     first run is what measured it, and the disagreement is FILED — it is a live deploy defect,
+#     because the box `deploy.sh` targets could not install this lock either. A green here
+#     certifies 8.4 and nothing else. Widening means a matrix, and a matrix multiplies the check
+#     CONTEXT (`php-tests (8.4)`, `php-tests (8.5)`, …) — a required-check-list question, not a
 #     free change. One version, one context, on purpose.
 #
 #   * **MySQL.** The suite runs on in-memory SQLite (`server/phpunit.xml`, per
@@ -89,10 +91,21 @@ jobs:
 
       # `pdo_sqlite` AND `sqlite3` are both load-bearing and neither is optional: the suite's
       # connection is SQLite (phpunit.xml) and it does not start without them.
+      # ⚠ 8.4, NOT the `^8.3` composer.json declares — and that gap is a FILED DEFECT, not a
+      # preference. `composer.lock` carries symfony/* v8.1.5, which require `php >=8.4.1`, so the
+      # committed lock CANNOT BE INSTALLED on 8.3; this lane's own first run is what measured it
+      # (`composer install` exit 2, eighteen "your php version (8.3.33) does not satisfy"
+      # problems). `bin/deploy.sh` reloads `php8.3-fpm` by default, so the same lock could not be
+      # installed on the box the deploy script targets either.
+      #
+      # This pin follows the LOCK because the lock is what `composer install` reads — the lane
+      # must run the tree that actually exists. When the floor disagreement is resolved (card
+      # filed), whichever version wins is the one to set here, and all three surfaces move
+      # together.
       - name: Set up PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: pdo_sqlite, sqlite3
           coverage: none
           tools: composer:v2
@@ -112,8 +125,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('server/composer.lock') }}
-          restore-keys: composer-${{ runner.os }}-php8.3-
+          key: composer-${{ runner.os }}-php8.4-${{ hashFiles('server/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php8.4-
 
       # No `--no-dev`: phpunit, collision, mockery and faker are all require-dev, and they are
       # the suite. `composer install` (never `update`) so the lock is the authority — a lane that
