@@ -43,6 +43,58 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   ⚠ **Gotcha for the floor build:** `docs/design/floor-preview/floor-preview.html` still draws a
   retired desk. It is operator-ratified art direction and re-cutting it is its own change; the
   artifact gate's `retired` label comparison is exempted with that stated in the gate itself.
+- **card#7459** — **the repo had no production deploy path at all.** `docs/PLAN.md § 5` + D-13 say
+  prod moves only via `bin/deploy.sh` and that "hand-deploys to prod are not a path"; the file did
+  not exist, so every prod change would have been a hand-deploy by construction. **`bin/deploy.sh`**
+  is that path: a precondition phase that refuses before touching anything, then a maintenance
+  window that takes the app down, checks out the target commit, **re-execs the deployed release's
+  own copy of itself** (so the new code is deployed by ITS procedure, not by the previous
+  release's), installs dependencies, migrates **forward-only**, rebuilds the caches in the order
+  that matters, restarts the long-lived daemons, brings the app up and smoke-checks `/up`.
+  ⚑ **The kanban-board sample this was to be adopted from is NOT reachable from this seat** —
+  `share/issue-347/kanban-solo/kanban-board-deploy.sh @ ee7df9b9` is on no path here and
+  `PupFuzz/agent-roundtable` answers 404 to this credential — so **no line was copied** and the
+  script's header says so rather than implying a provenance it does not have. What was adopted is
+  rt#347's enumeration of the sample's load-bearing properties, each implemented with its reasoning
+  stated at the step it governs. ⭐ **One deliberate divergence, ruled binding by rt#347 item 1**:
+  the daemons are restarted **inside** the window. The sample's host runs a shared host-scoped
+  daemon serving several tenants and is silent about restarting it; this host is single-tenant, so
+  `mezzanine:fold`, `mezzanine:sweep`, `mezzanine:feed-heartbeat` and — once card#7339 makes it the
+  broadcaster — Reverb all hold *this* app's code in memory, and copying that silence would leave
+  every deploy serving stale broadcast code with the sockets still up and the floor still
+  rendering. Reverb's membership in the restart set is **derived from `BROADCAST_CONNECTION`, never
+  asserted**, so it becomes mandatory the moment #7339 flips it; a Reverb unit named while the app
+  does not broadcast through Reverb is **refused** rather than silently never restarted. A unit
+  that restarts and then dies is an in-window failure too — `systemctl restart` returns when a unit
+  *started*, which is why the state is re-read after a settle. ⛔ **Down and stay down**: any
+  failure after the window opens leaves the app down, leaves a marker on disk and rolls nothing
+  back — a failed MySQL migration is half-applied and `down()` would be a second guess at a state
+  nobody has read yet. A **bare re-run then REFUSES** until an operator clears the marker, because
+  "run it again" is the reflex that erases the evidence. The exit codes are distinct on purpose
+  (0 deployed · 1 refused and untouched · 2 broke in-window and is down · 3 up but unverified).
+  ⭐ **Every refusal was seen to fail before it was trusted** — the card's whole acceptance.
+  `bin/deploy.selftest.sh` is hermetic and network-free (real git fixtures, the real script, the
+  real re-exec; php/composer/npm/systemctl/curl/id stubbed on PATH), prints its own assertion count
+  rather than pinning one here, and pairs every red with a **single-variable control that passes**:
+  the same migration with and without its `ALGORITHM=` comment, the same run with and without a
+  failing `migrate` — asserting `artisan up` IS called in one and NEVER in the other. It also pins
+  the cache order as an ordering assertion (`optimize:clear` → `migrate` → `config:cache` → … →
+  daemons → `up`) instead of leaving it to a reader, and asserts no `APP_KEY` or `DB_PASSWORD`
+  value reaches the transcript. The suite was **mutation-tested**: four single-variable defects
+  planted in the script (marker guard removed, post-restart `is-active` weakened, `optimize:clear`
+  moved after `migrate`, the § 6.9 pattern widened) each turned it red, and it caught a real one —
+  a config-drift check placed before the ref was resolved, which under `set -u` was a check that
+  could not fail. ⚑ **Two deployment obligations that were prose became gates**:
+  `docs/design/FLEET-STATE.md § 6.9` rule 1 says a migration on `events` states its algorithm
+  *"and the deploy checks it"* — this is that check, read out of the target tree before the window
+  opens — and `docs/PLAN.md § 5`'s `CACHE_STORE` rule, where `array`/`null` reintroduces the login
+  path's user-enumeration oracle, is now a refusal rather than a paragraph. ⚠ **The live-host leg is
+  entirely unexercised and cannot be**: the prod host does not exist (D-08). Nothing here has run
+  against systemd, sudo, MySQL, PHP-FPM or a real `/up`, and rt#347 item 5 — the review with
+  kanban-solo against the actual sample — is still owed. ⚠ **`server/package-lock.json` does not
+  exist, so the script refuses today**: `package.json` floats (vite ^8, tailwind ^4) and a
+  lockfile-less prod build can ship different JavaScript from the same commit on two different
+  days. Committing it is a prerequisite of the first real deploy, not of this PR.
 
 - **card#7684** — **The reporter mapped `PostToolUseFailure` by `is_interrupt` alone while D1
   § 6.6, amended by card#7337, required a two-signal kill signature** — so the code contradicted the
@@ -66,6 +118,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   counter row gains the unknowable-open case; and § 6.0's subscription table and § 6.6's own
   `is_error` paragraph, which both still restated the pre-amendment `per is_interrupt` mapping, now
   point at the kill signature instead.
+
+- **card#9085** — **the console's floors module, and the schema behind it.** `card#9070` shipped the
+  console shell with `App\Admin\ConsoleModules` as the one list its nav and landing page both read,
+  so this module lands as an **entry** in that list: nothing in the shell changed to accommodate it,
+  and both of `ConsoleShellTest`'s population checks reds until its six routes were listed as gated.
+  It ships the **`floors` table** — one authored Tiled map per floor, keyed by
+  `docs/design/FLOOR.md § 3.1`'s `install_id` — plus the module that authors, replaces and removes
+  one, and lists every floor with the seats it renders against the desk slots its map declares.
+  ⛔ **It is the (a) half of the operator's 2026-09-08 ruling and stops exactly at the (b) line.**
+  Nothing here names a seat: § 3.2 puts a seat at a desk by a pure function of the rendered seat set,
+  "without a stored position and without a server field", and pinning one is `card#9071`'s undecided
+  ruling. The absence is asserted rather than commented — over the route table, and over the schema's
+  own column list, because the edit that would cross the line is one column and one form field.
+  ⛤ **`S` is derived from the map, never stored beside it** — `docs/design/FLOOR.md § 10.3` makes the
+  map the one home for the slot count, so a `slot_count` column would be a second home free to
+  disagree with the document it describes.
+  ⛤ **A map an operator pastes in is validated against § 10.1 clause 3 at the write** (CSV layer
+  data, no embedded tileset image, one object layer named `desks`), because the two asset gates run
+  over *files in the repository* and a document in a database column is not one. § 10.3 now says that
+  in terms, including what the check does **not** cover: it cannot tell whether the tileset a map
+  names was ever vendored. The base64-run heuristic of clause 2 is deliberately not re-implemented —
+  clause 3 removes the base64 at its source, and § 10.1 records what that heuristic is worth on
+  machine output.
+  ⛤ **The seat count is `Snapshot::seats()`, the read the floor itself uses** — a second query would
+  disagree with the floor about which seats exist, starting with `FLEET-STATE.md § 4.10`'s 14-day
+  read filter. A floor whose install the snapshot no longer renders is surfaced on the page rather
+  than dropped from it.
+  ⚠ **Corrected in the same change:** `routes/admin.php` claimed "nothing here deletes a row", which
+  this module makes false — a floor map is a drawing, not a record. The console still registers no
+  `DELETE` verb, and that is asserted over the whole route table.
 
 - **card#9070** — **the admin console: nobody could sign in to a fresh deploy, and no path created
   the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a

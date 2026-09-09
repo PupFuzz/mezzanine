@@ -2509,6 +2509,31 @@ nothing in the port's licence work is undone by the art direction changing.
 - The map declares nothing about state. No slot is bound to a `seat_id`, because a map that named seats
   would be a second home for identity and would have to be edited every time a seat is provisioned.
 
+⭐ **A map may be AUTHORED BY AN OPERATOR instead of shipped in the repository, and what that does to
+[§ 10.1](#101-the-manifest-and-the-two-gates)'s two gates is stated here rather than left to be
+discovered.** `card#9085`'s admin console stores one Tiled document per floor, keyed by `install_id`
+([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s floor key), and that store is where a floor's
+map comes from once one has been authored for it. Three consequences:
+
+- **Neither gate sees such a map, because neither gate can.** § 10.1 is a statement about "every asset
+  file in the repository", and a document in a database column is not a file with a path: Gate 1 has no
+  row to check and Gate 2 has no file to admit. So the console enforces **clause 3 in full at the
+  write** — CSV layer data, no embedded tileset image, and a refusal that names the clause — because
+  what clause 3 protects is not the repository tree but the property that an asset has a path,
+  therefore a row, therefore a provenance. `App\Floor\FloorMap` is that check, and
+  `Tests\Feature\Admin\FloorConsoleTest` watches each refusal go red against the same map with one
+  property changed.
+- **It closes that hole and nothing else, which is the honest size of the claim.** The tileset an
+  authored map references is a repository file like any other and owes its row like any other; a map
+  that names a tileset nobody vendored is a broken reference the console cannot see, and saying so is
+  this check's correct output rather than a gap in it.
+- **The READ path for an authored map is not specified in this document, and is deliberately not
+  invented here.** How the client obtains one is a server-side read surface, which
+  [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) makes D2's and
+  [§ 1.3](#13-the-boundary-stated-as-a-rule) forbids guessing. Until the floor is built (card#7341)
+  and D2 publishes one, the store has exactly one reader — the console that writes it — and `S` is
+  derived from the document by whoever holds it, never stored beside it.
+
 ### 10.4 The art direction, as a specification
 
 **This subsection exists because until it did, the only carrier of the ratified look was an
