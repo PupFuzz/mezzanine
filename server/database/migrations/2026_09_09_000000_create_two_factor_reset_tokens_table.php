@@ -50,9 +50,9 @@ return new class extends Migration
             $table->foreignId('user_id')->index();
 
             // 64 hex characters. ASCII and binary-collated per `docs/design/FLEET-STATE.md § 6.1`:
-            // this is an identifier column and it must compare EXACTLY — MySQL's default
-            // `utf8mb4_0900_ai_ci` is case-insensitive, which would make two digests differing
-            // only in case compare equal on lookup.
+            // this is an identifier column and it must compare EXACTLY — the store's configured
+            // collation `utf8mb4_unicode_ci` (config/database.php) is case-insensitive, which
+            // would make two digests differing only in case compare equal on lookup.
             Ddl::ascii($table->char('token_hash', 64))->unique();
 
             $table->timestamp('created_at');

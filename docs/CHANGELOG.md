@@ -19,6 +19,53 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7523** — **the store is repinned to MariaDB ≥ 11.8.6, replacing MySQL ≥ 8.0.12** (operator
+  ruling, 2026-09-09). This is the DOCUMENTATION AND PINS half; host provisioning is the operator's
+  and is not in it. **D2 § 6.1 does not carry its requirements across — it re-argues each one**: the
+  engine row now cites MariaDB for `FOR UPDATE SKIP LOCKED` (10.6.0) and `ALGORITHM=INSTANT` (10.3.2,
+  with no MySQL-style 64-row-version ceiling), and the character-set row moves off
+  `utf8mb4_0900_ai_ci` — a MySQL-only identifier that spells no vendor name, which is why a grep for
+  "MySQL" would have left it. The value it moves to is `utf8mb4_unicode_ci`, which is what
+  `server/config/database.php` has said all along: **the document and the config had already drifted
+  apart on this row and nobody could see it**, because the only thing the schema's correctness
+  actually rests on is `ascii_bin` on identifier columns, and that is present on both engines.
+  ⭐ **`JSON` is the one requirement that changed meaning, not just vendor.** On MariaDB it is an
+  alias for `LONGTEXT` + an automatic `CHECK (json_valid(…))`, not a binary type, and the `->`/`->>`
+  operators do not exist before 13.1. That is inert **here** and the reason is recorded rather than
+  assumed: this repo has **zero** SQL-side JSON — every JSON column is written whole, read whole and
+  decoded in PHP (re-verified this pass, not taken on trust). The same pass re-verified the other
+  divergences: no `uuid`/`ulid` column in any migration, so the one driver difference the research
+  names has nothing in this schema to act on; and no functional/expression index.
+  ⚠ **ONE ITEM IS UNSOURCED AND IS RECORDED AS UNSOURCED, not smoothed over.** Quantified
+  whole-column JSON read/write performance on a `LONGTEXT`-backed `JSON` against MySQL's binary
+  `JSON` — neither vendor isolates that access pattern. § 6.1 now says in terms that this document
+  claims **no parity in either direction**; it needs a benchmark, not a citation. § 6.8's row-cost
+  model carries the same caveat, having been built on the binary-`JSON` assumption.
+  ⚠ **`docs/PLAN.md` D-15 was superseded by an APPEND, never an edit** — that register's own rule
+  (`§ Amendments`). The row stands as written; the amendment states that the engine and its floor
+  move and that the *dedicated host*, the provisioning ownership and § 6.2's pinned names do not.
+  ⛔ **What this deliberately did NOT change, each for a stated reason.** `bin/deploy.sh` still
+  refuses any `DB_CONNECTION` but `mysql` — that is the LARAVEL CONNECTION NAME, not the server
+  product, Laravel's `mysql` driver speaks to MariaDB, and moving the app to `config/database.php`'s
+  `mariadb` connection would change what the deploy accepts *and* what the § 6.2 isolation guards key
+  on. Its refusal text and the comment above it now say all of that; the decision is the operator's
+  and is named as open in the D-15 amendment. Migrations, `config/database.php` and the suite's SQLite
+  pin are untouched. `docs/sprint-burndown.html` is generated and card#7523's own title still says
+  *"MySQL provisioning"* — both move when the operator retitles the card, not from here.
+  ⛔ **PHP docblocks still name MySQL as the deployed engine** (`Fold`, `Predicates`, `BatchWriter`,
+  `Clock`, the migrations, `MySqlColumnTypeTest`, `ingest-roundtrip.py`, …). No count is written
+  here because a count is a claim with a maintenance schedule; the population is whatever
+  `grep -rIil mysql server/app server/database server/tests` returns, less the identifiers
+  (`MYSQL_ATTR_SSL_CA`, `database.connections.mysql.*`, `MySqlGrammar`, `MySqlColumnTypeTest`)
+  which are names and not claims. They are reported as ONE class rather than fixed here — this
+  dispatch is docs and pins, and a repo-wide comment sweep during parallel work is how a rebase
+  eats a real change. **Every** copy of the `utf8mb4_0900_ai_ci` claim WAS fixed, in code comments
+  as well as in D2, because that claim is the one this card falsifies and a corrected claim with
+  false copies left behind is the drift the correction exists to remove. Also reported: `MySqlColumnTypeTest` compiles the real migrations through Laravel's
+  **MySqlGrammar**, which is no longer the grammar the prod store is reached by — inert today (the
+  `mariadb` driver differs only on `uuid`, which this schema has none of) and named so it does not go
+  quiet.
+
 - **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
   count.** The table is what an operator provisions a host from, and it listed every process except
   the 15 s feed heartbeat — so a host built from it would supervise the fold, the sweep and the

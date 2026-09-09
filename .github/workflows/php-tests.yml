@@ -54,9 +54,9 @@
 #     CONTEXT (`php-tests (8.4)`, `php-tests (8.5)`, …) — a required-check-list question, not a
 #     free change. One version, one context, on purpose.
 #
-#   * **MySQL.** The suite runs on in-memory SQLite (`server/phpunit.xml`, per
+#   * **The store.** The suite runs on in-memory SQLite (`server/phpunit.xml`, per
 #     `docs/design/FLEET-STATE.md § 6.2`) because that is what a runner can run without
-#     provisioning. § 6.1's MySQL posture — version floor, TLS, session time zone — is verified at
+#     provisioning. § 6.1's MariaDB posture — version floor, TLS, session time zone — is verified at
 #     provisioning and this lane says nothing about it.
 #
 #   * **The front-end build.** The suite passes with no `node_modules` and no `public/build`
@@ -149,7 +149,7 @@ jobs:
       # ⛔ ASSERTED, NOT EXPORTED — the difference is the whole point.
       #
       # `server/phpunit.xml` leaves `DB_CONNECTION` deliberately UNFORCED (its own comment says
-      # why: forcing it is the shape that turned another repo's MySQL matrix into a SQLite run
+      # why: forcing it is the shape that turned another repo's MariaDB matrix into a SQLite run
       # reporting green), and `docs/design/FLEET-STATE.md § 6.2`'s argument rests on the fact that
       # nothing in this repo's CI selects a backend by exporting one. An `export
       # DB_CONNECTION=sqlite` here would falsify that sentence for the sake of a value the
