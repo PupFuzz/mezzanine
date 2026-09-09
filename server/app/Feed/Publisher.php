@@ -96,10 +96,10 @@ final class Publisher
     /**
      * Every install with a channel — i.e. every install, retired ones included.
      *
-     * `installs.retired_at` is NOT filtered here. § 4.10's 14-day read filter is about SEATS on
-     * the snapshot; an install's own retirement has no rule in D2 and inventing one would be
-     * this card deciding a question D2 has not asked. A channel with no subscriber costs one
-     * publish into nothing.
+     * `installs.retired_at` is NOT filtered here. § 4.10's read filter is about SEATS on the
+     * snapshot; an install's own retirement has no rule in D2 and inventing one would be this
+     * card deciding a question D2 has not asked. A channel with no subscriber costs one publish
+     * into nothing.
      *
      * @return list<string>
      */

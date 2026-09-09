@@ -27,12 +27,18 @@ use Illuminate\Http\Request;
  * `seat.retired` publish, and the desk would stay on every connected floor until a sweep pass.
  *
  * ⚠ THE LIST IS `Snapshot::seats()` — THE SAME READ THE FLEET RENDERS — rather than a second
- * query. That means `App\Read\RetirementFilter` applies: a seat retired more than
- * `Purge::RETENTION_DAYS` ago is not listed here, exactly as it is not rendered on the floor.
- * § 4.10 is explicit that this is a READ FILTER and not a deletion ("an operator query can still
- * find the row and its reason"), so nothing is lost — but the row is past the window in which
- * anything on this page could act on it, and a second hand-written query is how the console and
+ * query. That means `App\Read\RetirementFilter` applies: a retired seat is not listed there,
+ * exactly as it is not rendered on the floor. A second hand-written query is how the console and
  * the floor would come to disagree about which seats exist.
+ *
+ * ⭐ AND THAT IS WHY THIS PAGE CARRIES A SECOND LIST (card#9078). The operator ruled that a
+ * retired seat's desk goes IMMEDIATELY — "a removal is a deliberate action by the operator … its
+ * seat and desk should go away immediately" — so the retirement record has no desk left to live
+ * on. It does not disappear; it MOVES HERE. `Snapshot::retiredSeats()` is the complement of the
+ * same read, and this page renders it as **retired seats**: who was retired, when, by whom and
+ * why. It is a better home than a ghost desk — queryable, unbounded by any window, and it does
+ * not consume a slot on a floor whose slot count is finite. ⛔ A console that lost the record
+ * when the desk went would make the ruling a DELETION, which § 4.10 forbids in terms.
  */
 class SeatController extends Controller
 {
@@ -47,7 +53,11 @@ class SeatController extends Controller
 
     public function index(): View
     {
-        return view('console.seats.index', ['active' => 'agents', 'seats' => Snapshot::seats()]);
+        return view('console.seats.index', [
+            'active' => 'agents',
+            'seats' => Snapshot::seats(),
+            'retired' => Snapshot::retiredSeats(),
+        ]);
     }
 
     public function retire(
@@ -88,7 +98,8 @@ class SeatController extends Controller
             ? $seat.' was already retired (at '.$outcome->at.') — no-op. The original author and '
                 .'reason are kept.'
             : $seat.' retired at '.$outcome->at.' — state_version '.$outcome->version
-                .'. Every connected floor was told in the same transaction.';
+                .'. Its desk left every connected floor in the same transaction; the record is '
+                .'below, under retired seats.';
 
         return redirect()->route('admin.agents.index')->with('status', $message);
     }

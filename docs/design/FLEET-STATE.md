@@ -367,8 +367,14 @@ render_state =
     otherwise                    -> activity_state           # working | idle | blocked | stalled | unknown
 ```
 
-Read top-down; the first match wins. **There is deliberately no ordering here among the transport
-values.** `link_state` is a single scalar, so a collapse that ranked `disabled` above `offline` would be
+Read top-down; the first match wins. ⚠ **`retired` still sits at the top, and since card#9078 it is
+the one member that no *rendered* seat is ever in:** the read surfaces stop selecting a seat at
+`retired_at` ([§ 4.10](#410-retirement-is-a-rendered-state)), so the only object that ever carries
+`render_state: "retired"` is the announcement's own delta, whose consumer removes the desk
+([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)). The row stays at the top of the
+collapse because the stored column must still be right — a retired seat that keeps reporting is a
+misconfiguration, and storing it as `working` would hide that from the ledger and from an operator
+query. **There is deliberately no ordering here among the transport values.** `link_state` is a single scalar, so a collapse that ranked `disabled` above `offline` would be
 ranking two values one column cannot hold at once; the ordering that decides *which* value the scalar
 takes is a real decision and it lives once, in [§ 4.5](#45-link-states)'s cascade, where it is made.
 `render_state`'s **ten** members are therefore exactly `retired`, the four non-`live` link values and
@@ -683,11 +689,16 @@ in this rule ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)).
 
 `stale` and `offline` both carry **`delivery.no_data_since` = `last_receipt_at`**, so the rendered
 string is "no data since 14:18" rather than a glyph that means nothing on its own. A seat is **never
-removed** from the fleet because it went quiet: rows disappear only on an explicit operator retirement
-([§ 6.4](#64-ddl), `seats.retired_at`), which is an act with an author and a reason, and even then the
-seat is rendered as `retired` for the remainder of the retention window rather than vanishing between
-two refreshes — [§ 4.10](#410-retirement-is-a-rendered-state) states that state, its fields and its
-window.
+removed** from the fleet because it went quiet: it stays on every read surface, visibly degraded, for
+as long as it stays silent — no timeout, no purge and no absence ever removes one. Seats leave the
+read surfaces on exactly one thing: an explicit operator retirement ([§ 6.4](#64-ddl),
+`seats.retired_at`), an act with an author and a reason, **announced** by `seat.retired` and by the
+delta in the same transaction — and since card#9078's operator ruling they leave **at** `retired_at`
+rather than at the end of a fourteen-day window. [§ 4.10](#410-retirement-is-a-rendered-state) states
+the act, its fields and what happens to the record. ⛔ The rule this sentence used to carry — *a desk
+never vanishes between two refreshes* — was a guard against a client INFERRING a removal from missing
+data, and it is unchanged in force: what removes a desk is an announcement, which is the opposite of
+an absence.
 
 **`last_receipt_at` is the receipt time of the newest event of any kind, heartbeats included** — that is
 correct and is the one place a heartbeat is load-bearing, because the heartbeat's entire purpose is to
@@ -884,6 +895,23 @@ A seat leaves the floor by one act and one act only: an operator runs
 `retired_reason` ([§ 6.4](#64-ddl)). Nothing else — no timeout, no purge, no silence — ever removes
 a row from the fleet.
 
+⛔ **REVERSED 2026-09-09 (card#9078) BY OPERATOR RULING — a retired seat's desk goes IMMEDIATELY,
+and this section's fourteen-day render window is gone.** Verbatim: *"An absence and removal are very
+obviously different because if an agent is not reporting, it is assumed to be an absence. A removal
+is a deliberate action by the operator. When an agent is removed, its seat and desk should go away
+immediately."* The read filter now stops selecting a seat **at** `retired_at`; the record —
+`retired_at`, `retired_by`, `retired_reason` — does not disappear with the desk, it **moves** to the
+admin console's agent module (card#9070), which is a better home than a ghost desk: queryable,
+bounded by no window, and consuming no slot on a floor whose slot count is finite. ⚠ **The argument
+this section used to make for the window is recorded rather than deleted**, because it is the one a
+maintainer will re-derive: that a lingering desk kept *"we removed it"* distinguishable from *"it
+went quiet"*. It is false on the render table above — a quiet seat is visibly present and degraded
+(`stale` at 300 s, `offline` at 900 s), so a removed seat being GONE is maximally different from it.
+⛔ **What the reversal did NOT touch, and must never:** removal is driven by the EXPLICIT retirement
+and never by an absence — not by a delta, a poll, a scoped read, a timeout or silence. The first
+sentence of this section is unchanged, and it is the whole of what
+[FLOOR.md § 2.3](FLOOR.md#23-membership-a-seat-or-an-install-the-client-does-not-hold) protects.
+
 ⚠ **AMENDED 2026-09-08 (card#9070) — the act now has TWO operator entry points and still exactly ONE
 implementation.** The admin console's agent module (`POST /admin/agents/{install_id}/{seat_id}/retire`,
 session + MFA) performs the same act, and the transaction described below moved out of the command into
@@ -911,16 +939,18 @@ recompute then agrees with it on every later pass rather than racing it, because
 
 | Question | Answer |
 |---|---|
-| Does a retired seat appear in the snapshot? | **Yes**, for **14 days** after `retired_at`, with `render_state: "retired"` and a `retired` object carrying `at`, `by` and `reason`. After 14 days the read queries stop selecting it |
-| Is it purged? | **No.** `seats` is retained forever ([§ 6.7](#67-retention-and-purge)); the 14 days is a **read filter**, not a deletion, so an operator query can still find the row and its reason |
-| Why 14 days? | the retention window, one home: a retired seat stays visible for exactly as long as the events that explain what it was doing |
-| What do connected clients see at the moment of retirement? | the `seat.retired` feed message and the delta carrying `render_state: "retired"`, **both published by `mezzanine:retire` in the transaction that sets the columns** ([§ 2.1](#21-processes), [§ 8.3](#83-the-websocket-delta-feed)) — so the re-render is immediate rather than up to one sweep pass late, it carries `cause: operator` rather than `staleness_sweep`, and `seat.retired` reaches the wire at all, which nothing else in this document would have done. A row never vanishes between two refreshes |
-| Does `link_state` or `activity_state` change? | Retirement itself changes neither — it is an administrative fact, not a transport or activity one. But **the axes keep deriving**: the sweeper recomputes `link_state` for every seat on every pass ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)), so a retired seat that stops reporting still reaches `stale` at 300 s and `offline` at 900 s underneath. What does not change is the **render**: `retired` short-circuits above both axes in [§ 4.2](#42-render-precedence), so the desk keeps saying an operator retired it while the drill-down keeps saying what the seat was doing and what its transport did afterwards |
+| Does a retired seat appear in the snapshot? | **No** — the read queries stop selecting it **at `retired_at`**, in the same transaction that announces the retirement (card#9078). Every seat-scoped read surface answers together: the snapshot, `GET /api/fleet/seats/{install}/{seat}`, the timeline, § 8.2.4's population and the console's own agent list all read one predicate, so there is no window in which one has dropped the seat and another still serves it |
+| Is it purged? | **No.** `seats` is retained forever ([§ 6.7](#67-retention-and-purge)); the disappearance is a **read filter**, not a deletion, so an operator query can still find the row and its reason — and the admin console renders exactly that query as its **retired seats** list. ⛔ Both halves are asserted by [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it), because a DELETE would satisfy the row above on its own |
+| Where does the record live once the desk is gone? | the **admin console** (card#9070's agent module). The retirement record does not disappear; it moves off a floor that cannot hold it — a desk was never a queryable home for *who retired this seat, when and why*, and it cost a slot on a finite floor to be one badly |
+| What do connected clients see at the moment of retirement? | the `seat.retired` feed message and the delta carrying `render_state: "retired"`, **both published by the retirement act in the transaction that sets the columns** ([§ 2.1](#21-processes), [§ 8.3](#83-the-websocket-delta-feed)) — so the change is immediate rather than up to one sweep pass late, it carries `cause: operator` rather than `staleness_sweep`, and `seat.retired` reaches the wire at all, which nothing else in this document would have done. ⭐ **Those two messages ARE the removal**: [FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal) takes the desk off the floor on them, and a client that missed them learns from the next full snapshot instead. A desk still never disappears because data went missing — only because a retirement was announced |
+| Does `link_state` or `activity_state` change? | Retirement itself changes neither — it is an administrative fact, not a transport or activity one. But **the axes keep deriving**: the sweeper recomputes `link_state` for every seat on every pass ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)), so a retired seat that stops reporting still reaches `stale` at 300 s and `offline` at 900 s underneath, and `retired` short-circuits above both in [§ 4.2](#42-render-precedence) so the stored render stays right. ⚠ **Since card#9078 nothing RENDERS what that derivation produces** — the seat is off every read surface — so what those columns serve is the ledger and an operator query, not a desk. Whether the sweeper should keep visiting a retired seat at all is [§ 14](#14-open-questions-for-the-review-loop)'s to settle, not this section's: it is a live question the ruling opened rather than a behaviour it decided |
 
 `retired` sits at the top of [§ 4.2](#42-render-precedence)'s collapse because it is the one state that
 is true regardless of what the seat is still doing: a retired seat that keeps reporting is a
-misconfiguration, and rendering it as `working` would hide that. [AT-D2-23](#at-d2-23-a-retired-seat-is-rendered-not-disappeared)
-is the test, and its RED is the disappearance.
+misconfiguration, and storing it as `working` would hide that.
+[AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) is the test, and
+its REDs are now the two ways the ruling can be got wrong — **the lingering desk**, and a removal
+driven by anything other than the announcement.
 
 ---
 
@@ -1782,7 +1812,7 @@ rather than a silently shortened history.
 | `batches` | **14 days** | aligned with `events` so a forensic question about an event can always reach its batch. D1 § 10.4's 24 h idempotency memory is a timestamp comparison, not a deletion ([§ 6.4](#64-ddl)) |
 | `sessions`, `calls`, `attention_requests` | **14 days** after the row closed; open rows are never purged | a closed fact older than the log it was derived from cannot be re-derived, so purging it early would make a rebuild produce a *different* answer than the live fold — breaking [AT-D2-10](#at-d2-10-rebuild-equals-fold)'s equality for a reason that is not a defect |
 | `seat_state_transitions` | **14 days** | the drill-down's history horizon; same number, one home |
-| `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces 14 days after `retired_at` by a query filter, not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
+| `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
 
 **The retention chain, stated as one inequality because all three numbers move together:**
 
@@ -2166,7 +2196,7 @@ snapshot repeats per seat and the delta patches.
 | `reporter.platform` | enum | **yes** | D1's 4 members | `"linux"` |
 | `reporter.uptime_s` | int | **yes** | ≥ 0 — the flusher-restart discriminator | `401150` |
 | `reporter.selftest_failed` | array\<string\> | no | **0…8**, the failing check names. Not 0…6: [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat) declares that key set **open at the ingest** — *"a reporter shipping a seventh check ahead of an edit to this table costs one key a consumer does not yet render, and no `422` … the headroom above holds two further members … A ninth does not fit at that bound"* — so a conforming reporter may send 7 or 8 and a consumer validating against 6 would reject valid data. The names total ≤ 175 B across 8, which is what D1's 256 B serialized cap on `selftest` leaves | `[]` |
-| `retired` | object | **yes** | `null` unless `seats.retired_at` is set; present for 14 days after retirement ([§ 4.10](#410-retirement-is-a-rendered-state)) | `null` |
+| `retired` | object | **yes** | `null` unless `seats.retired_at` is set — which, since card#9078, no seat the read surfaces select ever is: the only object carrying a non-null `retired` is the announcement's own delta ([§ 4.10](#410-retirement-is-a-rendered-state)), which is what tells a client what left and why | `null` |
 | `retired.at` | rfc3339_ms | no | server clock | `"2026-08-20T09:11:04.000Z"` |
 | `retired.by` | string | no | ≤ 64 B, the operator | `"aimla-pm"` |
 | `retired.reason` | string | no | ≤ 255 B | `"host decommissioned"` |
@@ -2359,8 +2389,8 @@ a consumer that assumed the three were identical would read a missing `counters`
 | `sweep` | enum | no | `ok` · `stalled` — `stalled` past **60 s** since `sweep_last_run_at`, which is [§ 2.2](#22-fail-posture-per-path)'s dead-sweep rule; the field exists because that rule had a threshold and no field to put it on | `"ok"` |
 | `sweep_last_run_at` | rfc3339_ms | **yes** | server clock; `null` before the sweeper's first pass | `"2026-08-23T14:23:08.002Z"` |
 | `ingest_last_receipt_at` | rfc3339_ms | **yes** | server clock, newest receipt of any seat; the `ingest_receiving` predicate's input ([§ 5](#5-server-side-predicates-and-their-controls)) | `"2026-08-23T14:23:14.201Z"` |
-| `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat not retired more than 14 days ago, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
-| `seats_total` | int | no | ≥ 0, excluding seats retired more than 14 days ago ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
+| `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat no operator has retired, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
+| `seats_total` | int | no | ≥ 0, excluding retired seats — which leave this count at `retired_at`, in the same transaction that takes their desk off the floor ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
 | `seats_live` | int | no | ≥ 0, `link_state == "live"` | `4` |
 | `counters` | object | **yes** | **`GET /api/fleet/health` only.** The nine fleet-scoped counters whose `Exposed` cell names this surface — `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **all nine members are**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because the nine live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
 
@@ -2395,7 +2425,7 @@ floor subscribes to what it renders and a future per-install authorization has a
 |---|---|---|---|
 | `seat.delta` | server → client | a seat's `state_version` advanced | `install_id`, `seat_id`, `state_version`, `at`, `changed[]`, `patch{}` |
 | `feed.heartbeat` | server → client | every **15 s**, per channel, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
-| `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer | `install_id`, `seat_id`, `reason`, `at` |
+| `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer. ⭐ **This message is a REMOVAL instruction**: the consumer drops the seat ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)), and it is the only message on this feed that does | `install_id`, `seat_id`, `reason`, `at` |
 | `fleet.reload` | server → client | `feed_version` changed under a running client (a deploy) | `feed_version`, `reason` |
 | `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
 
@@ -3270,33 +3300,50 @@ below a window that has since aged out.
   advances to `H` on the first pass, `fold_window_purged` = 1, and the seat leaves the claim, so the test
   is known to be capable of reporting "the branch did its job".
 
-### AT-D2-23 a retired seat is rendered, not disappeared
+### AT-D2-23 a retired seat's desk goes, and only an announcement removes it
 
-- **Build:** a folded seat with history; retire it by running **`mezzanine:retire`**
-  ([§ 2.1](#21-processes)) — not by writing the columns directly, because the command *is* the
-  mechanism under test; then advance the clock past 14 days.
-- **GREEN:** connected clients receive `seat.retired`; the next snapshot carries the seat with
-  `render_state: "retired"` and a populated `retired` object, and at **that** snapshot `link_state` /
-  `activity_state` still carry what the seat was doing when it was retired; `fleet.seats_total` still
-  counts it. Past 14 days the axes have kept deriving underneath — `link_state` has reached `offline`
-  and the render is **still** `retired`, because `retired` short-circuits above both axes
-  ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 4.2](#42-render-precedence)) — and the seat is
-  absent from the snapshot **while its row is still in `seats`**: assert both, because the
-  disappearance must be a read filter and not a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)).
-- **RED — the vanishing desk:** drop retired seats from the snapshot query at `retired_at` → a browser
-  that reloads sees a seat that existed a second ago simply gone, which is the "vanishing between two
-  refreshes" [§ 4.5](#45-link-states) forbids, and there is no rendered state that says why.
-- **Second RED — the stale render:** keep the seat but leave `render_state` at its last derived value →
-  it renders `offline`, which is a claim about the transport of a seat that has been decommissioned, and
-  nothing on the object says an operator did it.
-- **Third RED — the columns without the command:** set `retired_at` / `retired_by` /
-  `retired_reason` directly and let the ordinary machinery run. **No `seat.retired` ever reaches a
-  connected client** — nothing else in this document publishes it — and the transition row the
-  sweeper eventually writes carries `cause: staleness_sweep` for a change an operator made, up to a
-  full sweep pass after they made it. Assert the *absence of the message* and the *cause value*, not
-  the eventual `render_state`: the render does converge, which is exactly why this defect is
-  invisible from the desk and has to be asserted on the wire and on the ledger.
-- **Discriminating control:** a live seat in the same fleet is unaffected at every step.
+⚠ **REWRITTEN, NOT DELETED — card#9078's operator ruling** ([§ 4.10](#410-retirement-is-a-rendered-state)).
+This test was named *a retired seat is rendered, not disappeared* and its first RED was *the
+vanishing desk*; both inverted. The behaviour it used to pin is stated here — the seat stayed in the
+snapshot for 14 days with `render_state: "retired"` and a populated `retired` object, and
+`fleet.seats_total` kept counting it — so that the rule that was replaced is still readable, which is
+the whole reason this test was not simply removed with its behaviour.
+
+- **Build:** a folded seat with history, and a second live seat in the same fleet; retire the first by
+  running **`mezzanine:retire`** ([§ 2.1](#21-processes)) — not by writing the columns directly,
+  because the act *is* the mechanism under test. Separately, and in the same file, a seat that is
+  merely left ALONE: no events, the clock advanced past every ceiling in this document, a sweep pass
+  at each step.
+- **GREEN — the desk goes at the announcement:** connected clients receive `seat.retired` **and** the
+  delta carrying `render_state: "retired"`, at one `state_version`; and the very next snapshot does
+  **not** carry the seat, `fleet.seats_total` has dropped it, and
+  `GET /api/fleet/seats/{install}/{seat}` and its timeline both answer `404 seat_not_found` — one
+  predicate, every read surface, no window between them ([§ 4.10](#410-retirement-is-a-rendered-state)).
+- **GREEN — and it was a read filter, not a deletion:** the row is still in `seats` with its
+  `retired_by` and `retired_reason`, and the admin console's retired-seat list renders it. **Assert
+  both**, because a `DELETE FROM seats` satisfies the arm above on its own and destroys the record
+  the ruling explicitly kept.
+- **⛔ RED — the lingering desk:** keep rendering the retired seat, as this document required until
+  card#9078 → an operator who removed an agent watches its desk stay on the floor and its seat stay
+  in `seats_total`, and the one thing they asked for did not happen.
+- **⛔ Second RED — the removal driven by an absence, which is the arm that must not be skipped:**
+  drop a seat from the read surfaces for anything other than `retired_at` — silence, staleness, a
+  purge, a missing delta → the inference this whole design refuses, arriving through the door the
+  ruling opened. **Its control is the left-alone seat:** at `stale`, at `offline`, and at any age
+  past both, it is still in the snapshot, still counted, still un-retired, and no `seat.retired` was
+  ever published for it ([§ 4.5](#45-link-states), [§ 4.10](#410-retirement-is-a-rendered-state)).
+- **Third RED — the stale render:** retire the seat but leave `render_state` at its last derived
+  value → the stored render says `offline`, a claim about the transport of a seat that has been
+  decommissioned, and the ledger's transition row never records that an operator did it.
+- **Fourth RED — the columns without the act:** set `retired_at` / `retired_by` / `retired_reason`
+  directly and let the ordinary machinery run. **No `seat.retired` ever reaches a connected client**
+  — nothing else in this document publishes it — so no connected floor ever removes the desk, and
+  the transition row the sweeper eventually writes carries `cause: staleness_sweep` for a change an
+  operator made, up to a full sweep pass after they made it. Assert the *absence of the message* and
+  the *cause value*: the stored render does converge, which is exactly why this defect is invisible
+  from an operator query and has to be asserted on the wire and on the ledger.
+- **Discriminating control:** a live seat in the same fleet is unaffected at every step — still
+  rendered, still counted, still fetchable.
 
 ---
 
@@ -3352,7 +3399,7 @@ document.
 | Fold visibility lag | 2 s | **Derived** — ~3 orders of magnitude above the ingest transaction (one multi-row `INSERT` of ≤ 200 events plus one `batches` row), which is what makes "the transaction that assigned this id has finished" true rather than hoped; an ingest transaction past 2 s is a slow-query alarm in its own right | [§ 6.5](#65-the-fold) |
 | Compaction ceiling | 15 min | **Derived** — the ordinary orphan ceiling reused, because a compaction is a harness operation of the same order as a tool call and reusing the number keeps one home for it | [§ 4.6](#46-every-open-fact-has-a-ceiling) |
 | Leaving-live clear of `stalled` / `blocked` | 300 s | **Cited** — the `stale` threshold, reused because D1 words both clauses as *"the seat leaving live state (`stale` at 300 s…)"*; it is not a second number | [§ 4.5](#45-link-states) |
-| Retired-seat render window | 14 days | **Derived** — the retention window, one home: a retired seat stays visible for exactly as long as the events that explain it | [§ 4.10](#410-retirement-is-a-rendered-state) |
+| Retired-seat render window | **none — the seat leaves the read surfaces at `retired_at`** | **Ruled** — operator, card#9078 (2026-09-09): *"when an agent is removed, its seat and desk should go away immediately."* The row keeps its place with no figure rather than being deleted, because this table's job is to answer *where did this number come from* — and for a reader who remembers the fourteen days, *there is no longer a number here* is the answer | [§ 4.10](#410-retirement-is-a-rendered-state) |
 | REST poll fallback (feed down) | 10 s | **Cited** — D1's flush interval, so a polled floor is no staler than its own input cadence | [§ 2.2](#22-fail-posture-per-path) |
 | Read token entropy / storage | 256 bits / SHA-256 | **Cited** — D1 § 3.3 | [§ 9](#9-read-side-authentication) |
 | Read token expiry | 90 days | **Chosen** — quarterly rotation; a forgotten token dies. Multiple active tokens make rotation issue-then-revoke with no overlap to specify | [§ 9](#9-read-side-authentication) |
@@ -3441,7 +3488,7 @@ review can reverse it deliberately rather than discover it later.
 | 32 | **`fold_lag_ms` is computed from a basis the ingest and the fold write separately, not stored by the fold** | one `fold_lag_ms` column the fold pass maintains | An instrument written only by the process it measures dies with it: a paused fold leaves the number frozen, so the badge never fires and the one degradation this design calls "could look healthy" stays invisible. Two writers means the reader can always tell them apart ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)). The ingest also **seeds** the cursor clock on the seat's first event, which is what makes the second branch total rather than null on a never-folded seat | two extra columns on `seat_state`, one one-shot conditional write in the ingest transaction, and an expression in the snapshot query — all on the seat's own row, so the one-query budget is unaffected |
 | 33 | **Leaving `live` CLEARS `stalled` and `blocked`, and only MASKS `idle`** | mask all three at the render layer, or clear all three | D1 names leaving-live as a clear for `stalled` and `blocked` specifically, and both are claims that the seat is *currently* refused or *currently* waiting — a returning seat must not re-assert them from five-minute-old evidence. `idle` is a claim about something that already happened, which silence does not falsify, and [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle) requires it preserved | one sweeper rule, one `sessions.stalled_cleared_by` column and two `unknown_reason` / `resolution` members; the asymmetry has to be stated or an implementer will make all three the same |
 | 34 | **A clean turn's `idle` survives its session's `session.end`** | `session.end` resets the seat to `unknown` | The `idle` was minted by the `turn.end`, which is `D2-MUST` #1's only permitted minter; a `session.end` changes no fact rule 4 reads. Replacing a positive observation ("the agent said it finished") with an absence of one is a loss of information, not a gain in caution | `L` is seat-scoped and outlives its session, which has to be stated in the fact list or two sections disagree. D1 is silent, so it is filed ([§ 14](#14-open-questions-for-the-review-loop) item 10) |
-| 35 | **`retired` is a `render_state` member, and a retired seat stays in the snapshot for 14 days** | drop retired seats from the read surfaces immediately | [§ 4.5](#45-link-states) already forbade a seat "vanishing between two refreshes", and a promised rendered state with no member, no field and no window is a promise D3 cannot keep. Keeping it for the retention window means the seat is visible for as long as the events that explain it | a tenth `render_state` member and a four-field object on the wire, plus a read filter every fleet query carries |
+| 35 | **`retired` is a `render_state` member, and a retired seat leaves the read surfaces AT `retired_at`** — ⚠ **REVERSED by operator ruling, card#9078 (2026-09-09)**; this row previously decided the opposite and the alternative column is where that reading now lives | keep the seat in the snapshot for the 14-day retention window, rendered `retired` with its `at` / `by` / `reason` — the shape this row chose until the ruling | The window was defended as keeping *"we removed it"* distinguishable from *"it went quiet"*, and that is false on this document's own render table: a quiet seat is visibly present and degraded, so a removed seat being gone is maximally different from it. [§ 4.5](#45-link-states)'s "never vanishes between two refreshes" is a guard against a client INFERRING a removal from missing data, and an operator retirement is an announcement, not an inference — so the invariant is fully served by removing on the explicit event | the retirement record has no rendered home, so the admin console gains one (card#9070) — better than a ghost desk: queryable, unbounded by a window, and it consumes no slot on a finite floor. And the removal path must now be exactly one thing: the announcement |
 | 36 | **A server counter never writes a member of D1's `degraded` array** | follow D1 § 12.7's `seq_gap` row literally and raise `lossy` | D1 contradicts itself here — § 9.3 declares `seq_gap` a server badge and *not* a member, § 12.7 and § 10.2 say the server renders the seat `lossy` — and § 9.3's reading is the one with a mechanism: `lossy` means the reporter discarded events *and counted them*, so a server-raised `lossy` with a zero counter beside it is a badge contradicting its own number | D2 carries its own `seq_gap` badge, so a consumer sees two members where D1's text implies one; filed as an amendment need ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
 
@@ -3735,10 +3782,10 @@ everything from step 3 onward.
 | 5 | `mezzanine:fold` — cursor, transaction, claim, visibility lag, poison rule | [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart), [AT-D2-10](#at-d2-10-rebuild-equals-fold), [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) |
 | 6 | `mezzanine:rebuild` | [AT-D2-10](#at-d2-10-rebuild-equals-fold) |
 | 7 | `mezzanine:sweep` — the seven time-derived jobs [§ 2.1](#21-processes) lists, which is their one home | [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle), [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy), [AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
-| 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seat-is-rendered-not-disappeared) |
+| 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
 | 9 | Reverb channel, deltas, coalescing, feed heartbeat, backpressure | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others) |
 | 10 | `mezzanine:purge`, the size alarm, `fold_lag` fleet health | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them), [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) |
-| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed | [AT-D2-23](#at-d2-23-a-retired-seat-is-rendered-not-disappeared) |
+| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both

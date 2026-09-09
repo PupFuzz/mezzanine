@@ -113,7 +113,9 @@ and this command are the recovery.
 ### The admin console
 
 `/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
-edit, retire) and **agents** (read seat state, and the `mezzanine:retire` operator act); floors
+edit, retire) and **agents** (read seat state, the `mezzanine:retire` operator act, and the
+**retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
+where *who retired it, when and why* lives, `card#9078`); floors
 and the map editor are `card#9085`'s, and pinning a named seat to a chosen desk is deferred to
 `card#9071` because it would store a fact `docs/design/FLOOR.md § 3.2` derives.
 
