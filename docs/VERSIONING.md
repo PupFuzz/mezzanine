@@ -13,13 +13,15 @@ a data file that tooling reads, not documentation. Everything from
 [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) onward is
 specific to Mezzanine and has no counterpart there.
 
-> **Status — re-measured 2026-08-30, cutting `v0.2.0`.** `VERSION` is `0.2.0`. **One tag
-> exists**: `v0.1.0`, minted by `auto-tag-version` on `556ac3f` — the scaffolding seed merge
-> (PR #11, 2026-08-24), which is exactly the bootstrap case the ⚠ under
-> [§ Release flow](#release-flow) warns about, not a release anybody reviewed as one. It is
-> immutable and is never moved; `v0.2.0` is the first tag this flow actually produces.
-> **Nothing is deployed**: `bin/deploy.sh` does not exist and `docs/PLAN.md § 5` records the
-> prod host as unprovisioned (D-08), so both target verdicts in
+> **Status — re-measured 2026-08-31, after `v0.2.0` landed.** `VERSION` is `0.2.0`. **Two tags
+> exist**: `v0.1.0` on `556ac3f` — the scaffolding seed merge (PR #11, 2026-08-24), which is
+> the bootstrap case the ⚠ under [§ Release flow](#release-flow) records, not a release anybody
+> reviewed as one — and `v0.2.0` on `804c31a` (PR #40, 2026-08-30), the first tag this flow
+> produced deliberately. Both are immutable and are never moved.
+> **Nothing is deployed** (this clause re-measured 2026-09-09, card#7459): `bin/deploy.sh` now
+> exists and every one of its refusals is exercised by `bin/deploy.selftest.sh`, but it has
+> **never run against a host** — `docs/PLAN.md § 5` records the prod host as unprovisioned
+> (D-08) — so both target verdicts in
 > [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) are still
 > *first install*, never *upgrade*. `docs/CHANGELOG.md` exists and is written to per PR
 > (`docs/PLAN.md § 4`, which owns its format); **`fleet-reporter/` now exists too** — the
@@ -58,8 +60,9 @@ specific to Mezzanine and has no counterpart there.
    branch, merged with a **merge commit — never squashed**. Squashing a back-merge copies
    the content without the ancestry, so `main`'s tip never becomes an ancestor of `dev` and
    the *next* release PR's three-dot diff re-shows the previous release's `VERSION` bump as
-   an incoming change. See the ⚠ under [§ Branch model](#branch-model): today `dev`'s ruleset
-   mechanically forbids this, and that has to be resolved before the first release.
+   an incoming change. `dev` was briefly squash-only, which made this rule unsatisfiable; that
+   was resolved on 2026-08-23 and `dev` now allows `merge` too — see the ✅ under
+   [§ Branch model](#branch-model).
 
 ---
 
@@ -103,12 +106,40 @@ having passed.
 > every PR rather than the no-run-reads-as-pending deadlock the paragraph above describes; on a
 > PR that does not target `main` it reports *NOT APPLICABLE* and exits 0.
 >
-> ✅ **SUPERSEDED the same day — re-measured 2026-08-30 while cutting `v0.2.0`
-> (`GET /repos/PupFuzz/mezzanine/rulesets`), and the ruleset edit HAS landed.** Both branches
-> now require **`["card-token-lint", "release-pr-guard"]`**, by the *job* id — which is what a
-> ruleset matches, never the workflow's display name. The gate now blocks. **The paragraph
+> ⚠ **SUPERSEDED the same day — re-measured 2026-08-30 while cutting `v0.2.0`
+> (`GET /repos/PupFuzz/mezzanine/rulesets`), and the ruleset edit HAD landed.** Both branches
+> required **`["card-token-lint", "release-pr-guard"]`**, by the *job* id — which is what a
+> ruleset matches, never the workflow's display name. The gate blocks. **The paragraph
 > above is kept rather than deleted because it is the reason the requirement was safe to add;
-> read it as history, and this block as the state.**
+> read it as history.** *(And this block is history too — see the state below.)*
+>
+> ✅ **THE STATE, re-measured live 2026-09-08 (card#8301). Both rulesets — `21222661`
+> "dev — integration branch" and `21222660` "main — release branch", both `enforcement: active`,
+> both with `bypass_actors: []` — require the SAME FIVE contexts:**
+>
+> > `asset-provenance` · `card-token-lint` · `design-artifact` · `design-docs` · `release-pr-guard`
+>
+> **This list is a RESTATEMENT of a repository-settings fact and this file is its one home** — no
+> other document may carry a copy, because two of them already drifted from it (the copies in
+> `.github/workflows/asset-provenance.yml` and `docs/ATTRIBUTION.md` both still said
+> `asset-provenance` was *not* required, i.e. that a red there did not block a merge, for as long
+> as it had been required). ⛔ **A doc cannot verify this; only the API can.** Re-derive it, never
+> relay it:
+>
+> ```
+> for id in 21222661 21222660; do
+>   gh api repos/PupFuzz/mezzanine/rulesets/$id --jq \
+>     '.name, ([.rules[] | select(.type=="required_status_checks")
+>              | .parameters.required_status_checks[].context] | sort)'
+> done
+> ```
+>
+> **The 2026-08-23 caveat above is not superseded and must stay:** *a workflow that is added later
+> is not automatically required*, and a required check that never runs reads as *pending*, not
+> *passed*. That sentence is exactly why this block goes stale — **three more contexts were added on
+> 2026-08-31** (the rulesets' own `updated_at`: `dev` 15:47, `main` 01:03, both −04:00), one day
+> after the measurement above, **and no document moved with them for eight days** — so **re-read and
+> re-measure this section whenever a workflow is added, and update the copies that point here.**
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:
@@ -219,13 +250,14 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 10. **CI takes it from there on the push to `main`:** `auto-tag-version.yml` mints
     `v<version>`, and
     [`release-promote-cards.yml`](../.github/workflows/release-promote-cards.yml) promotes the
-    board-14 cards named in the released range. Neither is done by hand. ⚠ **The first-ever
-    release is different** — the card mover derives its range from the previous release tag
-    and there is none yet, so it must be run via `workflow_dispatch` with an explicit `base`
-    (`docs/KANBAN.md § G-2`; `§ G-16` explains why that dispatch only exists once the
-    workflow is on `main`).
+    board-14 cards named in the released range. Neither is done by hand, and **an ordinary
+    release passes no `base`** — both a push run and a dispatch derive the range themselves.
+    When a range genuinely cannot be derived the mover exits 2 rather than guessing, and
+    `--base` is the escape; `docs/KANBAN.md § G-2` owns the three cases where that happens.
+    **Do not restate them here** — a second copy of that rule is what went stale last time.
 11. **Open the back-merge `sync/main-to-dev-post-v<version>` → `dev`** and merge it with a
-    merge commit (core rule 5, and the ⚠ blocking it today).
+    merge commit — never a squash (core rule 5). `dev` allows `merge` since 2026-08-23, so
+    nothing blocks this; the post-`v0.2.0` back-merge landed this way.
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
 
@@ -246,13 +278,17 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
 > covering exactly the four steps named above and nothing else.
 
-> ⚠ **One-time, at the first push that carries `auto-tag-version.yml` onto `main`.** The
-> workflow tags on *any* push to `main`, which includes the scaffolding seed merge
-> `docs/KANBAN.md § G-16` recommends cutting before the first release PR. Whatever `VERSION`
-> reads at that moment is what gets minted — so a seed merge carrying `0.1.0` mints `v0.1.0`
-> on a scaffolding commit, and the first real release PR then **cannot** also ship `0.1.0`:
-> the workflow refuses to move an existing tag and reds the release, correctly. Decide which
-> commit is `v0.1.0` before pushing either one.
+> ⚠ **The bootstrap trap — it FIRED, and what it left is immutable.** `auto-tag-version` tags
+> on *any* push to `main`, not only a release PR, using whatever `VERSION` reads at that
+> commit. The scaffolding seed merge (PR #11, 2026-08-24) carried `0.1.0`, so it minted
+> `v0.1.0` on `556ac3f` — a scaffolding commit nobody reviewed as a release. The `refs/tags/v*`
+> ruleset blocks `update` and `deletion` with **no bypass actor**, so that tag stays where it
+> is; `v0.2.0` is the first tag this flow produced deliberately.
+>
+> **The rule is not spent, only its first instance is.** Any non-release push to `main` mints
+> `v<VERSION>` at that commit, and a later release PR shipping that same version then
+> **cannot** tag it — the workflow refuses to move an existing tag and reds, correctly. So
+> bump `VERSION` before pushing anything to `main` that is not the release it names.
 
 ---
 
@@ -266,6 +302,12 @@ different acts:
 |---|---|---|---|
 | **The Laravel app** | dashboard, ingest endpoint, websocket feed | one server | whoever deploys, in one act |
 | **`fleet-reporter`** | the Claude Code hook bundle that POSTs the events | every agent machine, Linux **and** Windows | each seat's owner, on their own schedule |
+
+The server's "one act" is **`bin/deploy.sh`** and nothing else (D-13): it refuses to start unless
+the host is in a deployable state, opens a maintenance window, migrates forward-only, rebuilds the
+caches in the order that matters, restarts the long-lived daemons that are still holding the
+previous release's code in memory, and stays **down** for operator review if any of it fails.
+`docs/PLAN.md § 5` owns the description; the script's own header owns the reasoning per step.
 
 The second one is why this section is not a footnote. `fleet-reporter` is installed per seat
 and upgrades **independently of the server**, so a release that changes it is not "deployed"

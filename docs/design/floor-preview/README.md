@@ -42,6 +42,17 @@ is a ruling, because the floor is built once, by card#7341.** The design rulings
   one member set are what this replaced — four of them covering only four members (card#7943) —
   and a second member set, in any spelling, is how the unrecognised case gets lost again.
 
+⛔ **One field in this artifact was INVENTED, and it is not any more — read this before building
+from the sample seats.** The `blocked` desk renders *waiting on a human since 14:31 (seat clock)*,
+and to render `FLOOR.md` § 7.1's cell at all this file had to mint a field name for that timestamp:
+D2 § 8.2.1's seat object declared no member carrying it, the open attention request living in the
+drill-down's `detail`. **card#8075 closed that at the D2 end**: `FLEET-STATE.md` § 8.2.1 now
+declares **`blocked_since`** — nullable, non-null only when `activity_state == "blocked"`, the open
+attention request's opening instant on the seat's own clock — so the name this artifact carries is
+the ruled one and the render reads a declared member. **What that episode leaves open is a gate, not
+a field:** these sample seats are checked against D3's rendered strings and against nothing in D2,
+so a second invented field would ship exactly as quietly as the first one did.
+
 **Two things this file is careful about, because an earlier revision was not and card#7341 is
 specified to build FROM it.** `thinking` is **not** a `render_state`: D2 sends the ten members
 `FLOOR.md` § 7.1 publishes, and the *think pose* is derived here from § 6.2 **A4**'s condition over

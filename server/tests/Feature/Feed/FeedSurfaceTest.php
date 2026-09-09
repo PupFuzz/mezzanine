@@ -6,9 +6,9 @@ use App\Feed\FeedHeartbeat;
 use App\Feed\FleetHealthMessage;
 use App\Feed\FleetReload;
 use App\Feed\SeatDelta;
+use App\Fold\Clock;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
-use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -376,6 +376,76 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
+     * § 8.2.1's `blocked_since` — the hand going up and coming down, with the VALUE asserted.
+     *
+     * ⛔ WHAT THE DRIFT GUARD CANNOT SEE. `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's
+     * field list from the document and asserts the object carries every NAME in it — so a
+     * `blocked_since` hard-wired to `null` passes it, and so would one reading the wrong column.
+     * What § 8.2.1 declares is a VALUE: the open `attention.request`'s own `event_time`, stored as
+     * `attention_requests.opened_at`, reached through `seat_state.open_attention_ref`. A member
+     * that is always null draws a `blocked` desk with no *waiting since* line at all (D3 § 5.6),
+     * which is the exact defect the promotion exists to close — the guard would stay green
+     * through it. Both legs are asserted here: the value against the request the fixture actually
+     * raised, and the null against the state § 8.2.1 gates it on.
+     *
+     * ⚠ AND THE DELTA, ON BOTH EDGES. § 6.5 makes the member version-bearing so that entering and
+     * leaving `blocked` ride the delta `activity_state` already emits. A client given the hand
+     * going up and not coming down renders a resolved wait forever — on a quiet desk, until
+     * something unrelated moves the member — so the resolution arm is not a repeat of the first.
+     */
+    public function test_blocked_since_dates_the_open_hand_and_rides_the_delta_both_ways(): void
+    {
+        $events = $this->blockedPair();
+        $token = $this->readToken();
+        $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+
+        // ── THE HAND GOES UP: the request alone, so `blocked` is a FOLDED state ──────────────
+        $mark = count($this->wire->sent);
+
+        $this->deliver(array_slice($events, 0, 3));
+        $this->fold();
+
+        $this->assertSame('blocked', $this->state()->activity_state,
+            'the fixture did not reach `blocked` — every assertion below would be vacuous');
+
+        $opened = DB::table('attention_requests')
+            ->where('seat_ref', $this->seatRef)->value('opened_at');
+
+        $seat = $this->asMachine($token, $seatPath)->assertOk()->json();
+
+        $this->assertSame($events[2]['event_time'], $seat['blocked_since'],
+            '§ 8.2.1: `blocked_since` is the open `attention.request`\'s own `event_time`');
+        $this->assertSame(Clock::wire($opened), $seat['blocked_since'],
+            '§ 8.2.1: …reached through `open_attention_ref`, not re-derived from anything else');
+
+        $up = array_values(array_filter(
+            $this->wire->ofTypeFrom('seat.delta', $mark),
+            fn ($d) => in_array('blocked_since', $d['payload']['changed'], true),
+        ));
+
+        $this->assertCount(1, $up, 'entering `blocked` emitted no delta carrying `blocked_since`');
+        $this->assertSame($events[2]['event_time'], $up[0]['payload']['patch']->blocked_since);
+
+        // ── AND COMES DOWN: the resolution clears the state, so the member must clear WITH it ─
+        $mark = count($this->wire->sent);
+
+        $this->deliver(array_slice($events, 3));
+        $this->fold();
+
+        $this->assertNotSame('blocked', $this->state()->activity_state);
+        $this->assertNull($this->asMachine($token, $seatPath)->assertOk()->json('blocked_since'),
+            '§ 8.2.1: non-null ONLY when `activity_state == "blocked"`');
+
+        $down = array_values(array_filter(
+            $this->wire->ofTypeFrom('seat.delta', $mark),
+            fn ($d) => in_array('blocked_since', $d['payload']['changed'], true),
+        ));
+
+        $this->assertCount(1, $down, 'the resolution emitted no delta carrying `blocked_since`');
+        $this->assertNull($down[0]['payload']['patch']->blocked_since);
+    }
+
+    /**
      * ⛔ THE SAME DEFECT IN THE SWEEPER — card #7837's sibling audit, driven rather than reported.
      *
      * `Sweep::quiesce()` closes every open `calls` row and only then settles, and `subagents` /
@@ -500,9 +570,11 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * ⛔ THE SAME DEFECT IN `mezzanine:retire` — card #7837's sibling audit, second instance.
+     * ⛔ THE SAME DEFECT IN THE RETIREMENT ACT — card #7837's sibling audit, second instance.
+     * (It lived in `mezzanine:retire` when this was written; card#9070 moved the transaction to
+     * `App\Fleet\SeatRetirement` at its second caller. This arm still drives the command.)
      *
-     * The command sets `seats.retired_at` / `retired_by` / `retired_reason` and THEN calls the
+     * The act sets `seats.retired_at` / `retired_by` / `retired_reason` and THEN calls the
      * shared recompute, whose self-sampled `$before` therefore already had them. `retired` is the
      * § 8.2.1 member that reads exactly those three columns, so the `seat.delta` announcing the
      * retirement carried `render_state: "retired"` and left the client's `retired` object `null`
@@ -529,7 +601,7 @@ class FeedSurfaceTest extends FeedTestCase
         $changed = $deltas[0]['payload']['changed'];
 
         $this->assertContains('retired', $changed,
-            '§ 6.5: `retired` is version-bearing and `mezzanine:retire` is what moves it');
+            '§ 6.5: `retired` is version-bearing and the retirement act is what moves it');
         $this->assertContains('render_state', $changed);
 
         $retired = $deltas[0]['payload']['patch']->retired;
@@ -845,19 +917,24 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * § 4.10: "the READ QUERIES stop selecting it" — plural. All three seat-scoped surfaces agree.
+     * § 4.10: "the READ QUERIES stop selecting it" — plural. All three seat-scoped surfaces agree,
+     * and after card#9078's operator ruling they agree AT `retired_at`: there is no window in
+     * which the floor has dropped a desk that the drill-down and the timeline still serve.
      */
-    public function test_every_read_surface_stops_selecting_a_long_retired_seat_together(): void
+    public function test_every_read_surface_stops_selecting_a_retired_seat_together(): void
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->retire();
 
-        $this->advanceServerClock(Purge::RETENTION_DAYS * 86400 + 60);
-
+        // The control: before the announcement all three surfaces DO serve it, so the three
+        // assertions below are the retirement and not a broken rig.
         $token = $this->readToken();
         $base = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+        $this->assertNotSame([], $this->asMachine($token, '/api/fleet/snapshot')->assertOk()->json('installs'));
+        $this->asMachine($token, $base)->assertOk();
+        $this->actingAs($this->enrolled())->getJson($base.'/timeline')->assertOk();
 
+        $this->retire();
         $this->assertSame([], $this->asMachine($token, '/api/fleet/snapshot')
             ->assertOk()->json('installs'));
 

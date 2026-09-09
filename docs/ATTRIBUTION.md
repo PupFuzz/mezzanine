@@ -12,10 +12,25 @@ repository cannot honour.
 
 ## The rules a row lives under
 
-- **The licence allowlist is closed: `CC0-1.0` and `MIT`.** Anything else — `CC-BY-*`,
-  `CC-BY-SA-*`, any `-NC` or `-ND` term, ISC, "free for personal use", or an asset with no
-  stated licence — is refused. **Widening this list is an operator decision, never an
-  implementer's.**
+- **The licence allowlist is closed: `CC0-1.0`, `ISC` and `MIT`.** Anything else — `CC-BY-*`,
+  `CC-BY-SA-*`, any `-NC` or `-ND` term, `Apache-2.0` and every other permissive licence nobody
+  has ruled on, "free for personal use", or an asset with no stated licence — is refused.
+  **Widening this list is an operator decision, never an implementer's.** `ISC` was admitted by
+  operator ruling on **2026-08-31** (card#8301): it is attribution-only and functionally MIT, so
+  it is not stricter than this repository's own terms, and the list exists to keep **copyleft and
+  non-commercial** terms out rather than to choose between two attribution licences. It admits
+  ISC, **not permissive licences as a class** — `Apache-2.0` still fails.
+- **A row obliges its licence's notice, in every file that owes it, and the gate checks all of
+  them.** `MIT` and `ISC` both grant only *"provided that … this permission notice appear in all
+  copies"*; `CC0-1.0` is a public-domain dedication and obliges none. So as soon as any row here
+  declares such a licence, **this file** must reproduce that licence's permission notice, and as
+  soon as a row **under `resources/characters/`** declares one, `resources/characters/LINEAGE.md`
+  must reproduce it too — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-the-munder-difflin-port)
+  asks a port for both homes. Matched as the licence's own text, because a link is not a
+  reproduction and neither is the label. ⭐ **The gate reads the obligation off the same table its
+  allowlist is derived from**, so a licence cannot be admitted without its notice being decided —
+  which is the defect card#8301's review found: admitting `ISC` had widened the list and left the
+  lineage half of the check asking for MIT's.
 - **The `origin` column is closed at two, and it is a *type*, not a note.** `first-party` means
   drawn or written **for this repository** — its source URL must be **this repository's own**.
   `licensed` means obtained from **outside** — its source URL must be a genuine external one.
@@ -54,7 +69,7 @@ very fact it exists to check.
 | `resources/characters/portrait-art.js` | licensed | https://github.com/chaitanyagiri/munder-difflin/blob/eb3df9fa70b63b68495a965c45f158105e87b2e6/src/renderer/src/scene/office/portraitArt.ts | Chaitanya Giri (upstream); Mezzanine contributors (port) | MIT | 2026-08-25 | `d19bdd0099f8c4578ced8331792082332325a1448db7ff80d8c33a61d94bca06` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors; hair palette derived from Chaitanya Giri's recipes | MIT | 2026-08-25 | `21810d3b1f4c013eec9fcccc296027b07a4c66e7bdf61b37d528707b46e423ca` |
 | `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `422d0ef0216e16830e05cd3d4300b18748f8eeb616b62b811e313e086a12310b` |
-| `resources/characters/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `f8ba128eac78503153d988ad902f5b1a2a78faf7e278314e5ec80b7792428f5b` |
+| `resources/characters/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `f32a34a1152fcb506e020015b9eaa9a3d1ec8066774870ded36f5d7faef426d2` |
 
 <!-- asset-manifest:end -->
 
@@ -169,6 +184,10 @@ Stated because a provenance check is exactly the kind of thing people over-read:
   review are what stand against it.
 - **Only `resources/` is measured.** An image parked elsewhere in the repository — under
   `server/`, `docs/` or `tools/` — is invisible to this gate.
-- **The gate is not a required status check** and this PR does not make it one. Adding a
-  workflow does not make it required (`docs/VERSIONING.md § Branch model`); that is a
-  repository-settings act, and card **#7344** owns updating the required-check list.
+- ⛔ **This bullet used to say the gate was not a required status check. It was false for eight
+  days** — `asset-provenance` was added to both branch rulesets on 2026-08-31 and no document
+  moved with it, so this file told a reviewer that a red here did not block a merge while it did.
+  **Which checks are required is a repository-settings fact, and no copy of it lives here**:
+  [`docs/VERSIONING.md § Branch model`](VERSIONING.md) is its one home and carries the API command
+  that re-derives it. Adding a workflow still does not make it required — that is a
+  repository-settings act, and it is the part of this that has not changed.

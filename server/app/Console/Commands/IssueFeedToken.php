@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SecretLine;
 use App\Read\ReadTokens;
 use Illuminate\Console\Command;
 
@@ -45,7 +46,11 @@ class IssueFeedToken extends Command
         $this->line(sprintf('  prefix      %s', substr($token, 0, 12)));
         $this->line(sprintf('  expires     in %d days (§ 9)', ReadTokens::LIFETIME_DAYS));
         $this->newLine();
-        $this->line('  token       '.$token);
+        // The one printer of a credential in this application — see `App\Console\SecretLine`.
+        // This token's base64url alphabet happens to carry nothing the console formatter
+        // transforms; that is a property of the alphabet, not of the print, and the next
+        // credential minted here would not inherit it.
+        SecretLine::write($this->output, 'token', $token);
         $this->newLine();
         $this->warn('  This is the only time this value exists outside the consumer. Only the SHA-256 is stored.');
         $this->warn('  Rotation is ISSUE THEN REVOKE (§ 9) — never revoke the old one first.');

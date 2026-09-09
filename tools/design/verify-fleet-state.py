@@ -270,6 +270,20 @@ else:
                 g2_table.add(m.group(1))
         if len(g2_table) < 50:
             fail.append(f"G2 CONTROL: only {len(g2_table)} field names parsed from section 8.2.1")
+        # ...and the SIZE of that population where section 12 states it in prose.  This gate
+        # re-derived the set on every run and left the number beside it unguarded, so the count
+        # went stale the first time a member was added and nothing could say so -- the same
+        # restatement defect the guard-class count at the foot of this file exists for.
+        m_n = re.search(r"\| \*\*Field table ↔ worked examples, both directions\*\* \| the "
+                        r"\*\*(\d+)\*\* field names",
+                        section_text("12-every-number-and-where-it-comes-from") or "")
+        if not m_n:
+            fail.append("G2 CONTROL: section 12's field-table row no longer publishes the size of "
+                        "the population this check runs over, so the check's own scope is unstated")
+        elif int(m_n.group(1)) != len(g2_table):
+            fail.append(f"G2: section 12 states {m_n.group(1)} field names in section 8.2.1 and the "
+                        f"table declares {len(g2_table)} — one fact with two homes, and the prose "
+                        f"one is the copy nothing re-derives")
 
 seat_objs = []
 

@@ -56,6 +56,30 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        /*
+         * ⛔ CARD#9077 · THE TWO-FACTOR RESET CODE JOINS THE NEVER-FLASHED LIST. A validation
+         * failure flashes the whole request input into the session so a form can re-render it
+         * (`Handler::$dontFlash` is the exclusion list, and stock Laravel excludes only
+         * `current_password`, `password` and `password_confirmation`). A reset code is a live
+         * credential for the length of its TTL — flashing it writes it into the session store and
+         * back into the HTML of the re-rendered form, which is exactly the class of leak canon #20
+         * is about, on a path nobody would think to look at.
+         *
+         * ⚠ IT IS THE SECOND OF TWO GUARDS AND NOT THE ONLY ONE:
+         * `resources/views/auth/two-factor-reset/confirm.blade.php` deliberately does not
+         * re-populate the field from `old()`, so the value has nothing to render into either.
+         *
+         * ⛔ `recovery_code` AND THE OTHER `code` FIELDS ARE THE SIBLING AUDIT (canon #7), FOUND
+         * WHILE ADDING THE FIRST NAME AND FIXED HERE RATHER THAN FILED. `code` is also the field
+         * name of the TOTP input on `auth/two-factor-challenge.blade.php` and
+         * `auth/two-factor-enroll.blade.php`, and `recovery_code` is the challenge's offline
+         * bypass — every one of them a single-use credential that stock `$dontFlash` did not cover,
+         * so a mistyped six-digit code and a WHOLE RECOVERY CODE were already being written into
+         * the session on every failed attempt. One name would have fixed this card's field and
+         * left the two that predate it.
+         */
+        $exceptions->dontFlash(['code', 'recovery_code']);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

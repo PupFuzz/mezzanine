@@ -1,0 +1,123 @@
+# design-doc-verifiers.yml — point the design-surface gates at something, on every PR.
+#
+# WHAT IT DOES. Runs the three repo-only design verifiers over D1/D2/D3 (`verify-event-schema.py`,
+# `verify-fleet-state.py`, `verify-floor.py`) and the ratified artifact's own gate
+# (`floor-preview.selftest.mjs`) on every pull request, plus the plant harness that proves the
+# three CAN red. All four are pure repo reads on stock `python3` / `node` — no credential, no
+# network, no browser, no `setup-` step and no interpreter pin to keep honest.
+#
+# WHY IT EXISTS. Until card#7929 `tools/design/` was the one directory in this repository CI never
+# entered: 246 KB of verification code referenced by ZERO workflows and ZERO hooks, while D1/D2/D3
+# cited those tools as "reds the gate" in the PRESENT TENSE, some fifty times between them. The
+# convention behind it was `tools/design/README.md`'s "run the verifier for a document before
+# approving any change to it" — a runbook, which protects nobody who does not remember it. Every
+# D-document PR merged so far merged on a gate that never fired. That is the false-clean shape the
+# whole directory exists against, one layer up: the instrument exists, is correct, and was never
+# pointed at anything. The sentences in D1/D2/D3 are made TRUE by this file rather than rewritten.
+#
+# ---------------------------------------------------------------------------------------------
+# NO `paths:` FILTER — AND THE REASON IS MEASURED, NOT STYLISTIC.
+# `paths: docs/design/**` is the obvious filter and it is WRONG, because these verifiers' read
+# surface is wider than their subject. Measured while building this workflow: run
+# `verify-event-schema.py` against a tree carrying only the four design documents and it reds with
+#   VERSIONING L159: missing file ../.github/workflows/release-pr-guard.yml
+#   VERSIONING L201: missing file ../bin/release-pr-guard.py
+# because it resolves `docs/VERSIONING.md`'s path references and requires each to EXIST. So a PR
+# that deletes `bin/release-pr-guard.py`, or edits `docs/VERSIONING.md`, breaks D1's gate while
+# touching nothing under `docs/design/`. Under a path filter that PR merges green and the next
+# unrelated PR inherits the red.
+#
+# NO `branches:` FILTER — the reason `release-pr-guard.yml` records. A path- or branch-filtered
+# workflow that produces NO RUN reads as PENDING for a required check, not passed, so filtering
+# would deadlock every PR it filtered out the moment this becomes required. Producing a completed
+# run on every PR is what keeps a gate safe to require. `branches:` and `types:` are independent
+# filters besides, so a base allowlist would also drop every event from a stacked PR.
+#
+# `synchronize` is the load-bearing type here: the subject is the DIFF, so every push to the head
+# must be re-judged. `edited` is NOT subscribed — unlike `card-token-lint.yml`, no part of this
+# gate's subject is PR metadata, so a retitle changes none of its inputs.
+#
+# ---------------------------------------------------------------------------------------------
+# WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — two of the six gates in `tools/design/`.
+# Both are excluded for the SAME reason and it is not squeamishness: each is fail-closed on a
+# binary a stock runner does not carry, so wiring either reds every PR on correct work. A gate
+# that reds on correct work gets disabled, which costs more than the hole it closes.
+#
+#   `verify-harness-facts.py`  — re-derives D1's harness facts from the INSTALLED Claude Code
+#       binary that D1 declares as its capture build. No runner has one. Being fail-closed is the
+#       tool being RIGHT (card#7930 fixed its resolution; it is green at dev head on a machine
+#       that has the build), so the gap is the runner's, not the tool's. Closing it needs a
+#       decision about publishing ground truth that a runner can read — its own card, not this one.
+#   `floor-preview.browser.mjs` — drives headless Chromium, resolved from `--chrome`, `$CHROME`
+#       or `~/.cache/ms-playwright` and a FAILURE (never a skip) when absent. A stock
+#       `ubuntu-latest` satisfies none of those three, and pointing `$CHROME` at a runner path
+#       this change cannot verify is exactly the assumption that would red-lock CI.
+#
+# ⛔ NEITHER IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
+# very defect one layer down — a check reported as passed that never ran. They are absent and
+# NAMED, here and in `tools/design/README.md`, which is the surface a reader checks.
+
+name: Design-doc verifiers
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  # D1/D2/D3 — the three document gates, plus the harness that proves they can red.
+  design-docs:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history is not needed, but the `.git` directory IS: the plant harness enumerates its
+      # population with `git ls-files` rather than walking the tree, so that it copies exactly
+      # what CI checked out and not `__pycache__` or editor droppings.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # The prove-it-can-fail harness runs HERE, against THIS checkout — the same bytes about to
+      # judge somebody's PR. It plants a defect of each verifier's own headline class (a stated
+      # figure drifting from what re-derives it) and requires the verifier to reject it, with the
+      # red attributable to the plant rather than to any nonzero exit.
+      - name: Self-test (a planted defect per verifier, each red attributed to its plant)
+        run: python3 tools/design/verify-design-docs.selftest.py
+
+      # Three separate steps, each `!cancelled()` DELIBERATELY and UNIFORMLY: these three gates
+      # are independent of one another AND of the self-test, so failing fast would report one red
+      # and leave the author to discover the other two on the next round. One push, every verdict.
+      # The self-test is a precondition for TRUSTING these verdicts, never for producing them —
+      # a red harness means "the proof that D1's gate can fail is broken", which is worth knowing
+      # alongside D1's actual verdict rather than instead of it. The job still fails if any step
+      # does; `!cancelled()` changes what gets REPORTED, never what passes.
+      - name: D1 — EVENT-SCHEMA.md
+        if: ${{ !cancelled() }}
+        run: python3 tools/design/verify-event-schema.py
+
+      - name: D2 — FLEET-STATE.md
+        if: ${{ !cancelled() }}
+        run: python3 tools/design/verify-fleet-state.py
+
+      - name: D3 — FLOOR.md
+        if: ${{ !cancelled() }}
+        run: python3 tools/design/verify-floor.py
+
+  # The ratified artifact. A SEPARATE JOB, not a step above: it judges CODE
+  # (`docs/design/floor-preview/floor-preview.html`) rather than a document, it runs on a
+  # different interpreter, and a red in either job should never hide the other's verdict.
+  #
+  # It needs no plant harness of its own — unlike the three above it carries its own planted
+  # controls internally and prints the count on every run ("527 checks, 30 planted controls"), so
+  # the proof travels with the tool. Wiring it is what puts the SHIPPED ARTIFACT under a gate for
+  # the first time; before this it was verified by whoever remembered to open the file.
+  design-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Stock `node` and zero dependencies: the gate imports only `node:` builtins and evaluates
+      # the artifact's own script in a `node:vm` stub DOM. No package.json, no npm install.
+      - name: Artifact gate (floor-preview.html, with its own planted controls)
+        run: node tools/design/floor-preview.selftest.mjs

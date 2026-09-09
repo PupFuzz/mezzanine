@@ -325,7 +325,15 @@ const STATE_RENDER={
      The bare age reads as the silence § 7.5's asleep-versus-gone bullet exists to refuse. */
   idle:{desk:"character",pose:"sleep",marker:null,chip:"g-idle",screen:"#3c445c",lit:false,current:true,
     label:s=>"finished — nothing done for "+s.quiet_for},
-  /* § 2.4: a seat-clock timestamp is rendered LABELLED as one, wherever it appears. */
+  /* § 2.4: a seat-clock timestamp is rendered LABELLED as one, wherever it appears.
+     ⭐ `blocked_since` IS A D2 MEMBER NOW, and this line is where it was not. This file had to
+     mint the name to render § 7.1's cell at all — the cell drew *since 14:31* and D2's § 8.2.1
+     object declared nothing that carried it, so the artifact invented a field and shipped it.
+     card#8075 ruled the gap the D2 way rather than the cheap way: D2 § 8.2.1 now declares
+     `blocked_since`, nullable, non-null only when `activity_state == "blocked"`, carrying the
+     open attention request's opening instant on the seat's own clock — a PROMOTION of a value
+     § 8.2.3's `detail` already held, not a new fact. The spelling below is the ruled one, so this
+     render now reads a declared member; § 5.1 carries its row and § 5.6 its null render. */
   blocked:{desk:"character",pose:"attention",marker:["!","b"],chip:"g-blocked",screen:"#ffd07a",lit:true,current:true,
     label:s=>"waiting on a human since "+s.blocked_since+" (seat clock)"},
   /* § 7.1: head in hands, and `api_error_type` is ALWAYS on the line — see apiErrorLine below

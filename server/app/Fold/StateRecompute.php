@@ -159,11 +159,11 @@ class StateRecompute
 
     /**
      * The same recompute, for a writer that has no event — `docs/design/FLEET-STATE.md § 2.1`'s
-     * **sweeper** and `mezzanine:retire`.
+     * **sweeper** and the retirement act (`App\Fleet\SeatRetirement`).
      *
      * ⛔ THE POINT IS THAT THERE IS ONE OF THESE, NOT THREE. § 6.5 states `state_version` and the
      * delta as A PER-WRITER RULE and names all three writers — "the fold above; the SWEEPER, whose
-     * every pass recomputes `link_state` and `render_state` for every seat; and `mezzanine:retire`,
+     * every pass recomputes `link_state` and `render_state` for every seat; and the retirement act,
      * which states its own bump and publish". A second implementation of the bump/row bookkeeping
      * for the two writers that carry no `FoldEvent` would be a second copy of the nesting property
      * `settle()` exists to hold (every transition row lands at a version bumped for it), free to

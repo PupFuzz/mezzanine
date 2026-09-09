@@ -35,6 +35,7 @@ with certificate verification ON, rather than proving anything by turning it off
 """
 from __future__ import annotations
 
+import atexit
 import calendar
 import http.server
 import json
@@ -271,7 +272,35 @@ def selftest(seat: Seat | None = None, *, reporter: Path = REPORTER):
 
 
 # ── planting a defect on a COPY ────────────────────────────────────────────────────────────
-_plant_dirs: list[str] = []
+# EVERY TEMP DIRECTORY THIS RUN MAKES IS REMOVED AT EXIT. The run made them and recorded them
+# and nothing ever deleted them: 25 planted reporters, 5 planted fixture trees and one suite
+# tree — ~52 MB of seats, spools and logs — left behind per run, measured. Removal is at EXIT
+# rather than per use because the lifetimes are already the run's: a planted copy is driven as a
+# SUBPROCESS and re-read afterwards, and `TMP` holds every seat the end-of-run /proc sweep has
+# to match against. Nothing's identity or lifetime during the run changes, so
+# `spawned_flushers()`'s `TMP`-prefix match still reads a fresh `mkdtemp` per run and reaping
+# stays as safe as it was. `FR_KEEP_TMP=1` keeps them for debugging, as
+# `bin/release-pr-guard.selftest.py` does with its own fixtures.
+TMP_DIRS: list[Path] = []
+
+
+def _sweep_tmp_dirs() -> None:
+    if os.environ.get("FR_KEEP_TMP"):
+        print(f"fleet-reporter.selftest: kept {len(TMP_DIRS)} temp dir(s) "
+              f"(FR_KEEP_TMP is set)")
+        return
+    for d in TMP_DIRS:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+atexit.register(_sweep_tmp_dirs)
+
+
+def tmpdir(prefix: str) -> Path:
+    """A temp directory removed when this process exits (see `_sweep_tmp_dirs`)."""
+    d = Path(tempfile.mkdtemp(prefix=prefix))
+    TMP_DIRS.append(d)
+    return d
 
 
 def plant(*subs: tuple[str, str]) -> Path:
@@ -281,8 +310,7 @@ def plant(*subs: tuple[str, str]) -> Path:
     that quietly becomes a GREEN, which is the exact failure this whole file exists to make
     impossible.
     """
-    d = Path(tempfile.mkdtemp(prefix="fr-plant-"))
-    _plant_dirs.append(str(d))
+    d = tmpdir("fr-plant-")
     shutil.copytree(HERE / "fixtures", d / "fixtures")
     src = REPORTER.read_text(encoding="utf-8")
     for old, new in subs:
@@ -301,8 +329,7 @@ def plant_src(*transforms) -> Path:
     literal anchor for those is a plant that silently matches nothing, i.e. a RED that has
     quietly become a GREEN. Each transform must change the source or this raises.
     """
-    d = Path(tempfile.mkdtemp(prefix="fr-plant-"))
-    _plant_dirs.append(str(d))
+    d = tmpdir("fr-plant-")
     shutil.copytree(HERE / "fixtures", d / "fixtures")
     src = REPORTER.read_text(encoding="utf-8")
     for pattern, repl in transforms:
@@ -323,8 +350,7 @@ def plant_src(*transforms) -> Path:
 
 def plant_fixture(edit) -> Path:
     """Copy the reporter + fixtures, then let `edit(fixtures_dir)` mutate the fixtures."""
-    d = Path(tempfile.mkdtemp(prefix="fr-fixt-"))
-    _plant_dirs.append(str(d))
+    d = tmpdir("fr-fixt-")
     shutil.copytree(HERE / "fixtures", d / "fixtures")
     shutil.copy2(REPORTER, d / "fleet-reporter.js")
     edit(d / "fixtures" / "hooks")
@@ -412,7 +438,7 @@ class Ingest:
         self.httpd.shutdown()
 
 
-TMP = Path(tempfile.mkdtemp(prefix="fr-suite-"))
+TMP = tmpdir("fr-suite-")
 INGEST = Ingest(TMP)
 CA = str(INGEST.crt)
 SID = "11111111-2222-4333-8444-000000000000"
@@ -1738,7 +1764,143 @@ redgreen("kill-vs-complete, reporter half (§ 8.7, AT-1)",
          f"opposite predicate branch")
 
 
-print("\n== 13. UNKNOWN ENUM VALUES COST ONE FIELD, NOT A BATCH (AT-18, § 6.0 rule 4) ==")
+print("\n== 13. THE KILL SIGNATURE: exit 137 AND a session boundary, never either alone (§ 6.6) ==")
+# The close mapping D1 § 6.6 states after card#7337 amended it. `is_interrupt` alone MISSES the
+# headline kill (a `/clear` SIGKILL is MEASURED at 2.1.245 as `Exit code 137` with
+# `is_interrupt: false`), and exit 137 alone is SIGKILL in general — an OOM kill is a genuine
+# failure. So every case below is driven WITH its opposite: the same payload one session apart must
+# come out the other way, or the rule is a decoration that answers `aborted` to everything.
+KOLD, KNEW = "33333333-4444-4555-8666-000000000001", "33333333-4444-4555-8666-000000000002"
+
+
+def ptuf(session_id, *, tuid="toolu_K", error="Exit code 137", is_interrupt=False,
+         tool="Bash", duration_ms=166):
+    return {"session_id": session_id, "hook_event_name": "PostToolUseFailure", "prompt_id": "p1",
+            "tool_name": tool, "tool_input": {"command": "sleep 120"}, "tool_use_id": tuid,
+            "error": error, "is_interrupt": is_interrupt, "duration_ms": duration_ms,
+            "cwd": "/home/agent/mezzanine"}
+
+
+def kill_seat(name, *, reporter=REPORTER):
+    """A seat with one Bash call open in KOLD — the state every case below closes."""
+    s = seat(name)
+    hook(s, "SessionStart", {"session_id": KOLD, "hook_event_name": "SessionStart",
+                             "source": "startup", "cwd": "/home/agent/mezzanine"}, reporter=reporter)
+    hook(s, "UserPromptSubmit", {"session_id": KOLD, "hook_event_name": "UserPromptSubmit",
+                                 "prompt_id": "p1", "prompt": "go",
+                                 "cwd": "/home/agent/mezzanine"}, reporter=reporter)
+    hook(s, "PreToolUse", pre(tool="Bash", ti={"command": "sleep 120"}, tuid="toolu_K",
+                              session_id=KOLD), reporter=reporter)
+    return s
+
+
+def closes(s):
+    return [e for e in s.events() if e["kind"] == "tool.end"]
+
+
+def outcome_of(s, idx=-1):
+    d = closes(s)[idx]["data"]
+    return (d["outcome"], d["abort_reason"], d["close_source"], d["match"])
+
+
+# A — THE MEASURED ORDER: the reap wins, then the kill's own close arrives under the NEW session.
+# Leg 2 fires on the tombstone, so the late close AGREES with the abort instead of contradicting it.
+sA = kill_seat("kill-sig-late")
+hook(sA, "SessionEnd", {"session_id": KOLD, "hook_event_name": "SessionEnd", "reason": "clear"})
+hook(sA, "SessionStart", {"session_id": KNEW, "hook_event_name": "SessionStart",
+                          "source": "clear", "cwd": "/home/agent/mezzanine"})
+hook(sA, "PostToolUseFailure", ptuf(KNEW))
+eq("the reap closes the killed call first, aborted / session_cleared",
+   ("aborted", "session_cleared", "reap_session_boundary", "reap"), outcome_of(sA, 0))
+eq("  … and the harness's own close, exit 137 across the session boundary, closes it ABORTED "
+   "— the kill signature's two legs, not is_interrupt (MEASURED false on this kill)",
+   ("aborted", "interrupted", "post_tool_use_failure", "tombstone_ref"), outcome_of(sA, 1))
+eq("  … it is the SAME call_id, so no consumer sees a second call",
+   1, len({e["data"]["call_id"] for e in closes(sA)}))
+eq("  … the tombstone match is counted", 1, sA.counters().get("tombstone_late_close"))
+eq("  … and the residual counter does NOT fire, because leg 2 DID", None,
+   sA.counters().get("kill_close_same_session"))
+
+# B — the same kill with the reap NOT yet run: the close still crosses the boundary, on a call
+# that is still open. Leg 2 is a property of the CALL, which is why it is evaluated at the match.
+sB = kill_seat("kill-sig-open")
+hook(sB, "PostToolUseFailure", ptuf(KNEW))
+eq("a cross-session exit-137 close on a still-OPEN call is aborted / interrupted",
+   ("aborted", "interrupted", "post_tool_use_failure", "harness_ref"), outcome_of(sB))
+
+# C — THE NEGATIVE CONTROL, and the whole reason the conjunction exists: an OOM kill. Exit 137,
+# is_interrupt false, NO session boundary. It is a genuine failure the agent reads and carries on
+# from; reading it as `aborted` would block *idle* on a turn that legitimately finished.
+sC = kill_seat("kill-sig-oom")
+hook(sC, "PostToolUseFailure", ptuf(KOLD))
+eq("exit 137 with NO session boundary is a FAILURE (the OOM kill), never an abort",
+   ("failed", None, "post_tool_use_failure", "harness_ref"), outcome_of(sC))
+eq("  … and § 6.6's stated residual is VISIBLE rather than assumed away: the second leg "
+   "did not fire, and kill_close_same_session says so", 1,
+   sC.counters().get("kill_close_same_session"))
+
+# D — leg 1 alone still closes an abort: the harness naming the interrupt itself needs no boundary.
+sD = kill_seat("kill-sig-interrupt")
+hook(sD, "PostToolUseFailure", ptuf(KOLD, error="Exit code 130", is_interrupt=True))
+eq("is_interrupt true closes aborted / interrupted with no boundary in sight",
+   ("aborted", "interrupted", "post_tool_use_failure", "harness_ref"), outcome_of(sD))
+
+# E — an ordinary failing tool call. The counter must not fire on every failure, or it measures
+# nothing; the close must stay `failed`, or *idle* is unreachable on any turn containing one.
+sE = kill_seat("kill-sig-ordinary")
+hook(sE, "PostToolUseFailure", ptuf(KOLD, error="Exit code 3"))
+eq("an ordinary exit-3 failure closes failed", ("failed", None, "post_tool_use_failure", "harness_ref"),
+   outcome_of(sE))
+eq("  … and does not touch the kill counter", None, sE.counters().get("kill_close_same_session"))
+
+# F — the leg that CANNOT fire: a close whose open was never seen (reporter installed mid-call,
+# or the open lost to overflow). § 6.6 synthesizes the pair, and the call's own session is
+# unknowable — so the boundary cannot be evaluated at all. That is named by the same counter
+# rather than being silently resolved either way.
+sF = seat("kill-sig-synth")
+hook(sF, "SessionStart", {"session_id": KNEW, "hook_event_name": "SessionStart",
+                          "source": "startup", "cwd": "/home/agent/mezzanine"})
+hook(sF, "PostToolUseFailure", ptuf(KNEW, tuid="toolu_ORPHAN"))
+eq("a SYNTHESIZED close cannot evaluate the boundary, so it closes failed",
+   ("failed", None, "post_tool_use_failure", "synthesized"), outcome_of(sF))
+eq("  … and the same counter names the leg that could not fire", 1,
+   sF.counters().get("kill_close_same_session"))
+
+# RED 1 — THE DEFECT THIS SECTION EXISTS FOR (card#7684): map by is_interrupt ALONE, which is
+# what the reporter did while D1 § 6.6 said otherwise. Case A's kill then closes `failed`.
+KILL_ANCHOR = ("        if (ii === true || (exit137 && crossSession)) "
+               "{ outcome = 'aborted'; abortReason = 'interrupted'; }")
+p_ii_only = plant((KILL_ANCHOR,
+                   "        if (ii === true) { outcome = 'aborted'; abortReason = 'interrupted'; }"))
+sR1 = kill_seat("kill-sig-red-ii", reporter=p_ii_only)
+hook(sR1, "SessionEnd", {"session_id": KOLD, "hook_event_name": "SessionEnd", "reason": "clear"},
+     reporter=p_ii_only)
+hook(sR1, "SessionStart", {"session_id": KNEW, "hook_event_name": "SessionStart",
+                           "source": "clear", "cwd": "/home/agent/mezzanine"}, reporter=p_ii_only)
+hook(sR1, "PostToolUseFailure", ptuf(KNEW), reporter=p_ii_only)
+eq("RED: mapping by is_interrupt ALONE closes the /clear kill as an ordinary FAILURE — the "
+   "hazard § 6.6 names, and the state of this file before card#7684",
+   ("failed", None, "post_tool_use_failure", "tombstone_ref"), outcome_of(sR1, 1))
+
+# RED 2 — the OTHER promotion: exit 137 as a sole rule. The OOM kill of case C becomes an abort,
+# which blocks *idle* on a turn that legitimately finished. Both legs are load-bearing, both ways.
+p_137_only = plant((KILL_ANCHOR,
+                    "        if (ii === true || exit137) { outcome = 'aborted'; abortReason = 'interrupted'; }"))
+sR2 = kill_seat("kill-sig-red-137", reporter=p_137_only)
+hook(sR2, "PostToolUseFailure", ptuf(KOLD), reporter=p_137_only)
+eq("RED: promoting exit 137 to a sole rule reads an OOM KILL as an abort, blocking idle on a "
+   "turn that finished", ("aborted", "interrupted", "post_tool_use_failure", "harness_ref"),
+   outcome_of(sR2))
+redgreen("the kill signature discriminates, and neither leg carries it alone (§ 6.6, card#7684)",
+         "is_interrupt alone -> the /clear kill (exit 137, is_interrupt false, new session) closes "
+         "`failed`; exit 137 alone -> an OOM kill closes `aborted` and blocks idle on a finished turn",
+         "exit 137 + boundary -> aborted/interrupted on both the tombstone and the still-open call; "
+         "exit 137 without a boundary -> failed + kill_close_same_session=1; is_interrupt alone -> "
+         "aborted; exit 3 -> failed with the counter untouched; a synthesized close cannot evaluate "
+         "the boundary and says so through the same counter")
+
+
+print("\n== 14. UNKNOWN ENUM VALUES COST ONE FIELD, NOT A BATCH (AT-18, § 6.0 rule 4) ==")
 s18 = seat("enum")
 hook(s18, "SessionStart", {"session_id": SID, "hook_event_name": "SessionStart",
                            "source": "teleport", "cwd": "/home/agent/mezzanine"})
@@ -1793,7 +1955,7 @@ redgreen("unknown enum values (AT-18) and the blocked pair (AT-20)",
          "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves")
 
 
-print("\n== 14. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
+print("\n== 15. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
 # The loss shape § 0 item 9 forbids outright is the UNCOUNTED one: a seat that drops events and
 # renders healthy. The fault is injected in the product's own terms — the current spool bucket is
 # a DIRECTORY, so every append to it fails EISDIR — with `counters/` and `log/` left writable, so
@@ -1890,7 +2052,7 @@ redgreen(
     "counters-tree failure leaves 'counter sink append FAILED' in the seat log; an injected "
     "cached-fd EIO loses nothing and counts spool_append_retried.events=1")
 
-print("\n== 15. THE OS USERNAME NEVER REACHES THE WIRE VIA project_label (§ 1 non-goal, § 6.1) ==")
+print("\n== 16. THE OS USERNAME NEVER REACHES THE WIRE VIA project_label (§ 1 non-goal, § 6.1) ==")
 # `path.basename` runs before sanitize(), so § 7.3 rule 6 (`/home/<u>/` -> `~/`) can never match:
 # by the time the sanitizer sees the value the path structure is gone and only the bare username
 # is left. The three home shapes are covered by comparing against os.homedir(), never by an
@@ -1938,7 +2100,7 @@ redgreen("the OS username never reaches the wire via project_label (§ 1 non-goa
          'sends "mezzanine" with no suppression counted')
 
 
-print("\n== 16. THE BUCKET IS DERIVED AT THE WRITE, AND § 6.1's PATTERN ADMITS ITS OWN EXAMPLE ==")
+print("\n== 17. THE BUCKET IS DERIVED AT THE WRITE, AND § 6.1's PATTERN ADMITS ITS OWN EXAMPLE ==")
 # § 11.1: a hook entering at 13:59:59.900 must not write into bucket 13 after the hour rolled —
 # the flusher's next pass is <= 10 s away and would read to EOF and unlink. The entry timestamp
 # is moved back an hour, which is that boundary made deterministic; the event's `event_time`
@@ -2011,7 +2173,7 @@ redgreen("the bucket is derived at the write (§ 11.1) and § 6.1's pattern admi
          f"earlier; § 6.1's pattern now admits `{doc_example}` and the reporter emits it")
 
 
-print("\n== 17. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+print("\n== 18. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
 # and that process loops until it is signalled. A teardown that quietly reaped them would leave

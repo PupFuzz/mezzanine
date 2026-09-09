@@ -974,7 +974,7 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
 | `StopFailure` | reap that session's open calls — a turn that ended on an API error | `tool.end`(s), `turn.end` (`api_error`) |
 | `PreToolUse` | open a ledger entry | `tool.start`, plus `subagent.spawn` when `tool_name ∈ {"Agent","Task"}` |
 | `PostToolUse` | close it as succeeded | `tool.end` (`completed`), maybe `subagent.stop`, maybe `attention.resolved` |
-| `PostToolUseFailure` | close it as failed, or as aborted when `is_interrupt` | `tool.end` (`failed` \| `aborted`), maybe `subagent.stop`, maybe `attention.resolved` |
+| `PostToolUseFailure` | close it as failed, or as aborted when it matches [§ 6.6](#66-toolend)'s **kill signature** | `tool.end` (`failed` \| `aborted`), maybe `subagent.stop`, maybe `attention.resolved` |
 | `SubagentStart` | bind the subagent's `agent_id` to the open dispatch call as its `child_agent_id` | *(none — a binding, not an event)* |
 | `SubagentStop` | reap that subagent's own open calls ([§ 8.3](#83-the-reap-rules)), then close the bound dispatch call if it is still open | `tool.end`(s), `subagent.stop` |
 | `PreCompact` | — | `compaction.start` |
@@ -1518,8 +1518,13 @@ gate — the event is emitted identically whether the ref is present or absent; 
 > abort: the false idle, on a path this rule does not cover. **UNVERIFIED**, deliberately, rather
 > than papered over with a timer. Cost if it happens: one seat renders *idle* for one killed call.
 > Made visible by `kill_close_same_session` ([§ 9.3](#93-degradation-counters)) rather than
-> assumed away, and closed by driving the reversed order — the same act
-> [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) already owes for its own pair.
+> assumed away. **The reversed order is now DRIVEN at the reporter** (card #7684,
+> `fleet-reporter.selftest.py` § 13 case C): a SIGKILL close that crosses no boundary closes
+> `failed` and increments `kill_close_same_session`, and both promotions of a single leg were seen
+> to produce the wrong close on a planted copy. That establishes the reporter's behaviour in this
+> order and its instrument; it does **not** establish that the harness ever delivers the order —
+> only a real `/clear` on a real seat can, which is the drive
+> [§ 8.4](#84-detecting-a-clear-with-two-independent-signals) still owes for its own pair.
 >
 > Anything else is `failed`. **Neither leg may be promoted to a sole rule.** `is_interrupt` alone
 > misses this kill outright (measured `false` on it). Exit 137 alone is *SIGKILL in general* — an
@@ -1592,8 +1597,8 @@ own index entry and no matching was involved.
 set "only from an unambiguous harness error indicator" — a field whose value depended on a payload
 shape nobody had verified, and which restated in a second place what `outcome` already says. Which
 hook closed the call **is** the error indicator, and it is an observation rather than an inspection:
-`completed` from `PostToolUse`, `failed` or `aborted` from `PostToolUseFailure` per `is_interrupt`,
-`aborted` from a reap. One fact, one home, and no dependency on `tool_response`'s per-tool schema —
+`completed` from `PostToolUse`, `failed` or `aborted` from `PostToolUseFailure` per the **kill
+signature** above, `aborted` from a reap. One fact, one home, and no dependency on `tool_response`'s per-tool schema —
 which stays UNVERIFIED in [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) precisely
 because nothing reads it.
 
@@ -3104,7 +3109,7 @@ statusLine processes reach the flusher through the counter sink
 | `clear_second_signal_found_nothing` | a `SessionStart(source=clear)` whose index held no other open session to reap ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | informational, and **expected on every `/clear` where `SessionEnd` ran first** — which at 2.1.247 is every one measured. It is `reap_noop_second_signal` seen from the selection side, and the two disagreeing means the second signal selected the *wrong* session |
 | `reap_noop_second_signal` | the second `/clear` signal found nothing to reap | informational, and **expected on every `/clear`** — a zero here on a seat that has cleared is the alarm ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) |
 | `tombstone_late_close` | a close matched a tombstone — the reap was too eager for that call | informational; the reporter-side half of `late_completion` |
-| `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in — the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
+| `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in, **or** on a close whose open was never seen at all ([§ 6.6](#66-toolend)'s synthesized pair), where the call's session is unknowable — either way the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
 | `compaction_double_close` | both `PostCompact` and `SessionStart(compact)` closed one compaction | informational; a zero means one of the two signals is dead |
 | `bad_session_id` | `session_id` failed its pattern and was sent as `null` ([§ 3.2](#32-session-identity)) | `degraded` |
 | `config_invalid` | the config failed validation at runtime (e.g. a non-`https` `ingest_url`) | `degraded`; the flusher keeps spooling and sends nothing |
@@ -4908,6 +4913,19 @@ rather than built, and neither is a change to any fact:
 `selftest`'s `harness_payload_keys` check ([AT-21](#at-21-the-harness-fact-drift-guard)) asserts the
 reporter against it. The reporter vendors them as `fixtures/hooks/<HookEventName>.json`
 ([§ 2.1](#21-one-file-four-subcommands)).
+
+**That vendored copy is DERIVED from this appendix, not maintained beside it.**
+`bin/harness-fixture-drift.py` regenerates the whole `fleet-reporter/fixtures/hooks/`
+directory from the payloads below — grouped by `hook_event_name`, in the order they appear
+here, each group tagged with the `_source` its region declares (`capture` in this section,
+`docs-cited-stub` in § 17.1) — and refuses a committed byte that differs. It runs in CI on any
+change to **either** end, and `--write` brings the fixtures back to whatever this appendix
+says; a fixture is a generated file and hand-editing one is how the next divergence starts.
+**Until card#7946 there was no such check, and editing this appendix alone left the fixtures
+stale with every gate green**: the reporter's `harness_payload_keys` check reads the
+*fixtures*, this document's verifiers read the *appendix*, and neither could see the seam
+between them. That is not a hypothesis — it happened during card#7930 and was caught only
+because one person happened to be editing both ends.
 
 | | |
 |---|---|

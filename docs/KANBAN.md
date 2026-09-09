@@ -106,11 +106,33 @@ does not look like an auth failure; it looks like a release that named no cards.
 permission.** The mover's own residue report will say `UNAVAILABLE` rather than "0 stranded"
 on a blind read, which is the signal to check membership.
 
-### G-2 — the FIRST-EVER release must pass `--base`
-The mover derives the released range from the previous release tag. **This repo has no release
-tag yet**, and the mover refuses a full-history sweep rather than guessing one. So the first
-release promote must be run via **workflow_dispatch with the `base` input set** to an explicit
-tag or sha. It is not a bug when the first automatic run refuses — it is the guard working.
+### G-2 — an un-derivable range is REFUSED, never guessed; `--base` is the escape
+The mover never sweeps full history. It takes the released range from a base it can defend,
+most-authoritative first: on an automatic `push: main` run, the **push payload's `before` sha**
+— *measured*, so `before..after` is exactly the set that push added; on `workflow_dispatch`,
+which carries no payload, the **previous release tag** reachable from `HEAD^` (`^`, so the tag
+the auto-tagger just minted on this very merge cannot collapse the range to empty). With
+neither it **exits 2 and writes nothing**, naming `--base` / `--cards` as the escape — because
+an omitted base resolves to `HEAD..HEAD`, which is EMPTY, so falling through would print
+"nothing to do" and exit 0 over cards that genuinely shipped.
+
+**The first-ever-release case is SPENT — do not pass `base` on an ordinary release.** It was
+real until `v0.1.0` was tagged: with no previous tag the fallback had nothing to derive from,
+so the first promote had to be dispatched with an explicit `base`. That is history. The repo
+now carries release tags and the CI checkout fetches them (`fetch-depth: 0`, `fetch-tags: true`
+in `release-promote-cards.yml`), so a push run and a dispatch both derive a base on their own.
+
+`--base` still has live uses, all of them abnormal, and each is a case the mover NAMES rather
+than guessing through:
+
+- **`main` was force-pushed or rewritten** — the push `before` sha is either absent from the
+  checkout or present but *not an ancestor* of the head, so `before..head` is not the set this
+  push added. Two separate refusals, both exit 2.
+- **A shallow or tagless clone**, which is a local-run hazard; CI's checkout closes it.
+- **Re-promoting an OLDER release deliberately** — the tag fallback resolves to the LAST
+  release, so reaching an earlier range takes `--base`/`--head` (or `--cards`).
+
+It is never a bug when a run refuses — it is the guard working.
 
 ### G-4 — bridge writeback config fails **closed, for every repo in the file**
 A malformed or unrecognized entry in the bridge's `writeback.json` is a config error that
@@ -127,21 +149,23 @@ one. Two more halves must both be present in the mapping: `stages.started` **and
 `started_from_stages` absent the move is refused outright.
 
 ### G-16 — `workflow_dispatch` only resolves from the DEFAULT branch
-The release workflow advertises a dry-run dispatch so the whole path can be rehearsed before
-the irreversible one. **That dispatch does not exist until the workflow file is on the default
-branch (`main`).** With the file only on `dev`, the API answers:
+**A `workflow_dispatch` does not exist until its file is on the default branch (`main`)** — a
+`pull_request` workflow registers from the PR head, a `workflow_dispatch` one does not. While
+the file is only on `dev`, `actions/workflows` does not list it and the API answers:
 
 ```
 HTTP 404: workflow release-promote-cards.yml not found on the default branch
 ```
 
-and `actions/workflows` lists only the lint — a `pull_request` workflow registers from the PR
-head, a `workflow_dispatch` one does not.
+**For `release-promote-cards.yml` this is SPENT.** It reached `main` in `1f86523`
+(2026-08-22), before `v0.1.0`, so its dry-run dispatch resolves today and **no seeding merge is
+owed**. The rule is kept because it binds **every workflow added from here on**: a new
+`workflow_dispatch` stays invisible to the API until its file reaches `main`, which for
+ordinary feature work means the next release.
 
-**The release path is not broken by this.** A `push: main` trigger fires from the pushed
-commit's own tree, so the workflow arrives and runs on the very merge that lands it. What is
-blocked is *rehearsing* it. Seed `.github/workflows/` onto `main` as its own merge, before any
-release PR, if you want the dry-run before the real thing.
+**The release path is never blocked by this.** A `push: main` trigger fires from the pushed
+commit's own tree, so a workflow arrives and runs on the very merge that lands it. Only
+*rehearsing* ahead of time is blocked.
 
 ### G-5 — `.release-pr.json` `promote.api_base` is a credential-exfiltration surface
 It is PR-editable, and it is where `KANBAN_WRITEBACK_TOKEN` gets sent. That is why the

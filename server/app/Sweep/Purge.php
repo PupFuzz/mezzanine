@@ -65,9 +65,11 @@ final class Purge
      * `seat_predicates`, `installs`, `seats`, `feed_tokens` are retained **for ever** (§ 6.7).
      * "A seat row outlives its events deliberately: a provisioned seat that has never reported must
      * render, not vanish. A RETIRED SEAT IS LIKEWISE NEVER PURGED; it drops out of the read
-     * surfaces 14 days after `retired_at` by a QUERY FILTER, not by a deletion (§ 4.10), so an
-     * operator question about why it went can still be answered." That filter is Part B's; this
-     * class's contribution to it is refusing to make the row unavailable.
+     * surfaces at `retired_at` by a QUERY FILTER, not by a deletion (§ 4.10, as reversed by
+     * card#9078's operator ruling), so an operator question about why it went can still be
+     * answered." That filter is `App\Read\RetirementFilter`'s; this class's contribution to it
+     * is refusing to make the row unavailable — and it is what the console's retired-seat list
+     * reads, which is the record's home now that the desk goes at once.
      *
      * @var array<string, string> table => the column its retention is measured on
      */

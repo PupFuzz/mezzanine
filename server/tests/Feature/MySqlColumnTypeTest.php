@@ -78,6 +78,30 @@ class MySqlColumnTypeTest extends TestCase
         $this->assertStringContainsString('`with_length` varbinary(16)', $sql);
     }
 
+    /**
+     * ⛔ CARD#9077's RESET-TOKEN TABLE, ON THE STORE IT DEPLOYS TO. `token_hash` is an identifier
+     * column in § 6.1's sense — it is LOOKED UP BY EQUALITY and nothing else — so it must compare
+     * exactly. MySQL's default `utf8mb4_0900_ai_ci` is case- AND accent-insensitive, and a digest
+     * matched case-insensitively is a digest that matches rows it does not equal: on a 64-character
+     * hex value that is a 2^64-fold reduction in the work of finding a colliding lookup key.
+     *
+     * ⚠ THE SUITE CANNOT SEE THIS ANY OTHER WAY, which is the whole reason this file exists: § 6.2
+     * pins the suite to a store where every collation is already binary, so the divergence is
+     * invisible to a green run. Compiled here, never executed — see the class docblock.
+     */
+    public function test_the_reset_token_table_emits_an_exactly_comparing_identifier_column_on_mysql(): void
+    {
+        $ddl = $this->createTableSqlOnMySql('two_factor_reset_tokens');
+
+        $this->assertStringContainsString("`token_hash` char(64) character set ascii collate 'ascii_bin'", $ddl);
+
+        // THE CONTROL: a column that is NOT an identifier keeps the table's own charset, so this
+        // arm discriminates between `Ddl::ascii()` applied where it belongs and `Ddl::ascii()`
+        // applied to everything — which would pass a `contains` check on its own.
+        $this->assertStringContainsString('`consumed_user_agent` varchar(255) null', $ddl);
+        $this->assertStringContainsString("default character set utf8mb4 collate 'utf8mb4_unicode_ci'", $ddl);
+    }
+
     /** The `CREATE TABLE` this application's migration for `$table` would send to MySQL. */
     private function createTableSqlOnMySql(string $table): string
     {

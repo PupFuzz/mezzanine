@@ -305,9 +305,9 @@ else
   #     mass-move `promote-released-cards`' comment claims: git resolves an omitted left
   #     side to HEAD, so `..HEAD` is `HEAD..HEAD` = EMPTY (verified: `git log --oneline
   #     ..HEAD` on this repo yields 0 commits against 647 for `git log HEAD`). Falling
-  #     through would therefore print "nothing to do" and exit 0 on a first-ever release
-  #     whose cards all genuinely shipped — a false all-clear, the exact class this tool
-  #     exists to close. Either way the answer is REFUSE; the escape is --base / --cards.
+  #     through would therefore print "nothing to do" and exit 0 on a release whose cards
+  #     all genuinely shipped — a false all-clear, the exact class this tool exists to
+  #     close. Either way the answer is REFUSE; the escape is --base / --cards.
   #     (The toolkit comment's mass-move rationale is being reported to its owner.)
   # Deliberately NOT used: the merge's first parent (`HEAD^1`). It is only defined when
   # the tip IS a merge, it silently narrows to a single commit on a squash tip (the exact
@@ -341,7 +341,7 @@ else
     BASE="$(git describe --tags --abbrev=0 --match "${TAG_GLOB}*" "${HEAD_REF}^" 2>/dev/null || true)"
   fi
   [ -n "$BASE" ] \
-    || die "no range base — no push-event 'before' sha and no release tag before $HEAD_REF (a first-ever release, or a shallow/tagless clone). With no base the range would be EMPTY and this run would report a false all-clear ('nothing to do') while every genuinely-shipped card stayed un-promoted. Re-run with an explicit --base <ref> or --cards <ids>."
+    || die "no range base — no push-event 'before' sha and no release tag before $HEAD_REF. Likeliest live causes: a shallow or tagless clone (a local-run hazard — CI checks out with fetch-depth:0 and fetch-tags:true), or a deliberate re-promote of the EARLIEST release, which has no predecessor tag to derive from. A force-pushed/rewritten main is NOT this error — it has its own two messages above. With no base the range would be EMPTY and this run would report a false all-clear ('nothing to do') while every genuinely-shipped card stayed un-promoted. Re-run with an explicit --base <ref> or --cards <ids>; docs/KANBAN.md § G-2 owns the full --base cause list."
   RANGE="$BASE..$HEAD_REF"
   SUBJECTS="$(git log "$RANGE" --format='%s' 2>/dev/null)" \
     || die "git log $RANGE failed — bad base/head ref"

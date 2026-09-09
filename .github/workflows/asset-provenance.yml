@@ -17,13 +17,14 @@
 # BYTES visible too — an asset can be replaced without its row ever changing, and that is the
 # case a human reviewer will not catch by reading a diff of a binary.
 #
-# ⚠ THIS IS NOT A REQUIRED STATUS CHECK, AND ADDING IT HERE DOES NOT MAKE IT ONE.
-# `docs/VERSIONING.md § Branch model` is explicit: `card-token-lint` is the only mechanically
-# required check on `dev` and `main`, and "a workflow that is added later is not automatically
-# required". So a red here does not block a merge — a human has to look. Making it required is
-# a repository-settings act on both branches, and card #7344 ("CI lanes for app code") owns
-# updating the required-check list. Until then, read this workflow as evidence a reviewer can
-# rely on, never as a gate that stopped anything.
+# ⛔ WHETHER THIS BLOCKS A MERGE IS NOT STATED HERE, AND THAT IS THE FIX RATHER THAN AN OMISSION.
+# This comment used to assert that it does not — "a red here does not block a merge, a human has
+# to look" — and that assertion was FALSE for eight days: `asset-provenance` was added to both
+# branch rulesets on 2026-08-31 and nothing in this repository moved with them. A required-check
+# list is a REPOSITORY-SETTINGS fact that no file in the checkout can verify, so a copy of it here
+# is a claim that can only rot, and it rotted in the direction that tells a reviewer to ignore a
+# red. `docs/VERSIONING.md § Branch model` is its one home and carries the command that
+# re-derives it from the API. Read that; do not re-copy it here.
 #
 # NO `paths:` FILTER, DELIBERATELY. Two reasons, and the second is the load-bearing one:
 #   1. The gate is Python stdlib over a handful of files — a couple of seconds, not a lane.

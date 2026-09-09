@@ -52,6 +52,14 @@ def write_run(root, events):
 # SubagentStart, so the parent turn ends CLEAN while the subagent is alive; the subagent's own
 # Bash call opens after that turn.end and is killed by the /clear; the harness then reports the
 # kill as `Exit code 137` under the NEW session id.
+#
+# ⚠ S1's LAST EVENT — the late close reading `outcome: "failed"` — is the stream the reporter
+# emitted BEFORE card#7684 taught it D1 § 6.6's kill signature; that same trace now emits
+# `aborted` / `interrupted`. It is kept as measured rather than re-rendered, because what § 4
+# below tests is § 8.6's refusal of a CROSS-SESSION late close, and that refusal must not depend
+# on what the late close says: a `failed` late close is the input that can actually overturn the
+# abort, so it is the one worth driving. A fixture rewritten to `aborted` would still pass while
+# proving strictly less.
 S1 = [
     ev("2026-08-25T14:21:19.017Z", "session.start", OLD, source="startup"),
     ev("2026-08-25T14:21:21.241Z", "turn.start", OLD),

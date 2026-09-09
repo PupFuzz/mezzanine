@@ -20,13 +20,13 @@ use Tests\Feature\Sweep\SweepTestCase;
  * reached the wire from nowhere, and the immediate re-render was up to a sweep pass late and
  * mislabelled `staleness_sweep`.
  *
- * ⚠ SCOPE — THE SNAPSHOT HALF IS PART B's AND IS NOT ASSERTED HERE. § 11's GREEN says the seat is
- * "absent from the snapshot while its row is still in `seats`: assert BOTH, because the
- * disappearance must be a READ FILTER and not a deletion". The read filter lives in § 8.2's
- * snapshot query, which card #7339 PART B owns and which is not built. What is asserted here is the
- * half this card can be held to and the half the filter would be wrong without: THE ROW IS STILL
- * THERE after 14 days, nothing deletes it, and the render is still `retired`. Named in the PR body
- * rather than approximated with a query nobody will use.
+ * ⚠ SCOPE — THE READ SURFACES ARE `Tests\Feature\Feed\At23WireSurfaceTest`'s HALF, not this
+ * file's. That half now asserts the desk going AT `retired_at` (card#9078's operator ruling —
+ * "when an agent is removed, its seat and desk should go away immediately") and the arm that
+ * proves the removal did not widen into an inference from absence. What is asserted HERE is the
+ * store: the act, its transaction, its `cause: operator` row, and the property the read filter
+ * would be wrong without — THE ROW IS STILL THERE, nothing deletes it, and the stored render is
+ * still `retired`.
  */
 class At23RetiredSeatTest extends SweepTestCase
 {
@@ -77,10 +77,15 @@ class At23RetiredSeatTest extends SweepTestCase
     }
 
     /**
-     * GREEN — "PAST 14 DAYS the axes have kept deriving underneath — `link_state` has reached
-     * `offline` and the render is STILL `retired`, because `retired` short-circuits above both axes
-     * — and the seat is absent from the snapshot WHILE ITS ROW IS STILL IN `seats`."
-     */
+     * GREEN — the axes keep deriving underneath a retired seat: `link_state` reaches `offline`
+     * and the stored render is STILL `retired`, because `retired` short-circuits above both axes
+     * (§ 4.2) — and the row is never deleted, whatever the purge does.
+     *
+     * ⚠ AFTER card#9078 NOTHING RENDERS WHAT THIS DERIVES: the seat left every read surface at
+     * `retired_at`, so the sweeper's continued recompute of a retired seat now has no reader on
+     * the floor, and it still publishes a `seat.delta` on each pass that moves a version-bearing
+     * fact. That is the CURRENT behaviour, asserted here as current behaviour and not endorsed —
+     * it is reported as a finding on card#9078 rather than changed inside a card about removal.
     public function test_the_axes_keep_deriving_underneath_and_the_row_is_never_deleted(): void
     {
         $this->deliver($this->cleanTurn());
@@ -227,14 +232,33 @@ class At23RetiredSeatTest extends SweepTestCase
         $this->assertNotContains('operator', $this->causes());
     }
 
-    /** § 4.5: retirement is "an act with an AUTHOR and a REASON" — neither is defaulted. */
+    /**
+     * § 4.5: retirement is "an act with an AUTHOR and a REASON" — neither is defaulted.
+     *
+     * ⛔ THE WHITESPACE-ONLY ROWS ARE THE ONES THAT MATTER, and they were added in card#9070's
+     * SECOND review round because they were the measured defect. The act refuses on `trim()`;
+     * this command refused on `=== ''`. `--by="   "` therefore walked past the command's refusal
+     * and hit the act's `throw`, so an operator who typed a space got an uncaught
+     * `InvalidArgumentException` and a stack trace at exit code 1, on a surface whose own class
+     * docblock claimed it "refuses first, with a message better than an exception". Two spellings
+     * of one rule is one spelling too many; both now read
+     * `App\Support\RetirementAttribution`. Exit code 2 IS the assertion — a 1 here is the
+     * exception path.
+     */
     public function test_the_command_refuses_without_an_author_or_a_reason(): void
     {
-        $this->artisan('mezzanine:retire', ['--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'x'])
-            ->assertExitCode(2);
+        $seat = self::INSTALL.'/'.self::SEAT;
 
-        $this->artisan('mezzanine:retire', ['--seat' => self::INSTALL.'/'.self::SEAT, '--reason' => 'x'])
-            ->assertExitCode(2);
+        foreach ([
+            ['--by' => 'x'],
+            ['--reason' => 'x'],
+            ['--by' => '   ', '--reason' => 'x'],
+            ['--by' => 'x', '--reason' => "  \t "],
+            ['--by' => ' ', '--reason' => ' '],
+        ] as $options) {
+            $this->artisan('mezzanine:retire', ['--seat' => $seat] + $options)
+                ->assertExitCode(2);
+        }
 
         $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
     }

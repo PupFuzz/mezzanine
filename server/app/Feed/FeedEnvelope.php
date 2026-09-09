@@ -21,8 +21,8 @@ use Illuminate\Broadcasting\PrivateChannel;
  * `routes/channels.php` authorises the same unprefixed name for the same reason.
  *
  * A TRAIT rather than a base class, because `App\Events\SeatRetired` already exists (card #7712),
- * already carries `ShouldDispatchAfterCommit`, and is constructed by `mezzanine:retire` — it
- * needs the envelope without changing what it is.
+ * already carries `ShouldDispatchAfterCommit`, and is constructed by the retirement act
+ * (`App\Fleet\SeatRetirement`) — it needs the envelope without changing what it is.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ TRANSPORT — WHAT IS BUILT AND WHAT IS NOT, STATED SO NOTHING READS AS MORE THAN IT IS.

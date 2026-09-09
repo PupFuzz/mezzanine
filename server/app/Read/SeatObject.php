@@ -22,9 +22,10 @@ use Illuminate\Support\Facades\DB;
  *                              freeze with the thing it measures.
  *   `badges` / `badges_since`  `Badges::render()` / `Badges::since()`.
  *   `action` / `session` /     `SeatFacts::action()` / `::session()` / `::apiErrorType()` /
- *   `api_error_type` /         `::openSubagents()` — the same four reads the fold's own
- *   `subagents`                version-bearing FINGERPRINT is built from, so the wire object and
- *                              the thing that decides whether to emit it cannot disagree.
+ *   `api_error_type` /         `::blockedSince()` / `::openSubagents()` — the same reads the
+ *   `blocked_since` /          fold's own version-bearing FINGERPRINT is built from, so the wire
+ *   `subagents`                object and the thing that decides whether to emit it cannot
+ *                              disagree.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * THE TEN BOOKKEEPING MEMBERS RIDE THE OBJECT AND ARE NEVER A REASON TO EMIT.
@@ -69,6 +70,7 @@ final class SeatObject
             'activity_state' => (string) $state->activity_state,
             'unknown_reason' => $state->unknown_reason,
             'api_error_type' => SeatFacts::apiErrorType($seatRef, (string) $state->activity_state),
+            'blocked_since' => Clock::wire(SeatFacts::blockedSince($state)),
 
             'action' => $action === null ? null : [
                 'call_id' => (string) $action->call_id,
@@ -177,7 +179,9 @@ final class SeatObject
      * The one seat, joined and built — the shape both the delta and the drill-down need.
      *
      * @return array<string, mixed>|null null when the seat row is gone (never for a retired seat:
-     *                                   § 4.10's 14 days is a READ FILTER and this is not it)
+     *                                   § 4.10's disappearance is a READ FILTER and this is not
+     *                                   it — this read is how the retirement's own delta and
+     *                                   `seat.retired` still carry the seat they announce)
      */
     public static function forSeatRef(int $seatRef, int $nowMs): ?array
     {

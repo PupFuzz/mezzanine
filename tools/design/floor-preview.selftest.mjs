@@ -408,8 +408,25 @@ for (const row of DOC_STATE_ROWS) DOC_LABEL[row.member] = publishedLine(row.cell
 // that to the monitor) but the state's own sentence — a constant, and therefore comparable.
 // An exemption outliving the contradiction that justified it is a permanently weakened check
 // wearing a stale reason, which is why removing each was part of the fix that ended its reason.
+//
+// ⛔ AND IT GREW BACK TO TWO IN card#9078, WHICH IS THE OPPOSITE OF THE PARAGRAPH ABOVE AND IS
+// STATED AS SUCH RATHER THAN SLIPPED IN. The operator ruled that a retired seat's desk goes
+// IMMEDIATELY (`FLOOR.md § 3.5`), so `retired` no longer HAS a desk label to compare: § 7.1's cell
+// for it now publishes prose — the desk is removed, and the client's event log carries the line —
+// with no leading italic literal for `publishedLine()` to read. The exemption is the honest state
+// of the comparison, not a way to keep the sweep green.
+//
+// ⚠ WHAT IT LEAVES UNGUARDED, NAMED HERE BECAUSE AN UNNAMED HOLE IS THE DEFECT THIS FILE EXISTS
+// AGAINST: `floor-preview.html` still renders `retired` as a CLEARED DESK WITH A PLATE — the
+// behaviour card#9078 reversed — and no check in this file compares a state's desk render against
+// § 7.1's, so the artifact stays green while drawing a desk D3 no longer has. That is a REPORTED
+// follow-up on card#9078 and not a silent acceptance: the artifact is operator-ratified art
+// direction, and re-cutting the strip for a state that renders no desk is its own change with its
+// own ratification. Until that lands, the artifact's retired tile is a preview of a rule this
+// repository no longer holds.
 const LABEL_NOT_COMPARABLE = {
   unknown: '"one sentence per `unknown_reason` (below)" — the literals are that table\'s, checked in § 1',
+  retired: 'card#9078: the desk goes on the announcement, so § 7.1 publishes prose and no desk label — see the note above for what this exemption leaves unguarded',
 };
 
 const KNOWN_CHIPS = P.STATE_RENDER ? Object.values(P.STATE_RENDER).map((r) => r.chip) : [];

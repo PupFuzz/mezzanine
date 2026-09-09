@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SecretLine;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -128,7 +129,11 @@ class IssueIngestToken extends Command
         $this->line(sprintf('  seat        %s / %s  (seat_ref %d)', $installId, $seatId, $seatRef));
         $this->line(sprintf('  prefix      %s', substr($token, 0, 12)));
         $this->newLine();
-        $this->line('  token       '.$token);
+        // The one printer of a credential in this application — see `App\Console\SecretLine`.
+        // This token's base64url alphabet happens to carry nothing the console formatter
+        // transforms; that is a property of the alphabet, not of the print, and the next
+        // credential minted here would not inherit it.
+        SecretLine::write($this->output, 'token', $token);
         $this->newLine();
         $this->warn('  This is the only time this value exists outside the seat. Only the SHA-256 is stored.');
         $this->warn('  Write it into the seat config (D1 § 3.1) and revoke the previous token afterwards,');
