@@ -51,6 +51,54 @@ class SeatConsoleTest extends SweepTestCase
             ->assertSee('blocked');
     }
 
+    /**
+     * ⭐ card#9078 — **the desk goes at once, and the record MOVES HERE.**
+     *
+     * The operator ruled that a removed seat's desk goes immediately, which takes the retirement
+     * record off the floor: there is no retired desk left to carry `at` / `by` / `reason`. It does
+     * not disappear with the desk — this page is its home, and that home is what makes the
+     * immediate removal a REMOVAL rather than a deletion.
+     *
+     * ⛔ BOTH HALVES IN ONE TEST, DELIBERATELY. "Gone from the live list" passes just as well when
+     * the record was destroyed, and "listed as retired" passes just as well when the desk never
+     * went. The pair is the assertion.
+     */
+    public function test_a_retired_seat_leaves_the_live_list_and_its_record_is_still_on_the_page(): void
+    {
+        [, $liveRef] = $this->issueToken(self::INSTALL, 'aimla-impl');
+
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        $operator = $this->operator();
+
+        $this->actingAs($operator)
+            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+                'reason' => 'the box was decommissioned',
+            ])
+            ->assertRedirect(route('admin.agents.index'));
+
+        $page = $this->actingAs($operator)->get(route('admin.agents.index'))->assertOk();
+
+        // 1 — the record is on the page: who, when, why.
+        $page->assertSee('Retired seats')
+            ->assertSee(self::SEAT)
+            ->assertSee($operator->email)
+            ->assertSee('the box was decommissioned')
+            ->assertSee((string) $this->seatRow()->retired_at);
+
+        // 2 — and the seat is no longer offerable for retirement, because it is no longer in the
+        // live list at all. The retire FORM is the live list's own control, so its absence for
+        // this seat is that seat's absence from that list — asserted through the route the form
+        // posts to, which is unique per seat.
+        $page->assertDontSee(route('admin.agents.retire', [self::INSTALL, self::SEAT]), escape: false);
+
+        // DISCRIMINATING CONTROL — the seat that was NOT retired still has its form. Without it, a
+        // page that rendered no forms at all would pass assertion 2.
+        $page->assertSee(route('admin.agents.retire', [self::INSTALL, 'aimla-impl']), escape: false);
+        $this->assertNull(DB::table('seats')->where('id', $liveRef)->value('retired_at'));
+    }
+
     public function test_retiring_through_the_console_performs_the_whole_act(): void
     {
         Event::fake([SeatRetired::class]);

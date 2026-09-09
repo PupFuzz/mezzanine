@@ -195,7 +195,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | CI lanes for app code (#7344) | first PHP/JS code | required-check list updated the same PR (see `docs/VERSIONING.md` — a new workflow is not auto-required) |
 | **cont.** | changelog + card-entry gate (card#8174, per #344) — ✅ **landed 2026-08-30** as `release-pr-guard` R4 (the card's bullet) and R5 (the size gate § 4 had claimed since D-11) | — | § 4; every arm seen to red on a planted defect first — eight guard mutations, each producing a targeted failure |
 | | `CLAUDE*.md` structure (new card, blocked on #346) | #346 answer | index + chapters per sola-inventory's pattern |
-| | `bin/deploy.sh` prod deploy (new card, blocked on kanban-solo sample) | sample + P2 server | prod moves only via the script; seen to fail on a broken precondition before trusted |
+| | `bin/deploy.sh` prod deploy (#7459) | P2 server host (D-08) | prod moves only via the script; seen to fail on a broken precondition before trusted — `bin/deploy.selftest.sh` is that evidence, and the live-host leg stays unexercised until a host exists |
 
 Deliberately **not** in this plan: the autonomy watchdog (roundtable #341 + our `[WAKE]` prototype
 #659 — separate track; Mezzanine's contribution to it is the REST snapshot), and the aimla
@@ -273,8 +273,38 @@ rule violations anyone could have committed at the time.
   agent (stood up after the P0 designs land — see the handoff below), where all development and
   the first live-floor demos happen; and a **prod** instance on the operator-provisioned
   separate host (D-08), deployed only via **`bin/deploy.sh`** — hand-deploys to prod are not a
-  path. The deploy script follows the kanban-board project's pattern (sample requested from
-  kanban-solo); adopted, not invented, so the fleet's deploy scripts stay one shape.
+  path.
+- **`bin/deploy.sh` exists (card#7459) and has never run against a host.** ⚠ The kanban-board
+  sample it was to be adopted from — `share/issue-347/kanban-solo/kanban-board-deploy.sh @
+  ee7df9b9` — **was not reachable from this seat** (no such path on this host; the roundtable repo
+  answers 404 to this credential), so the fleet's deploy scripts are *not* yet demonstrably one
+  shape and no line of the sample was copied. What was adopted is rt#347's own enumeration of the
+  sample's load-bearing properties: forward-only migrations (MySQL DDL is non-transactional), the
+  load-bearing cache-rebuild order, down-and-stay-down on failure for operator review,
+  re-exec-after-checkout, and every "fails once then silently succeeds on a bare re-run" state made
+  loud. **Two things are outstanding**: rt#347 item 5 — take the adapted script to kanban-solo on a
+  fresh thread once the P2 host exists — and the first real run, which is the only place the
+  live-host leg (systemd units, sudo posture, MySQL, PHP-FPM, `/up` through the real proxy) is
+  exercised at all.
+- **One divergence from the sample's topology, ruled binding by rt#347 item 1:** the deploy
+  restarts the long-lived daemons *inside* the window — `mezzanine:fold`, `mezzanine:sweep`,
+  `mezzanine:feed-heartbeat` and, once card#7339 makes Reverb the broadcaster, Reverb. The sample's
+  host runs a host-scoped shared daemon serving several tenants and is silent about restarting it;
+  this host is single-tenant, so every long-lived PHP process on it holds *this* app's code, and
+  copying that silence would leave every deploy serving stale broadcast code invisibly — sockets
+  up, floor rendering, payloads one release old. Reverb's membership in the restart set is
+  **derived** from `BROADCAST_CONNECTION` rather than asserted, so it becomes mandatory the moment
+  #7339 flips it with nobody having to remember.
+- **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
+  `APP_DEBUG=true`, empty `APP_KEY`, non-MySQL, TLS-less, a non-persistent `CACHE_STORE`), the PHP
+  floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
+  ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
+  *"the deploy checks it"*, and this is that check), and a systemd unit that is missing or
+  disabled. It warns, rather than refusing, where the doc's own reading is that the state is
+  fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
+  host's `.env` does not set.
 - **The handoff milestone:** when D1–D3 are merged, the project moves to its own agent seat
   (sandbox owner + implementer); aimla-pm drops to coordinator (reviews, cross-project routing,
   this plan's upkeep). The new seat inherits this plan as its orientation — which is a reason
@@ -287,6 +317,9 @@ rule violations anyone could have committed at the time.
   let any client forge the header and defeat the key entirely — the limit would then be a
   decoration, which is the one thing § 12.3 says it must not be. The deploy host is not
   provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
+  `bin/deploy.sh` enforces the half that is enforceable: it **refuses** a target tree carrying
+  `trustProxies('*')` and **warns** when none is configured — this paragraph's own reading of the
+  two states, not a stricter one.
 - **A deployed host installs with `composer install --no-dev`, and that is a security obligation
   rather than a size one.** `database/factories/` and `database/seeders/` are in composer's
   **`autoload-dev`** block (card#9070's review round moved them), so on a `--no-dev` install
@@ -296,7 +329,10 @@ rule violations anyone could have committed at the time.
   round: the factory used to hash the literal `password`, and it now mints a random value per run
   (`UserFactory::password()`), so there is no known credential left for a dev-dependency install to
   expose. The obligation stays because it is the cheaper of the two guarantees to lose — nothing
-  reds if a host never honours the flag, and `bin/deploy.sh` does not exist yet to honour it. Verified rather than reasoned: a real `--no-dev` install
+  reds if a host never honours the flag. **`bin/deploy.sh` now honours it** (card#7459 — it
+  installs with `composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist`),
+  and it is the only thing that does, which is the same reason D-13 makes the script the only path
+  to prod: a hand-deploy loses the guarantee silently. Verified rather than reasoned: a real `--no-dev` install
   from this lockfile resolves `App\Admin\UserProvisioning` and does **not** resolve
   `Database\Factories\UserFactory`. `server/tests/Feature/Admin/ProductionAutoloadTest` holds the
   repo's half — the namespaces stay dev-only, and nothing under a production autoload root mints a

@@ -18,8 +18,10 @@ specific to Mezzanine and has no counterpart there.
 > the bootstrap case the ⚠ under [§ Release flow](#release-flow) records, not a release anybody
 > reviewed as one — and `v0.2.0` on `804c31a` (PR #40, 2026-08-30), the first tag this flow
 > produced deliberately. Both are immutable and are never moved.
-> **Nothing is deployed**: `bin/deploy.sh` does not exist and `docs/PLAN.md § 5` records the
-> prod host as unprovisioned (D-08), so both target verdicts in
+> **Nothing is deployed** (this clause re-measured 2026-09-09, card#7459): `bin/deploy.sh` now
+> exists and every one of its refusals is exercised by `bin/deploy.selftest.sh`, but it has
+> **never run against a host** — `docs/PLAN.md § 5` records the prod host as unprovisioned
+> (D-08) — so both target verdicts in
 > [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) are still
 > *first install*, never *upgrade*. `docs/CHANGELOG.md` exists and is written to per PR
 > (`docs/PLAN.md § 4`, which owns its format); **`fleet-reporter/` now exists too** — the
@@ -300,6 +302,12 @@ different acts:
 |---|---|---|---|
 | **The Laravel app** | dashboard, ingest endpoint, websocket feed | one server | whoever deploys, in one act |
 | **`fleet-reporter`** | the Claude Code hook bundle that POSTs the events | every agent machine, Linux **and** Windows | each seat's owner, on their own schedule |
+
+The server's "one act" is **`bin/deploy.sh`** and nothing else (D-13): it refuses to start unless
+the host is in a deployable state, opens a maintenance window, migrates forward-only, rebuilds the
+caches in the order that matters, restarts the long-lived daemons that are still holding the
+previous release's code in memory, and stays **down** for operator review if any of it fails.
+`docs/PLAN.md § 5` owns the description; the script's own header owns the reasoning per step.
 
 The second one is why this section is not a footnote. `fleet-reporter` is installed per seat
 and upgrades **independently of the server**, so a release that changes it is not "deployed"

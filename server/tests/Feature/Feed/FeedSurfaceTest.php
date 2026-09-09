@@ -8,7 +8,6 @@ use App\Feed\FleetReload;
 use App\Feed\SeatDelta;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
-use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -847,19 +846,24 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * § 4.10: "the READ QUERIES stop selecting it" — plural. All three seat-scoped surfaces agree.
+     * § 4.10: "the READ QUERIES stop selecting it" — plural. All three seat-scoped surfaces agree,
+     * and after card#9078's operator ruling they agree AT `retired_at`: there is no window in
+     * which the floor has dropped a desk that the drill-down and the timeline still serve.
      */
-    public function test_every_read_surface_stops_selecting_a_long_retired_seat_together(): void
+    public function test_every_read_surface_stops_selecting_a_retired_seat_together(): void
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->retire();
 
-        $this->advanceServerClock(Purge::RETENTION_DAYS * 86400 + 60);
-
+        // The control: before the announcement all three surfaces DO serve it, so the three
+        // assertions below are the retirement and not a broken rig.
         $token = $this->readToken();
         $base = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+        $this->assertNotSame([], $this->asMachine($token, '/api/fleet/snapshot')->assertOk()->json('installs'));
+        $this->asMachine($token, $base)->assertOk();
+        $this->actingAs($this->enrolled())->getJson($base.'/timeline')->assertOk();
 
+        $this->retire();
         $this->assertSame([], $this->asMachine($token, '/api/fleet/snapshot')
             ->assertOk()->json('installs'));
 

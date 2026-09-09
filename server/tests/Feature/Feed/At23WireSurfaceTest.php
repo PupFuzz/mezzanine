@@ -2,36 +2,60 @@
 
 namespace Tests\Feature\Feed;
 
+use App\Events\SeatRetired;
 use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 /**
- * **AT-D2-23's PRIMARY RED — "the vanishing desk" — which card #7712 shipped UNDRIVEN because it
- * is a wire-surface assertion** (`docs/design/FLEET-STATE.md § 11`, § 4.10, § 8.3).
+ * **AT-D2-23 — a retired seat's desk goes IMMEDIATELY, and only ever because it was ANNOUNCED.**
+ * (`docs/design/FLEET-STATE.md § 11`, § 4.10, § 8.3.)
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * § 11's RED, verbatim: "**drop retired seats from the snapshot query AT `retired_at`** → a
- * browser that reloads sees a seat that existed a second ago SIMPLY GONE, which is the 'vanishing
- * between two refreshes' § 4.5 forbids, and there is no rendered state that says why."
+ * ⛔ THIS TEST WAS REWRITTEN, NOT DELETED, AND THE BEHAVIOUR IT USED TO PIN IS RECORDED HERE.
+ * card#9078, on an **operator ruling** that reverses § 4.10's fourteen-day render window and
+ * FLOOR.md § 3.5's lingering nameplate. Verbatim: *"An absence and removal are very obviously
+ * different because if an agent is not reporting, it is assumed to be an absence. A removal is a
+ * deliberate action by the operator. When an agent is removed, its seat and desk should go away
+ * immediately."*
  *
- * § 11's GREEN, the half #7712 could not reach: "connected clients receive `seat.retired`; THE
- * NEXT SNAPSHOT carries the seat with `render_state: "retired"` and a populated `retired` object …
- * `fleet.seats_total` still counts it. Past 14 days … the seat is ABSENT FROM THE SNAPSHOT WHILE
- * ITS ROW IS STILL IN `seats`: assert both, because THE DISAPPEARANCE MUST BE A READ FILTER AND
- * NOT A DELETION."
+ * Until it, this file's headline arm was named *"the next snapshot STILL carries the seat"* and
+ * its RED was the vanishing desk. Both halves inverted, and an acceptance test that vanished with
+ * the behaviour it pinned would leave no record that the rule was ever considered — so the old
+ * assertions are stated here in terms rather than dropped: the seat used to stay in the snapshot
+ * for `Purge::RETENTION_DAYS` with `render_state: "retired"` and a populated `retired` object,
+ * and `fleet.seats_total` used to keep counting it.
  *
- * `Tests\Feature\Fold\At23RetiredSeatTest` owns the store half — the command, the transaction, the
- * `cause: operator` row, the second and third REDs, the axes deriving underneath, the row
- * surviving the purge. It named this file's contents as out of scope in terms. Both halves
- * together are AT-D2-23.
+ * ⚠ THE ARGUMENT THAT FAILED IS WORTH AS MUCH AS THE RULING, because it is the one a maintainer
+ * will re-derive. It was that the desk must LINGER so *"we removed it"* stays distinguishable from
+ * *"it went quiet"*. That is false on the design's own render table: a seat that goes quiet is
+ * **visibly present and degraded** — `stale` at 300 s, `offline` at 900 s — so a removed seat
+ * being GONE is maximally different from it. `test_a_seat_that_merely_went_quiet_keeps_its_desk`
+ * below is that render table, asserted, in the same file as the removal it is contrasted with.
+ *
+ * ⛔ THE ONE PROPERTY THAT SURVIVED THE REVERSAL, AND THE ARM THAT PROVES IT. Removal is driven by
+ * the EXPLICIT retirement, **never by absence** — not from a delta, not from a poll, not from a
+ * scoped read, and not from silence. § 4.10's first sentence is untouched: "nothing else — no
+ * timeout, no purge, no silence — ever removes a row from the fleet."
+ *
+ * ⚠ WHAT THIS FILE STRUCTURALLY CANNOT COVER: the CLIENT half. The removal-on-absence the design
+ * refuses is a client behaviour (`FLOOR.md § 2.3`'s last row — remove only on a full snapshot
+ * apply, never on a delta), and there is no client in this repository to drive. What is assertable
+ * here is the SERVER half of the same rule: no amount of silence, staleness or sweeping makes a
+ * seat leave a read surface, and the only thing that does is the announced act.
+ *
+ * `Tests\Feature\Fold\At23RetiredSeatTest` owns the store half — the act, its transaction, the
+ * `cause: operator` row, the columns-without-the-command RED, the axes deriving underneath, the
+ * row surviving the purge. Both halves together are AT-D2-23.
  */
 class At23WireSurfaceTest extends FeedTestCase
 {
     /**
      * GREEN — "connected clients receive `seat.retired`", on § 8.3's channel with § 8.3's payload.
      *
-     * Card #7712 built `App\Events\SeatRetired` as "the publication POINT, not the publication"
-     * and left the wire to Part B. This is the wire.
+     * UNCHANGED BY card#9078, and that is the point rather than an accident: the ruling made the
+     * announcement the ONLY removal path, so the announcement itself had to stay exactly as it
+     * was — same transaction, same version, same payload.
      */
     public function test_retiring_publishes_seat_retired_and_the_delta_at_the_same_version(): void
     {
@@ -59,8 +83,13 @@ class At23WireSurfaceTest extends FeedTestCase
         $this->assertNotNull($retired[0]['payload']['at']);
 
         // § 4.10: "the `seat.retired` feed message AND THE DELTA carrying `render_state:
-        // "retired"`, both published by `mezzanine:retire` in the transaction that sets the
+        // "retired"`, both published by the retirement act in the transaction that sets the
         // columns". Both, at one version — which is what lets a consumer see it has both.
+        //
+        // ⛔ THE DELTA STILL CARRIES THE SEAT card#9078 JUST REMOVED FROM THE READ SURFACES, and
+        // that is deliberate: this pair IS the announcement, and a client is told what left and
+        // why. The read filter answers "which desks are on the floor"; it does not censor the
+        // message that says one went.
         $deltas = $this->wire->deltasFor(self::INSTALL, self::SEAT);
         $this->assertCount(1, $deltas, 'retirement published no delta');
         $this->assertSame('retired', $deltas[0]['payload']['patch']->render_state);
@@ -73,98 +102,124 @@ class At23WireSurfaceTest extends FeedTestCase
     }
 
     /**
-     * ⛔ THE PRIMARY RED's GREEN: the desk is STILL THERE, and it says why it went.
+     * ⛔ THE PRIMARY GREEN, INVERTED BY THE RULING: **the desk is gone on the next render**, and
+     * the record it used to carry is still answerable.
      *
-     * The mutation that drives it is `App\Read\RetirementFilter` dropping the seat at
-     * `retired_at`; the assertion here is the state that mutation destroys.
+     * The mutation that drives it is `App\Read\RetirementFilter::renderable()` widened back to a
+     * window (or to nothing) — one line, one home, five read sites.
      */
-    public function test_the_next_snapshot_still_carries_the_seat_and_says_an_operator_retired_it(): void
+    public function test_the_desk_goes_at_the_announcement_and_the_record_survives_it(): void
     {
-        [$liveToken, $liveRef] = $this->secondSeat();
+        $this->secondSeat();
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
 
         $before = $this->snapshotSeats();
-        $this->assertArrayHasKey(self::SEAT, $before);
+        $this->assertArrayHasKey(self::SEAT, $before, 'the seat was not on the floor to begin with');
 
         $this->retire();
 
         $body = $this->snapshot();
         $seats = $this->index($body);
 
-        // 1 — STILL THERE. Not gone between two refreshes.
-        $this->assertArrayHasKey(self::SEAT, $seats, '§ 11 AT-D2-23 RED: the desk vanished');
+        // 1 — GONE. Not "cleared", not "stamped retired": absent from the rendered population, in
+        // the same transaction that announced it.
+        $this->assertArrayNotHasKey(self::SEAT, $seats,
+            'the retired desk is still on the floor — card#9078: a removal goes immediately');
 
-        // 2 — AND IT SAYS WHY. § 4.10: "with `render_state: "retired"` and a `retired` object
-        // carrying `at`, `by` and `reason`."
-        $this->assertSame('retired', $seats[self::SEAT]['render_state']);
-        $this->assertNotNull($seats[self::SEAT]['retired']);
-        $this->assertSame('operator@aimla', $seats[self::SEAT]['retired']['by']);
-        $this->assertSame('decommissioned', $seats[self::SEAT]['retired']['reason']);
-        $this->assertNotNull($seats[self::SEAT]['retired']['at']);
+        // 2 — AND `seats_total` WENT WITH IT, in the same read. § 8.2.4's population and the seat
+        // list are one population by construction (`RetirementFilter`, one home); two numbers
+        // moving on different days is the disagreement that class exists to prevent.
+        $this->assertSame(1, $body['fleet']['seats_total']);
 
-        // 3 — "at THAT snapshot `link_state` / `activity_state` still carry what the seat was
-        // doing when it was retired". Retirement is an administrative fact, not a transport one.
-        $this->assertSame('live', $seats[self::SEAT]['link_state']);
-        $this->assertSame('blocked', $seats[self::SEAT]['activity_state']);
+        // 3 — …AND IT WAS A READ FILTER, NOT A DELETION. § 4.10: "`seats` is retained forever; an
+        // operator query can still find the row and its reason." Both halves, because a DELETE
+        // would satisfy assertion 1 on its own — which is precisely why the ruling could have been
+        // implemented wrongly and looked right.
+        $row = DB::table('seats')->where('id', $this->seatRef)->first();
+        $this->assertNotNull($row, 'the disappearance was a DELETION, not a read filter');
+        $this->assertSame('operator@aimla', $row->retired_by);
+        $this->assertSame('decommissioned', $row->retired_reason);
+        $this->assertNotNull($row->retired_at);
 
-        // 4 — "`fleet.seats_total` still counts it."
-        $this->assertSame(2, $body['fleet']['seats_total']);
+        // 4 — every seat-scoped read surface agrees with the floor. § 4.10: "the READ QUERIES stop
+        // selecting it" — plural. A desk gone from the floor and reachable by URL is the same row
+        // existing on one surface and not another.
+        $this->asMachine($this->readToken(), '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT)
+            ->assertNotFound()
+            ->assertJsonPath('error', 'seat_not_found');
 
         // DISCRIMINATING CONTROL — "a live seat in the same fleet is unaffected at every step."
+        // Without it, a filter that emptied the whole snapshot would pass every assertion above.
         $this->assertArrayHasKey('aimla-impl', $seats);
         $this->assertNull($seats['aimla-impl']['retired']);
     }
 
     /**
-     * GREEN — past 14 days: "the seat is absent from the snapshot **while its row is still in
-     * `seats`**: assert BOTH, because the disappearance must be a READ FILTER and not a deletion."
+     * ⛔ THE ARM THAT MUST NOT BE SKIPPED — **a seat that merely went quiet keeps its desk.**
+     *
+     * This is the half that proves card#9078 did not widen the removal into the inference the
+     * whole design refuses. It drives the entire transport axis: past `stale` (300 s), past
+     * `offline` (900 s), past the fold's own ceilings and past `Purge::RETENTION_DAYS` — with a
+     * sweep pass at each step, so the seat is recomputed by the process that would be doing the
+     * inferring — and asserts at every one that the desk is STILL RENDERED, still counted, and
+     * never announced as retired.
+     *
+     * It is also the whole of pm's refuted argument, made checkable: a seat that went quiet is
+     * *visibly present and degraded*, which is what makes a removed seat being *gone* legible as a
+     * removal rather than ambiguous with silence.
      */
-    public function test_past_fourteen_days_the_read_filter_drops_it_and_the_row_remains(): void
+    public function test_a_seat_that_merely_went_quiet_keeps_its_desk(): void
     {
+        Event::fake([SeatRetired::class]);
+
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->retire();
 
-        $this->assertArrayHasKey(self::SEAT, $this->snapshotSeats(), 'the filter fired too early');
+        foreach ([
+            [400, 'stale'],
+            [900, 'offline'],
+            [Purge::RETENTION_DAYS * 86400, 'offline'],
+        ] as [$seconds, $expected]) {
+            $this->advanceServerClock($seconds);
+            $this->sweep();
 
-        // Just inside the window — the boundary, from the rendered side.
-        $this->advanceServerClock(Purge::RETENTION_DAYS * 86400 - 60);
+            $body = $this->snapshot();
+            $seats = $this->index($body);
+
+            $this->assertArrayHasKey(self::SEAT, $seats, sprintf(
+                'the desk vanished after %d s of silence — a removal driven by an absence', $seconds,
+            ));
+            $this->assertSame($expected, $seats[self::SEAT]['render_state'],
+                'a quiet seat renders DEGRADED, which is what makes a removal legible as a removal');
+            $this->assertNull($seats[self::SEAT]['retired'], 'silence wrote a retirement');
+            $this->assertSame(1, $body['fleet']['seats_total'], 'the quiet seat left the population');
+        }
+
+        // …and nothing announced anything. § 4.10: "no timeout, no purge, no silence."
+        $this->artisan('mezzanine:purge')->assertSuccessful();
+        Event::assertNotDispatched(SeatRetired::class);
+        $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
         $this->assertArrayHasKey(self::SEAT, $this->snapshotSeats(),
-            'the seat left the snapshot before its 14 days were up');
-
-        $this->advanceServerClock(120);
-
-        $seats = $this->snapshotSeats();
-        $this->assertArrayNotHasKey(self::SEAT, $seats, 'the read filter never fires');
-
-        // …AND THE ROW IS STILL THERE, with its reason. § 4.10: "an operator query can still find
-        // the row and its reason." Both halves, because a deletion would satisfy the line above.
-        $row = DB::table('seats')->where('id', $this->seatRef)->first();
-        $this->assertNotNull($row, 'the disappearance was a DELETION, not a read filter');
-        $this->assertSame('decommissioned', $row->retired_reason);
-
-        // The seat-detail endpoint agrees with the snapshot, because § 4.10 says "the READ
-        // QUERIES stop selecting it" — plural. A filter on one surface and not the other is a
-        // desk that is gone from the floor and reachable by URL.
-        $this->asMachine($this->readToken(), '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT)
-            ->assertNotFound()
-            ->assertJsonPath('error', 'seat_not_found');
+            'the purge removed a desk — the purge deletes EVENTS, never seats');
     }
 
     /**
-     * § 8.2.4's population follows the same filter — "excluding seats retired more than 14 days
-     * ago" — so `seats_total` cannot disagree with the seat list beside it.
+     * § 8.2.4's population follows the same filter as the seat list, so `seats_total` cannot
+     * disagree with the seats beside it — now at the same INSTANT rather than on the same day.
      */
     public function test_the_fleet_counts_follow_the_same_read_filter_as_the_seat_list(): void
     {
         $this->secondSeat();
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->retire();
 
-        $this->advanceServerClock(Purge::RETENTION_DAYS * 86400 + 60);
+        $before = $this->snapshot();
+        $this->assertCount(2, $before['installs'][0]['seats']);
+        $this->assertSame(2, $before['fleet']['seats_total']);
+
+        $this->retire();
 
         $body = $this->snapshot();
 
