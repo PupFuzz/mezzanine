@@ -179,6 +179,58 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   needs, which appears nowhere in this repo). Both are reported with this card rather than fixed
   here — one change does one thing — together with the proposal for the check that would have
   caught all three: a G-check re-deriving § 2.1's membership from the commands the code defines.
+- **card#7341** — **the lobby: `/dashboard` was a placeholder that said the floor "stays empty so
+  that #7341 has nothing to delete before it can start", and it now renders the fleet.** D3 § 4.1's
+  building summary, live from `GET /api/fleet/snapshot`: the floor list (`installs[].install_id`,
+  ascending), a per-floor state summary in § 7.1's **fixed member order**, the fleet totals
+  (`fleet.seats_total` / `fleet.seats_live`) **read from the wire and never recounted**, § 4.1's
+  discrepancy render in both directions with its one-fetch-per-distinct-`(N, M)` budget, the
+  membership stamp (the response's own `server_time`), and store / derivation / sweep as **three
+  separate indicators** plus § 5.3's ingest recency — four sibling elements, so there is no element
+  on the page that could carry an aggregate (D2 § 8.2.4: "the wire keeps them apart").
+  ⛤ **Native ES modules from `server/public/js/lobby/`, no bundler and no `@vite`** (§ 1.2 leaves
+  that choice to the implementer): there is no `package-lock.json` in this repository and `npm ci`
+  cannot run, so a build step would be a dependency this slice could not honestly gate.
+  ⛔ **THE MEMBER SET IS RE-DERIVED FROM D3 ON EVERY RUN, IN BOTH DIRECTIONS AND IN ORDER.**
+  § 7.1's table is parsed out of `docs/design/FLOOR.md` and compared to
+  `public/js/lobby/render-state.js`'s array position by position — a member D3 publishes that the
+  client does not know, a member the client knows that D3 does not publish, and a set that agrees
+  while two members have swapped places are three distinct failures with three distinct messages.
+  The floor-preview README's rule is the reason: "**six** copies of one member set are what this
+  replaced … a second member set, in any spelling, is how the unrecognised case gets lost again."
+  ⛤ **Seen to fail before being trusted — eleven planted controls**, each mutating the shipped
+  module (or the rendered page) and naming the check that must go red: § 7.1's closing anchor
+  renamed (the parse silently widening), a member dropped, `thinking` added — § 6.2 A4's
+  *derivation* mistaken for a wire member — two members swapped (set clean, order red), the fleet
+  totals recounted from the desks (AT-D3-15's own RED), the discrepancy budget's memory removed (it
+  becomes a poll), the summary's unrecognised remainder deleted (AT-D3-15's *silent* half: a seat in
+  no member set falls out of its own floor's count with no throw and no glyph), a null timestamp
+  coalesced to `00:00:00` (`docs/KANBAN.md § G-1`'s clean zero), an element renamed out from under
+  the client (`getElementById` answering `null` — nothing throws and one fact is never rendered),
+  an element nothing writes into, and a fifth indicator with no cell for it.
+  ⛤ **The render assertions are driven over a REAL snapshot body**, built by the real ingest and the
+  real fold through `FeedTestCase` and fetched over HTTP by an MFA-satisfied session — and the
+  fixture is chosen so the two candidate orders disagree: the wire serves `aimla-impl` (`offline`)
+  before `aimla-pm` (`idle`), while § 7.1 puts `idle` first, so a summary built in arrival order
+  fails. The client itself runs under `node`, so what the assertions drive is the file the browser
+  is served rather than a PHP re-implementation of it.
+  ⛔ **TWO THINGS ARE DELIBERATELY NOT BUILT, AND NEITHER IS AN OVERSIGHT.** The **tiled map, camera,
+  desks and elevator** are card#9208: D2 publishes no read surface for an authored floor map, § 10.3
+  says that path "is deliberately not invented here", and § 1.3 corollary 2 forbids a guessed
+  endpoint — so no map endpoint, no map fixture and no client-side map loader was minted. **No
+  duration string is rendered anywhere** — card#9209: § 7.1's own exemplars disagree (`4m 12s` /
+  `11m` / `2h 06m`) and § 12 carries no row, so § 5.3's two "as an age" readouts render the labelled
+  **timestamp** the wire actually carries instead, subtracting nothing; a test asserts no duration
+  shape reaches the page. `fleet.max_fold_lag_ms` is **not** rendered here either: its published
+  form is the fleet banner's (§ 2.4, § 7.4), which belongs to the floor's status strip, and a second
+  rendering of one fact is what § 2.4's one-form-per-fact rule forbids.
+  ⚠ **WHAT IS NOT VERIFIED, stated rather than implied: there is no browser on the build host.**
+  Nothing here has been laid out, painted, clicked or seen. "Visually apart" is bought
+  structurally — four separate block elements under their own heading — and the DOM layer
+  (`main.js`) is deliberately thin and decides nothing, because it is the part no check exercises.
+  What IS checked is that every id it addresses exists on the page and every id the page declares is
+  written into, in both directions, with the health cells' ids derived from the model rather than
+  listed.
 
 - **card#7344** — **the PHP half: CI now actually runs `server/`'s test suite.** Until
   `.github/workflows/php-tests.yml` landed, **no workflow in this repo executed a line of PHP** —
