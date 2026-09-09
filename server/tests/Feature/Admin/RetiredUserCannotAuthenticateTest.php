@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Admin\UserRetirement;
 use App\Models\User;
+use Database\Factories\UserFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -29,7 +30,16 @@ class RetiredUserCannotAuthenticateTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const PASSWORD = 'password';   // the factory's, unchanged
+    /**
+     * The factory's password, read from the factory rather than restated. It is minted at random
+     * per run (`Database\Factories\UserFactory::password()`), so there is no literal to keep in
+     * step here — which is the point: the previous spelling of this line WAS the literal, in a
+     * third place the review that removed it from two did not reach.
+     */
+    private static function password(): string
+    {
+        return UserFactory::password();
+    }
 
     private function retired(): User
     {
@@ -46,7 +56,7 @@ class RetiredUserCannotAuthenticateTest extends TestCase
     {
         $user = $this->retired();
 
-        $this->post('/login', ['email' => $user->email, 'password' => self::PASSWORD])
+        $this->post('/login', ['email' => $user->email, 'password' => self::password()])
             ->assertSessionHasErrors('email');
 
         $this->assertGuest();
@@ -60,7 +70,7 @@ class RetiredUserCannotAuthenticateTest extends TestCase
     {
         $active = User::factory()->twoFactorUnenrolled()->create();
 
-        $this->post('/login', ['email' => $active->email, 'password' => self::PASSWORD]);
+        $this->post('/login', ['email' => $active->email, 'password' => self::password()]);
 
         $this->assertAuthenticatedAs($active);
     }
@@ -146,7 +156,7 @@ class RetiredUserCannotAuthenticateTest extends TestCase
         User::factory()->create();
         UserRetirement::retire($user, 'ops@example.com', 'left');
 
-        $this->post('/login', ['email' => $user->email, 'password' => self::PASSWORD])
+        $this->post('/login', ['email' => $user->email, 'password' => self::password()])
             ->assertSessionHasErrors('email')
             ->assertSessionMissing('login.id');
 
@@ -162,7 +172,7 @@ class RetiredUserCannotAuthenticateTest extends TestCase
     {
         $user = User::factory()->twoFactorConfirmed()->create();
 
-        $this->post('/login', ['email' => $user->email, 'password' => self::PASSWORD])
+        $this->post('/login', ['email' => $user->email, 'password' => self::password()])
             ->assertRedirect(route('two-factor.login'))
             ->assertSessionHas('login.id', $user->getKey());
 

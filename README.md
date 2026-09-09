@@ -77,9 +77,11 @@ screen and reaches nothing else until it finishes there.
 
 ⛔ **A deployed host installs with `composer install --no-dev`**, and the reason is a credential
 rather than a few megabytes: `database/factories/` and `database/seeders/` sit in composer's
-`autoload-dev` block, and `Database\Factories\UserFactory` hashes the literal `password`. Under
-`--no-dev` it is not loadable at all; install dev dependencies on a host and it is. `docs/PLAN.md`
-§ 5 carries this as a deployment obligation beside the others.
+`autoload-dev` block, so under `--no-dev` neither is loadable at all; install dev dependencies on a
+host and both are. `Database\Factories\UserFactory` **used to** hash the literal `password` and now
+mints a random value per run, which closes that class in code on every host — the `--no-dev`
+obligation stays as defence in depth, because nothing reds if a host never honours it.
+`docs/PLAN.md` § 5 carries this and the `CACHE_STORE` obligation beside the others.
 
 ### The first account, and the way back from a lockout
 

@@ -17,9 +17,36 @@ use Laravel\Fortify\RecoveryCode;
 class UserFactory extends Factory
 {
     /**
-     * The current password being used by the factory.
+     * The hash every factory-made account carries, minted once per run from `password()` below.
      */
     protected static ?string $password;
+
+    /**
+     * ⛔ THE PLAINTEXT, MINTED PER RUN AND NEVER WRITTEN DOWN — card#9070's second review round.
+     *
+     * This used to be the literal `password`, hashed. That literal is what made
+     * `database/seeders/DatabaseSeeder.php`'s stock body a publicly known credential behind the
+     * login page of any host that ran `php artisan db:seed`, and the fix chosen for it was to move
+     * this namespace into composer's `autoload-dev` block plus a DOCUMENTED
+     * `composer install --no-dev` obligation on deployed hosts (`docs/PLAN.md § 5`).
+     *
+     * That fix closes the class only on hosts that honour the flag, and nothing reds if one never
+     * does — no `bin/deploy.sh` exists yet to honour it (D-08: the host is not provisioned). A
+     * random value closes it IN CODE, on every host, whatever flags the installer used, and costs
+     * three call-sites to adopt. So the `--no-dev` obligation stays, and it is now defence in depth
+     * rather than the whole defence.
+     *
+     * ⚠ IT IS EXPOSED AS A METHOD RATHER THAN A CONSTANT because it cannot be a constant and still
+     * be random. A test that needs to authenticate a factory-made account reads
+     * `UserFactory::password()`; nothing in the repository ever states the value.
+     */
+    protected static ?string $plaintext;
+
+    /** The plaintext behind every factory-made account for the life of this process. */
+    public static function password(): string
+    {
+        return static::$plaintext ??= Str::random(40);
+    }
 
     /**
      * Define the model's default state.
@@ -32,7 +59,7 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
+            'password' => static::$password ??= Hash::make(static::password()),
             'remember_token' => Str::random(10),
         ];
     }
