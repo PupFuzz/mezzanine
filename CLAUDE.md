@@ -127,6 +127,13 @@ agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge + a
 
 **Sprint is adopted** (lanes `now`/`next`/`blocked`, board 14). `sprint-burndown.py` needs
 `COORD_KANBAN_READ` exported — the `coord` package is not installed on this seat.
+
+**On request, REGENERATE the burn-down — never read back the committed page (operator, 2026-09-09).**
+"show me the sprint burn-down" and **"the race-to-release HTML file"** are the SAME ask and both mean
+run it fresh: `sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html
+--write-config`. The page is a render of one live board read, so a stale copy is the exact drift
+adopting the tool removed; `cat`-ing the file answers about when it was last generated, not about the
+sprint. Commit the regenerated page when it changed.
 <!-- END coord:install-rules -->
 
 ## Your work loop
