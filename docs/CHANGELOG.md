@@ -31,9 +31,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   ⛤ **The lane runs the repo's own entry point, `composer test`** (`artisan config:clear` then
   `artisan test`), rather than a hand-rolled phpunit command line: `server/composer.json` already
   owns what "run the tests" means here and a second spelling in CI is a second thing to keep in
-  step with it. PHP is pinned to **8.3** — composer.json's `^8.3` floor and `bin/deploy.sh`'s
-  `php8.3-fpm` default, i.e. the version the app is deployed onto — with `pdo_sqlite`/`sqlite3`,
-  composer's download cache keyed on `composer.lock`, and every action pinned to an exact commit.
+  step with it. PHP is pinned to **8.4**, and NOT to the declared floor — the lane's own first run
+  measured why: `composer.lock` carries `symfony/*` v8.1.5 requiring `php >=8.4.1`, so the committed
+  lock CANNOT be installed on the `^8.3` that `composer.json` declares and `bin/deploy.sh` reloads
+  (`php8.3-fpm`). ⚠ **So the lane does NOT test the version the app is configured to deploy onto** —
+  those three surfaces disagree, and that is filed as **card#9203**, a live deploy defect: on an 8.3
+  host `deploy.sh`'s A6 precondition PASSES, the maintenance window opens, and `composer install`
+  then fails INSIDE it. The pin follows the lock because the lock is what `composer install` reads;
+  it moves to whatever the card's ruling picks. With `pdo_sqlite`/`sqlite3`, composer's download
+  cache keyed on `composer.lock`, and every action pinned to an exact commit.
   ⛔ **No `paths:` filter, and here that is measured rather than inherited.** The house argument
   applies (a filtered workflow produces NO RUN, which as a required check reads *pending*, never
   *passed*), but this suite has a concrete second reason: **it reads outside `server/`** —
