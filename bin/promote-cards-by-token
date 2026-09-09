@@ -22,12 +22,22 @@
 #
 # WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — the card-first correlation gap.
 #   agent-board-toolkit's `promote-released-cards` correlates ONLY on `payload.dl_number` /
-#   `payload.pr_number`. Board 14 is CARD-FIRST: cards are the front door, they carry no
-#   `dl_number`, and this repo mints no DLs — so that mover has NO key to match on here and
-#   its "Released to main" stage would be structurally unreachable. The webhook bridge's own
-#   `merged_to_main` writeback leg is unreachable for the same shape: individual card PRs
-#   squash-merge to `dev`, and the only PR that reaches `main` is the release PR, which names
-#   no cards. The key that DOES exist is the `card#<id>` token already present in the
+#   `payload.pr_number`, matched against the refs the RELEASED RANGE shipped. Board 14 is
+#   CARD-FIRST: cards are the front door. The `dl_number` leg is genuinely empty — no card
+#   carries one and this repo mints no DLs. ⚠ THE `pr_number` LEG IS NOT EMPTY, and saying it
+#   is (this header did, until this correction) is the wrong reason for the right conclusion: cards
+#   ARE stamped with the PR that closed them. Those are `dev` PR numbers, and a released range
+#   is computed on `main` — individual card PRs squash-merge to `dev`, while the PR that
+#   reaches `main` is the release PR, which carries no card's stamp. So the stamps are real
+#   and correlate to nothing on the surface this runs on, which reports as a confident ZERO
+#   rather than as a refusal. The webhook bridge's own `merged_to_main` writeback leg is
+#   unreachable for the same shape.
+#   ⚠ THAT IS A PROPERTY OF THE MERGE FLOW, NOT A STRUCTURAL IMPOSSIBILITY — do not restate
+#   it as one. A card branch merged DIRECT to `main` does put a card-stamped PR number into a
+#   released range, and one has: PR #39 (`card-8174-release-pr-guard`), whose card#8174 still
+#   carries `pr_number` 39. Irregular, not prevented — so that mover would correlate a
+#   scattering of cards here, never the release's actual set, which is the worse failure.
+#   The key that DOES exist for every card is the `card#<id>` token already present in the
 #   squash-commit subjects that `dev` carries onto `main`.
 #
 # CARD-TOKEN GRAMMAR — NOT OWNED HERE. The accept-set is owned by the webhook bridge's

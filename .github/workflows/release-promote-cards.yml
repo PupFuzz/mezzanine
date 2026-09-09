@@ -10,11 +10,11 @@
 # `.release-pr.json`; the API base and the host pin come from repo VARIABLES; the credential
 # comes from a repo SECRET. Nothing about the board is spelled in this file.
 #
-# WHY THE TOKEN MOVER AND NOT THE TOOLKIT'S GENERIC ONE. agent-board-toolkit's
-# `promote-released-cards` correlates on `payload.dl_number` / `payload.pr_number`. Board 14
-# is card-first: its cards carry neither, so that mover would have no key to match on and
-# would report a confident zero. The `card#<id>` token in the squash-commit subjects is the
-# key that exists here. Full reasoning: the mover's own header, and docs/KANBAN.md.
+# WHY THE TOKEN MOVER AND NOT THE TOOLKIT'S GENERIC ONE. Owned by `bin/promote-cards-by-token`'s
+# own header (§ WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE) and by docs/KANBAN.md —
+# read it there. It is deliberately NOT restated here: the summary that used to sit on these
+# lines had drifted into a false claim — that board 14's cards carry no `pr_number` stamp,
+# when they do — which is precisely how a restatement fails.
 #
 # ISOLATED IN ITS OWN WORKFLOW ON PURPOSE, so a board hiccup can never block or red the
 # release itself — this job is the last thing in the chain, not a gate on it.
