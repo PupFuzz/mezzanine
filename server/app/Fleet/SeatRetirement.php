@@ -6,6 +6,7 @@ use App\Events\SeatRetired;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
+use App\Support\RetirementAttribution;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -56,10 +57,18 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠ THE REFUSAL MOVED HERE IN CARD#9070's FIRST REVIEW ROUND, and the reason is this class's own
  * argument turned on itself: the extraction exists so there is ONE implementation of the act rather
- * than one per caller, and it had left the act's own precondition duplicated in both callers. Each
- * still refuses first, with a message better than an exception — the command with `INVALID`, the
- * console with a validation error — but the third caller inherits the rule instead of re-deriving
- * it.
+ * than one per caller, and it had left the act's own precondition duplicated in both callers.
+ *
+ * ⛔ AND THAT MOVE WAS ONE LEVEL SHORT, WHICH THE SECOND REVIEW ROUND MEASURED. This class kept
+ * writing the predicate out by hand (`trim($by) === ''`) and so did the command
+ * (`$by === ''`), so the two disagreed on whitespace: `mezzanine:retire --by="   "` passed the
+ * command's check and reached this `throw`, handing the operator a stack trace where the
+ * documented answer is `INVALID`. An earlier revision of this paragraph asserted the opposite —
+ * "each still refuses first, with a message better than an exception" — and that claim is recorded
+ * here rather than deleted, because a docblock that states a property nothing holds is the reason
+ * a reviewer stops looking. The predicate now lives once, in
+ * `App\Support\RetirementAttribution`, and every caller and both acts read THAT; what each caller
+ * keeps is its own refusal message, which is genuinely better than an exception.
  */
 final class SeatRetirement
 {
@@ -70,11 +79,7 @@ final class SeatRetirement
      */
     public function retire(string $installId, string $seatId, string $by, string $reason): SeatRetirementOutcome
     {
-        if (trim($by) === '' || trim($reason) === '') {
-            throw new \InvalidArgumentException(
-                'retirement is an act with an author and a reason (§ 4.5); neither may be empty'
-            );
-        }
+        RetirementAttribution::demand($by, $reason);
 
         $row = DB::table('seats')
             ->join('installs', 'installs.id', '=', 'seats.install_ref')

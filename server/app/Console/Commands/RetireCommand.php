@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
+use App\Support\RetirementAttribution;
 use Illuminate\Console\Command;
 
 /**
@@ -46,8 +47,13 @@ class RetireCommand extends Command
             return self::INVALID;
         }
 
-        if ($by === '' || $reason === '') {
-            $this->error('--by and --reason are both required: retirement is an act with an author and a reason (§ 4.5)');
+        // ⛔ THE PREDICATE IS `App\Support\RetirementAttribution`'s, NOT A LOCAL `=== ''`.
+        // A local one is what this command had, and it disagreed with the act's `trim()` on
+        // whitespace: `--by="   "` passed here and threw inside `SeatRetirement`, so an operator
+        // who typed a space got a stack trace instead of this sentence. The MESSAGE stays here —
+        // a shell wants the option names — and only the test is shared.
+        if (RetirementAttribution::missing($by, $reason)) {
+            $this->error('--by and --reason are both required: '.RetirementAttribution::MESSAGE);
 
             return self::INVALID;
         }

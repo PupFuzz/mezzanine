@@ -3,6 +3,7 @@
 namespace App\Admin;
 
 use App\Models\User;
+use App\Support\RetirementAttribution;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -29,7 +30,9 @@ use Illuminate\Support\Facades\DB;
  * command with `INVALID`. Two copies of one rule is one copy too many the moment there is a third
  * caller, and a default would be worse still: it would put a fabricated author on an administrative
  * record. The callers keep their own messages, which are better than an exception; what they no
- * longer keep is the rule.
+ * longer keep is the rule — and since card#9070's SECOND round, nor do they keep the PREDICATE:
+ * `App\Support\RetirementAttribution` owns it, because two hand-written copies of one emptiness
+ * test is exactly how the sibling act and its command came to disagree about a space.
  *
  * ⚠ RE-RETIRING IS A NO-OP, NOT AN ERROR — the same answer `mezzanine:retire` gives for a seat,
  * for the same two reasons: an operator re-running an act they are unsure landed must not be told
@@ -54,11 +57,7 @@ final class UserRetirement
      */
     public static function retire(User $target, string $by, string $reason): string
     {
-        if (trim($by) === '' || trim($reason) === '') {
-            throw new \InvalidArgumentException(
-                'retirement is an act with an author and a reason (§ 4.5); neither may be empty'
-            );
-        }
+        RetirementAttribution::demand($by, $reason);
 
         return DB::transaction(function () use ($target, $by, $reason): string {
             // Re-read the target INSIDE the transaction and under the same lock as the count:
