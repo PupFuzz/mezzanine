@@ -23,7 +23,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a
   `UserFactory`, a login page and `/two-factor-enroll` — and **no `UserController`, no admin routes,
   and no artisan command that creates a user.** This ships the **console shell** (`/admin`, its own
-  `server/routes/admin.php`, a nav generated from `App\Admin\ConsoleModules` so `card#9072`'s
+  `server/routes/admin.php`, a nav generated from `App\Admin\ConsoleModules` so `card#9085`'s
   floors module is an entry rather than an edit), the **user module** (create, edit, retire) and the
   **agent module** (read seat state, and the existing `mezzanine:retire` act). ⛔ **No floors/desks
   schema and no seat-create path**, per the operator's (a)/(b) ruling: a seat exists because it

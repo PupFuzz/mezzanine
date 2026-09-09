@@ -32,7 +32,7 @@ class RetireCommand extends Command
         {--by= : the operator performing the retirement}
         {--reason= : why}';
 
-    protected $description = 'Retire a seat — the only writer of retirement (docs/design/FLEET-STATE.md § 4.10)';
+    protected $description = 'Retire a seat — the shell entry point for App\\Fleet\\SeatRetirement (docs/design/FLEET-STATE.md § 4.10)';
 
     public function handle(SeatRetirement $retirement): int
     {

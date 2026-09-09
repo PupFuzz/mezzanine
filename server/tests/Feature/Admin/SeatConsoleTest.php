@@ -3,6 +3,8 @@
 namespace Tests\Feature\Admin;
 
 use App\Events\SeatRetired;
+use App\Fleet\SeatRetirement;
+use App\Fleet\SeatRetirementOutcome;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -167,5 +169,38 @@ class SeatConsoleTest extends SweepTestCase
             ->assertSessionHasNoErrors();
 
         $this->assertNotNull($this->seatRow()->retired_at);
+    }
+
+    /**
+     * ⛔ THE ACT OWES AN AUTHOR AND A REASON, AND HOLDS THAT ITSELF (§ 4.5). Both entry points
+     * refuse an empty one first, with better messages than an exception — the command with
+     * `INVALID`, the console with a validation error. Until card#9070's first review round that was
+     * ALL there was: the extraction that exists so there is one implementation of the act had left
+     * the act's own precondition duplicated in its two callers, so `card#9071`'s third caller would
+     * have inherited nothing.
+     */
+    public function test_the_seat_retirement_act_refuses_an_empty_author_or_reason(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        $act = app(SeatRetirement::class);
+
+        foreach ([['', 'decommissioned'], ['ops@aimla', ''], ['  ', 'decommissioned'], ['ops@aimla', " \t "]] as [$by, $reason]) {
+            try {
+                $act->retire(self::INSTALL, self::SEAT, $by, $reason);
+                $this->fail(sprintf('an empty author or reason was accepted: by=%s reason=%s', json_encode($by), json_encode($reason)));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('author and a reason', $e->getMessage());
+            }
+        }
+
+        $this->assertNull($this->seatRow()->retired_at, 'and none of them wrote anything');
+
+        // THE CONTROL — the same call with both, on the same path.
+        $this->assertSame(
+            SeatRetirementOutcome::RETIRED,
+            $act->retire(self::INSTALL, self::SEAT, 'ops@aimla', 'decommissioned')->outcome,
+        );
     }
 }

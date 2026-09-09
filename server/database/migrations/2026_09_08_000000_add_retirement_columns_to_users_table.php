@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Schema;
  * THE SHAPE IS COPIED FROM `seats` ON PURPOSE. `retired_by` and `retired_reason` are nullable
  * because a COLUMN cannot be non-null before the act; the ACT still owes both, and
  * `App\Admin\UserRetirement` is the one writer that enforces it — the same split
- * `App\Console\Commands\RetireCommand` makes for a seat.
+ * `App\Fleet\SeatRetirement` makes for a seat.
  */
 return new class extends Migration
 {

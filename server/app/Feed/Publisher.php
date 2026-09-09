@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\DB;
  * question § 6.5 wrote the subtraction to settle once.
  *
  * The three writers § 6.5 names all reach the wire through here, and none of them knows how:
- * the fold (per applied event), the sweeper (per time-derived transition) and `mezzanine:retire`.
+ * the fold (per applied event), the sweeper (per time-derived transition) and the retirement act
+ * (§ 4.10).
  */
 final class Publisher
 {

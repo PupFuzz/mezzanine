@@ -48,19 +48,34 @@ use Illuminate\Support\Facades\DB;
  * days is a READ FILTER, not a deletion, so an operator query can still find the row and its
  * reason." Nothing here deletes anything, and `Purge` has no plan row for `seats`.
  *
- * ⛔ `$by` AND `$reason` ARE THE CALLER'S OBLIGATION AND ARE NOT DEFAULTED ANYWHERE BELOW. § 4.5
- * calls retirement "an act with an AUTHOR and a REASON", and § 4.10 puts both on the wire in the
- * `retired` object. A default would put a fabricated author on an administrative record, which is
- * the same class of act as synthesizing a wire event (§ 4.8) — the server putting words in
- * somebody's mouth. Both callers refuse an empty one before they get here: the command with
- * `INVALID`, the console with a validation error.
+ * ⛔ `$by` AND `$reason` ARE THIS ACT'S OBLIGATION, HELD HERE, AND ARE NOT DEFAULTED ANYWHERE.
+ * § 4.5 calls retirement "an act with an AUTHOR and a REASON", and § 4.10 puts both on the wire in
+ * the `retired` object. A default would put a fabricated author on an administrative record, which
+ * is the same class of act as synthesizing a wire event (§ 4.8) — the server putting words in
+ * somebody's mouth.
+ *
+ * ⚠ THE REFUSAL MOVED HERE IN CARD#9070's FIRST REVIEW ROUND, and the reason is this class's own
+ * argument turned on itself: the extraction exists so there is ONE implementation of the act rather
+ * than one per caller, and it had left the act's own precondition duplicated in both callers. Each
+ * still refuses first, with a message better than an exception — the command with `INVALID`, the
+ * console with a validation error — but the third caller inherits the rule instead of re-deriving
+ * it.
  */
 final class SeatRetirement
 {
     public function __construct(private readonly StateRecompute $recompute) {}
 
+    /**
+     * @throws \InvalidArgumentException if the author or the reason is empty
+     */
     public function retire(string $installId, string $seatId, string $by, string $reason): SeatRetirementOutcome
     {
+        if (trim($by) === '' || trim($reason) === '') {
+            throw new \InvalidArgumentException(
+                'retirement is an act with an author and a reason (§ 4.5); neither may be empty'
+            );
+        }
+
         $row = DB::table('seats')
             ->join('installs', 'installs.id', '=', 'seats.install_ref')
             ->where('installs.install_id', $installId)

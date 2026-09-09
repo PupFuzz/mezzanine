@@ -265,6 +265,70 @@ class UserManagementTest extends TestCase
         );
     }
 
+    // ── INPUT SHAPES ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * ⚠ AN `email[]` IS AN INPUT ERROR, NOT A 500. Both write routes canonicalise the address
+     * before validating (they must — `Rule::unique()` compares the value it is GIVEN), and the
+     * round-1 spelling cast the raw input to `string` first. `email[]=a@b.com` therefore raised
+     * `Array to string conversion`, which the handler turns into a 500 — on a form that has a
+     * validator for exactly this. Canonicalising only what is already a string leaves the `string`
+     * rule to refuse the rest.
+     */
+    public function test_an_array_typed_email_is_refused_by_the_validator_rather_than_crashing(): void
+    {
+        $operator = $this->operator();
+        $target = User::factory()->twoFactorConfirmed()->create(['name' => 'Before']);
+
+        $this->actingAs($operator)
+            ->post(route('admin.users.store'), [
+                'name' => 'New Operator',
+                'email' => ['a@b.com'],
+                'password' => self::PASSWORD,
+                'password_confirmation' => self::PASSWORD,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('email');
+
+        $this->actingAs($operator)
+            ->patch(route('admin.users.update', $target), [
+                'name' => 'After',
+                'email' => ['a@b.com'],
+                'password' => '',
+                'password_confirmation' => '',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('email');
+
+        $this->assertFalse(User::query()->where('name', 'New Operator')->exists(), 'nothing was created');
+        $this->assertSame('Before', $target->fresh()->name, 'and nothing was changed');
+    }
+
+    /**
+     * ⛔ THE ACT OWES AN AUTHOR AND A REASON, AND HOLDS THAT ITSELF (§ 4.5). Both callers refuse an
+     * empty one first, with better messages than an exception — this arm is about the third caller,
+     * which inherits the rule rather than re-deriving it.
+     */
+    public function test_the_retirement_act_refuses_an_empty_author_or_reason(): void
+    {
+        $target = User::factory()->create();
+        User::factory()->create(); // so D4 never fires and the refusal below is unambiguous
+
+        foreach ([['', 'a reason'], ['ops@example.com', ''], ['   ', 'a reason'], ['ops@example.com', "  \n "]] as [$by, $reason]) {
+            try {
+                UserRetirement::retire($target, $by, $reason);
+                $this->fail(sprintf('an empty author or reason was accepted: by=%s reason=%s', json_encode($by), json_encode($reason)));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('author and a reason', $e->getMessage());
+            }
+        }
+
+        $this->assertFalse($target->fresh()->isRetired(), 'and none of them wrote anything');
+
+        // THE CONTROL — the same call with both, on the same path.
+        $this->assertSame(UserRetirement::RETIRED, UserRetirement::retire($target, 'ops@example.com', 'left'));
+    }
+
     // ── A RETIRED RECORD IS IMMUTABLE (D2) ──────────────────────────────────────────────────
 
     /**

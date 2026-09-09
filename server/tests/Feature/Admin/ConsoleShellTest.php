@@ -64,7 +64,7 @@ class ConsoleShellTest extends TestCase
     /**
      * ⛔ THE POPULATION CHECK, so the three gate arms above are a statement about THE CONSOLE and
      * not about the pages somebody remembered to list. A page registered with no entry in
-     * `pages()` reds here — which is the only way those arms stay complete as `card#9072`'s floors
+     * `pages()` reds here — which is the only way those arms stay complete as `card#9085`'s floors
      * module and whatever follows it arrive. It found a real hole the moment it was written:
      * `admin.users.edit` was registered and ungated by any arm.
      */
@@ -98,24 +98,71 @@ class ConsoleShellTest extends TestCase
     }
 
     /**
+     * Every non-GET route the console owns, as name => [method, URL, payload]. A new write route is
+     * added here, and `test_the_write_gate_arms_cover_every_console_write_route_there_is` reds if
+     * it is not — the same population control `pages()` has for the reads.
+     *
+     * ⚠ THE PAYLOADS ARE THE ACTIONS' OWN, so a refusal observed below is the GATE refusing and not
+     * a validator refusing an empty body: `assertRedirect(two-factor.enroll)` would be satisfied by
+     * either if the enrolment redirect happened to be the answer, and the enrolled control at the
+     * bottom is what tells them apart.
+     *
+     * @return array<string, array{0: string, 1: string, 2: array<string, mixed>}>
+     */
+    private function writes(): array
+    {
+        $subject = User::factory()->create();
+
+        return [
+            'admin.users.store' => ['post', route('admin.users.store'), []],
+            'admin.users.update' => ['patch', route('admin.users.update', $subject), [
+                'name' => 'Renamed', 'email' => 'renamed@example.com',
+            ]],
+            'admin.users.retire' => ['post', route('admin.users.retire', $subject), ['reason' => 'x']],
+            'admin.agents.retire' => ['post', route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x']],
+        ];
+    }
+
+    /**
+     * ⛔ THE POPULATION CHECK FOR THE WRITES, and it is here because round 1 shipped without it: the
+     * GET arms were derived from `Route::getRoutes()` and the write arms were a HAND-WRITTEN list of
+     * three, which `admin.users.update` (PATCH) was not on. A gate on a remembered subset is a gate
+     * on the pages somebody listed, which is exactly what the read-side control exists to refuse.
+     */
+    public function test_the_write_gate_arms_cover_every_console_write_route_there_is(): void
+    {
+        $registered = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn ($route) => str_starts_with($route->uri(), 'admin')
+                && $route->methods() !== ['GET', 'HEAD'])
+            ->map(fn ($route) => $route->getName())
+            ->sort()->values()->all();
+
+        $covered = collect($this->writes())->keys()->sort()->values()->all();
+
+        $this->assertNotSame([], $registered, 'the console registered no write routes at all');
+        $this->assertSame($registered, $covered);
+    }
+
+    /**
      * The WRITE routes are gated by the same group, and a gate on the pages alone would be a gate
      * on the reads only — the half that cannot change anything.
      */
     public function test_the_console_write_routes_refuse_a_password_only_session(): void
     {
-        $target = $this->enrolled();
+        foreach ($this->writes() as $name => [$method, $url, $payload]) {
+            $response = $this->actingAs($this->unenrolled())->$method($url, $payload);
 
-        $this->actingAs($this->unenrolled())
-            ->post(route('admin.users.store'), [])
-            ->assertRedirect(route('two-factor.enroll'));
-
-        $this->actingAs($this->unenrolled())
-            ->post(route('admin.users.retire', $target), ['reason' => 'x'])
-            ->assertRedirect(route('two-factor.enroll'));
-
-        $this->actingAs($this->unenrolled())
-            ->post(route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x'])
-            ->assertRedirect(route('two-factor.enroll'));
+            // Two statements rather than `assertRedirect($url, $message)`: that method takes ONE
+            // argument (`Illuminate\Testing\TestResponse::assertRedirect($uri = null)`), so a
+            // message passed to it is silently dropped and the loop reports which route failed
+            // nowhere.
+            $response->assertRedirect();
+            $this->assertSame(
+                route('two-factor.enroll'),
+                $response->headers->get('Location'),
+                $name.' is not behind the second factor',
+            );
+        }
 
         // The control: the refusals above are the MFA gate and not a route that refuses
         // everything. Same request, enrolled session, and it reaches the action's own answer.

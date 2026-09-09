@@ -90,16 +90,20 @@ class RetiredUserCannotAuthenticateTest extends TestCase
 
         $provider = app('auth')->guard('web')->getProvider();
 
-        // ⚠ EVERY ASSERTION BELOW COMPARES A KEY, NEVER A MODEL. `assertNotNull($model)` prints
-        // the whole object on failure — including `password`, a bcrypt hash — into the test
-        // output and from there into a CI log. Comparing ids says the same thing and cannot.
+        // ⚠ EVERY ASSERTION BELOW COMPARES A KEY, NEVER A MODEL — INCLUDING THE `assertNull`s,
+        // WHICH IS WHERE THIS FILE GOT IT WRONG. A PHPUnit failure prints the value it was given:
+        // `assertNull($model)` on a found model prints the whole object — `password`, a bcrypt
+        // hash, and `remember_token` — into the test output and from there into a CI log. Measured,
+        // not assumed: under the mutant that drops the provider's filter, the round-1 version of
+        // this file printed exactly that. The `?->getKey()` on each one is what makes the sentence
+        // above true; comparing ids says the same thing and cannot print a secret.
 
         // 1 — the live session, resolved on every request.
-        $this->assertNull($provider->retrieveById($retired->getKey()));
+        $this->assertNull($provider->retrieveById($retired->getKey())?->getKey());
         $this->assertSame($active->getKey(), $provider->retrieveById($active->getKey())?->getKey(), 'control');
 
         // 2 — the login form.
-        $this->assertNull($provider->retrieveByCredentials(['email' => $retired->email]));
+        $this->assertNull($provider->retrieveByCredentials(['email' => $retired->email])?->getKey());
         $this->assertSame(
             $active->getKey(),
             $provider->retrieveByCredentials(['email' => $active->email])?->getKey(),
@@ -112,7 +116,7 @@ class RetiredUserCannotAuthenticateTest extends TestCase
         $active->setRememberToken($token);
         $active->save();
 
-        $this->assertNull($provider->retrieveByToken($retired->getKey(), $token));
+        $this->assertNull($provider->retrieveByToken($retired->getKey(), $token)?->getKey());
         $this->assertSame(
             $active->getKey(),
             $provider->retrieveByToken($active->getKey(), $token)?->getKey(),
