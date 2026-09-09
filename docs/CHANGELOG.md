@@ -19,6 +19,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
+  count.** The table is what an operator provisions a host from, and it listed every process except
+  the 15 s feed heartbeat — so a host built from it would supervise the fold, the sweep and the
+  purge, come up green, and leave `feed.heartbeat` unsent. The client half of § 8.3 then does the
+  visible damage: **a channel that sees no message of any kind for 45 s renders `feed_down` and
+  reconnect-loops against a perfectly healthy fleet**, and because the timer is armed by *any*
+  message, the channels that fail are the QUIET ones — exactly the case § 8.3 built the heartbeat
+  for ("a quiet fleet and a dead socket must not look the same"). A `db`/`fold`/`sweep` change also
+  never reaches a connected client, `FeedHeartbeatCommand::tick()` being the only caller of
+  `Publisher::healthChanged()`. Nothing errors anywhere in that sequence.
+  ⛤ **The opening count is deleted rather than corrected.** *"Five processes — four that run on
+  their own"* is a second copy of the set standing next to it, and it is what let the omission read
+  as complete: the heartbeat was built, `bin/deploy.sh` supervised it, and the figure went on
+  saying five. § 2.1 now opens with "the rows of this table are the processes", states in
+  terms that it carries no count, and says *add a process, add a row* — so the next daemon has one
+  place to be recorded and no number to contradict it.
+  ⚠ **`bin/deploy.sh` is the guard that already existed, and it now cites one section instead of
+  two.** Its `DAEMON_SERVICES` default has carried `mezzanine-feed-heartbeat` since card#7459 and it
+  refuses to deploy without a systemd unit for every member, so a host missing the unit fails loudly
+  at deploy time — that is what kept this from being a live outage. Its comment described the set as
+  "§ 2.1's population plus § 8.3's heartbeat"; § 2.1 is now the whole of it.
+  ⛔ **Nothing checks § 2.1 against the processes the code actually defines** — no gate, no test,
+  and `tools/design/verify-fleet-state.py` does not parse that table. The sibling audit for this
+  card was run by hand off `server/app/Console/Commands/*.php`, `server/routes/console.php` and
+  `bin/deploy.sh`; it found the heartbeat and two more gaps of the same shape (Reverb, which no D2
+  section lists as a process to provision, and the per-minute scheduler tick `mezzanine:purge`
+  needs, which appears nowhere in this repo). Both are reported with this card rather than fixed
+  here — one change does one thing — together with the proposal for the check that would have
+  caught all three: a G-check re-deriving § 2.1's membership from the commands the code defines.
+
 - **card#7344** — **the PHP half: CI now actually runs `server/`'s test suite.** Until
   `.github/workflows/php-tests.yml` landed, **no workflow in this repo executed a line of PHP** —
   the suite under `server/tests/` ran only when somebody remembered to run it, so every
