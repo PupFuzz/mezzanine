@@ -64,8 +64,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   file with a canary line proving the capture works. A failed login for an unknown address is
   word-for-word identical to a wrong password **and now costs the same one bcrypt comparison**,
   because the stock provider returns before hashing on a miss, which is an enumeration oracle in
-  timing; the residual (the first miss in a fresh worker also pays for a `make()`) is stated on the
-  class rather than claimed away.
+  timing. ⚠ **The residual first stated here was false about this deployment and is corrected:** the
+  dummy hash was memoised into an *instance* property of a provider the container rebuilds every
+  request, so nothing was amortised over a php-fpm worker — a miss paid **two** bcrypts and a wrong
+  password on a real account paid **one**. The oracle's magnitude was stock Laravel's; only its sign
+  had flipped, and the expensive side was the one an unauthenticated attacker picks. The hash is now
+  paid for **once per deployment** (kept in the cache store, which `throttle:login` already puts on
+  that route for both branches, and re-minted if `BCRYPT_ROUNDS` changes); the residual is one cache
+  read on the miss path. The arm that missed this counted `check()` and *stubbed* `make()` — it
+  counts total hashing work on both paths now, which is the property.
 
 - **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
   does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both

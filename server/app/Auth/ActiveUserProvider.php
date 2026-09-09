@@ -5,6 +5,7 @@ namespace App\Auth;
 use Illuminate\Auth\EloquentUserProvider;
 use Illuminate\Contracts\Hashing\Hasher;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
@@ -36,9 +37,11 @@ use Illuminate\Support\Str;
 class ActiveUserProvider extends EloquentUserProvider
 {
     /**
-     * A hash of a value nobody can present, computed at most once per PHP worker.
+     * Where the hash of a value nobody can present is kept between requests. Not a credential: it
+     * is a hash of a random 40-character string that was never anybody's password and is discarded
+     * the moment it is made.
      */
-    private ?string $dummyHash = null;
+    private const DUMMY_HASH_KEY = 'auth.dummy_hash';
 
     public function __construct(Hasher $hasher, string $model)
     {
@@ -58,13 +61,36 @@ class ActiveUserProvider extends EloquentUserProvider
      * user-enumeration oracle in TIMING even though both answers say the same words. The card's
      * canon #20 clause names timing explicitly, so the miss burns comparable work here.
      *
-     * ⚠ THE RESIDUAL, STATED RATHER THAN CLAIMED AWAY: this equalises the dominant term (one
-     * bcrypt either way), not the whole request. The first miss in a fresh PHP worker also pays
-     * for `make()` — the memo below is per-process, so under php-fpm it is amortised over the
-     * worker's lifetime but is not free on its first request. A constant-time guarantee would
-     * need a hash pinned at deploy time; that is a bigger decision than this card, and inventing
-     * one here would put a credential-shaped literal in the repository (the argument
-     * `Database\Factories\UserFactory` already makes about committed TOTP secrets).
+     * ⚠ THE RESIDUAL, STATED RATHER THAN CLAIMED AWAY, AND CORRECTED IN CARD#9070's FIRST REVIEW
+     * ROUND. This equalises the dominant term — ONE bcrypt either way — and not the whole request:
+     * the miss path additionally reads one value from the cache store, which is microseconds
+     * against a bcrypt at any usable cost factor. What it is NOT any more is a `make()` per miss.
+     *
+     * The first version of this said the memo was "per-process, so under php-fpm it is amortised
+     * over the worker's lifetime". THAT WAS FALSE ABOUT THIS DEPLOYMENT, and the review measured
+     * it: the memo was an INSTANCE property on a provider the container rebuilds every request
+     * (`public/index.php` is the stock non-Octane bootstrap; there is no octane/swoole/roadrunner
+     * in `composer.lock`), and PHP resets statics between requests too — so nothing was amortised
+     * over anything. Every miss paid `make()` AND `check()` while a wrong password on a real
+     * account paid one `check()`: two bcrypts against one. The oracle's magnitude was exactly what
+     * stock Laravel's is; only its sign had flipped, and the miss path — the one an unauthenticated
+     * attacker chooses — had become the expensive one, at 2× CPU, on an endpoint whose limiter keys
+     * on email+IP and therefore does not throttle probing N addresses from one IP at all.
+     *
+     * ⛔ SO THE DUMMY HASH IS PAID FOR ONCE PER DEPLOYMENT, NOT ONCE PER MISS, and the cache is
+     * where a value that must outlive a request goes. The alternatives were considered and are
+     * worse: a committed `$2y$…` literal is a credential-shaped string every secret scanner flags
+     * forever, and a value minted into `.env` at deploy time is an operator step that can be
+     * skipped — silently restoring the oracle on exactly the hosts nobody checked.
+     *
+     * ⚠ IT MAKES THE CACHE STORE A DEPENDENCY OF THE LOGIN PATH, AND THAT COSTS NOTHING NEW,
+     * because it already was one for BOTH branches: `POST /login` carries `throttle:login`
+     * (`config/fortify.php` § limiters → `vendor/laravel/fortify/routes/routes.php`), and
+     * `Illuminate\Cache\RateLimiter` is constructed on the default cache store. A store that is
+     * down therefore fails the whole route, identically for a hit and for a miss, before this class
+     * runs — it cannot become a new asymmetry here. The one configuration that WOULD reintroduce
+     * the oracle is `CACHE_STORE=array` (or `null`) in production, which is a store that does not
+     * persist between requests; `.env.example` ships `database`.
      *
      * @param  array<string, mixed>  $credentials
      */
@@ -82,11 +108,24 @@ class ActiveUserProvider extends EloquentUserProvider
     /**
      * ⛔ NOT A CONSTANT IN THE SOURCE. A committed `$2y$…` literal is a credential-shaped string
      * that every secret scanner flags forever, and allowlisting it is how an allowlist starts
-     * absorbing real findings. It is minted from a random value at first use instead, so it
-     * matches no account's password even by accident.
+     * absorbing real findings. It is minted from a random value instead, so it matches no
+     * account's password even by accident, and then kept.
+     *
+     * ⚠ `needsRehash()` RATHER THAN A BARE `get()`, AND IT IS NOT DEFENSIVENESS: raising
+     * `BCRYPT_ROUNDS` on a running install would otherwise leave every miss comparing against a
+     * hash at the OLD cost forever, which is the same oracle in a slower-moving form. It reads the
+     * cost out of the stored hash's header and costs no hashing.
      */
     private function dummyHash(): string
     {
-        return $this->dummyHash ??= $this->hasher->make(Str::random(40));
+        $kept = Cache::get(self::DUMMY_HASH_KEY);
+
+        if (is_string($kept) && ! $this->hasher->needsRehash($kept)) {
+            return $kept;
+        }
+
+        Cache::forever(self::DUMMY_HASH_KEY, $minted = $this->hasher->make(Str::random(40)));
+
+        return $minted;
     }
 }

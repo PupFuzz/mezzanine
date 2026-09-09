@@ -6,9 +6,10 @@ use App\Auth\ActiveUserProvider;
 use App\Models\User;
 use Illuminate\Contracts\Hashing\Hasher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Support\ViewErrorBag;
-use Mockery;
 use Tests\TestCase;
 
 /**
@@ -177,43 +178,162 @@ class AuthSecretsNeverSurfaceTest extends TestCase
     }
 
     /**
-     * ⛔ THE OTHER HALF OF "INDISTINGUISHABLE": THE WORK DONE. Stock Laravel returns from
-     * `retrieveByCredentials()` before any hashing when the address is unknown, so a miss costs
-     * no bcrypt and a hit costs one — tens of milliseconds apart at production cost factors, which
-     * is an enumeration oracle in timing even though both answers say the same words.
-     *
-     * Asserted by COUNTING HASH OPERATIONS rather than by measuring a clock: a timing assertion is
-     * flaky by construction and would be turned off by the first person it failed for. One
-     * `check()` on the miss path, one on the hit path.
+     * A real hasher with a counter around it. Mockery counts CALLS BY NAME, which is how the arm
+     * this replaces came to be blind: it asserted `check()` once and merely STUBBED `make()`, so a
+     * build that paid for an extra bcrypt on the miss path passed it. What the property is about
+     * is TOTAL hashing work, so that is what gets counted.
      */
-    public function test_a_login_for_an_unknown_address_still_performs_a_hash_comparison(): void
+    private function countingHasher(): Hasher
+    {
+        return new class(app('hash')) implements Hasher
+        {
+            public int $makes = 0;
+
+            public int $checks = 0;
+
+            public function __construct(private Hasher $inner) {}
+
+            public function total(): int
+            {
+                return $this->makes + $this->checks;
+            }
+
+            public function reset(): void
+            {
+                $this->makes = $this->checks = 0;
+            }
+
+            public function info($hashedValue)
+            {
+                return $this->inner->info($hashedValue);
+            }
+
+            public function make(#[\SensitiveParameter] $value, array $options = [])
+            {
+                $this->makes++;
+
+                return $this->inner->make($value, $options);
+            }
+
+            public function check(#[\SensitiveParameter] $value, $hashedValue, array $options = [])
+            {
+                $this->checks++;
+
+                return $this->inner->check($value, $hashedValue, $options);
+            }
+
+            public function needsRehash($hashedValue, array $options = [])
+            {
+                return $this->inner->needsRehash($hashedValue, $options);
+            }
+        };
+    }
+
+    /**
+     * ⛔ THE OTHER HALF OF "INDISTINGUISHABLE": THE WORK DONE, COUNTED IN FULL. Stock Laravel
+     * returns from `retrieveByCredentials()` before any hashing when the address is unknown, so a
+     * miss costs no bcrypt and a hit costs one — tens of milliseconds apart at production cost
+     * factors, which is an enumeration oracle in timing even though both answers say the same
+     * words.
+     *
+     * ⚠ THIS ARM COUNTS `make()` AND `check()` TOGETHER, AND THE REASON IS A MEASURED DEFECT RATHER
+     * THAN THOROUGHNESS. The version of this arm that shipped in the first round counted `check()`
+     * alone and stubbed `make()` with no count at all — so it was structurally unable to observe
+     * the build it was written to defend: the dummy hash was memoised into an INSTANCE property of
+     * a provider the container rebuilds every request, which made a miss cost TWO bcrypts and a
+     * wrong password on an existing account cost ONE. The oracle's magnitude was unchanged; only
+     * its sign flipped, and the arm was green throughout. A test that cannot observe the defect it
+     * names is not evidence.
+     *
+     * Asserted by COUNTING rather than by measuring a clock: a timing assertion is flaky by
+     * construction and would be turned off by the first person it failed for.
+     */
+    public function test_a_miss_and_a_hit_cost_the_same_total_hashing_work(): void
     {
         User::factory()->create(['email' => 'known@example.com']);
 
-        $hasher = Mockery::spy(Hasher::class);
-        $hasher->shouldReceive('make')->andReturn('a-dummy-hash-value');
-        $hasher->shouldReceive('check')->andReturn(false);
+        $hasher = $this->countingHasher();
 
+        // The dummy hash is minted once per DEPLOYMENT, so the state this arm is about is the one
+        // every request after the first sees. Warming it here — through a provider that is then
+        // thrown away — is also what makes the comparison below fair rather than an argument about
+        // which path happened to run first.
+        (new ActiveUserProvider($hasher, User::class))
+            ->retrieveByCredentials(['email' => 'warming@example.com', 'password' => self::SECRET]);
+
+        $hasher->reset();
+        (new ActiveUserProvider($hasher, User::class))
+            ->retrieveByCredentials(['email' => 'nobody@example.com', 'password' => self::SECRET]);
+        $miss = $hasher->total();
+
+        $hasher->reset();
         $provider = new ActiveUserProvider($hasher, User::class);
+        $user = $provider->retrieveByCredentials(['email' => 'known@example.com', 'password' => self::SECRET]);
+        $this->assertNotNull($user, 'the control: the hit path really did find the account');
+        // The guard's next step, and the one comparison a hit pays for.
+        $provider->validateCredentials($user, ['password' => self::SECRET]);
+        $hit = $hasher->total();
 
-        $provider->retrieveByCredentials(['email' => 'nobody@example.com', 'password' => self::SECRET]);
-        $hasher->shouldHaveReceived('check')->once();
+        $this->assertGreaterThan(0, $hit, 'the control: hashing happened at all');
+        $this->assertSame($hit, $miss, sprintf(
+            'a miss and a hit must cost the same hashing work — hit=%d, miss=%d', $hit, $miss,
+        ));
+    }
 
-        // THE CONTROL — the hit path must do the SAME one comparison, or the equalisation would
-        // simply have moved the difference. `retrieveByCredentials` finds the row without hashing;
-        // the guard's next step, `validateCredentials`, is the one comparison a hit pays for.
-        $hasher2 = Mockery::spy(Hasher::class);
-        $hasher2->shouldReceive('make')->andReturn('a-dummy-hash-value');
-        $hasher2->shouldReceive('check')->andReturn(true);
+    /**
+     * ⛔ AND THE DUMMY HASH IS NOT MINTED AGAIN FOR EVERY REQUEST, which is the property the arm
+     * above depends on and cannot itself see (it warms the value first, so it would pass against a
+     * build that re-minted per request as long as both paths did).
+     *
+     * ⚠ WHAT STANDS IN FOR "A SECOND REQUEST" HERE, AND WHAT THAT DOES NOT ESTABLISH. A freshly
+     * CONSTRUCTED provider is the stand-in: `server/public/index.php` is the stock non-Octane
+     * bootstrap and there is no `laravel/octane`, swoole or roadrunner in `composer.lock`, so the
+     * container is rebuilt per request and `App\Providers\AppServiceProvider`'s `Auth::provider()`
+     * closure returns a new instance — which is exactly why memoising into an instance property
+     * amortised nothing. This arm does NOT execute two php-fpm requests; it asserts the property
+     * that made the memo useless, in the place it can be observed.
+     */
+    public function test_the_dummy_hash_survives_the_request_that_minted_it(): void
+    {
+        $hasher = $this->countingHasher();
 
-        $provider2 = new ActiveUserProvider($hasher2, User::class);
+        (new ActiveUserProvider($hasher, User::class))
+            ->retrieveByCredentials(['email' => 'nobody@example.com', 'password' => self::SECRET]);
 
-        $user = $provider2->retrieveByCredentials(['email' => 'known@example.com', 'password' => self::SECRET]);
-        $this->assertNotNull($user);
-        $hasher2->shouldNotHaveReceived('check');
+        $this->assertSame(1, $hasher->makes, 'the first miss on a cold deployment mints it');
 
-        $provider2->validateCredentials($user, ['password' => self::SECRET]);
-        $hasher2->shouldHaveReceived('check')->once();
+        // A NEW provider — the one the next request's container builds.
+        (new ActiveUserProvider($hasher, User::class))
+            ->retrieveByCredentials(['email' => 'nobody-else@example.com', 'password' => self::SECRET]);
+
+        $this->assertSame(1, $hasher->makes, 'and no request after that pays to mint it again');
+        $this->assertSame(2, $hasher->checks, 'the control: both misses did compare');
+    }
+
+    /**
+     * The other half of `dummyHash()`'s keep-or-mint decision, so the branch that re-mints is
+     * exercised rather than merely written: raising the cost factor on a running install must not
+     * leave every miss comparing against a hash at the OLD cost forever — that is the same
+     * enumeration oracle, moving more slowly.
+     */
+    public function test_a_kept_dummy_hash_at_a_stale_cost_factor_is_re_minted(): void
+    {
+        // The suite runs at BCRYPT_ROUNDS=4 (`phpunit.xml`); this is a hash from before someone
+        // raised it.
+        Cache::forever('auth.dummy_hash', app('hash')->make(Str::random(40), ['rounds' => 5]));
+
+        $hasher = $this->countingHasher();
+
+        (new ActiveUserProvider($hasher, User::class))
+            ->retrieveByCredentials(['email' => 'nobody@example.com', 'password' => self::SECRET]);
+
+        $this->assertSame(1, $hasher->makes, 'a hash at the wrong cost is replaced');
+
+        // THE CONTROL — the replacement is at the configured cost, so the next request keeps it.
+        (new ActiveUserProvider($hasher, User::class))
+            ->retrieveByCredentials(['email' => 'nobody-else@example.com', 'password' => self::SECRET]);
+
+        $this->assertSame(1, $hasher->makes, 'and is then kept, or this would re-mint forever');
     }
 
     // ── The bootstrap command ───────────────────────────────────────────────────────────────
