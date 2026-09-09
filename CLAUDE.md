@@ -123,6 +123,13 @@ this doc costs a session almost nothing; the section itself, in here, costs it e
 - **Merging to `main` — OPERATOR ONLY.** Never this seat, whatever `permissions.admin` the shared
   `PupFuzz` identity reports on this repo.
 
+**Work autonomously (operator, 2026-09-09).** Do NOT ask permission to start the next queued item —
+pull it and do it. Finish a task, report, and continue in the same turn. Ask ONLY what genuinely
+needs an operator decision (a product/priority call, an authority boundary, an irreversible or
+outward-facing act). Anything readable from code, docs, the board or a thread is not a question.
+Where something IS the operator's, state it with a recommendation and keep working on everything the
+answer does not gate.
+
 **Roles (operator, 2026-09-09).** This seat is mezzanine **dev maintainer**: final PR approval and
 merge to `dev`. `aimla-pm` works cards and submits PRs here for this seat to rule on; it holds and
 will not exercise merge authority on this repo. Upstream owners for bug reports: `sola-pm` =
