@@ -203,4 +203,66 @@ class SeatConsoleTest extends SweepTestCase
             $act->retire(self::INSTALL, self::SEAT, 'ops@aimla', 'decommissioned')->outcome,
         );
     }
+
+    /**
+     * ⛔ THE § 2.1 NO-OP IS DECIDED BY THE WRITE, NOT BY A READ TAKEN BEFORE IT — card#9070's
+     * third review round. The act used to test `retired_at` on a `first()` taken before its
+     * transaction opened and then UPDATE on `id` alone, so a retirement that committed inside that
+     * window was overwritten: its author, its reason and its timestamp replaced by the second
+     * caller's, and a second `seat.retired` telling every connected floor the seat retired twice.
+     *
+     * ⚠ WHAT THIS DRIVES AND WHAT IT CANNOT. It drives the guard's PLACE: the other act is
+     * committed on the connection immediately before the UPDATE is executed, so the UPDATE's
+     * predicate is the only thing that can still see it — the old code passes its guard here and
+     * writes, this one matches zero rows. It does NOT drive concurrency: `lockForUpdate()` is a
+     * no-op on the SQLite this suite runs on and SQLite serialises writers anyway, so two genuinely
+     * interleaved transactions are not producible here on any store the suite has. That leg is
+     * reasoned in `App\Fleet\SeatRetirement`, not executed.
+     */
+    public function test_a_retirement_that_lands_after_another_one_writes_nothing(): void
+    {
+        Event::fake([SeatRetired::class]);
+
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        $seatRef = $this->seatRef;
+        $injected = false;
+
+        DB::beforeExecuting(function (string $query) use (&$injected, $seatRef): void {
+            if ($injected || ! str_contains($query, 'update "seats"')) {
+                return;
+            }
+
+            $injected = true;
+
+            DB::table('seats')->where('id', $seatRef)->update([
+                'retired_at' => '2026-01-01 00:00:00',
+                'retired_by' => 'first@example.com',
+                'retired_reason' => 'the first act',
+            ]);
+        });
+
+        $outcome = app(SeatRetirement::class)
+            ->retire(self::INSTALL, self::SEAT, 'second@example.com', 'the second act');
+
+        // The test's own precondition. Without it every assertion below would also pass on a run
+        // where the other act was never injected at all.
+        $this->assertTrue($injected, 'the competing retirement was never injected');
+
+        $seat = $this->seatRow();
+
+        $this->assertSame('first@example.com', $seat->retired_by, 'who retired a seat is written once');
+        $this->assertSame('the first act', $seat->retired_reason);
+        $this->assertSame('2026-01-01 00:00:00', (string) $seat->retired_at);
+
+        $this->assertSame(SeatRetirementOutcome::ALREADY_RETIRED, $outcome->outcome);
+        $this->assertSame(
+            '2026-01-01 00:00:00',
+            $outcome->at,
+            'and the caller is told WHEN it was retired — both callers print this value',
+        );
+
+        Event::assertNotDispatched(SeatRetired::class);
+    }
 }

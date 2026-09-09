@@ -69,6 +69,13 @@ use Illuminate\Support\Facades\DB;
  * a reviewer stops looking. The predicate now lives once, in
  * `App\Support\RetirementAttribution`, and every caller and both acts read THAT; what each caller
  * keeps is its own refusal message, which is genuinely better than an exception.
+ *
+ * ⛔ AND THE THIRD REVIEW ROUND FOUND THE SAME SHAPE IN THE ACT ITSELF. The § 2.1 no-op was
+ * decided on a `first()` taken before the transaction opened, with no lock, and the UPDATE was
+ * keyed on `id` alone — so two retirements of one seat both read `retired_at === null`, both
+ * passed the guard and both wrote, which is the second act the guard exists to prevent. The guard
+ * now lives IN the UPDATE; `retire()` carries the argument at the site, including why it is that
+ * shape and not the locked re-read `App\Admin\UserRetirement` uses.
  */
 final class SeatRetirement
 {
@@ -85,26 +92,22 @@ final class SeatRetirement
             ->join('installs', 'installs.id', '=', 'seats.install_ref')
             ->where('installs.install_id', $installId)
             ->where('seats.seat_id', $seatId)
-            ->first(['seats.id', 'seats.retired_at']);
+            ->first(['seats.id']);
 
         if ($row === null) {
             return SeatRetirementOutcome::noSuchSeat();
         }
 
-        // § 2.1: "Re-running it on an already-retired seat is a NO-OP." Not an error — an operator
-        // re-running a command they are unsure landed must not be told the fleet is broken — and
-        // not a second act either: a second `cause: operator` row and a second `seat.retired` at a
-        // new version would tell every connected client a seat was retired twice, and would
-        // OVERWRITE the original author, reason and timestamp with the re-run's. The record of who
-        // retired a seat is written once.
-        if ($row->retired_at !== null) {
-            return SeatRetirementOutcome::alreadyRetired((string) $row->retired_at);
-        }
-
+        // ⚠ THIS READ RESOLVES `<install>/<seat>` TO A ROW AND ANSWERS NOTHING ELSE. It used to
+        // decide the § 2.1 no-op as well, and that is the defect the third review round measured:
+        // whether the seat is already retired is a question about the state at the moment of the
+        // WRITE, so it is asked there — see the UPDATE below. A row that exists here cannot stop
+        // existing (§ 6.7 retains `seats` forever and nothing deletes one), so this answer does
+        // not go stale in the only direction it is used.
         $seatRef = (int) $row->id;
         $at = Clock::sql(now());
 
-        $version = DB::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason) {
+        return DB::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason): SeatRetirementOutcome {
             // ⛔ SAMPLED BEFORE THE `seats` WRITE BELOW — card #7837, and this is a SIBLING of that
             // card's fold defect rather than a precaution.
             //
@@ -121,11 +124,56 @@ final class SeatRetirement
             // `retired_at`, so a recompute run first would derive the un-retired render.
             $before = SeatFacts::versionBearing($seatRef);
 
-            DB::table('seats')->where('id', $seatRef)->update([
-                'retired_at' => $at,
-                'retired_by' => $by,
-                'retired_reason' => $reason,
-            ]);
+            // § 2.1: "Re-running it on an already-retired seat is a NO-OP." Not an error — an
+            // operator re-running a command they are unsure landed must not be told the fleet is
+            // broken — and not a second act either: a second `cause: operator` row and a second
+            // `seat.retired` at a new version would tell every connected client a seat was retired
+            // twice, and would OVERWRITE the original author, reason and timestamp with the
+            // re-run's. The record of who retired a seat is written once.
+            //
+            // ⛔ SO THE NO-OP IS DECIDED BY THIS WRITE AND NOT BY A READ TAKEN BEFORE IT —
+            // card#9070's THIRD review round. Until it, the test was `if ($row->retired_at !==
+            // null)` against a `first()` taken outside the transaction, and the UPDATE was keyed on
+            // `id` alone: two retirements of one seat both read `null`, both passed, both wrote,
+            // and the paragraph above describes what the second one did. A double-clicked console
+            // button reaches it. `App\Admin\UserRetirement` states the principle in this same
+            // card — "deciding a no-op on a stale read is how a second act gets written" — and this
+            // path had not got it.
+            //
+            // ⚠ IN THE UPDATE RATHER THAN A LOCKED RE-READ, WHICH IS THE OTHER SHAPE THIS REPO
+            // HAS (`App\Admin\UserRetirement::retire()`), because this one's correctness does not
+            // depend on the store honouring `lockForUpdate()`:
+            // `App\Console\Commands\RevokeFeedToken` revokes exactly this way. `retired_at` is
+            // NULL in the predicate and non-NULL in the SET, so a matched row always changes and
+            // the affected count is a true answer to "did THIS act write it".
+            $written = DB::table('seats')
+                ->where('id', $seatRef)
+                ->whereNull('retired_at')
+                ->update([
+                    'retired_at' => $at,
+                    'retired_by' => $by,
+                    'retired_reason' => $reason,
+                ]);
+
+            if ($written === 0) {
+                // Another retirement got there first. Nothing below this return runs: no
+                // recompute, no `cause: operator` row, no version bump, and no second
+                // `seat.retired` on the wire.
+                //
+                // ⚠ `lockForUpdate()` HERE IS NOT THE GUARD — IT IS WHAT MAKES THIS READ SEE THE
+                // OTHER ACT. Both callers print this timestamp ("was already retired (at %s)"),
+                // and under the REPEATABLE READ this deploys on the transaction's snapshot was
+                // already taken by the `versionBearing()` read above, so a plain SELECT here would
+                // hand back the `null` this transaction started with and print an empty time. A
+                // locking read is a current read. The value cannot then go stale: nothing in this
+                // application un-retires a seat or rewrites those three columns.
+                $already = DB::table('seats')
+                    ->where('id', $seatRef)
+                    ->lockForUpdate()
+                    ->value('retired_at');
+
+                return SeatRetirementOutcome::alreadyRetired((string) $already);
+            }
 
             // The recompute is the SHARED one (§ 6.5's per-writer rule names this act as one of
             // the three writers), so `render_state` collapses through § 4.2's precedence rather
@@ -162,9 +210,7 @@ final class SeatRetirement
             // because it is the more dangerous half: a reviewer who reads "flagged" stops looking.
             SeatRetired::dispatch($seatRef, $installId, $seatId, $at, $by, $reason, $version);
 
-            return $version;
+            return SeatRetirementOutcome::retired($at, $version);
         });
-
-        return SeatRetirementOutcome::retired($at, $version);
     }
 }
