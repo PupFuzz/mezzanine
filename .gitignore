@@ -35,3 +35,8 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Claude Code per-agent isolated worktrees (Agent tool `isolation: "worktree"`).
+# Each is a full checkout created INSIDE the repo; untracked, they would be staged
+# wholesale by a `git add -A` in the parent tree.
+.claude/worktrees/
