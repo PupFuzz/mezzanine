@@ -133,9 +133,10 @@ merge to `dev`. `aimla-pm` works cards and submits PRs here to rule on. Upstream
 reports: `sola-pm` = agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge +
 agent-board-toolkit.
 
-**Burn-down (operator, 2026-09-09).** **Sprint 1 is DEFINED**: ONE lane `A` — *MEZZANINE - next
-release to main (v0.3.0)* — holding 5 cards tagged `lane:A`. A request for the page always means
-REGENERATE, never `cat`. Changing the set + full rule: § Burn-down below the PROJECT ADDENDUM divider.
+**Burn-down (operator, 2026-09-09).** ONE lane, keyed `A`, holding exactly the cards tagged
+`lane:A` — its title and members live in `sprint.lanes[]` / `lanes.definitions`, never here. A
+request for the page always means REGENERATE, never `cat`. Full rule: § Burn-down below the
+PROJECT ADDENDUM divider.
 
 ⚠ This block is injected verbatim every session and is cut at ~1900 B, gates first so a cut can only
 remove elaboration. Keep it under that: `awk '/BEGIN coord:install-rules/,/END coord:install-rules/' CLAUDE.md | wc -c`
@@ -725,9 +726,11 @@ setup and must not be applied here:
 
 ## Burn-down
 
-**Sprint 1 is defined** (2026-09-09, PupFuzz/mezzanine#62, narrowed to one lane by #64). It is a
-**single lane** keyed `A`, titled *MEZZANINE - next release to main (v0.3.0)*, holding the 5 cards
-committed to that release.
+**The sprint is a single lane** keyed `A` (defined 2026-09-09 in PupFuzz/mezzanine#62, narrowed
+to one lane by #64; re-committed on 2026-09-09 once sprint 1's set had shipped in v0.3.0). Its
+**title lives in `sprint.lanes[]`** in `coordination.config.json` and its **members are exactly the
+cards tagged `lane:A`** — `sprint-burndown.py --lanes-json` prints them. Neither the title nor a
+count is written here: a copy of either is false at the next retitle or retag.
 
 The lane is **tag-driven**: `members` is `{"tag": true}`, which `sprint-burndown.py` resolves to the
 tag `<tag_prefix><key>` — here `lane:A` (`tag_prefix` is `lane:`). Sprint membership is therefore
