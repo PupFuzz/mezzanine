@@ -37,12 +37,13 @@
 #
 #   1. THE REQUIRED-CHECK PENDING TRAP. `docs/VERSIONING.md § Branch model` records it: "a
 #      required check that never runs (a path-filtered workflow producing no run at all) reads
-#      as PENDING, not passed". `card-token-lint` is already required on BOTH branches, so
-#      making this one required is the obvious next step — and under a `branches: [main]`
-#      filter that step would deadlock every feature PR into `dev` forever, with no run to
-#      point at. Producing a completed, deliberately-trivial run on every PR is what keeps this
-#      gate safe to require. Applicability is therefore decided INSIDE the guard, which prints
-#      NOT APPLICABLE and exits 0.
+#      as PENDING, not passed". Wherever this gate is required — and which contexts those are is
+#      a repository-settings fact this file deliberately does not restate, `docs/VERSIONING.md
+#      § Branch model` being its one home — a `branches: [main]` filter would deadlock every
+#      feature PR into `dev` forever, with no run to point at. Producing a completed,
+#      deliberately-trivial run on every PR is what keeps this gate safe to require.
+#      Applicability is therefore decided INSIDE the guard, which prints NOT APPLICABLE and
+#      exits 0.
 #   2. A BASE CHANGE IS HOW A PR ENTERS SCOPE. A PR opened into `dev` and later retargeted to
 #      `main` fires `edited`. Under a base filter, the events from its `dev` life are dropped
 #      and the `edited` that retargets it is evaluated against the NEW base, so the run would

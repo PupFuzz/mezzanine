@@ -26,10 +26,17 @@
 # are listed, and so are the guard, its selftest and the shared § 17 parser, so a change to
 # the gate itself is gated by the gate's own acceptance suite.
 #
-# ⚠ THIS IS NOT A REQUIRED STATUS CHECK, AND ADDING IT HERE DOES NOT MAKE IT ONE.
-# `docs/VERSIONING.md § Branch model` is explicit that requiring a check is a repository-
-# settings act and that "a workflow that is added later is not automatically required". A red
-# here does not block a merge until someone adds the context to both rulesets.
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
+# list is a repository-settings fact that no file in the checkout can verify, and copies of it in
+# workflow headers have already gone stale in this repo, in the direction that tells a reviewer to
+# ignore a red. `docs/VERSIONING.md § Branch model` is its one home and carries the command that
+# re-derives it from the API. Read that; do not re-copy it here.
+#
+# The claim this replaces was TRUE, and that is the point: it was a copy of a repository-settings
+# fact, pinned by a selftest assertion that only checked the SENTENCE WAS PRESENT — so it could red
+# if someone deleted the line and never if the line went false, which is the one direction that
+# costs anything (card#9054). The standing rule it cited is true and lives at the pointer above:
+# requiring a check is a repository-settings act, and adding a workflow does not make it required.
 
 name: harness fixture drift
 

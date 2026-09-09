@@ -65,6 +65,38 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   exist (and is not gitignored; it was simply never committed) and `npm ci` requires one. Minting
   a lockfile is a dependency-pinning decision of its own, not a side effect of adding a test lane.
 
+- **card#9054** — **the sibling audit: more surfaces claimed a required-check status, and the one
+  "pin" standing behind them could not fail.** The v0.3.0 entry below fixed the two surfaces the
+  card named. Re-deriving the population instead of grepping its phrasing found the rest, and the
+  ones that mattered most used none of the card's words. `.github/workflows/deploy-selftest.yml`
+  repeated the false claim verbatim (*"`card-token-lint` is the only mechanically required check"*,
+  plus the same dead `card#7344` owner). ⛤ **`release-pr-guard.yml` said `card-token-lint` was
+  *already* required *"so making this one required is the obvious next step"* — while
+  `release-pr-guard` had itself been required since 2026-08-30**, i.e. the file describing the repo's
+  strictest merge gate told a reviewer that gate did not block. `design-doc-verifiers.yml` spoke of
+  *"the moment this becomes required"* about two contexts (`design-docs`, `design-artifact`) required
+  since 2026-08-31, and `asset-provenance.yml` still carried *"if this check is ever promoted to
+  required"* five lines under the block that had just been corrected. Every one of those headers
+  now states the mechanism without a membership claim and points at the one home.
+  ⛔ **The pin that was offered as the model for the others was a tautology.**
+  `bin/harness-fixture-drift.selftest.py` asserted that the string `NOT A REQUIRED STATUS CHECK` was
+  **present** in that workflow's header — so it reddened only if somebody DELETED the sentence, and
+  never if the sentence went FALSE, which is the one direction that costs anything. It is replaced by
+  the property this checkout can actually hold: **the header states no required-check status in
+  either direction, and points at `docs/VERSIONING.md § Branch model` instead.** Seen to fail three
+  ways before being trusted — a planted *IS required* claim, a planted *NOT required* claim (true
+  today, and it must still red: no file here can verify it), and the pointer removed — each red alone
+  and named its own plant; green on restore.
+  ⚠ **`docs/VERSIONING.md § Branch model`'s own lead paragraph was the last unmarked copy**: *"No
+  ruleset requires a status check"*, bold and first, was the one block in that stack of dated
+  amendments that was never marked superseded, so the reader who skims one paragraph got the 2026-08-23
+  answer. It is now marked like the rest. `docs/PLAN.md` D-12 is amended by APPEND, per that
+  register's own rule, rather than edited.
+  ⛤ **What is deliberately NOT fixed, and it is the class:** nothing stops the *fifth* copy. The new
+  assertion holds one workflow's header; the other ten are guarded by convention. A repo-wide check
+  needs a lane that runs unfiltered on every PR, which is a new context — a required-check-list
+  question, and therefore the operator's. Filed rather than built quietly.
+
 ## [0.3.0] — 2026-09-09
 
 - **card#8075** — **the CODE half: `blocked_since` was a published member no server ever
