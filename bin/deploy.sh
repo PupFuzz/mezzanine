@@ -93,10 +93,12 @@ DEPLOY_ROOT="${MEZZ_DEPLOY_ROOT:-$(cd "$(dirname "$SELF")/.." && pwd)}"
 REMOTE="${MEZZ_REMOTE:-origin}"
 FPM_SERVICE="${MEZZ_FPM_SERVICE:-php8.3-fpm}"
 REVERB_SERVICE="${MEZZ_REVERB_SERVICE:-mezzanine-reverb}"
-# The default daemon set is the population of `FLEET-STATE.md § 2.1` (fold, sweep — both stated
-# there as "supervised", not scheduled) plus `§ 8.3`'s 15 s feed heartbeat, which is a long-lived
-# loop too (`mezzanine:feed-heartbeat` without `--once`). `mezzanine:purge` is NOT here: it is a
-# scheduled command, so each run already starts from the new code. `mezzanine:retire` is an
+# The default daemon set is the supervised population of `FLEET-STATE.md § 2.1` — fold, sweep and
+# the 15 s feed heartbeat, each stated there as "supervised", not scheduled, and each a long-lived
+# loop (`mezzanine:feed-heartbeat` runs without `--once`). This set has carried the heartbeat since
+# card#7459, which is where the § 2.1 omission card#9181 later closed was found: this script
+# refuses a host missing the heartbeat's unit, and the doc could not. `mezzanine:purge` is NOT here:
+# it is a scheduled command, so each run already starts from the new code. `mezzanine:retire` is an
 # operator command and runs nothing between deploys.
 DAEMON_SERVICES="${MEZZ_DAEMON_SERVICES:-mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat}"
 read -r -a SYSTEMCTL <<< "${MEZZ_SYSTEMCTL:-systemctl}"
@@ -380,7 +382,7 @@ phase_a() {
   for u in "${RESTART_UNITS[@]}" "$FPM_SERVICE"; do
     "${SYSTEMCTL[@]}" cat -- "$u" >/dev/null 2>&1 \
       || refuse "systemd unit '$u' does not exist on this host" \
-           "The long-lived daemons of FLEET-STATE.md § 2.1 and § 8.3 are supervised, not" \
+           "The long-lived daemons of FLEET-STATE.md § 2.1 are supervised, not" \
            "scheduled: without a unit each one runs only until someone's shell closes." \
            "Set MEZZ_DAEMON_SERVICES if this host names them differently."
     state="$("${SYSTEMCTL[@]}" is-enabled -- "$u" 2>/dev/null || true)"

@@ -130,14 +130,31 @@ silently correcting its upstream is how two documents start disagreeing about wh
 
 ### 2.1 Processes
 
-**Five processes** — four that run on their own and one an operator invokes — all of which must be
-individually restartable without losing or double-applying anything.
+**The rows of this table are the processes this design defines** — those that run on their own, and
+one an operator invokes — all of which must be individually restartable without losing or
+double-applying anything.
+
+**This table is what a host is provisioned from, and it deliberately states no count.** An earlier
+revision opened with *"Five processes"*. The feed heartbeat ([§ 8.3](#83-the-websocket-delta-feed))
+was then built as a sixth, this table did not gain a row, and the figure went on reading as though
+the set were complete — so a host provisioned from it would have supervised everything except the
+heartbeat, and any channel quiet for 45 s would have rendered its feed dead against a healthy fleet,
+with nothing erroring anywhere (card#9181). A figure beside the set it counts is a second copy of
+that set and goes stale the moment a process is added; the set is what an operator actually reads.
+**Add a process, add a row** — and there is no number here to update with it.
+
+⚠ **The WebSocket transport itself is not a row here, and that is a gap rather than a decision.**
+[§ 8.3](#83-the-websocket-delta-feed) names Reverb as the feed's transport and `bin/deploy.sh`
+supervises it as a unit of its own, but this table has never carried it, so *provision what § 2.1
+lists* still stands no socket server up. Found as card#9181's sibling and reported there rather than
+settled here.
 
 | Process | Kind | Cadence | Job | If it dies |
 |---|---|---|---|---|
 | **ingest** | HTTP request (PHP-FPM) | per batch | validate per [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order), write `events` + `batches`, the seat's **`head_event_id`**, and — only where it is still `NULL`, i.e. on the seat's first-ever event — the **seed of `fold_cursor_received_at`** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)), all in one transaction, return `202` | the reporter spools and retries ([D1 § 11.5](EVENT-SCHEMA.md#115-retry-and-backoff)); nothing is lost until a seat's 8-day residency cap |
 | **fold** | long-lived daemon (`mezzanine:fold`), supervised | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
+| **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised | every **15 s** | publish [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` on every install's channel, **unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting: [§ 2.2](#22-fail-posture-per-path)'s WebSocket-connect row makes this daemon the messenger of the outage | **a quiet fleet and a dead socket stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a channel with `seat.delta` traffic stays up by accident and a **quiet** channel — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, and publish the `seat.retired` message and the delta ([§ 4.10](#410-retirement-is-a-rendered-state)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 
@@ -148,6 +165,18 @@ tolerance a 300 s threshold already implies, at 5,760 passes/day — each pass b
 scans over rows with a materialized due-time ([§ 6.4](#64-ddl)) plus one scan of `seat_state`, which
 carries exactly one row per seat and is what the per-seat recompute above costs. A 60 s cadence would be 20 % late on the
 tightest deadline; a 1 s cadence would multiply the query load by 15 to buy lateness nobody can see.
+
+**The feed heartbeat's 15 s is [§ 8.3](#83-the-websocket-delta-feed)'s number, not the sweeper's, and
+sharing a process with the sweeper is what it must not do.** The two cadences are the same figure by
+coincidence — one is derived above from the 300 s `stale` threshold, the other in
+[§ 8.3](#83-the-websocket-delta-feed) from D1's own heartbeat-and-alarm shape scaled to a LAN
+channel — and folding the heartbeat into a sweep pass would put the instrument inside the thing it
+reports on: [§ 2.2](#22-fail-posture-per-path) makes a dead sweeper a **reportable** condition
+(`fleet.sweep` goes `stalled`), and a heartbeat riding that pass would fall silent at exactly the
+moment it has news, leaving the client unable to tell a stalled fleet from a dead socket — which is
+the one distinction [§ 8.3](#83-the-websocket-delta-feed) exists to draw. It is the argument
+[§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) makes for `fold_lag_ms`'s basis, one layer
+further out.
 
 ### 2.2 Fail-posture per path
 
