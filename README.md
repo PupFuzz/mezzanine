@@ -5,8 +5,8 @@ every PM, solo, and implementation agent rendered as a character at a desk, show
 they are actually doing right now — with a drill-down into their tasks and subagents.
 
 > Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
-> shell with no floor behind it yet, plus the **admin console** at `/admin` (users, and agent
-> manage/remove) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
+> shell with no floor behind it yet, plus the **admin console** at `/admin` (users, agent
+> manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
 > reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **procedural character generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw a
 > seat's character from its identity alone; open `tools/characters/harness.html` over a local
@@ -114,9 +114,17 @@ and this command are the recovery.
 ### The admin console
 
 `/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
-edit, retire) and **agents** (read seat state, and the `mezzanine:retire` operator act); floors
-and the map editor are `card#9085`'s, and pinning a named seat to a chosen desk is deferred to
-`card#9071` because it would store a fact `docs/design/FLOOR.md § 3.2` derives.
+edit, retire), **agents** (read seat state, and the `mezzanine:retire` operator act) and
+**floors** (each floor's Tiled map: how many desks the room has and where they sit). Pinning a
+named seat to a chosen desk is deferred to `card#9071` because it would store a fact
+`docs/design/FLOOR.md § 3.2` derives.
+
+**A floor's map is authored in Tiled and installed through the console** — export it as a JSON map
+(`.tmj`) with the tile layer format set to CSV, referencing the tileset by file rather than
+embedding its image, and paste it in. The console refuses anything else by name, and shows each
+floor's slot count against the seats it renders so a map that is short of desks is visible where it
+can be fixed rather than on the floor. Removing a map removes the room and nothing else: the
+install, its seats and their state are the fleet's.
 
 **Every account that can reach the console is an operator** — there are no roles, because this
 application has one class of user. ▶ **The trigger that reopens that decision, stated so it is a

@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Admin\ConsoleModules;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
@@ -41,7 +42,36 @@ class ConsoleShellTest extends TestCase
             'admin.users.create' => route('admin.users.create'),
             'admin.users.edit' => route('admin.users.edit', $subject),
             'admin.agents.index' => route('admin.agents.index'),
+            'admin.floors.index' => route('admin.floors.index'),
+            'admin.floors.create' => route('admin.floors.create'),
+            'admin.floors.edit' => route('admin.floors.edit', $this->authoredFloor()),
         ];
+    }
+
+    /**
+     * A floor with a map, because `admin.floors.edit` is a page ABOUT one: with nothing authored
+     * it is a 404, and a gate arm asserting `assertOk()` on a 404 would be asserting nothing.
+     *
+     * The row is written directly rather than through the console's own store action, so the
+     * fixture does not depend on the module whose gate is under test.
+     */
+    private function authoredFloor(): string
+    {
+        $installId = 'aimla';
+
+        if (! DB::table('floors')->where('install_id', $installId)->exists()) {
+            $now = now()->format('Y-m-d H:i:s.v');
+
+            DB::table('floors')->insert([
+                'install_id' => $installId,
+                'map' => FloorMapFixture::valid(),
+                'updated_by' => 'ops@example.com',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        return $installId;
     }
 
     private function unenrolled(): User
@@ -64,8 +94,9 @@ class ConsoleShellTest extends TestCase
     /**
      * ⛔ THE POPULATION CHECK, so the three gate arms above are a statement about THE CONSOLE and
      * not about the pages somebody remembered to list. A page registered with no entry in
-     * `pages()` reds here — which is the only way those arms stay complete as `card#9085`'s floors
-     * module and whatever follows it arrive. It found a real hole the moment it was written:
+     * `pages()` reds here — which is the only way those arms stay complete as
+     * `card#9085`'s floors module and whatever follows it arrive — and it did exactly that when
+     * that module landed: both population checks reds until its six routes were listed here. It found a real hole the moment it was written:
      * `admin.users.edit` was registered and ungated by any arm.
      */
     public function test_the_gate_arms_cover_every_console_page_there_is(): void
@@ -120,6 +151,13 @@ class ConsoleShellTest extends TestCase
             ]],
             'admin.users.retire' => ['post', route('admin.users.retire', $subject), ['reason' => 'x']],
             'admin.agents.retire' => ['post', route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x']],
+            'admin.floors.store' => ['post', route('admin.floors.store'), [
+                'install_id' => 'aimla', 'map' => FloorMapFixture::valid(),
+            ]],
+            'admin.floors.update' => ['patch', route('admin.floors.update', $this->authoredFloor()), [
+                'map' => FloorMapFixture::valid(),
+            ]],
+            'admin.floors.remove' => ['post', route('admin.floors.remove', $this->authoredFloor()), []],
         ];
     }
 
