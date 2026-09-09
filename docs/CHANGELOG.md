@@ -42,6 +42,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `is_error` paragraph, which both still restated the pre-amendment `per is_interrupt` mapping, now
   point at the kill signature instead.
 
+- **card#9085** — **the console's floors module, and the schema behind it.** `card#9070` shipped the
+  console shell with `App\Admin\ConsoleModules` as the one list its nav and landing page both read,
+  so this module lands as an **entry** in that list: nothing in the shell changed to accommodate it,
+  and both of `ConsoleShellTest`'s population checks reds until its six routes were listed as gated.
+  It ships the **`floors` table** — one authored Tiled map per floor, keyed by
+  `docs/design/FLOOR.md § 3.1`'s `install_id` — plus the module that authors, replaces and removes
+  one, and lists every floor with the seats it renders against the desk slots its map declares.
+  ⛔ **It is the (a) half of the operator's 2026-09-08 ruling and stops exactly at the (b) line.**
+  Nothing here names a seat: § 3.2 puts a seat at a desk by a pure function of the rendered seat set,
+  "without a stored position and without a server field", and pinning one is `card#9071`'s undecided
+  ruling. The absence is asserted rather than commented — over the route table, and over the schema's
+  own column list, because the edit that would cross the line is one column and one form field.
+  ⛤ **`S` is derived from the map, never stored beside it** — `docs/design/FLOOR.md § 10.3` makes the
+  map the one home for the slot count, so a `slot_count` column would be a second home free to
+  disagree with the document it describes.
+  ⛤ **A map an operator pastes in is validated against § 10.1 clause 3 at the write** (CSV layer
+  data, no embedded tileset image, one object layer named `desks`), because the two asset gates run
+  over *files in the repository* and a document in a database column is not one. § 10.3 now says that
+  in terms, including what the check does **not** cover: it cannot tell whether the tileset a map
+  names was ever vendored. The base64-run heuristic of clause 2 is deliberately not re-implemented —
+  clause 3 removes the base64 at its source, and § 10.1 records what that heuristic is worth on
+  machine output.
+  ⛤ **The seat count is `Snapshot::seats()`, the read the floor itself uses** — a second query would
+  disagree with the floor about which seats exist, starting with `FLEET-STATE.md § 4.10`'s 14-day
+  read filter. A floor whose install the snapshot no longer renders is surfaced on the page rather
+  than dropped from it.
+  ⚠ **Corrected in the same change:** `routes/admin.php` claimed "nothing here deletes a row", which
+  this module makes false — a floor map is a drawing, not a record. The console still registers no
+  `DELETE` verb, and that is asserted over the whole route table.
+
 - **card#9070** — **the admin console: nobody could sign in to a fresh deploy, and no path created
   the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a
   `UserFactory`, a login page and `/two-factor-enroll` — and **no `UserController`, no admin routes,
