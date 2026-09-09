@@ -115,42 +115,31 @@ cut, loudly, with a `sed` range that recovers the rest. An index that points at 
 this doc costs a session almost nothing; the section itself, in here, costs it every turn.
 
 <!-- BEGIN coord:install-rules -->
-**Merge authority (operator, 2026-09-09).** All work targets `dev`. Three distinct rungs:
-- **Merge to `dev` — this seat's own call, NO ask**, once the PR passes quality check
-  (`solo-self-merge <N>`). Do not request permission per merge; stalling on a green, reviewed,
-  integration-targeted PR is the defect, not the merge.
-- **CREATING a PR to `main` — ASK FIRST.** The gate is on opening it, not only on merging it.
+**Merge authority (operator, 2026-09-09).** All work targets `dev`. Three rungs, tightest first:
 - **Merging to `main` — OPERATOR ONLY.** Never this seat, whatever `permissions.admin` the shared
-  `PupFuzz` identity reports on this repo.
+  `PupFuzz` identity reports.
+- **CREATING a PR to `main` — ASK FIRST.** The gate is on opening it, not only on merging it.
+- **Merge to `dev` — this seat's own call, NO ask**, once the PR passes quality check
+  (`solo-self-merge <N>`). Stalling on a green, reviewed, integration-targeted PR is the defect.
 
-**Work autonomously (operator, 2026-09-09).** Do NOT ask permission to start the next queued item —
-pull it and do it. Finish a task, report, and continue in the same turn. Ask ONLY what genuinely
-needs an operator decision (a product/priority call, an authority boundary, an irreversible or
-outward-facing act). Anything readable from code, docs, the board or a thread is not a question.
-Where something IS the operator's, state it with a recommendation and keep working on everything the
-answer does not gate.
+**Work autonomously (operator, 2026-09-09).** Do NOT ask permission to start the next queued item,
+and do NOT announce a next action instead of doing it — both are idling. Finish, report, continue in
+the same turn. Ask ONLY what needs an operator decision (a product/priority call, an authority
+boundary, an irreversible or outward-facing act). Anything readable from code, docs, the board or a
+thread is not a question.
 
 **Roles (operator, 2026-09-09).** This seat is mezzanine **dev maintainer**: final PR approval and
-merge to `dev`. `aimla-pm` works cards and submits PRs here for this seat to rule on; it holds and
-will not exercise merge authority on this repo. Upstream owners for bug reports: `sola-pm` =
-agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge + agent-board-toolkit.
+merge to `dev`. `aimla-pm` works cards and submits PRs here to rule on. Upstream owners for bug
+reports: `sola-pm` = agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge +
+agent-board-toolkit.
 
-**The burn-down MECHANISM is adopted; NO SPRINT IS DEFINED YET (operator, 2026-09-09).** The
-current lanes `now`/`next`/`blocked` mirror board-14 COLUMNS (`in_review` / `prioritized` /
-`blocked_gated`) — that is a view of the whole board, not a sprint, and it is scaffolding until a
-sprint exists. **Once a sprint is defined, its committed set is what the page shows**: swap each
-lane's `members` from `filter.column` to the sprint-shaped primitives — `tag` (cards tagged into the
-sprint; `tag_prefix` is `lane:`, and the `now` lane already carries `tag: true`) or `gate_card`
-(everything blocking a release). Do not describe the present page as "the sprint".
-`sprint-burndown.py` needs `COORD_KANBAN_READ` exported — the `coord` package is not installed here.
+**Burn-down (operator, 2026-09-09).** The mechanism is adopted; **NO SPRINT IS DEFINED YET** — do
+not call the current page "the sprint". A request for it always means REGENERATE, never `cat`. Full
+rule, incl. the lane swap once a sprint exists: memory `mezzanine-burndown-request-means-regenerate`
+and § Burn-down below the PROJECT ADDENDUM divider.
 
-**On request, REGENERATE the burn-down — never read back the committed page (operator, 2026-09-09).**
-"show me the sprint burn-down" and **"the race-to-release HTML file"** are the SAME ask and both mean
-run it fresh: `sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html
---write-config`. The page is a render of one live board read, so a stale copy is the exact drift
-adopting the tool removed; `cat`-ing the file answers about when it was last generated, not about the
-sprint. ⚠ Every run rewrites the `Derived at` timestamp, so the file is ALWAYS dirty after one:
-commit only when the **state digest** (tool output + page footer) changed — a timestamp-only diff is churn.
+⚠ This block is injected verbatim every session and is cut at ~1900 B, gates first so a cut can only
+remove elaboration. Keep it under that: `awk '/BEGIN coord:install-rules/,/END coord:install-rules/' CLAUDE.md | wc -c`
 <!-- END coord:install-rules -->
 
 ## Your work loop
@@ -726,3 +715,39 @@ setup and must not be applied here:
 - **Inbox / agent-to-agent threads** — you have no counterparties sending you
   coordination threads. There is no inbox to check.
 <!-- END coord:solo-orientation -->
+
+---
+
+# PROJECT ADDENDUM — mezzanine
+
+> Below the managed block. This survives `orientation-sync` and **never auto-loads** — a session
+> must open this file to read it. Reference and rationale only; standing rules that must reach a
+> session belong between the `coord:install-rules` markers above.
+
+## Burn-down
+
+The burn-down **mechanism** is adopted (operator, 2026-09-09). **No sprint is defined yet** — the
+lanes `now`/`next`/`blocked` currently mirror board-14 COLUMNS (`in_review` / `prioritized` /
+`blocked_gated`), which is a view of the whole board and scaffolding until a sprint exists. Do not
+describe the present page as "the sprint".
+
+**Once a sprint is defined**, its committed set is what the page shows: swap each lane's `members`
+from `filter.column` to the sprint-shaped primitives — `tag` (cards tagged into the sprint;
+`tag_prefix` is `lane:`, and the `now` lane already carries `tag: true`) or `gate_card` (everything
+blocking a release).
+
+**On request, REGENERATE — never read back the committed page.** "show me the sprint burn-down" and
+"the race-to-release HTML file" are the SAME ask and both mean run it fresh:
+
+```
+sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html --write-config
+```
+
+The page is a render of one live board read, so a stale copy is the exact drift adopting the tool
+removed; `cat`-ing it answers about when it was last generated, not about the sprint.
+
+⚠ Every run rewrites the `Derived at` timestamp, so the file is ALWAYS dirty after one. **Commit
+only when the state digest changed** (tool output + page footer) — a timestamp-only diff is churn.
+
+⚠ `sprint-burndown.py` needs `COORD_KANBAN_READ` exported — the `coord` package is not installed
+on this seat.
