@@ -139,7 +139,7 @@ individually restartable without losing or double-applying anything.
 | **fold** | long-lived daemon (`mezzanine:fold`), supervised | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
-| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, and publish the `seat.retired` message and the delta ([§ 4.10](#410-retirement-is-a-rendered-state)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
+| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, and publish the `seat.retired` message and the delta ([§ 4.10](#410-retirement-is-a-rendered-state)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 
 **15 s sweep cadence, derived.** The tightest deadline any time-derived transition has is the `stale`
 threshold, 300 s ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm)). A 15 s cadence bounds
@@ -884,6 +884,15 @@ A seat leaves the floor by one act and one act only: an operator runs
 `retired_reason` ([§ 6.4](#64-ddl)). Nothing else — no timeout, no purge, no silence — ever removes
 a row from the fleet.
 
+⚠ **AMENDED 2026-09-08 (card#9070) — the act now has TWO operator entry points and still exactly ONE
+implementation.** The admin console's agent module (`POST /admin/agents/{install_id}/{seat_id}/retire`,
+session + MFA) performs the same act, and the transaction described below moved out of the command into
+`App\Fleet\SeatRetirement`, which both callers use. **Every sentence in this section stands
+unchanged**: retirement is an operator act, no timeout stands in for one, and nothing else writes those
+three columns. What the extraction prevents is the thing this section was written against — a second
+copy of the act that sets the columns and skips the recompute, the `cause: operator` row and the
+publish. There is no seat-CREATE path on that console, by [FLOOR.md § 3.4](FLOOR.md#34-a-new-seats-first-appearance).
+
 **The command is named because three of the four things retirement is supposed to produce had no
 producer.** `render_state` is a stored column with two writers: the fold, which claims only seats with
 unfolded events ([§ 6.5](#65-the-fold)) and so never visits a retired seat that has stopped reporting,
@@ -1090,8 +1099,8 @@ CREATE TABLE seats (
   install_ref   SMALLINT UNSIGNED NOT NULL,
   seat_id       VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   created_at    DATETIME(3)  NOT NULL,
-  retired_at    DATETIME(3)  NULL,          -- operator act only; never set by a timeout. The
-                                            -- one writer is `mezzanine:retire` (§ 2.1, § 4.10)
+  retired_at    DATETIME(3)  NULL,          -- operator act only; never set by a timeout. Its
+                                            -- one writer is named in § 2.1 / § 4.10
   retired_by    VARCHAR(64)  NULL,
   retired_reason VARCHAR(255) NULL,
   UNIQUE KEY uq_seat (install_ref, seat_id),
@@ -1544,7 +1553,7 @@ same admission `rebuild_truncated` makes.
 above is the fold's execution of it, but the rule is: *any* process that changes a version-bearing
 field bumps `state_version` and enqueues a delta in the same transaction. This document has three such
 writers — the fold above; the **sweeper**, whose every pass recomputes `link_state` and `render_state`
-for every seat ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)); and `mezzanine:retire`
+for every seat ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)); and **the retirement act**
 ([§ 4.10](#410-retirement-is-a-rendered-state)), which states its own bump and publish. The sweeper is
 named explicitly because its `live → stale` transition is the **only** delta a permanently quiet desk
 will ever get, and leaving that one to be inferred from a rule written inside the fold's loop would
@@ -2386,7 +2395,7 @@ floor subscribes to what it renders and a future per-install authorization has a
 |---|---|---|---|
 | `seat.delta` | server → client | a seat's `state_version` advanced | `install_id`, `seat_id`, `state_version`, `at`, `changed[]`, `patch{}` |
 | `feed.heartbeat` | server → client | every **15 s**, per channel, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
-| `seat.retired` | server → client | `mezzanine:retire` ran ([§ 2.1](#21-processes)) — the one producer | `install_id`, `seat_id`, `reason`, `at` |
+| `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer | `install_id`, `seat_id`, `reason`, `at` |
 | `fleet.reload` | server → client | `feed_version` changed under a running client (a deploy) | `feed_version`, `reason` |
 | `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
 
@@ -3729,7 +3738,7 @@ everything from step 3 onward.
 | 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seat-is-rendered-not-disappeared) |
 | 9 | Reverb channel, deltas, coalescing, feed heartbeat, backpressure | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others) |
 | 10 | `mezzanine:purge`, the size alarm, `fold_lag` fleet health | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them), [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) |
-| 11 | `mezzanine:retire` — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed | [AT-D2-23](#at-d2-23-a-retired-seat-is-rendered-not-disappeared) |
+| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed | [AT-D2-23](#at-d2-23-a-retired-seat-is-rendered-not-disappeared) |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both

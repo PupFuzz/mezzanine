@@ -15,8 +15,9 @@ use Illuminate\Foundation\Events\Dispatchable;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHY THIS CLASS EXISTS AT ALL. § 4.10: "nothing in this document emitted `seat.retired`: § 8.3's
  * table said only WHEN the message is sent and named no process to send it, which is a wire message
- * a consumer is told to expect and no path produces." `mezzanine:retire` is the producer § 4.10
- * names, and this is the act of producing it.
+ * a consumer is told to expect and no path produces." The retirement act is the producer § 4.10
+ * names — `App\Fleet\SeatRetirement`, which both operator entry points go through (§ 2.1) — and
+ * this is the act of producing it.
  *
  * ⚠ THE SEAM CARD #7712 LEFT HERE IS NOW CLOSED — card #7827, and this is what it did.
  *

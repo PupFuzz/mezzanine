@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Database\Factories\UserFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -142,7 +143,7 @@ class MfaGateTest extends TestCase
         // fail-open being guarded against lives in the login PIPELINE.
         $user = $this->unenrolled();
 
-        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+        $this->post('/login', ['email' => $user->email, 'password' => UserFactory::password()])
             ->assertRedirect('/dashboard');
 
         $this->assertAuthenticatedAs($user);
@@ -154,7 +155,7 @@ class MfaGateTest extends TestCase
     {
         $user = $this->enrolled();
 
-        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+        $this->post('/login', ['email' => $user->email, 'password' => UserFactory::password()])
             ->assertRedirect(route('two-factor.login'));
 
         $this->assertGuest();

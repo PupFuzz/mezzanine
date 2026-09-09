@@ -19,6 +19,107 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9070** — **the admin console: nobody could sign in to a fresh deploy, and no path created
+  the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a
+  `UserFactory`, a login page and `/two-factor-enroll` — and **no `UserController`, no admin routes,
+  and no artisan command that creates a user.** This ships the **console shell** (`/admin`, its own
+  `server/routes/admin.php`, a nav generated from `App\Admin\ConsoleModules` so `card#9085`'s
+  floors module is an entry rather than an edit), the **user module** (create, edit, retire) and the
+  **agent module** (read seat state, and the existing `mezzanine:retire` act). ⛔ **No floors/desks
+  schema and no seat-create path**, per the operator's (a)/(b) ruling: a seat exists because it
+  *reported* (`docs/design/FLOOR.md § 3.4`), so hand-authoring one is `card#9071`'s deferred
+  decision.
+  ⛤ **`php artisan mezzanine:user:create` is the whole fix for the deployment blocker, and it takes
+  no `--password` option** — an argument lands in argv and in shell history, so it prompts (never
+  echoed) or `--generate`s and prints once. It is also the documented way back from a lockout, which
+  is why retiring the **last** account that can still sign in is a **refusal** and not a warning:
+  there is no registration page and no mailer, so an install with no active account would be
+  unrecoverable except through this command.
+  ⛤ **Accounts RETIRE, they never delete, and a retired record does not change** — `users` gains
+  `retired_at`/`retired_by`/`retired_reason`,
+  the same shape `seats` carries, so an account that minted a token or retired a seat cannot vanish
+  and leave dangling references. The name and the address are part of that record, so
+  `App\Admin\UserProvisioning::update()` refuses a retired subject **at the write**: without that,
+  a rename followed by a create hands the freed address to a different person and does everything a
+  delete does in two authenticated requests. (Found in review: the only thing refusing it was the
+  `@unless` that hides the console's Edit link — a read-time guard for a write-site rule.)
+  A retired account is refused at **every credential path** because
+  the filter lives in the guard's user provider (`App\Auth\ActiveUserProvider`), not at the login
+  route: the login form, the session resolved on every request, and `remember me` all funnel through
+  `newModelQuery()`. Fortify's pending two-factor challenge does **not** (it resolves the challenged
+  user with `$model::find()`); that is measured, named in the test file, and unreachable because
+  `login.id` is only written after a credential check that already went through the provider.
+  ⛤ **A seat retired from the console performs `mezzanine:retire`'s act, not a copy of it** — the
+  transaction moved to `App\Fleet\SeatRetirement` at its second caller, so the console cannot skip
+  the recompute, the `cause: operator` transition row or the `seat.retired` publish. A mutant that
+  writes the three columns directly reds on both.
+  ⚠ **Found while building this, and fixed here: `database/seeders/DatabaseSeeder.php` shipped
+  Laravel's stock body**, which mints `test@example.com` with the factory's password — the literal
+  `password` — and `database/factories/` was in composer's PRODUCTION autoload, so
+  `php artisan db:seed` on a deployed host would have put a publicly-known credential behind the
+  login page. The card's premise was that nothing created a user; something did, and it was the one
+  path that must not be used. The seeder now creates nothing — **and, after review, neither half of
+  the mechanism ships either:** `Database\Factories\` and `Database\Seeders\` moved to
+  `autoload-dev`, and `composer install --no-dev` on a host is now a stated deployment obligation
+  (`docs/PLAN.md § 5`, `README.md`). Emptying the seeder closed the instance; this closes the class,
+  so the N+1th caller cannot re-mint it for free. Measured on a real `--no-dev` install from this
+  lockfile: `App\Admin\UserProvisioning` resolves, `Database\Factories\UserFactory` does not.
+  ⚠ **Canon #20 is asserted on surfaces that could actually carry the value** — the flashed input
+  Laravel re-renders a form from, the validation messages, the command's own output, and a live log
+  file with a canary line proving the capture works. A failed login for an unknown address is
+  word-for-word identical to a wrong password **and now costs the same one bcrypt comparison**,
+  because the stock provider returns before hashing on a miss, which is an enumeration oracle in
+  timing. ⚠ **The residual first stated here was false about this deployment and is corrected:** the
+  dummy hash was memoised into an *instance* property of a provider the container rebuilds every
+  request, so nothing was amortised over a php-fpm worker — a miss paid **two** bcrypts and a wrong
+  password on a real account paid **one**. The oracle's magnitude was stock Laravel's; only its sign
+  had flipped, and the expensive side was the one an unauthenticated attacker picks. The hash is now
+  paid for **once per deployment** (kept in the cache store, which `throttle:login` already puts on
+  that route for both branches, and re-minted if `BCRYPT_ROUNDS` changes); the residual is one cache
+  read on the miss path. The arm that missed this counted `check()` and *stubbed* `make()` — it
+  counts total hashing work on both paths now, which is the property.
+  ⛔ **AND THE COMMAND PRINTED A PASSWORD IT HAD NOT STORED — found in the second review round, on
+  the one surface this repository calls the only way back from a locked-out install.** Rate,
+  re-derived rather than relayed: 20 000 draws of `Str::password(24)` pushed through a real console
+  formatter came back mismatched 132 times — 0.66%, about one run in 150. `Str::password()`'s alphabet contains `<`, `>` and `\`, and
+  `Illuminate\Console\Command::line()` writes through Symfony's console formatter, whose last act
+  rewrites `\<` and `\>` and whose first consumes anything shaped like a style tag. So the operator
+  was shown a value that would not sign in while the account was created with the unmangled one —
+  an application with no mailer, no password reset and no registration page, and an address burned
+  permanently because a retired row is unrenameable. It had been reporting itself for a round as a
+  flaky test (the end-to-end `--generate` arm failed about one run in forty). Every credential this
+  application prints now goes through `App\Console\SecretLine`, which writes `OUTPUT_RAW` — the
+  bytes given are the bytes written, so nothing has to stay a transformation's inverse — and all
+  three commands that print a secret route through it rather than each being safe or not depending
+  on its own alphabet.
+  ⚠ **Three more from that round.** The retirement act and its command held two spellings of one
+  emptiness test, so `mezzanine:retire --by="   "` walked past the command's `=== ''` refusal into
+  the act's `trim()` throw and gave the operator a stack trace where the documented answer is
+  `INVALID`; the predicate now lives once, in `App\Support\RetirementAttribution`.
+  `UserProvisioning::update()` decided "is this account retired?" on the model implicit route-model
+  binding resolved at the top of the request, so an account retired mid-form could still be
+  renamed — it now re-reads under `lockForUpdate()` inside the transaction that writes, the way the
+  sibling act next to it already did. And `CACHE_STORE` is now a stated deployment obligation
+  beside `--no-dev`: the equal-cost login path depends on a store that persists between requests,
+  and only the `--no-dev` half of the round's two obligations had reached the list an operator
+  standing up a host reads.
+  ⛔ **AND THE THIRD REVIEW ROUND FOUND THE SAME SHAPE IN BOTH ACTS THAT MATTER MOST.** A seat
+  retirement decided its § 2.1 no-op on a read taken *before* its transaction and then UPDATEd on
+  `id` alone, so two retirements of one seat both passed the guard and both wrote — the second
+  overwriting the original author, reason and timestamp, and telling every connected floor the seat
+  retired twice. A double-clicked console button was enough. The guard now lives IN the UPDATE
+  (`whereNull('retired_at')`, the shape `mezzanine:feed-token:revoke` already revokes with), so
+  `0 rows affected` **is** the no-op and no lock is load-bearing for it.
+  ⛔ **And a password reset wrote the hash and nothing else, which is not a recovery from the
+  compromise it exists for.** `SESSION_DRIVER=database` makes a signed-in browser's authority a ROW
+  that survives a password change — Laravel's opt-in for invalidating it, `AuthenticateSession`, is
+  not on this stack — and remember-me is live end to end, so a stolen session cookie or remember-me
+  cookie kept working after the **only** compromise-recovery path this product has (no mailer, no
+  self-service reset). A reset now rotates `remember_token` and deletes that account's
+  `web_sessions` rows, **including the one the request is on**: a stolen session cookie *is* that
+  session's id, so "log the other devices out but keep mine" would keep the attacker's. A self-reset
+  therefore signs the operator out, and the edit form says so.
+
 - **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
   does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both
   `active`, both have `bypass_actors: []`, and both require the same **five** contexts —

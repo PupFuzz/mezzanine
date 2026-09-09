@@ -45,8 +45,8 @@ return new class extends Migration
             Ddl::ascii($table->string('seat_id', 48));
             $table->dateTime('created_at', 3);
 
-            // Operator act only; never set by a timeout. The one writer is `mezzanine:retire`
-            // (docs/design/FLEET-STATE.md § 2.1, § 4.10), which is card #7339's.
+            // Operator act only; never set by a timeout. Its one writer is named in
+            // docs/design/FLEET-STATE.md § 2.1 / § 4.10, and was card #7339's to build.
             $table->dateTime('retired_at', 3)->nullable();
             $table->string('retired_by', 64)->nullable();
             $table->string('retired_reason', 255)->nullable();

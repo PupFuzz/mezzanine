@@ -500,9 +500,11 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * ⛔ THE SAME DEFECT IN `mezzanine:retire` — card #7837's sibling audit, second instance.
+     * ⛔ THE SAME DEFECT IN THE RETIREMENT ACT — card #7837's sibling audit, second instance.
+     * (It lived in `mezzanine:retire` when this was written; card#9070 moved the transaction to
+     * `App\Fleet\SeatRetirement` at its second caller. This arm still drives the command.)
      *
-     * The command sets `seats.retired_at` / `retired_by` / `retired_reason` and THEN calls the
+     * The act sets `seats.retired_at` / `retired_by` / `retired_reason` and THEN calls the
      * shared recompute, whose self-sampled `$before` therefore already had them. `retired` is the
      * § 8.2.1 member that reads exactly those three columns, so the `seat.delta` announcing the
      * retirement carried `render_state: "retired"` and left the client's `retired` object `null`
@@ -529,7 +531,7 @@ class FeedSurfaceTest extends FeedTestCase
         $changed = $deltas[0]['payload']['changed'];
 
         $this->assertContains('retired', $changed,
-            '§ 6.5: `retired` is version-bearing and `mezzanine:retire` is what moves it');
+            '§ 6.5: `retired` is version-bearing and the retirement act is what moves it');
         $this->assertContains('render_state', $changed);
 
         $retired = $deltas[0]['payload']['patch']->retired;

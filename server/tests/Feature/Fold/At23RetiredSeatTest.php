@@ -227,14 +227,33 @@ class At23RetiredSeatTest extends SweepTestCase
         $this->assertNotContains('operator', $this->causes());
     }
 
-    /** § 4.5: retirement is "an act with an AUTHOR and a REASON" — neither is defaulted. */
+    /**
+     * § 4.5: retirement is "an act with an AUTHOR and a REASON" — neither is defaulted.
+     *
+     * ⛔ THE WHITESPACE-ONLY ROWS ARE THE ONES THAT MATTER, and they were added in card#9070's
+     * SECOND review round because they were the measured defect. The act refuses on `trim()`;
+     * this command refused on `=== ''`. `--by="   "` therefore walked past the command's refusal
+     * and hit the act's `throw`, so an operator who typed a space got an uncaught
+     * `InvalidArgumentException` and a stack trace at exit code 1, on a surface whose own class
+     * docblock claimed it "refuses first, with a message better than an exception". Two spellings
+     * of one rule is one spelling too many; both now read
+     * `App\Support\RetirementAttribution`. Exit code 2 IS the assertion — a 1 here is the
+     * exception path.
+     */
     public function test_the_command_refuses_without_an_author_or_a_reason(): void
     {
-        $this->artisan('mezzanine:retire', ['--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'x'])
-            ->assertExitCode(2);
+        $seat = self::INSTALL.'/'.self::SEAT;
 
-        $this->artisan('mezzanine:retire', ['--seat' => self::INSTALL.'/'.self::SEAT, '--reason' => 'x'])
-            ->assertExitCode(2);
+        foreach ([
+            ['--by' => 'x'],
+            ['--reason' => 'x'],
+            ['--by' => '   ', '--reason' => 'x'],
+            ['--by' => 'x', '--reason' => "  \t "],
+            ['--by' => ' ', '--reason' => ' '],
+        ] as $options) {
+            $this->artisan('mezzanine:retire', ['--seat' => $seat] + $options)
+                ->assertExitCode(2);
+        }
 
         $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
     }
