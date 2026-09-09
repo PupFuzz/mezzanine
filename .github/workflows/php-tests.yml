@@ -1,0 +1,164 @@
+# php-tests.yml — actually run `server/`'s PHPUnit suite, on every PR and on every push to a
+# long-lived branch. card#7344's PHP half.
+#
+# WHAT IT DOES. Installs PHP with `pdo_sqlite`/`sqlite3`, restores composer's download cache,
+# installs `server/`'s dependencies from `composer.lock`, makes a `.env` from the committed
+# template, mints an `APP_KEY`, and runs **the repo's own `composer test` script** —
+# `artisan config:clear` then `artisan test`. It does not spell out a phpunit command line:
+# `server/composer.json` already owns what "run the tests" means here, and a second spelling in
+# CI is a second thing to keep in step with it.
+#
+# WHY IT EXISTS. Until this landed, **nothing in CI executed a single line of PHP.** The suite
+# under `server/tests/` was run only by whoever remembered to run it, which means every
+# `php artisan test` figure in a PR body on this repo was self-attested and unreproducible.
+#
+# ⚠ THE COST IS ALREADY REALISED, NOT PREDICTED — read `docs/CHANGELOG.md`'s card#8075 entry.
+# `Tests\Feature\Feed\SeatObjectMatchesTheDocumentTest` sat RED on `dev` for days: D2 § 8.2.1
+# declared `blocked_since` and `App\Read\SeatObject` did not carry it — a contract a consumer
+# could read and the server never answered. The guard that catches it had been written, had
+# been merged, and was failing the whole time; it was found because one agent happened to run
+# the suite by hand. A guard nothing runs is not a guard, and this file is the thing that runs
+# it.
+#
+# NO `paths:` FILTER, AND HERE THAT IS MEASURED RATHER THAN INHERITED. The house argument
+# applies (`asset-provenance.yml`: a path-filtered workflow produces NO RUN, which as a required
+# check reads *pending*, never *passed*) — but this suite has a second, concrete reason:
+# **it reads outside `server/`.** `SeatObjectMatchesTheDocumentTest` opens
+# `base_path('../docs/design/FLEET-STATE.md')` and compares § 8.2.1's field table to the wire
+# object. A `server/**` filter would therefore be DARK on a docs-only PR that edits that
+# table — which is one of the two ways the card#8075 gap could have been minted, and the half a
+# reviewer is least likely to catch by eye.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
+# list is a repository-settings fact that no file in the checkout can verify, and copies of it in
+# workflow headers have already gone stale in this repo, in the direction that tells a reviewer to
+# ignore a red. `docs/VERSIONING.md § Branch model` is its one home and carries the command that
+# re-derives it from the API. Read that; do not re-copy it here.
+#
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# WHAT THIS LANE DELIBERATELY DOES **NOT** COVER.
+#
+#   * **The JS half of card#7344.** `server/package.json` declares exactly two scripts, `build`
+#     and `dev`; no JS test framework is installed anywhere in `server/`. A JS *test* lane would
+#     have nothing to run and would be decoration. A `npm ci && npm run build` lane WOULD be
+#     meaningful — but `server/package-lock.json` does not exist and `npm ci` requires one, and
+#     minting a lockfile is a dependency-pinning decision on its own, not a side effect of adding
+#     a test lane. That half of the card stays open.
+#
+#   * **PHP other than the floor.** Pinned to 8.3: `server/composer.json` requires `^8.3` and
+#     `bin/deploy.sh`'s `MEZZ_FPM_SERVICE` defaults to `php8.3-fpm`, so this is the version the
+#     app is actually deployed onto. A green here does NOT certify 8.4 or 8.5, which `deploy.sh`
+#     A6 also admits. Widening means a matrix, and a matrix multiplies the check CONTEXT
+#     (`php-tests (8.3)`, `php-tests (8.4)`, …) — which is a required-check-list question, not a
+#     free change. One version, one context, on purpose.
+#
+#   * **MySQL.** The suite runs on in-memory SQLite (`server/phpunit.xml`, per
+#     `docs/design/FLEET-STATE.md § 6.2`) because that is what a runner can run without
+#     provisioning. § 6.1's MySQL posture — version floor, TLS, session time zone — is verified at
+#     provisioning and this lane says nothing about it.
+#
+#   * **The front-end build.** The suite passes with no `node_modules` and no `public/build`
+#     (measured on this tree), so there is no `npm` step here. If a test ever renders a `@vite`
+#     directive it will fail on the missing manifest — which is this lane asking for a build step,
+#     not a flake.
+#
+#   * **Coverage.** `coverage: none` — no xdebug/pcov is installed. Nothing in this repo consumes
+#     a coverage number, and installing a coverage driver to produce one nobody reads costs every
+#     run.
+
+name: PHP tests
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  # The job id is the status-check CONTEXT a ruleset matches — never the workflow's display
+  # name. Keep it stable: renaming it silently un-requires the check wherever it is required.
+  php-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # `pdo_sqlite` AND `sqlite3` are both load-bearing and neither is optional: the suite's
+      # connection is SQLite (phpunit.xml) and it does not start without them.
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3
+          coverage: none
+          tools: composer:v2
+
+      # Ask composer where its cache lives rather than hardcoding `~/.composer/cache`: the path
+      # moved once already (XDG), and a cache step pointed at the wrong directory does not fail —
+      # it silently caches nothing and reports a hit rate of zero that nobody looks at.
+      - name: Locate composer's download cache
+        id: composer-cache
+        working-directory: server
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      # Keyed on the LOCK, not on composer.json: the lock is what `composer install` reads, so a
+      # composer.json edit that does not move the lock must not invalidate the cache. The PHP
+      # version is in the key because dist archives are resolved per platform.
+      - name: Restore composer's download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('server/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php8.3-
+
+      # No `--no-dev`: phpunit, collision, mockery and faker are all require-dev, and they are
+      # the suite. `composer install` (never `update`) so the lock is the authority — a lane that
+      # resolved fresh dependencies would be testing a tree nobody has.
+      #
+      # This runs BEFORE `.env` exists, which is the order `server/composer.json`'s own `setup`
+      # script uses. The `post-autoload-dump` hook (`artisan package:discover`) boots the
+      # framework, and it does so happily with no `.env` — verified on this tree rather than
+      # assumed.
+      - name: Install dependencies
+        working-directory: server
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # `.env.example` is the committed template and is the only one of the pair in git; nothing
+      # in `composer install` creates `.env` for an existing checkout.
+      - name: Create .env
+        working-directory: server
+        run: cp .env.example .env
+
+      # ⛔ ASSERTED, NOT EXPORTED — the difference is the whole point.
+      #
+      # `server/phpunit.xml` leaves `DB_CONNECTION` deliberately UNFORCED (its own comment says
+      # why: forcing it is the shape that turned another repo's MySQL matrix into a SQLite run
+      # reporting green), and `docs/design/FLEET-STATE.md § 6.2`'s argument rests on the fact that
+      # nothing in this repo's CI selects a backend by exporting one. An `export
+      # DB_CONNECTION=sqlite` here would falsify that sentence for the sake of a value the
+      # template already carries.
+      #
+      # So this lane reads the backend it is about to run on and REDS if it is not what this
+      # header claims. Flip `.env.example` to mysql and this step fails by name, instead of the
+      # suite silently running somewhere else — or, worse, appearing to.
+      - name: Assert the backend this lane claims to run on
+        working-directory: server
+        run: grep -qx 'DB_CONNECTION=sqlite' .env || { echo "::error::server/.env.example no longer sets DB_CONNECTION=sqlite — this lane, and this workflow's header, describe a SQLite run. Fix one or the other."; grep -n '^DB_CONNECTION=' .env; exit 1; }
+
+      # `.env.example` ships `APP_KEY=` empty on purpose (it is a template and may never carry a
+      # real value), and the encrypter throws without one.
+      - name: Generate an application key
+        working-directory: server
+        run: php artisan key:generate
+
+      # The repo's own entry point, not a hand-rolled phpunit invocation. `config:clear` is the
+      # first half of that script and it is not ceremony: a stale `bootstrap/cache/config.php`
+      # outranks every `<env>` in phpunit.xml, which is how a suite ends up asserting against a
+      # configuration nobody can see.
+      - name: Run the test suite
+        working-directory: server
+        run: composer test

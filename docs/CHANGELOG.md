@@ -19,6 +19,52 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7344** — **the PHP half: CI now actually runs `server/`'s test suite.** Until
+  `.github/workflows/php-tests.yml` landed, **no workflow in this repo executed a line of PHP** —
+  the suite under `server/tests/` ran only when somebody remembered to run it, so every
+  `php artisan test` figure in a PR body here was self-attested and unreproducible. ⚠ **The cost
+  was already realised, not predicted:** `Tests\Feature\Feed\SeatObjectMatchesTheDocumentTest`
+  sat RED on `dev` for days (D2 § 8.2.1 declared `blocked_since`, `App\Read\SeatObject` did not
+  carry it — see the card#8075 entry below), and it was found because one agent happened to run
+  the suite by hand. The guard existed, had merged, and was failing the whole time. A guard
+  nothing runs is not a guard.
+  ⛤ **The lane runs the repo's own entry point, `composer test`** (`artisan config:clear` then
+  `artisan test`), rather than a hand-rolled phpunit command line: `server/composer.json` already
+  owns what "run the tests" means here and a second spelling in CI is a second thing to keep in
+  step with it. PHP is pinned to **8.3** — composer.json's `^8.3` floor and `bin/deploy.sh`'s
+  `php8.3-fpm` default, i.e. the version the app is deployed onto — with `pdo_sqlite`/`sqlite3`,
+  composer's download cache keyed on `composer.lock`, and every action pinned to an exact commit.
+  ⛔ **No `paths:` filter, and here that is measured rather than inherited.** The house argument
+  applies (a filtered workflow produces NO RUN, which as a required check reads *pending*, never
+  *passed*), but this suite has a concrete second reason: **it reads outside `server/`** —
+  `SeatObjectMatchesTheDocumentTest` opens `base_path('../docs/design/FLEET-STATE.md')` and
+  compares § 8.2.1's field table to the wire object, so a `server/**` filter would be dark on a
+  docs-only PR editing that table, which is one of the two ways the card#8075 gap could have been
+  minted.
+  ⛤ **The backend is ASSERTED, not exported.** `server/phpunit.xml` leaves `DB_CONNECTION`
+  deliberately unforced and `docs/design/FLEET-STATE.md § 6.2`'s argument rests on nothing in this
+  repo's CI selecting a backend by exporting one; an `export DB_CONNECTION=sqlite` would have
+  falsified that sentence for a value the committed template already carries. So the lane greps
+  its `.env` and reds by name if `.env.example` is ever flipped, instead of silently running
+  somewhere else. **Seen to fail before being trusted**, both arms: the suite red on a planted
+  removal of `blocked_since` from `App\Read\SeatObject::build()` (naming
+  `SeatObjectMatchesTheDocumentTest`, *"§ 8.2.1 declares fields the seat object does not carry"* →
+  `['blocked_since']`), green again on restore; and the backend assertion red on a `.env` flipped
+  to mysql, green on the template's own value.
+  ⚠ **THIS CHANGE DOES NOT MAKE THE CHECK REQUIRED, AND THAT IS DELIBERATE, NOT AN OVERSIGHT.**
+  Requiring a context is a repository-settings act reserved to the operator, so it is raised
+  separately — `docs/PLAN.md § 4`'s row for this card asks for the required-check list to move in
+  the same PR, and this is the half of that row that is knowingly left open rather than done
+  quietly. `docs/VERSIONING.md § Branch model` is the one home of that list; **re-measured live on
+  2026-09-09 while adding this workflow, as that section instructs — both rulesets still require
+  exactly the five contexts it records, `updated_at` unmoved, so no copy needed updating.**
+  ⚠ **The JS half of the card stays open, and the reason is measured, not assumed.**
+  `server/package.json` declares exactly two scripts, `build` and `dev`; no JS test framework is
+  installed anywhere under `server/`, so a JS *test* lane would have nothing to run. A
+  `npm ci && npm run build` lane WOULD be meaningful — but `server/package-lock.json` does not
+  exist (and is not gitignored; it was simply never committed) and `npm ci` requires one. Minting
+  a lockfile is a dependency-pinning decision of its own, not a side effect of adding a test lane.
+
 ## [0.3.0] — 2026-09-09
 
 - **card#8075** — **the CODE half: `blocked_since` was a published member no server ever
