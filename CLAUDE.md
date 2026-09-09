@@ -115,25 +115,35 @@ cut, loudly, with a `sed` range that recovers the rest. An index that points at 
 this doc costs a session almost nothing; the section itself, in here, costs it every turn.
 
 <!-- BEGIN coord:install-rules -->
-**Merge authority (operator, 2026-09-09).** All work targets `dev`. A PR to `main` is opened only
-when the operator instructs it, and **only the operator merges to `main`** — never this seat,
-whatever `permissions.admin` the shared `PupFuzz` identity reports. Merging to `dev` is this seat's
-own call.
+**Merge authority (operator, 2026-09-09).** All work targets `dev`. Three distinct rungs:
+- **Merge to `dev` — this seat's own call, NO ask**, once the PR passes quality check
+  (`solo-self-merge <N>`). Do not request permission per merge; stalling on a green, reviewed,
+  integration-targeted PR is the defect, not the merge.
+- **CREATING a PR to `main` — ASK FIRST.** The gate is on opening it, not only on merging it.
+- **Merging to `main` — OPERATOR ONLY.** Never this seat, whatever `permissions.admin` the shared
+  `PupFuzz` identity reports on this repo.
 
 **Roles (operator, 2026-09-09).** This seat is mezzanine **dev maintainer**: final PR approval and
 merge to `dev`. `aimla-pm` works cards and submits PRs here for this seat to rule on; it holds and
 will not exercise merge authority on this repo. Upstream owners for bug reports: `sola-pm` =
 agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge + agent-board-toolkit.
 
-**Sprint is adopted** (lanes `now`/`next`/`blocked`, board 14). `sprint-burndown.py` needs
-`COORD_KANBAN_READ` exported — the `coord` package is not installed on this seat.
+**The burn-down MECHANISM is adopted; NO SPRINT IS DEFINED YET (operator, 2026-09-09).** The
+current lanes `now`/`next`/`blocked` mirror board-14 COLUMNS (`in_review` / `prioritized` /
+`blocked_gated`) — that is a view of the whole board, not a sprint, and it is scaffolding until a
+sprint exists. **Once a sprint is defined, its committed set is what the page shows**: swap each
+lane's `members` from `filter.column` to the sprint-shaped primitives — `tag` (cards tagged into the
+sprint; `tag_prefix` is `lane:`, and the `now` lane already carries `tag: true`) or `gate_card`
+(everything blocking a release). Do not describe the present page as "the sprint".
+`sprint-burndown.py` needs `COORD_KANBAN_READ` exported — the `coord` package is not installed here.
 
 **On request, REGENERATE the burn-down — never read back the committed page (operator, 2026-09-09).**
 "show me the sprint burn-down" and **"the race-to-release HTML file"** are the SAME ask and both mean
 run it fresh: `sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html
 --write-config`. The page is a render of one live board read, so a stale copy is the exact drift
 adopting the tool removed; `cat`-ing the file answers about when it was last generated, not about the
-sprint. Commit the regenerated page when it changed.
+sprint. ⚠ Every run rewrites the `Derived at` timestamp, so the file is ALWAYS dirty after one:
+commit only when the **state digest** (tool output + page footer) changed — a timestamp-only diff is churn.
 <!-- END coord:install-rules -->
 
 ## Your work loop
