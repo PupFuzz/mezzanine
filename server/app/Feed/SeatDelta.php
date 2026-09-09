@@ -69,11 +69,11 @@ final class SeatDelta implements ShouldBroadcastNow, ShouldDispatchAfterCommit
      * because the fingerprint's job is to compare and the object's is to render. Something has to
      * say which fingerprint member moves which wire member, and this is it.
      *
-     * `SeatDeltaMapCoversTheFingerprintTest` asserts this array's key set is EXACTLY
-     * `SeatFacts::versionBearing()`'s, so a fingerprint member added by a later card cannot
-     * silently stop reaching the wire — which is the one way this map can be wrong and no test
-     * notice: a seat's state would change, `state_version` would bump, a delta would be emitted,
-     * and it would not carry the thing that changed.
+     * `SeatObjectMatchesTheDocumentTest::test_the_delta_map_covers_every_version_bearing_member`
+     * asserts this array's key set is EXACTLY `SeatFacts::versionBearing()`'s, so a fingerprint
+     * member added by a later card cannot silently stop reaching the wire — which is the one way
+     * this map can be wrong and no test notice: a seat's state would change, `state_version` would
+     * bump, a delta would be emitted, and it would not carry the thing that changed.
      *
      * § 8.3.1's shallow-merge rule is what makes the many-to-one entries correct: "a nested
      * object is replaced WHOLE, never deep-merged" — so a patch that touches
@@ -88,6 +88,7 @@ final class SeatDelta implements ShouldBroadcastNow, ShouldDispatchAfterCommit
         'activity_state' => 'activity_state',
         'unknown_reason' => 'unknown_reason',
         'api_error_type' => 'api_error_type',
+        'blocked_since' => 'blocked_since',
         'action' => 'action',
         'open_calls' => 'open_calls',
         'open_turn' => 'open_turn',

@@ -190,6 +190,7 @@ final class SeatFacts
         $action = self::action($s);
         $session = self::session($s);
         $apiErrorType = self::apiErrorType($seatRef, (string) $s->activity_state);
+        $blockedSince = self::blockedSince($s);
         $subagents = self::openSubagents($seatRef);
 
         return [
@@ -198,6 +199,10 @@ final class SeatFacts
             'activity_state' => $s->activity_state,
             'unknown_reason' => $s->unknown_reason,
             'api_error_type' => $apiErrorType,
+            // § 8.2.1's `blocked_since` is VERSION-BEARING — it is not one of the ten, and § 6.5's
+            // subtraction is what decides that, not this list. So the hand going up and the hand
+            // coming down are both delivered, on the delta `activity_state` already emits.
+            'blocked_since' => $blockedSince,
             'action' => $action === null ? null : (array) $action,
             'open_calls' => (int) $s->open_calls,
             'open_turn' => (bool) $s->open_turn,
@@ -237,10 +242,10 @@ final class SeatFacts
         ];
     }
 
-    // ── the four reads the FINGERPRINT above and § 8.2.1's WIRE OBJECT both need ──────────────
+    // ── the reads the FINGERPRINT above and § 8.2.1's WIRE OBJECT both need ───────────────────
     //
     // ⚠ EXTRACTED AT THE SECOND CALLER, NOT THE Nth. `App\Read\SeatObject` (card #7827) serializes
-    // the same four facts onto the wire. Two copies of "which session's `api_error_type` counts",
+    // the same facts onto the wire. Two copies of "which session's `api_error_type` counts",
     // or of "which call is the action", are two copies free to disagree — and a fingerprint that
     // disagreed with the object it is the fingerprint OF would emit deltas for changes the wire
     // does not carry, or withhold them for changes it does. One home each, here.
@@ -278,6 +283,36 @@ final class SeatFacts
             ->whereNull('ended_at')
             ->orderByDesc('stalled_since')
             ->value('api_error_type');
+    }
+
+    /**
+     * § 8.2.1's `blocked_since` — the open attention request's `opened_at`, the SEAT clock, and
+     * non-null ONLY when the seat is `blocked`.
+     *
+     * ⚠ THE GATE IS THE FIELD'S CONTENT, SO IT IS ENFORCED HERE RATHER THAN ASSUMED OF THE WRITER.
+     * § 8.2.1 declares the member non-null only when `activity_state == "blocked"`, and
+     * § 4.4 makes that exactly the condition *a request is open*. Those agree while one pass writes
+     * both columns — which is what `StateRecompute` does — and a `blocked_since` read off
+     * `open_attention_ref` alone would be a claim about a WAIT that outlives any pass ordering the
+     * two apart. A stale one is not a cosmetic error: § 8.2.1 promoted this member precisely
+     * because nothing else on the object dates the wait, so a desk has nothing to contradict it.
+     * `apiErrorType()` above gates on its own state for the same reason and this is not a second
+     * decision.
+     *
+     * ⚠ RAW, NOT WIRE-FORMATTED, like every other read here: the caller wraps with `Clock::wire()`
+     * and the FINGERPRINT compares the stored value.
+     *
+     * @param  object  $state  a `seat_state` row
+     */
+    public static function blockedSince(object $state): ?string
+    {
+        if ($state->activity_state !== 'blocked') {
+            return null;
+        }
+
+        return DB::table('attention_requests')
+            ->where('id', $state->open_attention_ref)
+            ->value('opened_at');
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Feed\FeedHeartbeat;
 use App\Feed\FleetHealthMessage;
 use App\Feed\FleetReload;
 use App\Feed\SeatDelta;
+use App\Fold\Clock;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
 use Illuminate\Support\Facades\DB;
@@ -372,6 +373,76 @@ class FeedSurfaceTest extends FeedTestCase
         // not about a fixture that never disabled anything.
         $this->assertSame(0, (int) $this->state()->enabled);
         $this->assertFalse($this->asMachine($token, $seatPath)->assertOk()->json('enabled'));
+    }
+
+    /**
+     * § 8.2.1's `blocked_since` — the hand going up and coming down, with the VALUE asserted.
+     *
+     * ⛔ WHAT THE DRIFT GUARD CANNOT SEE. `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's
+     * field list from the document and asserts the object carries every NAME in it — so a
+     * `blocked_since` hard-wired to `null` passes it, and so would one reading the wrong column.
+     * What § 8.2.1 declares is a VALUE: the open `attention.request`'s own `event_time`, stored as
+     * `attention_requests.opened_at`, reached through `seat_state.open_attention_ref`. A member
+     * that is always null draws a `blocked` desk with no *waiting since* line at all (D3 § 5.6),
+     * which is the exact defect the promotion exists to close — the guard would stay green
+     * through it. Both legs are asserted here: the value against the request the fixture actually
+     * raised, and the null against the state § 8.2.1 gates it on.
+     *
+     * ⚠ AND THE DELTA, ON BOTH EDGES. § 6.5 makes the member version-bearing so that entering and
+     * leaving `blocked` ride the delta `activity_state` already emits. A client given the hand
+     * going up and not coming down renders a resolved wait forever — on a quiet desk, until
+     * something unrelated moves the member — so the resolution arm is not a repeat of the first.
+     */
+    public function test_blocked_since_dates_the_open_hand_and_rides_the_delta_both_ways(): void
+    {
+        $events = $this->blockedPair();
+        $token = $this->readToken();
+        $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
+
+        // ── THE HAND GOES UP: the request alone, so `blocked` is a FOLDED state ──────────────
+        $mark = count($this->wire->sent);
+
+        $this->deliver(array_slice($events, 0, 3));
+        $this->fold();
+
+        $this->assertSame('blocked', $this->state()->activity_state,
+            'the fixture did not reach `blocked` — every assertion below would be vacuous');
+
+        $opened = DB::table('attention_requests')
+            ->where('seat_ref', $this->seatRef)->value('opened_at');
+
+        $seat = $this->asMachine($token, $seatPath)->assertOk()->json();
+
+        $this->assertSame($events[2]['event_time'], $seat['blocked_since'],
+            '§ 8.2.1: `blocked_since` is the open `attention.request`\'s own `event_time`');
+        $this->assertSame(Clock::wire($opened), $seat['blocked_since'],
+            '§ 8.2.1: …reached through `open_attention_ref`, not re-derived from anything else');
+
+        $up = array_values(array_filter(
+            $this->wire->ofTypeFrom('seat.delta', $mark),
+            fn ($d) => in_array('blocked_since', $d['payload']['changed'], true),
+        ));
+
+        $this->assertCount(1, $up, 'entering `blocked` emitted no delta carrying `blocked_since`');
+        $this->assertSame($events[2]['event_time'], $up[0]['payload']['patch']->blocked_since);
+
+        // ── AND COMES DOWN: the resolution clears the state, so the member must clear WITH it ─
+        $mark = count($this->wire->sent);
+
+        $this->deliver(array_slice($events, 3));
+        $this->fold();
+
+        $this->assertNotSame('blocked', $this->state()->activity_state);
+        $this->assertNull($this->asMachine($token, $seatPath)->assertOk()->json('blocked_since'),
+            '§ 8.2.1: non-null ONLY when `activity_state == "blocked"`');
+
+        $down = array_values(array_filter(
+            $this->wire->ofTypeFrom('seat.delta', $mark),
+            fn ($d) => in_array('blocked_since', $d['payload']['changed'], true),
+        ));
+
+        $this->assertCount(1, $down, 'the resolution emitted no delta carrying `blocked_since`');
+        $this->assertNull($down[0]['payload']['patch']->blocked_since);
     }
 
     /**
