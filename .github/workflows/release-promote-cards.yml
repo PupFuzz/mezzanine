@@ -10,9 +10,9 @@
 # `.release-pr.json`; the API base and the host pin come from repo VARIABLES; the credential
 # comes from a repo SECRET. Nothing about the board is spelled in this file.
 #
-# WHY THE TOKEN MOVER AND NOT THE TOOLKIT'S GENERIC ONE. Owned by `bin/promote-cards-by-token`'s
-# own header (§ WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE) and by docs/KANBAN.md —
-# read it there. It is deliberately NOT restated here: the summary that used to sit on these
+# WHY THE TOKEN MOVER AND NOT THE TOOLKIT'S GENERIC ONE. Owned in ONE place, and only one:
+# `bin/promote-cards-by-token`'s own header, § WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE.
+# Read it there. It is deliberately NOT restated here: the summary that used to sit on these
 # lines had drifted into a false claim — that board 14's cards carry no `pr_number` stamp,
 # when they do — which is precisely how a restatement fails.
 #

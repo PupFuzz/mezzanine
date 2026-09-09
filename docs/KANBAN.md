@@ -205,6 +205,11 @@ GitHub ground truth. Nothing in this repo can detect the loss.
 - **No scheduled GitHub↔board reconciliation.** There is no polling sync for this repo; the
   chain is PR-time (bridge) plus release-time (this repo's workflow).
 - **No DL numbers.** This repo mints none, and nothing here reads a `DL-` token. Board 14 is
-  card-first; the `card#<id>` token is the only correlation key.
+  card-first, and `card#<id>` is the only correlation key **anything in this repo reads** — not
+  the only one its cards carry: they also carry `payload.pr_number`. Re-derive both populations
+  with `kbcard --board mezzanine list` (print the stderr denominator: `--swimlane 14` matches
+  nothing, because 14 is the BOARD id); `DL-` is genuinely zero, `pr_number` is not. Whether a
+  released range should be correlated on that key instead is an OPEN choice — `card#9146` holds
+  the live disposition and `bin/promote-cards-by-token`'s header carries the measurements.
 - **No board-side card creation from CI.** Cards are created by humans and agents on the
   board; CI only moves them.
