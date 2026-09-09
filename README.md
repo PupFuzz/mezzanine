@@ -46,7 +46,8 @@ resources/characters/       the procedural character generator + LINEAGE.md ← 
 resources/floor/            the CC0 tileset + Tiled map (card #7341)
 fleet-reporter/             cross-platform hook bundle + installer
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
-bin/, tools/                kanban + design-doc automation, CI gates, harnesses ← exists
+bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
+                            automation, CI gates, harnesses          ← exists
 ```
 
 The application lives under `server/` and not at the repo root, which already holds this

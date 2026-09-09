@@ -19,6 +19,59 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7459** — **the repo had no production deploy path at all.** `docs/PLAN.md § 5` + D-13 say
+  prod moves only via `bin/deploy.sh` and that "hand-deploys to prod are not a path"; the file did
+  not exist, so every prod change would have been a hand-deploy by construction. **`bin/deploy.sh`**
+  is that path: a precondition phase that refuses before touching anything, then a maintenance
+  window that takes the app down, checks out the target commit, **re-execs the deployed release's
+  own copy of itself** (so the new code is deployed by ITS procedure, not by the previous
+  release's), installs dependencies, migrates **forward-only**, rebuilds the caches in the order
+  that matters, restarts the long-lived daemons, brings the app up and smoke-checks `/up`.
+  ⚑ **The kanban-board sample this was to be adopted from is NOT reachable from this seat** —
+  `share/issue-347/kanban-solo/kanban-board-deploy.sh @ ee7df9b9` is on no path here and
+  `PupFuzz/agent-roundtable` answers 404 to this credential — so **no line was copied** and the
+  script's header says so rather than implying a provenance it does not have. What was adopted is
+  rt#347's enumeration of the sample's load-bearing properties, each implemented with its reasoning
+  stated at the step it governs. ⭐ **One deliberate divergence, ruled binding by rt#347 item 1**:
+  the daemons are restarted **inside** the window. The sample's host runs a shared host-scoped
+  daemon serving several tenants and is silent about restarting it; this host is single-tenant, so
+  `mezzanine:fold`, `mezzanine:sweep`, `mezzanine:feed-heartbeat` and — once card#7339 makes it the
+  broadcaster — Reverb all hold *this* app's code in memory, and copying that silence would leave
+  every deploy serving stale broadcast code with the sockets still up and the floor still
+  rendering. Reverb's membership in the restart set is **derived from `BROADCAST_CONNECTION`, never
+  asserted**, so it becomes mandatory the moment #7339 flips it; a Reverb unit named while the app
+  does not broadcast through Reverb is **refused** rather than silently never restarted. A unit
+  that restarts and then dies is an in-window failure too — `systemctl restart` returns when a unit
+  *started*, which is why the state is re-read after a settle. ⛔ **Down and stay down**: any
+  failure after the window opens leaves the app down, leaves a marker on disk and rolls nothing
+  back — a failed MySQL migration is half-applied and `down()` would be a second guess at a state
+  nobody has read yet. A **bare re-run then REFUSES** until an operator clears the marker, because
+  "run it again" is the reflex that erases the evidence. The exit codes are distinct on purpose
+  (0 deployed · 1 refused and untouched · 2 broke in-window and is down · 3 up but unverified).
+  ⭐ **Every refusal was seen to fail before it was trusted** — the card's whole acceptance.
+  `bin/deploy.selftest.sh` is hermetic and network-free (real git fixtures, the real script, the
+  real re-exec; php/composer/npm/systemctl/curl/id stubbed on PATH), prints its own assertion count
+  rather than pinning one here, and pairs every red with a **single-variable control that passes**:
+  the same migration with and without its `ALGORITHM=` comment, the same run with and without a
+  failing `migrate` — asserting `artisan up` IS called in one and NEVER in the other. It also pins
+  the cache order as an ordering assertion (`optimize:clear` → `migrate` → `config:cache` → … →
+  daemons → `up`) instead of leaving it to a reader, and asserts no `APP_KEY` or `DB_PASSWORD`
+  value reaches the transcript. The suite was **mutation-tested**: four single-variable defects
+  planted in the script (marker guard removed, post-restart `is-active` weakened, `optimize:clear`
+  moved after `migrate`, the § 6.9 pattern widened) each turned it red, and it caught a real one —
+  a config-drift check placed before the ref was resolved, which under `set -u` was a check that
+  could not fail. ⚑ **Two deployment obligations that were prose became gates**:
+  `docs/design/FLEET-STATE.md § 6.9` rule 1 says a migration on `events` states its algorithm
+  *"and the deploy checks it"* — this is that check, read out of the target tree before the window
+  opens — and `docs/PLAN.md § 5`'s `CACHE_STORE` rule, where `array`/`null` reintroduces the login
+  path's user-enumeration oracle, is now a refusal rather than a paragraph. ⚠ **The live-host leg is
+  entirely unexercised and cannot be**: the prod host does not exist (D-08). Nothing here has run
+  against systemd, sudo, MySQL, PHP-FPM or a real `/up`, and rt#347 item 5 — the review with
+  kanban-solo against the actual sample — is still owed. ⚠ **`server/package-lock.json` does not
+  exist, so the script refuses today**: `package.json` floats (vite ^8, tailwind ^4) and a
+  lockfile-less prod build can ship different JavaScript from the same commit on two different
+  days. Committing it is a prerequisite of the first real deploy, not of this PR.
+
 - **card#7684** — **The reporter mapped `PostToolUseFailure` by `is_interrupt` alone while D1
   § 6.6, amended by card#7337, required a two-signal kill signature** — so the code contradicted the
   spec on the one hook the whole kill-vs-complete contract turns on. `is_interrupt` is MEASURED
