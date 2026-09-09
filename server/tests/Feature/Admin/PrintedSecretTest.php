@@ -27,7 +27,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * so a generated password containing `\<` or `\>` LOSES ITS BACKSLASH on the way to the terminal
  * while the account is created with the unmangled value. Measured at ~0.6% of draws. On
  * `mezzanine:user:create --generate`, which `README.md` calls the only way back from a locked-out
- * install, in an application with no mailer, no password reset and no registration page, that is a
+ * install, in an application with no password reset and no registration page, that is a
  * command that prints one credential and stores another.
  *
  * ⚠ AND IT REPORTED ITSELF AS A FLAKY TEST FOR A WHOLE ROUND.

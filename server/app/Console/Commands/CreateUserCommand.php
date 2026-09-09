@@ -25,7 +25,9 @@ use Illuminate\Support\Str;
  * ⛔ IT IS ALSO D4's ESCAPE HATCH, WHICH IS WHY IT MUST NEVER GROW A PRECONDITION IT CANNOT MEET
  * ON AN EMPTY TABLE. `App\Admin\UserRetirement` refuses to retire the last account that can sign
  * in, precisely because an install with no active account cannot be administered by anybody: there
- * is no self-service registration, no mailer and therefore no password reset. If an install
+ * is no self-service registration and no PASSWORD reset — `config/fortify.php` omits
+ * `Features::resetPasswords()`, and card#9077's emailed reset clears a SECOND FACTOR, never a
+ * password. If an install
  * reaches that state anyway — every account retired by some path this card did not foresee, or a
  * forgotten password on the only account — this command is the recovery, and `README.md` documents
  * it as such. Anything added here that needs an existing user, a session, or a configured mailer

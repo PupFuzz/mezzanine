@@ -10,6 +10,11 @@
     {{-- The console is reachable from here rather than by knowing its URL (card#9070). --}}
     <p><a href="{{ route('admin.index') }}">Admin console</a></p>
 
+    {{-- And the recovery codes from here, for the same reason (card#9077): a page nobody can find
+         is the same defect as a page that does not exist, which is how the codes came to be stored,
+         accepted at the challenge, and never once displayed. --}}
+    <p><a href="{{ route('two-factor.codes') }}">Two-factor recovery codes</a></p>
+
     <form method="POST" action="{{ route('logout') }}">
         @csrf
         <button type="submit">Sign out</button>

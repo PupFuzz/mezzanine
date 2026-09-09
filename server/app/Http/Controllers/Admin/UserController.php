@@ -113,8 +113,9 @@ class UserController extends Controller
         $this->canonicaliseEmailInput($request);
 
         // ⚠ THE PASSWORD IS `nullable` ON EDIT AND REQUIRED ON CREATE, and the difference is not
-        // cosmetic: this application has no mailer and therefore no password-reset flow
-        // (`config/fortify.php` states why), so an operator setting a colleague's password here is
+        // cosmetic: this application has no password-reset flow (`config/fortify.php` omits
+        // `Features::resetPasswords()` and states why; card#9077's emailed reset clears a SECOND
+        // FACTOR, never a password), so an operator setting a colleague's password here is
         // the ONLY recovery path for a forgotten one. Leaving the field empty must mean "leave it
         // alone" rather than "set it to nothing".
         $validated = $request->validate(

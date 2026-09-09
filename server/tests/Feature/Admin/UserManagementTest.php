@@ -132,7 +132,7 @@ class UserManagementTest extends TestCase
 
     /**
      * ⛔ A RESET THAT ONLY WRITES THE HASH DOES NOT RECOVER FROM THE COMPROMISE IT EXISTS FOR —
-     * card#9070's third review round. There is no mailer and no self-service reset, so this console
+     * card#9070's third review round. There is no self-service PASSWORD reset, so this console
      * is the product's ONLY recovery path, and a stolen session cookie or remember-me cookie
      * survived the act performed to take it away.
      *

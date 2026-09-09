@@ -24,7 +24,8 @@ final class PasswordPolicy
      *
      * The lower bound is 12 rather than the framework default of 8: every account here is an
      * operator account behind a public login page (`docs/PLAN.md` D-03), and there is no
-     * self-service reset path to recover from a compromised one. Composition rules
+     * self-service PASSWORD-reset path to recover from a compromised one (card#9077's emailed
+     * reset removes a second factor, not a password). Composition rules
      * (`->mixedCase()`, `->symbols()`) are deliberately absent — they lower entropy in practice
      * by steering everyone to the same shapes, and length is the term that matters.
      *

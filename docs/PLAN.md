@@ -316,6 +316,21 @@ rule violations anyone could have committed at the time.
   and by `::test_the_dummy_hash_survives_the_request_that_minted_it` — the second is the arm that
   reds when the value stops outliving a request, which is exactly what a non-persistent store does
   to it.
+- **A deployed host that wants the two-factor reset sets `MAIL_MAILER` to a real transport and
+  PROVES it, and a host that does not sets nothing and the path stays closed** (card#9077). The
+  operator ruled that a locked-out user may reset their second factor by email; the code path is
+  built and `App\Auth\TwoFactorReset::isAvailable()` REFUSES to mint a code when the resolved
+  mailer's transport is `log` or `array`. That refusal is not conservatism about delivery: under
+  `log`, `Illuminate\Mail\Transport\LogTransport` writes the whole rendered message — the reset code
+  included — into `storage/logs/`, so a host on the default configuration would be minting live
+  credentials into a log file. ⛔ **Configured is not working**, and the difference is what gets
+  discovered at 3am: `php artisan mezzanine:mail:preflight --to=…` is the command that exercises the
+  boundary, and standing a host up should include running it. ⚠ **The security consequence is
+  stated rather than buried:** an emailed reset downgrades two-factor authentication to mailbox
+  possession for the second factor — anyone who controls the account's mailbox can strip it (they
+  still need the password to sign in). That is inherent to the mechanism and was accepted
+  knowingly; it is why the destination is read from the user row and is never a request parameter,
+  and it is why an install that does not want the property simply leaves `MAIL_MAILER` alone.
 - Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
