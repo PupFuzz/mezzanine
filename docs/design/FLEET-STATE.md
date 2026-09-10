@@ -100,6 +100,7 @@ contract every consumer reads.
 | The store: deployment posture, database names, DDL, the fold, retention, sizing, migrations | [§ 6](#6-the-store) |
 | Where D1 § 12.7's server-side counters live and how they are exposed, plus this plane's own counters | [§ 7](#7-counters) |
 | The feed: REST snapshot, WebSocket deltas, snapshot-then-deltas, gaps, reconnect, backpressure | [§ 8](#8-the-feed-contract) |
+| The coordination read surface: which of [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer)'s coordination facts reach a reader, on which message, and what a consumer may conclude from them | [§ 8.3.3](#833-the-coordination-objects) |
 | Read-side authentication and rate limits | [§ 9](#9-read-side-authentication) |
 
 ### 1.2 Non-goals — stated so an implementer cannot widen scope in good faith
@@ -108,7 +109,7 @@ contract every consumer reads.
 |---|---|
 | **The wire schema, ingest auth, validation, error bodies, rate limits, the atomic-batch rule** | [D1](EVENT-SCHEMA.md). This document consumes an accepted batch; it does not re-specify how a batch becomes accepted. Card #7338 builds the ingest from D1; card #7339 builds everything here. |
 | **Anything rendered** — desks, floors, sprites, animation, the identity→desk mapping | D3 (`docs/design/FLOOR.md`). This document ends at a JSON object and a state name. Where D1 or this document says "renders", it is naming the **obligation** D3 inherits, not the pixels. |
-| **Ingest of GitHub webhook and kanban board events** | Not designed anywhere yet. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and declares the producers' design an open question with a named cost, rather than inventing them. |
+| **Ingest of kanban board events, and the coordination receipt route itself** | ⚠ **Half of this row went stale when D1 § 18 landed and it is repaired rather than reworded.** The **kanban poller** is designed nowhere yet. The **GitHub coordination receipt is designed** — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns its endpoint, authentication, validation order and every derived fact — and what this document adds is the read surface those facts reach a reader on ([§ 8.3.3](#833-the-coordination-objects)), never a second derivation of them. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and carries what is still open about the board producer with its cost, rather than inventing it. |
 | **The autonomy watchdog** | Roundtable #341, a separate track. Mezzanine's contribution is the REST snapshot ([`docs/PLAN.md § 3`](../PLAN.md#3-work-breakdown)), and this document specifies it as a first-class consumer. |
 | **MFA and the browser session** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states *which* surfaces MFA gates and what a failed gate returns; it does not specify the second factor. |
 | **Alerting, paging, e-mail** | There is no notifier here. Every degraded condition surfaces as a counter, a badge and a rendered state. A fleet that wants a pager reads the REST snapshot. |
@@ -879,6 +880,7 @@ discriminable on the wire; this section is D2 not throwing it away.
 | a `compaction.start` / `compaction.end` | an activity **state** — neither `working` nor a state of its own | `compaction.start` refreshes `last_activity_*` (it **is** activity, [§ 3.2](#32-the-activity-event-set)) and sets `sessions.compaction_open_since`; `compaction.end` clears it. [§ 4.3](#43-the-derivation-function) reads no compaction fact, so a seat compacting between turns derives from `L` — `idle` after a clean turn. **That is the decision, and it is deliberate**: a compaction is the harness reclaiming context, not the agent doing work, and rendering `working` for it would put a busy desk on the floor for a seat whose agent is idle. The fact is still bounded ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and still visible in the drill-down, which is where "why is this seat quiet for 40 s" is answered |
 | a server-side orphan close, a ceiling expiry, or offline quiescence | a **wire event** | ledger writes only. [D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state): "no wire event is synthesized, because the wire is what a seat said and the server must not put words in a seat's mouth". `events` therefore contains only what seats sent, which is what makes [§ 6.6](#66-rebuild-from-the-log)'s replay meaningful. |
 | a `tool.end` whose `match` is `lifo_tool_name` | a different open/closed **count** | the mis-match can swap two concurrent same-tool calls' ids and durations and nothing else ([D1 § 8.2](EVENT-SCHEMA.md#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)); `match` is stored and rendered in the drill-down so an approximate attribution is legible as one |
+| a **coordination fact** — any member of either object [§ 8.3.3](#833-the-coordination-objects) declares | any activity or link state, any badge, any `render_state`, any `task` value | nothing at all on the seat plane. These objects are not seat-scoped, no seat's `state_version` moves for one, and no `seat.delta` is emitted. ⚠ **This row is the one input to this table that is not a reporter-wire pattern**, and it is a rule this document ADDS for the second producer rather than one it reads out of D1: [D1 § 18.1](EVENT-SCHEMA.md#181-two-corrections-this-section-carries-and-the-boundary-it-keeps) states that its section *"adds no column"* to this model, and [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C gives the reason a coordination post must not raise `blocked` in particular — one rendered fact, one source |
 | a `tool.start` carrying `agent_scope` or `parent_call_id` | a scope-dependent state rule | those are **labels** ([D1 § 6.5](EVENT-SCHEMA.md#65-toolstart)); the server ledger is seat-scoped and models no agent scope ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)). They are stored for the intern join and never gate anything. |
 
 The golden fixture for this whole section is D1's own worked `/clear` trace, replayed end to end in
@@ -908,14 +910,24 @@ three sources: telemetry supplies the live *action*, GitHub and board events sup
 - Tier 3 is always available while the seat is live, so the merge never yields "no title" on a working
   seat.
 
-**What is deliberately not specified here, and why.** The *producers* of tiers 1 and 2 — a GitHub
-webhook receiver and a kanban poller — are designed in no document in this repo. And the proposal's
+**What is deliberately not specified here, and why.** ⚠ **Tier 2's producer is no longer undesigned, and
+this paragraph claimed it was for as long as it had been.**
+[D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) designs the GitHub coordination receipt, and
+[D1 § 18.11](EVENT-SCHEMA.md#1811-one-producer-two-consumers) states in terms that the coordination family
+and this tier are **one producer, two consumers**: a round carries `from` and the thread it names carries
+the `subject` that is the title, joined on the thread reference. Tier 1's producer — a kanban poller — is
+still designed in no document in this repo. ⛔ **And the tier-2 JOIN is not established**: that producer
+derives a *protocol agent name*, nothing anywhere owns the mapping from one to a `seat_id`
+([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6, ruled on `card#7957` — the
+seat declares its own name, which no wire field carries yet), and this document mints no fallback for it
+([§ 8.3.3](#833-the-coordination-objects)). So tier 2 populates no seat's `task` until that lands, which is
+a different gap from an undesigned producer and is stated as one. And the proposal's
 "three-tier status fallback" is a document this repo does not contain: it is named in
 `docs/PLAN.md § 2` and nowhere reproduced. **This document does not invent its tiers.** Specifying a
 fallback from the phrase alone would put a guessed rule in a contract, and a guessed rule that reads
 plausibly is worse than an absent one. So: the merge above is derived from what this repo states, and
 [§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers and
-for a decision on where the two producers are designed. Until that answers, an implementer builds tier 3
+for a decision on where the **board** producer is designed. Until that answers, an implementer builds tier 3
 (which needs nothing new) and leaves tiers 1 and 2 as the stated columns they populate.
 
 ### 4.10 Retirement is a rendered state
@@ -2539,6 +2551,8 @@ floor subscribes to what it renders and a future per-install authorization has a
 | `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer. ⭐ **This message is a REMOVAL instruction**: the consumer drops the seat ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)), and it is the only message on this feed that does | `install_id`, `seat_id`, `reason`, `at` |
 | `fleet.reload` | server → client | `feed_version` changed under a running client (a deploy) | `feed_version`, `reason` |
 | `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
+| `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
 [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
@@ -2681,6 +2695,219 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
 `changed` lists every key of `patch`, which is what makes this the worst case rather than a large one: a
 delta that patches fewer fields is strictly smaller, and no delta can patch more than all of them.
 
+#### 8.3.3 The coordination objects
+
+⭐ **Ruled — card#7897's part-2 ruling (2026-08-27): one feed, one store, one ordering domain.** The
+coordination family joins the five message types above on **this** feed rather than getting one of its
+own, in the ruling's own terms: *"`coord.*` joins them on the same WebSocket, the same store, the same
+ordering domain. A second feed is refused"* — because a client reads feed silence as *the fleet is not
+talking to me* ([§ 8.3](#83-the-websocket-delta-feed)'s heartbeat rule), and two feeds would give one
+page two liveness verdicts with no honest way to render their disagreement.
+
+**The two objects are [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)'s and
+[D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s, and this section does not re-derive them**
+([§ 1.3](#13-the-boundary-stated-as-a-rule)). What is this document's is the **read surface**: which of
+those fields reach a reader, under which message, on which channel, and what a consumer may and may not
+conclude from them. It publishes no field D1 does not send
+([§ 13](#13-decisions-taken-revisable-at-review) row 29) and it mints **no number** — every bound below
+is D1's, carried beside the field it bounds.
+
+⛔ **The producer is Mezzanine's own GitHub webhook receipt route
+([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)),
+not the webhook bridge.** The ruling above named the bridge, and
+[D1 § 18.1](EVENT-SCHEMA.md#181-two-corrections-this-section-carries-and-the-boundary-it-keeps)
+corrected it at source — on `docs/PLAN.md` D-10 (*"Mezzanine is an observer and stands alone"*) and on
+a read of the bridge that found no surface emitting to an arbitrary HTTP consumer. The correction is
+restated here, once, because a reader who reaches the ruling and not D1 § 18 is otherwise sent to a
+producer that design forbids.
+
+**`coord.thread` — the thread as a lifecycle object.** One per `issues` delivery whose action is
+`opened`, `closed` or `reopened`.
+
+| Field | Type | Null? | Bounds | Example |
+|---|---|---|---|---|
+| `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_thread.install_id` | slug | no | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it equals the channel's install | `"aimla"` |
+| `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
+| `coord_thread.carrier` | slug | **yes** | ≤ 16 B — the title's leading bracketed token, lowercased and slug-validated with **no set consulted** ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)); `null` when the title leads with none, or when the token fails validation | `"announce"` |
+| `coord_thread.subject` | string | **yes** | ≤ 200 B — the issue title less its addressing preamble, sanitized at the receiver ([D1 § 18.10](EVENT-SCHEMA.md#1810-sanitization-at-the-coordination-producer)). **The only free-text field either object carries**; no body text transits at any length | `"the coordination-event producer"` |
+| `coord_thread.subject_truncated` | bool | no | — a silently clipped string is read as the whole string, which is why the flag rides beside it | `false` |
+| `coord_thread.opened_by` | slug | **yes** | ≤ 48 B — a **protocol agent name**, never a `seat_id` (below); `null` whenever `attribution` is not `resolved` | `null` |
+| `coord_thread.attribution` | slug | no | ≤ 16 B — `resolved` · `unresolved` · `unattributable`, the three states D1 keeps apart. A consumer reading `opened_by` without reading this renders *nobody* where the honest render is *not recoverable* | `"unattributable"` |
+| `coord_thread.participants` | array\<slug\> | no | 0…32 members, each ≤ 48 B — **protocol agent names**, the union of the delivery's body `FROM:`/`TO:` lines and its own `to:`/`from:` labels, deduplicated and sorted. `all` is a literal member and is **never** expanded here ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `["pm","all"]` |
+| `coord_thread.posted_at` | rfc3339_ms | **yes** | GitHub's clock — a **third** clock, reconciled with neither of [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s two ([D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)). `null` at `closed` and `reopened`, where no payload key establishes it ([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 2) | `null` |
+| `coord_thread.received_at` | rfc3339_ms | no | the receipt clock — **the only clock on this object an age may be computed from**, which is [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s rule applied to a producer whose other clock is a third party's | `"2026-08-27T16:02:11.775Z"` |
+
+**`coord.round` — the post.** One per `issue_comment.created`, and one for the `issues.opened`
+delivery that also produces a thread: the opening post **is** a post, and modelling it as only a
+lifecycle edge would lose the thread's first round.
+
+| Field | Type | Null? | Bounds | Example |
+|---|---|---|---|---|
+| `coord_round.post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment. **The post's identity, and the key a consumer counts beads by** | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_round.thread_ref` | string | no | ≤ 256 B — the thread this post is on; the join back to `coord_thread` | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_round.install_id` | slug | no | ≤ 32 B, from the hook binding, as above | `"aimla"` |
+| `coord_round.from` | slug | **yes** | ≤ 48 B — the **protocol agent name** this post evidences; `null` when it evidences none | `"pm"` |
+| `coord_round.attribution` | slug | no | ≤ 16 B — the same three states, for the same reason | `"resolved"` |
+| `coord_round.to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the thread's `to:` labels. `all` appears here verbatim, which is what makes a broadcast legible without a boolean | `["all"]` |
+| `coord_round.targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, `all` expanded against this install's roster and no other ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)). ⛔ **`null` and `[]` are different answers**: `[]` says *this post reached nobody*, `null` says *the fan-out is not resolvable here* | `["magento","platform","moodle"]` |
+| `coord_round.carrier` | slug | **yes** | ≤ 16 B — the thread's leading bracketed token, repeated so a post is legible alone | `"announce"` |
+| `coord_round.declares_close` | bool | no | — this post carries the protocol's `[CLOSE]` token, anchored past the addressing preamble. ⛔ **Not a convergence** ([D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on)), and the not-published table below says what that costs a renderer | `false` |
+| `coord_round.posted_at` | rfc3339_ms | **yes** | the comment's own timestamp, GitHub's clock; `null` when the payload carries none | `"2026-08-27T09:14:02.000Z"` |
+| `coord_round.received_at` | rfc3339_ms | no | the receipt clock, as above — the one an age may be computed from | `"2026-08-27T09:14:03.418Z"` |
+
+**They are not seat objects, they do not ride one, and nothing here moves a seat.** A thread spans
+desks and its participants may include names no desk holds, so a copy on each participant's seat object
+would be one fact with N homes, free to disagree with itself and free to make a seat object's size a
+function of another plane's traffic. ⛔ **No coordination fact mints, clears or masks a seat state, and
+none is read by [§ 4](#4-the-seat-state-model)'s derivation** — that rule is written where the rules of
+its kind live, as a row of [§ 4.8](#48-what-may-never-mint-a-state)'s table, and is pointed at rather
+than restated here. Neither object carries `state_version`, and neither emits a `seat.delta`.
+
+**Names on these objects are PROTOCOL AGENT NAMES, and this plane publishes no mapping from one to a
+desk.** ⛔ **That an agent name identifies the same thing a `seat_id` does is UNVERIFIED** — no artifact
+in this repo, the coordination config or the reporter config owns the mapping, and the two are
+configured by different acts that do not validate against each other
+([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6). It is **ruled on
+card#7957** in two halves, and only the second is live today: *(d)* the seat declares its own protocol
+agent name in its reporter config — a field no wire event carries yet, so nothing on
+[§ 8.2.1](#821-the-seat-state-object)'s object answers it; and *(2)* **an unresolved participant is a
+first-class rendering** — no line to a guessed desk, no line to nothing, reported as unresolved, and it
+does not suppress the rest of the object. So a consumer joins where a name resolves and renders
+*unresolved* where it does not. **This document mints no fallback join**, and equality between an agent
+name and a `seat_id` is a coincidence this plane cannot check: a renderer that reads one as the other
+is drawing a line to a desk no fact names, which is the whole of what D1 § 18.13 row 6 prices.
+
+**Ordering, duplication, and what a consumer may count.** These objects carry neither `state_version`
+nor D1's `(seq_epoch, seq)`, so [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s gap rule
+does not reach them and **a lost coordination message is not detectable** — named here rather than left
+to be discovered, because the honest answer to a condition this end cannot establish is to say so. What
+a consumer has instead is **identity**: `post_ref` is unique per post and `thread_ref` per thread, so a
+bead count is a count of distinct `post_ref` and a repeat draws nothing new. Duplicate suppression
+happens at receipt on the delivery digest (D1 § 18.8 step 7); the one path that reaches this feed twice
+for one real post is an operator Redeliver older than the digest store's retention
+([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish), last row), and it arrives
+carrying the same `post_ref`.
+
+**What is deliberately NOT published, each with the finding that killed it** — stated as a table so a
+consumer meeting the ruling's element list can see which of them has no field rather than inferring it
+from an absence:
+
+| Fact a consumer might expect | Why it is absent |
+|---|---|
+| the delivery digest | receipt-internal. It is D1 § 18.8 step 7's idempotency key — a store fact with no render — and `post_ref` / `thread_ref` are the identities a reader needs. Publishing it would hand a client two keys for one post |
+| a `needs_human` escalation flare | [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C, a won't-do on the record: the banner is chat-output only and reaches no thread, so there is no field to read and a permanently-false one reads as *no seat is ever waiting on a human*. The rendered fact already has exactly one source on this plane — `activity_state: "blocked"`, minted by `attention.request` alone ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)) — and a second source for one rendered state is the defect this document refuses everywhere |
+| a `converged` flag | [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding B: convergence is a **quorum** over required participants, and neither object carries an observer-CC marker, a required-participant set or a per-participant ledger. The two weaker facts that *are* true ride instead — `lifecycle: "closed"` (the thread ended) and `declares_close` (somebody performed the close act, and here is who) |
+| a round **number** | [D1 § 18.4](EVENT-SCHEMA.md#184-the-observable-audit) row 2: the number lives in a prose heading, is per-author, and identifies no comment on a multi-party thread. A bead per post is true at the granularity the wire has |
+| an `is_broadcast` boolean | [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread): `to` carries `all` verbatim and `targets` carries the resolved fan-out, so a boolean would be a third representation of one fact |
+
+⇒ **Consequence for the render layer, stated here so it is met at design time rather than at build
+time**, because a renderer reads this document and not that audit. The **escalation flare** has no field
+on this surface at all — a won't-do on the record with its closure act named. The **convergence spark**
+has one, and it means something narrower than the element it was specified as: a floor may render that a
+thread **ended** (`lifecycle`) and that a post **declared the close** (`declares_close`), and may render
+neither as convergence. Every other element of the ruling's table has a field above, or — the
+PM-to-intern folder — is already on the reporter wire as a seat's `subagents`, which is where it stays.
+
+**Volume, coalescing, and the message bound.** [§ 8.3](#83-the-websocket-delta-feed)'s 250 ms tick
+coalesces a **seat's** state patches, and merging two patches loses nothing because the later one wins;
+these are posts, and merging two posts loses one. **They are therefore not coalesced** — which is also
+how the ruling's anti-requirement (*no silent cap*) becomes a property of the data rather than a promise
+by the renderer: a broadcast is **one** `coord.round` whose `targets` is the resolved fan-out, so there
+is no set of N messages for anything to cap. They are outside § 8.3's per-seat-day delta figure, which
+counts the state-changing events of D1's kind table and is unmoved by this section. Both objects sit
+inside the **8 KiB** message bound and not near it: the largest term in either is a 32 × 48 B array of
+names — a round carries **two**, `to` and `targets` — beside two references bounded at 256 B.
+
+**Compatibility: this surface has no version-skew axis, and the act that would create one is named.**
+[D1 § 18.7](EVENT-SCHEMA.md#187-coordround) declines to type `lifecycle` or `attribution` as enums
+because those objects *"are minted and consumed inside one deployment, so there is nothing for that
+machinery to route"* — and [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s second row says the
+same of this feed: the client is served by the deploy that serves it, so there is never a client in the
+wild older than the server. The declination therefore transposes and these tables type both fields
+`slug`. ⛔ **D1's trigger is a publication, not a review round**: if these objects are ever served over
+[§ 8.2](#82-rest)'s REST surface, whose consumers upgrade on their own schedule, the enum-classification
+obligation attaches at that change.
+
+**No snapshot member, no fifth endpoint — and that is derived, not a preference.**
+[§ 8.4](#84-snapshot-then-deltas)'s snapshot half is a read of **stored** state, so a coordination
+snapshot is a read over a coordination store, and that store is explicitly a later slice:
+[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s last two rows hand both of its
+open decisions — where the receipt route's counters live, and what bounds the idempotency digest's
+retention — to *"the slice that designs the coordination store"*, which is not this one. Specifying a
+read over a store nobody has designed would put a guessed rule in a contract. So the feed carries these
+objects, `GET /api/fleet/snapshot` does not, and no endpoint joins [§ 8.2](#82-rest)'s four. **The cost
+is stated rather than left to be met:** a client that has just connected draws no thread line until the
+next post on that thread. [§ 14](#14-open-questions-for-the-review-loop) item 14 carries the closure
+act.
+
+**Authentication and scope are unchanged and are not restated:** these ride
+`private-fleet.{install_id}` like every other message on this feed, under
+[§ 9](#9-read-side-authentication)'s read-side rules. Because `install_id` comes from the hook binding
+rather than from the payload, the operator's floor-scoping ruling is a property of the data and not of
+the picture — a broadcast's reach equals the install's, and a renderer that draws wider is drawing past
+its event.
+
+**The published contract, for a producer or a consumer that cannot read this repository's code.**
+[D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns the receipt, the derivation and each
+fact's basis; this section owns what crosses to a reader. Together they are implementable without a
+source read: every field above has a type, a bound, a nullability and a named derivation, and the
+conditions neither end can establish locally are named **by name** at
+[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish). ⚠ **Under D1 § 18.1's
+correction this wire crosses no repository boundary at all** — producer, store and reader are one
+deployment — so the cross-boundary seam the ruling's three obligations were written for has one end
+rather than two. The one input that *is* copied across a boundary is D1 § 18.3.1's install-facts roster,
+which is declared, guarded and dated there.
+
+**Worked examples**, transcribed from D1 § 18.6's and § 18.7's own worked objects less the
+receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-delta-feed)):
+
+```json
+{
+  "feed_version": 1,
+  "t": "coord.round",
+  "server_time": "2026-08-27T09:14:03.501Z",
+  "coord_round": {
+    "post_ref": "AIMLA-org/aimla-coordination#742",
+    "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "install_id": "aimla",
+    "from": "pm",
+    "attribution": "resolved",
+    "to": ["all"],
+    "targets": ["magento", "platform", "moodle"],
+    "carrier": "announce",
+    "declares_close": false,
+    "posted_at": "2026-08-27T09:14:02.000Z",
+    "received_at": "2026-08-27T09:14:03.418Z"
+  }
+}
+```
+
+The close of that same thread, which names nobody — `opened_by` is `null` and `attribution` says why,
+`participants` carries `all` **unexpanded**, and `posted_at` is `null` because no payload key on a
+`closed` delivery establishes it:
+
+```json
+{
+  "feed_version": 1,
+  "t": "coord.thread",
+  "server_time": "2026-08-27T16:02:11.802Z",
+  "coord_thread": {
+    "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "install_id": "aimla",
+    "lifecycle": "closed",
+    "carrier": "announce",
+    "subject": "the coordination-event producer",
+    "subject_truncated": false,
+    "opened_by": null,
+    "attribution": "unattributable",
+    "participants": ["pm", "all"],
+    "posted_at": null,
+    "received_at": "2026-08-27T16:02:11.775Z"
+  }
+}
+```
+
 ### 8.4 Snapshot-then-deltas
 
 The hazard is ordinary and the protocol is the ordinary answer, stated exactly because getting it
@@ -2705,6 +2932,13 @@ something else changes it — which on a quiet desk is never.
 **The watermark is per seat, not per fleet**, because `state_version` is per seat. That is what makes
 step 5 exact rather than approximate, and it is why the snapshot must carry the version on every seat
 rather than one snapshot-wide sequence number.
+
+**The coordination messages have no snapshot half, and the asymmetry is stated here rather than met at step 3.**
+Steps 2–5 are about seat state and its per-seat watermark. [§ 8.3.3](#833-the-coordination-objects)'s objects
+carry no `state_version` and are not in `GET /api/fleet/snapshot`, so this protocol neither buffers nor discards
+them: a client applies each as it arrives from the moment it subscribes, and holds nothing about a thread whose
+last post predates its connection. That is a real cost and § 8.3.3 prices it; what it is **not** is a window of
+the kind step 5 closes, because there is no snapshot for a delta to be older than.
 
 ### 8.5 Gaps, reconnect, and why `state_version` is not `seq`
 
@@ -2755,6 +2989,21 @@ noticed within a minute. On overflow the connection is **closed with `resync_req
 permanently wrong with no way to know it; closing costs one snapshot and is self-healing. Other
 connections are unaffected, and the bound is per connection precisely so that one slow client cannot
 consume the memory of the process serving the rest.
+
+**The gap rule covers seat deltas and nothing else.** [§ 8.3.3](#833-the-coordination-objects)'s coordination
+messages carry neither `state_version` nor `(seq_epoch, seq)` — [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)
+drops `seq` because no delivery carries one and a server-minted one would be an ordering that producer invented
+— so **a lost coordination message is detectable by neither key**, there is nothing for a client to re-sync
+against, and no resync parameter exists for it. That is named rather than papered over. ⛔ **And nothing
+recovers it, which is stated rather than softened with the recovery that exists for a different loss.**
+GitHub's Redeliver
+([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order) steps 7
+and 9) recovers a delivery lost **at receipt**; a message lost between this server and a client was already
+derived, so its digest is committed and a redelivery of it is absorbed as a duplicate. What bounds the *cost*
+is that a client's next read of that thread is its next post — these objects are self-identifying, so a later
+post carries the `thread_ref` a consumer needs and a redelivered one carries the `post_ref` it always had.
+The closure act is [§ 14](#14-open-questions-for-the-review-loop) item 14's, not a key added here: a
+coordination snapshot is what makes a missed message survivable, and it needs the store.
 
 ### 8.6 A deliberately-invalid exchange
 
@@ -3456,6 +3705,39 @@ the whole reason this test was not simply removed with its behaviour.
 - **Discriminating control:** a live seat in the same fleet is unaffected at every step — still
   rendered, still counted, still fetchable.
 
+### AT-D2-24 a coordination object names an agent, and never a desk
+
+⚠ **Its input is a webhook delivery rather than an event fixture** — the fixtures above are wire events
+and this test's producer is not the reporter. It drives [D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s
+receipt route with signed deliveries and reads what reaches a subscribed client
+([§ 8.3.3](#833-the-coordination-objects)).
+
+- **Build:** one folded, live seat and a connected client. Deliver one signed `issues.opened` and one
+  signed `issue_comment.created` for a thread whose body lines and labels name **two** agents: one that
+  matches no `seat_id` on the fleet, and one that matches a `seat_id` byte for byte.
+- **GREEN — the objects arrive whole:** a `coord.thread` and a `coord.round`, each carrying exactly the
+  members [§ 8.3.3](#833-the-coordination-objects) declares and no others; `participants` carries both
+  names **as written** with `all` unexpanded, and the round's `targets` carries the resolved fan-out.
+- **GREEN — nothing about the seat moved:** the seat's `state_version` is unchanged, no `seat.delta`
+  was published, and its `render_state`, `activity_state`, `badges` and `task` are identical to their
+  pre-delivery values ([§ 4.8](#48-what-may-never-mint-a-state)).
+- **⛔ RED — the invented join:** resolve either name to a desk — by equality with `seat_id`, by prefix,
+  by install — and publish a desk reference on either object → a line drawn to a desk no fact names,
+  which is what [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6 prices as
+  *derived correctly and joined to nothing*. **Its control is the byte-identical name:** the one that
+  DOES equal a `seat_id` must be published exactly as unresolved as the one that does not, because the
+  equality is a coincidence this plane cannot check.
+- **⛔ Second RED — the coordination fact that mints a state:** let `declares_close`, a carrier or a
+  participant raise a badge, a `blocked`, or any `render_state` → a second source for a rendered state
+  whose one source is `attention.request` ([§ 4.4](#44-activity-states-every-entry-and-exit-edge),
+  [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C).
+- **Third RED — the field that is not there:** publish the delivery digest, a `converged` flag or a
+  round number on either object → each is a row of § 8.3.3's not-published table, with the finding that
+  killed it.
+- **Discriminating control:** re-deliver both bodies with the signature broken. Nothing reaches the
+  feed at all (D1 § 18.8 step 3), which is what makes a GREEN above evidence that the receipt path ran
+  rather than that the test published its own objects.
+
 ---
 
 ## 12. Every number, and where it comes from
@@ -3589,7 +3871,7 @@ review can reverse it deliberately rather than discover it later.
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
 | 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
-| 25 | **The task-title merge is specified; the producers of tiers 1 and 2 are not** | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock |
+| 25 | **The task-title merge is specified here; its producers are not** — ⚠ **half-closed since**: tier 2's producer is [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) and tier 1's is still nobody's ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
 | 27 | **The guard asserts the resolved value (`config()`), not the declaration** | assert the `phpunit.xml` contents | All three mechanisms above leave the declaration correct. Reading `getenv()` would have shown `force="true"` "working" in the measurement that disproved it | one extra bootstrap assertion, and a hostile-export run in CI |
 | 28 | **`DB_CONNECTION` is deliberately not forced** | force every DB variable | Forcing a variable a CI matrix exports to select a backend silently re-runs every leg on the wrong backend: green, testing nothing. Nothing in this repo does that today, and the absence is commented as load-bearing so nobody "fixes" it | if a future matrix does select by export, this comment is what stops the next person forcing it |
@@ -3603,6 +3885,8 @@ review can reverse it deliberately rather than discover it later.
 | 36 | **A server counter never writes a member of D1's `degraded` array** | follow D1 § 12.7's `seq_gap` row literally and raise `lossy` | D1 contradicts itself here — § 9.3 declares `seq_gap` a server badge and *not* a member, § 12.7 and § 10.2 say the server renders the seat `lossy` — and § 9.3's reading is the one with a mechanism: `lossy` means the reporter discarded events *and counted them*, so a server-raised `lossy` with a zero counter beside it is a badge contradicting its own number | D2 carries its own `seq_gap` badge, so a consumer sees two members where D1's text implies one; filed as an amendment need ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
 | 38 | **The floor map is a build artifact of the client; this plane publishes no read surface for it, and the seat→desk binding is the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⭐ **operator ruling, card#9208 (2026-09-09)**, which the card put as three candidate shapes and the operator answered | (a) a map read surface per install/floor, versioned like [§ 8](#8-the-feed-contract)'s others; (c) the map riding the snapshot as an additive member | Authoring a floor is a **design act**, not a runtime event: an operator authors a map ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) and editing one is the stated remedy for a floor short of desks ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F13) — neither is a fact this plane observes, derives or versions. Serving it would buy a surface, a compatibility posture and a cache for bytes that change on a designer's schedule, and (c) would put them on every snapshot of every seat | **A floor edit is a redeploy** — the operator accepted that explicitly in the ruling. And card#9085's authored-map store gains no reader: a map authored in the console does not reach a floor, which [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 carries as an open question rather than a silent consequence |
+| 39 | **The coordination objects are first-class objects on the existing feed, not members of the seat object** ([§ 8.3.3](#833-the-coordination-objects)) | a `coord` member on [§ 8.2.1](#821-the-seat-state-object)'s seat object, replicated onto each participant's desk | A thread spans desks and its participants may name agents no desk holds, so a per-seat copy is one fact with N homes, free to disagree with itself and free to make a seat object's size a function of another plane's traffic. The ruling's own words are that **the thread is the object on the wire**, and [§ 4.8](#48-what-may-never-mint-a-state) is where the corollary is written — a coordination fact touches no seat state — added there in this same change rather than asserted here, so the rule sits with the rules of its kind | a consumer wanting *this desk's threads* filters `participants` itself, over whatever the feed has delivered since it connected — and, until `card#7957`'s (d) lands, over names that may resolve to no desk at all |
+| 40 | **The coordination objects ride the delta feed only — no snapshot member, no fifth endpoint** ([§ 8.3.3](#833-the-coordination-objects)) | a `threads[]` member on `GET /api/fleet/snapshot`, or a coordination endpoint beside [§ 8.2](#82-rest)'s four | A snapshot is a read of stored state, and the coordination store is explicitly a later slice: [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) hands both of its open decisions — the receipt route's counters, and the idempotency digest's retention — to *"the slice that designs the coordination store"*. Specifying a read over a store nobody has designed is how a guessed rule enters a contract | a client that has just connected draws no thread line until the next post on that thread. Priced at § 8.3.3 and carried as [§ 14](#14-open-questions-for-the-review-loop) item 14, rather than discovered when the floor is built |
 
 ---
 
@@ -3639,13 +3923,19 @@ D1's: they need an operator answer, a proposal document, or D3.
    because seat clock skew must not move a server ceiling. It matches
    [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), so no rule here moves.
 
-3. **⇢ Review / operator — the proposal's three-tier status fallback, and who designs the board and
-   GitHub producers.**
+3. **⇢ Review / operator — the proposal's three-tier status fallback, the board producer, and the
+   tier-2 join.**
    `docs/PLAN.md § 2` assigns D2 a three-source merge and names a "three-tier status fallback from the
    proposal"; the proposal is not in this repo and this document **does not invent its tiers**
-   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). **Blocks:** tiers 1 and 2 of the
-   task title — a floor built today shows telemetry-derived titles only. **Closes it:** the proposal's
-   text, plus a ruling on whether the two producers are a D2 addendum or their own card.
+   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **One third of this item has
+   closed since it was written:** the GitHub producer is designed —
+   [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose § 18.11 makes the tier-2 title
+   and the coordination family one producer — and this document now carries its read surface at
+   [§ 8.3.3](#833-the-coordination-objects). **Blocks:** tier 1 of the task title, which has no
+   producer; and tier 2, which has one and **no join** — its names are protocol agent names and nothing
+   maps one to a `seat_id` (`card#7957`'s (d), not on any wire yet). A floor built today shows
+   telemetry-derived titles only. **Closes it:** the proposal's text, a ruling on where the board
+   producer is designed, and (d) landing on a seat's identity event.
 
 4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
    The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was
@@ -3768,6 +4058,21 @@ D1's: they need an operator answer, a proposal document, or D3.
     over. The manual sweep is **one row**, not fourteen: **S25**, whose D1-source column names a
     decision-register row rather than a section number, so no marker convention in D1 can reach it.
     The tool prints that residue per row on every run rather than folding it into a pass count.
+
+14. **⇢ The slice that designs the coordination store — a snapshot half for the coordination objects.**
+    [§ 8.3.3](#833-the-coordination-objects) puts both objects on the delta feed and on no REST
+    surface, because a snapshot is a read of stored state and that store is
+    [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s named later slice.
+    **Blocks:** a floor that has just connected, which draws no thread line until the next post on a
+    thread — and, transitively, any render that needs to know a thread is *currently* open rather than
+    that it was opened while this client was listening. **Closes it:** that slice, which owes three
+    things this one deliberately does not answer — the store and its retention (and with it *which
+    threads are current enough to serve*), a home on [§ 7.1](#71-d1s-server-side-counters--where-they-live)'s
+    plane for the receipt route's counters, and a stated bound on the idempotency digest. ⚠ **The last
+    two are D1 § 18.13's own last two rows, addressed to that slice by name; this item is where they
+    are visible from this document rather than only from D1.** If the objects are then served over
+    [§ 8.2](#82-rest)'s REST surface, D1 § 18.7's enum-classification obligation attaches at that
+    publication — the trigger is the act, not a review round.
 
 ---
 
