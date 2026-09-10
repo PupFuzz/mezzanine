@@ -19,6 +19,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9212** — **D2 gains the coordination read surface that card#7897 part 2 slice 1 was
+  ruled to write and did not.** That slice was defined as two documents; `PupFuzz/mezzanine#31`
+  landed only D1 (`EVENT-SCHEMA.md § 18`), and `FLEET-STATE.md` carried **no** `coord.*` surface
+  under any name — which is why `verify-floor.py` red by name on the first § 5.1 render row a D3
+  build tried to source from one. **New D2 § 8.3.3** declares both objects as read-surface fields
+  (`coord_thread.*`, `coord_round.*`), and § 8.3's message table gains `coord.thread` and
+  `coord.round`. Nothing is re-derived: every field, bound and nullability is D1 § 18.6/§ 18.7's,
+  cited, and the section mints no number.
+  ⭐ **What the surface refuses is the load-bearing half.** No mapping from a protocol agent name to
+  a `seat_id` — UNVERIFIED at D1 § 18.13 row 6, ruled on card#7957, and a renderer that reads one as
+  the other draws a line to a desk no fact names; no `needs_human`, no `converged`, no round number,
+  no `is_broadcast`, no delivery digest, each with the D1 finding that killed it. ⇒ **The escalation
+  flare has no field at all and must not be drawn**, and the convergence spark has one that means
+  something narrower than convergence — a thread *ended*, a post *declared the close*.
+  ⚠ **The producer is Mezzanine's own receipt route, not the bridge** (D1 § 18.1 correction 1, on
+  D-10): the coordination wire crosses no repository boundary, so the ruling's cross-repo DECLARE
+  obligation has one end rather than two, and nothing is owed into `agent-webhook-bridge`.
+  **Feed only** — no snapshot member and no fifth endpoint, because a snapshot is a read of a
+  coordination store that D1 § 18.13 hands to a later slice; the cost (a just-connected floor draws
+  no thread line until the next post) is priced in § 8.3.3 and carried as § 14 item 14.
+  **Doc-sync of claims this falsified — the CLAIM was audited for siblings, not just the file.** In D2:
+  § 1.2's *"ingest of GitHub webhook … not designed anywhere yet"*, § 4.9's and § 13 row 25's *"the
+  producers of tiers 1 and 2 are designed in no document in this repo"*, and § 14 item 3. In **D3**,
+  where the same claim had a fourth and fifth copy: § 1.2's non-goal row and § 14 item 4's *closes it*.
+  Tier 2's producer has been D1 § 18 since PR #31 merged, and every one of these said otherwise.
+  D3's § 12 guard row moves with the gate change below — it enumerates the D2 surfaces G2 reads.
+  **Gates:** `verify-floor.py` learns D2's **fifth** field surface (reading **both** of § 8.3.3's
+  tables — a first-table-only read would publish one object and report clean over the other), and
+  `verify-fleet-state.py`'s G7 adds `coord` to the message-type prefixes it closes prose against.
+  Both were watched failing: a fabricated `coord_thread.bogus` in § 5.1 reds, and a `coord.bogus` in
+  D2's prose reds. New **AT-D2-24** pins the two rules a build could not otherwise be held to — the
+  invented join, and a coordination fact minting a seat state.
+
 - **card#7523** — **the store is repinned to MariaDB ≥ 11.8.6, replacing MySQL ≥ 8.0.12** (operator
   ruling, 2026-09-09). This is the DOCUMENTATION AND PINS half; host provisioning is the operator's
   and is not in it. **D2 § 6.1 does not carry its requirements across — it re-argues each one**: the

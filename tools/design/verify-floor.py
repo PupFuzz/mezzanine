@@ -190,6 +190,26 @@ def table_rows(text, header_re):
     return None
 
 
+def table_rows_all(text, header_re):
+    """EVERY matching table's data rows in `text`, not just the first.
+
+    `table_rows` returns the first table only, which is right where a section declares one.  D2
+    § 8.3.3 declares TWO objects under one header, and reading the first would publish half a
+    surface while reporting clean over the other half -- the same under-read `all_tables` below
+    exists to prevent for this document's own tables."""
+    src, out, i = text.split("\n"), [], 0
+    while i < len(src):
+        if re.search(header_re, src[i].lstrip()):
+            j = i + 2
+            while j < len(src) and src[j].lstrip().startswith("|"):
+                out.append(src[j].lstrip())
+                j += 1
+            i = j
+        else:
+            i += 1
+    return out
+
+
 def all_tables(src_lines):
     """EVERY markdown table in a document, found by STRUCTURE: (start_index, header_line, [rows]).
 
@@ -335,12 +355,31 @@ else:
     if len(d2_msgs) < 4:
         fail.append(f"CONTROL: only {len(d2_msgs)} feed message types parsed from D2 § 8.3")
 
+# D2 § 8.3.3's coordination objects -- the FIFTH surface D2 declares a field on, added when D2
+# gained it (card#9212).  It is read the same way as the four above: from D2's own table, on every
+# run, so a field that leaves D2 leaves this set with it.
+sec_833 = section_text("833-the-coordination-objects", d2_lines, d2_by_anchor)
+d2_coord = set()
+rows = table_rows_all(sec_833 or "", r"^\| Field \| Type \| Null\? \| Bounds \| Example \|")
+if not rows:
+    fail.append("CONTROL: D2 § 8.3.3's coordination field tables did not parse — every coordination "
+                "field this document renders would then be checked against an empty set and red as "
+                "invented, which is a failure that names the wrong cause")
+else:
+    for r in rows:
+        m = re.match(r"^\|\s*`([A-Za-z_][\w.\[\]]*)`\s*\|", r)
+        if m:
+            d2_coord.add(m.group(1))
+    if len(d2_coord) < 20:
+        fail.append(f"CONTROL: only {len(d2_coord)} coordination field names parsed from D2 § 8.3.3, "
+                    f"which declares two objects — the reader is under-reading one of them")
+
 d2_detail = {t for t in re.findall(r"`([a-z_]+)`", sec_823 or "")}
 if "detail" not in d2_detail:
     fail.append("CONTROL: D2 § 8.2.3's `detail` member did not parse; the drill-down's source "
                 "column would then read as an invented field")
 
-ALLOWED = (d2_fields | d2_msgs | d2_detail
+ALLOWED = (d2_fields | d2_msgs | d2_detail | d2_coord
            | d2_fleet | {"fleet." + f for f in d2_fleet})
 
 
@@ -443,8 +482,8 @@ for header, col, where in SOURCE_TABLES:
                 fail.append(
                     f"G2: section {where} renders a fact whose source is `{t}`, which D2 declares "
                     f"nowhere — not in § 8.2.1's seat object, § 8.2.4's fleet object, § 8.2.3's "
-                    f"detail member or § 8.3's message table. A rendered fact with no field is a "
-                    f"fact the client invented")
+                    f"detail member, § 8.3's message table or § 8.3.3's coordination objects. A "
+                    f"rendered fact with no field is a fact the client invented")
 if g2_checked < 40:
     fail.append(f"G2 CONTROL: only {g2_checked} source tokens extracted from the render map — the "
                 f"extractor is broken and this check reports clean over an unread population")
@@ -2093,6 +2132,7 @@ else:
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
       f"{len(d2_fields)} seat fields, {len(d2_fleet)} fleet fields, {len(d2_msgs)} message types, "
+      f"{len(d2_coord)} coordination fields, "
       f"{len(render_m)} render_state / {len(link_m)} link / {len(act_m)} activity / "
       f"{len(ur_m)} unknown_reason members, {len(badge_m)} badges")
 print(f"G1  animations: {len(anim_ids)} rows, {len(mentioned)} referred to elsewhere, "
