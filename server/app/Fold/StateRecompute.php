@@ -433,7 +433,7 @@ class StateRecompute
             ),
             'state_computed_at' => $nowSql,
             'updated_at' => $nowSql,
-        ] + $this->taskTier3($seatRef, $currentCall, $nowSql, $state));
+        ] + $this->taskTier3($seatRef, $currentCall));
     }
 
     /**
@@ -448,66 +448,114 @@ class StateRecompute
      * no higher tier exists. A floor showing tier 3 everywhere is VISIBLY a floor whose board
      * integration is dark, which is why `task.source` is on the wire at all.
      *
-     * ⛔ `task_as_of` IS STAMPED WHEN THE TIER'S VALUE MOVES AND NOT ON EVERY RECOMPUTE — card
-     * #7837, and a defect DISTINCT from that card's ordering fix rather than a consequence of it.
+     * ⛔ `task_as_of` IS READ OFF THE ANSWERING CALL AND NEVER OFF THE WALL CLOCK — card #9214,
+     * and it is the SECOND correction this line has taken. Both are stated, because the first one
+     * is what made the second one reachable and a reader who removes either re-mints the other.
      *
-     * This method used to write `'task_as_of' => $nowSql` unconditionally while a title existed.
+     * ── card #7837, the noise ──
+     * This method once wrote `'task_as_of' => now()` unconditionally while a title existed.
      * `task` is version-bearing (§ 6.5's subtraction excludes ten bookkeeping members and this is
      * not one of them), so a seat with ONE open call emitted a `seat.delta` on EVERY fold pass and
      * on every sweep pass with nothing meaningful changed. MEASURED on the rig: 20 heartbeat +
      * sweep passes over a seat with one open call produced 20 deltas, every one of them
-     * `changed: ["task"]`, and 0 after this fix. At D1 § 9.1's 60 s heartbeat that rate is
+     * `changed: ["task"]`, and 0 after the fix. At D1 § 9.1's 60 s heartbeat that rate is
      * 1,440/seat/day carried by heartbeats alone — § 8.3's "16 % increase in feed traffic carrying
-     * no information", which it refuses in terms. Two of this suite's own tests had to fence their
-     * fixtures to a seat with NO open call to avoid it; both say so, and both now say it is fixed.
+     * no information", which it refuses in terms. `FeedSurfaceTest::
+     * test_a_seat_with_an_open_call_is_as_quiet_as_one_without` is what holds it fixed.
      *
-     * ⚠ THE FIX IS NOT TO DROP `task` FROM THE FINGERPRINT. § 6.5 states the version-bearing set
-     * as a CLOSED subtraction of ten named members; adding an eleventh is a D2 change, and D2 is
-     * not edited here. What was wrong is not that `task.as_of` counts — it is that it MOVED when
-     * the task did not.
+     * ⚠ THE FIX WAS NOT AND IS NOT TO DROP `task` FROM THE FINGERPRINT. § 6.5 states the
+     * version-bearing set as a CLOSED subtraction of ten named members; adding an eleventh is a D2
+     * change, and D2 is not edited here. What was wrong is not that `task.as_of` counts — it is
+     * that it MOVED when the task did not.
      *
-     * § 8.2.1 gives `task.as_of` the "server clock" and § 4.9 makes it the basis of the tier-1/2
-     * freshness bounds ("stale past 30 min"), i.e. **when this tier's value was obtained**. Tier 3
-     * is obtained from the seat's own open call, so its value is obtained when that call becomes
-     * the answer — which is what this now stamps. Re-stamping an unchanged answer claimed the
-     * value had been re-obtained on a pass that only re-read it, which is the same class of claim
-     * § 2.3 refuses for a fold-written lag.
+     * That fix stamped `now()` at the moment the tier's ANSWER moved, and held a `$unmoved` guard
+     * comparing the stored answer to the fresh one so that a pass which only re-read it did not
+     * re-stamp. Quiet on the feed, and still a wall-clock value.
      *
-     * The comparison is against the WHOLE tier answer (title, source, ref) and not the title
-     * alone, so that a tier-1/2 producer landing later — § 4.9 leaves both unbuilt — moves `as_of`
-     * when the SOURCE changes under an identical title.
+     * ── card #9214, the defect that survived it: A WALL-CLOCK STAMP IS NOT IN THE LOG ──
+     * § 6.6 makes `seat_state` reproducible from `events` and says what a divergence means: "some
+     * fold rule is reading state that is not in the log, and that rule is a defect by
+     * construction". `now()` is precisely such a read. `mezzanine:rebuild` resets the five `task_*`
+     * columns (`RebuildCommand::reset()`), so on replay the guard above could not hold — the
+     * stored answer it compares against had just been nulled — and the seat was RE-STAMPED AT
+     * REBUILD TIME. MEASURED, fold at 12:00:03 → rebuild at 12:00:08, one column apart.
      *
-     * @param  object  $state  the seat's `seat_state` row as read before this pass's writes
+     * The reachable harm is not the equality: it is that the documented recovery from a
+     * `derivation_error` makes the desk claim its task title was obtained when the OPERATOR RAN
+     * THE RECOVERY, and § 4.9 makes `as_of` the basis of the 30-minute drop the moment tiers 1/2
+     * exist — so a rebuild would reset the staleness clock on every seat of the fleet at once.
+     *
+     * ⇒ SO THE STAMP COMES FROM THE ANSWER'S OWN ROW: `calls.opened_received_at`, the server-clock
+     * receipt of the event that opened the call this tier is answering from. That satisfies the
+     * three constraints at once and needs no D2 change to do it:
+     *
+     *   § 8.2.1  `task.as_of` is a "server clock" value — `opened_received_at` is the receipt
+     *            clock, the same column `action.started_received_at` is rendered from, and NOT the
+     *            seat clock (`opened_at`), which would put a skewed seat's own time on the wire
+     *   § 4.9    `as_of` is when this tier's value was OBTAINED — tier 3's value is obtained from
+     *            the seat's telemetry, and its obtaining is that event's receipt, not the moment
+     *            a later derivation pass happened to look
+     *   § 6.6    it is IN THE LOG, so a replay reproduces it byte for byte, which is what let
+     *            `At10RebuildEqualsFoldTest` drop its unjustified fourth exclusion
+     *
+     * ⚠ AND THE `$unmoved` GUARD IS GONE RATHER THAN KEPT ALONGSIDE — #7837's property is now
+     * STRUCTURAL. `as_of` is a pure function of the row that answered, so a pass that re-reads the
+     * same answer cannot move it and there is nothing left for a guard to suppress. Keeping one
+     * would be a second, weaker statement of a property the expression already holds — free to
+     * drift, and drifting first on the case it was written for.
+     *
+     * A tier-1/2 producer landing later (§ 4.9 leaves both unbuilt) brings its own `as_of` with
+     * its own value: the poll's receipt, on the same footing. This method owns tier 3 only.
+     *
+     * ⛔ `task_as_of` GOES TO NULL WITH THE TITLE, and that is a fix and not tidiness — card
+     * #9214, found by the same audit. The null branch used to return three keys and leave
+     * `task_as_of` at the value the vanished title was stamped with: invisible on the wire
+     * (`SeatObject` gates the whole `task` object on `task_title === null`), and NOT reproducible,
+     * since a rebuild resets the column and no replayed event re-stamps it. A stored column whose
+     * value depends on which route the seat took to `null` is the stored-not-derived defect § 6.6
+     * exists to catch, one column down.
+     *
      * @return array<string, mixed>
      */
-    private function taskTier3(int $seatRef, ?int $currentCall, string $nowSql, object $state): array
+    private function taskTier3(int $seatRef, ?int $currentCall): array
     {
-        $title = DB::table('calls')
+        // The whole answering ROW, not just its title: `opened_received_at` is the stamp, so
+        // reading it in a second query would let the two disagree about WHICH call answered on a
+        // seat whose newest dispatch closed between them.
+        $answer = DB::table('calls')
             ->where('seat_ref', $seatRef)->whereNull('closed_at')
             ->where('is_dispatch', true)->whereNotNull('title')
             ->orderByDesc('opened_at')->orderByDesc('id')
-            ->value('title');
+            ->first(['title', 'opened_received_at']);
 
-        $title ??= $currentCall === null
-            ? null
-            : DB::table('calls')->where('id', $currentCall)->value('descriptor');
+        $title = $answer?->title;
 
-        if ($title === null) {
-            return ['task_title' => null, 'task_source' => null, 'task_ref' => null];
+        if ($title === null && $currentCall !== null) {
+            $answer = DB::table('calls')->where('id', $currentCall)
+                ->first(['descriptor', 'opened_received_at']);
+
+            $title = $answer?->descriptor;
         }
 
-        $title = mb_substr($title, 0, 120);
-
-        $unmoved = $state->task_title === $title
-            && $state->task_source === 'telemetry'
-            && $state->task_ref === null
-            && $state->task_as_of !== null;
+        if ($title === null) {
+            return [
+                'task_title' => null, 'task_source' => null,
+                'task_ref' => null, 'task_as_of' => null,
+            ];
+        }
 
         return [
-            'task_title' => $title,
+            'task_title' => mb_substr($title, 0, 120),
             'task_source' => 'telemetry',
             'task_ref' => null,
-            'task_as_of' => $unmoved ? $state->task_as_of : $nowSql,
+            // NEVER null on this branch: both queries above filter `closed_at IS NULL`, and every
+            // path that inserts an OPEN `calls` row writes `opened_received_at` from the event's
+            // own receipt (`Projector::toolStart`, and the placeholder `subagent.spawn` mints when
+            // its `tool.start` has not landed). The rows that carry no receipt are the tombstones
+            // — a close with no open — and § 6.4's `$close` array sets `closed_at` on every one of
+            // them, so neither query can reach one. That matters because § 8.2.1 makes
+            // `task.as_of` NON-nullable inside a `task` object that exists.
+            'task_as_of' => $answer->opened_received_at,
         ];
     }
 }

@@ -625,6 +625,12 @@ class FeedSurfaceTest extends FeedTestCase
      * ⚠ THIS IS `test_an_ordinary_heartbeat_emits_no_delta`'s RULE ON THE FIXTURE THAT ONE HAD TO
      * AVOID. Two tests rather than a widened one, because they fail for different reasons: that
      * one goes red if the SUBTRACTION drifts, this one if the re-stamp comes back.
+     *
+     * ⚠ CARD #9214 MADE THE PROPERTY STRUCTURAL RATHER THAN GUARDED, and this case is unchanged
+     * by that on purpose. `as_of` is now read off the answering call's own `opened_received_at`
+     * (which is IN THE LOG, so a rebuild reproduces it — AT-D2-10), and #7837's `$unmoved` guard
+     * is deleted rather than kept beside it. The assertion below is what would red if a clock ever
+     * got back into that column, whichever of the two mechanisms put it there.
      */
     public function test_a_seat_with_an_open_call_is_as_quiet_as_one_without(): void
     {

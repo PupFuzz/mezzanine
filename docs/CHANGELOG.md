@@ -41,6 +41,38 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   trait itself and could not fail for either hazard it named — it was deleted along with the trait
   it was meant to protect. Also corrected: a comment claiming the release test catches a mis-sized
   TTL, which mutation testing shows it does not.
+- **card#9214** — **`task.as_of` is derived from the log, and AT-D2-10's blind fourth exclusion is
+  gone.** § 6.6 makes `seat_state` reproducible from `events` and states what a divergence means:
+  *"some fold rule is reading state that is not in the log, and that rule is a defect by
+  construction"*. `StateRecompute::taskTier3()` WAS such a rule — it stamped `task_as_of` from the
+  **wall clock** — and `mezzanine:rebuild` resets all five `task_*` columns, so the documented
+  `derivation_error` recovery **re-stamped every replayed seat at rebuild time** and the desk's
+  thought bubble claimed its title had been obtained when the operator ran the recovery. Worse the
+  moment § 4.9's tiers 1/2 exist, where `as_of` is the basis of the 30-minute staleness drop: one
+  rebuild would reset the staleness clock fleet-wide.
+  ⇒ **The stamp now comes from the answering call's own `opened_received_at`** — the server-clock
+  receipt of the event that carries the title — which satisfies § 8.2.1's *"server clock"* and
+  § 4.9's *"when this tier's value was obtained"* **with no D2 change at all**, and makes card
+  #7837's no-re-stamp property structural, so that card's `$unmoved` guard is **deleted** rather
+  than kept beside it. `task_as_of` also goes to null **with** the title now: the null branch used
+  to leave the vanished title's stamp behind — invisible on the wire, and not reproducible either.
+  ⛔ **The test that should have caught it was blind AND unexercised, and both halves are fixed.**
+  `At10RebuildEqualsFoldTest` unset `task_as_of` from its comparison — a **fourth** exclusion
+  beyond § 11's three named ones, with no justification in its docblock — and deleting it changed
+  nothing. ⚠ **The recorded reason for that was half wrong, and the measurement is corrected here:**
+  the column was NOT unpopulated. It read `2026-08-26 12:00:03.000` on **both** sides; the blinder
+  was the **frozen clock** — one batch, one instant, so the fold and the replay stamped the same
+  value. The fixture now ends with a second, live session whose titled dispatch call is still
+  **open**, the rebuild runs **5 s** after the fold (12× inside the tightest compared threshold,
+  § 7.2's 60 s `fold_lag`), the exclusion is deleted, and `snapshot()`'s docblock now names every
+  surviving member with the reason it is on the list.
+  ⭐ **SEEN RED FIRST** (canon #9): with the extended fixture and the exclusion removed but the fold
+  unfixed, AT-D2-10 failed on `task_as_of` **alone** — `12:00:03.000` expected, `12:00:08.000`
+  actual — then went green on the fix.
+  ⚠ **A D2 amendment was considered and REFUSED, not deferred.** Naming `task.as_of`
+  rebuild-excluded would have had to weaken § 11's *"the rendered object is byte-identical"* as
+  well, and would have carved out the exact defect class AT-D2-10 exists to detect. The alternative
+  text is written out in the PR body, unapplied and unratified.
 
 - **card#8300** — **The coordination thread line — card#7897 part 2 slice 2, D3 § 5.7 and its
   client.** D2 § 8.3.3's two objects had a read surface (card#9212) and no render map; this is the

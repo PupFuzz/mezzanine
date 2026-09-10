@@ -143,8 +143,9 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
         // EVERY recompute while a title existed, `task` is version-bearing, so a seat with an open
         // call emitted a delta on every fold pass — 1,440 a seat-day from heartbeats alone, which
         // is precisely the noise § 8.3 refuses ("a 16 % increase in feed traffic carrying no
-        // information"). FIXED ON CARD #7837: `as_of` is now stamped when the tier's value moves
-        // and not when a pass re-reads it, and `FeedSurfaceTest::
+        // information"). FIXED ON CARD #7837, and made STRUCTURAL on card #9214: `as_of` is READ
+        // OFF the answering call's own `opened_received_at` rather than stamped from a clock, so
+        // a pass that re-reads the same answer cannot move it. `FeedSurfaceTest::
         // test_a_seat_with_an_open_call_is_as_quiet_as_one_without` drives the open-call fixture
         // directly. The fixture here stays open-call-free anyway, because THIS test's subject is
         // § 8.4's window and it should not go red for a § 4.9 regression that has its own case.
