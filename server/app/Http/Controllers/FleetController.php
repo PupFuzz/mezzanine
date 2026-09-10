@@ -264,6 +264,22 @@ class FleetController extends Controller
      * `sweep_seat_error` (card #7832) needs no new home and gets none: it is a `seat_counters`
      * row, and "this plane's `seat_counters` rows" is already what this member returns.
      *
+     * ⛔ EVERY TIMESTAMP THIS MEMBER CARRIES IS THE WIRE'S SPELLING, AND UNTIL card#7342 SIX OF
+     * THEM WERE THE STORE'S. `open_calls`, `attention` and `session` were selected and handed
+     * out as raw rows, so `opened_at`, `orphan_due_at`, `ceiling_at`, `turn_started_at` and
+     * `last_turn_ended_at` reached a consumer as `2026-08-23 14:23:31.004` — `DATETIME(3)`,
+     * § 6.3's stored form — while every other timestamp on this read plane is § 8.2.1's
+     * `rfc3339_ms`. One response carried BOTH spellings of one fact: `blocked_since` is the
+     * promotion of `attention.opened_at` (§ 8.2.1) and goes through `Clock::wire()`, so the
+     * drill-down could read the same instant twice and get two different strings.
+     *
+     * ⛔ AND THE CONSUMER'S FAILURE IS SILENT, WHICH IS WHY THIS IS FIXED AT THE EMIT SITE
+     * RATHER THAN HANDLED AT THE READ. `Date.parse("2026-08-23 14:23:31.004")` does not refuse:
+     * V8 reads a space-separated datetime as a LOCAL time, so an intern's start time would draw
+     * an age off by the viewer's UTC offset with no error anywhere. A client-side tolerance for
+     * the second spelling is exactly the read-time fallback for two formats of one thing that
+     * this project refuses everywhere else; the write site is here, and so is the fix.
+     *
      * @return array<string, mixed>
      */
     private function detail(int $seatRef): array
@@ -295,16 +311,50 @@ class FleetController extends Controller
                 ->orderByDesc('opened_at')->get([
                     'call_id', 'tool_name', 'descriptor', 'agent_scope', 'parent_call_id',
                     'is_dispatch', 'title', 'subagent_type', 'opened_at', 'orphan_due_at',
-                ])->map(fn ($c) => (array) $c)->all(),
-            'attention' => DB::table('attention_requests')->where('seat_ref', $seatRef)
-                ->whereNull('resolved_at')->orderBy('opened_at')
-                ->first(['request_id', 'source', 'notification_kind', 'call_id', 'opened_at', 'ceiling_at']),
-            'session' => $state->current_session_ref === null ? null : DB::table('sessions')
-                ->where('id', $state->current_session_ref)
-                ->first(['turn_open', 'turn_started_at', 'last_turn_end_reason', 'last_turn_ended_at',
-                    'last_turn_tool_calls', 'last_turn_failed_calls', 'last_turn_aborted_count',
-                    'last_turn_background_tasks_open', 'reopened']),
+                ])->map(fn ($c) => self::onTheWire($c, ['opened_at', 'orphan_due_at']))->all(),
+            'attention' => self::onTheWire(
+                DB::table('attention_requests')->where('seat_ref', $seatRef)
+                    ->whereNull('resolved_at')->orderBy('opened_at')
+                    ->first(['request_id', 'source', 'notification_kind', 'call_id', 'opened_at', 'ceiling_at']),
+                ['opened_at', 'ceiling_at'],
+            ),
+            'session' => $state->current_session_ref === null ? null : self::onTheWire(
+                DB::table('sessions')
+                    ->where('id', $state->current_session_ref)
+                    ->first(['turn_open', 'turn_started_at', 'last_turn_end_reason', 'last_turn_ended_at',
+                        'last_turn_tool_calls', 'last_turn_failed_calls', 'last_turn_aborted_count',
+                        'last_turn_background_tasks_open', 'reopened']),
+                ['turn_started_at', 'last_turn_ended_at'],
+            ),
         ];
+    }
+
+    /**
+     * A selected row as an array, with the named `DATETIME(3)` columns in § 8.2.1's `rfc3339_ms`.
+     *
+     * ⛔ THE COLUMNS ARE NAMED BY THE CALLER RATHER THAN SNIFFED FROM THE VALUES. A helper that
+     * guessed which members were timestamps — by suffix, or by trying to parse each one — would
+     * silently start converting the next column somebody names `..._at` that is not one, and
+     * would silently stop converting one that is renamed. Naming them at the call site puts the
+     * list beside the `get()`/`first()` that chose the columns, where a change to either is one
+     * edit away from the other.
+     *
+     * @param  list<string>  $columns
+     * @return array<string, mixed>|null
+     */
+    private static function onTheWire(?object $row, array $columns): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+
+        $out = (array) $row;
+
+        foreach ($columns as $column) {
+            $out[$column] = Clock::wire($out[$column] ?? null);
+        }
+
+        return $out;
     }
 
     /** @param  array<string, mixed>  $body */
