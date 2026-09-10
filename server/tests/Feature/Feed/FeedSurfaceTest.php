@@ -723,8 +723,9 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertNotEmpty($body['detail']['open_calls']);
         $this->assertNotNull($body['detail']['attention']);
 
-        // ⚠ `predicates` — card #7833's `cannot_evaluate` reaches a consumer here, and § 8.2.3
+        // ⚠ `predicates` — `Predicates::alarm()`'s verdict reaches a consumer here, and § 8.2.3
         // does not declare the member. Reported in card #7827's PR body; § 8.2.4 was NOT its home.
+        // Since card #7833 there is no third outcome to lose: `alarm_since` below IS the verdict.
         $names = array_column($body['detail']['predicates'], 'name');
         $this->assertContains('fold_current', $names);
         $this->assertContains('ingest_receiving', $names);

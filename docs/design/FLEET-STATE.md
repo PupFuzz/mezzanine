@@ -1021,13 +1021,53 @@ can only say `no`.
 
 | Predicate | Branches | Evaluated | Alarm criterion | The control that proves it discriminates |
 |---|---|---|---|---|
-| `seat_live` | `now − last_receipt_at ≤ 300 s` / `>` | per sweep pass, per seat — ~5,760/seat/day | **constant-`false` across ≥ 5,760 evaluations in a rolling 7 days**, per seat — a seat that has not been live in a seat-day of passes. Constant-**`true`** is deliberately **not** a criterion: a fleet in which no seat is ever stale for a week is the good outcome, and an alarm that fires on the healthy case is worse than no alarm, because it is the one that gets trained away. The `true`/`false` discrimination of this predicate is proved by test ([AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways)), not by production constancy | a fixture seat whose last receipt is back-dated past 300 s must flip the branch in the next pass; a fixture seat receiving normally must not |
-| `activity_recent` | `now − last_activity_received_at ≤ 900 s` / `>` | per sweep pass, per seat | **constant across ≥ 5,760 evaluations in a rolling 7 days**, in **either** direction — and unlike `seat_live` above, both directions are right here. Constant-`true` means a seat has done something in the activity set every 15 minutes for a week without a single quiet quarter-hour, which no real desk does and a receipt-fed activity column does exactly; constant-`false` means a week with no activity at all on a seat that is still reporting. Neither is the healthy case, so neither alarm fires on one | the heartbeat-only fixture of [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy) drives `false` while `seat_live` stays `true`; a working fixture drives `true`. **If these two predicates ever move together, activity is being written from receipt** — that is the discriminating pair, and it is the mechanised form of [§ 3](#3-delivery-is-not-activity) |
-| `turn_clean` | a `turn.end` satisfied [§ 4.3](#43-the-derivation-function) rule 4's turn-side conditions — `end_reason == "stop_hook"`, `aborted_call_ids == []` and `background_tasks_open == 0` / it did not | per `turn.end` — ~200–600/seat/day ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)) | **0 % or 100 % across ≥ 200 evaluations in a rolling 24 h.** The 100 % end is kept deliberately, against `seat_live`'s rule, and the asymmetry has a reason: 200 consecutive clean turns is a *plausible* healthy day, so this criterion can fire on a good seat — but the thing it would be missing if it did not is the false-idle defect itself, D1's headline failure arriving through a derivation that has stopped seeing aborts. A criterion that can cry wolf on the one defect both documents exist to prevent is the trade this document takes, and it is recorded here rather than left as an inconsistency with the row above | AT-D2-2's `/clear` fixture drives `false`; AT-D2-1's ordinary turn drives `true`. Constant-`true` means the abort path is not reaching the derivation — the false-idle defect returning; constant-`false` means idle has become unreachable, which is what a wrongly-scoped reap looked like in D1's own review |
-| `call_closed_by_wire` | a call closed by a `tool.end` / by a server orphan or quiescence | per call close — ~1,000–3,000/seat/day | **≥ 5 % server-closed across ≥ 1,000 in 24 h** is the alarm direction here (not constancy): server closes should be rare | drive a fixture with the reap disabled → the share jumps; the healthy fixture keeps it near zero. This is the server-side twin of D1's `late_completion` signal |
+| `seat_live` | `now − last_receipt_at ≤ 300 s` / `>` | per sweep pass, per seat — ~5,760/seat/day | **constant-`false` across ≥ 5,760 evaluations in a rolling 7 days**, per seat — a seat that has not been live in a seat-day of passes. Stored and evaluated as a **run** (below). Constant-**`true`** is deliberately **not** a criterion: a fleet in which no seat is ever stale for a week is the good outcome, and an alarm that fires on the healthy case is worse than no alarm, because it is the one that gets trained away. The `true`/`false` discrimination of this predicate is proved by test ([AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways)), not by production constancy | a fixture seat whose last receipt is back-dated past 300 s must flip the branch in the next pass; a fixture seat receiving normally must not |
+| `activity_recent` | `now − last_activity_received_at ≤ 900 s` / `>` | per sweep pass, per seat | **constant across ≥ 5,760 evaluations in a rolling 7 days**, in **either** direction, stored and evaluated as a **run** (below) — and unlike `seat_live` above, both directions are right here. Constant-`true` means a seat has done something in the activity set every 15 minutes for a week without a single quiet quarter-hour, which no real desk does and a receipt-fed activity column does exactly; constant-`false` means a week with no activity at all on a seat that is still reporting. Neither is the healthy case, so neither alarm fires on one | the heartbeat-only fixture of [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy) drives `false` while `seat_live` stays `true`; a working fixture drives `true`. **If these two predicates ever move together, activity is being written from receipt** — that is the discriminating pair, and it is the mechanised form of [§ 3](#3-delivery-is-not-activity) |
+| `turn_clean` | a `turn.end` satisfied [§ 4.3](#43-the-derivation-function) rule 4's turn-side conditions — `end_reason == "stop_hook"`, `aborted_call_ids == []` and `background_tasks_open == 0` / it did not | per `turn.end` — ~200–600/seat/day ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)) | **0 % or 100 % across ≥ 200 evaluations in a rolling 24 h** — 0 % and 100 % **are** constancy, so this is the same **run** rule as the two rows above at a different `(n, window)` (below). The 100 % end is kept deliberately, against `seat_live`'s rule, and the asymmetry has a reason: 200 consecutive clean turns is a *plausible* healthy day, so this criterion can fire on a good seat — but the thing it would be missing if it did not is the false-idle defect itself, D1's headline failure arriving through a derivation that has stopped seeing aborts. A criterion that can cry wolf on the one defect both documents exist to prevent is the trade this document takes, and it is recorded here rather than left as an inconsistency with the row above | AT-D2-2's `/clear` fixture drives `false`; AT-D2-1's ordinary turn drives `true`. Constant-`true` means the abort path is not reaching the derivation — the false-idle defect returning; constant-`false` means idle has become unreachable, which is what a wrongly-scoped reap looked like in D1's own review |
+| `call_closed_by_wire` | a call closed by a `tool.end` / by a server orphan or quiescence | per call close — ~1,000–3,000/seat/day | **≥ 5 % server-closed across ≥ 1,000 in 24 h** is the alarm direction here (not constancy): server closes should be rare. ⚠ **Evaluated over the last COMPLETED 24 h window, not a rolling one** — a *tumbling* window, and the cost of that is stated below rather than absorbed | drive a fixture with the reap disabled → the share jumps; the healthy fixture keeps it near zero. This is the server-side twin of D1's `late_completion` signal |
 | `attention_resolved_by_wire` | resolved by an `attention.resolved` / by the server ceiling | per resolution — 0–50/seat/day | **any** server-ceiling resolution in 24 h is surfaced; constant-server over ≥ 10 alarms | stub the resolution events → ceiling branch; ordinary approval → wire branch |
 | `ingest_receiving` | any batch received fleet-wide in the last 300 s / none | per sweep pass, fleet-wide | **constant-`false` for 2 consecutive passes** alarms | stop the ingest → `false` within 300 s; a single live seat → `true`. This is the predicate that separates "every seat died" from "our pipe is broken", and without it a fleet-wide ingest outage renders as 40 independently-stale desks |
 | `fold_current` | `fold_lag_ms ≤ 60,000` / `>`, with `fold_lag_ms` **computed** from the cursor and head columns per [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation), never read from a stored lag | per sweep pass, per seat | **constant-`false` for 2 consecutive passes** alarms | pause the fold daemon → `false` within one pass; resume → `true`. This control is only reachable because the sweeper and the fold are different processes and the lag's basis is a **timestamp two processes write** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation): the ingest seeds `fold_cursor_received_at`, the fold advances it), not a number the fold maintains — a stored lag the fold wrote would freeze with it |
+
+**How § 6.4 carries these criteria, and why it had to change (card#7833).** Every criterion above is
+stated over a *window*, and until this change [§ 6.4](#64-ddl)'s `seat_predicates` carried only
+cumulative branch counts and two last-seen timestamps — from which **no windowed count is derivable**.
+The gap is not a preference, and it is provable in one pair of histories: 250 clean turns inside one
+day (criterion **met**) and 249 clean turns spread over a month plus one an hour ago (criterion **not
+met**) produce a **byte-identical row** — `true_count` 250, `false_count` 0, `last_true_at` an hour ago,
+`last_false_at` null. No function of that tuple separates them. An earlier build approximated it and
+the approximation **over-fired** three reachable ways, which by this section's own trade *inverts* the
+feature rather than degrading it; the interim after that made four of the seven answer
+`cannot_evaluate`, which was honest and inert. The operator's ruling was to **extend the store, not
+restate the criteria** — restating `call_closed_by_wire`'s share as a run would not weaken it, it would
+**delete** it, and it is the one criterion here that is a health signal rather than a discrimination
+meta-monitor. `seat_predicates` therefore carries two more pieces of evidence, and each criterion above
+is read from exactly one of them:
+
+- **A run** — `run_length` and `run_started_at`. *Constant across ≥ N evaluations inside a window W* is
+  exactly *an unbroken same-branch run of ≥ N evaluations that began no more than W ago*, so
+  `seat_live`, `activity_recent` and `turn_clean` are **one rule** at three settings of
+  `(direction, n, window)`, and `ingest_receiving` and `fold_current` are the same rule with **no**
+  window — "2 consecutive passes" is a run of 2. The run's **branch** is not stored: it is derived from
+  `last_true_at` / `last_false_at`, which already carry it. **The verdict is decided when the
+  evaluation is recorded and latched in `alarm_since`**, never recomputed cold: a run that crosses N
+  *inside* W and then keeps going outgrows W while still being constant, and a cold recomputation would
+  withdraw an alarm whose subject had not changed. Exactly one event withdraws it — the run breaking.
+  ⚠ **The residue, in the under-firing direction:** the window is measured from the run's *start*, so a
+  run that began before W and only reached N afterwards does not fire. Closing that needs the timestamp
+  of the (`run_length` − N + 1)-th evaluation, i.e. a per-evaluation bucket table, which this design
+  refuses — it would put a second row-write on the fold's per-event path ([§ 6.5](#65-the-fold): **one
+  transaction per pass, per seat**) for a predicate two different processes already write, where the
+  columns above add none. It is unreachable at a steady evaluation rate, which is the property the
+  paragraph below requires of every threshold anyway.
+- **A tumbling window** — `window_start` / `window_true` / `window_false` and the last completed
+  window's `prev_start` / `prev_true` / `prev_false`. `call_closed_by_wire` is the only criterion whose
+  evidence is a windowed **count** rather than a run, and it is evaluated **exactly** over the last
+  completed 24 h window. ⚠ **The accepted cost, recorded because it is a real trade and not an
+  implementation detail:** the window is *tumbling*, not rolling, so the alarm can only arrive **at a
+  window roll** — worst-case detection of a reap outage stretches by up to one window — and a burst of
+  server closes that **straddles** a boundary can leave both halves under the 1,000 floor and alarm on
+  neither. Both failures are under-firing, which is the direction this section's own trade prefers.
 
 **On the thresholds.** They are chosen the way D1 chooses its own and carry the same obligation: each
 criterion is reachable by its predicate's own evaluation rate — the rule D1 states as "a threshold above
@@ -1540,12 +1580,27 @@ CREATE TABLE seat_predicates (
   last_true_at  DATETIME(3) NULL,
   last_false_at DATETIME(3) NULL,
   alarm_since   DATETIME(3) NULL,
+  -- § 5's CONSTANCY evidence (card#7833). The run's BRANCH is deliberately absent: it is derived
+  -- from the two last_*_at columns above, and a stored copy would be free to disagree with them.
+  run_length     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  run_started_at DATETIME(3) NULL,
+  -- § 5's SHARE evidence: a TUMBLING window and the last COMPLETED one. Written for
+  -- `call_closed_by_wire` alone — the only criterion whose evidence is a windowed COUNT.
+  window_start  DATETIME(3) NULL,
+  window_true   BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  window_false  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  prev_start    DATETIME(3) NULL,
+  prev_true     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  prev_false    BIGINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (seat_ref, name)
 ) ENGINE=InnoDB;
 -- seat_ref 0 is a reserved sentinel for the fleet-wide row, NOT a real row in `seats`, and there
 -- is deliberately no FK on this table, because the population is "predicates", not "seats".
 -- A fleet-wide predicate has no seat and inventing a fake seat row for it would put a
 -- non-existent desk on the floor.
+-- The eight columns after `alarm_since` are card#7833's, and § 5 states in full what each one
+-- carries and why a bucket table was refused. They add NO statement to the write path: the
+-- predicate writer already read this row and already rewrote it whole.
 
 CREATE TABLE feed_tokens (
   id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -3799,7 +3854,7 @@ document.
 | Rate limit, read token | 120 req/min | **Cited** — D1's per-seat request ceiling, reused so the fleet has one number; ~120× the watchdog's real cadence | [§ 9](#9-read-side-authentication) |
 | Rate limit, browser session | 600 req/min | **Chosen** — ~10 req/s, above any human interaction and far below anything the store notices | [§ 9](#9-read-side-authentication) |
 | Task-title tier staleness | 30 min | **Chosen, provisional** — a card title older than half an hour is likely describing the previous task; re-derived once the board producer exists and its poll cadence is known ([§ 14](#14-open-questions-for-the-review-loop) item 3) | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
-| Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h (`call_closed_by_wire`), any server ceiling in 24 h and constant-server over ≥ 10 (`attention_resolved_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
+| Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h, over the last COMPLETED window (`call_closed_by_wire`), any server ceiling in 24 h and constant-server over ≥ 10 (`attention_resolved_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
 | Store version floor | 11.8.6 | **Ruled** — operator, card#7523 (2026-09-09), replacing MySQL ≥ 8.0.12. The features under it are DOCS-CITED to the MariaDB Knowledge Base: `SKIP LOCKED` (10.6.0), `ALGORITHM=INSTANT` (10.3.2/10.4 by operation), `DATETIME(3)`, and `JSON` as a `LONGTEXT` alias rather than a binary type; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
 | Redis test databases | 11 / 10 | **Chosen** — against the fleet's published claims (14/15, 13/12, 15/14, 2/3 on roundtable #349) and clear of the `0`/`1` defaults every unpinned seat gets | [§ 6.2](#62-database-names-pinned-and-published) |
 

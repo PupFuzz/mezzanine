@@ -37,6 +37,43 @@ return new class extends Migration
             $table->dateTime('last_false_at', 3)->nullable();
             $table->dateTime('alarm_since', 3)->nullable();
 
+            /*
+             * ── card #7833's widening, and it is § 6.4's DDL, not an addition to it ──────────
+             *
+             * § 5 states four of its seven criteria over a window — "across ≥ 5,760 evaluations
+             * in a rolling 7 days", "0 % or 100 % across ≥ 200 in a rolling 24 h", "≥ 5 %
+             * server-closed across ≥ 1,000 in 24 h" — and the five columns above cannot express
+             * any of them: two histories with opposite truth values produce a BYTE-IDENTICAL row
+             * (250 clean turns inside a day, versus 249 spread over a month plus one an hour ago).
+             * The operator ruled EXTEND THE STORE rather than restate the criteria, § 6.4 was
+             * amended to declare these columns, and `App\Sweep\Predicates` reads them.
+             *
+             * ⚠ EDITED IN PLACE RATHER THAN ALTERED BY A LATER MIGRATION, and the basis is stated
+             * rather than assumed: § 6.1 records that "the deploy host is not built yet" and § 6.8
+             * that "no seat has been instrumented yet", so there is no store anywhere holding a
+             * row of this table and no data to back-fill. Splitting one table's declaration across
+             * two files to `ALTER` a table nothing has ever created would leave the comment above
+             * ("§ 6.4's verbatim DDL") false and give the table two homes.
+             */
+
+            // THE CONSTANCY EVIDENCE. The run's BRANCH is deliberately NOT a column: it is derived
+            // from the two `last_*_at` timestamps by `Predicates::priorBranch()`, and a stored
+            // copy would be a second spelling of one fact, free to disagree with the first.
+            $table->unsignedBigInteger('run_length')->default(0);
+            $table->dateTime('run_started_at', 3)->nullable();
+
+            // THE SHARE EVIDENCE — a TUMBLING window and the last COMPLETED one. Written for
+            // `call_closed_by_wire` alone: it is § 5's only criterion whose evidence is a windowed
+            // COUNT rather than a run, and maintaining a window for the other six would be stored
+            // state nothing reads. `prev_start` is what lets a READER tell a completed window from
+            // a stale one without writing (`Predicates::rolled()`).
+            $table->dateTime('window_start', 3)->nullable();
+            $table->unsignedBigInteger('window_true')->default(0);
+            $table->unsignedBigInteger('window_false')->default(0);
+            $table->dateTime('prev_start', 3)->nullable();
+            $table->unsignedBigInteger('prev_true')->default(0);
+            $table->unsignedBigInteger('prev_false')->default(0);
+
             $table->primary(['seat_ref', 'name']);
         });
 

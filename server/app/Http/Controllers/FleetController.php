@@ -250,9 +250,16 @@ class FleetController extends Controller
      * plane's `seat_predicates`, which is the fourth term of an otherwise symmetric sentence. It
      * is added here because § 8.1 makes an additive REST member free ("additive changes are free
      * and a consumer must ignore unknown fields") and because without it `Predicates::alarm()`'s
-     * outcome — including card #7833's `cannot_evaluate` — reaches no consumer at all. § 8.2.4
-     * was NOT its home: that object's nine members are enumerated and closed, and none of them is
-     * a predicate. Card #7827's PR body carries the gap.
+     * outcome reaches no consumer at all. § 8.2.4 was NOT its home: that object's nine members are
+     * enumerated and closed, and none of them is a predicate. Card #7827's PR body carries the gap.
+     *
+     * ⭐ AND SINCE CARD #7833 THIS MEMBER CARRIES THE WHOLE VERDICT, which it previously could not.
+     * `Sweep::pass()` discards `Predicates::alarm()`'s return, so `alarm_since` below is the only
+     * thing an operator ever sees — and while four criteria answered `cannot_evaluate`, a predicate
+     * NOBODY WAS CHECKING rendered here identically to a healthy one, because both carried a null
+     * `alarm_since`. Card #7833 removed the third outcome rather than plumbing it: every criterion
+     * now answers, and `alarm_since !== null` after a pass holds if and only if the outcome was
+     * `FIRES`. No field is added for a state that no longer exists.
      *
      * `sweep_seat_error` (card #7832) needs no new home and gets none: it is a `seat_counters`
      * row, and "this plane's `seat_counters` rows" is already what this member returns.
