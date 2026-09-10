@@ -293,8 +293,13 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
 
         // CONTROL 8 — the clean zero: a null timestamp coalesced to a zero clock. This is
         // `docs/KANBAN.md § G-1`'s shape and AT-D3-14's RED.
+        // ⚠ The subject moved to `../wire/clock.js` at `clockTime`'s second caller (card#8300),
+        // and the control moved WITH it rather than being retargeted at whatever in this file
+        // still looked similar. The mutated copy keeps the shipped layout precisely so a
+        // cross-directory subject stays reachable — and the assertion is unchanged, which is
+        // what says the hoist did not change the behaviour it guards.
         $zeroing = $this->mutatedModules([
-            'lobby-model.js',
+            '../wire/clock.js',
             "    if (typeof wireTime !== 'string') {\n        return null;\n    }",
             "    if (typeof wireTime !== 'string') {\n        return '00:00:00';\n    }",
         ]);
