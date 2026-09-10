@@ -51,6 +51,70 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   Both were watched failing: a fabricated `coord_thread.bogus` in § 5.1 reds, and a `coord.bogus` in
   D2's prose reds. New **AT-D2-24** pins the two rules a build could not otherwise be held to — the
   invented join, and a coordination fact minting a seat state.
+- **card#7833** — **§ 5's predicate criteria are now evaluable, because § 6.4's `seat_predicates`
+  was EXTENDED to carry the evidence they ask for** (operator ruling: extend the store, do not
+  restate the criteria). Every criterion in § 5 is stated over a window, and the table carried only
+  cumulative branch counts plus two timestamps — from which no windowed count is derivable. ⭐ **The
+  gap is provable in one pair of histories, and that pair is now a test:** 250 clean turns inside a
+  day (criterion MET) and 249 spread over a month plus one an hour ago (NOT met) produce a
+  **byte-identical row** — `true_count` 250, `false_count` 0, `last_true_at` an hour ago,
+  `last_false_at` null, `alarm_since` null. No function of that tuple separates them. Since PR#21's
+  interim, four of the seven answered `cannot_evaluate` on every row of every pass: honest, and
+  inert.
+  **What § 6.4 gained:** `run_length` / `run_started_at` (the constancy evidence) and
+  `window_start` / `window_true` / `window_false` / `prev_start` / `prev_true` / `prev_false` (a
+  tumbling 24 h window and the last completed one). The run's BRANCH is deliberately not a column —
+  `Predicates::priorBranch()` already derives it from the two `last_*_at` timestamps, and a second
+  copy would be free to disagree.
+  **What the code gained:** *constant across ≥ N evaluations in a window W* is exactly *an unbroken
+  same-branch run of ≥ N that began no more than W ago*, so `seat_live`, `activity_recent`,
+  `turn_clean`, `ingest_receiving` and `fold_current` collapse from three implementations into ONE
+  `run` rule at five settings of `(direction, n, window)` — the old `consecutive` kind is that rule
+  with no window. The verdict is decided at `record()` and **latched** in `alarm_since`, never
+  recomputed cold: a run that crosses N inside W and keeps going outgrows W while still being
+  constant, and a cold recomputation would withdraw an alarm whose subject had not changed. Exactly
+  one event withdraws it — the run breaking.
+  ⚠ **THE ACCEPTED COST, recorded rather than absorbed: `call_closed_by_wire` moves from a ROLLING
+  24 h window to a TUMBLING one.** Its criterion is a *share* ("≥ 5 % server-closed across ≥ 1,000
+  in 24 h") and § 5 says so in terms, so restating it as a run would not weaken it — it would
+  **delete** it, and it is the only one of the seven that is a health signal rather than a
+  discrimination meta-monitor. Evaluated over the last **completed** window it is exact, at two
+  costs the operator accepted: the alarm can only arrive **at a window roll**, so worst-case
+  detection of a reap outage stretches by up to one window; and a burst of server closes that
+  **straddles** a boundary can leave both halves under the 1,000 floor and alarm on neither. Both
+  are under-firing, which is the direction § 5's own trade prefers — and the straddle is pinned by
+  a test, so a later change that makes it fire is visibly a design change and not a bug fix.
+  ⚠ **A second residue, also under-firing:** the run's window is measured from the run's START, so
+  a run that began before W and only reached N afterwards does not fire. Closing that needs the
+  timestamp of the (`run_length` − N + 1)-th evaluation — a per-evaluation bucket table, which was
+  refused: it would put a second row-write on the fold's hot path, written by two processes, and a
+  second lock-order edge on top of the one card#7523 already carries. **`Predicates::record()`'s
+  concurrency posture is untouched by design** — the new state is computed in PHP from the row it
+  already read and written by the upsert it already did: no new statement, no new writer, no new
+  lock-order edge.
+  ⭐ **`cannot_evaluate` is GONE, and that closes a read-side gap rather than merely tidying one.**
+  `Sweep::pass()` discards `Predicates::alarm()`'s return and § 8.2.3's `detail.predicates`
+  publishes only the row's own columns, so while a third outcome existed that wrote NOTHING, a
+  predicate **nobody was checking** rendered identically to a healthy one. It is closed by removing
+  the third outcome, not by plumbing a field: after a pass, `alarm_since !== null` holds if and only
+  if the outcome was `FIRES`, on every row visited — asserted directly, over a fixture containing
+  both verdicts so the check can fail. **AT-D2-13 is satisfiable for all seven predicates**, each
+  seen to fire and seen not to fire across its own boundary (5,759/5,760 · 199/200 · 49/50 ·
+  999/1,000 · exactly 7 days vs one second more), with ten mutations of the new rules each driven
+  red.
+  ⚠ **The migration was edited IN PLACE rather than shipped as an `ALTER`**, on a stated basis and
+  not a convenience: § 6.1 records that "the deploy host is not built yet" and § 6.8 that "no seat
+  has been instrumented yet", so no store anywhere holds a row of this table. Splitting one table's
+  declaration across two files to alter a table nothing has created would have left that migration's
+  own "§ 6.4's verbatim DDL" comment false.
+  ⚠ **One claim in this work was made from recall, then measured, and was WRONG** — recorded because
+  the correction is now load-bearing in a comment. The share comparison uses integer
+  cross-multiplication, and its first justification said `0.05 * 1000` is `50.000000000000007` in
+  IEEE-754 so the float form could not meet its own boundary. It is exactly `50.0`, and the float
+  form diverges from the integer form at no total in the reachable range. The integer form stays —
+  exact by construction, and § 5 states the threshold in percent — but it is recorded as a
+  robustness choice **with no failing case behind it**: a mutation to the float form leaves the
+  suite green, deliberately.
 
 - **card#7523** — **the store is repinned to MariaDB ≥ 11.8.6, replacing MySQL ≥ 8.0.12** (operator
   ruling, 2026-09-09). This is the DOCUMENTATION AND PINS half; host provisioning is the operator's
