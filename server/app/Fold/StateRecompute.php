@@ -548,13 +548,18 @@ class StateRecompute
             'task_title' => mb_substr($title, 0, 120),
             'task_source' => 'telemetry',
             'task_ref' => null,
-            // NEVER null on this branch: both queries above filter `closed_at IS NULL`, and every
-            // path that inserts an OPEN `calls` row writes `opened_received_at` from the event's
-            // own receipt (`Projector::toolStart`, and the placeholder `subagent.spawn` mints when
-            // its `tool.start` has not landed). The rows that carry no receipt are the tombstones
-            // — a close with no open — and § 6.4's `$close` array sets `closed_at` on every one of
-            // them, so neither query can reach one. That matters because § 8.2.1 makes
-            // `task.as_of` NON-nullable inside a `task` object that exists.
+            // NEVER null on this branch, and § 8.2.1 is why it has to be argued: `task.as_of` is
+            // NON-nullable inside a `task` object that exists, so a null here would put a hole in
+            // the wire contract rather than merely lose a stamp.
+            //
+            // Both reads above can only land on an OPEN call — the first filters
+            // `closed_at IS NULL` itself, the second reads the row `$currentCall` names and the
+            // caller selected THAT with the same filter — and every path that inserts an open
+            // `calls` row writes `opened_received_at` from the event's own receipt
+            // (`Projector::toolStart()`, and the `subagent.spawn` placeholder it mints when the
+            // `tool.start` has not landed). The rows that carry no receipt are the TOMBSTONES, a
+            // close with no open, and `Projector::toolEnd()`'s `$close` array sets `closed_at` on
+            // every one of them — so neither read can reach one.
             'task_as_of' => $answer->opened_received_at,
         ];
     }
