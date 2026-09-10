@@ -693,7 +693,7 @@ const FLEET={
   ],
   sola:[
     {desk:"cabin",seat:"sola-pm",render_state:"idle",link_state:"live",action:null,open_calls:0,open_turn:false,context:{used_pct:18.9,used_tokens:189000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:null,subagents:[],quiet_for:"12m 40s",activity:{last_kind:"turn.end",last_event_time:"14:16:22"}},
-    {desk:"a1",seat:"kanban",render_state:"working",link_state:"live",action:{tool_name:"Edit",descriptor:"Edit: board webhooks consumer",started_at:"14:28:12",running:"0m 50s"},context:{used_pct:22.4,used_tokens:224000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"autonomy watchdog",source:"issue",ref:"rt#341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:28:12"}},
+    {desk:"a1",seat:"kanban",render_state:"working",link_state:"live",action:{tool_name:"Edit",descriptor:"Edit: board webhooks consumer",started_at:"14:28:12",running:"50s"},context:{used_pct:22.4,used_tokens:224000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"autonomy watchdog",source:"issue",ref:"rt#341"},subagents:[],activity:{last_kind:"tool.start",last_event_time:"14:28:12"}},
     {desk:"a2",seat:"sola-backend",render_state:"stale",link_state:"stale",action:null,open_calls:0,open_turn:false,context:null,model_label:null,task:null,subagents:[],delivery:{no_data_since:"14:18",last_receipt_at:"14:18:02"},no_data_for:"11m",activity:{last_kind:"reporter.heartbeat",last_event_time:"14:17:59"}},
     {desk:"b1",seat:"sola-inventory",render_state:"blocked",link_state:"live",action:null,open_calls:0,open_turn:true,blocked_since:"14:21",context:{used_pct:61.7,used_tokens:617000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",task:{title:"MFA session ruling",source:"thread",ref:"inv#88"},subagents:[],activity:{last_kind:"attention.request",last_event_time:"14:21:07"}},
     /* ⭐ THE F13 SEAT. `b2` is a desk this floor's map does not declare, and sola's four slots
@@ -705,7 +705,7 @@ const FLEET={
        rendered exactly like any other seat, never dropped and never a crash. Its `subagents[]` carries
        § 5.6's two null edges side by side: an intern with no `subagent_type` (no type tag at
        all) and one with no `title` (*untitled*, never an invented one). */
-    {desk:"b2",seat:"sola-mailer",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: php artisan queue:work",started_at:"14:28:41",running:"0m 21s"},context:{used_pct:12.5,used_tokens:125000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"digest send window",source:"issue",ref:"#341"},subagents:[{title:"draft the digest template",subagent_type:null},{title:null,subagent_type:"coder"}],activity:{last_kind:"tool.start",last_event_time:"14:28:41"}}
+    {desk:"b2",seat:"sola-mailer",render_state:"working",link_state:"live",action:{tool_name:"Bash",descriptor:"Bash: php artisan queue:work",started_at:"14:28:41",running:"21s"},context:{used_pct:12.5,used_tokens:125000,total_tokens:1000000,source:"harness"},model_label:"claude-opus-5",open_calls:1,open_turn:true,task:{title:"digest send window",source:"issue",ref:"#341"},subagents:[{title:"draft the digest template",subagent_type:null},{title:null,subagent_type:"coder"}],activity:{last_kind:"tool.start",last_event_time:"14:28:41"}}
   ]
 };
 /* ---------- PLACEMENT: every seat gets a desk, and a seat is NEVER DROPPED (§ 3.2, § 9 F13) ----

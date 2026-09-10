@@ -19,6 +19,43 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9209** — **D3 publishes a duration format.** § 7.1's Label cells rendered durations and
+  the document published no rule for them: its own exemplars — `4m 12s`, `11m`, `2h 06m` — are
+  produced by **no single rule**, § 12 carried no row, and the ratified preview sidestepped the
+  question with pre-formatted sample strings, so an implementer inherited a gap that looked solved.
+  **§ 2.4 now publishes ONE function** — seconds in, one string out — in seven clauses with a
+  boundary table: at most two units (`h`/`m`/`s`, no day unit), the largest non-zero unit first and
+  unpadded, the second zero-padded to two digits and **dropped when zero**, the remainder truncated
+  and never rounded, `0s` for zero and for anything under a second and for a negative age, and
+  *nothing done yet* / *no data yet* — never `0s` — for a **missing** one.
+  ⭐ **Shared by every rendered duration on the page, with no exception**, which is what retired the
+  two forms that were not the others': § 2.4's own *this state is 117 s behind* is now *1m 57s*, and
+  the fleet banner's *N minutes ago* is *N ago*. § 7.1's exemplars are regenerated from the rule
+  (all three already conformed); § 12 gains the units row, the day-boundary row and the guard-class
+  row; **§ 13 decision 23** records the no-day-unit call with its alternative, because that is the
+  half a reviewer is most likely to contest.
+  ⚠ **The gap was wider than § 7.1 and the population is now named.** § 5.3's `sweep_last_run_at`
+  and `ingest_last_receipt_at` ages, the panel's context-sample age, reporter uptime, oldest-unsent
+  age and timeline-row age, and the fleet banner are all durations this document renders and none of
+  them was among § 2.4's four — so § 2.1 row 2's *three* was a **closed list of instances** where the
+  row means a kind, and it was already false. Row 2 now names the kind; **§ 14 item 17** carries the
+  remaining **wording** gap (the format is closed for all of them; the string four of them are
+  spoken in is not).
+  ⛔ **Reconciled in the same change, so no shipped instance outlives the ruling** (card#8075's
+  lesson): the preview's `0m 50s` and `0m 21s` become `50s` and `21s`, and the lobby's three
+  card#9209 comments — which said *there is no format* — now say what is actually still open.
+  **New gates, both seen to fail:** `verify-floor.py` **G12** re-implements the function from
+  § 2.4's clauses, reproduces its boundary table before either leg runs, holds every duration inside
+  a published rendered span to it as a fixed point, and re-derives § 7.1's `stale` / `offline` ages
+  **arithmetically** from the timestamp and corrected clock those cells state themselves; the
+  preview selftest gains the same two legs over the artifact's own sample fleet, with the dark
+  desk's age derived from `last_receipt_at` and the page's frozen clock — and never from
+  `action.started_at`, which is the seat clock § 2.4 forbids subtracting.
+  ⚠ **One correction found in passing:** § 2.4 said the fleet banner's words were *"in words D2 § 2.3
+  fixes"*. D2 § 2.3 fixes the banner's trigger and its threshold and publishes no wording for it —
+  `grep` returns nothing — so the attribution is withdrawn and the words are named as this
+  document's.
+
 - **card#9212** — **D2 gains the coordination read surface that card#7897 part 2 slice 1 was
   ruled to write and did not.** That slice was defined as two documents; `PupFuzz/mezzanine#31`
   landed only D1 (`EVENT-SCHEMA.md § 18`), and `FLEET-STATE.md` carried **no** `coord.*` surface

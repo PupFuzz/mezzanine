@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D3 verification gate: docs/design/FLOOR.md.
 
-ELEVEN guard classes, G1-G11, one per defect class this document can carry that a reader will not
+TWELVE guard classes, G1-G12, one per defect class this document can carry that a reader will not
 reliably catch.  Every population below is RE-DERIVED on each run -- from this document's own
 tables, or from docs/design/FLEET-STATE.md (D2) and docs/design/EVENT-SCHEMA.md (D1) -- and never
 from a list stored here.  A number or a member list written into a checker is one free to disagree
@@ -48,6 +48,14 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                other, and every worked instance elsewhere -- found
                                                structurally, by a *was:* span or the words `activity
                                                state` -- must state the placement they agree on
+  G12 the duration format                      section 2.4's clauses re-implemented as a function
+                                               and its boundary table REPRODUCED row by row; then
+                                               every duration inside a PUBLISHED RENDERED SPAN --
+                                               section 2.4's Verbatim column and section 7.1's Label
+                                               line -- held to it as a FIXED POINT, and section 7.1's
+                                               two dark rows re-derived ARITHMETICALLY from the
+                                               timestamp in their own span and the corrected clock
+                                               their own prose states
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -2128,6 +2136,234 @@ else:
                     "was found anywhere in this document, so this leg is clean over an empty "
                     "population — which is what a silently-narrowed recognizer looks like")
 
+# ---- G12. the duration format: section 2.4's function, and every rendered duration ----
+# Until card#9209 this document rendered durations and published no format for them.  Section 7.1's
+# Label cells carried `4m 12s`, `11m` and `2h 06m` -- three exemplars NO SINGLE RULE PRODUCES -- and
+# section 2.4's own fourth row carried `117 s`, a fourth form again.  Nothing could red, because
+# there was no rule for an example to contradict: the class G11 catches (a worked example against
+# the rule that governs it) needs a rule at one end of it.  Section 2.4 now publishes the function;
+# this gate is the other end.
+#
+# NOTHING BELOW STORES A DURATION STRING.  The function is re-implemented from section 2.4's
+# clauses -- the same standing G8 has for the desk-slot hash, which is likewise re-computed here
+# from the document's stated function rather than compared to a table of answers -- and every
+# expected output is READ OUT of the document, either as a boundary-table row or as the arithmetic
+# a section 7.1 cell states about itself.
+_s24 = section_text("24-the-clock-and-every-age-on-the-page") or ""
+
+# The clause COUNT is a restatement of the clause list, so it is guarded rather than trusted: the
+# prose says how many clauses the function has, and the clauses are counted.
+_clause_nos = re.findall(r"^  (\d+)\. \*\*", _s24, re.M)
+_m_stated = re.search(r"those (\w+) clauses", _s24)
+if not _clause_nos:
+    fail.append("G12 CONTROL: no numbered clause parsed out of section 2.4's duration rule, so the "
+                "function below was re-implemented from nothing this gate can see")
+elif not _m_stated:
+    fail.append("G12 CONTROL: section 2.4 no longer states how many clauses the duration rule has, "
+                "so the count that binds the prose to the list is gone and a dropped clause is "
+                "silent")
+elif NUM.get(_m_stated.group(1)) != len(_clause_nos):
+    fail.append(f"G12: section 2.4 says the duration rule has {_m_stated.group(1)} clauses and "
+                f"{len(_clause_nos)} are written. One of the two moved without the other")
+elif [int(n) for n in _clause_nos] != list(range(1, len(_clause_nos) + 1)):
+    fail.append(f"G12: section 2.4's duration clauses are numbered {_clause_nos} — not contiguous "
+                f"from 1, so a clause cited by number elsewhere now points at a different one")
+
+
+def render_duration(seconds, cap=2, drop=True, pad=True):
+    """Section 2.4's function, re-implemented from its clauses.  The three keyword arguments are
+    NOT options the document offers -- they exist so the capability control below can build the
+    string each clause FORBIDS and prove the check rejects it, per clause.  Called with defaults,
+    this is the published function and nothing else."""
+    s = int(seconds) if seconds > 0 else 0          # clause 1: truncate, never negative
+    parts = [("h", s // 3600), ("m", s // 60 % 60), ("s", s % 60)]
+    first = next((i for i, (_, v) in enumerate(parts) if v), None)
+    if first is None:                                # clause 7: zero renders `0s`
+        return "0s"
+    out = [f"{parts[first][1]}{parts[first][0]}"]    # clause 5: the first value is unpadded
+    for unit, val in parts[first + 1:first + cap]:   # clause 3: at most `cap` units
+        if val == 0 and drop:                        # clause 4: a zero second unit is dropped
+            continue
+        out.append(f"{val:02d}{unit}" if pad else f"{val}{unit}")  # clause 5: the second is padded
+    return " ".join(out)                             # clause 6: one space, no plural
+
+
+# The boundary table IS the document's statement of what the function returns, so reproducing it is
+# the check that this implementation is the published one.  A parse that finds nothing is the
+# failure, never a clean run over an empty table.
+_bnd = table_rows(_s24, r"^\| Seconds in \| Renders \| The clause it is here for \|") or []
+_bnd_pairs = []
+for _r in _bnd:
+    _c = cells(_r)
+    if len(_c) < 2:
+        continue
+    _in = _c[0].replace("−", "-").replace(",", "").strip("*` ")
+    _outm = re.match(r"^`([^`]+)`$", _c[1])
+    if not _outm:
+        fail.append(f"G12 CONTROL: section 2.4's boundary row for {_c[0]!r} states its output as "
+                    f"{_c[1]!r} rather than as a backticked string, so this gate cannot tell the "
+                    f"rendered string from the prose around it")
+        continue
+    try:
+        _bnd_pairs.append((float(_in), _outm.group(1)))
+    except ValueError:
+        fail.append(f"G12 CONTROL: section 2.4's boundary row input {_c[0]!r} is not a number of "
+                    f"seconds, so the row asserts nothing this gate can evaluate")
+if len(_bnd_pairs) < 2:
+    fail.append(f"G12 CONTROL: {len(_bnd_pairs)} boundary rows parsed out of section 2.4 — the "
+                f"function below was reproduced against nothing, and an empty population passes "
+                f"in silence")
+for _sec, _want in _bnd_pairs:
+    _got = render_duration(_sec)
+    if _got != _want:
+        fail.append(f"G12: section 2.4 says {_sec:g} seconds renders {_want!r} and its own clauses, "
+                    f"re-implemented, return {_got!r}. EITHER END may be the one that moved — a "
+                    f"clause edited without its outputs, or an output edited without its clause")
+
+DUR_RE = re.compile(r"(?<![\w:.−-])\d+ ?[hms](?: \d+ ?[hms])*(?![\w:])")
+
+
+def parse_duration(tok):
+    """Seconds in a duration-shaped token, or None.  Deliberately LOOSER than the format: it reads
+    `2h 6m`, `11m 00s` and `117 s` too, because the strings this gate exists to catch are exactly
+    the ones the format would never emit, and a parser that only read legal strings would report
+    clean by failing to see them."""
+    total, seen = 0, False
+    for val, unit in re.findall(r"(\d+) ?([hms])", tok):
+        total += int(val) * {"h": 3600, "m": 60, "s": 1}[unit]
+        seen = True
+    return total if seen else None
+
+
+SPAN_RE = re.compile(r"\s*(\*{1,3})(.+?)\1(?!\*)")
+
+
+def published_span(cell):
+    """The rendered string a cell publishes, and where it ENDS: its LEADING emphasis span,
+    `*x*` / `**x**` / `***x***`.  Same convention G11 reads, widened to the doubled and tripled
+    delimiters section 2.4's Verbatim column uses.  Prose AFTER the span is not a rendered string
+    and is not read -- section 7.1's dark cells argue about `300 s` and `900 s` thresholds in
+    theirs, and neither is drawn, so the end offset is returned rather than recovered with an
+    `index()` the backtick-stripping above can make raise."""
+    m = SPAN_RE.match(cell or "")
+    return (m.group(2).replace("`", ""), m.end()) if m else (None, 0)
+
+
+# THE CAPABILITY CONTROL, run every pass and PER CLAUSE.  A fixed-point test whose function agreed
+# with nothing would reject every string and this gate would fire on the document for reasons that
+# have nothing to do with it; one whose function agreed with everything would accept `11m 00s`.
+# Both directions are proven from the document's own boundary rows: the canonical output must be
+# accepted, and each per-clause perturbation of it -- the undropped zero unit, the unpadded second
+# unit, the third unit -- must be rejected.
+_cap_pos = _cap_neg = 0
+for _sec, _want in _bnd_pairs:
+    if render_duration(_sec) != _want:
+        continue                                     # already failed above; not a control result
+    _cap_pos += 1
+    for _label, _variant in (("clause 4, the zero unit undropped", render_duration(_sec, drop=False)),
+                             ("clause 5, the second unit unpadded", render_duration(_sec, pad=False)),
+                             ("clause 3, a third unit", render_duration(_sec, cap=3))):
+        if _variant == _want:
+            continue                                 # this row does not exercise that clause
+        _cap_neg += 1
+        if render_duration(parse_duration(_variant)) == _variant:
+            fail.append(f"G12 CONTROL: the fixed-point test ACCEPTS {_variant!r} — {_label} — which "
+                        f"section 2.4 forbids and which is the shape this gate exists to catch. A "
+                        f"check that admits its own defect is a decoration")
+if _bnd_pairs and _cap_neg == 0:
+    fail.append("G12 CONTROL: section 2.4's boundary table exercises none of clauses 3, 4 and 5 — "
+                "no row of it can be perturbed into a string the format forbids, so the "
+                "discrimination this gate rests on was never demonstrated on this run")
+
+# ---- G12 leg A: every duration inside a PUBLISHED RENDERED SPAN is a fixed point ---------------
+_dur_rows = table_rows(_s24, r"^\| Duration \| Field \| The string, verbatim \| Where it may appear \|") or []
+if not _dur_rows:
+    fail.append("G12 CONTROL: section 2.4's four-wording duration table did not parse, so half of "
+                "this gate's population was never read")
+_spans = []                                          # (where, the published string)
+for _r in _dur_rows:
+    _c = cells(_r)
+    if len(_c) >= 3:
+        _sp, _ = published_span(_c[2])
+        if _sp is None:
+            fail.append(f"G12 CONTROL: section 2.4's duration row {_c[0]!r} publishes no emphasised "
+                        f"string in its Verbatim column, so the wording it fixes cannot be read")
+        else:
+            _spans.append((f"section 2.4 row {_c[0]}", _sp))
+for _r in state_rows:
+    _c = cells(_r)
+    if len(_c) >= 3 and re.match(r"^`[a-z_]+`$", _c[0]):
+        _sp, _ = published_span(_c[2])
+        if _sp is not None:
+            _spans.append((f"section 7.1 `{_c[0].strip('`')}` Label line", _sp))
+if not state_rows:
+    fail.append("G12 CONTROL: section 7.1's per-state table did not parse, so the Label line cells "
+                "this class was opened over were never read")
+
+_g12_tokens = 0
+for _where, _sp in _spans:
+    for _tok in DUR_RE.findall(_sp):
+        _secs = parse_duration(_tok)
+        if _secs is None:
+            continue
+        _g12_tokens += 1
+        _canon = render_duration(_secs)
+        if _tok != _canon:
+            fail.append(
+                f"G12: {_where} renders the duration {_tok!r}, and section 2.4's format returns "
+                f"{_canon!r} for the same {_secs} seconds. A worked example that contradicts the "
+                f"rule governing it is read AS the rule, because it is the concrete half — and "
+                f"before card#9209 there was no rule here for one to contradict, which is how "
+                f"three mutually inconsistent exemplars stood. EITHER END may be the one that "
+                f"moved: read section 2.4's clauses and this cell before editing either")
+if _g12_tokens == 0:
+    fail.append("G12 CONTROL: no duration token was found in ANY published rendered span, so leg A "
+                "is clean over an empty population — which is what a silently-narrowed recognizer "
+                "looks like, and this document renders at least four")
+
+# ---- G12 leg B: section 7.1's dark rows re-derived ARITHMETICALLY from their own worked moment --
+# The `stale` and `offline` cells each state a *since* timestamp INSIDE the rendered span and the
+# corrected clock they were read at in the prose AFTER it.  The age is then not an opinion: it is
+# the subtraction, formatted.  A cell that keeps its age while its timestamps move -- or the
+# reverse -- stops describing one moment, which is what the `offline` row's own prose ("at the same
+# 14:29 so the two rows describe one moment rather than two") claims and nothing checked.
+HHMM = re.compile(r"(?<![\d:])([0-2]?\d):([0-5]\d)(?![\d:])")
+_g12_arith = 0
+for _r in state_rows:
+    _c = cells(_r)
+    if len(_c) < 3 or not re.match(r"^`[a-z_]+`$", _c[0]):
+        continue
+    _sp, _span_end = published_span(_c[2])
+    if _sp is None:
+        continue
+    _toks = [t for t in DUR_RE.findall(_sp) if parse_duration(t) is not None]
+    _in_span = HHMM.findall(_sp)
+    if not _toks or not _in_span:
+        continue                                     # not a worked since/age pair
+    _member = _c[0].strip("`")
+    _prose = _c[2][_span_end:]
+    _read_at = HHMM.findall(strip_code(_prose))
+    if len(_in_span) != 1 or len(_read_at) != 1:
+        fail.append(f"G12 CONTROL: section 7.1's `{_member}` cell carries {len(_in_span)} clock "
+                    f"times in its rendered span and {len(_read_at)} in the prose after it. This "
+                    f"leg needs exactly one of each — the instant the age is measured FROM, and "
+                    f"the corrected clock it is read AT — and cannot tell which is which "
+                    f"otherwise")
+        continue
+    _since = int(_in_span[0][0]) * 3600 + int(_in_span[0][1]) * 60
+    _now = int(_read_at[0][0]) * 3600 + int(_read_at[0][1]) * 60
+    _want = render_duration((_now - _since) % 86400)
+    _g12_arith += 1
+    if _toks[0] != _want:
+        fail.append(
+            f"G12: section 7.1's `{_member}` row is worked at {_read_at[0][0]}:{_read_at[0][1]} over "
+            f"a seat dark since {_in_span[0][0]}:{_in_span[0][1]}, which section 2.4's format renders "
+            f"{_want!r} — and the cell reads {_toks[0]!r}. The row no longer describes one moment")
+if _g12_arith == 0:
+    fail.append("G12 CONTROL: no section 7.1 cell was found stating both a *since* timestamp and an "
+                "age, so leg B measured nothing. The `stale` and `offline` rows are the two this "
+                "leg exists for")
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -2204,6 +2440,12 @@ else:
           f"read and agreeing on {next(iter(_act_placements))!r}; worked instances found elsewhere "
           f"in the document by structure and held against it: {_instances}; the predicate was fed "
           f"its own defect on this run and rejected it")
+print(f"G12 the duration format: {len(_clause_nos)} clauses re-implemented from section 2.4 and "
+      f"{len(_bnd_pairs)} boundary rows reproduced from it; the fixed-point test was ACCEPTED on "
+      f"{_cap_pos} of the document's own outputs and fed {_cap_neg} per-clause perturbations of "
+      f"them on this run, rejecting each; durations held inside a published rendered span: "
+      f"{_g12_tokens}; section 7.1 rows re-derived arithmetically from their own worked moment: "
+      f"{_g12_arith}. NOT reached: a duration in PROSE, which is the same residue G9 has")
 print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nullable, "
       f"{len(null_rendered)} given a null render by section 5.6, "
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")

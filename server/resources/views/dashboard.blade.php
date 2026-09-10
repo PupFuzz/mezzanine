@@ -19,8 +19,9 @@
           · the tiled MAP, the camera, the desks and the elevator — card#9208: D2 publishes no
             read surface for an authored floor map, and § 10.3 says that path "is deliberately
             not invented here". § 1.3 corollary 2 forbids guessing one.
-          · every duration / age label — card#9209: D3 publishes no duration format (§ 7.1's own
-            exemplars disagree and § 12 has no row), so no string that would need one is drawn.
+          · every duration / age label — card#9209 published the duration FORMAT (D3 § 2.4, § 12's
+            own row) and left the WORDING for § 5.3's two fleet ages open (§ 14 item 17), so a
+            string picked here would still be the one nobody ratified; none is drawn.
           · the delta feed, the feed-status readout, the event log, the desk, the drill-down and
             interns — later slices of this card.
     --}}
