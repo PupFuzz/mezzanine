@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
+use Tests\Feature\Support\PinsTheRateLimitWindow;
 
 /**
  * **AT-D2-19 — read-side auth refuses correctly** (`docs/design/FLEET-STATE.md § 11`, § 9, § 8.6).
@@ -31,6 +32,8 @@ use Illuminate\Testing\TestResponse;
  */
 class At19ReadAuthTest extends FeedTestCase
 {
+    use PinsTheRateLimitWindow;
+
     protected function setUp(): void
     {
         parent::setUp();

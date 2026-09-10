@@ -19,6 +19,20 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9223** — **The ingest rate-limit suite pins its clock, and the flake that reddened one CI
+  run in three is gone.** `App\Support\FixedWindow` indexes on `intdiv(now()->getTimestamp(),
+  $windowS)` — an **absolute** window — so a 120-request loop that straddled a real minute boundary
+  put its 121st request in a fresh window, where `202` is correct limiter behaviour and the TEST was
+  the thing that was wrong. Root-caused at source, then **seen to fail**: the boundary was forced
+  (both by travelling the clock and by sleeping across a real one) and reproduced the exact CI
+  message, `Expected 429 but received 202`. New `Tests\Feature\Support\PinsTheRateLimitWindow`
+  pins the window and carries a guard that reds at once if the pin is removed — itself seen to fail.
+  ⛔ **No assertion was weakened and no production behaviour changed**: what was missing is the
+  precondition each test already names in its own title. The population was derived, not guessed —
+  every file asserting a `429`, minus `TwoFactorResetTest`, whose limiter decays from the first hit
+  and cannot straddle. `At19ReadAuthTest` was already safe via `FoldTestCase`'s pin and takes the
+  guard so that stays true.
+
 - **card#8300** — **The coordination thread line — card#7897 part 2 slice 2, D3 § 5.7 and its
   client.** D2 § 8.3.3's two objects had a read surface (card#9212) and no render map; this is the
   render map, and the first thing on the floor drawn **between** desks rather than at one.

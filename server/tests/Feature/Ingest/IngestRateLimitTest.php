@@ -4,6 +4,7 @@ namespace Tests\Feature\Ingest;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
+use Tests\Feature\Support\PinsTheRateLimitWindow;
 
 /**
  * D1 § 12.3's four limits, each seen to fire and each seen NOT to fire.
@@ -15,6 +16,8 @@ use Illuminate\Testing\TestResponse;
  */
 class IngestRateLimitTest extends IngestTestCase
 {
+    use PinsTheRateLimitWindow;
+
     // ── requests: 120 / minute, keyed on the token binding ───────────────────────────────────
 
     public function test_the_121st_request_in_a_minute_is_rate_limited(): void

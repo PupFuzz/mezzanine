@@ -9,6 +9,12 @@ use Illuminate\Contracts\Cache\Repository;
  * application: D1 § 12.3's four ingest limits (`App\Ingest\RateLimiter`) and
  * `docs/design/FLEET-STATE.md § 9`'s two read-plane limits (`App\Http\Middleware\FleetReadGate`).
  *
+ * ⚠ A TEST THAT DRIVES ONE OF THESE LIMITS TO ITS CEILING MUST PIN THE CLOCK. The window index
+ * below is absolute, so a request loop that straddles a real boundary lands its last request in a
+ * fresh window and the limit legitimately does not fire — a flake, not a bug, and one that cost a
+ * 1-in-3 red CI lane (card#9223). `Tests\Feature\Support\PinsTheRateLimitWindow` owns the rule
+ * and the reasoning; this line is a pointer to it, not a second copy of it.
+ *
  * ⚠ EXTRACTED AT THE SECOND CALLER. The read plane needs the identical mechanism with different
  * numbers, and the window-index trick below is subtle enough that a second hand-written copy is
  * a second chance to get it wrong in a way no test distinguishes — a limit that silently never
