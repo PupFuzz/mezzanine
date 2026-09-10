@@ -117,6 +117,38 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   at PHP 8.5 (`8.1 - 8.5`, `8.2 - 8.5`), so its true installable range is `[8.4.1, 8.6)` while `^8.4.1`
   promises `[8.4.1, 9.0)`. Nothing can reach that today — 8.6 does not exist — and the new tool checks the
   floor only, so the ceiling half is unguarded and named here rather than left silent.
+- **card#9208** — **the floor map has no read surface, and that is now a ruling instead of a
+  silence.** D3 § 4 renders a tiled floor from an authored `.tmj` and D2 published nothing to obtain
+  one — card#8075's defect shape one layer up, where the cheap move is for the client to mint the
+  surface it needs. ⭐ **Operator ruling, 2026-09-09: the map is a BUILD ARTIFACT shipped with the
+  client and never served at runtime**, with the two other candidate shapes (a served map surface; the
+  map riding the snapshot) declined, and **a floor edit is a redeploy** accepted explicitly as its
+  cost. Recorded where each half belongs rather than where it was convenient: the read-surface half in
+  **D2** — § 8.2 declares that no endpoint serves a map, § 13 row 38 is the ruling with its
+  alternatives and its cost — because D3 § 1.2 makes every read surface D2's and § 1.3 forbids D3 to
+  edit it; the client half in **D3 § 10.3**, which replaces *"deliberately not invented here"* with the
+  answer, the artifact's path, and what a redeploy actually costs an author.
+  ⚠ **D2 declares the seat→desk binding and it needs NO new wire member.** § 8.2.1 now states that
+  `install_id` + `seat_id` **are** the binding and the whole of it — they ride every seat object and
+  every seat-scoped message already, the desk is a pure client-side function of that pair (D3 § 3.2),
+  and what was missing was the statement that they are load-bearing for the layout, not a field. No
+  slot index, no desk id, no map reference is published, and § 8.2.1's field table is unchanged.
+  ⛔ **`verify-floor.py`'s `S = 12` check was a decoration and is now a check.** It regexed the number
+  out of D3's own prose — a sentence calling the map *shipped* while **no `.tmj` exists anywhere in
+  this repository** — so the gate asserted the document against itself. G8 now resolves the artifact
+  from § 10.3's declared path in either Tiled spelling (both re-derived from § 10.1's allowlist) and
+  takes one of two branches, each seen to red: with a map present it counts the objects of the `desks`
+  layer and reds on a count that is not `S`; with none it requires § 10.3 to **declare** the absence
+  and sweeps the tree for any map that would falsify it. The gate's output says which branch ran,
+  because *S held against a file* and *S held against a declaration* are different claims.
+  ⭐ **The absence is now stated, not implicit:** § 10.3 declares the artifact as
+  `resources/floor/<install_id>.tmj`, that none is vendored, and that card#7341 vendors the `aimla`
+  one. Minting a map is deliberately NOT in this card — it needs the tileset D3 § 14 item 7 is still
+  open on and a `docs/ATTRIBUTION.md` row for it.
+  ⚠ **The ruling opened one question and it is filed rather than left as a consequence:** card#9085's
+  console still authors and stores one Tiled document per floor, and under this ruling nothing reads
+  that store but the console itself — an operator can author a floor, watch it save, and see no change
+  ever. D3 § 14 item 16 carries it with the three answers and says it is an operator call.
 
 - **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
   count.** The table is what an operator provisions a host from, and it listed every process except

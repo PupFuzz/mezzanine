@@ -25,7 +25,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
   G7  state and badge render closure            a D2 enum member with no render, or a render for a
                                                member D2 does not declare
-  G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key
+  G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key,
+                                               and `S` against the MAP FILE -- present, its
+                                               `desks` objects are counted; absent, section 10.3
+                                               must SAY so and no map may exist in the tree
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -69,9 +72,11 @@ Each check that can be silent about its own subject carries a CONTROL that abort
 reporting clean when its extractor finds nothing (canon: a check that cannot fail is a decoration).
 """
 import ast
+import json
 import re
 import sys
 import pathlib
+import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).parent.parent.parent
 DOC = ROOT / "docs/design/FLOOR.md"
@@ -1304,7 +1309,7 @@ if not m or (int(m.group(1)), int(m.group(2))) != (2166136261, 16777619):
     fail.append("G8 CONTROL: section 3.2's FNV-1a constants did not parse or do not match the "
                 "function this check implements — the worked example would be checked against a "
                 "different hash than the document specifies")
-m = re.search(prose(r"the shipped `aimla` map, S = (\d+)"), sec32)
+m = re.search(prose(r"the `aimla` floor map, S = (\d+)"), sec32)
 S = int(m.group(1)) if m else 0
 if not S:
     fail.append("G8 CONTROL: section 3.2's slot count did not parse")
@@ -1366,6 +1371,121 @@ else:
         if (h < inc_h) is not True:
             fail.append("G8: section 3.3 says the arriving seat takes the slot, but it does not "
                         "sort lower in the (h, seat_id) order the function uses")
+
+# ---- G8b. `S` against the MAP FILE, and the absence of one declared rather than implied ----
+# WHAT THIS REPLACES.  The leg above reads `S` out of section 3.2's prose and re-derives the worked
+# table from it -- which checks the document against itself and nothing else.  Until card#9208 the
+# sentence it read called the map SHIPPED while NO Tiled map existed anywhere in this repository, so
+# the one figure in this document that is a COUNT OF A FILE was asserted by the prose citing it: a
+# gate satisfying itself out of the document it is judging.  Both populations below are re-derived --
+# the two admitted map spellings from section 10.1 clause 1's own allowlist, the object layer's name
+# and the artifact's path from section 10.3 -- because a spelling or a path stored here is one free to
+# disagree with the document while this check reports clean.
+sec103 = section_text("103-the-floor-map") or ""
+sec101 = section_text("101-the-manifest-and-the-two-gates") or ""
+
+ABSENCE = prose(r"No floor map is vendored in this repository today")
+# The sweep looks for a map ANYWHERE, because "no map is vendored" is a claim about the
+# repository and not about one path.  What it skips is named rather than filtered silently,
+# and each member is a tree this repository does not author: the object store, an installed
+# dependency tree, and runtime scratch.  A map placed in one of them is outside the claim.
+SWEEP_SKIP = {".git", "node_modules", "vendor", "storage"}
+
+m_sp = re.search(prose(r"\*\*`(\.tm[a-z])`, `(\.tm[a-z])`\*\* — Tiled's map"), sec101)
+m_layer = re.search(prose(r"object layer named `([a-z_]+)`"), sec103)
+m_path = re.search(prose(r"that artifact is `([^`]+)`"), sec103)
+m_s103 = re.search(prose(r"The `aimla` floor map declares \*\*(\d+)\*\*"), sec103)
+g8_branch = "NOT MEASURED"
+if not m_sp:
+    fail.append("G8 CONTROL: section 10.1 clause 1 no longer names Tiled's two map spellings in the "
+                "form this leg re-derives them from, so the map file could not be resolved in either "
+                "spelling and its absence would read as a clean")
+elif not m_layer:
+    fail.append("G8 CONTROL: section 10.3 no longer names the object layer the slots live on, so a "
+                "map file could be counted on the wrong layer or on none")
+elif not m_path:
+    fail.append("G8 CONTROL: section 10.3 declares no path for the `aimla` floor's map artifact — "
+                "under card#9208's ruling the map is a build artifact, and an artifact nothing names "
+                "the location of is one no gate can ever read")
+else:
+    SPELLINGS = {m_sp.group(1), m_sp.group(2)}
+    layer_name = m_layer.group(1)
+    declared = m_path.group(1)
+    absence_declared = re.search(ABSENCE, sec103) is not None
+    if not any(declared.endswith(s) for s in SPELLINGS):
+        fail.append(f"G8: section 10.3 declares the map artifact at `{declared}`, whose suffix is "
+                    f"none of Tiled's map spellings {sorted(SPELLINGS)} that section 10.1 clause 1 "
+                    f"admits — the declared path could not be a map")
+    stem = re.sub(r"\.[^.]+$", "", declared)
+    candidates = [ROOT / (stem + s) for s in sorted(SPELLINGS)]
+    in_tree = sorted(
+        str(q.relative_to(ROOT))
+        for q in ROOT.rglob("*")
+        if q.is_file() and q.suffix in SPELLINGS and not (SWEEP_SKIP & set(q.relative_to(ROOT).parts))
+    )
+    present = [q for q in candidates if q.is_file()]
+
+    def desks_in(q):
+        """Objects on the named object layer, read from the file in its own spelling."""
+        if q.suffix == ".tmj":
+            doc = json.loads(q.read_text())
+            hit = [l for l in doc.get("layers", [])
+                   if l.get("name") == layer_name and l.get("type") == "objectgroup"]
+            if len(hit) != 1:
+                return None
+            return len(hit[0].get("objects", []))
+        root = ET.parse(q).getroot()
+        hit = [g for g in root.iter("objectgroup") if g.get("name") == layer_name]
+        if len(hit) != 1:
+            return None
+        return len(hit[0].findall("object"))
+
+    if in_tree and absence_declared:
+        g8_branch = "CONTRADICTED"
+        fail.append(f"G8: section 10.3 declares that no floor map is vendored in this repository, and "
+                    f"these Tiled maps are in the tree: {in_tree}. One of the two is false, and the "
+                    f"document is the copy nothing re-derives")
+    elif in_tree and not present:
+        g8_branch = "MISPLACED"
+        fail.append(f"G8: Tiled maps exist in this repository — {in_tree} — and none of them is at "
+                    f"the path section 10.3 declares ({[str(q.relative_to(ROOT)) for q in candidates]}), "
+                    f"so the client's build artifact is not where this document says it is")
+    elif present:
+        g8_branch = f"COUNTED from {', '.join(str(q.relative_to(ROOT)) for q in present)}"
+        if absence_declared:
+            fail.append(f"G8: the map artifact exists at {[str(q.relative_to(ROOT)) for q in present]} "
+                        f"and section 10.3 still declares that no floor map is vendored")
+        for q in present:
+            try:
+                n_desks = desks_in(q)
+            except Exception as exc:                      # a map this gate cannot read is a RED
+                fail.append(f"G8: `{q.relative_to(ROOT)}` could not be parsed as a Tiled map "
+                            f"({type(exc).__name__}: {exc}) — `S` cannot be checked against a file "
+                            f"nothing can read, and a skip here is how the count went unchecked before")
+                continue
+            if n_desks is None:
+                fail.append(f"G8: `{q.relative_to(ROOT)}` declares no single object layer named "
+                            f"`{layer_name}`, which section 10.3 requires and section 3.2's slot "
+                            f"function reads its slots from")
+            elif S and n_desks != S:
+                fail.append(f"G8: `{q.relative_to(ROOT)}` declares {n_desks} objects on its "
+                            f"`{layer_name}` layer and this document states S = {S} — the map and the "
+                            f"slot count disagree, and every worked assignment above is computed "
+                            f"against the wrong modulus")
+    else:
+        g8_branch = "ABSENT"
+        if not absence_declared:
+            fail.append(f"G8: no map file exists at either spelling of the path section 10.3 declares "
+                        f"({[str(q.relative_to(ROOT)) for q in candidates]}), and section 10.3 does "
+                        f"not declare the absence either — so S = {S} is a count of a file that does "
+                        f"not exist, stated by the only document that cites it")
+    if m_s103 and S and int(m_s103.group(1)) != S:
+        fail.append(f"G8: section 10.3 states the `aimla` map declares {m_s103.group(1)} slots and "
+                    f"section 3.2 states S = {S} — one count, two homes, and the map is not there to "
+                    f"settle which is right")
+    elif not m_s103:
+        fail.append("G8 CONTROL: section 10.3 no longer restates the `aimla` map's slot count in the "
+                    "form this leg closes against section 3.2, so the two homes are unguarded")
 
 # --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
 # G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
@@ -2019,7 +2139,12 @@ print(f"G7  render closure, both directions: {len(state_rendered)}/{len(render_m
       f"{len(ur_rendered)}/{len(ur_m)} unknown_reason, {len(badge_rendered)}/{len(badge_m)} badges, "
       f"{len(link_rendered)}/{len(link_m)} link_state, {len(act_rendered)}/{len(act_m)} "
       f"activity_state, {len(aet_rendered)}/{len(aet_m)} api_error_type (the last from D1 § 6.4)")
-print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair")
+print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair; "
+      f"the map artifact: {g8_branch}. The two branches are different claims and the output says "
+      f"which one ran — COUNTED means S was held against a file's `desks` layer; ABSENT means it "
+      f"was held against nothing but this document's own declaration that there is no file, "
+      f"which is the strongest true claim available and is NOT evidence about the number. The "
+      f"tree sweep for a map skips {sorted(SWEEP_SKIP)}.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "
