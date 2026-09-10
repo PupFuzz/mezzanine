@@ -2,51 +2,30 @@
 
 namespace Tests\Feature\Lobby;
 
+use Tests\Feature\Support\DrivesAShippedClientModule;
+
 /**
- * The rig every lobby test shares: run the SHIPPED client modules under `node`, and run a
- * deliberately BROKEN copy of them the same way.
+ * The rig every lobby test shares — the LOBBY's half of it.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ WHY `node` AND NOT A PHP RE-IMPLEMENTATION OF THE MODEL. The thing that ships to the browser
- * is `server/public/js/lobby/*.js`. A PHP copy of its logic would be a second implementation of
- * one behaviour — engineering canon's own defect — and the first thing two copies do is agree
- * with each other while the shipped one is wrong. So the assertions below drive the real files.
- *
- * ⛔ A MISSING `node` FAILS, IT DOES NOT SKIP. A skipped guard is a guard that reports nothing
- * while reading green, and this suite's whole job is to be able to go red. Node is on the stock
- * GitHub runner image (`.github/workflows/asset-provenance.yml` already runs `node` with no
- * setup step), so its absence is a broken environment and should say so.
- *
- * ⛔ EVERY MUTATION ANCHOR IS ASSERTED PRESENT EXACTLY ONCE. A control whose anchor has been
- * renamed silently mutates NOTHING and then "proves" the check can fail by running the unmodified
- * code — which is the one way a planted control becomes a decoration.
+ * ⚠ THE GENERIC HALF MOVED, AT ITS SECOND CALLER (card#8300). Running the shipped modules under
+ * `node`, running a mutated copy of them, the anchor-uniqueness assertion and the scratch-dir
+ * teardown are now `Tests\Feature\Support\DrivesAShippedClientModule`, because
+ * `tests/Feature/Coordination` needs exactly the same rig and a second copy of it is the defect
+ * this repository refuses everywhere else. Every reason those pieces exist is stated there,
+ * once. What is left here is what is genuinely the lobby's: which directory ships, which probe
+ * drives it, and § 7.1's member parse.
  */
 trait DrivesTheLobbyClient
 {
+    use DrivesAShippedClientModule;
+
     /** § 7.1's own bounds, and the header that parts its two tables. */
     private const S71_OPEN = '### 7.1 The render per state';
 
     private const S71_CLOSE = '### 7.2 Badges';
 
     private const S71_REASON_HEADER = '| `unknown_reason` | Sentence |';
-
-    /** @var list<string> every temp module directory this test made, removed in tearDown */
-    private array $scratchDirs = [];
-
-    protected function tearDown(): void
-    {
-        foreach ($this->scratchDirs as $dir) {
-            foreach ((array) glob($dir.'/*') as $file) {
-                @unlink((string) $file);
-            }
-
-            @rmdir($dir);
-        }
-
-        $this->scratchDirs = [];
-
-        parent::tearDown();
-    }
 
     /** The shipped client modules — the ones the browser is served. */
     protected function moduleDir(): string
@@ -55,13 +34,9 @@ trait DrivesTheLobbyClient
             ?: $this->fail('server/public/js/lobby does not exist — the client this suite tests is not there');
     }
 
-    /** D3 itself, read from the repository on every run rather than restated in a fixture. */
-    protected function floorMd(): string
+    protected function probeScript(): string
     {
-        $path = realpath(__DIR__.'/../../../../docs/design/FLOOR.md')
-            ?: $this->fail('docs/design/FLOOR.md was not found from the test tree');
-
-        return (string) file_get_contents($path);
+        return __DIR__.'/lobby-probe.mjs';
     }
 
     /**
@@ -135,90 +110,5 @@ trait DrivesTheLobbyClient
         }
 
         return $members;
-    }
-
-    /**
-     * Drive the client model over a payload and return what it rendered.
-     *
-     * @param  array<string, mixed>  $payload
-     * @return array<string, mixed>
-     */
-    protected function probe(array $payload, ?string $moduleDir = null): array
-    {
-        [$status, $stdout, $stderr] = $this->runProbe($payload, $moduleDir);
-
-        $this->assertSame(0, $status, "the lobby probe failed:\n".$stderr);
-
-        $decoded = json_decode($stdout, true);
-
-        $this->assertIsArray($decoded, "the lobby probe printed something that is not JSON:\n".$stdout);
-
-        return $decoded;
-    }
-
-    /**
-     * The same run, tolerating a non-zero exit — for the controls whose defect is a THROW.
-     *
-     * @param  array<string, mixed>  $payload
-     * @return array{int, string, string}
-     */
-    protected function runProbe(array $payload, ?string $moduleDir = null): array
-    {
-        $probe = __DIR__.'/lobby-probe.mjs';
-        $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-
-        $process = proc_open(
-            ['node', $probe, $moduleDir ?? $this->moduleDir()],
-            $descriptors,
-            $pipes,
-        );
-
-        if (! is_resource($process)) {
-            $this->fail('node could not be started — this suite drives the shipped client, and there is nothing to drive it with');
-        }
-
-        fwrite($pipes[0], (string) json_encode($payload));
-        fclose($pipes[0]);
-
-        $stdout = (string) stream_get_contents($pipes[1]);
-        $stderr = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        return [proc_close($process), $stdout, $stderr];
-    }
-
-    /**
-     * A copy of the shipped modules with one anchored edit applied — the planted control's
-     * subject. Returns the directory to hand `probe()`.
-     *
-     * @param  array{0: string, 1: string, 2: string}  $edit  [file, anchor, replacement]
-     */
-    protected function mutatedModules(array $edit): string
-    {
-        [$file, $anchor, $replacement] = $edit;
-
-        $dir = (string) tempnam(sys_get_temp_dir(), 'lobby');
-        unlink($dir);
-        mkdir($dir);
-        $this->scratchDirs[] = $dir;
-
-        foreach ((array) glob($this->moduleDir().'/*.js') as $source) {
-            copy((string) $source, $dir.'/'.basename((string) $source));
-        }
-
-        $target = $dir.'/'.$file;
-        $original = (string) file_get_contents($target);
-
-        $this->assertSame(
-            1,
-            substr_count($original, $anchor),
-            "the control's anchor is not in {$file} exactly once — it has been renamed, so this "
-            .'control would mutate nothing and pass against unmodified code',
-        );
-
-        file_put_contents($target, str_replace($anchor, $replacement, $original));
-
-        return $dir;
     }
 }

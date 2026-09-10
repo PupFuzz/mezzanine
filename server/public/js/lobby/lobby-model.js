@@ -39,6 +39,15 @@
  */
 
 import { RENDER_STATES, isRenderState } from './render-state.js';
+import { clockTime } from '../wire/clock.js';
+
+/**
+ * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
+ * client needs the identical function), and is re-exported here so this module stays the
+ * lobby's one import. Its reasoning — why it reads the wire's digits and converts nothing —
+ * moved with it rather than being copied.
+ */
+export { clockTime };
 
 /**
  * § 5.6's default, in decision 13's own word: "a null is rendered as **not reported**, never as a
@@ -46,31 +55,6 @@ import { RENDER_STATES, isRenderState } from './render-state.js';
  * three indicators and the two fleet readouts are drawn unconditionally, so they take this.
  */
 export const NOT_REPORTED = 'not reported';
-
-/**
- * `HH:MM:SS` out of an RFC3339-with-milliseconds server-clock timestamp (D2 § 8.2), which is the
- * form § 4.1 publishes for the membership stamp ("membership as of 14:23:14").
- *
- * ⛔ IT READS THE WIRE'S OWN DIGITS AND CONVERTS NOTHING. Parsing to a `Date` and formatting
- * would render the VIEWER's timezone for a SERVER-clock fact, and § 2.4 is emphatic that the
- * viewer's own machine clock is admitted at exactly one place on this product (§ 6.2 A17's wall
- * clock, which is the floor's and is labelled as the client's own). D3 publishes the FORM and
- * states no timezone rule for it, so the zero-assumption render is the server's own digits.
- * ⚠ REPORTED, NOT INVENTED: that leaves an operator in another zone reading UTC. It is a
- * question for the review loop, not something to answer by picking a conversion here.
- *
- * `null` for a null or unreadable value — the caller applies § 5.6's `not reported`, and NEVER a
- * zero, an epoch, or the string "null".
- */
-export function clockTime(wireTime) {
-    if (typeof wireTime !== 'string') {
-        return null;
-    }
-
-    const m = wireTime.match(/T(\d{2}):(\d{2}):(\d{2})/);
-
-    return m === null ? null : `${m[1]}:${m[2]}:${m[3]}`;
-}
 
 /**
  * § 4.1's per-floor state summary: "a count per `render_state` member present, e.g. *2 working ·

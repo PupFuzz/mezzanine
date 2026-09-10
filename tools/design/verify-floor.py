@@ -470,6 +470,12 @@ SOURCE_TABLES = [
     (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1"),
     (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2"),
     (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3"),
+    # § 5.7's coordination render map (card#8300).  Its header is DELIBERATELY not § 5.1's shape:
+    # `table_rows` returns the FIRST table whose header matches, so a second table sharing § 5.1's
+    # four column names would be read by G9 (which walks every table) and skipped by this loop --
+    # checked for its markers and not for whether its fields exist.  A distinct header makes the
+    # two populations the same population.
+    (r"^\| Rendered element \| D2 field \| Example \| Null / unresolved render \|", 1, "5.7"),
     (ANIM_HEADER, ANIM_DRIVER_COL, "6.2"),
     (r"^\| Panel section \| Contents \| Source \|", 2, "4.3"),
 ]
@@ -549,8 +555,38 @@ else:
                         f"cited figure that its source does not contain is a figure this document "
                         f"minted and labelled Cited")
 
-# --------------------------- G4. section 12 <-> definition site, with perturbation ---
 sec12 = section_text("12-every-number-and-where-it-comes-from") or ""
+
+# ---- G2, THE RULE'S OWN SCOPE.  Section 12's G2 row ENUMERATES the tables half (a) reads, which
+# makes SOURCE_TABLES above one fact with two homes -- and this is the home that has already gone
+# false once: it claimed "section 5, section 6.2 or section 7" while the map held five headers and
+# none of them was in section 7, and the whole of the check was the claim.  The repair then was to
+# rewrite the prose.  Prose nothing re-derives goes false again at the next table added, so the two
+# are set-differenced here in BOTH directions, exactly as G9's marker-rule scope is.  Neither side
+# is stored: the map is the list above, the claim is read out of the document on every run.
+_i = sec12.find("**G2 source-field closure**")
+_j = sec12.find("*(b)*", _i) if _i >= 0 else -1
+if _i < 0 or _j < 0:
+    fail.append("G2 CONTROL: section 12's G2 row, or the *(a)* half of it that enumerates the "
+                "source tables, did not parse. That enumeration is this gate's population written "
+                "down in prose, and unparsed it would agree with the map by never being read")
+else:
+    _claimed = set(re.findall(r"\[§ (\d+(?:\.\d+)?)\]\(#", sec12[_i:_j]))
+    _mapped = {t[2] for t in SOURCE_TABLES}
+    if not _claimed:
+        fail.append("G2 CONTROL: section 12's G2 row names no in-document section in its *(a)* "
+                    "half, so its scope claim is empty and would set-difference clean against any "
+                    "map")
+    for w in sorted(_mapped - _claimed):
+        fail.append(f"G2: this gate reads the source column of section {w} and section 12's G2 row "
+                    f"does not name it. A reader auditing which tables are closed against D2 would "
+                    f"be told a smaller set than the tool actually reads")
+    for w in sorted(_claimed - _mapped):
+        fail.append(f"G2: section 12's G2 row claims the source column of section {w} is closed "
+                    f"against D2 and this gate has no entry for that table, so nothing checks it. "
+                    f"That is the over-claim this row already shipped once")
+
+# --------------------------- G4. section 12 <-> definition site, with perturbation ---
 g4_rows = g4_nums = g4_disc = 0
 g4_residue = []
 rows = table_rows(sec12, r"^\| Value \| Number \| Basis \| Where \|")
@@ -1594,6 +1630,9 @@ G9_TABLES = [
     (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1", True),
     (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2", False),
     (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3", False),
+    # § 5.7 renders BETWEEN desks and not on one, so `dark-only` -- a permission on the desk -- is
+    # not its to claim; `is_desk` is False for the same reason § 5.2's and § 5.3's are.
+    (r"^\| Rendered element \| D2 field \| Example \| Null / unresolved render \|", 1, "5.7", False),
     (r"^\| Rendered narration \| The client's own record \| Rule \|", None, "5.5", False),
     (r"^\| D2 member \| What renders when it is null \|", 0, "5.6", False),
     (ANIM_HEADER, ANIM_DRIVER_COL, "6.2", False),

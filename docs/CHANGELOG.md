@@ -19,6 +19,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#8300** — **The coordination thread line — card#7897 part 2 slice 2, D3 § 5.7 and its
+  client.** D2 § 8.3.3's two objects had a read surface (card#9212) and no render map; this is the
+  render map, and the first thing on the floor drawn **between** desks rather than at one.
+  **§ 5.7** names all twenty-two members — `coord_thread.*` × 11, `coord_round.*` × 11 — with a
+  null column of its own, because § 5.6's population is § 8.2.1's and is closed against it both
+  ways. **§ 6.2 gains A18/A19/A20**: the held thread line, the envelope, the broadcast pulse.
+  ⛔ **RESOLVE OR RENDER UNRESOLVED, and today nothing resolves.** No wire event and no config in
+  this repository maps a protocol agent name to a `seat_id` (D2 § 8.3.3; card#7957's ruling *(d)*
+  is unlanded), so **every participant renders unresolved and no thread line is drawn on any
+  floor** — the thread renders as its beads, its label and its named-unresolved participants. That
+  is card#7957's ruling *(2)* built rather than deferred: the renderer is correct on day one and
+  does not change shape when the join lands. `public/js/coord/`'s `resolve()` has **no else
+  branch** and `main.js` builds no join; both are held there by planted controls, because a
+  guessed line looks exactly like a correct one on a screen.
+  ⚠ **NOT RENDERED, each with the reason:** no duration anywhere — § 2.4's format is closed but
+  publishes no **wording** for a coordination age, and § 14 item 17 owns that gap "rather than
+  [having it] filled by whichever surface reaches them first", so both receipt clocks are labelled
+  timestamps and nothing is subtracted (the lobby made the same call at the same item; this is the
+  second surface to). No convergence — `lifecycle: "closed"` is *ended* and `declares_close` is
+  *somebody performed the close act*, and D2 publishes no flag to compute one from.
+  ⭐ **The gate was widened again and the widening is checked.** `verify-floor.py` reads § 5.7's
+  source column (G2) and its markers (G9); the § 12 row that ENUMERATES G2's tables is now
+  set-differenced against the tool's own map in both directions, closing the second home that
+  over-claimed for two revisions — six planted controls, each reding by name.
+  The lobby's `node` rig was **hoisted at its second caller** to
+  `Tests\Feature\Support\DrivesAShippedClientModule` rather than copied.
+  ⚠ **There is no browser on the build host.** Nothing here verifies layout, position or paint,
+  and `main.js` is exercised only against a stub of the four DOM calls it makes.
+  ⚠ **Slice 3 is not this card's and its text is wrong.** card#8300 still calls the producer "the
+  `coord.*` bridge producer"; D1 § 18.1 correction 1 moved it to Mezzanine's own
+  `POST /api/ingest/github` receipt route, so the coordination wire crosses no repository boundary
+  and `agent-webhook-bridge` is owed nothing.
+
 - **card#9209** — **D3 publishes a duration format.** § 7.1's Label cells rendered durations and
   the document published no rule for them: its own exemplars — `4m 12s`, `11m`, `2h 06m` — are
   produced by **no single rule**, § 12 carried no row, and the ratified preview sidestepped the

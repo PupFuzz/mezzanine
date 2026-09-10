@@ -81,20 +81,11 @@ class LobbyPageWiringTest extends TestCase
 
         // An import path with a typo is a client that never runs at all, and the page that loads
         // it looks exactly the same as one that does. The imports are read from the modules
-        // themselves rather than listed here.
-        $found = 0;
-
-        foreach ((array) glob($dir.'/*.js') as $file) {
-            preg_match_all("/from '\.\/([A-Za-z0-9._-]+)'/", (string) file_get_contents((string) $file), $m);
-
-            foreach ($m[1] as $import) {
-                $found++;
-                $this->assertFileExists($dir.'/'.$import,
-                    basename((string) $file).' imports a module that is not there');
-            }
-        }
-
-        $this->assertGreaterThan(0, $found, 'no relative import was found — the check measured nothing');
+        // themselves rather than listed here. ⚠ THE RESOLVER MOVED to the shared rig at
+        // card#8300, and it moved because it was `./`-ONLY: this module tree gained its first
+        // `../` import in the same change, which would have entered the blind spot unseen.
+        $this->assertGreaterThan(0, $this->assertEveryRelativeImportResolves($dir),
+            'no relative import was found — the check measured nothing');
     }
 
     /** ⛔ THE CONTROLS — each re-mints one of the two directions' defects. */
