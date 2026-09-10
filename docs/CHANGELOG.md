@@ -19,6 +19,29 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9223** — **The ingest rate-limit suite pins its clock, and a real flake mechanism is
+  closed.** `App\Support\FixedWindow` indexes on `intdiv(now()->getTimestamp(), $windowS)` — an
+  **absolute** window — so a 120-request loop that straddled a real minute boundary put its 121st
+  request in a fresh window, where `202` is correct limiter behaviour and the TEST was the thing
+  that was wrong. Root-caused at source, then **seen to fail**: the boundary was forced both by
+  travelling the clock and by sleeping across a real one, reproducing `Expected 429 but received
+  202` on demand, and passing with the pin.
+  ⚠ **A severity claim in this bullet's first version was false and is corrected here rather than
+  quietly dropped.** It said the flake "reddened roughly one PR in three"; that was card#9223's
+  local sample of *three* runs restated as a CI rate. The record refutes it — `gh run list
+  --workflow php-tests.yml` gave 33 runs, 32 success, the one failure a composer/PHP-version error
+  on the lane's own setup branch. **No CI run had ever failed on this test.** The real exposure is
+  the loop's duration over the window length, ~1 %. What justifies the fix is not the rate but that
+  the lane is a candidate to become a REQUIRED check, where any nonzero flake rate blocks merges.
+  ⛔ **No assertion was weakened and no production behaviour changed** — the pin supplies the
+  precondition each test already names in its own title.
+  New `Tests\Feature\Support\PinsTheRateLimitWindow` pins the window;
+  `FixedWindowPinCoverageTest` **re-derives the population every run** and reds on any class that
+  asserts a `429` without a pinned clock. That guard replaced a first attempt that lived on the
+  trait itself and could not fail for either hazard it named — it was deleted along with the trait
+  it was meant to protect. Also corrected: a comment claiming the release test catches a mis-sized
+  TTL, which mutation testing shows it does not.
+
 - **card#8300** — **The coordination thread line — card#7897 part 2 slice 2, D3 § 5.7 and its
   client.** D2 § 8.3.3's two objects had a read surface (card#9212) and no render map; this is the
   render map, and the first thing on the floor drawn **between** desks rather than at one.
