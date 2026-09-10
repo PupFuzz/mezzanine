@@ -28,12 +28,14 @@
  * of one fact on a second surface is exactly what § 2.4's one-rendered-form-per-fact rule
  * forbids. The lobby's derivation indicator renders `fleet.fold` and stops there.
  *
- * ⛔ NO DURATION IS RENDERED ANYWHERE IN THIS CLIENT — card#9209. § 7.1's own exemplars disagree
- * about the format (`4m 12s` / `11m` / `2h 06m`) and § 12 publishes no row for it, so there is no
- * duration format to implement. § 5.3 asks for `sweep_last_run_at` and `ingest_last_receipt_at`
- * "as an age"; until #9209 rules, this renders each as the LABELLED TIMESTAMP the wire actually
- * carries, in § 4.1's own `HH:MM:SS` form, and subtracts nothing from anything. A made-up
- * duration string would be a rendered fact whose FORM nobody ratified.
+ * ⛔ NO DURATION IS RENDERED ANYWHERE IN THIS CLIENT, and card#9209 CHANGED THE REASON WITHOUT
+ * CHANGING THE ANSWER. It published the duration FORMAT — D3 § 2.4's one function, § 12's row,
+ * § 13 decision 23 — so *there is no format* is no longer true and is no longer why. What is
+ * still open is the WORDING: § 5.3 asks for `sweep_last_run_at` and `ingest_last_receipt_at`
+ * "as an age" and no section publishes the string either age is spoken in, which is § 14 item 17.
+ * A format with no ratified wording still leaves a picked string as the one nobody ratified, so
+ * until that item closes this renders each as the LABELLED TIMESTAMP the wire actually carries,
+ * in § 4.1's own `HH:MM:SS` form, and subtracts nothing from anything.
  */
 
 import { RENDER_STATES, isRenderState } from './render-state.js';
@@ -225,7 +227,8 @@ export function indicators(fleet) {
             label: 'sweep',
             member: 'fleet.sweep',
             value: typeof health.sweep === 'string' ? health.sweep : NOT_REPORTED,
-            // § 5.3: "`stalled` ⇒ indicator plus the age". The AGE is card#9209-blocked, so what
+            // § 5.3: "`stalled` ⇒ indicator plus the age". The age's WORDING is § 14 item 17 —
+            // card#9209 published the format, not the string it is spoken in — so what
             // is drawn is the instant itself, labelled, on every value — a dead sweep's last run
             // is the fact, and hiding it unless `stalled` would make the indicator's own evidence
             // conditional on the indicator's verdict.
@@ -236,7 +239,7 @@ export function indicators(fleet) {
             label: 'ingest',
             member: 'fleet.ingest_last_receipt_at',
             // § 5.3: "rendered as an age; it is the fleet-wide reading that separates *every seat
-            // died* from *our pipe is broken*". Same #9209 substitution, same reason.
+            // died* from *our pipe is broken*". Same substitution, same reason: § 14 item 17.
             value: `last receipt ${clockTime(health.ingest_last_receipt_at) ?? NOT_REPORTED}`,
             detail: null,
         },

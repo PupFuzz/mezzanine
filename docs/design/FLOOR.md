@@ -170,7 +170,7 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | # | Computed | From | Why it is presentation and not state |
 |---|---|---|---|
 | 1 | **`clock_offset_ms`** = `server_time − browser_now` | every REST response and every feed message ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) | D2 **requires** it: "the browser's own clock is never used for an age either… it is the layer nobody controls" |
-| 2 | **Durations** — *nothing done for 4m 12s*, *no data for 11m*, *running for 2m 05s*: **three** of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four, and no fourth on this list. Its fourth row, *this state is 117 s behind*, is deliberately **not** here: `derivation.fold_lag_ms` (**`named-not-rendered`** — this row names the member and draws nothing from it; [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns its render) is a duration **D2 computes at read time and sends**, and formatting a delivered number into a string is not computing one. Nor is a currency label's parenthetical, which carries a labelled seat-clock timestamp rather than a duration, nor the fleet banner's `fleet.max_fold_lag_ms` | a D2 timestamp subtracted from the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
+| 2 | **Durations** — **a kind of computation, not a list of instances**: any D2 timestamp subtracted from the corrected clock and rendered through [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format. Three of that section's four wordings are of this kind (*nothing done for 4m 12s*, *no data for 11m*, *running for 2m 05s*) and so are every other age this document renders — [§ 5.3](#53-the-fleet-on-both-screens)'s sweep and ingest-recency ages, the context sample's own age, the timeline row's age. ⚠ This cell read **three** until card#9209, which is a **closed list of instances** where the row means a kind, and it was already false of § 5.3's two. What is genuinely not of this kind is § 2.4's fourth row, *this state is 1m 57s behind*: `derivation.fold_lag_ms` (**`named-not-rendered`** — this row names the member and draws nothing from it; [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns its render) is a duration **D2 computes at read time and sends**, and formatting a delivered number into a string is not computing one. Nor is a currency label's parenthetical, which carries a labelled seat-clock timestamp rather than a duration, nor the fleet banner's `fleet.max_fold_lag_ms` | a D2 timestamp subtracted from the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
 | 3 | **Desk slot** | `(install_id, seat_id)` and the map's slot count ([§ 3.2](#32-the-desk-slot-function)) | A layout function of identity. It reads no state field, so it cannot change when a seat's state does |
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
 | 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
@@ -313,20 +313,92 @@ omission.
 
 - Ages re-render **every 1 s**, which is the unit the smallest age is rendered in: slower would show a
   second that has already passed, faster would repaint for nothing.
+- **THE DURATION FORMAT — one function, and every duration and every age this page renders is its
+  output.** It is stated as a **rule** and never by example, because a set of examples is a rule
+  nobody can apply to the case it does not contain: until card#9209 this document published three
+  exemplars — *4m 12s*, *11m*, *2h 06m* — that **no single rule produces**, so
+  [§ 7.1](#71-the-render-per-state)'s Label cells, [§ 5.3](#53-the-fleet-on-both-screens)'s two fleet
+  ages and the ratified preview's sample strings were each free to mint a fourth, and the preview
+  did. The function takes **one** input — a number of seconds — and returns one string:
+
+  1. **The input is truncated to whole seconds, and is never negative.** A duration below one
+     second, and a computed age that comes out below zero because the corrected clock is momentarily
+     behind the instant it is subtracting, are both `0s`.
+  2. **The units are `h`, `m` and `s` — three of them, and there is no day unit.** Hours continue
+     past 24: a seat dark for just over three days reads *no data for 73h 12m*, never *3d 01h*
+     ([decision 23](#13-decisions-taken-revisable-at-review)).
+  3. **At most two units are written: the largest unit whose value is non-zero, and the one below
+     it.** Nothing above the largest non-zero unit is written — `11m`, never `0h 11m`; `50s`, never
+     `0m 50s` — and nothing below the second unit is, so the remainder is **truncated and never
+     rounded**: a rendered duration is never longer than the duration it renders.
+  4. **The second unit is dropped when its value is zero**: `11m`, never `11m 00s`; `1h`, never
+     `1h 00m`. The first unit is never dropped.
+  5. **The first unit's value is written unpadded; the second's is zero-padded to two digits** —
+     `2h 06m`, `2m 05s`, never `2h 6m`. The second unit is a fraction of the first and reads as one
+     only at a fixed width, and a readout that repaints every 1 s must not change width as it ticks.
+  6. **One space between the two units, and none between a value and its unit letter.** The letters
+     are lower case and are never pluralised.
+  7. **Zero renders `0s`** — the one case in which a zero-valued unit is written, because a rendered
+     duration is never the empty string. It is **not** the render of a *missing* duration: a null
+     basis renders [§ 5.6](#56-the-null-render-for-every-nullable-member)'s absence — *nothing done
+     yet*, *no data yet* — and never `0s`, which would claim a measurement at this instant.
+
+  **Every boundary those seven clauses have, evaluated rather than described.**
+  `tools/design/verify-floor.py` re-implements the function from the clauses above and reproduces
+  **every row of this table on every run** (**Measured**, in
+  [§ 12](#12-every-number-and-where-it-comes-from)'s sense, exactly as the desk-slot function is), so
+  a clause edited without its outputs — or an output edited without its clause — reds:
+
+  | Seconds in | Renders | The clause it is here for |
+  |---|---|---|
+  | −4 | `0s` | 1 — a duration is never negative |
+  | 0 | `0s` | 7 — exactly zero |
+  | 0.4 | `0s` | 1, 7 — below one second, truncated to zero rather than rounded to `1s` |
+  | 1 | `1s` | 3 — one unit, and the first is unpadded |
+  | 59 | `59s` | 3 |
+  | 60 | `1m` | 4 — the second unit is zero and is dropped |
+  | 125 | `2m 05s` | 5 — the second unit is padded |
+  | 252 | `4m 12s` | 3, 5 |
+  | 660 | `11m` | 4 |
+  | 3599 | `59m 59s` | 3 |
+  | 3600 | `1h` | 4 |
+  | 7560 | `2h 06m` | 3, 5 — the seconds are below the second unit and are truncated away |
+  | 86399 | `23h 59m` | 3 |
+  | 86400 | `24h` | 2 — the day boundary is not a boundary |
+  | 263520 | `73h 12m` | 2 |
+
+  **Shared by every rendered duration on this page, with no exception and no second form.** The
+  format above is the whole of the string; the table below fixes the **wording** four seat-scoped
+  facts are rendered in. Every other duration and every other age this document renders takes the
+  same function and its own section's wording: [§ 5.3](#53-the-fleet-on-both-screens)'s sweep age and
+  ingest-recency age, the context sample's own age and the reporter's uptime in the panel, the
+  spool's oldest-unsent age and the timeline row's age
+  ([§ 4.3](#43-the-desk-drill-down-panel), [§ 5.2](#52-the-drill-down)), and the fleet banner's
+  figure ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)). A surface that needs a
+  duration and finds no wording published for it has found a **wording** gap and never a format one;
+  those are named in [§ 14](#14-open-questions-for-the-review-loop) item 17 rather than filled by
+  whichever surface reaches them first. **Two rendered quantities are outside the rule and are named
+  rather than left to be inferred:** a **timestamp** is not a duration — every *as of HH:MM:SS*
+  stamp, *no data since*, *membership as of* and seat-clock claim on this page is one, and the
+  wording table below is followed by the two paragraphs and the seat-clock bullet that say which
+  field is which; and `delivery.clock_skew_ms` is a
+  **signed difference between two clocks**, not an elapsed time, so it carries its own sign and its
+  own unit ([§ 5.2](#52-the-drill-down)) and is not this function's output.
 - A **duration** is rendered from the field D2 assigns to it and no other, **and each has exactly one
-  rendered form, stated here so that no second surface mints a second string for one fact**. **Three
-  of the four the client computes** — the corrected clock minus a timestamp the wire carries — and
-  they are [§ 2.1](#21-the-seven-client-computed-values-closed) row 2's closed list. **The fourth it
-  does not:** `derivation.fold_lag_ms` is a duration D2 computes at read time and sends, so this
-  document only formats it, and it is on this table because the table's job is to fix **one rendered
-  form per fact**, which binds a delivered duration exactly as it binds a computed one:
+  rendered wording, stated here so that no second surface mints a second string for one fact**.
+  **Three of the four below the client computes** — the corrected clock minus a timestamp the wire
+  carries, which is [§ 2.1](#21-the-seven-client-computed-values-closed) row 2's **kind** of
+  computation rather than a closed list of instances of it. **The fourth it does not:**
+  `derivation.fold_lag_ms` is a duration D2 computes at read time and sends, so this document only
+  formats it, and it is on this table because the table's job is to fix **one rendered wording per
+  fact**, which binds a delivered duration exactly as it binds a computed one:
 
   | Duration | Field | The string, verbatim | Where it may appear |
   |---|---|---|---|
   | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
   | **receipt age** | `delivery.last_receipt_at` | ***no data for 11m*** | the **desk**, under the **`dark-only`** marker below, which owns which desks may draw it and why it may tick; and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**). The form's exemplar is 11m rather than the 4m 12s the rows above use, because 4m 12s is inside no state the first surface named here can be in ([D2 § 4.5](FLEET-STATE.md#45-link-states): `stale` begins at 300 s). **`named-not-rendered`** — this row fixes the string and draws no value from the member; the two markers it names are pointers to the rule below, and it is the render-map rows that draw it that carry them |
   | **action elapsed** | `action.started_received_at` | ***running for 2m 05s*** | desk and drill-down, wherever the open action is drawn; version-bearing, so it ticks. **Both ends are the server clock**, which is what makes it the one honest duration over an action ([§ 5.1](#51-the-desk)) — `action.started_at` is the seat's own claim and is rendered as a labelled timestamp beside it, never subtracted from anything |
-  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 117 s behind*** | **`fetch-fresh`**, so never ticked on any surface — and *which* surfaces is [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s to say, not this table's. This row fixes the string; that section owns where it appears and under what condition. **`named-not-rendered`** — this row draws no value from the member either, for the same reason: the marker it names is the one the render-map row that draws it carries |
+  | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 1m 57s behind*** | **`fetch-fresh`**, so never ticked on any surface — and *which* surfaces is [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s to say, not this table's. This row fixes the string; that section owns where it appears and under what condition. **`named-not-rendered`** — this row draws no value from the member either, for the same reason: the marker it names is the one the render-map row that draws it carries |
 
   **Two rendered figures look like a fifth row and are neither.** *(a)* A **currency label's
   parenthetical** — *was: working (last event 12:47, seat clock)* — carries a labelled seat-clock
@@ -334,9 +406,14 @@ omission.
   [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)); an earlier
   revision wrote *(3h 12m ago)* there, which subtracted a seat clock from the server's and is exactly
   what the rule below forbids. *(b)* The **fleet banner**'s *these desks show what seats were doing N
-  minutes ago* renders `fleet.max_fold_lag_ms` — a **fleet-scoped** figure, in words
-  [D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation) fixes, over a different
-  field from the per-seat lag above ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)).
+  ago* renders `fleet.max_fold_lag_ms` — a **fleet-scoped** figure, over a different field from the
+  per-seat lag above ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)). Its figure
+  **does** take the duration format above, like every rendered duration on this page, and that is
+  what retired its *N minutes ago* phrasing at card#9209. ⚠ **The words are this document's, not
+  D2's**: an earlier revision of this paragraph said they were in words
+  [D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation) fixes, and that section
+  fixes the banner's **trigger** and its **threshold** — *"fleet health is degraded; D3 shows a
+  fleet banner"* — and publishes no wording for it at all.
   Neither is a second wording of one of the four.
 
   **One rendered string on this page looks like an age and is not:** a `stale`/`offline` desk's
@@ -764,7 +841,7 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | **interns** | the subagent list — from the **detail** response, uncapped ([§ 8](#8-interns--subagent-rendering-and-the-cap)) | `detail`, `subagents_open` |
 | **recent activity** | the timeline, newest first: `kind`, the seat-clock `event_time`, the receipt time, and the per-kind detail this document renders ([§ 5.2](#52-the-drill-down)) | the timeline endpoint |
 | **transport** — **`fetch-fresh`**, one *as of* stamp | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
-| **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id`, and the *this state is N s behind* line on the terms [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) states — this cell names the block's contents and leaves the render rule where it is owned | `derivation.*` |
+| **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id`, and the *this state is N behind* line on the terms [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) states — this cell names the block's contents and leaves the render rule where it is owned | `derivation.*` |
 | **reporter** — **`fetch-fresh`**, one *as of* stamp | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** and is **re-sent under the shallow merge** whenever one of the first three moves, so the block's stamp advances with it ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule) rather than dating a fetch the value has already outlived | `reporter.*`, `enabled` |
 | **badges** | every member of `badges[]`, each with its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
@@ -864,7 +941,7 @@ one, so the two documents can be read side by side.
 | the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
 | the last thing the seat did, and when it says it did it | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
-| the *this state is N s behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns this render — the four things it draws, the two surfaces it draws them on, and why the **badge** and not the number decides the treatment — and this row states none of it a second time. What is this table's own is the **source**: the treatment reads `badges`, which is version-bearing and therefore delivered, and the number is `derivation.fold_lag_ms`, one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten and therefore **`fetch-fresh`**. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) |
+| the *this state is N behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns this render — the four things it draws, the two surfaces it draws them on, and why the **badge** and not the number decides the treatment — and this row states none of it a second time. What is this table's own is the **source**: the treatment reads `badges`, which is version-bearing and therefore delivered, and the number is `derivation.fold_lag_ms`, one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten and therefore **`fetch-fresh`**. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | the retirement plate — **removed, and the row is kept to say so** | `retired.at`, `retired.by`, `retired.reason` | `null` | ⛔ **Nothing on the desk renders these, and on a rendered seat they are `null` by construction** ([§ 3.5](#35-retirement-and-the-only-removal), card#9078): a retired seat has no desk, and D2's read surfaces stop serving it at `retired_at`, so no object this floor holds can carry a non-null `retired` except the announcement's own delta — whose render is the desk's **removal**, not a plate. The row stays rather than being dropped so that the plate this floor used to draw is a recorded absence and not a forgotten one; the record's home is the admin console ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)) |
 
 ⭐ **The `task` row's rendered form is a THOUGHT BUBBLE anchored to the character, and it REPLACES the
@@ -1711,6 +1788,15 @@ which is not hypothetical: `stalled`'s cell elided a value three rule statements
 **Never** column require, and `retired`'s was correct while
 [§ 3.5](#35-retirement-and-the-only-removal), which restated it, had drifted. Both are corrected,
 each naming what it was corrected against.
+⛔ **The DURATIONS in the cells below are the output of a published function and not strings this
+table chose.** Until card#9209 this column carried *4m 12s*, *11m* and *2h 06m* as three worked
+examples that **no single rule produces**, over a document that published no duration format at all
+— so the cell was the rule, which is exactly what the paragraph above says a cell may never be.
+[§ 2.4](#24-the-clock-and-every-age-on-the-page) now publishes the function; the cells below are
+regenerated from it, and `tools/design/verify-floor.py` re-evaluates each of them rather than
+comparing it to a stored string — the two dark rows from **the timestamp in the cell and the
+corrected clock the cell itself states**, arithmetic included. A cell whose age stops following from
+its own worked moment reds, and so does one whose age the function would never emit.
 ⛔ **Where two rule statements disagree with each other — rule against rule, not rule against
 example — neither this table nor its reader settles it.** That is an amendment to whichever section
 owns the fact, and it is raised rather than picked: picking makes one of two ratified statements
@@ -1812,7 +1898,7 @@ badge a consumer does not draw is a condition the fleet reports and nobody sees.
 | `seq_collision` | D2 | badge cluster | *two events claimed one sequence number* |
 | `clock_skew` | D2 | badge cluster | *seat clock is N s from the server's* — rendered beside every seat-clock timestamp in the panel |
 | `reporter_ahead` | D2 | badge cluster | *this seat is sending values this server does not know* |
-| `fold_lag` | D2 | badge cluster, **and the desk is treated as not-current** | *this state is N s behind the events that produced it* ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
+| `fold_lag` | D2 | badge cluster, **and the desk is treated as not-current** | *this state is N behind the events that produced it* ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
 | `derivation_error` | D2 | badge cluster | *an event could not be projected; this seat's state is missing it* |
 
 **D1's twelve are rendered *since reporter start*, never as *now*.**
@@ -1864,7 +1950,7 @@ The rendering rule:
 | `link_state == "live"`, no `fold_lag` | its activity render | as the pose | full colour, motion permitted |
 | `catching_up` | the replay render (A15) | under the label, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
 | `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
-| badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N s behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
+| badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
 | `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | under the label, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
 
@@ -1897,7 +1983,9 @@ places on this document by name:
    source rows, [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) for the currency
    treatment, [§ 7.2](#72-badges-every-member-has-a-render) for the badge's own line. **The whole
    treatment, in one place, is four things and no others:** the **badge**, a **hatched overlay**, the
-   **lag line** *this state is N s behind — as of HH:MM:SS*, and **motion stops** — "D3 must not
+   **lag line** *this state is N behind — as of HH:MM:SS* — N being
+   [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format applied to `fold_lag_ms`, the
+   same function every other duration on this page takes — and **motion stops** — "D3 must not
    present the seat's activity state as current". **That line renders on two surfaces and no
    others**: the **desk**, and only while the badge is up, the line carrying its own inline stamp
    because the number is `fetch-fresh` and there is no block on the desk whose stamp it could borrow
@@ -1907,7 +1995,7 @@ places on this document by name:
    those totals are counted over the lag line**, which is what this section owns.
    **[§ 7.2](#72-badges-every-member-has-a-render)'s `fold_lag` row is therefore not a third surface
    for that line, and its wording is not a second string for it:** what that row's drill-down-line
-   column carries — *this state is N s behind the events that produced it* — is the **badge's own**
+   column carries — *this state is N behind the events that produced it* — is the **badge's own**
    render, the sentence every badge in that table gets in the **badge cluster**, and it takes no
    *as of* stamp because it states the badge's condition rather than dating a number. Two facts, two
    owners, two strings: the badge's line is [§ 7.2](#72-badges-every-member-has-a-render)'s and the
@@ -1916,12 +2004,15 @@ places on this document by name:
    present as a healthy floor *here*: the fold is the delta emitter, so when it stops, a client's copy
    of the lag freezes at the value it had and can never cross 60 s — while `badges` **is**
    version-bearing and the sweeper delivers it ([D2 § 6.5](FLEET-STATE.md#65-the-fold)). A floor that
-   drove this treatment off the number would render the badge beside the line *this state is 0 s
+   drove this treatment off the number would render the badge beside the line *this state is 0s
    behind*. The number itself is **`fetch-fresh`** and carries the stamp of the fetch that produced it
    ([§ 2.4](#24-the-clock-and-every-age-on-the-page)).
 2. **Fleet-wide**, `fleet.fold == "lagging"`: the derivation indicator changes, no banner.
-3. **Fleet-wide**, `fleet.fold == "stalled"` — any seat past 300 s: **a fleet banner** — D2's words — reading *derivation is
-   behind: these desks show what seats were doing N minutes ago*, with `fleet.max_fold_lag_ms` in it.
+3. **Fleet-wide**, `fleet.fold == "stalled"` — any seat past 300 s: **a fleet banner** — D2 requires
+   the banner and this document writes it ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) —
+   reading *derivation is behind: these desks show what seats were doing N ago*, with
+   `fleet.max_fold_lag_ms` in it, rendered through § 2.4's duration format like every other duration
+   on this page.
 
 ### 7.5 What a degraded desk may never look like
 
@@ -3020,7 +3111,7 @@ all.*
   ([§ 2.4](#24-the-clock-and-every-age-on-the-page)); advance the harness clock and assert the age string moved while the
   timestamp did not; `disabled` renders a present character with the
   monitor off and is **not** the `offline` render; the `fold_lag` seat renders its pose with the hatched
-  overlay, the *117 s behind* line **carrying its own *as of* stamp** — advance the harness clock and
+  overlay, the *1m 57s behind* line **carrying its own *as of* stamp** — advance the harness clock and
   assert the number has **not** moved, because it is `fetch-fresh` and nothing has delivered a new
   one ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) — and **no motion** — assert that the `entered` row of that seat's
   `held` episode carries **`motion: false`**, which says the render was entered and
@@ -3654,6 +3745,8 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Loop frame rate** | **4 fps** | **Derived** — one frame per 250 ms coalescing tick, so no **claim-bearing** loop on the floor can appear more informative than the fastest rate at which the wire can inform it. It is fixed across every such loop and every seat, because a rate that varied would encode a quantity nothing sent. **Decorative motion is outside it** and is bounded by this table's *Decorative motion's minimum cycle* row instead | [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) |
 | **Gauge tween and glyph cross-fade** | **250 ms** | **Derived** — the coalescing tick again: a tween longer than the interval between two deltas would still be animating the previous value when the next arrives | [§ 6.2](#62-the-animation-table--the-closed-set) |
 | **Age readout refresh** | **1 s** | **Chosen** — the unit the smallest rendered age uses. Slower shows a second that has passed; faster repaints for nothing | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
+| **Units in a rendered duration** | **2** | **Chosen** — the largest unit whose value is non-zero and the one below it ([§ 2.4](#24-the-clock-and-every-age-on-the-page) clause 3). One unit throws away the figure an operator reads a lag by (*2h* for anything from two hours to three); three renders *2h 06m 12s*, whose seconds are noise at that scale and whose width changes every second on a readout that repaints every 1 s. What moves it is a rendered duration whose second unit is not the one its reader needs | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
+| **The day boundary** | **24 h** | **Chosen**, and chosen to be **nothing**: there is no day unit and hours continue past it, so a seat dark for just over three days reads *73h 12m* ([decision 23](#13-decisions-taken-revisable-at-review)). What moves it is an operator who reads that string and wants days | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
 | **Decorative motion's minimum cycle** | **2 s** | **Chosen**, and the weakest-based number in this table, which is why it says so: it is the operational form of an operator condition — *"as long as it is not distracting"* (2026-08-30, card#7953) — and a condition with no figure is one no reviewer can apply. It is set just under the **2.4 s** the operator ratified in `docs/design/floor-preview/`, so the bound admits what was ratified rather than being derived and then found to forbid it. **What would re-derive it:** a measurement on a built floor of the cycle at which decoration starts pulling the eye off the desks | [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) |
 | Seat `stale` / `offline` thresholds | 300 s / 900 s | **Cited** — [D2 § 4.5](FLEET-STATE.md#45-link-states), D1's numbers | [§ 7.1](#71-the-render-per-state) |
 | `catching_up` threshold | `oldest_unsent_age_s > 300` | **Cited** — D2 § 4.5; the threshold is D2's derivation input and this row renders nothing from it (**`named-not-rendered`**) | [§ 5.1](#51-the-desk) |
@@ -3712,6 +3805,7 @@ belongs in its own round.
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one — **per member, not per row**: each member must carry a marker **legal for that member**, where `dark-only` is granted to `delivery.last_receipt_at` alone (re-derived from § 6.5's own carve-out sentence, not written into the tool) and `fetch-fresh` governs the rest; a row carrying `dark-only` must source that member; and a row of a table that renders on the **desk** — [§ 5.1](#51-the-desk) and [§ 7.1](#71-the-render-per-state), the two the column map flags as desk surfaces — must carry `dark-only` specifically for it, because on the desk that is the marker in force. The row-scoped test this replaces could be satisfied by a marker belonging to a **different surface** — § 5.1's receipt-age row survived deleting `dark-only` because the same row mentions `fetch-fresh` for the drill-down. Also: this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk. **And the rule's own statement of its scope is closed against the gate, both directions:** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s marker-rule sentence enumerates the tables the rule holds over, which is a second home for this gate's column map and is the home that went false twice — five tables named while § 5.6 sat outside the gate, seven named while § 7.1 rendered the receipt age on the desk. Neither side is stored: the map is the tool's, the list is read out of the document. **The table population is DERIVED, not listed:** every markdown table in this document is found structurally, a table under a § 5 heading that the gate has no source column for **reds** rather than being skipped, and membership in that population is keyed on a row's **line number** rather than on its text, so a row byte-identical to a checked one cannot be pasted into an unchecked table and test as already-checked. A table row anywhere else naming one of the ten **reds** unless it declares itself **`named-not-rendered`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) — a marker in such a row exempts nothing, and the only two rows entitled to carry one without rendering are found by **role**: the marker table's own rows, whose key cell *is* the marker, and this table's rows, found by this table's header | **tool-checked**, with **one** stated limit: **prose**. The gate held a list of five table headers until § 5.6 was added with six ten-sourcing rows and no marker — the list did not contain it, nothing reddened, and § 2.4 went on claiming the rule held over every § 5 row. A stored population does not fail visibly; it under-reads. Both halves of that are now inverted — the population is re-derived every run and the rows that used to be *announced* as outside it are **failures** unless the document declares them — and the second finding of the same shape, § 7.1's two desk renders of the receipt age, is why the outside-the-map rule no longer accepts a bare marker token: a token-presence test admits a row naming the marker for a surface it does not render on. What remains outside is a bookkeeping member reintroduced in **prose**, and every prose mention is printed **in full**, leaf spellings included. Not a capped sample: the residue printer used to print the first twelve of nineteen beside the true count, which reads as a complete list and is how the seven it hid stayed hidden |
 | **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 37 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
 | **G11 a worked example against the rule statement that governs it** | **The class is [§ 7.1](#71-the-render-per-state)'s stated convention made checkable**, and it now holds **two** facts, each with its own owning table and its own instances. **(a) The composed `api_error_type` line:** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s twelve member/phrase pairs, re-derived from that table, against the two sites that render one — [§ 7.1](#71-the-render-per-state)'s `stalled` **worked instance**, which must carry a member **verbatim** with that member's phrase **beside** it, and [§ 5.1](#51-the-desk)'s *rendered verbatim* row, whose illustration must be a **member** and never one of the phrases. The instance that shipped: the cell published *API error — rate limit* — the phrase with the raw value elided — against five statements including its own **Never** column, and nothing could difference the two sites because the **composition** was published at neither. **(b) WHERE the `activity_state` currency label is drawn:** the placement phrase is re-derived from [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s five `activity_state` rows — which must **agree with each other**, or the rule is reported as disagreeing with itself and no instance is judged — and every worked instance elsewhere in the document must state that same placement. Its population is found **structurally**, not listed: any table cell carrying a *was:* span or naming the `activity state` in words. The instance that shipped: [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s `catching_up` and `disabled` rows read *in the label only* — a **one**-element reading under which a `catching_up` desk draws `activity.last_event_time` twice — and § 7.6's own `link_state` row had drifted with them. Every predicate is **fed its own defect on every run** and must reject it, because a comparison only ever shown agreeing is not evidence it can disagree; the placement predicate's defect arm builds its counter-example by substituting a preposition the rule does **not** use, chosen from the recognizer's own alternation, so the tool stores no answer | **tool-checked**, with **three** stated limits. *(1)* It holds each fact at the sites that **render** it in a table, and cannot see one minted in **prose**. *(2)* **This table's own rows are excluded by role**, and the exclusion is a finding rather than a convenience: a row documenting a guard necessarily **quotes the defect it guards** — the (b) row above quotes *in the label only* in order to say what was wrong — so a recognizer that read it would **fail on the correction and pass a silent fix**, getting redder the more honestly the defect is written up. It fired exactly that way on this row before the carve-out existed. § 12 renders nothing, so nothing is lost; G9 excludes the same rows by the same role. *(3)* **The placement leg asks whether a cell CONTRADICTS § 7.6, never whether it states the placement at all**, so a cell re-wording the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter tier was written and **removed**: it red on § 7.1's own `catching_up` cell, which says the form is drawn *under this line* while pointing at § 7.3 and § 7.6 — correct, and a **mention** rather than a placement, which no structural test here can tell apart. Enforcing the literal would have made a style rule that reds on a careful paraphrase and passes a careless overwrite |
+| **G12 the duration format** | [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s seven clauses re-implemented as a function, and **every row of that section's boundary table reproduced** — the capability control, since a formatter that agreed with nothing would pass the two legs below by rejecting everything. Then the legs: every duration-shaped token inside a **rendered string** — § 2.4's own Verbatim column and [§ 7.1](#71-the-render-per-state)'s Label line cells, read as the published span rather than as cell prose — must be a **fixed point** of the function, so *11m 00s*, *2h 6m* and *0m 50s* red where *11m*, *2h 06m* and *50s* pass; and § 7.1's `stale` and `offline` cells are re-derived **arithmetically** from the timestamp in their own span and the corrected clock their own prose states, so a worked pair that stops describing one moment reds. What it does NOT reach is a duration in **prose**, which is the same residue G9 has and for the same reason | ✅ |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every **claim-bearing** animation has an event, never that the floor is legible — and **never** that decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) stays inside its bound, which no gate reaches at all |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -3759,6 +3853,7 @@ review can reverse it deliberately rather than discover it later.
 | 20 | **The animation table carries two classes — `edge` and `held` — and the animation log records them under different causality rules, a `held` render's entry and exit paired by an `episode_id` rather than by the animation and seat.** The class split is [§ 6.2](#62-the-animation-table--the-closed-set)'s and the log schema is [§ 11](#11-acceptance-tests)'s; this row records the decision and states neither a second time | one schema for all seventeen rows: one *cause* column, one totality rule, one causality sentence — and, at an earlier revision, one schema for a held render's entry and its exit | Under one schema the halves contradict each other on this document's own headline fixture. [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2 holds a loop for as long as a delivered field says so, and [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot delivers a `working` seat — so a correct client starts a loop where there is no message to record as its cause, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *every row has a cause* could not hold beside [§ 6.5](#65-a-snapshot-never-animates)'s *a snapshot fires nothing*. The split keeps the strict rule where it is true — an edge animation with no causing message is exactly the defect the honesty principle names — and gives held renders the rule that is true of them: held by a delivered field, logged with the `state_version` that delivered it | one more column in [§ 6.2](#62-the-animation-table--the-closed-set) and four more fields in the log (`phase`, `episode_id`, `at`, and `cause`'s per-phase rule), and a reviewer must decide which class each new row is. The alternative was an implementer choosing between a floor that goes static after every reconnect and a log whose totality claim no test could satisfy. **The `phase` half was added after the enter-and-leave rule re-opened that same unsatisfiability one class down**: an exit row is not held by anything and is drawn as nothing, so under one held-row schema [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s *the hold condition holds in the cause object* was false for every exit row on a correct client — and repeating the entering version instead made two rows identical in every field, from which *for how long* was unrecoverable. **`episode_id` is the third such widening and the one that ends the sequence**, because it is the first to give the log an identity for the thing the questions are actually asked about. Each of the first two — the class split, then `phase` — fixed the shape of a row while leaving the log keyed on `(animation_id, install_id, seat_id)`, a triple that is not unique per episode on this document's own headline fixture: `fx-clear-trace` enters A4 twice on one seat, so *which exit ended which entry* and *for how long* had no answer the log could give. Adding a fourth field to the row was cheaper than the alternative on offer, which was to declare the fixture out of scope for the pairing predicate and leave the headline test asserting less than it claims |
 | 21 | **The ratified wall clock and day/night sky advance on `feed.heartbeat`, so they stop when the feed does** ([§ 6.2](#62-the-animation-table--the-closed-set) A17). **Operator ruling, 2026-08-27, card#7341**, taken between three stated options | **(A)** ship them **static**, set once per render — what [§ 10.4](#104-the-art-direction-as-a-specification) required until this ruling; **(B)** carve an exception into [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) for viewer-clock decoration, keeping the reference's 10 s interval | Option B is the widening the art amendment existed **not** to do, and it is not a small one: a timer-driven clock is a mover that **keeps moving after the feed dies**, so the page never goes still and [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) loses the observable it asserts — a named acceptance test's instrument, spent on decoration. ⭐ **Read this row beside row 3's 2026-08-30 amendment, which admits decorative motion and does NOT reopen this:** what was refused here was never decoration in general — it was spending this test's instrument on it — and the clock is refused today by the **first** of [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s three claim tests, which is this row's reasoning carried forward as a property. A lamp glow passes that test; a clock cannot. Option A is honest and costs the reference its sense of a place. **The heartbeat driver is neither a compromise nor a third-best**: the clock earns an ordinary [§ 6.2](#62-the-animation-table--the-closed-set) row driven by a message D2 declares, and **a stopped clock is A14's claim in the form every human reads instinctively**, so the element that would have destroyed the feed-down signal now carries it. The visual cost is near nil — the clock is **sampled** every 15 s and, at minute resolution, **steps once a minute**, which at floor zoom is indistinguishable from a continuous one; the sky is a slow gradient | **The clock is wrong by up to 15 s and is stale by construction whenever the feed is down** — accepted, and it is why the clock carries no *as of* stamp and is never an authority on the time ([§ 5.5](#55-the-clients-own-narration)). The real cost is that a **frozen clock looks like a bug**, and the repair a maintainer reaches for is the interval this ruling refused; the whole of the mitigation is that the reasoning is written at [§ 6.2](#62-the-animation-table--the-closed-set), the driven-versus-read distinction at [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith), and **two REDs** at [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) — one for that exact edit, and one for the same regression arriving through the recovery path, where the room is *set* on each 10 s poll rather than animated on a timer |
 | 22 | **`task` is rendered as a STATIC thought bubble anchored to the character, replacing the text chip, and the upstream bubble's fade/linger/fade state machine is refused** ([§ 5.1](#51-the-desk)). **Operator vision + card#7897's ruling, 2026-08-27**; the ruling directed the state machine's adoption and this row is where the refusal is recorded rather than left in a PR | **(A)** adopt the upstream machine as directed — fade in, linger, fade out, re-show swaps the text — which needs a [§ 6.2](#62-the-animation-table--the-closed-set) row the ruling also forbids; **(B)** keep the chip and add the bubble beside it, so nothing already asserted has to move | Option A is not a style question. The linger is a timer ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form), and the fade-out **collapses a null render**: once the bubble hides itself, *no bubble* means *`task` is null* **or** *the linger expired*, and a null render two facts produce is not one. Upstream's machine is right **for upstream** — its bubble reports a tool call, an instant, where ours reports a standing fact. Option B is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken on purpose, and it is the failure this amendment is most likely to reach by accident rather than by argument | **A dark desk loses a readout it used to have.** `stale` and `offline` draw no character ([§ 7.1](#71-the-render-per-state); `retired` was a third until card#9078 removed its desk altogether), so they now draw no task at all where a chip once sat; the value is in the drill-down under that panel's currency treatment. That is the amendment's only truth-content cost and it is on the side of claiming less. **And a static bubble is the thing a maintainer will "fix"** — a bubble that never animates reads as unfinished next to the reference's other motion, and the repair reached for is a float or a fade, which is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet arriving through an element nobody thinks of as an animation |
+| 23 | **The duration format is ONE function shared by every rendered duration and every age on the page, and it has no day unit** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). **card#9209** | **(A)** a day unit past 24 h — *3d 01h* rather than *73h 12m*; **(B)** leave the format unpublished and let each surface keep its exemplar, which is the state this card found; **(C)** exempt `derivation.fold_lag_ms` (**`named-not-rendered`** — this row weighs an option about the member and draws no value from it), whose published exemplar was *117 s*, and let the lag keep a seconds-only form for comparison against D2's 60 s and 300 s thresholds | **(B) is the defect**, not an option: three exemplars no rule produces is a rule nobody can apply, and the next surface mints the fourth. **(C) is two formats for one thing** — the second one is minted by the argument that its reader is different, which is the argument every second format is minted by, and *1m 57s* is not harder to compare against 60 s than *117 s* is. **(A) is a real product call and it is the contestable half of this row**: it was refused because a *day* is the unit a reader takes as a **calendar** one, while every quantity here is a count of elapsed seconds between two server-clock instants, and because it keeps the unit vocabulary at the three letters this document already wrote. It is not refused because *73h 12m* reads well | **A multi-day age reads as a large hour count.** *73h 12m* makes an operator divide to answer "how many days", and a fleet left running over a long weekend is exactly when that question gets asked. Reversing it is one clause and one boundary row in [§ 2.4](#24-the-clock-and-every-age-on-the-page) plus a re-run of the gate, which regenerates every affected exemplar — the cost of being wrong here is small **because** the format is published in one place |
 
 ---
 
@@ -4047,6 +4142,41 @@ reason to leave two readings live.
     once and needing a reason that was not on the table then). ⚠ This document states the question and
     takes none of the three: two of them are D2 amendments and the third deletes someone else's
     feature.
+
+17. **⇢ Review — this document renders more durations and ages than it publishes a wording for.**
+    Opened by card#9209, which published the **format** ([§ 2.4](#24-the-clock-and-every-age-on-the-page))
+    and found the **wording** table narrower than the population it serves. The render sites this
+    document asks for a duration or an age at, derived by reading every render table and not from a
+    list kept here: the **quiet age**, the **receipt age**, the **action elapsed** and the
+    **derivation lag** — the four § 2.4 fixes a wording for — plus [§ 5.3](#53-the-fleet-on-both-screens)'s
+    **sweep age** (`fleet.sweep_last_run_at`, *"indicator plus the age"*) and **ingest-recency age**
+    (`fleet.ingest_last_receipt_at`, *"rendered as an age"*), [§ 4.3](#43-the-desk-drill-down-panel)'s
+    **context sample age** (*"the sample's own age"*) and **reporter uptime** (`reporter.uptime_s`,
+    under its *since reporter start* framing), [§ 5.2](#52-the-drill-down)'s **oldest-unsent age**
+    (`delivery.oldest_unsent_age_s`) and **timeline row age** (`received_at`, *"the basis of the
+    row's age"*), and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s **fleet
+    banner** figure. **The population is re-derivable rather than kept here**: scan every render
+    table in this document for a cell that says *age*, *duration*, *elapsed*, *uptime* or *lag*, and
+    § 2.4's wording table covers four of what comes back. **Blocks:** nothing — every one of
+    the rest has a format from the moment card#9209 lands, and a surface that renders one is
+    rendering a correct string. What it does not have is a string this document has **chosen**, so
+    two surfaces rendering the sweep age could word it differently and neither would be wrong
+    against anything, which is § 2.4's one-rendered-form-per-fact rule with nothing behind it on
+    those facts. **In the meantime:** the format is closed and the wording is the renderer's, said
+    here rather than left to be discovered. **Closes it:** a row in § 2.4's wording table for each
+    of them, or a rule that derives a wording from the element's own label — a review call, because
+    the wording of a fleet-scoped banner and the wording of a panel line are not obviously one
+    question. ⚠ Two of these — the sweep and ingest ages — are the ones card#7341's lobby met and
+    could not render: it draws both as labelled timestamps and subtracts nothing, which is a
+    **correct** render of neither.
+    ⚠ **And one site the same sweep returns whose KIND is unstated, which is a different gap and is
+    named rather than folded into the list above:** the drill-down's **heartbeat freshness** line
+    ([§ 5.2](#52-the-drill-down)). Its element name says an age; its cell says only that
+    `delivery.last_heartbeat_at` is *"rendered beside the receipt age"*, and
+    [§ 5.6](#56-the-null-render-for-every-nullable-member) gives it *not reported* when null —
+    so whether it is an **age** or a **labelled timestamp** is nowhere stated, and the format above
+    reaches it only under the first reading. That one is a *kind* question and closing it is a
+    sentence in § 5.2, not a row in § 2.4's wording table.
 
 ---
 

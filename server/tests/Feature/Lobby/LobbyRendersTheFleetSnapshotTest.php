@@ -117,10 +117,15 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         $this->assertStringNotContainsString('behind', $rendered,
             '§ 2.4’s derivation-lag string reached the lobby');
 
-        // ⛔ AND NO DURATION OF ANY KIND — card#9209: D3 publishes no duration format, so there
-        // is no honest way to render one. Every shape § 7.1's own disagreeing exemplars take.
+        // ⛔ AND NO DURATION OF ANY KIND. card#9209 published D3 § 2.4's duration FORMAT and left
+        // § 5.3's two ages without a ratified WORDING (§ 14 item 17), so there is still no honest
+        // string to render — and the shapes to exclude are no longer guesswork at three disagreeing
+        // exemplars: they are exactly what that function emits, `Nh MMm` / `Nm MMs` and the
+        // single-unit forms clause 4 drops the second unit of.
         $this->assertDoesNotMatchRegularExpression('/\d+\s*m\s+\d+\s*s/', $rendered);
         $this->assertDoesNotMatchRegularExpression('/\d+\s*h\s+\d+\s*m/', $rendered);
+        $this->assertDoesNotMatchRegularExpression('/(?<![\w:.])\d+[hms](?![\w:])/', $rendered,
+            '§ 2.4 single-unit duration reached the lobby');
         $this->assertStringNotContainsString(' ago', $rendered);
     }
 
