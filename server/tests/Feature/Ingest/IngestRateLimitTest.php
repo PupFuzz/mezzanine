@@ -40,9 +40,17 @@ class IngestRateLimitTest extends IngestTestCase
 
     public function test_the_request_limit_releases_after_its_window(): void
     {
-        // A limit that never releases is an outage, not a limit — and it is the failure mode a
-        // fixed window with a mis-sized TTL produces. § 11.5 has the seat honour `retry_after_s`
-        // and then retry, so the window must actually be over when the seat comes back.
+        // A limit that never releases is an outage, not a limit. § 11.5 has the seat honour
+        // `retry_after_s` and then retry, so the window must actually be over when the seat
+        // comes back.
+        //
+        // ⚠ WHAT THIS DOES AND DOES NOT DISCRIMINATE (measured, card#9223). It holds the WINDOW
+        // INDEX property: forcing `FixedWindow`'s index to a constant reds exactly this test. It
+        // does NOT hold the TTL — mutating the `$windowS * 2` TTL in `FixedWindow::hit()` to
+        // `$windowS * 1000` leaves the whole suite green. An earlier version of this comment named
+        // a "mis-sized TTL" as the failure mode it catches, which was not true of it. Left as a
+        // named gap rather than silently corrected prose: closing it needs a case that outlives
+        // the TTL without outliving the window.
         for ($i = 0; $i < 121; $i++) {
             $this->postBatch($this->validBatch());
         }
