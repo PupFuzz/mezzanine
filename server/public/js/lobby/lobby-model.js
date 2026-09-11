@@ -99,7 +99,8 @@ export function floorSummary(seats) {
  *
  * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
  * `layout` is the validated, normalised document the page delivered (`#lobby-layout`): a list of
- * `{ floor, rooms: [{ install, form }] }`, keys already derived server-side. What THIS function
+ * `{ floor, label, rooms: [{ install, form }] }`, keys already derived server-side and `label`
+ * null on a floor the operator did not name (card#9273, § 4.6). What THIS function
  * adds is § 4.6's one default rule — an install the snapshot carries that no delivered floor
  * places is a floor of its own, alone, `open` — and it adds it HERE and not only on the server
  * because § 4.1's discrepancy check discovers an install AFTER the page was served, and that
@@ -143,12 +144,21 @@ export function floors(snapshot, layout = []) {
             return { install_id, form: String(room?.form), reported: install_id in held };
         });
 
-        rows.push(plate(String(floor?.floor), rooms, held));
+        // § 4.6 (card#9273): the floor's LABEL, as the delivered document carries it — a string
+        // or nothing. The server has already refused every label it would not deliver, so this
+        // reads the member rather than re-deriving the rule; what it must not do is coerce, which
+        // would turn a delivered number into a name the operator never wrote.
+        const label = typeof floor?.label === 'string' ? floor.label : null;
+
+        rows.push(plate(String(floor?.floor), label, rooms, held));
     }
 
     for (const install_id of Object.keys(held)) {
+        // An implicit floor has no layout entry to carry a label (§ 4.6, card#9273), so it reads
+        // as its key — the `install_id` the wire already carries, which is a name and not a
+        // placeholder.
         if (!placed.has(install_id)) {
-            rows.push(plate(install_id, [{ install_id, form: 'open', reported: true }], held));
+            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held));
         }
     }
 
@@ -156,14 +166,24 @@ export function floors(snapshot, layout = []) {
 }
 
 /**
- * One floor row: its key, its rooms, the link, and § 4.1 row 2's summary over the seats the
- * client holds for EVERY install the floor's rooms name (§ 2.1 row 5), in room order.
+ * One floor row: its key, its label, the NAME it reads as, its rooms, the link, and § 4.1 row 2's
+ * summary over the seats the client holds for EVERY install the floor's rooms name (§ 2.1 row 5),
+ * in room order.
+ *
+ * ⛔ `name` IS RENDERED AND `floor` IS ROUTED, AND THE TWO ARE SEPARATE MEMBERS FOR THAT REASON
+ * (§ 4.6, card#9273). `href` is the KEY whatever the label says, and so is the sort in `floors()`
+ * and the cab's stop in `building-model.js` — a label is display text, and the moment anything
+ * looked one up by it, editing a label would move a viewer's floor.
  */
-function plate(floor, rooms, held) {
+function plate(floor, label, rooms, held) {
     const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
 
     return {
         floor,
+        label,
+        // § 4.6 (card#9273): "its label when the layout gives it one, else its key — the key is
+        // honest and no placeholder is invented".
+        name: label ?? floor,
         rooms,
         href: `/floor/${encodeURIComponent(floor)}`,
         summary: floorSummary(seats),

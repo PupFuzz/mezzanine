@@ -71,7 +71,13 @@ export const NO_STOPS = 'the elevator has no stops — the snapshot carries no i
 export const ONE_STOP = 'the elevator has one stop — a single-floor building has nowhere to ride';
 
 /**
- * Where a ride from `level` arrives, or `null` when there is nowhere to ride.
+ * The PLATE a ride from `level` arrives at, or `null` when there is nowhere to ride.
+ *
+ * ⛔ IT RETURNS THE PLATE AND NOT THE KEY, so that `elevator()`'s `next` (the key the cab is
+ * moved to) and its `destination` (the name the control offers — § 4.6's label else key,
+ * card#9273) come from ONE plate. Two lookups would be two answers to *where does this ride go*,
+ * and the day they disagreed the button would name one floor and the ride would arrive at
+ * another.
  *
  * The wrap at the top of the stack is the reference artifact's behaviour
  * (`elevatorTo(FLOORS[(fi+1)%FLOORS.length])`) and it is kept — with the one stop count at which
@@ -86,7 +92,7 @@ function nextStop(stack, level) {
         return null;
     }
 
-    return stack[(level + 1) % stack.length].floor;
+    return stack[(level + 1) % stack.length];
 }
 
 /**
@@ -113,10 +119,14 @@ export function elevator(stack, requested = null) {
     const level = plate === null ? null : plate.level;
     const stranded = requested !== null && asked === undefined && rows.length > 0;
 
+    const next = nextStop(rows, level);
     const notices = [];
 
     if (stranded) {
-        notices.push(`the floor ${requested} is no longer in the building — the elevator is at ${at}`);
+        // `requested` is a KEY — a floor the building no longer has, so there is no label for it
+        // anywhere — while where the cab now stands is a plate that does have a name (§ 4.6,
+        // card#9273): the viewer is told where they are in the words the plate is drawn in.
+        notices.push(`the floor ${requested} is no longer in the building — the elevator is at ${plate.name}`);
     }
 
     if (rows.length === 0) {
@@ -125,7 +135,17 @@ export function elevator(stack, requested = null) {
         notices.push(ONE_STOP);
     }
 
-    return { at, level, next: nextStop(rows, level), stranded, stops: rows.length, notices };
+    // `next` is the KEY the cab is moved to — the cab is keyed, and § 4.4's route is — and
+    // `destination` is what the control says out loud, which is the same plate's name.
+    return {
+        at,
+        level,
+        next: next === null ? null : next.floor,
+        destination: next === null ? null : next.name,
+        stranded,
+        stops: rows.length,
+        notices,
+    };
 }
 
 /**

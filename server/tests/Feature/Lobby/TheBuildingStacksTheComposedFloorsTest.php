@@ -204,7 +204,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     public function test_two_rooms_composed_onto_one_floor_are_one_plate_and_an_unplaced_install_is_its_own(): void
     {
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [['zeta' => 'office', 'sola' => 'office']]])->floors;
+        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => 'office', 'sola' => 'office']]]])->floors;
 
         $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
         $plates = $probe['building']['plates'];
@@ -274,7 +274,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         // The served body of `threeFloors()` with `aimla` — the install the layout does not
         // place — dropped, so the two composed rooms are the whole building.
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [['zeta' => 'office', 'sola' => 'office']]])->floors;
+        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => 'office', 'sola' => 'office']]]])->floors;
 
         $body['installs'] = array_values(array_filter(
             $body['installs'],
@@ -310,7 +310,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         $this->issueToken('sola', 'sola-solo');
         $body = $this->oneFloor();
-        $layout = BuildingLayout::parse(['floors' => [['sola' => 'office', 'zeta' => 'office']]])->floors;
+        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['sola' => 'office', 'zeta' => 'office']]]])->floors;
 
         $plates = $this->probe(['snapshot' => $body, 'layout' => $layout])['building']['plates'];
 
@@ -324,6 +324,108 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
 
         $this->assertSame([true, true], array_column($flipped[1]['rooms'], 'reported'));
         $this->assertSame(2, $flipped[1]['held']);
+    }
+
+    // ── the FLOOR'S LABEL, card#9273 ─────────────────────────────────────────────────────────
+
+    /**
+     * ⭐ THE OPERATOR'S RULING, DRIVEN END TO END: *"yes, I want to be able to name a floor"*
+     * (§ 4.6). The composed floor reads *the solos* on its plate and on the ride control, and
+     * EVERY key in sight is still the derived one — the link, the cab's stop, the sort. That
+     * pairing is the whole card: a name a viewer reads, and nothing that reads it back.
+     */
+    public function test_a_labelled_floor_reads_as_its_label_and_links_by_its_key(): void
+    {
+        $body = $this->threeFloors();
+        $layout = BuildingLayout::parse(
+            ['floors' => [['label' => 'the solos', 'rooms' => ['zeta' => 'office', 'sola' => 'office']]]],
+        )->floors;
+
+        $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
+        $plates = $probe['building']['plates'];
+
+        // The unplaced install has no entry to name it, so it reads as its key; the composed one
+        // reads its label. Both are NAMES — neither is a placeholder.
+        $this->assertSame(['aimla', 'sola'], array_column($plates, 'floor'));
+        $this->assertSame([null, 'the solos'], array_column($plates, 'label'));
+        $this->assertSame(['aimla', 'the solos'], array_column($plates, 'name'));
+
+        // ⛔ AND THE LINK IS THE KEY, WHICH IS THE PROPERTY THE LABEL IS SEPARATE FOR. `/floor/the
+        // solos` would be a route to a floor the design does not have, and would move the moment
+        // the operator renamed the floor.
+        $this->assertSame(['/floor/aimla', '/floor/sola'], array_column($plates, 'href'));
+
+        // The elevator: the cab is KEYED and the control SPEAKS. `next` is where the ride lands —
+        // a floor key — and `destination` is that same plate's name.
+        $elevator = $probe['building']['elevator'];
+
+        $this->assertSame('sola', $elevator['next']);
+        $this->assertSame('the solos', $elevator['destination']);
+
+        // From the labelled floor, the ride goes back to a floor that has no label, and the
+        // control then says its key — the fallback observed from the other side.
+        $back = $this->probe(['snapshot' => $body, 'layout' => $layout, 'cab' => 'sola'])['building']['elevator'];
+
+        $this->assertSame('sola', $back['at'], 'the cab stands at the KEY, whatever the plate reads');
+        $this->assertSame('aimla', $back['next']);
+        $this->assertSame('aimla', $back['destination']);
+
+        // ⛔ CONTROL 16 — the label dropped in the shipped client, which is how this feature
+        // half-ships: the page delivers the label, the browser ignores it, and the plate quietly
+        // reads its key. `test_the_browsers_composition_agrees_with_the_fixture_case_by_case`
+        // reds on the same mutation; what is asserted here is what the VIEWER would see.
+        $dropped = $this->mutatedModules([
+            'lobby-model.js',
+            "const label = typeof floor?.label === 'string' ? floor.label : null;",
+            'const label = null;',
+        ]);
+        $unnamed = $this->probe(['snapshot' => $body, 'layout' => $layout], $dropped)['building']['plates'];
+
+        $this->assertSame([null, null], array_column($unnamed, 'label'),
+            'CONTROL 16 did not bite: the label read was removed from the shipped module and the '
+            .'plate carried a label anyway');
+        $this->assertSame(['aimla', 'sola'], array_column($unnamed, 'name'),
+            'CONTROL 16 did not bite: with no label read, the plate still read as one');
+
+        // ⛔ CONTROL 17 — the FALLBACK removed instead: `name` becomes the key and the label is
+        // carried but never read. The plate then reads `sola` on a floor the operator named,
+        // which is the defect that would survive CONTROL 16's mutation being fixed wrongly.
+        $keyed = $this->mutatedModules([
+            'lobby-model.js',
+            'name: label ?? floor,',
+            'name: floor,',
+        ]);
+        $keyedPlates = $this->probe(['snapshot' => $body, 'layout' => $layout], $keyed)['building']['plates'];
+
+        $this->assertSame([null, 'the solos'], array_column($keyedPlates, 'label'));
+        $this->assertSame(['aimla', 'sola'], array_column($keyedPlates, 'name'),
+            'CONTROL 17 did not bite: the label-else-key fallback was removed from the shipped '
+            .'module and the plate still read its label');
+    }
+
+    /**
+     * The stranded cab's notice names where the cab now STANDS in the words that plate is drawn
+     * in (card#9273) — while the floor that left the building is named by the only thing anyone
+     * has for it, its key: it has no layout entry left to carry a label.
+     */
+    public function test_a_stranded_cab_names_the_floor_it_left_by_key_and_the_floor_it_stands_on_by_name(): void
+    {
+        $body = $this->threeFloors();
+        $layout = BuildingLayout::parse(['floors' => [
+            ['label' => 'reception', 'rooms' => ['aimla' => 'open']],
+            ['rooms' => ['sola' => 'office', 'zeta' => 'office']],
+        ]])->floors;
+
+        $elevator = $this->probe(['snapshot' => $body, 'layout' => $layout, 'cab' => 'ghost'])['building']['elevator'];
+
+        $this->assertTrue($elevator['stranded']);
+        $this->assertSame('aimla', $elevator['at'], 'the cab stands at a KEY and is reported at one');
+        $this->assertSame(
+            ['the floor ghost is no longer in the building — the elevator is at reception'],
+            $elevator['notices'],
+            'the stranded notice named the floor the cab stands on by its key while the plate '
+            .'beside it reads a label — two names for one floor on one screen',
+        );
     }
 
     /**
@@ -361,6 +463,10 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
             // and nothing about summaries or links.
             $composed = array_map(fn (array $row) => [
                 'floor' => $row['floor'],
+                // ⛔ THE PIN FOR card#9273's LABEL, and it is this projection: a label PHP carries
+                // and the browser drops reds HERE, on the fixture's own cases, rather than being
+                // caught by whichever screen noticed first.
+                'label' => $row['label'],
                 'rooms' => array_map(fn (array $room) => [
                     'install' => $room['install_id'], 'form' => $room['form'], 'reported' => $room['reported'],
                 ], $row['rooms']),
@@ -377,24 +483,73 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
      */
     public function test_the_page_delivers_the_composed_floors_the_reader_produced(): void
     {
-        config(['building.floors' => [['zeta' => 'office', 'sola' => 'office']]]);
+        config(['building.floors' => [['label' => 'the solos', 'rooms' => ['zeta' => 'office', 'sola' => 'office']]]]);
 
-        $html = $this->lobbyPage();
-
-        $this->assertMatchesRegularExpression('/<script type="application\/json" id="lobby-layout">(.+?)<\/script>/s', $html);
-        preg_match('/<script type="application\/json" id="lobby-layout">(.+?)<\/script>/s', $html, $m);
-
+        // The delivered record is the reader's, member for member — including the LABEL, which is
+        // the member `main.js` has no other way to learn (card#9273).
         $this->assertSame(
-            [['floor' => 'sola', 'rooms' => [['install' => 'sola', 'form' => 'office'], ['install' => 'zeta', 'form' => 'office']]]],
-            json_decode($m[1], true, 512, JSON_THROW_ON_ERROR),
+            [['floor' => 'sola', 'label' => 'the solos', 'rooms' => [
+                ['install' => 'sola', 'form' => 'office'],
+                ['install' => 'zeta', 'form' => 'office'],
+            ]]],
+            $this->deliveredLayout(),
         );
+    }
+
+    /**
+     * ⛔ THE LABEL IS THE FIRST FREE OPERATOR TEXT TO REACH `#lobby-layout`, WHICH MAKES THAT
+     * ELEMENT'S ENCODING LOAD-BEARING (card#9273). Every member delivered there before it was an
+     * `install_id` or a member of a closed set, and neither can carry a `<`; a label is whatever
+     * the operator typed. A label containing `</script>` is therefore the first string that could
+     * end the element early — the page would serve markup out of a config file and the client
+     * would parse a truncated document.
+     *
+     * ⚠ WHAT ACTUALLY STOPS IT IS TWO INDEPENDENT ESCAPES, and this test asserts the PROPERTY
+     * rather than either mechanism, because either one alone is enough and a check written on one
+     * would read green while the other carried it. `json_encode`'s default escapes `/` as `\/`,
+     * so the byte sequence `</script>` cannot appear at all; `JSON_HEX_TAG` on the view's `@json`
+     * additionally escapes `<` and `>`. **Seen to fail** with the element emitted as
+     * `json_encode($layout, JSON_UNESCAPED_SLASHES)` — both escapes gone: the regex below then
+     * captures markup instead of JSON and the decode dies on *Control character error*.
+     */
+    public function test_a_label_carrying_markup_round_trips_through_the_layout_element(): void
+    {
+        $label = '</script><b>the solos</b> & co';
+
+        config(['building.floors' => [['label' => $label, 'rooms' => ['zeta' => 'office', 'sola' => 'office']]]]);
+
+        $delivered = $this->deliveredLayout();
+
+        $this->assertSame($label, $delivered[0]['label'],
+            'the label the operator authored is not the label the page delivered — either the '
+            .'element was closed early by the markup inside it, or the JSON reached the client as '
+            .'a different string');
+        $this->assertSame('sola', $delivered[0]['floor']);
+    }
+
+    /**
+     * The layout as `main.js` takes it: the `#lobby-layout` element's own text, decoded. The
+     * regex is half the assertion — it must capture EXACTLY the JSON, so a label that closed the
+     * element early would either fail to decode or decode to less than was put in.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function deliveredLayout(): array
+    {
+        $html = $this->lobbyPage();
+        $pattern = '/<script type="application\/json" id="lobby-layout">(.+?)<\/script>/s';
+
+        $this->assertMatchesRegularExpression($pattern, $html);
+        preg_match($pattern, $html, $m);
+
+        return json_decode($m[1], true, 512, JSON_THROW_ON_ERROR);
     }
 
     public function test_an_invalid_layout_refuses_the_lobby_loudly_rather_than_composing_a_partial_building(): void
     {
         // § 4.6 / the reader's header: a bad document is a refusal on the surfaces that read it,
         // per request — the lobby is one — and never a repair. The seat side is untouched by it.
-        config(['building.floors' => [['sola' => 'cubicle']]]);
+        config(['building.floors' => [['rooms' => ['sola' => 'cubicle']]]]);
 
         $this->withoutExceptionHandling();
         $this->expectException(InvalidBuildingLayout::class);
@@ -466,6 +621,47 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     }
 
     /**
+     * The same guard for the LABEL (card#9273): the shipped page-facing client still draws the
+     * floor's NAME and still names the ride's DESTINATION. Nothing else here witnesses that —
+     * every other label check drives the modules, and `main.js` is the layer no probe runs.
+     */
+    public function test_the_shipped_client_still_draws_the_floors_name_and_the_rides_destination(): void
+    {
+        $js = (string) file_get_contents($this->moduleDir().'/main.js');
+
+        $this->assertSame([], $this->labelMissingFrom($js));
+
+        // ⛔ CONTROL 18 — each half reverted to the key, in the shipped file, one at a time: the
+        // plate drawn from `plate.floor` again, and the button offering `elevator.next`. The same
+        // predicate is run over each mutated copy, so what is watched failing is this check.
+        $keyedPlate = str_replace('plate.name;', 'plate.floor;', $js);
+        $keyedButton = str_replace('elevator.destination}', 'elevator.next}', $js);
+
+        $this->assertNotSame($keyedPlate, $js, "CONTROL 18's plate anchor is gone — it mutated nothing");
+        $this->assertNotSame($keyedButton, $js, "CONTROL 18's button anchor is gone — it mutated nothing");
+
+        $this->assertNotSame([], $this->labelMissingFrom($keyedPlate),
+            'CONTROL 18 did not bite: the plate went back to drawing its key and this check '
+            .'stayed clean');
+        $this->assertNotSame([], $this->labelMissingFrom($keyedButton),
+            'CONTROL 18 did not bite: the ride control went back to offering a key and this '
+            .'check stayed clean');
+
+        // ⛔ CONTROL 19 — the exact defect that shipped in the click handler, planted back: a
+        // second composition of the building on the click, written without the layout.
+        $recomposed = str_replace(
+            'lastBuilding === null ? null : lastBuilding.elevator.next',
+            'lastSnapshot === null ? null : buildingModel(lastSnapshot, cab).elevator.next',
+            $js,
+        );
+
+        $this->assertNotSame($recomposed, $js, "CONTROL 19's click anchor is gone — it mutated nothing");
+        $this->assertNotSame([], $this->labelMissingFrom($recomposed),
+            'CONTROL 19 did not bite: the click handler composed a second building without the '
+            .'layout and this check stayed clean');
+    }
+
+    /**
      * Every way the elevator can have left the shipped client, named rather than counted — so a
      * failure says which half went and the control can show the predicate discriminating.
      *
@@ -487,6 +683,44 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
             if (! str_contains($html, 'id="'.$id.'"')) {
                 $missing[] = 'the page declares no #'.$id.' — the elevator has nowhere to render';
             }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * ⛔ THE SAME GUARD FOR card#9273's HALF, AND IT IS A SEPARATE PREDICATE BECAUSE IT GUARDS A
+     * SEPARATE WAY OF LOSING THE FEATURE. The elevator can be there in full while the labels are
+     * gone from the DOM layer alone: `main.js` writes `plate.floor` and `elevator.next` instead
+     * of `plate.name` and `elevator.destination`, every model check stays green — they drive the
+     * modules, not the page — and the building silently goes back to reading its keys. There is
+     * no browser on this host, so the two writes are asserted as writes.
+     *
+     * @return list<string>
+     */
+    private function labelMissingFrom(string $js): array
+    {
+        $missing = [];
+
+        if (! str_contains($js, 'plate.name')) {
+            $missing[] = 'main.js no longer writes plate.name onto the plate — a named floor '
+                .'reads as its key again (docs/design/FLOOR.md § 4.6, card#9273)';
+        }
+
+        if (! str_contains($js, 'elevator.destination')) {
+            $missing[] = 'main.js no longer names elevator.destination on the ride control — the '
+                .'button offers a key while the plate above it reads a label';
+        }
+
+        // The ride must arrive where the control said it would, and that holds only while the
+        // page composes the building ONCE and the click reads what was rendered. The form this
+        // guards against shipped: a second `buildingModel(…)` in the click handler, written
+        // without `layout`, rode the default one-floor-per-install building while the button
+        // had been drawn from the composed one (card#9273).
+        if (substr_count($js, 'buildingModel(') !== 1) {
+            $missing[] = 'main.js composes the building more than once (or not at all) — a second '
+                .'derivation is how the elevator\'s click came to drop the layout, so the ride '
+                .'and the destination it named could disagree';
         }
 
         return $missing;

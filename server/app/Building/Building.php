@@ -31,6 +31,12 @@ namespace App\Building;
  * floor. Two runtimes, one rule: `tests/fixtures/building/compose-cases.json` is the one statement
  * of it, and both `Tests\Feature\Building` and `Tests\Feature\Lobby` are held to it.
  *
+ * ⚠ IT CARRIES THE LABEL AND NEVER DISAMBIGUATES ONE (card#9273, § 4.6). An implicit floor has no
+ * layout entry to carry a label, so its `label` is null and it reads as its key; and a label equal
+ * to an UNPLACED install's id composes to two floors reading alike with different links, which
+ * this composer neither refuses nor repairs — "a refusal there would take the building down for a
+ * name", and provisioning an install must render it without a deploy.
+ *
  * ⚠ IT MINTS NO RENDERED STRING. `reported: false` is the FACT; § 4.6's wording for it — *no seats
  * reported for this room* — is the client's own narration (§ 5.5) and belongs to whatever draws
  * the room. A sentence composed here would be a second home for it, and the two would disagree the
@@ -46,7 +52,7 @@ final class Building
      * floor has no authored position to honour anyway.
      *
      * @param  list<string>  $installs  the installs the fleet reports, in any order
-     * @return list<array{floor: string, rooms: list<array{install: string, form: string, reported: bool}>}>
+     * @return list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, reported: bool}>}>
      */
     public static function compose(BuildingLayout $layout, array $installs): array
     {
@@ -55,10 +61,13 @@ final class Building
         $floors = [];
 
         foreach ($layout->floors as $floor) {
-            $floors[$floor['floor']] = array_map(
-                fn (array $room) => $room + ['reported' => isset($reported[$room['install']])],
-                $floor['rooms'],
-            );
+            $floors[$floor['floor']] = [
+                'label' => $floor['label'],
+                'rooms' => array_map(
+                    fn (array $room) => $room + ['reported' => isset($reported[$room['install']])],
+                    $floor['rooms'],
+                ),
+            ];
         }
 
         foreach (array_keys($reported) as $installId) {
@@ -72,19 +81,25 @@ final class Building
             // mint: every floor key in the layout is an install the layout PLACES, so an install
             // it does not place cannot collide with one, and this line can never overwrite an
             // authored floor.
-            $floors[$installId] = [[
-                'install' => $installId,
-                'form' => BuildingLayout::DEFAULT_FORM,
-                'reported' => true,
-            ]];
+            $floors[$installId] = [
+                // § 4.6 (card#9273): "there is no layout entry to carry one, so it reads as its
+                // key" — the `install_id` the wire already carries, which is a name and not a
+                // placeholder. Naming this floor means placing it.
+                'label' => null,
+                'rooms' => [[
+                    'install' => $installId,
+                    'form' => BuildingLayout::DEFAULT_FORM,
+                    'reported' => true,
+                ]],
+            ];
         }
 
         ksort($floors, SORT_STRING);
 
         $out = [];
 
-        foreach ($floors as $floorKey => $rooms) {
-            $out[] = ['floor' => (string) $floorKey, 'rooms' => $rooms];
+        foreach ($floors as $floorKey => $floor) {
+            $out[] = ['floor' => (string) $floorKey, 'label' => $floor['label'], 'rooms' => $floor['rooms']];
         }
 
         return $out;
