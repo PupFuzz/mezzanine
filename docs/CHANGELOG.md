@@ -19,6 +19,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7582** — **The board task-title producer is DESIGNED, and deliberately not built.**
+  New `docs/design/BOARD-TASK.md` (**D4**) designs tier 1 of `FLEET-STATE.md § 4.9`'s task-title
+  merge: the kanban poller, its cadence, the seat→board-user join, the read-scoped credential and
+  its never-emitted rule, every failure path, and eight acceptance tests with their REDs.
+  ⭐ **The one real design question was rebuildability** — `§ 6.6` + `AT-D2-10` make `seat_state`
+  reproducible from `events` and `RebuildCommand::reset()` nulls the five `task_*` columns, so any
+  tier-1 value written INTO the projection is erased by the documented recovery path. Priced
+  against routing board facts through `events` (a D1 change, and one that would need a forged seat
+  identity or a new producer endpoint) and against excluding `task_*` from AT-D2-10 (the exact
+  shape card#9214 had just deleted), the answer is neither: **the poller writes a durable INPUT
+  table and the fold derives the columns from it**, exactly as it already derives `render_state`
+  from `seats.retired_at` — an operator-written value in no event that `reset()` deliberately does
+  not touch. ⇒ no D1 change, no new event kind, no change to `reset()`, and **no fourth exclusion**.
+  D2 § 12 asks for the tier-1 freshness bound to be "re-derived once the board producer exists and
+  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged while its
+  basis moves from *Chosen, provisional* to *Derived*.
+  ⛔ **Nothing is implemented and that is the deliverable.** Every structural piece needs a D2
+  amendment — a § 2.1 process row, a § 6.4 table and column, two § 7.2 counters — and D2 § 6.4
+  says a builder "may reorder columns and add nothing". The amendments are stated as exact text on
+  the PR, unapplied, for ratification. Two reasons hold independently: no board card is assigned
+  anywhere on board 14 (re-measured over the whole population, not a sample), so tier 1's answering
+  branch cannot be exercised on a real surface; and the server's board credential does not exist.
+  ⚠ **A finding recorded on this card is corrected here:** the raw board API's list endpoint DOES
+  carry `assigned_user_id` on every row — the earlier "no such key" was true of `kbcard`'s
+  ten-key projection and not of the API, and designed around the wrong reading the poller would
+  have issued one request per card per tick instead of one for the board.
+  `docs/PLAN.md § 2` gains D4 and **loses its "three design artifacts" count** — the same
+  set-versus-figure repair § 2.1 made for its process table. `tools/design/README.md` declares
+  that D4 is a design document under **no** verifier, rather than leaving that quietly true.
+
 - **card#9234** — **Tier 2 of the task-title merge is retired; the coordination producer, its two
   objects and the thread line are NOT.** Operator ruling, 2026-09-10. Tier 2 was the GitHub-sourced
   title — *"the seat's most recent coordination/PR activity"*, at `task.ref = "<repo>#N"` — and it

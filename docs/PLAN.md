@@ -138,8 +138,13 @@ producer, clean boundary, either side deployable alone.
 
 ## 2. Design-first gates — the order is the plan
 
-Three design artifacts precede their builds, in strict order, because each is the contract the
-next consumes. Each is a PR into `dev` reviewed like code.
+Design artifacts precede their builds. The **D1 → D2 → D3 chain** below runs in strict order,
+because each of the three is the contract the next consumes; a document that consumes the chain
+rather than extending it (D4) is listed after it and is not in that ordering. Each is a PR into
+`dev` reviewed like code. **No count is written here** — this section is the set a reader works
+from, and a figure beside a set it counts is a second copy of that set, false at the next addition
+(`docs/design/FLEET-STATE.md § 2.1` takes the same position about its process table, for the same
+measured reason).
 
 **The bar (D-14): every design doc must be implementable by an AI agent that has ONLY the
 document.** The implementing agent — plan for a capable frontier model (Opus-class) — will not
@@ -202,6 +207,18 @@ load-bearing rule to a document no reader of this repository can open; D3 record
 actually rests on and what the operator ruled on card#7953.
 
 Status: **in review** — drafted; the adversarial review loop runs before merge.
+
+**D4 — the board task-title producer (`docs/design/BOARD-TASK.md`).** Not part of the chain above:
+it **consumes** D2 and extends nothing. It designs the producer behind tier 1 of D2 § 4.9's
+task-title merge — the kanban poller, the seat→board-user join, the credential posture, and the
+input table the fold derives the title from rather than a value written into `seat_state`, which is
+what keeps a board-sourced title reproducible by D2 § 6.6's rebuild. **It exists as a document of
+its own because D2 puts it there:** D2 § 1.2 lists the kanban poller among its non-goals by name,
+and D2 § 14 item 3 asks for "a ruling on where the board producer is designed". It is held to the
+D-14 bar above like every document listed before it.
+
+Status: **designed, nothing built** — card#7582. Every structural piece needs a D2 amendment that
+is stated and not applied; `docs/design/BOARD-TASK.md § 13` is the list and the gate.
 
 ## 3. Work breakdown
 
