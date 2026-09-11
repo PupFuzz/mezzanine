@@ -255,6 +255,53 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     }
 
     /**
+     * ⭐ THE THIRD ROAD TO THE ONE-STOP REFUSAL, AND THE ONE card#9267's RULING MINTED: ONE FLOOR
+     * FROM N INSTALLS. The two this file already covers get there by having nothing else — one
+     * install and the empty layout, or no install at all. This one is a building that is FULLY
+     * POPULATED and fully placed and still has nowhere to ride: the operator's own "hallway of
+     * solo offices" composed over the whole fleet, which is a state only a layout can produce and
+     * which arrives the first time an operator composes every room onto one floor. A ride OFFERED
+     * here is the modulo fake `elevator()`'s one-stop branch exists to refuse, and a refusal with
+     * no notice is that refusal made silent.
+     *
+     * ⛔ WATCHED RED BEFORE IT WAS TRUSTED: with `elevator()`'s `rows.length === 1` branch pushing
+     * nothing, this test fails on the notice, and the one-install test above fails with it — the
+     * branch is the shipped code both stand on. CONTROL 12 there is the planted control for the
+     * refusal machinery itself, and is not repeated here.
+     */
+    public function test_a_fleet_composed_onto_one_floor_refuses_the_ride_and_says_why(): void
+    {
+        // The served body of `threeFloors()` with `aimla` — the install the layout does not
+        // place — dropped, so the two composed rooms are the whole building.
+        $body = $this->threeFloors();
+        $layout = BuildingLayout::parse(['floors' => [['zeta' => 'office', 'sola' => 'office']]])->floors;
+
+        $body['installs'] = array_values(array_filter(
+            $body['installs'],
+            static fn (array $install): bool => $install['install_id'] !== 'aimla',
+        ));
+
+        $this->assertSame(['sola', 'zeta'], array_column($body['installs'], 'install_id'),
+            'this is a one-FLOOR building only if aimla is the only install dropped');
+
+        $building = $this->probe(['snapshot' => $body, 'layout' => $layout])['building'];
+
+        // Two rooms, one plate, and the plate is the floor they compose.
+        $this->assertSame(['sola'], array_column($building['plates'], 'floor'));
+        $this->assertSame(['sola', 'zeta'], array_column($building['plates'][0]['rooms'], 'install_id'));
+
+        $this->assertSame(1, $building['elevator']['stops']);
+        $this->assertSame('sola', $building['elevator']['at']);
+        $this->assertNull($building['elevator']['next'],
+            'the elevator offered a ride on a building whose every room shares its one floor');
+        $this->assertSame(
+            ['the elevator has one stop — a single-floor building has nowhere to ride'],
+            $building['elevator']['notices'],
+            'a composed one-floor building did not say why the elevator cannot be used',
+        );
+    }
+
+    /**
      * § 4.6: "a room the fleet reports no seat for is drawn and labelled, never omitted". The
      * layout places `zeta`; the snapshot has never heard of it. The floor still has both rooms,
      * the second says so, and nothing about it is counted.

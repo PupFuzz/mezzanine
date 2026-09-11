@@ -30,11 +30,13 @@
  *
  * ⛔ AN ELEVATOR WITH NOWHERE TO GO SAYS SO. § 4.1 stacks one floor plate per floor, so a
  * building with one floor has nowhere to ride and a building with none — no install reported and
- * no floor composed — is no building at all; the ride must then be REFUSED and the refusal rendered, never softened into a ride
- * that lands back where it started. `(level + 1) % stack.length` is the exact expression that fakes
- * it: at one stop it is arithmetic that always "succeeds", and a viewer clicking it would watch a
- * working elevator on a building that has no second floor. `nextStop()` below returns `null`
- * there instead, and `notices()` says which of the two dark cases it is.
+ * no floor composed — is no building at all; the ride must then be REFUSED and the refusal
+ * rendered, never softened into a ride that lands back where it started.
+ * `(level + 1) % stack.length` is the exact expression that fakes it: at one stop it is arithmetic
+ * that always "succeeds", and a viewer clicking it would watch a working elevator on a building
+ * that has no second floor. `nextStop()` below returns `null` there instead, and `notices()` says
+ * which of the two dark cases it is — and a building whose every install the layout composes onto
+ * ONE floor is the one stop reached with the fleet fully placed (card#9267).
  *
  * ⚠ WHERE THE RIDE ARRIVES IS NOT BUILT. § 4.1: an elevator ride and a zoom-to-floor are § 4.5's
  * camera arriving at the floor route — and that route does not exist (card#9208: the floor map is
@@ -92,10 +94,10 @@ function nextStop(stack, level) {
  *
  * `at` is the requested stop when the building still has it. **When it does not, the cab is put at
  * the first plate and SAYS SO** — that is a reachable observation and not a paranoia case: an
- * unplaced install's floor leaves the building when its last seat is retired (§ 3.5), and a client holding a cab position
- * across that render would otherwise report the viewer as standing on a floor the building no
- * longer has. Moving the cab quietly is the same defect § 4.1 refuses in the discrepancy check —
- * picking a winner instead of rendering the disagreement.
+ * unplaced install's floor leaves the building when its last seat is retired (§ 3.5), and a client
+ * holding a cab position across that render would otherwise report the viewer as standing on a
+ * floor the building no longer has. Moving the cab quietly is the same defect § 4.1 refuses in the
+ * discrepancy check — picking a winner instead of rendering the disagreement.
  *
  * `notices` is a LIST because two of these can be true at once: a stranded cab on a building that
  * has since shrunk to one floor is both stranded and unable to ride, and a single-string notice

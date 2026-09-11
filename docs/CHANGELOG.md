@@ -60,6 +60,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   ⚠ **The console's floors module shows which floor each room is on** and stops saying *a floor
   is an install*. Its table, routes and name still say *floors* while holding one map per ROOM —
   stated at the module rather than renamed here, a hygiene rename with no user-visible harm.
+  ⭐ **THE WORD *room* HAS TWO SENSES NOW, AND THE SWEEP OF BOTH WAS DONE IN THIS CARD** rather
+  than promised as a follow-up: D3 used *room* for the DRAWN INTERIOR before the ruling gave the
+  noun to the container, so every occurrence in `FLOOR.md` was read against both senses. The sites
+  where a container reading was available and wrong — § 4.1's and § 4.2's *a plate carries the
+  summary, not the room*, A17's row, § 6.2's and § 6.3's *the room is live*, § 10.4 and § 12
+  step 7 — are
+  amended and carry the `card#9267` marker; § 3.1 names the second noun once and its follow-up
+  promise is gone; what is left is the drawn place, in sentences no install fits.
+  ⛔ **The ruling also minted a third road to the elevator's ONE-STOP refusal** — one floor from N
+  installs, a fully-placed fleet composed onto a single floor, which is neither the one-install nor
+  the empty building already covered — and `TheBuildingStacksTheComposedFloorsTest` now asserts it.
 
 - **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
   the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —

@@ -592,9 +592,18 @@ two are told apart.** Every section the ruling made literally **false** was amen
 each of those sites carries a ⚠ or ⭐ note naming **card#9267** — so the amended set is read out of
 the document (`grep -n 'card#9267'`) rather than listed here, because a list of section numbers is
 a second home for a set the document already states and would go stale at the next one found. It
-went stale inside the amending card itself, which is why it is a derivation and not a list. The
-remaining occurrences are prose that reads correctly under either word, and a sweep of them is a
-follow-up rather than a silent one.
+went stale inside the amending card itself, which is why it is a derivation and not a list.
+
+⚠ **And *room* now carries a SECOND noun, which is the one this table did not mint: the older name
+for the drawn interior — [§ 4.2](#42-the-floor)'s and [A17](#62-the-animation-table--the-closed-set)'s
+room render is the drawn interior of a floor and is not this table's room.** One is a key and one is
+a picture: the room render is drawn **once per floor** ([§ 4.2](#42-the-floor)) however many rooms
+the layout composes onto it, so a later section that has the room *set*, *frozen* or *advancing*, or
+that gives it elements, warmth or a corner, is naming that picture and never an install — which is
+why those sites are not amended and are not defects. **The sweep of both nouns was done in
+card#9267 itself and is not deferred**: every occurrence of *room* in this document was read against
+both senses, every site where a container reading was available and wrong was amended and carries
+the marker, and what is left is the drawn place — a sentence no install fits.
 
 **What may never key a desk**, each named because it is a plausible mistake: `session_id` (it changes
 on every `/clear` — D1 § 3.2), the harness or model label, the reporter version, the seat's position in
@@ -789,14 +798,18 @@ link** exactly as the list row was. No new field is read, no count is recomputed
 [§ 4.4](#44-routes-and-what-each-one-fetches)'s three routes are untouched — an elevator ride and a
 zoom-to-floor are [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera arriving at
 `/floor/{floor}`, which is the route this document already declares and which must still
-deep-link on a cold start. ⚠ **This paragraph said *per install* and `installs[].install_id` until
-card#9267**, which is what the reference was drawn against and what the empty layout still
-composes; a plate is a floor, and a floor of several rooms is one plate naming them. **A cross-section that had replaced the summary with the desks themselves
+deep-link on a cold start. **A cross-section that had replaced the summary with the desks themselves
 would have been a different change** — it would have made the lobby's counts a thing a viewer counts
 by eye, and [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) exists because counting by eye is
 where an invented count comes from. It does not, so this row stands.
+
+⚠ **This paragraph said *per install* and `installs[].install_id` until card#9267**, which is what
+the reference was drawn against and what the empty layout still composes; a plate is a floor, and a
+floor of several rooms is one plate naming them.
+
 **One consequence for the ratified sky, stated here because a reader deciding what a plate draws will
-be standing on this paragraph:** a plate carries the summary, not the room, so **the lobby draws no
+be standing on this paragraph:** a plate carries the summary and the **names** of the rooms the
+table's first two rows call for, and never a drawn room interior (card#9267), so **the lobby draws no
 wall clock** — that element is the floor's ([§ 6.2](#62-the-animation-table--the-closed-set) A17).
 Whether the cross-section draws sky behind the building is a rendering choice this table does not
 make; what is **not** a choice is where it comes from if it is drawn, which is A17's row and A17's
@@ -809,28 +822,32 @@ One **floor**, which since card#9267's ruling is the rooms the building layout c
 ([§ 4.6](#46-the-building-layout)) — one room on most floors, N on a composed one. **Per room**: `S`
 desk slots from that room's map, one desk per seat ([§ 3.2](#32-the-desk-slot-function)), and a side
 table per desk for interns ([§ 8](#8-interns--subagent-rendering-and-the-cap)). **Per floor**: one
-persistent status strip carrying the same fleet indicators the lobby shows, and one room render
-below — the clock, the windows and the scenery are the FLOOR's and are not drawn once per room,
-because they carry the fleet's facts and not a room's.
+persistent status strip carrying the same fleet indicators the lobby shows, and one **room render**
+below — *room* there being the **drawn interior** and not
+[§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): the clock, the windows
+and the scenery are the FLOOR's and are drawn once for it rather than once per room, because they
+carry the fleet's facts and not any one room's.
 
 ⚠ **This paragraph said *One install.* until the ruling.** The correction is not cosmetic: an
 implementer reading it would have built a floor screen that takes an `install_id`, and
 [§ 4.4](#44-routes-and-what-each-one-fetches)'s route no longer does.
 
-**And the room they are in, which is enumerated here rather than left to the art direction, because
+**And the room interior they stand in — the floor's one room render, not one of its rooms
+(card#9267) — which is enumerated here rather than left to the art direction, because
 this is the list an implementer reads top-down when deciding what the floor screen contains — and a
 room element nobody schedules is a room element nobody builds.** The floor draws a **wall clock** and
 **windows** whose sky carries the time of day; both are
 [§ 6.2](#62-the-animation-table--the-closed-set) [A17](#62-the-animation-table--the-closed-set)'s and
 neither has any other driver — they step on each delivered `feed.heartbeat` and **stop when it stops**,
 which is [§ 9](#9-failure-paths-and-their-observables) F1's observable and the reason the row exists.
-Everything else in the room is **scenery and carries no fact**, which since **2026-08-30** means it may
-carry **decorative** motion — a lamp's glow, an LED on a rack — under the bound
+Everything else in the room interior is **scenery and carries no fact**, which since **2026-08-30**
+means it may carry **decorative** motion — a lamp's glow, an LED on a rack — under the bound
 [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) states and under that
 section's three tests, which are what keep scenery scenery. Moving clouds and swaying plants are
 **still** refused, and by the amplitude bound rather than by the claim test: they change **position**,
-which is this floor's strongest state vocabulary. The lobby's plates carry a
-summary rather than a room and draw no clock at all ([§ 4.1](#41-the-lobby--the-building-summary)).
+which is this floor's strongest state vocabulary. The lobby's plates carry a summary and the room
+names, never a drawn interior, and draw no clock at all (card#9267,
+[§ 4.1](#41-the-lobby--the-building-summary)).
 
 The desk is the unit. Everything on it is [§ 5.1](#51-the-desk)'s table; every motion on it is
 [§ 6.2](#62-the-animation-table--the-closed-set)'s table — **the desk takes no decorative motion at
@@ -908,9 +925,15 @@ stamp instead, so a reader can always see which moment those numbers describe.
 `install_id` of one of that floor's own rooms — the least ([§ 4.6](#46-the-building-layout)) — so
 every `/floor/{install_id}` link ever published still resolves: it either names a floor or names a
 room on one, and the second case redirects to the first. **No link dies when the operator composes
-a floor, or re-keys one by adding a room**, which is the property the derived key is chosen to keep. ⛔ The seat segment is
-still `seat_id` and is still read against the room's `install_id` — a desk's key is
-[§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s pair and the floor is not part of it.
+a floor, or re-keys one by adding a room**, which is the property the derived key is chosen to keep.
+⛔ The seat segment is still `seat_id` and is still read against the room's `install_id` — a desk's
+key is [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s pair and the floor is not part of it.
+**The redirect above is on the FLOOR segment and preserves the seat segment**, so the drill-down
+form is covered by *no link dies* too: `/floor/{room}/{seat_id}` arrives at
+`/floor/{floor}/{seat_id}` with the seat untouched, and a published drill-down link resolves for the
+same reason a published floor link does. ⚠ Stated as the doc fact it is: **no `/floor` route is
+served today** (card#9208), so this is what the route must do when it is written rather than a
+behaviour anything exercises now.
 
 Deep-linking to a floor or a desk on a cold start runs the whole of
 [§ 2.2](#22-connect-snapshot-deltas) first — the snapshot is the client's only complete population, and
@@ -1119,8 +1142,9 @@ section owes that card is the **form**, so that it is not invented at the moment
   a screen, not a second primitive. Each end renders its own half of an event that really happened,
   which is [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule satisfied rather than
   stretched: nothing claims a transit nobody observed.
-- **Rejected: the lobby draws the line between plates.** A plate carries a summary and not a room
-  ([§ 4.1](#41-the-lobby--the-building-summary)), so the line's endpoints would be **floors** while
+- **Rejected: the lobby draws the line between plates.** A plate **is** a floor, and a floor of
+  several rooms is one plate naming them ([§ 4.1](#41-the-lobby--the-building-summary) row 1,
+  card#9267), so the line's endpoints would be **floors** while
   the fact is about **agents** — and resolving an agent name to a plate needs the very join
   ([§ 14](#14-open-questions-for-the-review-loop) item 4, card#7957) whose absence already makes
   [§ 5.7](#57-the-coordination-thread-line) draw no line at all. A lobby line would be drawn from an
@@ -1708,7 +1732,7 @@ it carries the same fact.
 | **A14** | `edge` | `feed-pulse` — a one-frame pulse on the feed indicator | status strip | `feed.heartbeat` | each `feed.heartbeat` message received | after one frame | a *last message HH:MM:SS* readout that updates instead | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables)) |
 | **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
 | **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) | on arrival | the desk appears in its new slot on the next render | no arrival collided |
-| **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room** — its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s cross-section renders a per-floor *summary* rather than the rooms, so it draws no wall clock at all; if it draws sky behind the building, that sky is this row's, on this row's driver, and never a second one of its own | `feed.heartbeat` | each `feed.heartbeat` message received, on any subscribed channel. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
+| **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room render** — the drawn interior, and not [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s cross-section renders a per-floor *summary*, and the rooms only by **name**, so it draws no room interior and no wall clock at all; if it draws sky behind the building, that sky is this row's, on this row's driver, and never a second one of its own | `feed.heartbeat` | each `feed.heartbeat` message received, on any subscribed channel. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
 | **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` | the last `coord.thread` this client holds for that `thread_ref` says a value other than `closed`, **and at least two of its participants resolve to a desk** — one endpoint is not a line, and a guessed second endpoint is what [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids | when a `coord.thread` arrives whose lifecycle is `closed`, or when the resolved endpoints fall below two | the line is drawn **static** — same line, same endpoints, no travel along it | no open thread on this floor has two participants that resolve to a desk — **which today is every thread**, because no name-to-`seat_id` join exists ([§ 5.7](#57-the-coordination-thread-line) clause 1, [§ 14](#14-open-questions-for-the-review-loop) item 4) |
 | **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.targets` | one `coord.round` message applied, whose `install_id` is this floor's, whose origin resolves to a desk and at least one of whose destinations does. A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs | on arrival at the destination desk | the bead is simply present at the destination end, with no travel | no post arrived that this client can draw between two desks. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
 | **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
@@ -1755,7 +1779,9 @@ fact about that floor's desks and their `link_state`, and the clock must not cla
 
 ⭐ **What A17's clock is for, written down because it is the thing a maintainer will undo.** The wall
 clock on this floor is not there to tell the time — the viewer's own machine already does that, in the
-corner of the same screen. **It is there to show the room is live**, and its stopping is the whole of
+corner of the same screen. **It is there to show the floor is live** — *the room* until card#9267,
+and the floor is the right noun for it because the clock is drawn once per floor however many rooms
+the layout composes onto it — and its stopping is the whole of
 its value. Someone will see the hands freeze on a dead feed, read it as a bug, and fix it with a
 10-second timer off the viewer's clock. That edit is
 [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s **second** forbidden form,
@@ -1908,7 +1934,8 @@ permits this one.
      claim* ([§ 6.2](#62-the-animation-table--the-closed-set)). A named test's instrument is never
      spent on decoration.
   2. ⚠ **The dead-feed test — if the wire stopped and this kept moving, would the page assert
-     something that had stopped being true?** A ticking clock asserts *the room is live*. A lamp is
+     something that had stopped being true?** A ticking clock asserts *the floor is live*
+     (card#9267 — *the room* until the ruling). A lamp is
      warm whether the feed is up or down, so it asserts nothing and costs nothing when the feed dies.
      **This is the test that does the most work**, and it is [decision 3](#13-decisions-taken-revisable-at-review)'s
      original reasoning surviving its own amendment.
@@ -3063,10 +3090,12 @@ artifact is the worked example of it.
   form, motion driven by wall-clock time, and that bullet is not widened by this ruling. What changed
   is the **driver**, not the rule. **The three options the ruling chose between are recorded at
   [decision 21](#13-decisions-taken-revisable-at-review)**, which is where the reasoning lives; what
-  belongs here is what the art direction may draw. The clock and the sky are **elements of the room**,
-  drawn where a floor's room is drawn — the floor screen, whose own enumeration of what it contains
-  names them ([§ 4.2](#42-the-floor)); the lobby's plates carry a summary rather than a room and draw
-  no clock at all, and § 4.1 says what governs their sky if they have one. They **step on each
+  belongs here is what the art direction may draw. The clock and the sky are **elements of the room
+  render** — the drawn interior, one per FLOOR and not one per room (card#9267) — drawn where that
+  render is drawn: the floor screen, whose own enumeration of what it contains names them
+  ([§ 4.2](#42-the-floor)); the lobby's plates carry a summary and the room names rather than a
+  drawn interior and draw no clock at all, and § 4.1 says what governs their sky if they have one.
+  They **step on each
   delivered heartbeat**, so on a dead feed they stop with everything else on the page that carries a
   fact. **A build must not
   ship the reference's interval verbatim**, and must not add a second hand: both are
@@ -4659,7 +4688,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 4 | the clock offset and every **age readout** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
 | 5 | the **desk render**: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
 | 6 | the **animation set** ([§ 6.2](#62-the-animation-table--the-closed-set)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** **(closed-set half)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all — plus [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), whose whole claim is about motion and is unobservable before there is any, and the render halves of [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(render half)** and [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(render half)** |
-| 7 | the **floor layout**: the map, the slot function, overflow (card #7341). The map is what draws the room the desks stand in, **including its wall clock and its windows** — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step draws them and sets them on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
+| 7 | the **floor layout**: the map, the slot function, overflow (card #7341). The map is what draws the room interior the desks stand in; **the wall clock and the windows** are the FLOOR's one room render, drawn once for it rather than once per room's map ([§ 4.2](#42-the-floor), card#9267) — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step draws them and sets them on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
 | 8 | the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised), and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** |
 | 9 | the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
 | 10 | the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) |
