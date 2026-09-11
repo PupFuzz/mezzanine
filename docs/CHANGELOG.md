@@ -25,9 +25,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   DISPLAY unit. `install_id` is the first and **does not move**: D1's seat config, D2's
   `private-fleet.{install_id}`, its snapshot grouping and its ACL attachment point are all per
   install and **neither D1, D2 nor D4 is edited by this PR**. The floor is the second, and it is
-  now composed. New `FLOOR.md § 4.6` owns the layout; `§ 3.1` carries both keys; `§ 3.2`, `§ 4.1`,
-  `§ 4.4`, `§ 5.7` and `§ 2.1` move the word *floor* to *room* where leaving it would have been
-  false; `§ 13` row 24 records the three mechanisms with what each was taken over.
+  now composed. New `FLOOR.md § 4.6` owns the layout; `§ 3.1` carries both keys and points at the
+  derivation (`grep -n 'card#9267'`) of every other section the ruling made literally false, each
+  amended at its own site rather than enumerated anywhere; `§ 13` row 24 records the three
+  mechanisms with what each was taken over.
   ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — floor id =>
   (install id => `open`|`office`) — read through `App\Building\BuildingLayout`, which takes the
   DECODED document and never a path, so card#9071's console can hold the same shape in a column

@@ -89,7 +89,7 @@ it, and what it must never draw.
    Mezzanine host                      │  browser (session + MFA)
    ─────────────────                   │  ────────────────────────
    GET /api/fleet/snapshot ────────────┼─▶ seat map  ──▶ lobby  (building summary)
-   Reverb private-fleet.<install> ─────┼─▶ deltas    ──▶ floor  (one install, S desk slots)
+   Reverb private-fleet.<install> ─────┼─▶ deltas    ──▶ floor  (N rooms, S desk slots each)
    GET /api/fleet/seats/<i>/<s> ───────┼─▶ detail    ──▶ drill-down panel
    GET …/timeline?limit=&before= ──────┼─▶ events    ──▶ recent-activity timeline
    GET /api/fleet/health ──────────────┼─▶ fleet{}   ──▶ banners
@@ -588,12 +588,13 @@ everything D1 and D2 key on `install_id` is untouched by it.
 
 ⚠ **Where the rest of this document says *floor* of a thing keyed by `install_id` — a map file, a
 channel, a slot set, the reach of a round — it means the ROOM, and this table is the one place the
-two are told apart.** The sections where the word does load-bearing work were amended with the
-ruling ([§ 2.1](#21-the-seven-client-computed-values-closed), [§ 3.2](#32-the-desk-slot-function),
-[§ 4.1](#41-the-lobby--the-building-summary), [§ 4.4](#44-routes-and-what-each-one-fetches),
-[§ 5.7](#57-the-coordination-thread-line), [§ 10.3](#103-the-floor-map)); the remaining occurrences
-are prose that reads correctly under either word, and a sweep of them is a follow-up rather than a
-silent one.
+two are told apart.** Every section the ruling made literally **false** was amended with it, and
+each of those sites carries a ⚠ or ⭐ note naming **card#9267** — so the amended set is read out of
+the document (`grep -n 'card#9267'`) rather than listed here, because a list of section numbers is
+a second home for a set the document already states and would go stale at the next one found. It
+went stale inside the amending card itself, which is why it is a derivation and not a list. The
+remaining occurrences are prose that reads correctly under either word, and a sweep of them is a
+follow-up rather than a silent one.
 
 **What may never key a desk**, each named because it is a plausible mistake: `session_id` (it changes
 on every `/clear` — D1 § 3.2), the harness or model label, the reporter version, the seat's position in
@@ -802,10 +803,17 @@ would keep moving after the feed died.
 
 ### 4.2 The floor
 
-One install. `S` desk slots from the map, one desk per seat
-([§ 3.2](#32-the-desk-slot-function)), a side table per desk for interns
-([§ 8](#8-interns--subagent-rendering-and-the-cap)), and a persistent status strip carrying the same
-fleet indicators the lobby shows.
+One **floor**, which since card#9267's ruling is the rooms the building layout composes onto it
+([§ 4.6](#46-the-building-layout)) — one room on most floors, N on a composed one. **Per room**: `S`
+desk slots from that room's map, one desk per seat ([§ 3.2](#32-the-desk-slot-function)), and a side
+table per desk for interns ([§ 8](#8-interns--subagent-rendering-and-the-cap)). **Per floor**: one
+persistent status strip carrying the same fleet indicators the lobby shows, and one room render
+below — the clock, the windows and the scenery are the FLOOR's and are not drawn once per room,
+because they carry the fleet's facts and not a room's.
+
+⚠ **This paragraph said *One install.* until the ruling.** The correction is not cosmetic: an
+implementer reading it would have built a floor screen that takes an `install_id`, and
+[§ 4.4](#44-routes-and-what-each-one-fetches)'s route no longer does.
 
 **And the room they are in, which is enumerated here rather than left to the art direction, because
 this is the list an implementer reads top-down when deciding what the floor screen contains — and a
