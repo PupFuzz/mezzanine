@@ -2,14 +2,23 @@
 
 namespace Tests\Feature\Lobby;
 
+use App\Building\BuildingLayout;
+use App\Building\InvalidBuildingLayout;
 use Tests\Feature\Feed\FeedTestCase;
 
 /**
- * `docs/design/FLOOR.md § 4.1`'s ratified building cross-section — one floor plate per install,
+ * `docs/design/FLOOR.md § 4.1`'s ratified building cross-section — one floor plate per FLOOR,
  * stacked, with an elevator as the way between them — driven over REAL `GET /api/fleet/snapshot`
- * bodies.
+ * bodies, with and without a building layout composing them.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
+ * This file was `TheBuildingStacksOneFloorPerInstallTest` while a floor WAS an install; the
+ * one-floor-per-install building is now the EMPTY layout's case and is still asserted below as
+ * exactly that. The composed cases hand the probe a `layout` — the same normalised document the
+ * page delivers in `#lobby-layout`, produced by the same `App\Building\BuildingLayout` — so what
+ * is driven is the real seam and not a hand-written stand-in for it.
+ *
  * ⭐ THE SECOND AND THIRD FLOORS ARE REAL INSTALLS, NOT FIXTURE ROWS. `docs/PLAN.md`'s P4 accept
  * line is "second floor renders from a second install's feed", and the only way to answer it is
  * to provision a second install THROUGH THE REAL INGEST and read the served snapshot back — which
@@ -30,7 +39,7 @@ use Tests\Feature\Feed\FeedTestCase;
  * degradations — they are what the building renders as the moment it is first deployed, which is
  * why they get their own tests and their own planted controls rather than a remark.
  */
-class TheBuildingStacksOneFloorPerInstallTest extends FeedTestCase
+class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
 {
     use DrivesTheLobbyClient;
 
@@ -71,8 +80,8 @@ class TheBuildingStacksOneFloorPerInstallTest extends FeedTestCase
         $probe = $this->probe(['snapshot' => $body]);
         $plates = $probe['building']['plates'];
 
-        // § 4.1: "the plates are `installs[].install_id` in the same ascending order".
-        $this->assertSame(['aimla', 'sola', 'zeta'], array_column($plates, 'install_id'));
+        // § 4.1 / § 4.6: the empty layout is one floor per install, floor keys ascending.
+        $this->assertSame(['aimla', 'sola', 'zeta'], array_column($plates, 'floor'));
 
         // ⛔ AND THEY ARE THE LOBBY'S OWN ROWS, MEMBER FOR MEMBER. § 4.1: the cross-section "is a
         // *rendering* of this table, and changes nothing in it … No new field is read, no count
@@ -178,7 +187,172 @@ class TheBuildingStacksOneFloorPerInstallTest extends FeedTestCase
         $this->assertNull($elevator['at']);
         $this->assertNull($elevator['level']);
         $this->assertNull($elevator['next']);
-        $this->assertSame(['the elevator has no stops — the snapshot carries no installs'], $elevator['notices']);
+        $this->assertSame(
+            ['the elevator has no stops — the snapshot carries no installs and the layout composes no floor'],
+            $elevator['notices'],
+        );
+    }
+
+    // ── the BUILDING LAYOUT, card#9267 ───────────────────────────────────────────────────────
+
+    /**
+     * ⭐ THE OPERATOR'S OWN CASE over a served snapshot: "a floor could hold multiple solo
+     * agents … divided into a hallway with separate offices". `sola` and `zeta` are real installs
+     * provisioned through the real ingest, composed onto one floor by a layout parsed by the real
+     * reader; `aimla` is left unplaced. Three installs, two floors.
+     */
+    public function test_two_rooms_composed_onto_one_floor_are_one_plate_and_an_unplaced_install_is_its_own(): void
+    {
+        $body = $this->threeFloors();
+        $layout = BuildingLayout::parse(['floors' => [['zeta' => 'office', 'sola' => 'office']]])->floors;
+
+        $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
+        $plates = $probe['building']['plates'];
+
+        $this->assertSame(['aimla', 'sola'], array_column($plates, 'floor'));
+        $this->assertSame(['/floor/aimla', '/floor/sola'], array_column($plates, 'href'),
+            'the plate is no longer the link to § 4.4’s floor route, keyed by the FLOOR');
+
+        // The composed floor names its rooms, § 2.1 row 6's order, each with its form and each
+        // reported — the snapshot carries both.
+        $this->assertSame(
+            [
+                ['install_id' => 'sola', 'form' => 'office', 'reported' => true],
+                ['install_id' => 'zeta', 'form' => 'office', 'reported' => true],
+            ],
+            $plates[1]['rooms'],
+        );
+
+        // § 2.1 row 5: the plate's summary counts the seats of EVERY install its rooms name —
+        // one seat each here, so the composed plate holds two and the lone one holds one. A
+        // summary that counted only the key room's seats would read `held: 1` on both.
+        $this->assertSame(2, $plates[1]['held']);
+        $this->assertSame(1, $plates[0]['held']);
+        $this->assertSame([['install_id' => 'aimla', 'form' => 'open', 'reported' => true]], $plates[0]['rooms']);
+
+        // And the elevator rides between FLOORS: two stops, keyed by floor, wrapping at the top.
+        $elevator = $probe['building']['elevator'];
+        $this->assertSame(2, $elevator['stops']);
+        $this->assertSame('aimla', $elevator['at']);
+        $this->assertSame('sola', $elevator['next']);
+        $this->assertSame('aimla', $this->probe(['snapshot' => $body, 'layout' => $layout, 'cab' => 'sola'])['building']['elevator']['next']);
+
+        // ⛔ CONTROL 15 — § 4.6's default rule removed from the client. The unplaced install
+        // must then fall off the building, which is the hole the rule exists to refuse; a check
+        // that stayed clean here would be measuring the layout and not the rule.
+        $holed = $this->mutatedModules([
+            'lobby-model.js',
+            '        if (!placed.has(install_id)) {
+            rows.push(',
+            '        if (false) {
+            rows.push(',
+        ]);
+        $hole = $this->probe(['snapshot' => $body, 'layout' => $layout], $holed)['building']['plates'];
+
+        $this->assertSame(['sola'], array_column($hole, 'floor'),
+            'CONTROL 15 did not bite: the default rule was removed from the shipped module and '
+            .'the unplaced install still got a floor — so the rule is not what the check measures');
+    }
+
+    /**
+     * § 4.6: "a room the fleet reports no seat for is drawn and labelled, never omitted". The
+     * layout places `zeta`; the snapshot has never heard of it. The floor still has both rooms,
+     * the second says so, and nothing about it is counted.
+     */
+    public function test_a_room_the_snapshot_does_not_carry_is_drawn_on_its_floor_and_flagged(): void
+    {
+        $this->issueToken('sola', 'sola-solo');
+        $body = $this->oneFloor();
+        $layout = BuildingLayout::parse(['floors' => [['sola' => 'office', 'zeta' => 'office']]])->floors;
+
+        $plates = $this->probe(['snapshot' => $body, 'layout' => $layout])['building']['plates'];
+
+        $this->assertSame(['aimla', 'sola'], array_column($plates, 'floor'));
+        $this->assertSame([true, false], array_column($plates[1]['rooms'], 'reported'));
+        $this->assertSame(1, $plates[1]['held'], 'an unreported room contributed to the held count');
+
+        // THE CONTROL: provision `zeta` and the same room on the same floor flips to reported.
+        $this->issueToken('zeta', 'zeta-solo');
+        $flipped = $this->probe(['snapshot' => $this->oneFloor(), 'layout' => $layout])['building']['plates'];
+
+        $this->assertSame([true, true], array_column($flipped[1]['rooms'], 'reported'));
+        $this->assertSame(2, $flipped[1]['held']);
+    }
+
+    /**
+     * ⭐ THE PIN ACROSS THE RUNTIME BOUNDARY. `tests/fixtures/building/compose-cases.json` is the
+     * one statement of § 4.6's composition, and `Tests\Feature\Building` holds the PHP copy to
+     * it; this walks the browser's copy over the same cases. ⚠ SYNTHETIC SNAPSHOTS, and stated:
+     * the fixture names installs, not seats, so each install carries one placeholder seat — the
+     * composition reads `installs[].install_id` and nothing on the seat.
+     */
+    public function test_the_browsers_composition_agrees_with_the_fixture_case_by_case(): void
+    {
+        $cases = json_decode(
+            (string) file_get_contents(__DIR__.'/../../fixtures/building/compose-cases.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        )['cases'];
+
+        $this->assertGreaterThan(5, count($cases), 'the fixture decoded to almost nothing');
+
+        foreach ($cases as $case) {
+            $snapshot = [
+                'server_time' => '2026-09-11T12:00:00.000Z',
+                'fleet' => [],
+                'installs' => array_map(
+                    fn (string $id) => ['install_id' => $id, 'seats' => [['install_id' => $id, 'seat_id' => $id.'-seat', 'render_state' => 'idle']]],
+                    $case['installs'],
+                ),
+            ];
+            $layout = BuildingLayout::parse(['floors' => $case['layout']])->floors;
+
+            $rows = $this->probe(['snapshot' => $snapshot, 'layout' => $layout])['model']['floors'];
+
+            // Project the lobby row onto the fixture's shape: the fixture states the composition
+            // and nothing about summaries or links.
+            $composed = array_map(fn (array $row) => [
+                'floor' => $row['floor'],
+                'rooms' => array_map(fn (array $room) => [
+                    'install' => $room['install_id'], 'form' => $room['form'], 'reported' => $room['reported'],
+                ], $row['rooms']),
+            ], $rows);
+
+            $this->assertSame($case['floors'], $composed, 'fixture case: '.$case['name']);
+        }
+    }
+
+    /**
+     * The page delivers the layout — § 4.6: "with the page, not from an endpoint" — as the
+     * normalised floors the reader produced, in the element `main.js` reads. Composed here so
+     * the assertion is about a NON-EMPTY document reaching the page and not about `[]`.
+     */
+    public function test_the_page_delivers_the_composed_floors_the_reader_produced(): void
+    {
+        config(['building.floors' => [['zeta' => 'office', 'sola' => 'office']]]);
+
+        $html = $this->lobbyPage();
+
+        $this->assertMatchesRegularExpression('/<script type="application\/json" id="lobby-layout">(.+?)<\/script>/s', $html);
+        preg_match('/<script type="application\/json" id="lobby-layout">(.+?)<\/script>/s', $html, $m);
+
+        $this->assertSame(
+            [['floor' => 'sola', 'rooms' => [['install' => 'sola', 'form' => 'office'], ['install' => 'zeta', 'form' => 'office']]]],
+            json_decode($m[1], true, 512, JSON_THROW_ON_ERROR),
+        );
+    }
+
+    public function test_an_invalid_layout_refuses_the_lobby_loudly_rather_than_composing_a_partial_building(): void
+    {
+        // § 4.6 / the reader's header: a bad document is a refusal on the surfaces that read it,
+        // per request — the lobby is one — and never a repair. The seat side is untouched by it.
+        config(['building.floors' => [['sola' => 'cubicle']]]);
+
+        $this->withoutExceptionHandling();
+        $this->expectException(InvalidBuildingLayout::class);
+
+        $this->actingAs($this->enrolled())->get('/dashboard');
     }
 
     public function test_a_cab_standing_on_a_floor_the_building_no_longer_has_is_never_moved_quietly(): void

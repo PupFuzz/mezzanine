@@ -10,14 +10,21 @@ namespace App\Building;
  * ⛔ THIS CLASS TAKES A DECODED DOCUMENT, NEVER A PATH, AND THAT IS THE WHOLE OF WHAT MAKES THE
  * STORE SWAPPABLE. § 4.6: "The SHAPE is the contract; the store is the caller's." Today the
  * document is `config/building.php` and `fromConfig()` is the one place that knows it; card#9071
- * may later put the same document in a column, and nothing below changes. A parser that opened a
- * file would have pinned the store into the reader, which is the edit that would have had to be
- * undone to answer that card.
+ * may later put the same document in a column, and nothing below changes.
+ *
+ * ⛔ A FLOOR HAS NO AUTHORED ID — IT IS ITS ROOMS, AND ITS KEY IS DERIVED. § 4.6: the key is the
+ * lexically least `install_id` among the floor's rooms. That is what keeps floor keys and install
+ * ids apart in the one `/floor/{…}` namespace (every floor key is an install this layout places,
+ * so an install it does NOT place can never be one) with no rule the author can break: the
+ * document carries no key to get wrong, and a document that carries one is refused below.
  *
  * ⛔ AND IT NEVER REPAIRS A BAD LAYOUT. Every rule below throws; none of them drops the offending
  * floor and composes the rest. A building silently missing a floor is § 4.6's *hole renders as
  * nothing is happening* defect arriving through the one door that looks like robustness — and the
- * author is the only person who can fix it, so the refusal has to reach them.
+ * author is the only person who can fix it, so the refusal has to reach them. It reaches them per
+ * REQUEST, on the surfaces that read the layout, and not at boot: a typo here must not take the
+ * ingest plane down with it, and the CI check over the shipped file is the gate that keeps a bad
+ * document out of a deploy in the first place.
  *
  * ⚠ WHAT IS DELIBERATELY NOT VALIDATED: whether a room's id is a well-formed `install_id`.
  * `docs/design/EVENT-SCHEMA.md § 3.1` owns that pattern, and a second copy of it here would be a
@@ -42,16 +49,18 @@ final class BuildingLayout
 
     private function __construct(
         /**
-         * Floor id => (install id => form), in the document's own key order.
+         * The floors the layout composes, NORMALISED: floor keys ascending, each floor's rooms by
+         * `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape the lobby
+         * page delivers to the browser, so the client is handed keys and never derives one.
          *
-         * @var array<string, array<string, string>>
+         * @var list<array{floor: string, rooms: list<array{install: string, form: string}>}>
          */
         public readonly array $floors,
 
         /**
-         * Install id => floor id, for every room the layout places. Derived once here rather than
-         * searched per lookup: it is also what the uniqueness rule is checked with, so the index
-         * and the check read the same pass.
+         * Install id => floor key, for every room the layout places. Derived once here rather
+         * than searched per lookup: it is also what the uniqueness rule is checked with, so the
+         * index and the check read the same pass.
          *
          * @var array<string, string>
          */
@@ -91,42 +100,42 @@ final class BuildingLayout
     {
         $floors = $document['floors'] ?? [];
 
-        if (! is_array($floors)) {
+        if (! is_array($floors) || ! array_is_list($floors)) {
             throw new InvalidBuildingLayout(
-                '`floors` is not a mapping of floor id to its rooms. docs/design/FLOOR.md § 4.6: '
-                .'the layout is "nested mappings of scalars and nothing else".'
+                '`floors` is not a LIST of room sets. docs/design/FLOOR.md § 4.6: a floor has no '
+                .'authored id — it is its rooms, and its key is derived (the lexically least '
+                .'`install_id` among them) — so a keyed entry here would be a name the design does '
+                .'not have, and is refused rather than silently ignored.'
             );
         }
 
         $parsed = [];
         $floorByRoom = [];
 
-        foreach ($floors as $floorId => $rooms) {
-            // PHP (and `json_decode(..., true)`) turn a canonical-integer key into an int, and an
-            // `install_id` may be all digits (`^[a-z0-9][a-z0-9-]{1,31}$`). The cast round-trips
-            // such a key exactly, so it is a normalisation rather than a coercion.
-            $floorId = (string) $floorId;
-
+        foreach ($floors as $position => $rooms) {
             if (! is_array($rooms) || $rooms === []) {
                 throw new InvalidBuildingLayout(sprintf(
-                    'Floor `%s` declares no rooms. A floor is a composed set of rooms '
+                    'Floor #%d declares no rooms. A floor is a composed set of rooms '
                     .'(docs/design/FLOOR.md § 4.6) and an empty one is a floor that draws nothing.',
-                    $floorId,
+                    $position,
                 ));
             }
 
             $onThisFloor = [];
 
             foreach ($rooms as $installId => $form) {
+                // PHP (and `json_decode(..., true)`) turn a canonical-integer key into an int, and
+                // an `install_id` may be all digits (`^[a-z0-9][a-z0-9-]{1,31}$`). The cast
+                // round-trips such a key exactly, so it is a normalisation rather than a coercion.
                 $installId = (string) $installId;
 
                 if (! is_string($form) || ! in_array($form, self::FORMS, true)) {
                     throw new InvalidBuildingLayout(sprintf(
-                        'Room `%s` on floor `%s` declares the form %s. docs/design/FLOOR.md § 4.6 '
+                        'Room `%s` (floor #%d) declares the form %s. docs/design/FLOOR.md § 4.6 '
                         .'publishes a closed set — %s — and a value outside it is refused rather '
                         .'than mapped to the nearest one.',
                         $installId,
-                        $floorId,
+                        $position,
                         is_scalar($form) ? '`'.$form.'`' : 'a non-scalar',
                         '`'.implode('`, `', self::FORMS).'`',
                     ));
@@ -134,40 +143,44 @@ final class BuildingLayout
 
                 if (isset($floorByRoom[$installId])) {
                     throw new InvalidBuildingLayout(sprintf(
-                        'Room `%s` is on floor `%s` and on floor `%s`. A room is in one place '
+                        'Room `%s` is on floor `%s` and again on floor #%d. A room is in one place '
                         .'(docs/design/FLOOR.md § 4.6), and two placements are a refusal rather '
                         .'than a precedence question this reader would have to invent an answer to.',
                         $installId,
                         $floorByRoom[$installId],
-                        $floorId,
+                        $position,
                     ));
                 }
 
-                $floorByRoom[$installId] = $floorId;
+                // A room repeated INSIDE one set is unrepresentable — the mapping shape collapses
+                // it before any reader sees it — so the check above is only ever ACROSS sets,
+                // and the index it reads is written once the floor's key is known below.
                 $onThisFloor[$installId] = $form;
             }
 
-            // § 4.6's ANCHOR RULE, and the defect class it exists to close: floor ids and install
-            // ids share `/floor/{…}`'s one namespace, and a free-form floor id could collide with
-            // an install provisioned AFTER the layout was written — a collision no check could
-            // have caught at authoring time. Requiring the floor id to be one of its own rooms
-            // makes it unreachable: every floor id is an install this layout places, so an install
-            // it does NOT place can never be one.
-            if (! array_key_exists($floorId, $onThisFloor)) {
-                throw new InvalidBuildingLayout(sprintf(
-                    'Floor `%s` is not the id of any room on it (its rooms are `%s`). '
-                    .'docs/design/FLOOR.md § 4.6: a floor is named by one of its own rooms, which '
-                    .'is what keeps floor ids and install ids out of each other\'s way in the one '
-                    .'`/floor/{…}` route namespace.',
-                    $floorId,
-                    implode('`, `', array_keys($onThisFloor)),
-                ));
+            ksort($onThisFloor, SORT_STRING);
+
+            // § 4.6's derived key: the lexically least install id on the floor. `ksort` above
+            // put it first, so the key and the room order are one sort and cannot disagree.
+            $floorKey = (string) array_key_first($onThisFloor);
+
+            foreach (array_keys($onThisFloor) as $installId) {
+                $floorByRoom[(string) $installId] = $floorKey;
             }
 
-            $parsed[$floorId] = $onThisFloor;
+            $parsed[$floorKey] = [
+                'floor' => $floorKey,
+                'rooms' => array_map(
+                    fn (string $installId, string $form) => ['install' => $installId, 'form' => $form],
+                    array_map(strval(...), array_keys($onThisFloor)),
+                    array_values($onThisFloor),
+                ),
+            ];
         }
 
-        return new self($parsed, $floorByRoom);
+        ksort($parsed, SORT_STRING);
+
+        return new self(array_values($parsed), $floorByRoom);
     }
 
     /** The floor this room was placed on, or `null` when the layout does not place it. */

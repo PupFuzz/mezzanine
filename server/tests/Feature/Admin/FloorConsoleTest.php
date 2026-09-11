@@ -315,7 +315,7 @@ class FloorConsoleTest extends TestCase
         $this->provisionSeat('sola-solo', 'sola');
         $this->provisionSeat('zeta-solo', 'zeta');
 
-        config(['building.floors' => ['sola' => ['sola' => 'office', 'zeta' => 'office']]]);
+        config(['building.floors' => [['sola' => 'office', 'zeta' => 'office']]]);
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
@@ -358,7 +358,7 @@ class FloorConsoleTest extends TestCase
     {
         $this->provisionSeat('sola-solo', 'sola');
 
-        config(['building.floors' => ['sola' => ['sola' => 'office', 'zeta' => 'office']]]);
+        config(['building.floors' => [['sola' => 'office', 'zeta' => 'office']]]);
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 

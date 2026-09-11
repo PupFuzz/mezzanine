@@ -11,111 +11,58 @@ use Tests\TestCase;
  * fleet reports, in; the floors this deployment draws, out.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⭐ THE TWO RULES THIS FILE EXISTS FOR ARE BOTH ABOUT A HOLE, and they point in opposite
- * directions, which is why neither one covers the other:
+ * ⭐ THE CASES ARE A FIXTURE, NOT THIS FILE'S, because the rule has two homes. The browser
+ * composes the same floors (`public/js/lobby/lobby-model.js`, `floors()`) — § 4.1's discrepancy
+ * check discovers an install after the page was served, and that install still owes a floor — so
+ * `tests/fixtures/building/compose-cases.json` is the one statement of the rule and both this
+ * suite and `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest` walk every case in it.
+ * A case added there reaches both; a rule one runtime has and the other lacks reds one of them.
  *
- *   AN INSTALL THE LAYOUT DOES NOT PLACE still gets a floor — so a newly-provisioned install
- *   renders without a deploy, and the layout is a DEPARTURE from a default rather than an
- *   enumeration anything depends on being complete.
- *
- *   A ROOM THE FLEET REPORTS NOTHING FOR is still drawn — so a floor is never silently narrower
- *   than the operator authored it.
- *
- * Between them, no install and no authored room can fall off the building; § 4.6 refuses the
- * *nothing is happening* render at building scale exactly as § 0 item 6 refuses it at a desk's.
+ * ⭐ THE TWO RULES THE FIXTURE EXISTS FOR ARE BOTH ABOUT A HOLE, and they point in opposite
+ * directions, which is why neither one covers the other: an install the layout does not place
+ * still gets a floor, and a room the fleet reports nothing for is still drawn. Between them no
+ * install and no authored room can fall off the building.
  */
 class TheBuildingComposesFloorsFromRoomsTest extends TestCase
 {
-    /** @param array<string, array<string, string>> $floors */
-    private function compose(array $floors, array $installs): array
+    /** @return list<array{name: string, layout: list<array<string, string>>, installs: list<string>, floors: list<array<string, mixed>>}> */
+    public static function cases(): array
     {
-        return Building::compose(BuildingLayout::parse(['floors' => $floors]), $installs);
+        $path = __DIR__.'/../../fixtures/building/compose-cases.json';
+        $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+
+        return $decoded['cases'];
     }
 
-    public function test_two_rooms_composed_onto_one_floor_are_one_floor(): void
+    public function test_the_fixture_has_cases_and_every_one_names_a_distinct_property(): void
     {
-        // The operator's own case, verbatim: "a floor could hold multiple solo agents. In the
-        // latter case, the floor would be divided into a hallway with separate offices".
-        // Two installs, two channels, ONE screen.
-        $building = $this->compose(
-            ['sola' => ['zeta' => 'office', 'sola' => 'office']],
-            ['sola', 'zeta'],
-        );
+        // The parse control: a fixture that decoded to nothing would make the walk below
+        // vacuously green. And the fixture must exercise each hole in at least one direction,
+        // stated as the two cases that would be the first to be deleted.
+        $cases = self::cases();
+        $names = array_column($cases, 'name');
 
-        $this->assertSame(['sola'], array_column($building, 'floor'));
-        // § 2.1 row 6: a floor's rooms by `install_id` ascending — a pure function of the set, so
-        // the document's own key order (`zeta` first, above) does not reach the screen.
-        $this->assertSame(['sola', 'zeta'], array_column($building[0]['rooms'], 'install'));
-        $this->assertSame(['office', 'office'], array_column($building[0]['rooms'], 'form'));
+        $this->assertGreaterThan(5, count($cases));
+        $this->assertSame($names, array_unique($names), 'two fixture cases share a name');
+        $this->assertContains(true, array_map(
+            fn (array $c) => $c['layout'] !== [] && count($c['installs']) > count(array_merge(...array_map('array_keys', $c['layout']))),
+            $cases,
+        ), 'no case has an install the layout does not place');
+        $this->assertContains(true, array_map(
+            fn (array $c) => count(array_merge(...array_map('array_keys', $c['layout'] ?: [[]]))) > count($c['installs']),
+            $cases,
+        ), 'no case has a room the fleet does not report');
     }
 
-    public function test_a_floor_may_mix_a_composed_floor_with_a_room_that_is_its_own(): void
+    public function test_every_fixture_case_composes_to_exactly_the_floors_it_states(): void
     {
-        // The operator's other case, verbatim: a floor "could be 1 large room (PM+impl agent) and
-        // n small offices (each holding a solo agent)". Here the large room is its own floor and
-        // the offices share one — two floors of different types, which is what the ruling asked
-        // for.
-        $building = $this->compose(
-            [
-                'aimla' => ['aimla' => 'open'],
-                'sola' => ['sola' => 'office', 'zeta' => 'office'],
-            ],
-            ['aimla', 'sola', 'zeta'],
-        );
-
-        $this->assertSame(['aimla', 'sola'], array_column($building, 'floor'));
-        $this->assertSame(['aimla'], array_column($building[0]['rooms'], 'install'));
-        $this->assertSame(['sola', 'zeta'], array_column($building[1]['rooms'], 'install'));
-    }
-
-    public function test_an_install_the_layout_does_not_place_gets_a_floor_of_its_own_open(): void
-    {
-        $building = $this->compose(['sola' => ['sola' => 'office', 'zeta' => 'office']], ['sola', 'zeta', 'aimla']);
-
-        $this->assertSame(['aimla', 'sola'], array_column($building, 'floor'));
-        $this->assertSame(
-            [['install' => 'aimla', 'form' => 'open', 'placed' => false, 'reported' => true]],
-            $building[0]['rooms'],
-        );
-    }
-
-    public function test_a_room_the_fleet_reports_nothing_for_is_drawn_and_flagged_never_omitted(): void
-    {
-        // `zeta` is authored onto the floor and reports nothing. The floor still has both rooms,
-        // and the one that reports nothing SAYS so — the fact is `reported: false`; the words
-        // (§ 4.6's "no seats reported for this room") belong to whatever draws it.
-        $building = $this->compose(['sola' => ['sola' => 'office', 'zeta' => 'office']], ['sola']);
-
-        $this->assertSame(['sola', 'zeta'], array_column($building[0]['rooms'], 'install'));
-        $this->assertSame([true, false], array_column($building[0]['rooms'], 'reported'));
-
-        // THE CONTROL, and it is what makes the assertion above about the RULE rather than about
-        // an array shape: report `zeta` and the same floor's same room flips to reported.
-        $withZeta = $this->compose(['sola' => ['sola' => 'office', 'zeta' => 'office']], ['sola', 'zeta']);
-        $this->assertSame([true, true], array_column($withZeta[0]['rooms'], 'reported'));
-    }
-
-    public function test_a_floor_all_of_whose_rooms_report_nothing_is_still_a_floor(): void
-    {
-        // The strongest form of the rule: the whole floor is authored and the fleet reports none
-        // of it. Dropping it would answer "where did my floor go" with nothing at all.
-        $building = $this->compose(['sola' => ['sola' => 'office', 'zeta' => 'office']], []);
-
-        $this->assertSame(['sola'], array_column($building, 'floor'));
-        $this->assertSame([false, false], array_column($building[0]['rooms'], 'reported'));
-    }
-
-    public function test_the_building_is_stacked_by_floor_id_ascending(): void
-    {
-        // § 2.1 row 6 / § 4.1: an ascending order over floor ids, and it is a pure function of the
-        // composed set — NOT the layout's authoring order, which § 4.1 declines to ratify as a
-        // stack direction and which an implicit floor has none of anyway.
-        $building = $this->compose(
-            ['zeta' => ['zeta' => 'open'], 'aimla' => ['aimla' => 'open']],
-            ['zeta', 'aimla', 'mira'],
-        );
-
-        $this->assertSame(['aimla', 'mira', 'zeta'], array_column($building, 'floor'));
+        foreach (self::cases() as $case) {
+            $this->assertSame(
+                $case['floors'],
+                Building::compose(BuildingLayout::parse(['floors' => $case['layout']]), $case['installs']),
+                'fixture case: '.$case['name'],
+            );
+        }
     }
 
     public function test_composing_a_floor_never_changes_which_channel_a_room_is(): void
@@ -124,8 +71,8 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         // room's `install_id` — which IS the channel, the snapshot grouping and the ACL point —
         // is carried through untouched whether the room is placed or not, and the composed floor
         // is the ONLY thing that differs between the two arms below.
-        $placed = $this->compose(['sola' => ['sola' => 'office', 'zeta' => 'office']], ['sola', 'zeta']);
-        $unplaced = $this->compose([], ['sola', 'zeta']);
+        $placed = Building::compose(BuildingLayout::parse(['floors' => [['sola' => 'office', 'zeta' => 'office']]]), ['sola', 'zeta']);
+        $unplaced = Building::compose(BuildingLayout::parse(['floors' => []]), ['sola', 'zeta']);
 
         $rooms = fn (array $b) => array_merge(...array_map(
             fn ($f) => array_column($f['rooms'], 'install'),

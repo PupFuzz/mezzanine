@@ -67,7 +67,7 @@ it, and what it must never draw.
    config-file-resident pair ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), which survives
    restarts, `/clear`, reboots and harness upgrades — and its position is a **pure function of that
    key**, so two browsers and two reloads agree without a server field and without local storage
-   ([§ 3](#3-identity-seat--desk-install--floor)).
+   ([§ 3](#3-identity-seat--desk-install--room-rooms--floor)).
 8. **The subagent cap stays at 8, and the arithmetic is published**
    ([§ 8](#8-interns--subagent-rendering-and-the-cap)). That closes
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9, which asked D3 to decide it.
@@ -107,7 +107,7 @@ it, and what it must never draw.
 | Owned here | Section |
 |---|---|
 | The client protocol as the browser runs it, and the closed list of client-computed values | [§ 2](#2-the-client-end-to-end) |
-| Identity: seat → desk, install → room, rooms → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--floor) |
+| Identity: seat → desk, install → room, rooms → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--room-rooms--floor) |
 | The building layout: which rooms are on which floor, each room's form, and what a room outside it renders as | [§ 4.6](#46-the-building-layout) |
 | The three screens — lobby, floor, drill-down — and what each fetches | [§ 4](#4-the-screens) |
 | The render map: every rendered fact, its D2 field and its example value; **the null render for every one of [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s 37 nullable members, in one table** ([§ 5.6](#56-the-null-render-for-every-nullable-member)); the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)); and the **coordination thread line** ([§ 5.7](#57-the-coordination-thread-line)) — [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, the only render on this page drawn between desks rather than at one, carrying its own null column because § 5.6's population is § 8.2.1's and is closed against it both ways | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
@@ -567,7 +567,7 @@ would let a live desk carry the receipt age honestly.
 
 ---
 
-## 3. Identity: seat → desk, install → floor
+## 3. Identity: seat → desk, install → room, rooms → floor
 
 ### 3.1 The keys, and why they are the only ones
 
@@ -575,7 +575,7 @@ would let a live desk carry the receipt age honestly.
 |---|---|---|---|
 | **desk** | `(install_id, seat_id)` | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object), which carries both on every seat object and every delta, bounded at 32 B and 48 B | D1's identity-stability rule: both are **config-file resident** and "survive session restarts, `/clear`, reboots, host renames, and harness upgrades" ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)). They change only when a human edits the file, which is a deliberate re-identification of the desk |
 | **room** | `install_id` | the snapshot's `installs[].install_id`, and the channel name `private-fleet.{install_id}` ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) | same file, same rule |
-| **floor** | the floor id the **building layout** declares ([§ 4.6](#46-the-building-layout)) | the layout, which is authored by the operator and read by nobody on the write side. A floor id is always the `install_id` of one of the floor's own rooms, so it is stable in exactly the way the row above is | the layout is a deploy-time artifact; a floor changes when an operator composes one, which is a deliberate act with a diff behind it |
+| **floor** | its **key** — the lexically least `install_id` among the floor's rooms ([§ 4.6](#46-the-building-layout)), **derived and never authored** | the **building layout**, authored by the operator and read by nobody on the write side; an install the layout does not place is a floor of its own, keyed by itself. A floor key is always the `install_id` of one of the floor's own rooms, so it is stable in exactly the way the row above is | the layout is a deploy-time artifact; a floor changes when an operator composes one, which is a deliberate act with a diff behind it, and its key moves only when a room that sorts below it is added — the old key still resolves ([§ 4.4](#44-routes-and-what-each-one-fetches)) |
 | **character identity** (which sprite a seat gets) | `(install_id, seat_id)` | the procedural generator, seeded from the key ([§ 10.2](#102-characters-the-munder-difflin-port)) | a seat looks the same on every reload and on every browser, because the seed is the identity and not a random draw |
 
 ⭐ **A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS — operator ruling, 2026-09-11
@@ -780,16 +780,18 @@ the discrepancy check still compares the two, and the plate is still the link. T
 
 **The ratified building cross-section is a *rendering* of this table, and changes nothing in it.**
 [§ 10.4](#104-the-art-direction-as-a-specification)'s reference draws the lobby as a building seen in
-section — one **floor plate per install**, stacked, with an elevator as the way between them — and
-that was checked against this table row by row rather than assumed: the plates are
-`installs[].install_id` in the same ascending order, each plate carries the same **per-floor state
+section — one **floor plate per floor**, stacked, with an elevator as the way between them — and
+that was checked against this table row by row rather than assumed: the plates are the composed
+floors in the same ascending order, each plate carries the same **per-floor state
 summary** over the seats the client already holds in [§ 7.1](#71-the-render-per-state)'s fixed member
 order, the fleet totals and the membership stamp are the same two readouts, and **the plate is the
 link** exactly as the list row was. No new field is read, no count is recomputed, and
 [§ 4.4](#44-routes-and-what-each-one-fetches)'s three routes are untouched — an elevator ride and a
 zoom-to-floor are [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera arriving at
-`/floor/{install_id}`, which is the route this document already declares and which must still
-deep-link on a cold start. **A cross-section that had replaced the summary with the desks themselves
+`/floor/{floor}`, which is the route this document already declares and which must still
+deep-link on a cold start. ⚠ **This paragraph said *per install* and `installs[].install_id` until
+card#9267**, which is what the reference was drawn against and what the empty layout still
+composes; a plate is a floor, and a floor of several rooms is one plate naming them. **A cross-section that had replaced the summary with the desks themselves
 would have been a different change** — it would have made the lobby's counts a thing a viewer counts
 by eye, and [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) exists because counting by eye is
 where an invented count comes from. It does not, so this row stands.
@@ -902,11 +904,11 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | `/floor/{install_id}` where `{install_id}` names a room that is **not** its floor's id | nothing | **redirects to `/floor/{floor}`** — the floor that holds the room |
 | `/floor/{floor}/{seat_id}` (drill-down open) | the seat detail and the timeline | unchanged |
 
-⭐ **The parameter's SHAPE did not change and its MEANING did — card#9267.** Every floor id is the
-`install_id` of one of that floor's own rooms ([§ 4.6](#46-the-building-layout)), so every
-`/floor/{install_id}` link ever published still resolves: it either names a floor or names a room on
-one, and the second case redirects to the first. **No link dies when the operator composes a floor**,
-which is the property that made the anchored floor id worth its constraint. ⛔ The seat segment is
+⭐ **The parameter's SHAPE did not change and its MEANING did — card#9267.** Every floor key is the
+`install_id` of one of that floor's own rooms — the least ([§ 4.6](#46-the-building-layout)) — so
+every `/floor/{install_id}` link ever published still resolves: it either names a floor or names a
+room on one, and the second case redirects to the first. **No link dies when the operator composes
+a floor, or re-keys one by adding a room**, which is the property the derived key is chosen to keep. ⛔ The seat segment is
 still `seat_id` and is still read against the room's `install_id` — a desk's key is
 [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s pair and the floor is not part of it.
 
@@ -987,21 +989,27 @@ floor route.
 
 | Member | What it is | The rule, refused at load when broken |
 |---|---|---|
-| the floor id | the key of one floor, and the `{floor}` of [§ 4.4](#44-routes-and-what-each-one-fetches)'s route | it **must be the `install_id` of one of that floor's own rooms** — the *anchor* rule below. Unique by construction, because a room is on one floor |
-| a floor's rooms | the `install_id` of each room on that floor, each with its form | non-empty; an `install_id` appears on **at most one floor** — a room is in one place, and a room named twice is a refusal rather than a precedence question |
+| a floor | one entry in the layout's **list** of floors: a mapping of the rooms on it | non-empty. The list carries **no floor id** — a floor is its rooms — and an entry that carries a key is **refused** rather than read past, because the key would be a name this design does not have |
+| a floor's **key** | the `{floor}` of [§ 4.4](#44-routes-and-what-each-one-fetches)'s route and [§ 4.1](#41-the-lobby--the-building-summary)'s sort — **derived, never authored**: the lexically least `install_id` among the floor's rooms | not in the document, so nothing to refuse. Unique by construction, because a room is on one floor |
+| a floor's rooms | the `install_id` of each room on that floor, each with its form | an `install_id` appears on **at most one floor** — a room is in one place, and a room named twice is a refusal rather than a precedence question |
 | a room's **form** | `open` or `office` — the closed set, and the whole of it | any other value is **refused by name and never mapped to the nearest one**. The form is what [§ 10.3](#103-the-floor-map)'s map selection reads once an office map exists; it declares what the room is **for**, and an authored map is what the room **looks like** |
 
-**⛔ A floor is named by one of its own rooms, and the constraint buys an entire defect class.** The
-obvious alternative is a free-form floor id the operator invents — *the solos*, *3* — and it was
-rejected for one reason: floor ids and `install_id`s would then share
+**⛔ A floor has no authored id — it IS its rooms, its key is derived, and that one fact buys an
+entire defect class.** The obvious alternative is a floor id the operator writes, and it comes in two
+forms, both rejected. **Free-form** — *the solos*, *3* — puts floor ids and `install_id`s in
 [§ 4.4](#44-routes-and-what-each-one-fetches)'s one route namespace with **no check able to keep them
-apart**, because the colliding install is provisioned after the layout was written. Under the anchor
-rule that collision is unreachable: every floor id is an `install_id` the layout itself places, so an
-install the layout does **not** place can never collide with one. It also means every
-`/floor/{install_id}` link ever published still resolves
-([§ 4.4](#44-routes-and-what-each-one-fetches)). What it costs is the operator's freedom to name a
-floor after what happens on it, which is a label rather than a key — and a label has
-[§ 4.1](#41-the-lobby--the-building-summary)'s row to live on.
+apart**, because the colliding install is provisioned after the layout was written. **Anchored** —
+one of the floor's own rooms named a second time as its key, which is what this card's first draft
+did — closes that collision but leaves a rule to break and a name written twice for nothing the key
+buys. Deriving the key instead — the lexically least `install_id` on the floor — keeps every property
+the anchor bought and removes the rule: every floor key is an `install_id` the layout itself places,
+so an install the layout does **not** place can never collide with one; every `/floor/{install_id}`
+link ever published still resolves ([§ 4.4](#44-routes-and-what-each-one-fetches)); and there is
+nothing in the document to get wrong, which is why a keyed entry is refused rather than read past.
+What it costs, stated: adding a room whose id sorts below the floor's current key **re-keys the
+floor** — the old key keeps resolving as a room redirect — and the operator cannot name a floor after
+what happens on it, which is a label rather than a key, and [§ 4.1](#41-the-lobby--the-building-summary)'s
+row names the floor's rooms in its place.
 
 **⛔ AN INSTALL THE LAYOUT DOES NOT PLACE IS DRAWN ON A FLOOR OF ITS OWN, ALONE, IN THE `open`
 FORM.** This is the rule that makes the layout a **departure from a default** rather than an
@@ -1061,23 +1069,29 @@ admin console reads the layout too — to show an operator which floor each room
 map for sits on — and that is not a D3 surface; it is the same document read by the one page that
 already manages rooms.
 
-⚠ **WHAT IS BUILT TODAY, DECLARED RATHER THAN LEFT TO BE DISCOVERED.** The layout, its reader and
-the composition above are built and the shipped document is **empty** — which by the rule two
-paragraphs up is *one floor per install*, exactly the building the client already draws, so the
-lobby and the elevator are correct for every layout this deployment currently has. What is **not**
-built is the client half: the lobby still stacks `installs[]` directly rather than the composed
-floors, and [§ 4.4](#44-routes-and-what-each-one-fetches)'s floor route does not exist at all
-(card#9208 — no floor map of any kind is vendored). So a layout that actually composed a floor
-would be authored and not yet drawn, which is stated here because *the config file is in the tree*
-is exactly the evidence a reader would otherwise take for *the building is composed*.
+⚠ **WHAT IS BUILT TODAY, DECLARED RATHER THAN LEFT TO BE DISCOVERED.** The layout, its reader, the
+composition above and the lobby half are built: the lobby stacks the composed floors, a plate of
+several rooms names them, the elevator rides between floors, and the console's floors module shows
+each room's floor. The shipped document is **empty** — which by the rule above is *one floor per
+install*, exactly the building the client drew before the ruling. What is **not** built is
+[§ 4.4](#44-routes-and-what-each-one-fetches)'s floor route, which does not exist at all (card#9208 —
+no floor map of any kind is vendored), so a composed floor is a plate in the lobby and not yet a
+screen; and the offices map a room's `office` form will select (card#9269).
 
-**How it reaches the browser: the COMPOSED building, with the page, not from an endpoint.** The page
-delivers the floors already composed rather than the raw layout — and that is load-bearing rather
-than an implementation note: **it is why [§ 2.1](#21-the-seven-client-computed-values-closed)'s
-closed list is untouched by this section.** A client handed the layout would be computing a grouping
-of installs into floors, which is an eighth client-computed value and would have to be admitted to
-that list; a client handed the floors sorts and counts them exactly as it already does (rows 5 and
-6) and composes nothing.
+**How it reaches the browser: the LAYOUT, validated and normalised, with the page — not from an
+endpoint, and not the composed building.** The page delivers the layout's floors already keyed and
+sorted, and the client applies exactly **one** rule of its own: an install the snapshot carries that
+no delivered floor places is a floor of its own, alone, `open` — the same rule the server applies
+for the console. It has to live in the client, and an earlier draft of this paragraph was wrong to
+say the client *composes nothing*: [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check
+discovers an install **after** the page was served, and a client that composed nothing would draw
+that install nowhere — the hole this section exists to refuse. It is not an eighth entry for
+[§ 2.1](#21-the-seven-client-computed-values-closed)'s closed list: it is the membership of row 5's
+population — *every install the floor's rooms name* — stated for the floor no layout authored, and
+the client derives no key (the delivered ones are the server's; an implicit floor's key is the
+`install_id` the wire already carries). The rule's two homes — `App\Building\Building::compose()`
+and the lobby's `floors()` — are held to one fixture, `server/tests/fixtures/building/compose-cases.json`,
+so a case one runtime has and the other lacks reds.
 [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) forbids this
 document minting a server surface, and the fleet read plane is the wrong place besides — the layout
 is not fleet state, and putting it there would make an operator's authored document look like
@@ -4174,7 +4188,7 @@ review can reverse it deliberately rather than discover it later.
 | 21 | **The ratified wall clock and day/night sky advance on `feed.heartbeat`, so they stop when the feed does** ([§ 6.2](#62-the-animation-table--the-closed-set) A17). **Operator ruling, 2026-08-27, card#7341**, taken between three stated options | **(A)** ship them **static**, set once per render — what [§ 10.4](#104-the-art-direction-as-a-specification) required until this ruling; **(B)** carve an exception into [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) for viewer-clock decoration, keeping the reference's 10 s interval | Option B is the widening the art amendment existed **not** to do, and it is not a small one: a timer-driven clock is a mover that **keeps moving after the feed dies**, so the page never goes still and [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) loses the observable it asserts — a named acceptance test's instrument, spent on decoration. ⭐ **Read this row beside row 3's 2026-08-30 amendment, which admits decorative motion and does NOT reopen this:** what was refused here was never decoration in general — it was spending this test's instrument on it — and the clock is refused today by the **first** of [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s three claim tests, which is this row's reasoning carried forward as a property. A lamp glow passes that test; a clock cannot. Option A is honest and costs the reference its sense of a place. **The heartbeat driver is neither a compromise nor a third-best**: the clock earns an ordinary [§ 6.2](#62-the-animation-table--the-closed-set) row driven by a message D2 declares, and **a stopped clock is A14's claim in the form every human reads instinctively**, so the element that would have destroyed the feed-down signal now carries it. The visual cost is near nil — the clock is **sampled** every 15 s and, at minute resolution, **steps once a minute**, which at floor zoom is indistinguishable from a continuous one; the sky is a slow gradient | **The clock is wrong by up to 15 s and is stale by construction whenever the feed is down** — accepted, and it is why the clock carries no *as of* stamp and is never an authority on the time ([§ 5.5](#55-the-clients-own-narration)). The real cost is that a **frozen clock looks like a bug**, and the repair a maintainer reaches for is the interval this ruling refused; the whole of the mitigation is that the reasoning is written at [§ 6.2](#62-the-animation-table--the-closed-set), the driven-versus-read distinction at [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith), and **two REDs** at [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) — one for that exact edit, and one for the same regression arriving through the recovery path, where the room is *set* on each 10 s poll rather than animated on a timer |
 | 22 | **`task` is rendered as a STATIC thought bubble anchored to the character, replacing the text chip, and the upstream bubble's fade/linger/fade state machine is refused** ([§ 5.1](#51-the-desk)). **Operator vision + card#7897's ruling, 2026-08-27**; the ruling directed the state machine's adoption and this row is where the refusal is recorded rather than left in a PR | **(A)** adopt the upstream machine as directed — fade in, linger, fade out, re-show swaps the text — which needs a [§ 6.2](#62-the-animation-table--the-closed-set) row the ruling also forbids; **(B)** keep the chip and add the bubble beside it, so nothing already asserted has to move | Option A is not a style question. The linger is a timer ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form), and the fade-out **collapses a null render**: once the bubble hides itself, *no bubble* means *`task` is null* **or** *the linger expired*, and a null render two facts produce is not one. Upstream's machine is right **for upstream** — its bubble reports a tool call, an instant, where ours reports a standing fact. Option B is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken on purpose, and it is the failure this amendment is most likely to reach by accident rather than by argument | **A dark desk loses a readout it used to have.** `stale` and `offline` draw no character ([§ 7.1](#71-the-render-per-state); `retired` was a third until card#9078 removed its desk altogether), so they now draw no task at all where a chip once sat; the value is in the drill-down under that panel's currency treatment. That is the amendment's only truth-content cost and it is on the side of claiming less. **And a static bubble is the thing a maintainer will "fix"** — a bubble that never animates reads as unfinished next to the reference's other motion, and the repair reached for is a float or a fade, which is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet arriving through an element nobody thinks of as an animation |
 | 23 | **The duration format is ONE function shared by every rendered duration and every age on the page, and it has no day unit** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). **card#9209** | **(A)** a day unit past 24 h — *3d 01h* rather than *73h 12m*; **(B)** leave the format unpublished and let each surface keep its exemplar, which is the state this card found; **(C)** exempt `derivation.fold_lag_ms` (**`named-not-rendered`** — this row weighs an option about the member and draws no value from it), whose published exemplar was *117 s*, and let the lag keep a seconds-only form for comparison against D2's 60 s and 300 s thresholds | **(B) is the defect**, not an option: three exemplars no rule produces is a rule nobody can apply, and the next surface mints the fourth. **(C) is two formats for one thing** — the second one is minted by the argument that its reader is different, which is the argument every second format is minted by, and *1m 57s* is not harder to compare against 60 s than *117 s* is. **(A) is a real product call and it is the contestable half of this row**: it was refused because a *day* is the unit a reader takes as a **calendar** one, while every quantity here is a count of elapsed seconds between two server-clock instants, and because it keeps the unit vocabulary at the three letters this document already wrote. It is not refused because *73h 12m* reads well | **A multi-day age reads as a large hour count.** *73h 12m* makes an operator divide to answer "how many days", and a fleet left running over a long weekend is exactly when that question gets asked. Reversing it is one clause and one boundary row in [§ 2.4](#24-the-clock-and-every-age-on-the-page) plus a re-run of the gate, which regenerates every affected exemplar — the cost of being wrong here is small **because** the format is published in one place |
-| 24 | **A room is an install and a floor is an operator-composed set of rooms; the composition lives in a DEPLOY-TIME document, a floor is named by one of its own rooms, and an install the document does not place gets a floor of its own** ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones), [§ 4.6](#46-the-building-layout)). ⭐ **Operator ruling, 2026-09-11, card#9267** on the model; the three mechanisms under it are this document's | **(A)** keep the layout in a runtime store — the admin console's `floors` table, which already holds one authored artifact per install; **(B)** let the operator invent a free-form floor id — *the solos*, *3*; **(C)** treat the layout as the complete enumeration of the building and render an install it omits nowhere | **(A)** would give one building two change paths: the rooms move on a deploy ([§ 10.3](#103-the-floor-map)'s card#9208 ruling — *"a floor edit is a redeploy"*, accepted explicitly) while the composition of them moved on a save, and the first question asked of a floor that looked wrong would be which of the two you were looking at. A deploy-time document also gets a diff, a review and a revert, which composing two PMs onto one floor deserves. **(B)** puts floor ids and `install_id`s in [§ 4.4](#44-routes-and-what-each-one-fetches)'s one route namespace with no check able to keep them apart, because the colliding install is provisioned *after* the layout is written; the anchor rule makes that collision unreachable and keeps every published `/floor/{install_id}` link resolving. **(C)** is the *hole renders as nothing is happening* defect at building scale — a newly-provisioned install would render on no screen at all until somebody deployed | **Rearranging the building is a deploy, and a page loaded before one draws the old building until it is reloaded** — stated at [§ 4.6](#46-the-building-layout) rather than discovered. The operator cannot name a floor after what happens on it; the name is a label and [§ 4.1](#41-the-lobby--the-building-summary)'s row carries one. And the layout is **not** where card#9071's console question is answered: the reader takes a decoded document rather than a path, so a column can replace the file without the reader changing |
+| 24 | **A room is an install and a floor is an operator-composed set of rooms; the composition lives in a DEPLOY-TIME document, a floor has no authored id — its key is the least of its rooms — and an install the document does not place gets a floor of its own** ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones), [§ 4.6](#46-the-building-layout)). ⭐ **Operator ruling, 2026-09-11, card#9267** on the model; the three mechanisms under it are this document's | **(A)** keep the layout in a runtime store — the admin console's `floors` table, which already holds one authored artifact per install; **(B)** let the operator write a floor id — free-form (*the solos*, *3*), or one of the floor's own rooms named again as its anchor, which this card's first draft did; **(C)** treat the layout as the complete enumeration of the building and render an install it omits nowhere | **(A)** would make the layout the first console-authored artifact a viewer's screen depends on — nothing the console authors is read at render time today ([§ 10.3](#103-the-floor-map): the map is a build artifact by card#9208's ruling, *"a floor edit is a redeploy"*, and the stored maps have no read path) — which answers card#9071's open question by accident, and would give one building two change paths besides. A deploy-time document also gets a diff, a review and a revert, which composing two PMs onto one floor deserves. **(B)** free-form puts floor ids and `install_id`s in [§ 4.4](#44-routes-and-what-each-one-fetches)'s one route namespace with no check able to keep them apart, because the colliding install is provisioned *after* the layout is written; anchored closes that but leaves a rule to break and a name written twice for nothing the least room does not already buy. The derived key keeps every published `/floor/{install_id}` link resolving and leaves nothing in the document to get wrong. **(C)** is the *hole renders as nothing is happening* defect at building scale — a newly-provisioned install would render on no screen at all until somebody deployed | **Rearranging the building is a deploy, and a page loaded before one draws the old building until it is reloaded** — stated at [§ 4.6](#46-the-building-layout) rather than discovered. The operator cannot name a floor after what happens on it (the name is a label and [§ 4.1](#41-the-lobby--the-building-summary)'s row names the rooms), and adding a room that sorts below a floor's key re-keys the floor, the old key redirecting. The default rule has a home in two runtimes, pinned to one fixture. And the layout is **not** where card#9071's console question is answered: the reader takes a decoded document rather than a path, so a column could replace the file without the reader changing |
 
 ---
 
@@ -4553,7 +4567,7 @@ over it.
 
 | # | D2 source | Obligation | Discharged in |
 |---|---|---|---|
-| T1 | § 1.2 | Everything rendered is D3's — desks, floors, sprites, animation, the identity→desk mapping; where D1 or D2 says "renders" it is naming an obligation, not a pixel | [§ 1.1](#11-what-this-document-owns), [§ 3](#3-identity-seat--desk-install--floor), [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field), [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
+| T1 | § 1.2 | Everything rendered is D3's — desks, floors, sprites, animation, the identity→desk mapping; where D1 or D2 says "renders" it is naming an obligation, not a pixel | [§ 1.1](#11-what-this-document-owns), [§ 3](#3-identity-seat--desk-install--room-rooms--floor), [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field), [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
 | T2 | § 2.3 | A seat badged `fold_lag`: **D3 must not present the seat's activity state as current** | [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim), [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
 | T3 | § 2.3 | `fleet.fold = "stalled"`: **D3 shows a fleet banner** | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy), [§ 5.3](#53-the-fleet-on-both-screens) |
 | T4 | § 4.1 | D3 renders `render_state` and may use the components for the drill-down; it **never re-derives the collapse** | [§ 2.1](#21-the-seven-client-computed-values-closed), [§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |

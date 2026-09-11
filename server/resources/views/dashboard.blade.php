@@ -18,8 +18,8 @@
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
           · the tiled MAP, the camera and the desks — card#9208: the authored floor map is a BUILD
             ARTIFACT and none is vendored (§ 10.3), so there is no floor screen for a camera to
-            arrive at and `/floor/{install_id}` is still an unbuilt route. § 1.3 corollary 2
-            forbids guessing one.
+            arrive at and `/floor/{floor}` is still an unbuilt route. § 1.3 corollary 2 forbids
+            guessing one.
           · the elevator's DESTINATION, for the same reason — card#7343 builds the elevator as
             § 4.1's way between the stacked plates of THIS screen, and a ride moves the cab and
             nothing else. The plate's own link is still the only thing pointing at that route.
@@ -51,9 +51,24 @@
         </ul>
 
         {{--
-            § 4.1's ELEVATOR — card#7343. The ratified cross-section stacks "one floor plate per
-            install … with an elevator as the way between them", and § 4.5 makes that ride a
-            CAMERA move: it is navigation, it renders no fact, and it takes no § 6.2 row.
+            THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install
+            and a floor is an operator-composed set of rooms. The composed floors reach the client
+            WITH THE PAGE, validated and normalised by `App\Building\BuildingLayout`, and never
+            from an endpoint: the layout is not fleet state, and § 1.2 forbids D3 minting a read
+            surface for it. The client adds one floor per install the snapshot carries that no
+            floor here places (§ 4.6's default rule) and composes nothing else.
+
+            ⚠ A page loaded before the building was rearranged draws the old building until it
+            is reloaded — the same deploy-shaped staleness § 10.3 already accepted for the map.
+        --}}
+        <script type="application/json" id="lobby-layout">@json($layout, JSON_HEX_TAG | JSON_HEX_AMP)</script>
+
+        {{--
+            § 4.1's ELEVATOR — card#7343. The ratified cross-section stacks one floor plate per
+            FLOOR — since card#9267 a composed set of rooms, one room per floor until the layout
+            above says otherwise — "with an elevator as the way between them", and § 4.5 makes
+            that ride a CAMERA move: it is navigation, it renders no fact, and it takes no § 6.2
+            row.
 
             ⛔ THE CONTROL IS REFUSED WHEN THERE IS NOWHERE TO RIDE, and the reason is written
             beside it rather than left as a dead button. A building with one floor — which is

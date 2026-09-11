@@ -12,7 +12,7 @@ use App\Read\Snapshot;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SEAT SIDE IS `App\Read\Snapshot::seats()` — THE READ THE FLOOR ITSELF USES — AND NOT A
- * SECOND QUERY. `docs/design/FLOOR.md § 4.1` builds the lobby's floor list from
+ * SECOND QUERY. `docs/design/FLOOR.md § 4.1` composes the lobby's floor list against
  * `installs[].install_id` in the snapshot, and `App\Read\RetirementFilter` is what decides which
  * seats that is. A hand-written `select … from installs` here would list floors the floor screen
  * does not draw and count seats it does not render, and the first thing the two would disagree

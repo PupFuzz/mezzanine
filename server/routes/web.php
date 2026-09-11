@@ -1,5 +1,6 @@
 <?php
 
+use App\Building\BuildingLayout;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
 use Illuminate\Support\Facades\Route;
@@ -82,7 +83,12 @@ Route::middleware('guest')->group(function () {
  * (§ 9 adds the `mzr_` machine path) and could not be expressed by leaving the route here.
  */
 Route::middleware(['auth', 'mfa'])->group(function () {
-    Route::view('/dashboard', 'dashboard')->name('dashboard');
+    // The lobby is served WITH the building layout — `docs/design/FLOOR.md § 4.6`: the composed
+    // floors reach the browser with the page and never from an endpoint, because the layout is
+    // not fleet state and § 1.2 forbids D3 minting a read surface. An invalid layout refuses
+    // here, per request, on this surface — never at boot, where it would take ingest down too.
+    Route::get('/dashboard', fn () => view('dashboard', ['layout' => BuildingLayout::fromConfig()->floors]))
+        ->name('dashboard');
 });
 
 /*

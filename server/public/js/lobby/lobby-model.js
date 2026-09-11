@@ -13,9 +13,12 @@
  * ⛔ EVERY RENDERED FACT NAMES ITS D2 MEMBER (§ 1.3 corollary 1: "No rendered fact without a
  * named field"). The map, once, so no function below has to argue it a second time:
  *
- *   floor row .................. `installs[].install_id`               (§ 4.1 row 1)
- *   per-floor summary counts ... `render_state` over `installs[].seats[]`, client-computed
- *                                (§ 2.1 row 5 — the wire has no per-install count)
+ *   floor row .................. the BUILDING LAYOUT the page delivered (§ 4.6), composed
+ *                                against `installs[].install_id`        (§ 4.1 row 1)
+ *   a room on the row .......... `installs[].install_id`, and whether the client holds it
+ *   per-floor summary counts ... `render_state` over `installs[].seats[]` for every install the
+ *                                floor's rooms name, client-computed (§ 2.1 row 5 — the wire
+ *                                has no per-install count)
  *   unrecognised remainder ..... the same, § 5.4, carrying the raw string
  *   fleet totals ............... `fleet.seats_total`, `fleet.seats_live` — NEVER RECOUNTED
  *   discrepancy ................ the two above (§ 4.1, AT-D3-15)
@@ -91,37 +94,81 @@ export function floorSummary(seats) {
 }
 
 /**
- * § 4.1 row 1: "one row per floor, the row being the link to the floor", from
- * `installs[].install_id`, ascending.
+ * § 4.1 row 1: "one row per floor, the row being the link to the floor" — the floors the building
+ * layout composes, plus one per install it does not place, floor keys ascending.
  *
- * The sort is § 2.1 row 6's ("floors by `install_id` ascending") and is applied here rather than
- * trusted from the wire: D2 § 8.2.2 does order them, and a client that renders in received order
- * is a client whose order is a property of somebody else's `ORDER BY`.
+ * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
+ * `layout` is the validated, normalised document the page delivered (`#lobby-layout`): a list of
+ * `{ floor, rooms: [{ install, form }] }`, keys already derived server-side. What THIS function
+ * adds is § 4.6's one default rule — an install the snapshot carries that no delivered floor
+ * places is a floor of its own, alone, `open` — and it adds it HERE and not only on the server
+ * because § 4.1's discrepancy check discovers an install AFTER the page was served, and that
+ * install owes a floor the page could not have known about. The rule has a second home in
+ * `App\Building\Building::compose()` for the console; `tests/fixtures/building/compose-cases.json`
+ * is the one statement both are held to.
  *
- * `href` is § 4.4's floor route. ⚠ THAT ROUTE IS NOT BUILT: the floor is card#9208-blocked (no D2
- * read surface for an authored floor map). The row is still the link, because § 4.1 says the row
- * IS the link and a lobby whose rows are inert is a different design; what it must not be is a
- * link to an invented endpoint, and this is D3's own published route, not one minted here.
+ * ⛔ THE LAYOUT SUBSCRIBES TO NOTHING AND NAMES NO SEAT (§ 4.6). A room the layout places that
+ * the snapshot does not carry is drawn on its floor with `reported: false` — § 4.6's *no seats
+ * reported for this room*, the client's own narration — and is never fetched for, never
+ * subscribed to and never counted. ADMIT's population is the snapshot's, not the layout's.
  *
- * ⚠ SINCE card#9267 THAT ROUTE IS `/floor/{floor}` AND A FLOOR IS NOT AN INSTALL — a room is an
- * install and a floor is an operator-composed set of rooms (§ 3.1, § 4.6). This function is
- * UNCHANGED and is correct for every layout this deployment ships, because the shipped layout is
- * empty and § 4.6's rule for an install it does not place is *a floor of its own, keyed by the
- * install id*. It stops being correct the moment a layout composes a floor: the stack becomes the
- * composed floors and the href becomes that floor's id. That work is not this module's to guess —
- * § 4.6 names it as the client half that is designed and not built.
+ * The sort is § 2.1 row 6's ("floors by floor id ascending") and is applied here rather than
+ * trusted from the page or the wire: a client that renders in received order is a client whose
+ * order is a property of somebody else's serialiser.
+ *
+ * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor is
+ * card#9208-blocked (no floor map of any kind is vendored). The row is still the link, because
+ * § 4.1 says the row IS the link and a lobby whose rows are inert is a different design; what it
+ * must not be is a link to an invented endpoint, and this is D3's own published route, not one
+ * minted here.
  */
-export function floors(snapshot) {
+export function floors(snapshot, layout = []) {
     const installs = Array.isArray(snapshot?.installs) ? snapshot.installs : [];
+    // Install id -> the seats the client holds for it. `Object.create(null)` for the same reason
+    // `floorSummary()` uses it: the keys are wire strings.
+    const held = Object.create(null);
 
-    return installs
-        .map((install) => ({
-            install_id: String(install?.install_id),
-            href: `/floor/${encodeURIComponent(String(install?.install_id))}`,
-            summary: floorSummary(install?.seats),
-            held: Array.isArray(install?.seats) ? install.seats.length : 0,
-        }))
-        .sort((a, b) => (a.install_id < b.install_id ? -1 : a.install_id > b.install_id ? 1 : 0));
+    for (const install of installs) {
+        held[String(install?.install_id)] = Array.isArray(install?.seats) ? install.seats : [];
+    }
+
+    const placed = new Set();
+    const rows = [];
+
+    for (const floor of Array.isArray(layout) ? layout : []) {
+        const rooms = (Array.isArray(floor?.rooms) ? floor.rooms : []).map((room) => {
+            const install_id = String(room?.install);
+            placed.add(install_id);
+
+            return { install_id, form: String(room?.form), reported: install_id in held };
+        });
+
+        rows.push(plate(String(floor?.floor), rooms, held));
+    }
+
+    for (const install_id of Object.keys(held)) {
+        if (!placed.has(install_id)) {
+            rows.push(plate(install_id, [{ install_id, form: 'open', reported: true }], held));
+        }
+    }
+
+    return rows.sort((a, b) => (a.floor < b.floor ? -1 : a.floor > b.floor ? 1 : 0));
+}
+
+/**
+ * One floor row: its key, its rooms, the link, and § 4.1 row 2's summary over the seats the
+ * client holds for EVERY install the floor's rooms name (§ 2.1 row 5), in room order.
+ */
+function plate(floor, rooms, held) {
+    const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
+
+    return {
+        floor,
+        rooms,
+        href: `/floor/${encodeURIComponent(floor)}`,
+        summary: floorSummary(seats),
+        held: seats.length,
+    };
 }
 
 /**
@@ -290,14 +337,15 @@ export class DiscrepancyBudget {
 }
 
 /**
- * The whole lobby, from one snapshot body: what § 4.1's table says the screen carries, and
- * nothing else. `main.js` renders these strings and decides none of them.
+ * The whole lobby, from one snapshot body and the building layout the page delivered: what
+ * § 4.1's table says the screen carries, and nothing else. `main.js` renders these strings and
+ * decides none of them.
  */
-export function lobbyModel(snapshot) {
+export function lobbyModel(snapshot, layout = []) {
     // ONE pass over the installs, and the held count summed from the same rows the floors
     // render. Calling `heldSeats()` here as well would build the summaries twice and open the
     // one gap that matters: two counts of one population that can disagree.
-    const rows = floors(snapshot);
+    const rows = floors(snapshot, layout);
     const held = rows.reduce((n, floor) => n + floor.held, 0);
 
     return {

@@ -29,32 +29,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   derivation (`grep -n 'card#9267'`) of every other section the ruling made literally false, each
   amended at its own site rather than enumerated anywhere; `§ 13` row 24 records the three
   mechanisms with what each was taken over.
-  ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — floor id =>
-  (install id => `open`|`office`) — read through `App\Building\BuildingLayout`, which takes the
-  DECODED document and never a path, so card#9071's console can hold the same shape in a column
-  without the reader changing. It is a deploy-time file because the building's OTHER authored
-  artifact, the floor map, already is one by operator ruling (card#9208: *"a floor edit is a
-  redeploy"*), and one building with two change paths is a building nobody can say they are
-  looking at.
-  ⛔ **A FLOOR IS NAMED BY ONE OF ITS OWN ROOMS, and the constraint buys a defect class.** A
-  free-form floor id would share `/floor/{…}`'s namespace with an install provisioned *after* the
-  layout was written, a collision no check could catch at authoring time. Anchored, it is
-  unreachable — and every `/floor/{install_id}` link ever published still resolves, because it
-  either names a floor or names a room on one.
+  ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — a LIST of
+  floors, each a mapping of install id => `open`|`office` — read through
+  `App\Building\BuildingLayout`, which takes the DECODED document and never a path. It is a
+  deploy-time file because nothing the admin console authors is read at render time today (the
+  floor map is a build artifact by card#9208's ruling, and the console's stored maps have no read
+  path), so a layout in that store would answer card#9071's open question by accident.
+  ⛔ **A FLOOR HAS NO AUTHORED ID — it IS its rooms, and its key is DERIVED: the lexically least
+  `install_id` among them.** That keeps floor keys and install ids apart in the one `/floor/{…}`
+  namespace (every floor key is an install the layout places), keeps every published
+  `/floor/{install_id}` link resolving, and leaves nothing in the document to get wrong — a keyed
+  entry is refused rather than read past. The first draft of this card had the operator name the
+  floor after one of its own rooms; the derived key keeps everything that anchor bought and drops
+  the rule.
   ⛔ **NOTHING FALLS OFF THE BUILDING, IN EITHER DIRECTION.** An install the layout does not place
   gets a floor of its own, alone, `open` — so the layout is a departure from a default rather than
   an enumeration anything depends on being complete, and provisioning an install renders it with
-  no deploy. A room the fleet reports no seat for is drawn and labelled, never omitted — so a
-  floor is never silently narrower than the operator authored it. Both are `§ 0` item 6's *nothing
-  is happening* render refused at building scale, and both are asserted with a discriminating
-  control.
+  no deploy. A room the fleet reports no seat for is drawn and labelled, never omitted. Both are
+  `§ 0` item 6's *nothing is happening* render refused at building scale.
+  ⭐ **THE LOBBY IS BUILT ON IT.** The dashboard delivers the validated layout with the page
+  (`#lobby-layout`, `§ 4.6`: never from an endpoint); `lobby-model.js` stacks the composed floors,
+  a plate of several rooms names them, and the elevator rides between FLOORS. The client applies
+  the one default rule itself — an install § 4.1's discrepancy check discovers after the page was
+  served still owes a floor — so the rule has two homes, PHP for the console and JS for the lobby,
+  and both are held to one fixture, `server/tests/fixtures/building/compose-cases.json`.
   ⚠ **DESIGNED, NOT BUILT: the line between rooms** (card#9268). On one floor it is already
   `§ 5.7`'s line; across floors the form is a **call marker at each end that resolves**, with the
   line as its co-located case. `§ 6.2` gets no row and may not: the object that would drive it is
   on no wire. The lobby-draws-it alternative is priced and rejected at `§ 4.6`.
-  ⚠ **The console's floors module now shows which floor each room is on** and stops saying *a
-  floor is an install*, which the ruling made false. Its population gains the rooms the layout
-  places, so a composed room the fleet reports nothing for has a row instead of vanishing.
+  ⚠ **The console's floors module shows which floor each room is on** and stops saying *a floor
+  is an install*. Its table, routes and name still say *floors* while holding one map per ROOM —
+  stated at the module rather than renamed here, a hygiene rename with no user-visible harm.
 
 - **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
   the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —

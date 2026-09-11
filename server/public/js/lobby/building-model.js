@@ -9,13 +9,17 @@
  * `main.js` is the thin layer that puts the result into elements.
  *
  * ⛔ THIS MODULE READS NO WIRE MEMBER AND COMPUTES NO COUNT. § 4.1: "The ratified building
- * cross-section is a *rendering* of this table, and changes nothing in it … the plates are
- * `installs[].install_id` in the same ascending order, each plate carries the same **per-floor
- * state summary** … **the plate is the link** exactly as the list row was. No new field is read,
- * no count is recomputed." So `plates()` is `lobby-model.js`'s own `floors()` with a stack
- * position added, and the summary, the held count and the href arrive already decided. A second
- * derivation here would be two orders and two summaries for one floor — and they would agree
- * until the day one of them was edited.
+ * cross-section is a *rendering* of this table, and changes nothing in it … each plate carries
+ * the same **per-floor state summary** … **the plate is the link** exactly as the list row was.
+ * No new field is read, no count is recomputed." So `plates()` is `lobby-model.js`'s own
+ * `floors()` with a stack position added, and the summary, the held count and the href arrive
+ * already decided. A second derivation here would be two orders and two summaries for one
+ * floor — and they would agree until the day one of them was edited.
+ *
+ * ⭐ A PLATE IS A FLOOR, AND SINCE card#9267 A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS
+ * (§ 3.1, § 4.6) — one room per floor until the building layout the page delivers says
+ * otherwise. The stack is the composed floors, keyed by floor; the cab's stop is a floor key;
+ * and none of that is decided here, because `floors()` already decided it.
  *
  * ⛔ THE ELEVATOR IS NAVIGATION, AND NAVIGATION IS NEVER STATE (§ 4.5). The cab's position is not
  * a fact about the fleet: it renders no D2 field, it takes no row in § 6.2's animation table
@@ -24,9 +28,9 @@
  * why the cab's stop is a PARAMETER here rather than something derived from the snapshot: the
  * viewer owns it, the fleet does not.
  *
- * ⛔ AN ELEVATOR WITH NOWHERE TO GO SAYS SO. § 4.1 stacks "one **floor plate per install**", so a
- * deployment with one install is a one-floor building and a deployment with none is no building
- * at all — and the ride must then be REFUSED and the refusal rendered, never softened into a ride
+ * ⛔ AN ELEVATOR WITH NOWHERE TO GO SAYS SO. § 4.1 stacks one floor plate per floor, so a
+ * building with one floor has nowhere to ride and a building with none — no install reported and
+ * no floor composed — is no building at all; the ride must then be REFUSED and the refusal rendered, never softened into a ride
  * that lands back where it started. `(level + 1) % stack.length` is the exact expression that fakes
  * it: at one stop it is arithmetic that always "succeeds", and a viewer clicking it would watch a
  * working elevator on a building that has no second floor. `nextStop()` below returns `null`
@@ -37,20 +41,13 @@
  * a build artifact and none is vendored; § 14 item 7's tileset is still open). So a ride moves the
  * cab between the plates of this screen and nothing else, and the plate keeps the published link
  * `floors()` already gives it — D3's own route, never one minted here.
- *
- * ⚠ A PLATE IS ONE INSTALL HERE, AND SINCE card#9267 A FLOOR IS NOT: a room is an install and a
- * floor is an operator-composed set of rooms (§ 3.1, § 4.6). This module is UNCHANGED and is
- * correct for every layout this deployment ships — the shipped layout is empty, and § 4.6 gives an
- * install it does not place a floor of its own — but a layout that composed a floor would make the
- * stack the composed floors rather than `installs[]`, and the cab's stop a floor id. § 4.6 names
- * that as the client half that is designed and not built; it is not guessed here.
  */
 
 import { floors } from './lobby-model.js';
 
 /**
  * § 4.1's floor list, as the cross-section's stacked plates: the SAME rows, in the SAME ascending
- * `install_id` order, each carrying its position in the stack.
+ * floor-key order, each carrying its position in the stack.
  *
  * `level` is an index into that ascending order and nothing more. **Which end of the stack is the
  * top is not a fact this document ratifies** — § 4.1 fixes the ORDER and says the plates are
@@ -58,8 +55,8 @@ import { floors } from './lobby-model.js';
  * ascending order at the top, and `main.js` follows it. Keeping the direction out of the model is
  * what lets that be a rendering choice rather than a second ruling invented here.
  */
-export function plates(snapshot) {
-    return floors(snapshot).map((floor, level) => ({ ...floor, level }));
+export function plates(snapshot, layout = []) {
+    return floors(snapshot, layout).map((floor, level) => ({ ...floor, level }));
 }
 
 /**
@@ -67,7 +64,7 @@ export function plates(snapshot) {
  * the control can and cannot do — and deliberately not a second telling of the floor list's own
  * "no installs are provisioned" sentence, which `main.js` already renders over the stack.
  */
-export const NO_STOPS = 'the elevator has no stops — the snapshot carries no installs';
+export const NO_STOPS = 'the elevator has no stops — the snapshot carries no installs and the layout composes no floor';
 
 export const ONE_STOP = 'the elevator has one stop — a single-floor building has nowhere to ride';
 
@@ -87,15 +84,15 @@ function nextStop(stack, level) {
         return null;
     }
 
-    return stack[(level + 1) % stack.length].install_id;
+    return stack[(level + 1) % stack.length].floor;
 }
 
 /**
  * The elevator, for a stack of plates and the stop the viewer last rode to.
  *
  * `at` is the requested stop when the building still has it. **When it does not, the cab is put at
- * the first plate and SAYS SO** — that is a reachable observation and not a paranoia case: a floor
- * leaves `installs[]` when its last seat is retired (§ 3.5), and a client holding a cab position
+ * the first plate and SAYS SO** — that is a reachable observation and not a paranoia case: an
+ * unplaced install's floor leaves the building when its last seat is retired (§ 3.5), and a client holding a cab position
  * across that render would otherwise report the viewer as standing on a floor the building no
  * longer has. Moving the cab quietly is the same defect § 4.1 refuses in the discrepancy check —
  * picking a winner instead of rendering the disagreement.
@@ -106,11 +103,11 @@ function nextStop(stack, level) {
  */
 export function elevator(stack, requested = null) {
     const rows = Array.isArray(stack) ? stack : [];
-    const asked = rows.find((plate) => plate.install_id === requested);
+    const asked = rows.find((plate) => plate.floor === requested);
     // The requested plate, else the first plate in § 4.1's order, else there is no building for
     // the cab to stand in at all.
     const plate = asked ?? rows[0] ?? null;
-    const at = plate === null ? null : plate.install_id;
+    const at = plate === null ? null : plate.floor;
     const level = plate === null ? null : plate.level;
     const stranded = requested !== null && asked === undefined && rows.length > 0;
 
@@ -133,8 +130,8 @@ export function elevator(stack, requested = null) {
  * The whole cross-section, from one snapshot body and the viewer's own cab position — the shape
  * `main.js` renders and the shape the probe asserts.
  */
-export function buildingModel(snapshot, at = null) {
-    const stack = plates(snapshot);
+export function buildingModel(snapshot, at = null, layout = []) {
+    const stack = plates(snapshot, layout);
 
     return { plates: stack, elevator: elevator(stack, at) };
 }
