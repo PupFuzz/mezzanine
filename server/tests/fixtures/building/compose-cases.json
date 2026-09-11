@@ -1,0 +1,114 @@
+{
+  "_": [
+    "docs/design/FLOOR.md § 4.6 — THE ONE STATEMENT of how a layout and the installs the fleet",
+    "reports compose into floors. Two runtimes implement it — App\\Building\\Building::compose()",
+    "for the admin console and public/js/lobby/lobby-model.js floors() for the lobby — and both",
+    "are held to every case here (Tests\\Feature\\Building, Tests\\Feature\\Lobby). A case is the",
+    "RAW authored document (a list of room sets), the installs the fleet reports, and the floors",
+    "that must come out: floor keys ascending, rooms by install ascending, `reported` per room.",
+    "Add a case here and both suites gain it; a rule that lives in one runtime and not the other",
+    "is what this file exists to red."
+  ],
+  "cases": [
+    {
+      "name": "the empty layout is today's building: one floor per install, open",
+      "layout": [],
+      "installs": ["sola", "aimla"],
+      "floors": [
+        {"floor": "aimla", "rooms": [{"install": "aimla", "form": "open", "reported": true}]},
+        {"floor": "sola", "rooms": [{"install": "sola", "form": "open", "reported": true}]}
+      ]
+    },
+    {
+      "name": "the operator's hallway: two solo installs composed onto one floor, keyed by the least room",
+      "layout": [{"zeta": "office", "sola": "office"}],
+      "installs": ["zeta", "sola"],
+      "floors": [
+        {"floor": "sola", "rooms": [
+          {"install": "sola", "form": "office", "reported": true},
+          {"install": "zeta", "form": "office", "reported": true}
+        ]}
+      ]
+    },
+    {
+      "name": "the operator's mixed floor: one open PM+impl room and two offices on one floor",
+      "layout": [{"sola": "office", "aimla": "open", "zeta": "office"}],
+      "installs": ["aimla", "sola", "zeta"],
+      "floors": [
+        {"floor": "aimla", "rooms": [
+          {"install": "aimla", "form": "open", "reported": true},
+          {"install": "sola", "form": "office", "reported": true},
+          {"install": "zeta", "form": "office", "reported": true}
+        ]}
+      ]
+    },
+    {
+      "name": "two PM+impl rooms on one floor, and a second floor of offices",
+      "layout": [{"mira": "open", "nova": "open"}, {"sola": "office", "zeta": "office"}],
+      "installs": ["nova", "mira", "zeta", "sola"],
+      "floors": [
+        {"floor": "mira", "rooms": [
+          {"install": "mira", "form": "open", "reported": true},
+          {"install": "nova", "form": "open", "reported": true}
+        ]},
+        {"floor": "sola", "rooms": [
+          {"install": "sola", "form": "office", "reported": true},
+          {"install": "zeta", "form": "office", "reported": true}
+        ]}
+      ]
+    },
+    {
+      "name": "an install the layout does not place gets a floor of its own, open, and sorts among the composed ones",
+      "layout": [{"sola": "office", "zeta": "office"}],
+      "installs": ["sola", "zeta", "aimla"],
+      "floors": [
+        {"floor": "aimla", "rooms": [{"install": "aimla", "form": "open", "reported": true}]},
+        {"floor": "sola", "rooms": [
+          {"install": "sola", "form": "office", "reported": true},
+          {"install": "zeta", "form": "office", "reported": true}
+        ]}
+      ]
+    },
+    {
+      "name": "a room the fleet reports nothing for is drawn on its floor and flagged, never omitted",
+      "layout": [{"sola": "office", "zeta": "office"}],
+      "installs": ["sola"],
+      "floors": [
+        {"floor": "sola", "rooms": [
+          {"install": "sola", "form": "office", "reported": true},
+          {"install": "zeta", "form": "office", "reported": false}
+        ]}
+      ]
+    },
+    {
+      "name": "a floor none of whose rooms report is still a floor",
+      "layout": [{"sola": "office", "zeta": "office"}],
+      "installs": [],
+      "floors": [
+        {"floor": "sola", "rooms": [
+          {"install": "sola", "form": "office", "reported": false},
+          {"install": "zeta", "form": "office", "reported": false}
+        ]}
+      ]
+    },
+    {
+      "name": "a one-room floor is worth authoring only for its form",
+      "layout": [{"sola": "office"}],
+      "installs": ["sola"],
+      "floors": [
+        {"floor": "sola", "rooms": [{"install": "sola", "form": "office", "reported": true}]}
+      ]
+    },
+    {
+      "name": "an all-digit install id survives the integer-key cast in both runtimes",
+      "layout": [{"42": "open", "7": "open"}],
+      "installs": ["42", "7"],
+      "floors": [
+        {"floor": "42", "rooms": [
+          {"install": "42", "form": "open", "reported": true},
+          {"install": "7", "form": "open", "reported": true}
+        ]}
+      ]
+    }
+  ]
+}

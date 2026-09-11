@@ -8,6 +8,8 @@
  * against the real code rather than against a second copy of the logic.
  *
  * stdin  — JSON: `{ "snapshot": <a GET /api/fleet/snapshot body>,
+ *                   "layout": <the composed floors the page delivers (§ 4.6), or absent = the
+ *                              empty layout, which is today's building>,
  *                   "observations": [[held, total], …],
  *                   "cab": <the stop the viewer last rode to, or absent> }`
  * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...}, "budget": {...} }`
@@ -43,11 +45,11 @@ console.log(JSON.stringify({
     // The membership predicate, sampled on values the caller names — so a test can assert the
     // client does not KNOW a value as well as that it does not render it as one.
     membership: Object.fromEntries((payload.membership_probe ?? []).map((v) => [String(v), isRenderState(v)])),
-    model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot),
+    model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot, payload.layout ?? []),
     // § 4.1's cross-section and its elevator. `cab` is the viewer's own position (§ 4.5:
     // navigation is never state), so it is an INPUT here and is never read out of the snapshot.
     building: payload.snapshot === undefined
         ? null
-        : building.buildingModel(payload.snapshot, payload.cab ?? null),
+        : building.buildingModel(payload.snapshot, payload.cab ?? null, payload.layout ?? []),
     budget: { admitted, spent: budget.spent },
 }, null, 2));

@@ -47,6 +47,16 @@ let cab = null;
 let lastSnapshot = null;
 
 /**
+ * THE BUILDING LAYOUT, read ONCE from the page — `docs/design/FLOOR.md § 4.6`, card#9267: a room
+ * is an install and a floor is an operator-composed set of rooms. The page delivers the validated,
+ * normalised floors in `#lobby-layout` and this client fetches nothing for them: the layout is not
+ * fleet state and § 1.2 forbids D3 minting a read surface. Read at module load rather than per
+ * render because it cannot change without a page load — § 4.6's stated cost, "a page loaded
+ * before the building was rearranged draws the old building until it is reloaded".
+ */
+const layout = JSON.parse(el('lobby-layout').textContent);
+
+/**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node ===
  * null) return;` at every site — IS the silent no-op that is this layer's whole risk: the page
  * renders, the fetch runs, and one fact is written nowhere at all. A throw leaves the page's own
@@ -83,8 +93,12 @@ function statement(text, keptLabel) {
 }
 
 /**
- * § 4.1's floor list, drawn as the ratified cross-section: one plate per install, stacked, the
- * plate being the link, with the elevator cab standing at one of them.
+ * § 4.1's floor list, drawn as the ratified cross-section: one plate per FLOOR, stacked, the
+ * plate being the link, with the elevator cab standing at one of them. A floor of more than one
+ * room names its rooms on the plate (§ 4.1 row 1), and a room the client holds no seat for says
+ * so in § 4.6's words — the client's own narration (§ 5.5), about SEATS and never about the
+ * install, because the snapshot groups seats by install and cannot tell an install with no seats
+ * from one that does not exist.
  *
  * ⛔ ONE RENDERING OF ONE FACT. The plates REPLACE the flat list rather than joining it — § 4.1's
  * cross-section "is a *rendering* of this table", not a second surface beside it, and two
@@ -117,7 +131,7 @@ function renderBuilding(building) {
         link.href = plate.href;
 
         const name = document.createElement('span');
-        name.textContent = plate.install_id;
+        name.textContent = plate.floor;
 
         const summary = document.createElement('span');
         // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS,
@@ -127,7 +141,17 @@ function renderBuilding(building) {
         link.append(name, document.createTextNode(' — '), summary);
         row.append(link);
 
-        if (plate.install_id === building.elevator.at) {
+        // The rooms, when there is anything to say beyond the floor's own key: a composed floor
+        // names each room and its form; an unreported room carries § 4.6's sentence.
+        if (plate.rooms.length > 1 || plate.rooms.some((room) => !room.reported)) {
+            const rooms = document.createElement('span');
+            rooms.textContent = ' — rooms: ' + plate.rooms
+                .map((room) => `${room.install_id} (${room.form}${room.reported ? '' : ' — no seats reported for this room'})`)
+                .join(', ');
+            row.append(rooms);
+        }
+
+        if (plate.floor === building.elevator.at) {
             // § 4.5: "Colour is never the only carrier of a fact" — and while the cab carries no
             // FACT at all, a viewer who cannot see where the elevator is standing cannot use it.
             // So the cab is a word, not a highlight.
@@ -163,8 +187,8 @@ function renderBuilding(building) {
 }
 
 function render(snapshot) {
-    const model = lobbyModel(snapshot);
-    const building = buildingModel(snapshot, cab);
+    const model = lobbyModel(snapshot, layout);
+    const building = buildingModel(snapshot, cab, layout);
 
     lastSnapshot = snapshot;
     // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself
@@ -254,7 +278,7 @@ el('lobby-refresh').addEventListener('click', () => {
  * § 6.2's sense: it renders no fact, it has no driving D2 field, and it gets no row in that
  * table".
  *
- * ⚠ Where the ride is SUPPOSED to arrive — § 4.5's camera at `/floor/{install_id}` — is not built
+ * ⚠ Where the ride is SUPPOSED to arrive — § 4.5's camera at `/floor/{floor}` — is not built
  * (card#9208), so this ride moves between the plates of this screen and the plate's own link is
  * still the only way to that route. `building-model.js` says so in full.
  */

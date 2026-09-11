@@ -58,8 +58,9 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
 
         $model = $this->probe(['snapshot' => $body])['model'];
 
-        // § 4.1 row 1 — one row per floor, from `installs[].install_id`, ascending.
-        $this->assertSame(['aimla', 'sola'], array_column($model['floors'], 'install_id'));
+        // § 4.1 row 1 — one row per floor, ascending; under the empty layout (this probe hands
+        // none, which is today's building) that is one floor per install, keyed by it.
+        $this->assertSame(['aimla', 'sola'], array_column($model['floors'], 'floor'));
         $this->assertSame(['/floor/aimla', '/floor/sola'], array_column($model['floors'], 'href'),
             'the row is the link to § 4.4’s published floor route');
 

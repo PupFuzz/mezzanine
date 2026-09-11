@@ -19,6 +19,59 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9267** — **THE ROOM MODEL: a room is an install, a floor is an operator-composed set of
+  rooms.** Operator ruling of 2026-09-11, which closes `FLOOR.md § 14` item 6 (*"is a floor an
+  install, or a PM?"*) — the answer was that the question conflated the COORDINATION unit with the
+  DISPLAY unit. `install_id` is the first and **does not move**: D1's seat config, D2's
+  `private-fleet.{install_id}`, its snapshot grouping and its ACL attachment point are all per
+  install and **neither D1, D2 nor D4 is edited by this PR**. The floor is the second, and it is
+  now composed. New `FLOOR.md § 4.6` owns the layout; `§ 3.1` carries both keys and points at the
+  derivation (`grep -n 'card#9267'`) of every other section the ruling made literally false, each
+  amended at its own site rather than enumerated anywhere; `§ 13` row 24 records the three
+  mechanisms with what each was taken over.
+  ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — a LIST of
+  floors, each a mapping of install id => `open`|`office` — read through
+  `App\Building\BuildingLayout`, which takes the DECODED document and never a path. It is a
+  deploy-time file because nothing the admin console authors is read at render time today (the
+  floor map is a build artifact by card#9208's ruling, and the console's stored maps have no read
+  path), so a layout in that store would answer card#9071's open question by accident.
+  ⛔ **A FLOOR HAS NO AUTHORED ID — it IS its rooms, and its key is DERIVED: the lexically least
+  `install_id` among them.** That keeps floor keys and install ids apart in the one `/floor/{…}`
+  namespace (every floor key is an install the layout places), keeps every published
+  `/floor/{install_id}` link resolving, and leaves nothing in the document to get wrong — a keyed
+  entry is refused rather than read past. The first draft of this card had the operator name the
+  floor after one of its own rooms; the derived key keeps everything that anchor bought and drops
+  the rule.
+  ⛔ **NOTHING FALLS OFF THE BUILDING, IN EITHER DIRECTION.** An install the layout does not place
+  gets a floor of its own, alone, `open` — so the layout is a departure from a default rather than
+  an enumeration anything depends on being complete, and provisioning an install renders it with
+  no deploy. A room the fleet reports no seat for is drawn and labelled, never omitted. Both are
+  `§ 0` item 6's *nothing is happening* render refused at building scale.
+  ⭐ **THE LOBBY IS BUILT ON IT.** The dashboard delivers the validated layout with the page
+  (`#lobby-layout`, `§ 4.6`: never from an endpoint); `lobby-model.js` stacks the composed floors,
+  a plate of several rooms names them, and the elevator rides between FLOORS. The client applies
+  the one default rule itself — an install § 4.1's discrepancy check discovers after the page was
+  served still owes a floor — so the rule has two homes, PHP for the console and JS for the lobby,
+  and both are held to one fixture, `server/tests/fixtures/building/compose-cases.json`.
+  ⚠ **DESIGNED, NOT BUILT: the line between rooms** (card#9268). On one floor it is already
+  `§ 5.7`'s line; across floors the form is a **call marker at each end that resolves**, with the
+  line as its co-located case. `§ 6.2` gets no row and may not: the object that would drive it is
+  on no wire. The lobby-draws-it alternative is priced and rejected at `§ 4.6`.
+  ⚠ **The console's floors module shows which floor each room is on** and stops saying *a floor
+  is an install*. Its table, routes and name still say *floors* while holding one map per ROOM —
+  stated at the module rather than renamed here, a hygiene rename with no user-visible harm.
+  ⭐ **THE WORD *room* HAS TWO SENSES NOW, AND THE SWEEP OF BOTH WAS DONE IN THIS CARD** rather
+  than promised as a follow-up: D3 used *room* for the DRAWN INTERIOR before the ruling gave the
+  noun to the container, so every occurrence in `FLOOR.md` was read against both senses. The sites
+  where a container reading was available and wrong — § 4.1's and § 4.2's *a plate carries the
+  summary, not the room*, A17's row, § 6.2's and § 6.3's *the room is live*, § 10.4 and § 12
+  step 7 — are
+  amended and carry the `card#9267` marker; § 3.1 names the second noun once and its follow-up
+  promise is gone; what is left is the drawn place, in sentences no install fits.
+  ⛔ **The ruling also minted a third road to the elevator's ONE-STOP refusal** — one floor from N
+  installs, a fully-placed fleet composed onto a single floor, which is neither the one-install nor
+  the empty building already covered — and `TheBuildingStacksTheComposedFloorsTest` now asserts it.
+
 - **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
   the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —
   "one **floor plate per install**, stacked, with an elevator as the way between them" — and the

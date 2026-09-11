@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Admin\ConsoleModules;
+use App\Floor\FloorInventory;
 use App\Floor\FloorMap;
 use App\Floor\InvalidFloorMap;
 use App\Models\User;
@@ -297,7 +298,88 @@ class FloorConsoleTest extends TestCase
             ->get(route('admin.floors.index'))
             ->assertOk()
             ->assertSee(self::INSTALL)
-            ->assertSee('no seat on this floor renders');
+            ->assertSee('no seat in this room renders');
+    }
+
+    // ── the BUILDING LAYOUT, card#9267 — which floor each room is on ─────────────────────────
+
+    /**
+     * ⭐ THE OPERATOR'S OWN CASE, ON THE SURFACE THEY MANAGE THE BUILDING FROM. Two solo installs
+     * composed onto one floor: `docs/design/FLOOR.md § 4.6`'s layout is a deploy-time document
+     * and this page is where its effect is legible — a console that still said "a floor is an
+     * install" would be answering the operator's first question with the sentence the ruling
+     * made false.
+     */
+    public function test_two_rooms_composed_onto_one_floor_are_shown_on_that_floor(): void
+    {
+        $this->provisionSeat('sola-solo', 'sola');
+        $this->provisionSeat('zeta-solo', 'zeta');
+
+        config(['building.floors' => [['sola' => 'office', 'zeta' => 'office']]]);
+
+        $rows = collect(FloorInventory::rows())->keyBy('install_id');
+
+        $this->assertSame('sola', $rows['sola']['floor']);
+        $this->assertSame('sola', $rows['zeta']['floor']);
+        $this->assertSame('office', $rows['zeta']['form']);
+
+        $this->actingAs($this->operator())
+            ->get(route('admin.floors.index'))
+            ->assertOk()
+            ->assertSee('operator-composed set of rooms', false)
+            ->assertSee('config/building.php');
+    }
+
+    /**
+     * § 4.6: an install the layout does not place "is drawn on a floor of its own, alone, in the
+     * `open` form" — so provisioning one needs no deploy to be visible, and the console says
+     * where it sits rather than leaving the column blank.
+     */
+    public function test_an_install_the_layout_does_not_place_is_shown_on_a_floor_of_its_own(): void
+    {
+        $this->provisionSeat('aimla-pm');
+
+        config(['building.floors' => []]);
+
+        $rows = collect(FloorInventory::rows())->keyBy('install_id');
+
+        $this->assertSame(self::INSTALL, $rows[self::INSTALL]['floor']);
+        $this->assertSame('open', $rows[self::INSTALL]['form']);
+    }
+
+    /**
+     * § 4.6: "a room the fleet reports no seat for is drawn and labelled, never omitted". On this
+     * page that means the room has a ROW at all — the population is the union of the installs the
+     * snapshot renders, the installs a map was authored for, and the rooms the layout places.
+     * Without the third, an operator who composed a floor and then asked why a room was missing
+     * would be told nothing.
+     */
+    public function test_a_room_the_layout_places_but_the_fleet_does_not_report_still_has_a_row(): void
+    {
+        $this->provisionSeat('sola-solo', 'sola');
+
+        config(['building.floors' => [['sola' => 'office', 'zeta' => 'office']]]);
+
+        $rows = collect(FloorInventory::rows())->keyBy('install_id');
+
+        $this->assertTrue($rows->has('zeta'), 'the authored room fell off the page');
+        $this->assertSame('sola', $rows['zeta']['floor']);
+        $this->assertSame(0, $rows['zeta']['seats']);
+
+        $this->actingAs($this->operator())
+            ->get(route('admin.floors.index'))
+            ->assertOk()
+            ->assertSee('no seats reported for this room');
+
+        // THE CONTROL: report the room and the page stops saying it reports nothing, which is
+        // what makes the assertion above about the RULE and not about a sentence that is always
+        // on the page.
+        $this->provisionSeat('zeta-solo', 'zeta');
+
+        $this->actingAs($this->operator())
+            ->get(route('admin.floors.index'))
+            ->assertOk()
+            ->assertDontSee('no seats reported for this room');
     }
 
     /**
