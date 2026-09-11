@@ -745,6 +745,107 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertIsArray($body['detail']['counters']);
     }
 
+    /**
+     * ⛔ EVERY TIMESTAMP `detail` CARRIES IS § 8.2.1's `rfc3339_ms`, AND UNTIL card#7342 SIX WERE
+     * THE STORE'S `DATETIME(3)`. `open_calls`, `attention` and `session` were handed out as raw
+     * selected rows, so `opened_at`, `orphan_due_at`, `ceiling_at`, `turn_started_at` and
+     * `last_turn_ended_at` reached the drill-down as `2026-08-23 14:23:31.004` while every other
+     * timestamp on this plane was `2026-08-23T14:23:31.004Z` (§ 6.3 is why the store's spelling
+     * is what it is; § 8.2.1 is why the wire's is what it is).
+     *
+     * ⛔ THE CONSUMER'S FAILURE IS SILENT, WHICH IS WHAT MAKES THIS WORTH A CHECK RATHER THAN A
+     * TIDY-UP: `Date.parse` does not refuse a space-separated datetime, it reads it as a LOCAL
+     * time — so an intern's start age would be wrong by the viewer's UTC offset with no error
+     * anywhere on the path.
+     *
+     * ⛔ THE POPULATION IS DERIVED FROM THE RESPONSE, NOT LISTED HERE. A written list of member
+     * paths is a copy of the response's shape that goes stale the first time a column is added
+     * to one of those three selects — which is exactly how the six got out. The walk below finds
+     * every `…_at` / `…_since` member at any depth and asserts the shape of each.
+     */
+    public function test_every_timestamp_the_seat_detail_carries_is_the_wire_spelling(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+        $this->sweep();
+
+        $body = $this->asMachine($this->readToken(),
+            '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT)->assertOk()->json();
+
+        // The three members that carried the store's spelling are all populated by this fixture,
+        // so the walk below has something to find in each of them. Asserted first: a walk over
+        // three empty members would report clean having read nothing.
+        $this->assertNotEmpty($body['detail']['open_calls']);
+        $this->assertNotNull($body['detail']['attention']);
+        $this->assertNotNull($body['detail']['session']);
+
+        $found = [];
+        $this->collectTimestamps($body['detail'], 'detail', $found);
+
+        $this->assertGreaterThan(4, count($found),
+            'the timestamp walk found almost nothing — every assertion below would then be clean '
+            .'over an unread population');
+
+        foreach ($found as $path => $value) {
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/', $value,
+                $path.' is not § 8.2.1’s `rfc3339_ms` — a consumer computing an age from it gets '
+                .'the viewer’s timezone applied to a server-clock fact, and nothing errors');
+        }
+
+        // ⛔ THE SAME FACT, TWICE, IN ONE RESPONSE. § 8.2.1's `blocked_since` IS the open
+        // attention request's `opened_at` — "a PROMOTION out of § 8.2.3, not a new fact to
+        // source" — so the two members must be the same string. They were not: one went through
+        // `Clock::wire()` and the other did not, which is the defect at its most legible.
+        $this->assertSame($body['blocked_since'], $body['detail']['attention']['opened_at'],
+            '§ 8.2.1: `blocked_since` is the promotion of the attention request’s `opened_at`, '
+            .'and one response is carrying two spellings of one instant');
+
+        // ⛔ THE DISCRIMINATING CONTROL. The predicate above is only evidence if it can fail, so
+        // feed it the spelling the store hands back — the exact value this endpoint used to
+        // serve — and require it to be refused.
+        $this->assertDoesNotMatchRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/',
+            Clock::sql(now()),
+            'the control failed: the shape assertion admits the store’s own `DATETIME(3)` '
+            .'spelling, so it would have passed against the defect it exists to catch');
+    }
+
+    /**
+     * Every `…_at` / `…_since` member of `$node`, at any depth, keyed by its path.
+     *
+     * ⚠ `heartbeat_counters` and `heartbeat_predicates` are SKIPPED, and the reason is a
+     * boundary rather than a convenience: they are the REPORTER's objects, stored and returned
+     * verbatim (§ 7.3, D1 § 6.14). Their spelling is D1's to state and this plane's to leave
+     * alone, so asserting this plane's wire form over them would be this test claiming ownership
+     * of a contract it does not hold.
+     *
+     * @param  array<string, string>  $found
+     */
+    private function collectTimestamps(mixed $node, string $path, array &$found): void
+    {
+        if (! is_array($node)) {
+            return;
+        }
+
+        foreach ($node as $key => $value) {
+            if (in_array($key, ['heartbeat_counters', 'heartbeat_predicates'], true)) {
+                continue;
+            }
+
+            $here = $path.'.'.$key;
+
+            if (is_array($value)) {
+                $this->collectTimestamps($value, $here, $found);
+
+                continue;
+            }
+
+            if (is_string($key) && (str_ends_with($key, '_at') || str_ends_with($key, '_since')) && $value !== null) {
+                $found[$here] = (string) $value;
+            }
+        }
+    }
+
     /** § 8.2's timeline: renderable kinds only, newest first, `limit` ≤ 200, default 50. */
     public function test_the_timeline_is_a_bounded_query_over_the_renderable_kinds(): void
     {

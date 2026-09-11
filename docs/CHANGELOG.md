@@ -49,6 +49,43 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   set-versus-figure repair § 2.1 made for its process table. `tools/design/README.md` declares
   that D4 is a design document under **no** verifier, rather than leaving that quietly true.
 
+- **card#7342** — **The desk drill-down panel, and subagents rendered as interns.** New
+  `public/js/drilldown/` — a pure model (`drilldown-model.js`) carrying every rendering decision
+  and a thin DOM half that makes none, on the split `public/js/lobby` and `public/js/coord`
+  already use. It renders `docs/design/FLOOR.md § 4.3`'s current task (title, the tier that
+  answered, *stale title dropped*, and the reference as a link **only** where a base URL is
+  configured for its shape), the current action with § 2.4's *running for 2m 05s*, the context
+  gauge, the uncapped intern list and the recent-activity window — each nullable member under
+  § 5.6's stated absence, and **never a zero**: a null `context` reads *not reported* with the
+  bar element's value REMOVED rather than set to 0.
+  New `public/js/wire/duration.js` is § 2.4's duration format — the one function that section
+  says there is exactly one of — and `DurationFormatMatchesTheDocumentTest` re-derives § 2.4's
+  boundary table from `FLOOR.md` on every run and requires the shipped `.js` to reproduce every
+  row, which is the browser-side leg of the guard `tools/design/verify-floor.py` holds the
+  Python side of.
+  ⛔ **A live defect on the read plane is fixed at its write site**: `detail`'s `open_calls`,
+  `attention` and `session` were handed out as raw selected rows, so six timestamps reached the
+  drill-down as `DATETIME(3)` (`2026-08-23 14:23:31.004`) while the rest of the plane sent
+  § 8.2.1's `rfc3339_ms` — one response carried BOTH spellings of one instant, since
+  `blocked_since` is the promotion of `attention.opened_at`. `Date.parse` reads the store's
+  spelling as a LOCAL time, so an intern's age would have been wrong by the viewer's UTC offset
+  with nothing erroring. Seen to fail first, with the pre-fix value in the failure message.
+  ⚠ **D3 states two selections for the intern list and they are disjoint** — § 5.2's
+  `agent_scope == "subagent"` / non-null `parent_call_id` versus AT-D3-4's "nine open DISPATCH
+  calls … lists 9" and § 8's own label rows. The panel lists the dispatch calls, because the
+  other set carries no `title` and no `subagent_type` at all and § 8.1's cap argument ("the panel
+  … already has every intern") is false under it; the document is **not amended** and this card's
+  PR body carries the proposed text under its own heading.
+  `DrillDownRendersTheInternsTest` pins both selections, so the day it is ruled on the evidence
+  is a check rather than a memory.
+  ⚠ **What is not built and why**, so the gaps are recorded rather than discovered: `task.ref` is
+  null on every seat this deployment serves (D2 § 4.9 builds tier 3 only), so the link path runs
+  on a value nothing currently mints; the side table's stools and its *+N more* tag are the
+  DESK's and wait on the floor screen (card#9208); the transport / derivation / reporter / badges
+  / session / retirement / raw blocks and their *as of* stamps are a later slice, and no stamp is
+  drawn because this slice renders none of § 6.5's ten; and nothing patches the panel live
+  because no delta-feed client exists yet.
+
 - **card#9223** — **The ingest rate-limit suite pins its clock, and a real flake mechanism is
   closed.** `App\Support\FixedWindow` indexes on `intdiv(now()->getTimestamp(), $windowS)` — an
   **absolute** window — so a 120-request loop that straddled a real minute boundary put its 121st
