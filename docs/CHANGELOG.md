@@ -19,6 +19,34 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7897** — **PART 1 ONLY: the thought bubble is BUILT.** Part 2 (messages moving between
+  desks) is untouched — it needs a GitHub-sourced `coord.round` event whose receipt route does not
+  exist, and the card says in terms *"Do NOT animate without it"*.
+  `FLOOR.md § 5.1` has carried the FORM amendment since `#30` — the bubble REPLACES the text chip, a
+  null `task` draws no bubble, and **no § 6.2 animation row is added because nothing about the bubble
+  moves** — so this PR is that amendment's CODE and **edits no design document**. New
+  `server/public/js/desk/task-bubble.js` decides whether a bubble is drawn at all, what text it holds
+  (rule 4's `task.ref` and `task.title`, capped and truncated **with a mark**), and where two bubbles
+  that would collide are parted (rule 5's deterministic pass over the **base** rects, in § 3.1's
+  identity order, so two browsers place them identically with nothing stored).
+  ⭐ **The `task` member now has ONE implementation** — `server/public/js/wire/task.js`, hoisted at
+  its second caller. The drill-down panel (card#7342) and the desk read the same null case, the same
+  reference rule and the same *stale title dropped* wording, so the two surfaces cannot come to
+  disagree about one seat's task; `DrillDownModuleWiringTest`'s shared-function sweep now holds them
+  to one copy each.
+  ⛔ **A null `task` and a desk with no character return the SAME value** — no bubble — because a
+  caller that could tell the two absences apart is a caller that could draw them apart. The
+  characterless set is **re-derived from § 7.1's own Desk column** on every run and set-differenced
+  against the module in both directions, with planted controls for each.
+  ⛔ **No motion, checked rather than commented**: the module holds no timer, no frame callback and
+  no transition, and the suite plants the 1.2 s linger § 5.1 refuses to prove the check can fail —
+  the refusal is a correctness one, because a bubble that hides itself on a timer makes *no bubble*
+  mean "`task` is null **or** the linger expired".
+  ⚠ **No DOM half and no floor page to hang one on** — § 4.4's floor route is card#9208-blocked on a
+  D2 read surface for an authored map, so the element contract stays the floor page's to declare.
+  And `task.ref` is null on every seat this deployment serves (tier 1 designed-not-built, tier 2
+  retired), so a bubble renders a **title with no link and no reference text** — never a guessed URL.
+
 - **card#7582** — **The board task-title producer is DESIGNED, and deliberately not built.**
   New `docs/design/BOARD-TASK.md` (**D4**) designs tier 1 of `FLEET-STATE.md § 4.9`'s task-title
   merge: the kanban poller, its cadence, the seat→board-user join, the read-scoped credential and
