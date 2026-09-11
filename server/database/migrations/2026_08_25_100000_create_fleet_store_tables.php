@@ -161,6 +161,10 @@ return new class extends Migration
 
             // TASK (§ 4.9)
             $table->string('task_title', 120)->nullable();
+            // ⚠ `coord_thread` is RETIRED as a value of this column (card#9234, § 4.9) and
+            //    this line is deliberately NOT edited: this migration shipped in v0.2.0 and
+            //    v0.3.0, so the narrowing is its own migration and a fielded store gets it
+            //    there — `2026_09_11_000000_narrow_seat_state_task_source_enum.php`.
             $table->enum('task_source', ['board_card', 'coord_thread', 'telemetry'])->nullable();
             $table->string('task_ref', 64)->nullable();
             $table->dateTime('task_as_of', 3)->nullable();

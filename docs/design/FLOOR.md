@@ -127,7 +127,7 @@ it, and what it must never draw.
 | **MFA, login, session lifetime** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states what the floor does when a session **expires** ([§ 9](#9-failure-paths-and-their-observables)); it does not specify the second factor |
 | **Prod and sandbox provisioning, deploy** | D-13 and D-15 (`docs/PLAN.md § 5`), owned by the Mezzanine build agent |
 | **Operator ACLs — who may see which install** | [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 7 owns it, and it is an operator question. Today any MFA-authenticated user sees every install ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)), and this document renders exactly what the snapshot returns |
-| **The producers of task-title tiers 1 and 2** — a GitHub webhook receiver, a board poller | ⚠ **Tier 2's is now designed and this cell said otherwise**: it is [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212). The **board poller** is still designed in no document in this repo, and tier 2's **join** to a desk is still unowned — its names are protocol agent names, and nothing maps one to a `seat_id` ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)), so an unresolved participant is a first-class rendering here rather than a guessed desk (card#7957) — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 carries the question forward |
+| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times.** The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is still designed in no document in this repo, and the agent-name→`seat_id` **join** to a desk is still unowned — its names are protocol agent names, and nothing maps one to a `seat_id` ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)), so an unresolved participant is a first-class rendering here rather than a guessed desk (card#7957) — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 carries the question forward |
 | **Sound** | There is no audio in this design. A sound is an animation by another sense and would need its own rows in [§ 6.2](#62-the-animation-table--the-closed-set) with the same totality rule; adding one without them would be adding an un-driven cue. If audio is wanted it is a review decision, not an implementer's |
 | **Historical views, charts, trends** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) rules out the warehouse; the product answers *what is happening now*. The drill-down's timeline is a bounded window over retained events, not a history |
 | **Multi-tenant theming, per-user preferences, layout customisation** | Nobody has asked. The one preference honoured is the platform's own `prefers-reduced-motion` ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)), because a state carried only by motion is a state some users cannot read |
@@ -1047,7 +1047,7 @@ Everything in [§ 5.1](#51-the-desk), at full fidelity, plus:
 | counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | **`fetch-fresh`** by construction — `detail` exists only on the fetch ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) and no delta carries it. The reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them, per [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) — never as *now* |
 | the intern list, uncapped | `detail`'s full open-call list | — | [§ 8](#8-interns--subagent-rendering-and-the-cap). **The selection is stated rather than left to the reader:** the intern list is the subset of that list whose `agent_scope == "subagent"` — equivalently, the calls carrying a `parent_call_id` — which is the **intern join** D2 stores those two labels for ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state): *"stored for the intern join and never gate anything"*). What D2 forbids there is a **scope-dependent state rule**; choosing which rows a panel lists is not one, and no pose, currency label or badge reads either field. [§ 14](#14-open-questions-for-the-review-loop) item 1 names this as the reading it took, because *"the open call list in full"* could equally have meant every open call, and the panel that listed every one would call a seat's own `Bash` call an intern |
 | the recent-activity timeline | the timeline endpoint | — | see the rule below |
-| the task reference as a link | `task.ref` | `"card#7338"` | rendered as a link **only** when a base URL is configured for that reference shape (`card#N` and `<repo>#N` are the two shapes [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) declares); with no configured base it renders as plain text. A guessed URL is a link that goes somewhere wrong, which is worse than no link — [§ 14](#14-open-questions-for-the-review-loop) item 3 |
+| the task reference as a link | `task.ref` | `"card#7338"` | rendered as a link **only** when a base URL is configured for that reference shape (`card#N` is the one shape [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) still declares — `<repo>#N` was **tier 2's** and retired with it on card#9234, and the rule is written over *the shape a ref has* rather than over a tier, so a `<repo>#N` ref still links under a configured base and nothing mints one today); with no configured base it renders as plain text. A guessed URL is a link that goes somewhere wrong, which is worse than no link — [§ 14](#14-open-questions-for-the-review-loop) item 3 |
 
 **The timeline renders only fields that provably exist.** [D2 § 8.2](FLEET-STATE.md#82-rest) declares
 the endpoint, its parameters and its ordering, and describes its rows as "the seat's renderable events"
@@ -3997,9 +3997,12 @@ reason to leave two readings live.
    message carrying a full seat object, or a statement that the fetch is the intended path — the second
    is a one-sentence answer and would make this document's rule the contract rather than its workaround.
 
-3. **⇢ Operator / review — where do `card#N` and `<repo>#N` resolve to?**
+3. **⇢ Operator / review — where does `card#N` resolve to?**
    [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) declares
-   `task.ref`'s two shapes and no base URL exists anywhere in this repository. **Blocks:** the
+   `task.ref`'s one remaining shape — `<repo>#N` was tier 2's and retired with it (card#9234), and
+   [§ 5.2](#52-the-drill-down) still links it under a configured base because that rule is written
+   over the shape rather than over the tier — and no base URL exists anywhere in this repository.
+   **Blocks:** the
    *"current task linked to card/thread"* half of `docs/PLAN.md § 2`'s drill-down requirement — the
    title renders, the link does not. **In the meantime:** a configured base URL per shape, and plain
    text when none is configured ([§ 5.2](#52-the-drill-down)); a guessed URL is a link that goes
@@ -4010,14 +4013,16 @@ reason to leave two readings live.
 4. **⇢ Review / operator — the proposal's three-tier status fallback (carrying
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 forward).**
    The proposal is not in this repository and D2 declined to invent its tiers. This document renders
-   whichever tier `task.source` names and does not invent them either. **Blocks:** tiers 1 and 2 of the
+   whichever tier `task.source` names and does not invent them either. **Blocks:** tier 1 of the
    task title — a floor built today shows telemetry-derived titles everywhere, which is *visibly* a
    floor whose board integration is dark rather than one that looks fine ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)).
    **In the meantime:** tier 3 only, with `task.source` rendered so the tier is legible.
    **Closes it:** the proposal's text, plus a ruling on where the **board** producer is designed — the
    GitHub one no longer needs one ([D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), read
-   surface at [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)) — and, for tier 2 to reach a
-   desk at all, the agent-name→`seat_id` declaration card#7957 ruled and no wire field carries yet.
+   surface at [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)), and it no longer feeds a
+   title either, because **tier 2 was retired on card#9234**. The agent-name→`seat_id` declaration
+   card#7957 ruled and no wire field carries yet is now the **thread line's** blocker
+   ([§ 5.7](#57-the-coordination-thread-line)) and no longer a task title's.
 
 5. **⇢ D2 — what happens to an open browser socket when the MFA session expires?**
    [D2 § 9](FLEET-STATE.md#9-read-side-authentication) refuses machine tokens on the socket because "a
