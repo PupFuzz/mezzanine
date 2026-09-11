@@ -16,9 +16,13 @@
         "a floor that fails quietly is indistinguishable from a fleet that has gone home."
 
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
-          · the tiled MAP, the camera, the desks and the elevator — card#9208: D2 publishes no
-            read surface for an authored floor map, and § 10.3 says that path "is deliberately
-            not invented here". § 1.3 corollary 2 forbids guessing one.
+          · the tiled MAP, the camera and the desks — card#9208: the authored floor map is a BUILD
+            ARTIFACT and none is vendored (§ 10.3), so there is no floor screen for a camera to
+            arrive at and `/floor/{install_id}` is still an unbuilt route. § 1.3 corollary 2
+            forbids guessing one.
+          · the elevator's DESTINATION, for the same reason — card#7343 builds the elevator as
+            § 4.1's way between the stacked plates of THIS screen, and a ride moves the cab and
+            nothing else. The plate's own link is still the only thing pointing at that route.
           · every duration / age label — card#9209 published the duration FORMAT (D3 § 2.4, § 12's
             own row) and left the WORDING for § 5.3's two fleet ages open (§ 14 item 17), so a
             string picked here would still be the one nobody ratified; none is drawn.
@@ -45,6 +49,20 @@
         <ul id="lobby-floors" aria-labelledby="lobby-floors-heading">
             <li>waiting for the fleet snapshot</li>
         </ul>
+
+        {{--
+            § 4.1's ELEVATOR — card#7343. The ratified cross-section stacks "one floor plate per
+            install … with an elevator as the way between them", and § 4.5 makes that ride a
+            CAMERA move: it is navigation, it renders no fact, and it takes no § 6.2 row.
+
+            ⛔ THE CONTROL IS REFUSED WHEN THERE IS NOWHERE TO RIDE, and the reason is written
+            beside it rather than left as a dead button. A building with one floor — which is
+            every deployment until a second install is provisioned — has no ride to offer, and a
+            control that still worked would be the surface faking a floor the fleet does not have.
+            `public/js/lobby/building-model.js` decides both; this is where they are shown.
+        --}}
+        <button type="button" id="lobby-elevator">Ride the elevator</button>
+        <ul id="lobby-elevator-notices" role="status" hidden></ul>
 
         {{-- § 4.1 row 4: the disagreement, rendered rather than resolved by picking a winner. --}}
         <p id="lobby-discrepancy" role="status" hidden></p>

@@ -20,11 +20,31 @@
  */
 
 import { lobbyModel, storeUnavailableStatement, DiscrepancyBudget } from './lobby-model.js';
+import { buildingModel } from './building-model.js';
 
 const budget = new DiscrepancyBudget();
 
 /** Whether a floor has ever been rendered — § 9 F4's "on a cold start there is no floor to keep". */
 let holding = false;
+
+/**
+ * THE VIEWER'S OWN CAB POSITION, and it lives here because § 4.5 says navigation is never state:
+ * it is not in the model's snapshot-derived facts, it is never sent anywhere, and no fact on this
+ * page is read out of it. `null` is "the viewer has not ridden yet", which `building-model.js`
+ * resolves to the first plate.
+ */
+let cab = null;
+
+/**
+ * The last snapshot body this page rendered. An elevator ride is a camera move (§ 4.5), so it
+ * re-renders the building from the body already in hand and issues NO request — a ride that
+ * fetched would make navigation a source of load on the read plane, and would make the stack
+ * change under the viewer for a reason that is not the fleet moving.
+ *
+ * ⚠ NOT `body`: `load()` already binds that name to the response it is parsing, and a module
+ * scope and a function scope holding one name for two values is how the wrong one gets rendered.
+ */
+let lastSnapshot = null;
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node ===
@@ -62,7 +82,20 @@ function statement(text, keptLabel) {
     kept.hidden = !keptLabel;
 }
 
-function renderFloors(model) {
+/**
+ * § 4.1's floor list, drawn as the ratified cross-section: one plate per install, stacked, the
+ * plate being the link, with the elevator cab standing at one of them.
+ *
+ * ⛔ ONE RENDERING OF ONE FACT. The plates REPLACE the flat list rather than joining it — § 4.1's
+ * cross-section "is a *rendering* of this table", not a second surface beside it, and two
+ * renderings of one floor's summary on one page is exactly what § 2.4's one-form-per-fact rule
+ * refuses. There is one `#lobby-floors` and the plates are its children.
+ *
+ * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
+ * ruling in the document — see `building-model.js`, which keeps `level` an index into § 4.1's
+ * ascending order and leaves the direction here, where a rendering choice belongs.
+ */
+function renderBuilding(building) {
     const list = el('lobby-floors');
 
     list.textContent = '';
@@ -70,38 +103,75 @@ function renderFloors(model) {
     // § 9 F4's "never an empty office" has a sibling that is not a failure at all: a fleet with
     // no installs provisioned. It is rendered IN WORDS rather than as an empty list, because an
     // empty list and a lobby that failed to draw are the same pixels.
-    if (model.floors.length === 0) {
+    if (building.plates.length === 0) {
         const none = document.createElement('li');
         none.textContent = 'no installs are provisioned — the fleet reports none';
         list.append(none);
-
-        return;
     }
 
-    for (const floor of model.floors) {
+    for (const plate of building.plates) {
         const row = document.createElement('li');
-        // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".
+        // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor" — and the cross-section
+        // changes nothing in that row: "**the plate is the link** exactly as the list row was".
         const link = document.createElement('a');
-        link.href = floor.href;
+        link.href = plate.href;
 
         const name = document.createElement('span');
-        name.textContent = floor.install_id;
+        name.textContent = plate.install_id;
 
         const summary = document.createElement('span');
         // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS,
         // never as a fleet fact. The label is what keeps it from being read as the second.
-        summary.textContent = floor.summary === '' ? 'no seats held' : floor.summary;
+        summary.textContent = plate.summary === '' ? 'no seats held' : plate.summary;
 
         link.append(name, document.createTextNode(' — '), summary);
         row.append(link);
+
+        if (plate.install_id === building.elevator.at) {
+            // § 4.5: "Colour is never the only carrier of a fact" — and while the cab carries no
+            // FACT at all, a viewer who cannot see where the elevator is standing cannot use it.
+            // So the cab is a word, not a highlight.
+            const here = document.createElement('span');
+            here.textContent = ' — the elevator is here';
+            row.append(here);
+        }
+
         list.append(row);
+    }
+
+    const ride = el('lobby-elevator');
+
+    // The destination is named on the control, so a ride is chosen rather than discovered.
+    ride.textContent = building.elevator.next === null
+        ? 'Ride the elevator'
+        : `Ride the elevator to ${building.elevator.next}`;
+    // ⛔ THE DARK CASE IS REFUSED AT THE CONTROL, not only explained beside it. The reason is the
+    // notices below; a control that still invited a click would be a working elevator drawn over
+    // a building that has no second floor.
+    ride.disabled = building.elevator.next === null;
+
+    const notices = el('lobby-elevator-notices');
+
+    notices.textContent = '';
+    notices.hidden = building.elevator.notices.length === 0;
+
+    for (const notice of building.elevator.notices) {
+        const line = document.createElement('li');
+        line.textContent = notice;
+        notices.append(line);
     }
 }
 
 function render(snapshot) {
     const model = lobbyModel(snapshot);
+    const building = buildingModel(snapshot, cab);
 
-    renderFloors(model);
+    lastSnapshot = snapshot;
+    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself
+    // once and the next render is an ordinary one.
+    cab = building.elevator.at;
+
+    renderBuilding(building);
 
     el('lobby-totals').textContent = model.totals;
 
@@ -176,6 +246,32 @@ async function load() {
 // picture, so this is a published element rather than a convenience added here.
 el('lobby-refresh').addEventListener('click', () => {
     load();
+});
+
+/**
+ * § 4.1's elevator, as § 4.5's camera: it moves the cab and re-renders the building from the body
+ * already in hand. No fetch, no route change, no animation — "a camera move animates nothing in
+ * § 6.2's sense: it renders no fact, it has no driving D2 field, and it gets no row in that
+ * table".
+ *
+ * ⚠ Where the ride is SUPPOSED to arrive — § 4.5's camera at `/floor/{install_id}` — is not built
+ * (card#9208), so this ride moves between the plates of this screen and the plate's own link is
+ * still the only way to that route. `building-model.js` says so in full.
+ */
+el('lobby-elevator').addEventListener('click', () => {
+    // ⛔ THE REFUSAL IS RE-ASKED OF THE MODEL RATHER THAN READ OFF THE BUTTON. Before the first
+    // snapshot lands there is no building to ride and the control has not been disabled yet, so
+    // `disabled` is not the only thing standing between a click and a ride to nowhere — and a
+    // ride to nowhere would put the cab on `null`, which resolves to the first plate and reads as
+    // a successful ride the viewer never took.
+    const next = lastSnapshot === null ? null : buildingModel(lastSnapshot, cab).elevator.next;
+
+    if (next === null) {
+        return;
+    }
+
+    cab = next;
+    render(lastSnapshot);
 });
 
 load();

@@ -8,8 +8,9 @@
  * against the real code rather than against a second copy of the logic.
  *
  * stdin  — JSON: `{ "snapshot": <a GET /api/fleet/snapshot body>,
- *                   "observations": [[held, total], …] }`
- * stdout — JSON: `{ "render_states": [...], "model": {...}, "budget": {...} }`
+ *                   "observations": [[held, total], …],
+ *                   "cab": <the stop the viewer last rode to, or absent> }`
+ * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...}, "budget": {...} }`
  *
  * Any throw exits non-zero with the message on stderr: a probe that swallowed one would turn a
  * client that crashes on an unrecognised member into a green test (AT-D3-11's whole subject).
@@ -30,6 +31,7 @@ const url = (file) => pathToFileURL(join(dir, file)).href;
 
 const { RENDER_STATES, isRenderState } = await import(url('render-state.js'));
 const model = await import(url('lobby-model.js'));
+const building = await import(url('building-model.js'));
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -42,5 +44,10 @@ console.log(JSON.stringify({
     // client does not KNOW a value as well as that it does not render it as one.
     membership: Object.fromEntries((payload.membership_probe ?? []).map((v) => [String(v), isRenderState(v)])),
     model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot),
+    // § 4.1's cross-section and its elevator. `cab` is the viewer's own position (§ 4.5:
+    // navigation is never state), so it is an INPUT here and is never read out of the snapshot.
+    building: payload.snapshot === undefined
+        ? null
+        : building.buildingModel(payload.snapshot, payload.cab ?? null),
     budget: { admitted, spent: budget.spent },
 }, null, 2));

@@ -19,6 +19,42 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
+  the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —
+  "one **floor plate per install**, stacked, with an elevator as the way between them" — and the
+  lobby was still rendering it as a flat list, so this PR is that paragraph's CODE and **edits no
+  design document**. New `server/public/js/lobby/building-model.js` decides the stack and the ride;
+  `main.js` draws plates where it drew rows and wires the control.
+  ⭐ **The plates ARE the lobby's own floor rows.** § 4.1: the cross-section "is a *rendering* of
+  this table, and changes nothing in it … No new field is read, no count is recomputed." So
+  `plates()` is `lobby-model.js`'s `floors()` with a stack position added, the whole row is
+  asserted member-for-member against the model's, and the plate keeps the published
+  `/floor/{install_id}` link the row had. Two renderings of one floor's summary on one page is
+  what § 2.4 forbids, so the cross-section REPLACES the list rather than joining it.
+  ⛔ **An elevator with nowhere to go REFUSES THE RIDE AND SAYS SO.** `(level + 1) % stack.length` is
+  arithmetic that always "succeeds": on a one-floor building it returns the floor the cab is
+  already on, and a viewer would watch a working elevator on a building with no second floor. The
+  one-stop and no-stop cases are each rendered as their own sentence with the control disabled —
+  and the modulo ride is PLANTED in the shipped module to prove the refusal is what the check
+  measures. ⚠ **That is not a hypothetical degradation: it is what this server renders today.**
+  No install exists in any deployment (`docs/PLAN.md` P4 — "the live-host leg stays unexercised
+  until a host exists"), so the second floor is exercised by the suite and nowhere else.
+  ⭐ **The second and third floors are REAL INSTALLS through the real ingest**, which is P4's own
+  accept line ("second floor renders from a second install's feed"): the new suite provisions
+  `sola` and `zeta`, folds, and reads the served snapshot back.
+  ⛔ **A cab standing on a floor the building no longer has is never moved quietly** — a floor
+  leaves `installs[]` when its last seat retires (§ 3.5), and the client says where the cab went
+  instead of relocating it in silence, which is § 4.1's own refusal to pick a winner.
+  ⚠ **WHAT IS NOT BUILT, AND WHY.** *Where the ride arrives*: § 4.1 makes an elevator ride § 4.5's
+  camera arriving at `/floor/{install_id}`, and that route does not exist (card#9208 — the floor
+  map is a build artifact and none is vendored; § 14 item 7's tileset is open), so the ride moves
+  the cab between the plates of this screen and the plate's link stays the only thing pointing at
+  the route. *The shared solo floor*: `FLOOR.md § 14 item 6` is an OPEN OPERATOR QUESTION — "is a
+  floor an install, or a PM?" — and its "**In the meantime:**" is "**one floor is one install**",
+  which is what the client already does; D-01's floor-per-PM mapping is a *provisioning* choice about
+  `install_id` that D1 § 3.1 owns. Nothing was built for it, because building it would be
+  answering that question in code.
+
 - **card#7897** — **PART 1 ONLY: the thought bubble is BUILT.** Part 2 (messages moving between
   desks) is untouched — it needs a GitHub-sourced `coord.round` event whose receipt route does not
   exist, and the card says in terms *"Do NOT animate without it"*.
