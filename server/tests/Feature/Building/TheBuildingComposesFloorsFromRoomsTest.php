@@ -25,7 +25,7 @@ use Tests\TestCase;
  */
 class TheBuildingComposesFloorsFromRoomsTest extends TestCase
 {
-    /** @return list<array{name: string, layout: list<array<string, string>>, installs: list<string>, floors: list<array<string, mixed>>}> */
+    /** @return list<array{name: string, layout: list<array<string, mixed>>, installs: list<string>, floors: list<array<string, mixed>>}> */
     public static function cases(): array
     {
         $path = __DIR__.'/../../fixtures/building/compose-cases.json';
@@ -42,16 +42,34 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         $cases = self::cases();
         $names = array_column($cases, 'name');
 
+        // A floors entry is a RECORD since card#9273, so the rooms of a case are its entries'
+        // `rooms` members and no longer the entries themselves.
+        $roomsOf = fn (array $c) => array_merge(...array_map(
+            fn (array $floor) => array_keys($floor['rooms']),
+            $c['layout'] ?: [['rooms' => []]],
+        ));
+
         $this->assertGreaterThan(5, count($cases));
         $this->assertSame($names, array_unique($names), 'two fixture cases share a name');
         $this->assertContains(true, array_map(
-            fn (array $c) => $c['layout'] !== [] && count($c['installs']) > count(array_merge(...array_map('array_keys', $c['layout']))),
+            fn (array $c) => $c['layout'] !== [] && count($c['installs']) > count($roomsOf($c)),
             $cases,
         ), 'no case has an install the layout does not place');
         $this->assertContains(true, array_map(
-            fn (array $c) => count(array_merge(...array_map('array_keys', $c['layout'] ?: [[]]))) > count($c['installs']),
+            fn (array $c) => count($roomsOf($c)) > count($c['installs']),
             $cases,
         ), 'no case has a room the fleet does not report');
+
+        // card#9273: the fixture is the cross-runtime statement of the LABEL too, so it must
+        // carry a labelled case and an unlabelled one — without both, a runtime that dropped
+        // labels entirely and one that invented them everywhere would each walk it clean.
+        $labels = array_merge(...array_map(
+            fn (array $c) => array_column($c['floors'], 'label'),
+            $cases,
+        ));
+
+        $this->assertContains(null, $labels, 'no fixture floor reads as its key');
+        $this->assertNotEmpty(array_filter($labels, 'is_string'), 'no fixture floor carries a label');
     }
 
     public function test_every_fixture_case_composes_to_exactly_the_floors_it_states(): void
@@ -71,7 +89,7 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         // room's `install_id` — which IS the channel, the snapshot grouping and the ACL point —
         // is carried through untouched whether the room is placed or not, and the composed floor
         // is the ONLY thing that differs between the two arms below.
-        $placed = Building::compose(BuildingLayout::parse(['floors' => [['sola' => 'office', 'zeta' => 'office']]]), ['sola', 'zeta']);
+        $placed = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => ['sola' => 'office', 'zeta' => 'office']]]]), ['sola', 'zeta']);
         $unplaced = Building::compose(BuildingLayout::parse(['floors' => []]), ['sola', 'zeta']);
 
         $rooms = fn (array $b) => array_merge(...array_map(
@@ -82,5 +100,32 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         $this->assertSame(['sola', 'zeta'], $rooms($placed));
         $this->assertSame(['sola', 'zeta'], $rooms($unplaced));
         $this->assertNotSame(array_column($placed, 'floor'), array_column($unplaced, 'floor'));
+
+        // And an implicit floor has no entry to carry a label, so it reads as its key (card#9273).
+        $this->assertSame([null, null], array_column($unplaced, 'label'));
+    }
+
+    public function test_a_label_changes_what_a_floor_reads_as_and_nothing_else_about_the_building(): void
+    {
+        // ⭐ THE GUARANTEE AT THE COMPOSER, card#9273: the same installs against two layouts that
+        // differ ONLY in labels compose to the same floors, the same keys and the same rooms. The
+        // reader's own copy of this property (`BuildingLayoutTest`) is about the document; this is
+        // about the BUILDING, which is what the console and the page actually read.
+        $rooms = ['sola' => 'office', 'zeta' => 'office'];
+        $installs = ['sola', 'zeta', 'aimla'];
+
+        $plain = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => $rooms]]]), $installs);
+        $named = Building::compose(
+            BuildingLayout::parse(['floors' => [['label' => 'the solos', 'rooms' => $rooms]]]),
+            $installs,
+        );
+
+        $this->assertSame(array_column($plain, 'floor'), array_column($named, 'floor'));
+        $this->assertSame(array_column($plain, 'rooms'), array_column($named, 'rooms'));
+
+        // The one member that moved — and the implicit `aimla` floor's stayed null, because there
+        // is no layout entry to name it.
+        $this->assertSame([null, null], array_column($plain, 'label'));
+        $this->assertSame([null, 'the solos'], array_column($named, 'label'));
     }
 }

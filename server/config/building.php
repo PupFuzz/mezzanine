@@ -28,16 +28,24 @@
 | the cache — which is the same deploy card#9208's ruling already requires for a map.
 |
 | ─────────────────────────────────────────────────────────────────────────────────────────────
-| THE SHAPE: a LIST of floors, each a mapping of install id => form. Nested mappings of scalars
-| and nothing else, which is the shape a JSON column decodes to — `App\Building\BuildingLayout`
-| takes the DECODED document rather than a path, so card#9071's console could hold this in a
-| column later without the reader changing.
+| THE SHAPE: a LIST of floors, each a RECORD carrying its `rooms` — a mapping of install id =>
+| form — and, optionally, its `label` (card#9273). Nested mappings of scalars and nothing else,
+| which is the shape a JSON column decodes to — `App\Building\BuildingLayout` takes the DECODED
+| document rather than a path, so card#9071's console could hold this in a column later without
+| the reader changing. A member the reader does not know is refused BY NAME rather than read past.
 |
 |   'floors' => [
-|       ['aimla' => 'open'],                       // one room, the whole floor
-|       ['sola' => 'office', 'zeta' => 'office'],  // a hallway of offices — two solo installs
-|       ['mira' => 'open', 'nova' => 'open'],      // two PM+impl rooms sharing one floor
+|       ['rooms' => ['aimla' => 'open']],          // one room, the whole floor
+|       ['label' => 'the solos',                   // a hallway of offices — two solo installs
+|        'rooms' => ['sola' => 'office', 'zeta' => 'office']],
+|       ['rooms' => ['mira' => 'open', 'nova' => 'open']],  // two PM+impl rooms, one floor
 |   ],
+|
+| ⭐ A LABEL IS WHAT A PERSON SEES; THE KEY IS WHAT LINKS POINT AT (card#9273, § 4.6: "yes, I want
+| to be able to name a floor"). Edit a label freely — nothing routes, sorts or matches on it and
+| no link breaks. A floor with no label reads as its key, which is honest and is not a
+| placeholder. The one rule: TWO FLOORS MAY NOT READ THE SAME — the label where given, else the
+| key — and a document where two would is refused here rather than repaired on the screen.
 |
 | ⛔ A FLOOR HAS NO AUTHORED ID. It IS its rooms, and its key — the `{floor}` of § 4.4's route and
 | the lobby's sort — is DERIVED: the lexically least `install_id` among them. Two things follow.

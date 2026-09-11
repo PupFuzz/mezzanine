@@ -47,6 +47,14 @@ let cab = null;
 let lastSnapshot = null;
 
 /**
+ * The last building this page RENDERED — the model the plates and the ride control were drawn
+ * from, kept so the elevator's click can re-ask the model that produced the button rather than
+ * composing a second one. See the click handler: composing a second one is what dropped the
+ * layout.
+ */
+let lastBuilding = null;
+
+/**
  * THE BUILDING LAYOUT, read ONCE from the page — `docs/design/FLOOR.md § 4.6`, card#9267: a room
  * is an install and a floor is an operator-composed set of rooms. The page delivers the validated,
  * normalised floors in `#lobby-layout` and this client fetches nothing for them: the layout is not
@@ -131,7 +139,10 @@ function renderBuilding(building) {
         link.href = plate.href;
 
         const name = document.createElement('span');
-        name.textContent = plate.floor;
+        // § 4.6 (card#9273): the floor reads as its LABEL where the layout gives it one, else as
+        // its key. The link above is the key either way — a label is display text and routes
+        // nothing.
+        name.textContent = plate.name;
 
         const summary = document.createElement('span');
         // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS,
@@ -165,10 +176,12 @@ function renderBuilding(building) {
 
     const ride = el('lobby-elevator');
 
-    // The destination is named on the control, so a ride is chosen rather than discovered.
+    // The destination is named on the control, so a ride is chosen rather than discovered — and
+    // it is named the way the plate is (§ 4.6, card#9273: the label else the key), because a
+    // button offering a key while the plate above it reads a label names two floors for one ride.
     ride.textContent = building.elevator.next === null
         ? 'Ride the elevator'
-        : `Ride the elevator to ${building.elevator.next}`;
+        : `Ride the elevator to ${building.elevator.destination}`;
     // ⛔ THE DARK CASE IS REFUSED AT THE CONTROL, not only explained beside it. The reason is the
     // notices below; a control that still invited a click would be a working elevator drawn over
     // a building that has no second floor.
@@ -191,6 +204,7 @@ function render(snapshot) {
     const building = buildingModel(snapshot, cab, layout);
 
     lastSnapshot = snapshot;
+    lastBuilding = building;
     // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself
     // once and the next render is an ordinary one.
     cab = building.elevator.at;
@@ -287,8 +301,11 @@ el('lobby-elevator').addEventListener('click', () => {
     // snapshot lands there is no building to ride and the control has not been disabled yet, so
     // `disabled` is not the only thing standing between a click and a ride to nowhere — and a
     // ride to nowhere would put the cab on `null`, which resolves to the first plate and reads as
-    // a successful ride the viewer never took.
-    const next = lastSnapshot === null ? null : buildingModel(lastSnapshot, cab).elevator.next;
+    // a successful ride the viewer never took. The model asked is the one this page LAST
+    // RENDERED: the earlier form composed a second building here and dropped `layout` doing it,
+    // so the ride was computed against the default one-floor-per-install building while the
+    // button had been drawn from the composed one.
+    const next = lastBuilding === null ? null : lastBuilding.elevator.next;
 
     if (next === null) {
         return;
