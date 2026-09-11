@@ -29,9 +29,10 @@
 #   CARD-FIRST: cards are the front door. The `dl_number` leg is genuinely empty — no card
 #   carries one and this repo mints no DLs.
 #   ⚠ THE `pr_number` LEG IS NOT EMPTY, and this header's claim that it was is what the whole
-#   preference rested on. Cards ARE stamped with the PR that closed them: 34 of 70 on board 14.
-#   Re-derive rather than trust the figure — `kbcard --board mezzanine list`, count the rows
-#   whose `pr` is non-null. ⚠ Board 14 IS that board, not a lane on it: `--swimlane 14` answers
+#   preference rested on. Cards ARE stamped with the PR that closed them — a large minority of
+#   board 14, and deliberately NO count here: the one this header carried went stale between
+#   two review rounds. Derive it — `kbcard --board mezzanine list`, count the rows whose `pr`
+#   is non-null. ⚠ Board 14 IS that board, not a lane on it: `--swimlane 14` answers
 #   "0 of 70 board cards matched", which reads exactly like the claim being corrected here.
 #   ⚠ NOR DO THE STAMPS CORRELATE TO NOTHING ON `main` — the second false step. That mover takes
 #   its PR set from the TRAILING `(#NNN)` squash marker on the subjects of
@@ -40,8 +41,8 @@
 #   that marker ONTO `main` when the release merges — so a `dev` PR number sits inside a range
 #   computed on `main`, by the ORDINARY flow.
 #   ⛔ AND NO CARD BRANCH HAS EVER MERGED DIRECT TO `main`. An earlier version of this header
-#   said PR #39 had; #39 merged to `dev`. Of every PR this repo has opened, four are based on
-#   `main` and all four are headed `dev` or `release/v<version>`, and R1 in
+#   said PR #39 had; #39 merged to `dev`. Of every PR this repo has opened, every one based on
+#   `main` is headed `dev` or `release/v<version>` (the list below re-derives it), and R1 in
 #   `bin/release-pr-guard.py` refuses a `main`-targeted PR with any other head:
 #     coord-gh mezzanine api --paginate 'repos/PupFuzz/mezzanine/pulls?state=all&per_page=100' \
 #       --jq '.[]|select(.base.ref=="main")|"\(.number) \(.head.ref)"'
@@ -51,7 +52,7 @@
 #   subjects (`v0.1.0..v0.2.0`):
 #     git log v0.1.0..v0.2.0 --no-merges --format=%s | grep -oE '\(#[0-9]+\)[[:space:]]*$'
 #     git log v0.1.0..v0.2.0 --no-merges --format=%s | grep -oiE "$CARD_RE"
-#   23 trailing markers, naming 20 of the 34 stamped cards; 25 distinct card tokens; those 20 are
+#   23 trailing markers, naming 20 stamped cards; 25 distinct card tokens; those 20 are
 #   a STRICT SUBSET of the 25. The five the stamps miss are missed three different ways — a
 #   REBASE-merged PR leaves no marker at all (#27 → card#7913, #28 → card#7912); a MERGE-COMMIT
 #   PR leaves it only on the commit `--no-merges` discards (#39 → card#8174); and one `pr` field
