@@ -20,15 +20,55 @@
 #   `bin/card-token-lint.py`, and the pin on this script's accept-set is
 #   `bin/promote-cards-by-token.selftest.sh`.
 #
-# WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — the card-first correlation gap.
+# WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — ⛔ THE STATED REASON WAS FALSE AND THE
+# CHOICE IS OPEN. `card#9146` holds the live disposition (also PupFuzz/agent-roundtable#444).
+# What follows is what is MEASURED. It is not a defence of this script: do not re-derive one
+# from it, which is the mistake the paragraphs below exist to stop being repeated.
 #   agent-board-toolkit's `promote-released-cards` correlates ONLY on `payload.dl_number` /
-#   `payload.pr_number`. Board 14 is CARD-FIRST: cards are the front door, they carry no
-#   `dl_number`, and this repo mints no DLs — so that mover has NO key to match on here and
-#   its "Released to main" stage would be structurally unreachable. The webhook bridge's own
-#   `merged_to_main` writeback leg is unreachable for the same shape: individual card PRs
-#   squash-merge to `dev`, and the only PR that reaches `main` is the release PR, which names
-#   no cards. The key that DOES exist is the `card#<id>` token already present in the
-#   squash-commit subjects that `dev` carries onto `main`.
+#   `payload.pr_number`, matched against the refs the RELEASED RANGE shipped. Board 14 is
+#   CARD-FIRST: cards are the front door. The `dl_number` leg is genuinely empty — no card
+#   carries one and this repo mints no DLs.
+#   ⚠ THE `pr_number` LEG IS NOT EMPTY, and this header's claim that it was is what the whole
+#   preference rested on. Cards ARE stamped with the PR that closed them — a large minority of
+#   board 14, and deliberately NO count here: the one this header carried went stale between
+#   two review rounds. Derive it — `kbcard --board mezzanine list`, count the rows whose `pr`
+#   is non-null. ⚠ Board 14 IS that board, not a lane on it: `--swimlane 14` answers
+#   "0 of 70 board cards matched", which reads exactly like the claim being corrected here.
+#   ⚠ NOR DO THE STAMPS CORRELATE TO NOTHING ON `main` — the second false step. That mover takes
+#   its PR set from the TRAILING `(#NNN)` squash marker on the subjects of
+#   `git log <base>..<head> --no-merges` (`agent-board-toolkit@0c256c4`
+#   `bin/promote-released-cards`, the shipped-refs derivation), and `dev`'s squash subjects carry
+#   that marker ONTO `main` when the release merges — so a `dev` PR number sits inside a range
+#   computed on `main`, by the ORDINARY flow.
+#   ⛔ AND NO CARD BRANCH HAS EVER MERGED DIRECT TO `main`. An earlier version of this header
+#   said PR #39 had; #39 merged to `dev`. Of every PR this repo has opened, every one based on
+#   `main` is headed `dev` or `release/v<version>` (the list below re-derives it), and R1 in
+#   `bin/release-pr-guard.py` refuses a `main`-targeted PR with any other head:
+#     coord-gh mezzanine api --paginate 'repos/PupFuzz/mezzanine/pulls?state=all&per_page=100' \
+#       --jq '.[]|select(.base.ref=="main")|"\(.number) \(.head.ref)"'
+#   The direct-to-`main` route is not how a card stamp reaches a released range. The ordinary
+#   flow already does it, which is why that route never needed to be invoked.
+#   MEASURED LIKE FOR LIKE on the one released range this repo has, both keys off the SAME
+#   subjects (`v0.1.0..v0.2.0`):
+#     git log v0.1.0..v0.2.0 --no-merges --format=%s | grep -oE '\(#[0-9]+\)[[:space:]]*$'
+#     git log v0.1.0..v0.2.0 --no-merges --format=%s | grep -oiE "$CARD_RE"
+#   23 trailing markers, naming 20 stamped cards; 25 distinct card tokens; those 20 are
+#   a STRICT SUBSET of the 25. The five the stamps miss are missed three different ways — a
+#   REBASE-merged PR leaves no marker at all (#27 → card#7913, #28 → card#7912); a MERGE-COMMIT
+#   PR leaves it only on the commit `--no-merges` discards (#39 → card#8174); and one `pr` field
+#   names ONE PR where several shipped the card (card#7456 is stamped `8`, but #14 is what
+#   carries it in this range) or names none (card#7583, the release card itself).
+#   ⚠ THAT IS ONE RANGE, AND IT IS NOT THE POPULATION THE CHOICE TURNS ON. `card#9146` measures a
+#   different one — the cards awaiting promotion — and orders the two keys the other way. The
+#   figures are not comparable: a STAMP is a property of the CARD, a TOKEN is a property of the
+#   RANGE, so a backlog of cards released before this chain ever worked scores the token key near
+#   zero by construction, which that card's own 403 finding says in as many words. Whoever rules
+#   on this owes ONE population with BOTH keys measured on it. This file does not rule on it.
+#   What this script's key does not depend on, and is the only claim made for it here: a card
+#   being stamped, and a PR having landed as a squash. The `card#<id>` token is in the commit
+#   subjects that `dev` carries onto `main` either way.
+#   (The bridge's own `merged_to_main` writeback leg IS unreachable here, for a reason about
+#   EVENTS rather than subjects: it keys on a PR merged into `main`, which a card PR never is.)
 #
 # CARD-TOKEN GRAMMAR — NOT OWNED HERE. The accept-set is owned by the webhook bridge's
 # `GitHubPrCardMoveClassifier::CARD_TOKEN_PATTERN` (prose: agent-board-framework
