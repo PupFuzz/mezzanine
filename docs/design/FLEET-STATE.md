@@ -898,10 +898,31 @@ three sources: telemetry supplies the live *action*, GitHub and board events sup
 | Tier | Source | Field | Freshness bound | Precedence |
 |---|---|---|---|---|
 | 1 | board card assigned to this seat | `task.title`, `task.ref = "card#NNNN"` | re-read at the board poll cadence; stale past **30 min** | highest |
-| 2 | the seat's most recent coordination/PR activity correlated to it | `task.title`, `task.ref = "<repo>#N"` | stale past **30 min** | middle |
 | 3 | the seat's own telemetry — the newest open dispatch call's `title`, else the current call's `descriptor` | `task.title`, `task.ref = null` | live | lowest |
 
-- `task.source` is always on the wire (`board_card` · `coord_thread` · `telemetry` · `null`), so a
+⛔ **TIER 2 IS RETIRED, AND ITS NUMBER IS RETIRED WITH IT — operator ruling, 2026-09-10 (`card#9234`).**
+Tier 2 was the GitHub-sourced title — *the seat's most recent coordination/PR activity correlated to
+it*, at `task.ref = "<repo>#N"` — and it sat between the two rows above. It is **dropped from this
+design**, and `coord_thread` is no longer a member of `task.source`. **Why:** the same day's ruling
+that a board card's assignee names the agent working on it makes **tier 1** the answer to *what is
+this agent working on*, and **tier 3** is always available underneath — so tier 2 was a narrow
+fallback wedged between two sources that already work, firing only on a seat holding no assigned
+card, and it cost a join (a protocol agent name → `seat_id`) that no document in this repo owns
+(`card#7957`). Nothing was ever built against it: no route, no controller, no test, and no row in any
+store has ever carried the value.
+⛔ **The rows above are NOT renumbered and the number 2 is not reused.** Tier 3 stays tier 3, so
+`StateRecompute::taskTier3()` and every *tier 3* reference in this repository's documents, tests and
+comments goes on meaning exactly what it meant before this ruling. Renumbering would buy a contiguous
+sequence and falsify every one of them at once; a retired number keeps them all true, which is why it
+is retired rather than recycled.
+⚠ **The coordination PRODUCER and its objects are NOT dropped, and an edit that removes them is
+undoing something else.** [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) still designs
+the GitHub coordination receipt, and this document still carries `coord.thread` and `coord.round` at
+[§ 8.3.3](#833-the-coordination-objects) — the thread line, beads, carriers and broadcast are what
+they serve, and [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line) renders them. What this ruling
+removed is the **second consumer** of that one producer, not the producer.
+
+- `task.source` is always on the wire (`board_card` · `telemetry` · `null`), so a
   consumer never has to guess which tier answered — and a floor showing tier 3 everywhere is visibly a
   floor whose board integration is dark, rather than a floor that looks fine.
 - A tier's value past its freshness bound is **dropped, not rendered stale**: the merge falls through to
@@ -910,25 +931,17 @@ three sources: telemetry supplies the live *action*, GitHub and board events sup
 - Tier 3 is always available while the seat is live, so the merge never yields "no title" on a working
   seat.
 
-**What is deliberately not specified here, and why.** ⚠ **Tier 2's producer is no longer undesigned, and
-this paragraph claimed it was for as long as it had been.**
-[D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) designs the GitHub coordination receipt, and
-[D1 § 18.11](EVENT-SCHEMA.md#1811-one-producer-two-consumers) states in terms that the coordination family
-and this tier are **one producer, two consumers**: a round carries `from` and the thread it names carries
-the `subject` that is the title, joined on the thread reference. Tier 1's producer — a kanban poller — is
-still designed in no document in this repo. ⛔ **And the tier-2 JOIN is not established**: that producer
-derives a *protocol agent name*, nothing anywhere owns the mapping from one to a `seat_id`
-([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6, ruled on `card#7957` — the
-seat declares its own name, which no wire field carries yet), and this document mints no fallback for it
-([§ 8.3.3](#833-the-coordination-objects)). So tier 2 populates no seat's `task` until that lands, which is
-a different gap from an undesigned producer and is stated as one. And the proposal's
+**What is deliberately not specified here, and why.** **Tier 1's producer — a kanban board poller — is
+designed in no document in this repo**, and that is the whole of what is now missing: the tier-2
+producer question retired with the tier (above), so the one open producer is the board's. And the
+proposal's
 "three-tier status fallback" is a document this repo does not contain: it is named in
 `docs/PLAN.md § 2` and nowhere reproduced. **This document does not invent its tiers.** Specifying a
 fallback from the phrase alone would put a guessed rule in a contract, and a guessed rule that reads
 plausibly is worse than an absent one. So: the merge above is derived from what this repo states, and
 [§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers and
 for a decision on where the **board** producer is designed. Until that answers, an implementer builds tier 3
-(which needs nothing new) and leaves tiers 1 and 2 as the stated columns they populate.
+(which needs nothing new) and leaves tier 1 as the stated column it populates.
 
 ### 4.10 Retirement is a rendered state
 
@@ -1516,7 +1529,7 @@ CREATE TABLE seat_state (
   model_label        VARCHAR(48) NULL,
   -- TASK (§ 4.9)
   task_title  VARCHAR(120) NULL,
-  task_source ENUM('board_card','coord_thread','telemetry') NULL,
+  task_source ENUM('board_card','telemetry') NULL,   -- tier 2's 'coord_thread' RETIRED (§ 4.9)
   task_ref    VARCHAR(64) NULL,
   task_as_of  DATETIME(3) NULL,
   task_degraded TINYINT(1) NOT NULL DEFAULT 0,   -- a higher tier was dropped past its bound (§ 4.9)
@@ -2312,7 +2325,7 @@ snapshot repeats per seat and the delta patches.
 | `subagents_open` | int | no | ≥ 0, on the same footing as `open_calls` above and for the same reason — same ceiling mechanism, same `SMALLINT UNSIGNED` column, same closed bound of **65,535** | `1` |
 | `task` | object | **yes** | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) | see below |
 | `task.title` | string | no | ≤ 120 B | `"ingest endpoint"` |
-| `task.source` | enum | no | `board_card`·`coord_thread`·`telemetry` | `"board_card"` |
+| `task.source` | enum | no | `board_card`·`telemetry` — tier 2's `coord_thread` is retired ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)) | `"board_card"` |
 | `task.ref` | string | **yes** | ≤ 64 B | `"card#7338"` |
 | `task.as_of` | rfc3339_ms | no | server clock | `"2026-08-23T14:05:00.000Z"` |
 | `task.degraded` | bool | no | `true` when a higher tier's value was **dropped past its freshness bound** and the merge fell through ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). `task.source` says which tier answered; this says whether a better one was discarded, which is a different question | `false` |
@@ -2415,12 +2428,12 @@ insignificant whitespace). Every row below names the block it is measured from, 
 | Object | Bytes | How |
 |---|---|---|
 | seat state, typical | **1,828 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,572 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, worst case | **5,570 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
 | snapshot, 4 seats | **~7.6 KB** typical, **~23 KB** worst | 302 + n × the above |
 | snapshot, 50 seats | **~92 KB** typical, **~279 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,171 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,169 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -2437,7 +2450,10 @@ well as the byte count:
    `activity.last_kind`, 24 B `reporter.version`, 64 B `retired.by`, 255 B `retired.reason`, and 175 B
    of `selftest_failed` names (D1's 256 B cap on `selftest`, eight keys).
 3. **Every enum is at its longest member**, which is why the object reads `catching_up`,
-   `session_closed_turn_open`, `authentication_failed` and `coord_thread`.
+   `session_closed_turn_open`, `authentication_failed` and `board_card`. ⚠ `task.source` reads
+   `board_card` and **not** `coord_thread`, which is not a style change: `coord_thread` was the
+   longest member until [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) retired it
+   with tier 2, so the longest member became `board_card` and every figure below moved 2 B with it.
 4. **Every integer takes its own declared bound, and the JS-safe integer ceiling where it has none** —
    2⁵³−1 (16 digits, 17 with a sign), the same ceiling D1 § 6.0 admits and D1's own verifier uses for
    its worst-case arithmetic. Both halves are load-bearing and an earlier revision stated only the
@@ -2452,8 +2468,8 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,171 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.33×**, with **2,021 B** spare.
+The worst-case delta at 6,169 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.33×**, with **2,023 B** spare.
 
 **No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~92 KB, which
 is one response. Past **200 seats** (~366 KB typical) the snapshot should page by install — stated now
@@ -2655,7 +2671,7 @@ Its members are **edge-triggered**, single digits per seat-day, and no more belo
 the sweeper's own `stale` transition does: 8,980 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,171 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,169 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. Reverb's own configured maximum is read at provisioning
 (**UNVERIFIED** — the host is not built; closure act: read the deployed `config/reverb.php` and record
@@ -2726,7 +2742,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
       {"call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "title": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "subagent_type": "01234567890123456789012345678901", "started_at": "2026-08-23T14:23:09.882Z"}
     ],
     "subagents_open": 65535,
-    "task": {"title": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "source": "coord_thread", "ref": "0123456789012345678901234567890123456789012345678901234567890123", "as_of": "2026-08-23T14:23:09.882Z", "degraded": true},
+    "task": {"title": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "source": "board_card", "ref": "0123456789012345678901234567890123456789012345678901234567890123", "as_of": "2026-08-23T14:23:09.882Z", "degraded": true},
     "context": {"used_pct": 100.0, "used_tokens": 10000000, "total_tokens": 10000000, "source": "computed", "sampled_at": "2026-08-23T14:23:09.882Z", "sampled_received_at": "2026-08-23T14:23:09.882Z"},
     "model_label": "012345678901234567890123456789012345678901234567",
     "session": {"session_id": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567", "started_at": "2026-08-23T14:23:09.882Z", "source": "startup", "project_label": "012345678901234567890123456789012345678901234567", "harness_label": "01234567890123456789012345678901"},
@@ -3831,10 +3847,10 @@ document.
 | Store per seat-day | **~9.7 MB** | **Derived** — 7.6 MB of `events` (10,420 × 732 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~136 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.54 / 1.6 / 6.8 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **1,828 B** typical, **5,572 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Seat-state object | **1,828 B** typical, **5,570 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
 | Fleet snapshot | **7.6 KB** (4 seats) … **92 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
 | Snapshot pagination trigger | 200 seats (~366 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,171 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Delta message | **323 B** typical, **6,169 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
 | Feed message bound | 8 KiB | **Chosen** — 1.33× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -3926,7 +3942,7 @@ review can reverse it deliberately rather than discover it later.
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
 | 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
-| 25 | **The task-title merge is specified here; its producers are not** — ⚠ **half-closed since**: tier 2's producer is [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) and tier 1's is still nobody's ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock |
+| 25 | **The task-title merge is specified here; its producers are not** — ⚠ **narrowed since, twice**: tier 2's producer was designed at [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), and then ⭐ **tier 2 itself was RETIRED by operator ruling, card#9234 (2026-09-10)**, so the only producer this row is still waiting on is **tier 1's board poller** ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock. ⛔ Retiring tier 2 did **not** retire the coordination producer: it removed the second consumer of one producer, and [§ 8.3.3](#833-the-coordination-objects) is the first one, unchanged |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
 | 27 | **The guard asserts the resolved value (`config()`), not the declaration** | assert the `phpunit.xml` contents | All three mechanisms above leave the declaration correct. Reading `getenv()` would have shown `force="true"` "working" in the measurement that disproved it | one extra bootstrap assertion, and a hostile-export run in CI |
 | 28 | **`DB_CONNECTION` is deliberately not forced** | force every DB variable | Forcing a variable a CI matrix exports to select a backend silently re-runs every leg on the wrong backend: green, testing nothing. Nothing in this repo does that today, and the absence is commented as load-bearing so nobody "fixes" it | if a future matrix does select by export, this comment is what stops the next person forcing it |
@@ -3978,19 +3994,20 @@ D1's: they need an operator answer, a proposal document, or D3.
    because seat clock skew must not move a server ceiling. It matches
    [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), so no rule here moves.
 
-3. **⇢ Review / operator — the proposal's three-tier status fallback, the board producer, and the
-   tier-2 join.**
+3. **⇢ Review / operator — the proposal's three-tier status fallback, and the board producer.**
    `docs/PLAN.md § 2` assigns D2 a three-source merge and names a "three-tier status fallback from the
    proposal"; the proposal is not in this repo and this document **does not invent its tiers**
-   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **One third of this item has
-   closed since it was written:** the GitHub producer is designed —
-   [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose § 18.11 makes the tier-2 title
-   and the coordination family one producer — and this document now carries its read surface at
-   [§ 8.3.3](#833-the-coordination-objects). **Blocks:** tier 1 of the task title, which has no
-   producer; and tier 2, which has one and **no join** — its names are protocol agent names and nothing
-   maps one to a `seat_id` (`card#7957`'s (d), not on any wire yet). A floor built today shows
-   telemetry-derived titles only. **Closes it:** the proposal's text, a ruling on where the board
-   producer is designed, and (d) landing on a seat's identity event.
+   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **Two thirds of this item have
+   closed since it was written, by two different acts.** *(a)* The GitHub producer was designed —
+   [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) — and this document carries its read
+   surface at [§ 8.3.3](#833-the-coordination-objects). *(b)* ⭐ **Tier 2 was then RETIRED outright by
+   operator ruling, card#9234 (2026-09-10)**, which took the tier-2 join with it: the join was needed
+   because a GitHub-sourced *title* had to reach a desk, and there is no longer such a title. The
+   agent-name→`seat_id` declaration `card#7957` ruled is still wanted — for the **thread line**, which
+   is [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line)'s and not this merge's — so it is not
+   closed, it has moved off this item. **Blocks:** tier 1 of the task title, which has no producer. A
+   floor built today shows telemetry-derived titles only. **Closes it:** the proposal's text, and a
+   ruling on where the board producer is designed.
 
 4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
    The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was
@@ -4059,9 +4076,9 @@ D1's: they need an operator answer, a proposal document, or D3.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **2,021 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **2,023 B** of
    spare under the 8 KiB bound. Seven more therefore fit and an eighth does not: **the cap could
-   reach 15**, where the worst-case delta is 8,012 B, and at 16 it is 8,275 B, which **breaches**
+   reach 15**, where the worst-case delta is 8,010 B, and at 16 it is 8,273 B, which **breaches**
    the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 

@@ -19,6 +19,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9234** — **Tier 2 of the task-title merge is retired; the coordination producer, its two
+  objects and the thread line are NOT.** Operator ruling, 2026-09-10. Tier 2 was the GitHub-sourced
+  title — *"the seat's most recent coordination/PR activity"*, at `task.ref = "<repo>#N"` — and it
+  fired only on a seat holding no assigned board card. The same day's ruling that a card's assignee
+  names the agent working on it makes **tier 1** that answer, **tier 3** is always underneath, and
+  tier 2 cost a protocol-agent-name→`seat_id` join no document in this repo owns (card#7957).
+  `coord_thread` is gone as a value of `task.source`: out of `FLEET-STATE.md` § 4.9's tier table,
+  its § 6.4 DDL and its § 8.2.1 member table, out of `EVENT-SCHEMA.md` § 18.11 — which stood on
+  *"one producer, two consumers"* and now stands on the coordination family alone — and out of
+  `FLOOR.md`'s producer row and its § 14 items.
+  ⛔ **What stayed, because this removed the SECOND CONSUMER of one producer and not the producer:**
+  D1 § 18 entire, `coord.thread` / `coord.round` as objects (D2 § 8.3.3), D3 § 5.7's thread line,
+  beads, carriers, broadcast and `public/js/coord/`. An edit that removes those is undoing PR #88.
+  ⛔ **The number 2 is RETIRED, not renumbered.** Tier 3 stays tier 3, so `StateRecompute::taskTier3()`
+  and every *tier 3* reference in this repository's documents, tests and comments goes on meaning what
+  it meant; renumbering would have bought a contiguous sequence and falsified all of them at once.
+  The store narrows in **its own migration** (`2026_09_11_000000_narrow_seat_state_task_source_enum`)
+  rather than by an edit to the one that minted the column, because that one shipped in v0.2.0 and
+  v0.3.0: editing a shipped migration changes only what a FRESH database gets, and every migrated
+  store would keep the three-member ENUM with nothing red. No row can hold `coord_thread` — tier 2
+  was never built, and `StateRecompute` has only ever written `telemetry` or `null` — so the
+  narrowing carries no data migration, which was checked rather than assumed.
+  ⚠ **No design verifier reds on a HALF-done removal, and that was watched rather than trusted**:
+  `coord_thread` restored in the § 6.4 ENUM, in § 8.2.1's member table, or as a whole tier-2 row in
+  § 4.9 leaves all three of `tools/design/verify-*.py` green, while a fabricated member in the same
+  ENUM position reds `verify-fleet-state.py` G1 on the same run. The mechanism is that G1 excuses any
+  member D1 also names, and D1 names `coord_thread` — as the coordination OBJECT. The object and the
+  retired task-source value share a spelling, so the one gate that would have caught a resurrected
+  member is blind to this member by construction. Nothing can mint the value today, so this is a
+  guard gap and not a live defect; no new gate is built here.
+
 - **card#7342** — **The desk drill-down panel, and subagents rendered as interns.** New
   `public/js/drilldown/` — a pure model (`drilldown-model.js`) carrying every rendering decision
   and a thin DOM half that makes none, on the split `public/js/lobby` and `public/js/coord`

@@ -172,8 +172,10 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertSame('https://board.example/task/7338',
             $probe['main']['dom']['[data-panel-task-ref]']['attributes']['href']);
 
-        // Both of D2 § 4.9's shapes resolve; a ref of any OTHER shape gets no link at all rather
-        // than being forced into the nearer of the two.
+        // Both shapes D3 § 5.2's rule admits resolve — `card#N`, which is D2 § 4.9's tier 1, and
+        // `<repo>#N`, which was tier 2's and outlived the tier's retirement (card#9234) because
+        // that rule is written over the shape rather than over the tier. A ref of any OTHER shape
+        // gets no link at all rather than being forced into the nearer of the two.
         $this->assertSame([
             'https://board.example/task/7338',
             'https://example.test/PupFuzz/mezzanine/issues/88',
