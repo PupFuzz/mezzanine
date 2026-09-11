@@ -19,6 +19,42 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9267** — **THE ROOM MODEL: a room is an install, a floor is an operator-composed set of
+  rooms.** Operator ruling of 2026-09-11, which closes `FLOOR.md § 14` item 6 (*"is a floor an
+  install, or a PM?"*) — the answer was that the question conflated the COORDINATION unit with the
+  DISPLAY unit. `install_id` is the first and **does not move**: D1's seat config, D2's
+  `private-fleet.{install_id}`, its snapshot grouping and its ACL attachment point are all per
+  install and **neither D1, D2 nor D4 is edited by this PR**. The floor is the second, and it is
+  now composed. New `FLOOR.md § 4.6` owns the layout; `§ 3.1` carries both keys; `§ 3.2`, `§ 4.1`,
+  `§ 4.4`, `§ 5.7` and `§ 2.1` move the word *floor* to *room* where leaving it would have been
+  false; `§ 13` row 24 records the three mechanisms with what each was taken over.
+  ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — floor id =>
+  (install id => `open`|`office`) — read through `App\Building\BuildingLayout`, which takes the
+  DECODED document and never a path, so card#9071's console can hold the same shape in a column
+  without the reader changing. It is a deploy-time file because the building's OTHER authored
+  artifact, the floor map, already is one by operator ruling (card#9208: *"a floor edit is a
+  redeploy"*), and one building with two change paths is a building nobody can say they are
+  looking at.
+  ⛔ **A FLOOR IS NAMED BY ONE OF ITS OWN ROOMS, and the constraint buys a defect class.** A
+  free-form floor id would share `/floor/{…}`'s namespace with an install provisioned *after* the
+  layout was written, a collision no check could catch at authoring time. Anchored, it is
+  unreachable — and every `/floor/{install_id}` link ever published still resolves, because it
+  either names a floor or names a room on one.
+  ⛔ **NOTHING FALLS OFF THE BUILDING, IN EITHER DIRECTION.** An install the layout does not place
+  gets a floor of its own, alone, `open` — so the layout is a departure from a default rather than
+  an enumeration anything depends on being complete, and provisioning an install renders it with
+  no deploy. A room the fleet reports no seat for is drawn and labelled, never omitted — so a
+  floor is never silently narrower than the operator authored it. Both are `§ 0` item 6's *nothing
+  is happening* render refused at building scale, and both are asserted with a discriminating
+  control.
+  ⚠ **DESIGNED, NOT BUILT: the line between rooms** (card#9268). On one floor it is already
+  `§ 5.7`'s line; across floors the form is a **call marker at each end that resolves**, with the
+  line as its co-located case. `§ 6.2` gets no row and may not: the object that would drive it is
+  on no wire. The lobby-draws-it alternative is priced and rejected at `§ 4.6`.
+  ⚠ **The console's floors module now shows which floor each room is on** and stops saying *a
+  floor is an install*, which the ruling made false. Its population gains the rooms the layout
+  places, so a composed room the fleet reports nothing for has a row instead of vanishing.
+
 - **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
   the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —
   "one **floor plate per install**, stacked, with an elevator as the way between them" — and the

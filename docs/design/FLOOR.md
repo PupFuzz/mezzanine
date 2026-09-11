@@ -107,7 +107,8 @@ it, and what it must never draw.
 | Owned here | Section |
 |---|---|
 | The client protocol as the browser runs it, and the closed list of client-computed values | [§ 2](#2-the-client-end-to-end) |
-| Identity: seat → desk, install → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--floor) |
+| Identity: seat → desk, install → room, rooms → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--floor) |
+| The building layout: which rooms are on which floor, each room's form, and what a room outside it renders as | [§ 4.6](#46-the-building-layout) |
 | The three screens — lobby, floor, drill-down — and what each fetches | [§ 4](#4-the-screens) |
 | The render map: every rendered fact, its D2 field and its example value; **the null render for every one of [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s 37 nullable members, in one table** ([§ 5.6](#56-the-null-render-for-every-nullable-member)); the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)); and the **coordination thread line** ([§ 5.7](#57-the-coordination-thread-line)) — [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, the only render on this page drawn between desks rather than at one, carrying its own null column because § 5.6's population is § 8.2.1's and is closed against it both ways | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
 | The honesty principle and the closed animation table | [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
@@ -173,8 +174,8 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | 2 | **Durations** — **a kind of computation, not a list of instances**: any D2 timestamp subtracted from the corrected clock and rendered through [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format. Three of that section's four wordings are of this kind (*nothing done for 4m 12s*, *no data for 11m*, *running for 2m 05s*) and so are every other age this document renders — [§ 5.3](#53-the-fleet-on-both-screens)'s sweep and ingest-recency ages, the context sample's own age, the timeline row's age. ⚠ This cell read **three** until card#9209, which is a **closed list of instances** where the row means a kind, and it was already false of § 5.3's two. What is genuinely not of this kind is § 2.4's fourth row, *this state is 1m 57s behind*: `derivation.fold_lag_ms` (**`named-not-rendered`** — this row names the member and draws nothing from it; [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns its render) is a duration **D2 computes at read time and sends**, and formatting a delivered number into a string is not computing one. Nor is a currency label's parenthetical, which carries a labelled seat-clock timestamp rather than a duration, nor the fleet banner's `fleet.max_fold_lag_ms` | a D2 timestamp subtracted from the corrected clock | The timestamps are the wire's; the subtraction is a rendering of them, and D2 states which basis each age takes ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)) |
 | 3 | **Desk slot** | `(install_id, seat_id)` and the map's slot count ([§ 3.2](#32-the-desk-slot-function)) | A layout function of identity. It reads no state field, so it cannot change when a seat's state does |
 | 4 | **Animation selection** and its reduced-motion form | `render_state`, the delta's `changed[]`, and [§ 6.2](#62-the-animation-table--the-closed-set) | A pure function of a delivered field and a published table |
-| 5 | **Per-floor counts** | the seat objects the client already holds for that install | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
-| 6 | **Sort orders** | floors by `install_id` ascending; desks by slot; timeline as served | Deterministic ordering of received objects |
+| 5 | **Per-floor counts** | the seat objects the client already holds for every install the floor's rooms name ([§ 4.6](#46-the-building-layout)) | The wire has no per-install count ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)'s counts are fleet-wide), so this is the only place it can come from. It is labelled as a count of the seats the client holds, and [§ 4.1](#41-the-lobby--the-building-summary) requires the client to **render the disagreement** rather than pick a winner when the floors do not sum to `fleet.seats_total` |
+| 6 | **Sort orders** | floors by floor id ascending, and a floor's rooms by `install_id` ascending ([§ 4.6](#46-the-building-layout)); desks by slot; timeline as served | Deterministic ordering of received objects |
 | 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the client's event log, the *membership as of* stamp, the overflow determination, [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup, and the **wall clock's reading and the sky phase** — the viewer's own clock, sampled only where [§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 4 says it is, and never on a timer | the client's own connection state, its own request outcomes, the seat set it holds, and the **viewer's own clock** ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
 
 **Forbidden, named because each is a computation an implementer would otherwise reach for:** deriving
@@ -573,8 +574,26 @@ would let a live desk carry the receipt age honestly.
 | Rendered thing | Key | Source | Stability |
 |---|---|---|---|
 | **desk** | `(install_id, seat_id)` | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object), which carries both on every seat object and every delta, bounded at 32 B and 48 B | D1's identity-stability rule: both are **config-file resident** and "survive session restarts, `/clear`, reboots, host renames, and harness upgrades" ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)). They change only when a human edits the file, which is a deliberate re-identification of the desk |
-| **floor** | `install_id` | the snapshot's `installs[].install_id`, and the channel name `private-fleet.{install_id}` ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) | same file, same rule |
+| **room** | `install_id` | the snapshot's `installs[].install_id`, and the channel name `private-fleet.{install_id}` ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) | same file, same rule |
+| **floor** | the floor id the **building layout** declares ([§ 4.6](#46-the-building-layout)) | the layout, which is authored by the operator and read by nobody on the write side. A floor id is always the `install_id` of one of the floor's own rooms, so it is stable in exactly the way the row above is | the layout is a deploy-time artifact; a floor changes when an operator composes one, which is a deliberate act with a diff behind it |
 | **character identity** (which sprite a seat gets) | `(install_id, seat_id)` | the procedural generator, seeded from the key ([§ 10.2](#102-characters-the-munder-difflin-port)) | a seat looks the same on every reload and on every browser, because the seed is the identity and not a random draw |
+
+⭐ **A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS — operator ruling, 2026-09-11
+(card#9267), which closed [§ 14](#14-open-questions-for-the-review-loop) item 6 and is the reason this
+table has two rows where it had one.** The **coordination** unit — who shares a PM, a channel and an
+ACL attachment point — is `install_id` and did not move; the **display** unit — what is drawn on one
+screen — is the floor. Until that ruling both were `install_id`, which is why one solo agent was
+forced to be a whole floor. [§ 4.6](#46-the-building-layout) owns the layout that composes them, and
+everything D1 and D2 key on `install_id` is untouched by it.
+
+⚠ **Where the rest of this document says *floor* of a thing keyed by `install_id` — a map file, a
+channel, a slot set, the reach of a round — it means the ROOM, and this table is the one place the
+two are told apart.** The sections where the word does load-bearing work were amended with the
+ruling ([§ 2.1](#21-the-seven-client-computed-values-closed), [§ 3.2](#32-the-desk-slot-function),
+[§ 4.1](#41-the-lobby--the-building-summary), [§ 4.4](#44-routes-and-what-each-one-fetches),
+[§ 5.7](#57-the-coordination-thread-line), [§ 10.3](#103-the-floor-map)); the remaining occurrences
+are prose that reads correctly under either word, and a sweep of them is a follow-up rather than a
+silent one.
 
 **What may never key a desk**, each named because it is a plausible mistake: `session_id` (it changes
 on every `/clear` — D1 § 3.2), the harness or model label, the reporter version, the seat's position in
@@ -584,16 +603,24 @@ them re-identifies itself under the ordinary operation of the seat it draws.
 
 ### 3.2 The desk slot function
 
-A floor's map declares its desk slots. The client assigns seats to slots by a **pure function of the
-rendered seat set**, so two browsers, two reloads and two server restarts agree without a stored
-position and without a server field.
+A **room's** map declares its desk slots, and the slot function runs **per room**. The client assigns
+seats to slots by a **pure function of the rendered seat set**, so two browsers, two reloads and two
+server restarts agree without a stored position and without a server field.
+
+⚠ **This section said *floor* until card#9267's ruling, and the word had to move rather than be left
+to read loosely.** A floor is now N rooms ([§ 4.6](#46-the-building-layout)), so *the floor's seats*
+would pool two installs' seats into one slot set — and then composing a second room onto a floor
+would re-hash every desk in the first, which is the precise cost this section rejects sorted order
+for two paragraphs below. Per room, a seat's slot is a function of `(install_id, seat_id)` and that
+room's own `S`, so **rearranging the building moves no desk inside any room.** A floor is its rooms'
+slot sets drawn on one screen; the function is layout-agnostic and does not know which.
 
 ```
   h(seat)  = FNV-1a-32( install_id + "/" + seat_id )      # offset basis 2166136261, prime 16777619,
                                                           # over the UTF-8 bytes; both ids are ASCII
                                                           # by D1 § 3.1's slug patterns
-  S        = the number of slots the floor's map declares
-  order    = the floor's seats ascending by (h, seat_id)   # total: seat_id is unique within an install
+  S        = the number of slots the ROOM's map declares
+  order    = the room's seats ascending by (h, seat_id)    # total: seat_id is unique within an install
   for seat in order:
       for i in 0 … S-1:
           if slot ((h + i) mod S) is free -> take it, stop
@@ -619,7 +646,7 @@ disagree and a reload moves the furniture. A server-assigned position would be a
 [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) forbids this document
 from minting.
 
-**Overflow: a seat is never dropped.** If the floor's seat count exceeds `S`, the seats with no slot
+**Overflow: a seat is never dropped.** If the room's seat count exceeds `S`, the seats with no slot
 are rendered in an explicitly labelled **overflow row** below the floor — same desk, same render, same
 drill-down — and the floor shows a persistent notice reading *floor map is short N desks*. A silent
 drop would be a seat that exists and is invisible, which is the same lie as an empty office and is
@@ -732,14 +759,23 @@ route of its own, because closing it must not cost a re-subscribe.
 
 | Element | Source | Rendered as |
 |---|---|---|
-| floor list | `installs[].install_id` from the snapshot, ascending | one row per floor, the row being the link to the floor |
-| per-floor state summary | the seat objects the client holds for that install ([§ 2.1](#21-the-seven-client-computed-values-closed) row 5) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
+| floor list | the **building layout** ([§ 4.6](#46-the-building-layout)) composed against `installs[].install_id` from the snapshot: every floor the layout declares, plus one floor per install the layout does not place, floor ids ascending | one row per floor, the row being the link to the floor. A floor of more than one room names its rooms on the row, so a viewer can see which installs a plate holds without riding to it |
+| per-floor state summary | the seat objects the client holds for **every install the floor's rooms name** ([§ 2.1](#21-the-seven-client-computed-values-closed) row 5); a room the fleet reports no seat for contributes none and is named as such ([§ 4.6](#46-the-building-layout)) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
 | fleet totals | `fleet.seats_total`, `fleet.seats_live` | *4 seats · 4 live*, read from the wire and **never recounted** |
 | the discrepancy check | the two above | when `Σ floors ≠ fleet.seats_total` the lobby renders the disagreement — *the client holds N of M seats — refreshing* when N < M, and *the client holds N seats; the fleet reports M — refreshing* when N > M, which is reachable: a client that **missed the `seat.retired` announcement** — it was disconnected when the act ran, or the message was lost — still holds a desk that [§ 3.5](#35-retirement-and-the-only-removal) has already taken off every connected floor and that `seats_total` has already stopped counting. It triggers **one snapshot fetch per distinct (N, M) observation**: a disagreement still standing after that fetch is rendered and **not** re-fetched, so a discrepancy the snapshot cannot resolve costs one request rather than one every 15 s. It never silently picks a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)), and it is how a new install is **discovered** — every install that fetch discovers is then **admitted** by [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`, whose own fetch is **not** counted against the per-`(N, M)` budget above, because that budget exists to bound a *disagreement* and ADMIT is bounded by the install set instead ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [decision 9](#13-decisions-taken-revisable-at-review)) |
 | membership age | the time of the last full snapshot | *membership as of 14:23:14* ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
 | store / derivation / sweep | `fleet.db`, `fleet.fold`, `fleet.sweep`, `fleet.max_fold_lag_ms`, `fleet.sweep_last_run_at`, `fleet.ingest_last_receipt_at` | three separate indicators, never one aggregate — [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object): "no aggregate rolls three health facts into one… D3 may compose a banner from these three; the wire keeps them apart" |
 | feed status | the client's own connection state ([§ 9](#9-failure-paths-and-their-observables)) | *live* · *polling (feed down)* · *reconnecting* · *reload required*, with the resync count beside it |
 | the event log | the client's own record ([§ 5.5](#55-the-clients-own-narration)), newest first, capped at 200 lines | text only. **The lobby is a renderer of that record and not its home** — § 5.5 owns what the record is and what goes into it; what this row states is that the lobby is where it is read, so a desk that moved, appeared or vanished has a written cause somebody can find |
+
+⭐ **THE STACK IS THE LAYOUT'S, NOT `installs[]`' — card#9267.** The lobby stacked one plate per
+install because a floor *was* an install; under the room model it stacks the floors
+[§ 4.6](#46-the-building-layout) composes, and an install the layout does not place still gets a
+floor of its own, so **the building has a plate for every install either way and can never have a
+hole where a room is.** What did not change is everything below: the summary is still counted over
+seats the client already holds, the fleet totals are still read from the wire and never recounted,
+the discrepancy check still compares the two, and the plate is still the link. The layout adds a
+**composition**, not a source of counts.
 
 **The ratified building cross-section is a *rendering* of this table, and changes nothing in it.**
 [§ 10.4](#104-the-art-direction-as-a-specification)'s reference draws the lobby as a building seen in
@@ -854,8 +890,17 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | Route | Fetches on entry | Subscribes |
 |---|---|---|
 | `/` (lobby) | `GET /api/fleet/snapshot` | **`ADMIT`** ([§ 2.2](#22-connect-snapshot-deltas)) for every install in the snapshot not already admitted — never a bare subscribe, because a subscribe with no re-fetch behind it leaves the install's own admission window open |
-| `/floor/{install_id}` | nothing new — the snapshot already holds it | as above; the floor renders one install's seats from the same map |
-| `/floor/{install_id}/{seat_id}` (drill-down open) | the seat detail and the timeline | unchanged |
+| `/floor/{floor}` | nothing new — the snapshot already holds it | as above; the floor renders the seats of **every install its rooms name** ([§ 4.6](#46-the-building-layout)), each room's seats from that room's own map |
+| `/floor/{install_id}` where `{install_id}` names a room that is **not** its floor's id | nothing | **redirects to `/floor/{floor}`** — the floor that holds the room |
+| `/floor/{floor}/{seat_id}` (drill-down open) | the seat detail and the timeline | unchanged |
+
+⭐ **The parameter's SHAPE did not change and its MEANING did — card#9267.** Every floor id is the
+`install_id` of one of that floor's own rooms ([§ 4.6](#46-the-building-layout)), so every
+`/floor/{install_id}` link ever published still resolves: it either names a floor or names a room on
+one, and the second case redirects to the first. **No link dies when the operator composes a floor**,
+which is the property that made the anchored floor id worth its constraint. ⛔ The seat segment is
+still `seat_id` and is still read against the room's `install_id` — a desk's key is
+[§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s pair and the floor is not part of it.
 
 Deep-linking to a floor or a desk on a cold start runs the whole of
 [§ 2.2](#22-connect-snapshot-deltas) first — the snapshot is the client's only complete population, and
@@ -899,6 +944,168 @@ desks it had not asked about.
   hue is a state some viewers cannot read. **A seat's own hue is not a fact at all** — it is seeded
   appearance ([§ 10.4](#104-the-art-direction-as-a-specification)), and nothing on the page may read
   a state out of it.
+
+### 4.6 The building layout
+
+**A room is an install; a floor is an operator-composed set of rooms.** ⭐ **Operator ruling,
+2026-09-11, card#9267**, which closes [§ 14](#14-open-questions-for-the-review-loop) item 6. The
+operator's own words: *"If instead of a floor being the container, we think of a room within a floor
+as a container. Then it would be possible to subdivide a floor into N rooms, where a floor may be a
+single room, or could be 1 large room (PM+impl agent) and n small offices (each holding a solo
+agent), or even a floor subdivided into two rooms, each containing a PM+impl agents."*
+
+**Nothing upstream moves, and that is what makes the ruling cheap.** `install_id` is still the
+coordination unit — [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s seat config,
+[D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)'s `private-fleet.{install_id}`, the snapshot's
+grouping and [D2 § 9](FLEET-STATE.md#9-read-side-authentication)'s ACL attachment point are all per
+install, which is now per **room**, and not one of them is amended by this section. What the ruling
+moved is the **display** unit, which is this document's to move.
+
+**The cost [§ 14](#14-open-questions-for-the-review-loop) item 6 priced is already paid.** That item
+refused the composed floor partly because one floor would need two channels — and the client already
+holds a channel per install it knows of ([§ 2.2](#22-connect-snapshot-deltas) steps 2 and 6,
+[§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 3). A floor of N rooms
+subscribes to nothing a single-room building did not already subscribe to; it draws N already-held
+seat sets on one screen.
+
+⛔ **THE LAYOUT SUBSCRIBES TO NOTHING, FETCHES NOTHING AND NAMES NO SEAT.** `ADMIT`'s population is
+the **snapshot's** ([§ 2.2](#22-connect-snapshot-deltas)) and never the layout's: a client that
+opened `private-fleet.{install_id}` because a layout named a room would be asking for an install
+that may not exist, on an authorization surface that owes it an answer. The layout decides **where a
+room is drawn** and contributes no count, no state, no membership and no message.
+
+**The artifact.** One document, authored by the operator, read by the lobby, the elevator and the
+floor route.
+
+| Member | What it is | The rule, refused at load when broken |
+|---|---|---|
+| the floor id | the key of one floor, and the `{floor}` of [§ 4.4](#44-routes-and-what-each-one-fetches)'s route | it **must be the `install_id` of one of that floor's own rooms** — the *anchor* rule below. Unique by construction, because a room is on one floor |
+| a floor's rooms | the `install_id` of each room on that floor, each with its form | non-empty; an `install_id` appears on **at most one floor** — a room is in one place, and a room named twice is a refusal rather than a precedence question |
+| a room's **form** | `open` or `office` — the closed set, and the whole of it | any other value is **refused by name and never mapped to the nearest one**. The form is what [§ 10.3](#103-the-floor-map)'s map selection reads once an office map exists; it declares what the room is **for**, and an authored map is what the room **looks like** |
+
+**⛔ A floor is named by one of its own rooms, and the constraint buys an entire defect class.** The
+obvious alternative is a free-form floor id the operator invents — *the solos*, *3* — and it was
+rejected for one reason: floor ids and `install_id`s would then share
+[§ 4.4](#44-routes-and-what-each-one-fetches)'s one route namespace with **no check able to keep them
+apart**, because the colliding install is provisioned after the layout was written. Under the anchor
+rule that collision is unreachable: every floor id is an `install_id` the layout itself places, so an
+install the layout does **not** place can never collide with one. It also means every
+`/floor/{install_id}` link ever published still resolves
+([§ 4.4](#44-routes-and-what-each-one-fetches)). What it costs is the operator's freedom to name a
+floor after what happens on it, which is a label rather than a key — and a label has
+[§ 4.1](#41-the-lobby--the-building-summary)'s row to live on.
+
+**⛔ AN INSTALL THE LAYOUT DOES NOT PLACE IS DRAWN ON A FLOOR OF ITS OWN, ALONE, IN THE `open`
+FORM.** This is the rule that makes the layout a **departure from a default** rather than an
+enumeration anything depends on being complete, and three properties follow from it: the default
+building is exactly the building this document described before the ruling, one floor per install;
+provisioning an install renders it **without a deploy**; and a floor can never have a hole where a
+room should be, which is the *nothing is happening* render this whole document exists to refuse
+([§ 0](#0-overview) item 6). An empty layout is therefore a legal and meaningful document — it is
+today's building. The form is `open` because subdividing a room is an operator act and no operator
+acted on this one.
+
+**⚠ A ROOM THE FLEET REPORTS NO SEAT FOR IS DRAWN AND LABELLED, NEVER OMITTED.** A floor draws the
+rooms its layout declares. A room whose `install_id` is in no `installs[]` entry the client holds
+renders in its place on the floor under ***no seats reported for this room*** — the wording is the
+client's own ([§ 5.5](#55-the-clients-own-narration)) and is deliberately about **seats** rather
+than about the install: the snapshot groups seats by install, so a client cannot tell an install
+with no seats from an install that does not exist, and a label claiming the second would be a claim
+the wire never made. Omitting the room instead would make the floor silently narrower than the
+operator authored it, and the operator would then be debugging a room that renders as nothing —
+which is the same defect one level out from a desk's.
+
+**Where it lives: a deploy-time document beside the code, not a runtime store, and the argument is
+[§ 10.3](#103-the-floor-map)'s rather than a preference.** The building's *other* authored
+artifact — the floor map — is already a build artifact by operator ruling (card#9208): *"a floor edit
+is a redeploy"*, accepted explicitly, with no path by which a running client picks up a new one. A
+layout in a runtime store would give one building two change paths — rearranging the rooms taking
+effect on a save while the rooms themselves take effect on a deploy — and the first question anyone
+would ask of a floor that looked wrong is which of the two they were looking at. A deploy-time
+document also gets the thing composing two PMs onto one floor deserves and a console save does not:
+a diff, a review and a revert.
+
+**⛔ It is NOT in any seat's configuration, and that is the operator's own constraint rather than an
+inference:** a seat must not know its floor, or the building could not be rearranged without touching
+every agent's machine. `install_id` stays [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s and
+gains no sibling. **Nor is it under the asset root** ([§ 10.1](#101-the-manifest-and-the-two-gates)):
+the layout is not art, and a non-asset parked there either escapes Gate 1 on a suffix accident or
+fails it for the wrong reason.
+
+**⭐ The SHAPE is the contract; the store is the caller's.** The document is nested mappings of
+scalars and nothing else — the shape a JSON column decodes to — and whatever reads it takes **the
+decoded document, never a path**. That is the whole of what lets card#9071's admin console absorb
+the layout later without the reader changing, and it is why this section does **not** answer
+card#9071's open question (*may the console author what D3 derives*): it makes the answer free
+either way rather than pre-empting it.
+
+**What reads it, and what each one does with it.**
+
+| Reader | Reads | Owns |
+|---|---|---|
+| the lobby | the composed floors, floor ids ascending | [§ 4.1](#41-the-lobby--the-building-summary)'s plate per floor, its summary over that floor's rooms' seats, and the room names on the row |
+| the elevator | the same composed stack | [§ 4.1](#41-the-lobby--the-building-summary)'s ride between plates — still navigation, still no [§ 6.2](#62-the-animation-table--the-closed-set) row ([§ 4.5](#45-the-viewport-rule-and-the-capability-floor)) |
+| the floor route | one floor, and the rooms on it | [§ 4.4](#44-routes-and-what-each-one-fetches)'s `/floor/{floor}`, and the redirect from a room that is not its floor's id |
+| the slot function | **nothing** | [§ 3.2](#32-the-desk-slot-function) runs per room against that room's own `S`, so no desk moves when the building is rearranged |
+
+⚠ **That table is this document's surfaces and is not a claim about the deployment.** card#9085's
+admin console reads the layout too — to show an operator which floor each room they are authoring a
+map for sits on — and that is not a D3 surface; it is the same document read by the one page that
+already manages rooms.
+
+⚠ **WHAT IS BUILT TODAY, DECLARED RATHER THAN LEFT TO BE DISCOVERED.** The layout, its reader and
+the composition above are built and the shipped document is **empty** — which by the rule two
+paragraphs up is *one floor per install*, exactly the building the client already draws, so the
+lobby and the elevator are correct for every layout this deployment currently has. What is **not**
+built is the client half: the lobby still stacks `installs[]` directly rather than the composed
+floors, and [§ 4.4](#44-routes-and-what-each-one-fetches)'s floor route does not exist at all
+(card#9208 — no floor map of any kind is vendored). So a layout that actually composed a floor
+would be authored and not yet drawn, which is stated here because *the config file is in the tree*
+is exactly the evidence a reader would otherwise take for *the building is composed*.
+
+**How it reaches the browser: the COMPOSED building, with the page, not from an endpoint.** The page
+delivers the floors already composed rather than the raw layout — and that is load-bearing rather
+than an implementation note: **it is why [§ 2.1](#21-the-seven-client-computed-values-closed)'s
+closed list is untouched by this section.** A client handed the layout would be computing a grouping
+of installs into floors, which is an eighth client-computed value and would have to be admitted to
+that list; a client handed the floors sorts and counts them exactly as it already does (rows 5 and
+6) and composes nothing.
+[§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) forbids this
+document minting a server surface, and the fleet read plane is the wrong place besides — the layout
+is not fleet state, and putting it there would make an operator's authored document look like
+something the fleet reported. The cost is stated rather than discovered: **a page loaded before the
+building was rearranged draws the old building until it is reloaded**, which is the same
+deploy-shaped staleness [§ 10.3](#103-the-floor-map) already accepted for the map, and it is not a
+thing a client can be silently wrong about — the floor a viewer is standing on keeps its identity
+and its desks.
+
+**⚠ DESIGNED HERE, DELIBERATELY NOT BUILT: a thread line between rooms.** The operator wants
+roundtable messages between a PM and a solo agent to be visible flowing between them; the producer
+that would carry them is another card's, and [D2](FLEET-STATE.md) publishes no coordination object
+without a single `install_id` today ([§ 5.7](#57-the-coordination-thread-line) property 3). What this
+section owes that card is the **form**, so that it is not invented at the moment it is needed:
+
+- **On one floor, it is already [§ 5.7](#57-the-coordination-thread-line)'s line.** Two rooms on one
+  floor are two desk sets on one screen, so a line between a desk in one and a desk in the other is
+  the existing render with its endpoints in different rooms. No new element, and this is the case the
+  room model exists to make natural.
+- **Across floors, the form is a CALL MARKER at each end that resolves, and the line is its
+  co-located case.** One round has N ends; on the floor being viewed, every end that resolves to a
+  desk **on that floor** is drawn, and every end that does not is drawn as a marker carrying the
+  thread's `thread_ref` and the far participant's protocol agent name **as written**. Two resolved
+  ends on one floor collapse into the line above — the line is a pair of markers that happen to share
+  a screen, not a second primitive. Each end renders its own half of an event that really happened,
+  which is [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule satisfied rather than
+  stretched: nothing claims a transit nobody observed.
+- **Rejected: the lobby draws the line between plates.** A plate carries a summary and not a room
+  ([§ 4.1](#41-the-lobby--the-building-summary)), so the line's endpoints would be **floors** while
+  the fact is about **agents** — and resolving an agent name to a plate needs the very join
+  ([§ 14](#14-open-questions-for-the-review-loop) item 4, card#7957) whose absence already makes
+  [§ 5.7](#57-the-coordination-thread-line) draw no line at all. A lobby line would be drawn from an
+  unresolved name, which is [§ 5.7](#57-the-coordination-thread-line) property 1's guessed desk.
+- ⛔ **No row is added to [§ 6.2](#62-the-animation-table--the-closed-set) and none may be** until
+  the object that drives it exists. An animation row whose driving field is on no wire is the defect
+  that table is closed against.
 
 ---
 
@@ -1270,10 +1477,16 @@ population does not contain.
    [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)'s rule, cited and not restated. A desk
    an unresolved line could not reach looks exactly as it looked before the post arrived, which is
    the property that makes clause 1's *no line* safe to render.
-3. ⛔ **A round is drawn on the floor its own `install_id` names and on no other.** That member comes
+3. ⛔ **A round is drawn in the ROOM its own `install_id` names and in no other.** That member comes
    from the hook binding rather than from the payload, so *"a broadcast's reach equals the install's,
    and a renderer that draws wider is drawing past its event"*
-   ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)).
+   ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)). ⚠ **This clause said *floor* until
+   card#9267's ruling, and leaving the word would have WIDENED it** — a floor is now a composed set
+   of rooms ([§ 4.6](#46-the-building-layout)), so *the floor its `install_id` names* would reach
+   every other room on that floor, which is the drawing-past-your-event the quotation forbids. The
+   rule's reach is unchanged; only the unit it is stated in is now the right one. A line between
+   rooms is [§ 4.6](#46-the-building-layout)'s named-but-unbuilt form, and it needs an object D2
+   does not publish.
 4. ⛔ **Nothing here is rendered as a duration, and the reason is a WORDING gap rather than a format
    one.** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s function is closed and would format a
    coordination age correctly, but that section fixes one rendered **wording** per fact and publishes
@@ -1287,7 +1500,7 @@ population does not contain.
 | Rendered element | D2 field | Example | Null / unresolved render |
 |---|---|---|---|
 | the thread the line belongs to, and the key its rounds are grouped under | `coord_thread.thread_ref`, `coord_round.thread_ref` | `"AIMLA-org/aimla-coordination#742"` | never null on either object. It is the thread's **identity**, so two messages carrying it are one thread and not two |
-| the floor the line is drawn on — and the only one | `coord_thread.install_id`, `coord_round.install_id` | `"aimla"` | never null; property 3 above. A message whose install the client does not hold is [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s case and draws nothing here |
+| the room the line is drawn in — and the only one | `coord_thread.install_id`, `coord_round.install_id` | `"aimla"` | never null; property 3 above. A message whose install the client does not hold is [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s case and draws nothing here |
 | the line's lifecycle treatment | `coord_thread.lifecycle` | `"closed"` | never null, and rendered **verbatim** — this document publishes no member set for it, because D2 declines to enum it and a second home for those three words is a second home free to disagree. The **ended** treatment is applied on `closed` and on no other value; a value this client has not met is still shown, raw, and never mapped to the nearest one it knows ([§ 5.4](#54-what-is-never-rendered)). ⛔ *ended* is **never** *converged* — [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) publishes no `converged` flag and says why, and *"a consumer must not treat `closed` as terminal"* |
 | the line's label | `coord_thread.subject`, `coord_thread.subject_truncated` | `"the coordination-event producer"` | a null `subject` draws **no label** — never a placeholder, never the last subject the client held. A true `subject_truncated` draws the truncation **mark**, because *"a silently clipped string is read as the whole string"*; the flag is the wire's and the mark is not a re-measurement of the text |
 | the carrier tag, on the line and on each bead | `coord_thread.carrier`, `coord_round.carrier` | `"announce"` | null ⇒ **no tag**, never a default carrier. D2 validates it *"with no set consulted"*, so this renders it raw for the same reason the lifecycle cell does |
@@ -2697,8 +2910,9 @@ nothing in the port's licence work is undone by the art direction changing.
   declares **12**.
 - ⛔ **No floor map is vendored in this repository today, and the count above is therefore a figure
   this document declares rather than a measurement of a file.** A floor's map is the build artifact
-  `resources/floor/<install_id>.tmj` — the floor key of [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)
-  naming the file, in either Tiled spelling, since
+  `resources/floor/<install_id>.tmj` — the **room** key of [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)
+  naming the file, one map per room since card#9267's ruling
+  ([§ 4.6](#46-the-building-layout)) — in either Tiled spelling, since
   [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1 admits both and the choice between them stays
   the implementer's. For the `aimla` floor that artifact is `resources/floor/aimla.tmj`, and
   **card#7341 vendors it** — with the `docs/ATTRIBUTION.md` row Gate 1 requires, and the tileset
@@ -2715,9 +2929,10 @@ nothing in the port's licence work is undone by the art direction changing.
 
 ⭐ **A map may be AUTHORED BY AN OPERATOR instead of shipped in the repository, and what that does to
 [§ 10.1](#101-the-manifest-and-the-two-gates)'s two gates is stated here rather than left to be
-discovered.** `card#9085`'s admin console stores one Tiled document per floor, keyed by `install_id`
-([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s floor key). ⚠ **What that store is FOR is a
-question the read-path ruling below reopened rather than settled** — under it the floor renders the
+discovered.** `card#9085`'s admin console stores one Tiled document per room, keyed by `install_id`
+([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key — that console predates card#9267
+and still calls a room a floor, which [§ 4.6](#46-the-building-layout) is the correction to).
+⚠ **What that store is FOR is a question the read-path ruling below reopened rather than settled** — under it the floor renders the
 build artifact and nothing reads the store but the console itself
 ([§ 14](#14-open-questions-for-the-review-loop) item 16). Three consequences of the store existing at
 all, which hold either way:
@@ -3951,6 +4166,7 @@ review can reverse it deliberately rather than discover it later.
 | 21 | **The ratified wall clock and day/night sky advance on `feed.heartbeat`, so they stop when the feed does** ([§ 6.2](#62-the-animation-table--the-closed-set) A17). **Operator ruling, 2026-08-27, card#7341**, taken between three stated options | **(A)** ship them **static**, set once per render — what [§ 10.4](#104-the-art-direction-as-a-specification) required until this ruling; **(B)** carve an exception into [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) for viewer-clock decoration, keeping the reference's 10 s interval | Option B is the widening the art amendment existed **not** to do, and it is not a small one: a timer-driven clock is a mover that **keeps moving after the feed dies**, so the page never goes still and [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) loses the observable it asserts — a named acceptance test's instrument, spent on decoration. ⭐ **Read this row beside row 3's 2026-08-30 amendment, which admits decorative motion and does NOT reopen this:** what was refused here was never decoration in general — it was spending this test's instrument on it — and the clock is refused today by the **first** of [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s three claim tests, which is this row's reasoning carried forward as a property. A lamp glow passes that test; a clock cannot. Option A is honest and costs the reference its sense of a place. **The heartbeat driver is neither a compromise nor a third-best**: the clock earns an ordinary [§ 6.2](#62-the-animation-table--the-closed-set) row driven by a message D2 declares, and **a stopped clock is A14's claim in the form every human reads instinctively**, so the element that would have destroyed the feed-down signal now carries it. The visual cost is near nil — the clock is **sampled** every 15 s and, at minute resolution, **steps once a minute**, which at floor zoom is indistinguishable from a continuous one; the sky is a slow gradient | **The clock is wrong by up to 15 s and is stale by construction whenever the feed is down** — accepted, and it is why the clock carries no *as of* stamp and is never an authority on the time ([§ 5.5](#55-the-clients-own-narration)). The real cost is that a **frozen clock looks like a bug**, and the repair a maintainer reaches for is the interval this ruling refused; the whole of the mitigation is that the reasoning is written at [§ 6.2](#62-the-animation-table--the-closed-set), the driven-versus-read distinction at [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith), and **two REDs** at [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) — one for that exact edit, and one for the same regression arriving through the recovery path, where the room is *set* on each 10 s poll rather than animated on a timer |
 | 22 | **`task` is rendered as a STATIC thought bubble anchored to the character, replacing the text chip, and the upstream bubble's fade/linger/fade state machine is refused** ([§ 5.1](#51-the-desk)). **Operator vision + card#7897's ruling, 2026-08-27**; the ruling directed the state machine's adoption and this row is where the refusal is recorded rather than left in a PR | **(A)** adopt the upstream machine as directed — fade in, linger, fade out, re-show swaps the text — which needs a [§ 6.2](#62-the-animation-table--the-closed-set) row the ruling also forbids; **(B)** keep the chip and add the bubble beside it, so nothing already asserted has to move | Option A is not a style question. The linger is a timer ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s second forbidden form), and the fade-out **collapses a null render**: once the bubble hides itself, *no bubble* means *`task` is null* **or** *the linger expired*, and a null render two facts produce is not one. Upstream's machine is right **for upstream** — its bubble reports a tool call, an instant, where ours reports a standing fact. Option B is [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule broken on purpose, and it is the failure this amendment is most likely to reach by accident rather than by argument | **A dark desk loses a readout it used to have.** `stale` and `offline` draw no character ([§ 7.1](#71-the-render-per-state); `retired` was a third until card#9078 removed its desk altogether), so they now draw no task at all where a chip once sat; the value is in the drill-down under that panel's currency treatment. That is the amendment's only truth-content cost and it is on the side of claiming less. **And a static bubble is the thing a maintainer will "fix"** — a bubble that never animates reads as unfinished next to the reference's other motion, and the repair reached for is a float or a fade, which is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s first bullet arriving through an element nobody thinks of as an animation |
 | 23 | **The duration format is ONE function shared by every rendered duration and every age on the page, and it has no day unit** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). **card#9209** | **(A)** a day unit past 24 h — *3d 01h* rather than *73h 12m*; **(B)** leave the format unpublished and let each surface keep its exemplar, which is the state this card found; **(C)** exempt `derivation.fold_lag_ms` (**`named-not-rendered`** — this row weighs an option about the member and draws no value from it), whose published exemplar was *117 s*, and let the lag keep a seconds-only form for comparison against D2's 60 s and 300 s thresholds | **(B) is the defect**, not an option: three exemplars no rule produces is a rule nobody can apply, and the next surface mints the fourth. **(C) is two formats for one thing** — the second one is minted by the argument that its reader is different, which is the argument every second format is minted by, and *1m 57s* is not harder to compare against 60 s than *117 s* is. **(A) is a real product call and it is the contestable half of this row**: it was refused because a *day* is the unit a reader takes as a **calendar** one, while every quantity here is a count of elapsed seconds between two server-clock instants, and because it keeps the unit vocabulary at the three letters this document already wrote. It is not refused because *73h 12m* reads well | **A multi-day age reads as a large hour count.** *73h 12m* makes an operator divide to answer "how many days", and a fleet left running over a long weekend is exactly when that question gets asked. Reversing it is one clause and one boundary row in [§ 2.4](#24-the-clock-and-every-age-on-the-page) plus a re-run of the gate, which regenerates every affected exemplar — the cost of being wrong here is small **because** the format is published in one place |
+| 24 | **A room is an install and a floor is an operator-composed set of rooms; the composition lives in a DEPLOY-TIME document, a floor is named by one of its own rooms, and an install the document does not place gets a floor of its own** ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones), [§ 4.6](#46-the-building-layout)). ⭐ **Operator ruling, 2026-09-11, card#9267** on the model; the three mechanisms under it are this document's | **(A)** keep the layout in a runtime store — the admin console's `floors` table, which already holds one authored artifact per install; **(B)** let the operator invent a free-form floor id — *the solos*, *3*; **(C)** treat the layout as the complete enumeration of the building and render an install it omits nowhere | **(A)** would give one building two change paths: the rooms move on a deploy ([§ 10.3](#103-the-floor-map)'s card#9208 ruling — *"a floor edit is a redeploy"*, accepted explicitly) while the composition of them moved on a save, and the first question asked of a floor that looked wrong would be which of the two you were looking at. A deploy-time document also gets a diff, a review and a revert, which composing two PMs onto one floor deserves. **(B)** puts floor ids and `install_id`s in [§ 4.4](#44-routes-and-what-each-one-fetches)'s one route namespace with no check able to keep them apart, because the colliding install is provisioned *after* the layout is written; the anchor rule makes that collision unreachable and keeps every published `/floor/{install_id}` link resolving. **(C)** is the *hole renders as nothing is happening* defect at building scale — a newly-provisioned install would render on no screen at all until somebody deployed | **Rearranging the building is a deploy, and a page loaded before one draws the old building until it is reloaded** — stated at [§ 4.6](#46-the-building-layout) rather than discovered. The operator cannot name a floor after what happens on it; the name is a label and [§ 4.1](#41-the-lobby--the-building-summary)'s row carries one. And the layout is **not** where card#9071's console question is answered: the reader takes a decoded document rather than a path, so a column can replace the file without the reader changing |
 
 ---
 
@@ -4037,17 +4253,33 @@ reason to leave two readings live.
    re-authorization on the channel, or an explicit statement that a session's expiry is enforced only
    at the next request and the socket may outlive it.
 
-6. **⇢ Operator — is a floor an install, or a PM?**
-   D-01 says *floor per PM, solo agents share a floor*; D2's channel, snapshot grouping and future ACL
-   attachment point are all **per install**. The two agree exactly when installs are provisioned one per
-   PM seat-group with solos sharing an install, and disagree the moment two installs' solo seats are
-   meant to share one floor — which would need one floor to subscribe to two channels and would make the
-   floor's identity something other than the `install_id`. **Blocks:** nothing today (aimla is one
-   install). **In the meantime:** **one floor is one install**
-   ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), and the mapping D-01 describes is a
-   *provisioning* choice about `install_id`, which [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)
-   already owns. **Closes it:** an operator ruling before a second install exists, because the answer
-   changes what a floor route means.
+6. **✅ CLOSED — a floor is neither: a ROOM is an install, and a FLOOR is an operator-composed set
+   of rooms.** ⭐ **Operator ruling, 2026-09-11, card#9267**, in the operator's own words: *"I'd like
+   a floor to be able to either hold a PM+impl agents or a floor could hold multiple solo agents. In
+   the latter case, the floor would be divided into a hallway with separate offices… There can be
+   multiple floors of either type."* — then, extending it: *"If instead of a floor being the
+   container, we think of a room within a floor as a container."* — and confirming it: *"I confirm
+   the room model."*
+
+   This item asked which of two things a floor was, and the answer was that it is a third thing: the
+   question conflated the **coordination** unit with the **display** unit. `install_id` is the first
+   and does not move — D2's channel, its snapshot grouping and its ACL attachment point are all
+   per install and none of them is amended. The floor is the second, and it is now composed.
+   [§ 4.6](#46-the-building-layout) is the layout that composes it, [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)
+   carries the two keys, and [§ 4.4](#44-routes-and-what-each-one-fetches) carries what it did to the
+   route.
+
+   ⚠ **The cost this item priced — it *"would need one floor to subscribe to two channels"* — was
+   already being paid when it was written, which is the part worth recording.** The client subscribes to every install
+   it knows of ([§ 2.2](#22-connect-snapshot-deltas) steps 2 and 6), so a floor of N rooms holds no
+   subscription a single-room building did not already hold. The objection was a cost, not a
+   blocker, and it was a cost of zero.
+
+   **What the ruling unblocks and what it does not:** it unblocks the shared solo floor D-01
+   describes, and it leaves the *offices map* (card#9269) and the cross-install roundtable producer
+   (card#9268) open — the first gated on card#9208, since no floor map of any kind is vendored, the
+   second on a D1/D2 shape for a coordination object with no single install.
+   [§ 4.6](#46-the-building-layout) names the render form the second will need and builds none of it.
 
 7. **◑ HALF CLOSED — the generator's source is recorded; the tileset is still unnamed.**
    D-07 names *CC0 tilesets* and *munder-difflin's procedural generator*, and this item was opened

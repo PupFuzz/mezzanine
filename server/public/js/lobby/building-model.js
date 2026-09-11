@@ -32,12 +32,18 @@
  * working elevator on a building that has no second floor. `nextStop()` below returns `null`
  * there instead, and `notices()` says which of the two dark cases it is.
  *
- * ⚠ WHERE THE RIDE ARRIVES IS NOT BUILT. § 4.1: "an elevator ride and a zoom-to-floor are § 4.5's
- * camera arriving at `/floor/{install_id}`" — and that route does not exist (card#9208: the floor
- * map is a build artifact and none is vendored; § 14 item 7's tileset is still open). So a ride
- * moves the cab between the plates of this screen and nothing else, and the plate keeps the
- * published `/floor/{install_id}` link `floors()` already gives it — D3's own route, never one
- * minted here.
+ * ⚠ WHERE THE RIDE ARRIVES IS NOT BUILT. § 4.1: an elevator ride and a zoom-to-floor are § 4.5's
+ * camera arriving at the floor route — and that route does not exist (card#9208: the floor map is
+ * a build artifact and none is vendored; § 14 item 7's tileset is still open). So a ride moves the
+ * cab between the plates of this screen and nothing else, and the plate keeps the published link
+ * `floors()` already gives it — D3's own route, never one minted here.
+ *
+ * ⚠ A PLATE IS ONE INSTALL HERE, AND SINCE card#9267 A FLOOR IS NOT: a room is an install and a
+ * floor is an operator-composed set of rooms (§ 3.1, § 4.6). This module is UNCHANGED and is
+ * correct for every layout this deployment ships — the shipped layout is empty, and § 4.6 gives an
+ * install it does not place a floor of its own — but a layout that composed a floor would make the
+ * stack the composed floors rather than `installs[]`, and the cab's stop a floor id. § 4.6 names
+ * that as the client half that is designed and not built; it is not guessed here.
  */
 
 import { floors } from './lobby-model.js';

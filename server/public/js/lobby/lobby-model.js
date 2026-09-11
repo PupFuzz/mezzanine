@@ -98,11 +98,18 @@ export function floorSummary(seats) {
  * trusted from the wire: D2 § 8.2.2 does order them, and a client that renders in received order
  * is a client whose order is a property of somebody else's `ORDER BY`.
  *
- * `href` is § 4.4's `/floor/{install_id}` — the route D3 declares. ⚠ THAT ROUTE IS NOT BUILT: the
- * floor is card#9208-blocked (no D2 read surface for an authored floor map). The row is still the
- * link, because § 4.1 says the row IS the link and a lobby whose rows are inert is a different
- * design; what it must not be is a link to an invented endpoint, and `/floor/{install_id}` is
- * D3's own published route, not one minted here.
+ * `href` is § 4.4's floor route. ⚠ THAT ROUTE IS NOT BUILT: the floor is card#9208-blocked (no D2
+ * read surface for an authored floor map). The row is still the link, because § 4.1 says the row
+ * IS the link and a lobby whose rows are inert is a different design; what it must not be is a
+ * link to an invented endpoint, and this is D3's own published route, not one minted here.
+ *
+ * ⚠ SINCE card#9267 THAT ROUTE IS `/floor/{floor}` AND A FLOOR IS NOT AN INSTALL — a room is an
+ * install and a floor is an operator-composed set of rooms (§ 3.1, § 4.6). This function is
+ * UNCHANGED and is correct for every layout this deployment ships, because the shipped layout is
+ * empty and § 4.6's rule for an install it does not place is *a floor of its own, keyed by the
+ * install id*. It stops being correct the moment a layout composes a floor: the stack becomes the
+ * composed floors and the href becomes that floor's id. That work is not this module's to guess —
+ * § 4.6 names it as the client half that is designed and not built.
  */
 export function floors(snapshot) {
     const installs = Array.isArray(snapshot?.installs) ? snapshot.installs : [];

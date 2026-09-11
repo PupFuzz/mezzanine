@@ -2,16 +2,26 @@
 @section('title', 'Floors')
 @section('console')
     <p>
-        A floor is an install (<code>docs/design/FLOOR.md § 3.1</code>), and its map declares how
-        many desks it has and where they sit. <strong>Which seat sits at which desk is not stored
-        anywhere</strong> — it is derived from the seats the floor renders (§ 3.2), so two
-        browsers and two restarts agree without anyone placing anybody.
+        A <strong>room</strong> is an install and a <strong>floor</strong> is an
+        operator-composed set of rooms (<code>docs/design/FLOOR.md § 3.1</code>, § 4.6 — operator
+        ruling, card#9267). Each row below is a ROOM, and its map declares how many desks it has
+        and where they sit. <strong>Which seat sits at which desk is not stored anywhere</strong>
+        — it is derived from the seats the room renders (§ 3.2), so two browsers and two restarts
+        agree without anyone placing anybody.
+    </p>
+
+    <p>
+        <strong>Which rooms share a floor is not authored here.</strong> It is
+        <code>config/building.php</code>, a deploy-time document (§ 4.6), so rearranging the
+        building is a deploy and gets a diff and a review. Rooms sharing a <em>Floor</em> value
+        below are drawn on one screen; a room the layout does not place gets a floor of its own.
     </p>
 
     <table>
         <thead>
             <tr>
-                <th>Floor</th><th>Seats rendered</th><th>Map</th><th>Last authored</th><th></th>
+                <th>Room</th><th>Floor</th><th>Seats rendered</th><th>Map</th>
+                <th>Last authored</th><th></th>
             </tr>
         </thead>
         <tbody>
@@ -20,8 +30,22 @@
                     <td>
                         {{ $row['install_id'] }}
                         @unless ($row['renders'])
-                            <br><em>no seat on this floor renders — nothing is drawn for it</em>
+                            <br><em>no seat in this room renders</em>
                         @endunless
+                    </td>
+                    <td>
+                        @if ($row['floor'] === null)
+                            {{-- § 4.6: placed nowhere and reporting nothing, so nothing draws it. --}}
+                            <strong>on no floor</strong> — the layout places this room nowhere and
+                            the fleet reports no seat for it
+                        @else
+                            {{ $row['floor'] }}
+                            <br>{{ $row['form'] }}
+                            @unless ($row['renders'])
+                                <br><strong>no seats reported for this room</strong> — the floor
+                                draws it and says so, never omits it
+                            @endunless
+                        @endif
                     </td>
                     <td>{{ $row['seats'] }} {{ $row['seats'] === 1 ? 'seat' : 'seats' }}</td>
                     <td>
@@ -59,8 +83,8 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="5">
-                    No install has been provisioned yet, so there is no floor to give a map to.
+                <tr><td colspan="6">
+                    No install has been provisioned yet, so there is no room to give a map to.
                     An install exists once a seat is provisioned for it with
                     <code>php artisan mezzanine:ingest-token:issue</code>.
                 </td></tr>
@@ -68,7 +92,7 @@
         </tbody>
     </table>
 
-    <p><a href="{{ route('admin.floors.create') }}">Author a floor's map</a></p>
+    <p><a href="{{ route('admin.floors.create') }}">Author a room's map</a></p>
 
     <p>
         Removing a map removes the room and nothing else: the install, its seats and their state

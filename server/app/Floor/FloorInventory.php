@@ -2,6 +2,8 @@
 
 namespace App\Floor;
 
+use App\Building\Building;
+use App\Building\BuildingLayout;
 use App\Read\Snapshot;
 
 /**
@@ -17,18 +19,27 @@ use App\Read\Snapshot;
  * about is `docs/design/FLEET-STATE.md § 4.10`'s 14-day read filter. The agent module states the
  * same rule for the same reason.
  *
- * ⚠ THE POPULATION IS THE UNION of the installs the snapshot renders and the installs a map has
- * been authored for, so a map whose floor is no longer drawn is SURFACED rather than dropped off
- * the page. `card#9071` records the posture for the analogous case — "a pin naming a retired or
- * unknown seat is surfaced as a defect, never silently ignored" — and a list that silently hid
- * such a row would answer "why is my map not showing" with nothing at all.
+ * ⚠ THE POPULATION IS THE UNION of the installs the snapshot renders, the installs a map has been
+ * authored for, and — since card#9267 — the rooms the BUILDING LAYOUT places, so a map whose room
+ * is no longer drawn and a room the operator composed onto a floor but which reports nothing are
+ * both SURFACED rather than dropped off the page. `card#9071` records the posture for the
+ * analogous case — "a pin naming a retired or unknown seat is surfaced as a defect, never silently
+ * ignored" — and a list that silently hid such a row would answer "why is my map not showing" with
+ * nothing at all. `docs/design/FLOOR.md § 4.6` states the same rule for the floor itself: a room
+ * the fleet reports no seat for is drawn and labelled there too, never omitted.
+ *
+ * ⚠ A ROW IS A ROOM, NOT A FLOOR — card#9267's ruling: a room is an install, and a floor is an
+ * operator-composed set of rooms (`docs/design/FLOOR.md § 3.1`, `§ 4.6`). The module is still
+ * called `floors` because its routes, its table and the operator's bookmark are; what it authors
+ * is one map per ROOM, and the `floor` column below is where that room sits.
  */
 final class FloorInventory
 {
     /**
      * @return list<array{
-     *     install_id: string, seats: int, renders: bool, authored: bool, slots: int|null,
-     *     unreadable: string|null, short_by: int, updated_at: string|null, updated_by: string|null
+     *     install_id: string, floor: string|null, form: string|null, seats: int, renders: bool,
+     *     authored: bool, slots: int|null, unreadable: string|null, short_by: int,
+     *     updated_at: string|null, updated_by: string|null
      * }>
      */
     public static function rows(): array
@@ -36,10 +47,23 @@ final class FloorInventory
         $seats = Snapshot::seats()->groupBy('install_id');
         $floors = Floors::all();
 
+        // ⛔ ONE DERIVATION OF WHERE A ROOM SITS, AND IT IS THE COMPOSER'S. Reading the layout
+        // directly here — "its floor if it is placed, else its own id" — would be a second copy of
+        // `App\Building\Building::compose()`'s rule, and the two would disagree the first time one
+        // of them learned about a new case. So the building is composed once and flattened.
+        $placement = [];
+
+        foreach (Building::compose(BuildingLayout::fromConfig(), $seats->keys()->map(strval(...))->all()) as $floor) {
+            foreach ($floor['rooms'] as $room) {
+                $placement[$room['install']] = ['floor' => $floor['floor'], 'form' => $room['form']];
+            }
+        }
+
         $ids = $seats->keys()
             ->merge($floors->keys())
+            ->merge(array_keys($placement))
             ->unique()
-            // § 4.1: "floors by `install_id` ascending" — the order the lobby lists them in.
+            // § 2.1 row 6: rooms by `install_id` ascending.
             ->sort()
             ->values();
 
@@ -66,6 +90,11 @@ final class FloorInventory
 
             $rows[] = [
                 'install_id' => (string) $installId,
+                // null for a room that is on no floor at all: the fleet reports nothing for it
+                // and the layout places it nowhere, so nothing draws it. That is a true and
+                // actionable answer, and it is why this is not defaulted to the install's own id.
+                'floor' => $placement[(string) $installId]['floor'] ?? null,
+                'form' => $placement[(string) $installId]['form'] ?? null,
                 'seats' => $count,
                 'renders' => $count > 0,
                 'authored' => $floor !== null,
