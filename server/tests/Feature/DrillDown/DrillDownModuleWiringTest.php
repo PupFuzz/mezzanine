@@ -47,6 +47,9 @@ class DrillDownModuleWiringTest extends TestCase
         // § 5.4's membership test comes from the ONE published member set (`lobby/render-state.js`
         // says so of itself: "every surface in this client that needs the members imports this
         // array; none of them writes a second one").
+        $this->assertStringContainsString("from '../wire/task.js'", $model,
+            'the panel no longer reads the shared `task` decision — if it grew its own, that '
+            .'copy is free to disagree with the desk about the same seat');
         $this->assertStringContainsString("from '../lobby/render-state.js'", $model,
             'the panel no longer imports the published `render_state` member set — a second copy '
             .'of it is how the unrecognised case gets lost again');
@@ -59,6 +62,13 @@ class DrillDownModuleWiringTest extends TestCase
             'clockTime' => ['wire/clock.js'],
             'formatDuration' => ['wire/duration.js'],
             'wireMs' => ['wire/duration.js'],
+            // card#7897: the `task` member's rules — the null case, the reference link and the
+            // degraded wording — hoisted to `wire/` at their SECOND caller, when the desk's
+            // thought bubble (FLOOR.md § 5.1) needed exactly what the panel's row needed. D3 is
+            // explicit that the two surfaces are one fact at two fidelities, so a second
+            // implementation here would be two clients disagreeing about one seat's task.
+            'taskFacts' => ['wire/task.js'],
+            'taskRefLink' => ['wire/task.js'],
         ];
 
         foreach ($expected as $function => $home) {

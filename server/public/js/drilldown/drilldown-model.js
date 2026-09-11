@@ -51,6 +51,20 @@
 import { clockTime } from '../wire/clock.js';
 import { ageFrom } from '../wire/duration.js';
 import { isRenderState } from '../lobby/render-state.js';
+import { taskFacts } from '../wire/task.js';
+
+/**
+ * § 4.3's `task` members, decided by the ONE implementation of that member's rules — the null
+ * case, the reference link and the degraded wording — which card#7897 hoisted to `wire/` at its
+ * second caller when the desk's thought bubble (§ 5.1) needed exactly them. The panel keeps what
+ * is genuinely the PANEL's: that it draws a labelled row unconditionally, and therefore renders
+ * § 5.6's *not reported* where the desk renders no bubble at all.
+ *
+ * ⛔ RE-EXPORTED, NOT RE-IMPLEMENTED. `taskRefLink` is this panel's published surface (§ 5.2's
+ * link rule is the panel's row) and a caller that has it from here has the same function the
+ * desk has, not a copy of it.
+ */
+export { taskRefLink, STALE_TITLE_DROPPED } from '../wire/task.js';
 
 /**
  * § 5.6's default for a member whose element space is drawn unconditionally. ⛔ It is never a
@@ -67,9 +81,6 @@ export const UNTITLED = 'untitled';
 
 /** § 5.2, verbatim: an empty timeline window is a fact, not an empty panel. */
 export const NO_ACTIVITY = 'no activity in this window';
-
-/** § 4.3, verbatim, when `task.degraded` — a better tier's value was dropped past its bound. */
-export const STALE_TITLE_DROPPED = 'stale title dropped';
 
 /** § 5.4 / AT-D3-11: an unrecognised member renders as unrecognised, carrying the raw string. */
 export const UNRECOGNISED = 'unrecognised';
@@ -92,46 +103,6 @@ function seatClock(wireTime) {
     const at = clockTime(wireTime);
 
     return at === null ? null : `${at} (seat clock)`;
-}
-
-/**
- * § 5.2's task-reference rule: a link "**only** when a base URL is configured for that reference
- * shape … with no configured base it renders as plain text. A guessed URL is a link that goes
- * somewhere wrong, which is worse than no link".
- *
- * The two shapes are `card#N` — D2 § 4.9's tier 1 — and `<repo>#N`, which was tier 2's and
- * OUTLIVED it: card#9234 retired tier 2, and D3 § 5.2's rule is written over the shape a `ref`
- * has rather than over the tier that minted it, so this keeps resolving `<repo>#N` under a
- * configured base. A `ref` of any other shape gets no link at all rather than being forced into
- * the nearer of the two.
- *
- * ⚠ NOTHING IN THIS DEPLOYMENT CONFIGURES A BASE, so today this returns `null` for every ref it
- * is given. § 14 item 3 is the open question that would supply one; until it answers, the
- * absence of a base is the reason there is no link, and it is not a defect in this function.
- */
-export function taskRefLink(ref, bases) {
-    if (typeof ref !== 'string') {
-        return null;
-    }
-
-    const configured = bases ?? {};
-    const card = ref.match(/^card#(\d+)$/);
-
-    if (card !== null) {
-        return typeof configured.card === 'string'
-            ? configured.card.replace('{id}', card[1])
-            : null;
-    }
-
-    const repo = ref.match(/^([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)?)#(\d+)$/);
-
-    if (repo !== null) {
-        return typeof configured.repo === 'string'
-            ? configured.repo.replace('{repo}', repo[1]).replace('{id}', repo[2])
-            : null;
-    }
-
-    return null;
 }
 
 /**
@@ -260,23 +231,13 @@ export function drillDownModel(seat, timeline, options = {}) {
  * title: "a floor showing tier 3 everywhere is visibly a floor whose board integration is dark".
  */
 function taskBlock(task, refBases) {
-    if (task === null) {
+    const facts = taskFacts(task, refBases);
+
+    if (facts === null) {
         return { present: false, statement: NOT_REPORTED };
     }
 
-    const ref = task.ref ?? null;
-
-    return {
-        present: true,
-        title: task.title ?? null,
-        source: task.source ?? null,
-        // § 5.6, `task.ref`: "the title renders with NO LINK AND NO REFERENCE TEXT — not an
-        // empty link, not *(no reference)*".
-        ref,
-        ref_href: taskRefLink(ref, refBases),
-        as_of: clockTime(task.as_of ?? null),
-        degraded_note: task.degraded === true ? STALE_TITLE_DROPPED : null,
-    };
+    return { present: true, ...facts };
 }
 
 /**
