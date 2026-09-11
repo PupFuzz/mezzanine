@@ -99,8 +99,11 @@ function seatClock(wireTime) {
  * shape … with no configured base it renders as plain text. A guessed URL is a link that goes
  * somewhere wrong, which is worse than no link".
  *
- * The two shapes are D2 § 4.9's — `card#N` (tier 1) and `<repo>#N` (tier 2) — and a `ref` of any
- * other shape gets no link at all rather than being forced into the nearer of the two.
+ * The two shapes are `card#N` — D2 § 4.9's tier 1 — and `<repo>#N`, which was tier 2's and
+ * OUTLIVED it: card#9234 retired tier 2, and D3 § 5.2's rule is written over the shape a `ref`
+ * has rather than over the tier that minted it, so this keeps resolving `<repo>#N` under a
+ * configured base. A `ref` of any other shape gets no link at all rather than being forced into
+ * the nearer of the two.
  *
  * ⚠ NOTHING IN THIS DEPLOYMENT CONFIGURES A BASE, so today this returns `null` for every ref it
  * is given. § 14 item 3 is the open question that would supply one; until it answers, the
@@ -249,9 +252,10 @@ export function drillDownModel(seat, timeline, options = {}) {
  * `task.degraded`.
  *
  * ⚠ `task.ref` IS NULL ON EVERY SEAT THIS DEPLOYMENT SERVES, and that is D2's state rather than
- * this panel's: D2 § 4.9 builds tier 3 (telemetry, `ref = null`) and leaves tiers 1 and 2 as
- * "the stated columns they populate" — tier 1's producer is designed in no document here, and
- * tier 2's join is unestablished (card#7957). So the reference line and the link are code that
+ * this panel's: D2 § 4.9 builds tier 3 (telemetry, `ref = null`) and leaves tier 1 as "the stated
+ * column it populates" — tier 1's producer is designed in no document here, and tier 2, the other
+ * source of a non-null `ref`, was retired outright (card#9234). So the reference line and the link
+ * are code that
  * runs on a value nothing currently mints, which is why `task.source` is rendered beside the
  * title: "a floor showing tier 3 everywhere is visibly a floor whose board integration is dark".
  */

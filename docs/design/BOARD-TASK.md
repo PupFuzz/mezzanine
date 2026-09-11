@@ -61,7 +61,7 @@ card"* by inventing one would be the failure this whole product exists to preven
 | **Writing to the board** | The credential is read-scoped ([§ 5](#5-the-credential)) and the poller issues `GET` only. Mezzanine never moves a card, never assigns one, and never comments. A floor that could edit its own subject would be an instrument inside the thing it measures. |
 | **Deciding that cards get assigned** | An operator workflow convention, ruled on 2026-09-10 (card#7582). This document designs against `assigned_user_id` being populated; it does not populate it and does not backfill it. |
 | **Alerting** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s position, inherited deliberately: a degraded poll surfaces as a counter and as `task.degraded` on the wire, and there is no notifier. |
-| **A second producer for the same fact** | There is one board producer and there must not be a second — the rule [D1 § 18.11](EVENT-SCHEMA.md#1811-one-producer-two-consumers) states for its own producer, applied here for the same reason. |
+| **A second producer for the same fact** | There is one board producer and there must not be a second — the rule [D1 § 18.11](EVENT-SCHEMA.md#1811-one-producer-and-the-one-consumer-it-serves) states for its own producer, applied here for the same reason. |
 
 ### 1.3 The boundary, stated as a rule
 
