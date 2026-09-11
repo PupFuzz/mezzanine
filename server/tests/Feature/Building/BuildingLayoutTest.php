@@ -174,10 +174,41 @@ class BuildingLayoutTest extends TestCase
         );
     }
 
+    public function test_an_explicit_null_label_is_an_absent_label_and_not_a_type_refusal(): void
+    {
+        // § 4.6: "The SHAPE is the contract; the store is the caller's" — the whole point of which
+        // is that card#9071's console could later hold this document in a JSON column "without the
+        // reader changing". A JSON column encodes an UNNAMED floor as `"label": null`, so refusing
+        // that by type would make the promise false for the one store it was made for. Null is
+        // therefore ABSENT — the floor reads as its key — and every other non-string is still
+        // refused by type, which is what the arm above holds.
+        $layout = BuildingLayout::parse(
+            ['floors' => [['label' => null, 'rooms' => ['sola' => 'office', 'zeta' => 'office']]]],
+        );
+
+        $this->assertSame([['floor' => 'sola', 'label' => null, 'rooms' => [
+            ['install' => 'sola', 'form' => 'office'],
+            ['install' => 'zeta', 'form' => 'office'],
+        ]]], $layout->floors);
+    }
+
     public function test_a_blank_label_is_refused_because_a_floor_whose_name_renders_as_nothing_is_the_hole_in_miniature(): void
     {
         $this->refuses(
             ['floors' => [['label' => '  ', 'rooms' => ['sola' => 'office', 'zeta' => 'office']]]],
+            'declares a blank label',
+        );
+    }
+
+    public function test_a_label_of_non_ascii_whitespace_is_blank_because_the_plate_renders_as_nothing(): void
+    {
+        // `trim()` is ASCII-only, so a label of one NO-BREAK SPACE (U+00A0) walked past the blank
+        // refusal above and composed a plate whose name renders as nothing — § 4.6's "a floor whose
+        // name renders as nothing", the hole this document exists to refuse, arriving through the
+        // very check written to refuse it. The blank rule is the same question as the reads-alike
+        // one below and is answered the same way: what does this text RENDER as?
+        $this->refuses(
+            ['floors' => [['label' => "\u{00A0}", 'rooms' => ['sola' => 'office', 'zeta' => 'office']]]],
             'declares a blank label',
         );
     }
@@ -207,9 +238,68 @@ class BuildingLayoutTest extends TestCase
         );
     }
 
+    public function test_two_floors_reading_alike_once_the_page_renders_them_are_refused_because_html_collapses_whitespace(): void
+    {
+        // ⛔ WHAT A VIEWER READS IS HTML, NOT BYTES, so the comparison is on the RENDERED form.
+        // `server/public/js/lobby/main.js` writes the plate's name with `textContent`, into a page
+        // that ships no stylesheet at all (`server/public/` carries no CSS), so the browser's own
+        // default `white-space: normal` strips that text at both ends and collapses every run of
+        // whitespace inside it. A comparison on the BYTES therefore accepts documents whose plates
+        // are indistinguishable on the screen — which is exactly the building § 4.6 refuses: "two
+        // plates reading alike is a building nobody can navigate".
+        //
+        // Each arm names the AUTHORED string in the message — the string the operator has to go and
+        // edit — and the backticks around it are what make the whitespace visible there.
+
+        // (a) a label with a trailing space, beside the floor whose KEY it otherwise equals.
+        $this->refuses(
+            ['floors' => [
+                ['rooms' => ['sola' => 'office']],
+                ['label' => 'sola ', 'rooms' => ['zeta' => 'office']],
+            ]],
+            'Floors `sola` and `zeta` would both read as `sola `',
+        );
+
+        // (b) a leading space on one of two labels.
+        $this->refuses(
+            ['floors' => [
+                ['label' => 'the solos', 'rooms' => ['mira' => 'open', 'nova' => 'open']],
+                ['label' => ' the solos', 'rooms' => ['sola' => 'office', 'zeta' => 'office']],
+            ]],
+            'Floors `mira` and `sola` would both read as ` the solos`',
+        );
+
+        // (c) a doubled space INSIDE one of two labels — the arm a trim alone would still accept.
+        $this->refuses(
+            ['floors' => [
+                ['label' => 'the solos', 'rooms' => ['mira' => 'open', 'nova' => 'open']],
+                ['label' => 'the  solos', 'rooms' => ['sola' => 'office', 'zeta' => 'office']],
+            ]],
+            'Floors `mira` and `sola` would both read as `the  solos`',
+        );
+    }
+
+    public function test_two_unlabelled_floors_whose_keys_differ_only_in_whitespace_are_refused_by_the_same_clause(): void
+    {
+        // The sibling of the arm above, and the reason the normalisation is applied to the key
+        // FALLBACK and not to the label alone: two UNLABELLED floors keyed `sola` and `sola ` are
+        // two plates both reading *sola*, with different links. This reader deliberately does not
+        // validate that a room id is a well-formed `install_id` (docs/design/EVENT-SCHEMA.md
+        // § 3.1 owns that pattern and a second copy here would be free to drift), so the document
+        // reaches this clause — and § 4.6's clause is stated on what a viewer READS, which says
+        // nothing about whether the string came from a label or from a key.
+        $this->refuses(
+            ['floors' => [
+                ['rooms' => ['sola' => 'office']],
+                ['rooms' => ['sola ' => 'office']],
+            ]],
+            'Floors `sola` and `sola ` would both read as `sola `',
+        );
+    }
+
     public function test_a_label_equal_to_its_own_key_is_accepted_because_there_is_nothing_to_refuse(): void
     {
-        // THE CONTROL for the two arms above: the same collision shape with the two plates being
+        // THE CONTROL for the reads-alike arms above: the same collision shape with the two plates being
         // ONE plate. It reads `sola` and links to `sola`, which is what it would have done
         // unlabelled — a refusal here would be the rule fired on a document nobody can misread.
         $layout = BuildingLayout::parse(

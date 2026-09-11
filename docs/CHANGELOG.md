@@ -21,25 +21,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
-  derived key left out. A floor's entry in `config/building.php` is now a **record** —
-  `['rooms' => [install => form, …]]`, optionally with `'label' => '…'` — and the label is display
-  text only: the plate and the elevator's stop read it, and `FLOOR.md § 4.2` states the same rule
-  for the floor screen card#9208 will build. **The key is untouched**: `/floor/{key}`, the stack
-  order and the cab position are the derived key whatever the label says, so a label is edited
-  freely and no link moves. **No label ⇒ the floor reads as its key** — honest, and no *unnamed
-  floor* placeholder is invented; an install the layout does not place has no entry and therefore
-  no label. **Two floors that would READ the same are refused at load** (`BuildingLayout::parse`),
-  named by both keys and the string — a duplicated label or a label equal to another floor's key —
-  rather than repaired by drawing the key beside the label (`§ 13` decision 25 carries the
-  argument). The one case the reader cannot check — a label equal to an install provisioned after
-  the document was written — is named in `§ 4.6` and the composer draws both floors rather than
-  refuse a building for a name. The old bare room-set shape and any unknown entry member (`id`,
-  `key`, …) are refused **by name** with the new shape in the message. `compose-cases.json` gains
-  the labelled, unlabelled, unplaced and reads-alike cases, and the PHP composer and the browser's
-  `floors()` are held to the same `label` member through it. ⚠ Found and fixed on the way:
-  `main.js`'s elevator click computed the ride WITHOUT the delivered layout, so on any composed
-  building the destination the button named and the floor the cab landed on could differ — the
-  click now reads the last rendered building instead of deriving a second one.
+  derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
+  [install => form, …]]`, optionally with `'label' => '…'` — and the label is display text only: the
+  plate and the elevator's stop read it, and `FLOOR.md § 4.2` states the same rule for the floor
+  screen card#9208 will build. **The key is untouched**: `/floor/{key}`, the stack order and the cab
+  position are the derived key whatever the label says, so a label is edited freely and no link
+  moves. **No label ⇒ the floor reads as its key** — honest, and no *unnamed floor* placeholder is
+  invented; an install the layout does not place has no entry and therefore no label. **Two floors
+  that would READ the same are refused at load** (`BuildingLayout::parse`), named by both keys and
+  the authored string — a duplicated label or a label equal to another floor's key — rather than
+  repaired by drawing the key beside the label (`§ 13` decision 25 carries the argument). **The
+  comparison is on what the page RENDERS, not on the bytes** — one named predicate,
+  `BuildingLayout::readsAs()`, strips and collapses whitespace the way the browser's own
+  `white-space: normal` does before comparing, so ` the solos` beside `the solos` is refused and a
+  label of one NO-BREAK SPACE is blank; the label itself is still stored exactly as authored. An
+  explicit `'label' => null` is an ABSENT label rather than a type refusal, so the document survives
+  the JSON-column store `§ 4.6` promises it to. The one case the reader cannot check — a label equal
+  to an install provisioned after the document was written — is named in `§ 4.6` and the composer
+  draws both floors rather than refuse a building for a name. The old bare room-set shape and any
+  unknown entry member (`id`, `key`, …) are refused **by name** with the new shape in the message.
+  `compose-cases.json` gains the labelled, unlabelled, unplaced and reads-alike cases, and the PHP
+  composer and the browser's `floors()` are held to the same `label` member through it. ⚠ Found and
+  fixed on the way: `main.js`'s elevator click computed the ride WITHOUT the delivered layout, so on
+  any composed building the destination the button named and the floor the cab landed on could
+  differ — the click now reads the last rendered building instead of deriving a second one.
 - **card#9267** — **THE ROOM MODEL: a room is an install, a floor is an operator-composed set of
   rooms.** Operator ruling of 2026-09-11, which closes `FLOOR.md § 14` item 6 (*"is a floor an
   install, or a PM?"*) — the answer was that the question conflated the COORDINATION unit with the

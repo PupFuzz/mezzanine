@@ -36,6 +36,18 @@ namespace App\Building;
  * reading alike is a building nobody can navigate, and drawing the key beside the label instead
  * would be this reader repairing a document, which it does nowhere else.
  *
+ * ⭐ STORED EXACTLY AS AUTHORED, COMPARED ON WHAT IT RENDERS AS (§ 4.6). Those two are different
+ * operations and `readsAs()` below is the second one, in ONE place: a viewer reads HTML, where
+ * `white-space: normal` strips a run of whitespace at each end and collapses every run inside, so
+ * `the solos`, ` the solos` and `the  solos` are one plate name on the screen and a comparison on
+ * the BYTES would hand the operator the very building this refusal exists to prevent. Nothing is
+ * normalised on the way IN: what the page delivers is still the operator's own string.
+ *
+ * ⚠ AND AN EXPLICIT `label => null` IS AN ABSENT LABEL, NOT A REFUSAL. § 4.6's promise is that
+ * card#9071's console could hold this document in a JSON column "without the reader changing",
+ * and a JSON column encodes an unnamed floor as `"label": null` — so refusing it by type would
+ * make that promise false for the one store it was made for. Every OTHER non-string is refused.
+ *
  * ⚠ AND THE ONE CASE THAT REFUSAL CANNOT REACH, NAMED BY § 4.6 RATHER THAN LEFT TO LOOK COMPLETE:
  * a label equal to the `install_id` of an install the layout does NOT place — provisioned after
  * the document was written, which is the very case the derived key exists for. It composes to two
@@ -63,6 +75,27 @@ final class BuildingLayout
      * form — "because subdividing a room is an operator act and no operator acted on this one".
      */
     public const DEFAULT_FORM = 'open';
+
+    /**
+     * ⛔ THE ONE PHP PREDICATE FOR "what a viewer READS", and the only place this rule is decided
+     * on this side (card#9273, § 4.6). Both users below — the blank refusal and the reads-the-same
+     * refusal — ask it, so a document that passes one cannot be a document the other measured
+     * differently; `App\Support\RetirementAttribution` is this repo's post-mortem for what the
+     * second copy costs (an enforcement hoisted while each caller re-derived the predicate it
+     * enforced on, and the two agreed until the input nobody types in a test).
+     *
+     * It is NORMALISATION FOR COMPARISON ONLY and never a value to store or render: § 4.6 keeps a
+     * label "exactly as authored", and it is the BROWSER that produces this form — `white-space:
+     * normal` strips the ends of a text node and collapses every run of whitespace inside it, and
+     * `\p{Z}` reaches the separators `trim()` cannot see, a NO-BREAK SPACE (U+00A0) among them.
+     *
+     * ⚠ Text that is not valid UTF-8 makes `preg_replace` answer `null`, which casts to `''` —
+     * the blank refusal, which is the right answer for a name nothing can render.
+     */
+    private static function readsAs(string $text): string
+    {
+        return trim((string) preg_replace('/[\p{Z}\s]+/u', ' ', $text));
+    }
 
     private function __construct(
         /**
@@ -175,17 +208,23 @@ final class BuildingLayout
                 ));
             }
 
-            $label = null;
+            // § 4.6: "The SHAPE is the contract; the store is the caller's". An explicit `null`
+            // is read as an ABSENT label rather than refused by type, because a JSON column — the
+            // store that promise exists for (card#9071) — is how an unnamed floor is encoded
+            // there, and a reader that refused it would have made the promise false for it.
+            $label = $entry['label'] ?? null;
 
-            if (array_key_exists('label', $entry)) {
-                $label = $entry['label'];
-
+            if ($label !== null) {
                 if (! is_string($label)) {
                     throw new InvalidBuildingLayout(sprintf(
-                        'Floor #%d declares a label that is not a string (%s). § 4.6\'s label is '
-                        .'the name a viewer READS, and a value of another type is refused by type '
-                        .'rather than coerced into one — the layout is an authored document, so a '
-                        .'`3` here is a mistake to return to the author and not a 3 to render.',
+                        'Floor #%d declares a label that is not a string (%s). § 4.6\'s label '
+                        .'is the name a viewer READS, so it is a string or it is absent: the '
+                        .'layout is an authored document, and a value of another type is a '
+                        .'mistake to return to the '
+                        .'author rather than a value to render the floor as. (`null` is the '
+                        .'one '
+                        .'value that is not a mistake — it is an ABSENT label, and the floor then '
+                        .'reads as its key.)',
                         $position,
                         get_debug_type($label),
                     ));
@@ -193,8 +232,9 @@ final class BuildingLayout
 
                 // § 4.6: a blank label is "a floor whose name renders as nothing", which is this
                 // document's own hole one level up — and the repair is the author's, because the
-                // reader has no name to put there that is not invented.
-                if (trim($label) === '') {
+                // reader has no name to put there that is not invented. It is asked of what the
+                // label RENDERS as, so a label of one NO-BREAK SPACE is the blank it draws as.
+                if (self::readsAs($label) === '') {
                     throw new InvalidBuildingLayout(sprintf(
                         'Floor #%d declares a blank label. Leave the member out instead and the '
                         .'floor reads as its key (docs/design/FLOOR.md § 4.6), which is honest and '
@@ -269,14 +309,20 @@ final class BuildingLayout
         ksort($parsed, SORT_STRING);
 
         // ⛔ TWO FLOORS MAY NOT READ THE SAME (§ 4.6, card#9273), and the rule is stated on what a
-        // viewer READS — the label where given, else the key — so a floor labelled with ANOTHER
-        // floor's key is caught by this one clause rather than by a second one beside it. It runs
-        // over the whole document because the defect is a PAIR: neither plate is wrong alone,
-        // which is also why the message names both keys.
+        // viewer READS — the label where given, else the key, in the form `readsAs()` produces —
+        // so a floor labelled with ANOTHER floor's key, a label that differs from one only in
+        // whitespace the page collapses, and two unlabelled floors whose KEYS differ only that way
+        // are all caught by this one clause rather than by a second one beside it. It runs over the
+        // whole document because the defect is a PAIR: neither plate is wrong alone, which is also
+        // why the message names both keys.
         $readBy = [];
 
         foreach ($parsed as $floorKey => $floor) {
-            $reads = $floor['label'] ?? (string) $floorKey;
+            // What the author WROTE is what the message has to name — it is the string they have
+            // to go and edit — while what the two floors are COMPARED on is what the page renders
+            // that string as, which is `readsAs()` and is stored nowhere.
+            $authored = $floor['label'] ?? (string) $floorKey;
+            $reads = self::readsAs($authored);
 
             if (isset($readBy[$reads])) {
                 throw new InvalidBuildingLayout(sprintf(
@@ -286,7 +332,7 @@ final class BuildingLayout
                     .'key beside the label (docs/design/FLOOR.md § 4.6).',
                     (string) $readBy[$reads],
                     (string) $floorKey,
-                    $reads,
+                    $authored,
                 ));
             }
 
