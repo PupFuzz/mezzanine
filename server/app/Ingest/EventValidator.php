@@ -48,7 +48,7 @@ final class EventValidator
 {
     public function validate(mixed $event, int $index, ValidBatch $batch, TokenBinding $binding): ValidEvent|Refusal
     {
-        if (! is_array($event) || array_is_list($event)) {
+        if (! Wire::isJsonObject($event)) {
             return Refusal::invalidEvent($index, '', 'must be a JSON object');
         }
 
@@ -109,10 +109,24 @@ final class EventValidator
 
         $data = Wire::field($event, 'data');
 
-        if (! is_array($data) || array_is_list($data)) {
+        // ⭐ `{}` IS AN OBJECT AND `[]` IS NOT, AND card#9295 IS THE DIFFERENCE BETWEEN THEM.
+        // D1 § 6.0 — "a missing key and an explicit `null` are the same thing" — makes `{}` the
+        // legal spelling of an event every one of whose `data` fields is null, so refusing it is
+        // the server declining a document its own published contract permits, and § 12.4 charges
+        // that refusal the batch's ≤ 199 valid neighbours, permanently (§ 11.5). What made the
+        // old check refuse it was not a rule anybody wrote: `array_is_list([])` is `true`, and
+        // `[]` was the associative decode of BOTH documents. `BodyReader` no longer erases the
+        // difference, so this is now a question with an answer — see `Wire::isJsonObject`.
+        if (! Wire::isJsonObject($data)) {
             return Refusal::invalidEvent($index, 'data', 'must be a JSON object');
         }
 
+        // From here `$data` IS a `stdClass` — `Wire::isJsonObject` accepts nothing else — which
+        // is what lets the step-10 block below read it with `Wire::field`, mutate enum members on
+        // it, and hand it to `BatchWriter` in one spelling. There was a `(object) $data` cast
+        // here; with the predicate narrowed to `instanceof` it was a provable no-op on a value
+        // that is already an object, and a cast that can never convert anything is a defence
+        // against a state the line above has already refused.
         $serialized = Wire::serialize($data);
 
         if (strlen($serialized) > Wire::DATA_MAX_BYTES) {
@@ -161,7 +175,25 @@ final class EventValidator
                 // `≤ 1.5 KiB serialized` (§ 6.14's three open-keyed objects) is measured on the
                 // serialized form, in the SAME serialization every other cap in D1 is measured
                 // on — `Wire::serialize`, whose docblock owns why PHP's defaults are not it.
-                is_array($value) => strlen(Wire::serialize($value)),
+                //
+                // ⛔ `is_object` IS LOAD-BEARING AND IS NOT A BELT-AND-BRACES ARM (card#9295).
+                // Those three fields ARE objects on the wire, so since `BodyReader` stopped
+                // decoding associatively they arrive here as `stdClass` and `is_array` alone
+                // would stop measuring them — card#9283's bound silently unenforced on exactly
+                // the three fields it was hardest to get right. TWO tests hold it, and the class
+                // and method names are written whole on their own lines so they are greppable
+                // from this comment:
+                //
+                //   Tests\Feature\Ingest\IngestFieldByteBoundsTest
+                //     test_a_serialized_object_bound_is_enforced_at_the_http_surface
+                //   Tests\Unit\Ingest\EventFieldByteBoundsTest
+                //     test_one_byte_over_its_bound_is_refused_by_name
+                //
+                // The Feature one measures through the real decode. The Unit one reds too only
+                // because its object-shaped fixtures are now `(object)` casts; while they were
+                // hand-built PHP associative arrays it stayed green through a missing `is_object`
+                // arm, which is why the Feature guard was written and why it stays.
+                is_array($value), is_object($value) => strlen(Wire::serialize($value)),
                 is_string($value) => strlen($value),
                 default => null,
             };
@@ -207,9 +239,9 @@ final class EventValidator
 
                 // HARNESS-SOURCED. Coerce and count — never reject.
                 if ($enum['array']) {
-                    $data[$field][$position] = $enum['unknown'];
+                    $data->{$field}[$position] = $enum['unknown'];
                 } else {
-                    $data[$field] = $enum['unknown'];
+                    $data->{$field} = $enum['unknown'];
                 }
 
                 $coerced++;
@@ -221,7 +253,7 @@ final class EventValidator
         // `docs/VERSIONING.md` rule 3's row claims, "counted per seat so 'a newer reporter' is a
         // visible state rather than a silent one". TOP-LEVEL keys only: the three open-keyed
         // heartbeat objects are not descended into (§ 6.14).
-        foreach (array_keys($data) as $key) {
+        foreach (array_keys(get_object_vars($data)) as $key) {
             if (! in_array($key, $spec['fields'], true)) {
                 $unknownFields++;
             }

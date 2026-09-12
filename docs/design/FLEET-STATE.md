@@ -1395,7 +1395,13 @@ CREATE TABLE events (
   seq           BIGINT UNSIGNED NOT NULL,
   session_id    VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NULL,  -- null on heartbeats
   oversize      TINYINT(1) NOT NULL DEFAULT 0,
-  data          JSON NOT NULL,
+  data          JSON NOT NULL,               -- the producer's own document, object/array spelling
+                                             -- included: `{}` is stored as `{}` and never as `[]`
+                                             -- (card#9295). The ingest decodes the body with PHP's
+                                             -- associative mode OFF for exactly this reason — with
+                                             -- it on, `{}` and `[]` are one value, which both
+                                             -- refused a `data` D1 § 6.0 permits and would have
+                                             -- rewritten the survivors' spelling on the way in.
   UNIQUE KEY uq_dedup (seat_ref, event_id),                 -- D2-MUST #3
   KEY ix_seat_seq  (seat_ref, seq_epoch, seq),              -- gap detection, ordering, replay
   KEY ix_seat_recv (seat_ref, received_at),                 -- purge, timeline, staleness

@@ -58,6 +58,73 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   messages — row 12's, and additionally blocked on card#9287's open transport ruling, so what
   lands is **one named seam**, `App\Building\BuildingChanged`, called on commit with the payload
   § 8.7 publishes and no publisher behind it.
+- **card#9295** — **An event whose `data` is `{}` is now ACCEPTED, and the fix is at the DECODE
+  rather than at the check.** D1 § 6.0 — "a missing key and an explicit `null` are the same thing"
+  — makes `{}` the legal spelling of an event every one of whose `data` fields is null, and the
+  ingest refused it `422 invalid_event`, taking the batch's ≤ 199 valid neighbours with it (§ 12.4)
+  permanently (§ 11.5). The cause was not a rule anyone wrote: `json_decode($raw, true)` maps **both
+  `{}` and `[]` onto the same PHP value**, `[]`, for which `array_is_list()` is `true`, so § 12.1
+  step 9's "`data` an object" test had nothing left to test.
+  ⛔ **The one-clause repair is wrong, and was measured being wrong** — `$data !== [] &&
+  array_is_list($data)` accepts `{}` and accepts `"data": []` with it, because after an associative
+  decode the two documents are one value and no predicate downstream can recover the difference. So
+  `BodyReader` stopped erasing it: the body is decoded with PHP's associative mode **off**, objects
+  arrive as `stdClass`, and `Wire::isJsonObject()` answers the question wherever an event or a
+  `data` is tested. **Two of the four object/array checks call that predicate** (`EventValidator`'s
+  event and its `data`); the other two are hand-rolled where they sit — `BodyReader`'s
+  `instanceof \stdClass` on the envelope and `BatchValidator`'s `is_array`/`array_is_list` on
+  `events`, which asks the opposite question. Putting all four behind one predicate needs it
+  hoisted out of `App\Ingest` first, because `App\Floor` cannot depend on that namespace, and that
+  is **card#9299**.
+  `Wire::field()` reads both shapes, which is what kept the change from becoming an `(array)` cast
+  at each of § 12.1's twenty field reads — each of which would have re-erased the distinction.
+  ⭐ **Three more copies of the same conflation went with it, found by the card's sibling audit.**
+  `"events": {}` was refused as an EMPTY array rather than as a non-array; an event of `{}` was
+  refused for "not being a JSON object" rather than for the `event_id` it actually lacks; and a
+  body of `{}` took `400 malformed_body` instead of reaching step 6's version answer, which
+  § 12.1's own closing note requires be "reachable even for a batch that is wrong in other ways".
+  All three are the same `422`/`400` as before with a diagnosis a reporter's operator can act on;
+  the body case additionally moves that refusal's attribution from `unattributed_refusals` to the
+  seat the token binds, which is § 12.1's attribution table applied rather than amended.
+  ⚠ **The wire's spelling now survives into the store**: `events.data` holds `{}` where an
+  associative decode wrote `[]` (D2 § 6.4). ⚠ **`EventValidator`'s byte-bound loop measures
+  `is_object` as well as `is_array`** — § 6.14's three open-keyed objects arrive as `stdClass`
+  now, and without that arm card#9283's bound would have stopped being enforced on exactly those
+  three fields while `Tests\Unit\Ingest\EventFieldByteBoundsTest`, which drove the validator with
+  hand-built PHP arrays, stayed green. Those fixtures are now `(object)` casts — the shape the
+  decode actually produces — so the Unit suite reds on a missing `is_object` arm too (seen to fail,
+  three reds), and `Wire::isJsonObject()` dropped the associative-array arm it had been carrying
+  for them: `json_decode(…, false, …)` emits `stdClass`, lists and scalars only, so that arm was
+  true of nothing reachable from the wire. The HTTP-surface guard stays, because it is the one that
+  measures through the real decode.
+  ⚠ **`{"events": {"0": e0, "1": e1}}` was ACCEPTED before this change and is now `422
+  invalid_batch`** — permanent under § 11.5. An associative decode turned numeric-string keys into
+  a PHP list (`array_is_list(json_decode('{"0":1,"1":2}', true))` is `true`, measured), so an
+  `events` **object** walked through the array test. It is a JSON object, § 12.1 step 8 requires an
+  array, and the new answer is the one the document always specified. `fleet-reporter.js` builds a
+  real JS array and cannot emit that shape, so no conforming producer is affected — stated because
+  it is a batch that used to be stored and no longer is.
+  ⚠ **D1 gained two rules it had always enforced but never written** — § 12.1 step 3 now reads
+  "body parses as JSON **and is a JSON object**" and § 12.2's `malformed_body` row now reads
+  "unparseable **or non-object** body", because `[]`, `"x"`, `1`, `true` and `null` all parse and
+  are all refused, and this change relies on that distinction to accept `{}` while keeping `[]`
+  refused. The **VERSIONING-compliance table's rule-1 row** was corrected with them: it said a
+  batch with no `schema_version` is `400 malformed_body`, and `{}` was the last body that made that
+  true — no batch envelope reaches `malformed_body` for a missing version any more. It is
+  `400 unsupported_schema_version`, naming the accepted set. D1 § 6.0 and
+  § 12.1 step 9 were already right and the code was the wrong party; D2 § 6.4's `events.data`
+  column gained the spelling guarantee the fix mints.
+  ⚠ **The § 12.1 step 3 amendment had an un-audited SIBLING, and it is now amended too.** The
+  coordination-webhook receipt (§ 18.8) states its validation order in the same construct and its
+  step 5 still read the unamended "body parses as JSON → else `400`" — the same under-specification
+  in the same document, missed because the audit that found the amendment searched the INGEST's
+  steps rather than the claim's shape. It now reads "parses as JSON **and is a JSON object**",
+  with step 6's `repository.full_name` read named as the thing that already presupposed it.
+  ⭐ **No code changed and none was owed**: that endpoint is unbuilt (no `X-Hub-Signature-256`
+  anywhere in `server/`), so this is an under-specified spec being closed BEFORE it is built,
+  not a false claim about shipped code. It was deliberately not minted as its own card — there is
+  no user-visible harm to reach while nothing serves the route (canon #18's gate), and the surface
+  that owns the subject is the document itself.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
