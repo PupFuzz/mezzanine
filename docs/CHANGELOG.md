@@ -48,7 +48,45 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   and § 4.5 rule 4 renders a stored `false` as *disabled*. Both spellings now store `null`.
   `heartbeat.selftest` keeps today's behaviour exactly, by an `(array)` cast whose result is never
   re-encoded — only the failing NAMES leave it, which is the list `selftest_failed` declares.
-
+- **card#9208** — **THE AUTHORED BUILDING STORE IS BUILT, AND THE BUILDING LAYOUT HAS LEFT THE
+  DEPLOY** (`docs/design/FLOOR.md` Appendix B row 11, build slice 1). Two tables and a column
+  behind `docs/design/FLEET-STATE.md § 6.11`: `authored_revisions` (append-only, one row per save,
+  per `(kind, subject)`), `building_layout` (the layout that is current) and `floors.map_version`
+  (the revision the room's current map IS). Every save is a revision, a **restore** is a forward revision copying an
+  old one, a **removal** is a revision with a `document NULL` — so a removed map is as retrievable
+  as an edited one — and a byte-identical save is **refused** rather than recorded, so a revision
+  always records a change. `server/config/building.php` is **deleted**: the console's new
+  **building layout** module owns the document, and the migration seeds it from that file where a
+  deployment still declares one, validated first and failing the deploy loudly rather than seeding
+  a document the reader would refuse on every request. One `room_map` revision 1 is seeded per
+  existing `floors` row from that row's own map, author and time, so § 6.11's *no current row
+  without a revision behind it* holds from the first migration.
+  ⭐ **Operator ruling, 2026-09-12 — *"keep it in the console"*:** D3 § 4.6 flagged the layout's
+  move as this design's INFERENCE rather than a clause of the reversal, and it is now ratified; the
+  note says so, so a later reader does not re-raise a settled call.
+  ⭐ **card#9292's floor plan lands with it**: a room's value in `rooms` is a RECORD carrying its
+  `form` and, on a planned floor, its `origin`; a floor may carry a `hallway`, read by § 10.3's
+  table with the `desks` row inverted; and **two rooms whose footprints would intersect are refused
+  by name, naming both** — at the layout's save **and restore**, and at a room map's save, restore
+  **and removal**, which § 6.11 calls the write site an implementer misses. Both paths take the
+  `building_layout` current row `FOR UPDATE` first, in one place, so the two writes serialise. A
+  restore is re-checked against **today's** room maps, so *undo* cannot re-create an overlap a
+  later map made. § 10.3's table gained the refusals it states and the code did not have: the
+  grid (which is the room's footprint), a desk object wholly inside it, a desk object carrying
+  **any** property (card#9071's ruling, enforced at the write), and a `tilesets[]` `source` that
+  resolves to a tileset this repository ships — the residue the reversal said it closed.
+  ⚠ **One refusal is a BUILD-ORDER fact rather than a rule, and it is stated in § 4.6 rather than
+  worked around:** a plan that places a room with **no authored map** needs the shipped default's
+  grid for its extent, and Appendix B step 7's `resources/floor/default.tmj` is not in the tree —
+  step 11 landed first. That save is refused **by name**, naming the room and the file, rather than
+  measured against a size invented in the reader.
+  ⛔ **Not in this slice, and each exclusion has a reason:** the console's **preview** (it draws
+  with step 7's renderer, which does not exist — so restore is the only thing between a bad save
+  and every viewer, which § 6.11's review row already says); `GET /api/building` and
+  `GET /api/building/rooms/{install_id}/map` (row 12); and the `room.map` / `building.layout` feed
+  messages — row 12's, and additionally blocked on card#9287's open transport ruling, so what
+  lands is **one named seam**, `App\Building\BuildingChanged`, called on commit with the payload
+  § 8.7 publishes and no publisher behind it.
 - **card#9295** — **An event whose `data` is `{}` is now ACCEPTED, and the fix is at the DECODE
   rather than at the check.** D1 § 6.0 — "a missing key and an explicit `null` are the same thing"
   — makes `{}` the legal spelling of an event every one of whose `data` fields is null, and the

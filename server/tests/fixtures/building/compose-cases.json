@@ -4,10 +4,14 @@
     "reports compose into floors. Two runtimes implement it — App\\Building\\Building::compose()",
     "for the admin console and public/js/lobby/lobby-model.js floors() for the lobby — and both",
     "are held to every case here (Tests\\Feature\\Building, Tests\\Feature\\Lobby). A case is the",
-    "RAW authored document (a list of floor records, each carrying its `rooms` and optionally its",
-    "`label` — card#9273), the installs the fleet reports, and the floors that must come out:",
-    "floor keys ascending, each floor's `label` (null where the layout names no label, and null on",
-    "every implicit floor), rooms by install ascending, `reported` per room.",
+    "RAW authored document (a list of floor records, each carrying its `rooms` — a mapping of",
+    "install id to that room's RECORD, `{\"form\": …}` and, on a planned floor, `{\"origin\": …}`",
+    "(card#9292) — and optionally its `label` (card#9273) and its `hallway`), the installs the",
+    "fleet reports, and the floors that must come out: floor keys ascending, each floor's `label`",
+    "(null where the layout names no label, and null on every implicit floor), rooms by install",
+    "ascending, each room's `origin` where the floor is planned, and `reported` per room.",
+    "⚠ A floor's `hallway` is deliberately NOT among them: it is a whole Tiled document that only",
+    "the floor SCREEN draws, and the cases pin both runtimes to leaving it in the layout.",
     "Add a case here and both suites gain it; a rule that lives in one runtime and not the other",
     "is what this file exists to red."
   ],
@@ -15,162 +19,815 @@
     {
       "name": "the empty layout is today's building: one floor per install, open",
       "layout": [],
-      "installs": ["sola", "aimla"],
+      "installs": [
+        "sola",
+        "aimla"
+      ],
       "floors": [
-        {"floor": "aimla", "label": null, "rooms": [{"install": "aimla", "form": "open", "reported": true}]},
-        {"floor": "sola", "label": null, "rooms": [{"install": "sola", "form": "open", "reported": true}]}
+        {
+          "floor": "aimla",
+          "label": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "the operator's hallway: two solo installs composed onto one floor, keyed by the least room",
-      "layout": [{"rooms": {"zeta": "office", "sola": "office"}}],
-      "installs": ["zeta", "sola"],
+      "layout": [
+        {
+          "rooms": {
+            "zeta": {
+              "form": "office"
+            },
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "zeta",
+        "sola"
+      ],
       "floors": [
-        {"floor": "sola", "label": null, "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "the operator's mixed floor: one open PM+impl room and two offices on one floor",
-      "layout": [{"rooms": {"sola": "office", "aimla": "open", "zeta": "office"}}],
-      "installs": ["aimla", "sola", "zeta"],
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "aimla": {
+              "form": "open"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "aimla",
+        "sola",
+        "zeta"
+      ],
       "floors": [
-        {"floor": "aimla", "label": null, "rooms": [
-          {"install": "aimla", "form": "open", "reported": true},
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "aimla",
+          "label": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "two PM+impl rooms on one floor, and a second floor of offices",
-      "layout": [{"rooms": {"mira": "open", "nova": "open"}}, {"rooms": {"sola": "office", "zeta": "office"}}],
-      "installs": ["nova", "mira", "zeta", "sola"],
+      "layout": [
+        {
+          "rooms": {
+            "mira": {
+              "form": "open"
+            },
+            "nova": {
+              "form": "open"
+            }
+          }
+        },
+        {
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "nova",
+        "mira",
+        "zeta",
+        "sola"
+      ],
       "floors": [
-        {"floor": "mira", "label": null, "rooms": [
-          {"install": "mira", "form": "open", "reported": true},
-          {"install": "nova", "form": "open", "reported": true}
-        ]},
-        {"floor": "sola", "label": null, "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "mira",
+          "label": null,
+          "rooms": [
+            {
+              "install": "mira",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "nova",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "an install the layout does not place gets a floor of its own, open, and sorts among the composed ones",
-      "layout": [{"rooms": {"sola": "office", "zeta": "office"}}],
-      "installs": ["sola", "zeta", "aimla"],
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta",
+        "aimla"
+      ],
       "floors": [
-        {"floor": "aimla", "label": null, "rooms": [{"install": "aimla", "form": "open", "reported": true}]},
-        {"floor": "sola", "label": null, "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "aimla",
+          "label": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a room the fleet reports nothing for is drawn on its floor and flagged, never omitted",
-      "layout": [{"rooms": {"sola": "office", "zeta": "office"}}],
-      "installs": ["sola"],
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola"
+      ],
       "floors": [
-        {"floor": "sola", "label": null, "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": false}
-        ]}
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": false
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a floor none of whose rooms report is still a floor",
-      "layout": [{"rooms": {"sola": "office", "zeta": "office"}}],
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
       "installs": [],
       "floors": [
-        {"floor": "sola", "label": null, "rooms": [
-          {"install": "sola", "form": "office", "reported": false},
-          {"install": "zeta", "form": "office", "reported": false}
-        ]}
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": false
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": false
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a one-room floor is worth authoring only for its form",
-      "layout": [{"rooms": {"sola": "office"}}],
-      "installs": ["sola"],
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola"
+      ],
       "floors": [
-        {"floor": "sola", "label": null, "rooms": [{"install": "sola", "form": "office", "reported": true}]}
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "an all-digit install id survives the integer-key cast in both runtimes",
-      "layout": [{"rooms": {"42": "open", "7": "open"}}],
-      "installs": ["42", "7"],
+      "layout": [
+        {
+          "rooms": {
+            "42": {
+              "form": "open"
+            },
+            "7": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "42",
+        "7"
+      ],
       "floors": [
-        {"floor": "42", "label": null, "rooms": [
-          {"install": "42", "form": "open", "reported": true},
-          {"install": "7", "form": "open", "reported": true}
-        ]}
+        {
+          "floor": "42",
+          "label": null,
+          "rooms": [
+            {
+              "install": "42",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "7",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a labelled floor carries its label and is still keyed by its least room (card#9273)",
-      "layout": [{"label": "the solos", "rooms": {"zeta": "office", "sola": "office"}}],
-      "installs": ["sola", "zeta"],
+      "layout": [
+        {
+          "label": "the solos",
+          "rooms": {
+            "zeta": {
+              "form": "office"
+            },
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta"
+      ],
       "floors": [
-        {"floor": "sola", "label": "the solos", "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "sola",
+          "label": "the solos",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a labelled floor beside a composed floor the operator did not name: the second's label is null",
       "layout": [
-        {"label": "the solos", "rooms": {"sola": "office", "zeta": "office"}},
-        {"rooms": {"mira": "open", "nova": "open"}}
+        {
+          "label": "the solos",
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        },
+        {
+          "rooms": {
+            "mira": {
+              "form": "open"
+            },
+            "nova": {
+              "form": "open"
+            }
+          }
+        }
       ],
-      "installs": ["sola", "zeta", "mira", "nova"],
+      "installs": [
+        "sola",
+        "zeta",
+        "mira",
+        "nova"
+      ],
       "floors": [
-        {"floor": "mira", "label": null, "rooms": [
-          {"install": "mira", "form": "open", "reported": true},
-          {"install": "nova", "form": "open", "reported": true}
-        ]},
-        {"floor": "sola", "label": "the solos", "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "mira",
+          "label": null,
+          "rooms": [
+            {
+              "install": "mira",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "nova",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": "the solos",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a labelled floor beside an unplaced install: the implicit floor has no label to carry",
-      "layout": [{"label": "the solos", "rooms": {"sola": "office", "zeta": "office"}}],
-      "installs": ["sola", "zeta", "aimla"],
+      "layout": [
+        {
+          "label": "the solos",
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta",
+        "aimla"
+      ],
       "floors": [
-        {"floor": "aimla", "label": null, "rooms": [{"install": "aimla", "form": "open", "reported": true}]},
-        {"floor": "sola", "label": "the solos", "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "aimla",
+          "label": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": "the solos",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "§ 4.6's residual: a label equal to an UNPLACED install's id reads the same on two floors, and neither runtime refuses it or disambiguates it",
-      "layout": [{"label": "nova", "rooms": {"sola": "office"}}],
-      "installs": ["sola", "nova"],
+      "layout": [
+        {
+          "label": "nova",
+          "rooms": {
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "nova"
+      ],
       "floors": [
-        {"floor": "nova", "label": null, "rooms": [{"install": "nova", "form": "open", "reported": true}]},
-        {"floor": "sola", "label": "nova", "rooms": [{"install": "sola", "form": "office", "reported": true}]}
+        {
+          "floor": "nova",
+          "label": null,
+          "rooms": [
+            {
+              "install": "nova",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": "nova",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
       ]
     },
     {
       "name": "a label equal to its own floor's key is allowed and changes nothing about the floor",
-      "layout": [{"label": "sola", "rooms": {"sola": "office", "zeta": "office"}}],
-      "installs": ["sola", "zeta"],
+      "layout": [
+        {
+          "label": "sola",
+          "rooms": {
+            "sola": {
+              "form": "office"
+            },
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta"
+      ],
       "floors": [
-        {"floor": "sola", "label": "sola", "rooms": [
-          {"install": "sola", "form": "office", "reported": true},
-          {"install": "zeta", "form": "office", "reported": true}
-        ]}
+        {
+          "floor": "sola",
+          "label": "sola",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a PLANNED floor carries each room's origin through to the composed floor (card#9292)",
+      "layout": [
+        {
+          "label": "the solos",
+          "rooms": {
+            "zeta": {
+              "form": "office",
+              "origin": {
+                "x": 288,
+                "y": 160
+              }
+            },
+            "sola": {
+              "form": "office",
+              "origin": {
+                "x": 0,
+                "y": 160
+              }
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta"
+      ],
+      "floors": [
+        {
+          "floor": "sola",
+          "label": "the solos",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "origin": {
+                "x": 0,
+                "y": 160
+              },
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "origin": {
+                "x": 288,
+                "y": 160
+              },
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a floor's HALLWAY is the layout's and is never carried onto the composed floor (card#9292)",
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office",
+              "origin": {
+                "x": 0,
+                "y": 160
+              }
+            },
+            "zeta": {
+              "form": "office",
+              "origin": {
+                "x": 288,
+                "y": 160
+              }
+            }
+          },
+          "hallway": {
+            "type": "map",
+            "orientation": "orthogonal",
+            "width": 50,
+            "height": 5,
+            "tilewidth": 32,
+            "tileheight": 32,
+            "infinite": false,
+            "tilesets": [
+              {
+                "firstgid": 1,
+                "source": "tiles/furniture-kit.tsx"
+              }
+            ],
+            "layers": [
+              {
+                "id": 1,
+                "type": "tilelayer",
+                "name": "corridor",
+                "width": 50,
+                "height": 5,
+                "data": [
+                  1,
+                  1,
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta"
+      ],
+      "floors": [
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "origin": {
+                "x": 0,
+                "y": 160
+              },
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "origin": {
+                "x": 288,
+                "y": 160
+              },
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an unplanned floor beside a planned one: neither runtime invents an origin for it",
+      "layout": [
+        {
+          "rooms": {
+            "sola": {
+              "form": "office",
+              "origin": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            "zeta": {
+              "form": "office",
+              "origin": {
+                "x": 320,
+                "y": 0
+              }
+            }
+          }
+        },
+        {
+          "rooms": {
+            "mira": {
+              "form": "open"
+            },
+            "nova": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "zeta",
+        "mira",
+        "nova"
+      ],
+      "floors": [
+        {
+          "floor": "mira",
+          "label": null,
+          "rooms": [
+            {
+              "install": "mira",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "nova",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "origin": {
+                "x": 0,
+                "y": 0
+              },
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "office",
+              "origin": {
+                "x": 320,
+                "y": 0
+              },
+              "reported": true
+            }
+          ]
+        }
       ]
     }
   ]

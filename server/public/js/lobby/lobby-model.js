@@ -141,7 +141,20 @@ export function floors(snapshot, layout = []) {
             const install_id = String(room?.install);
             placed.add(install_id);
 
-            return { install_id, form: String(room?.form), reported: install_id in held };
+            const composed = { install_id, form: String(room?.form), reported: install_id in held };
+
+            // ⭐ § 4.6's PLAN (card#9292): a room on a PLANNED floor carries where it is drawn.
+            // Carried through exactly as delivered and never re-derived — `origin` is a member
+            // the server has already refused every bad form of (integers ≥ 0, `x` and `y` and
+            // nothing else), and a second reading of that rule here is the drift this file's
+            // label comment names. A floor with no plan carries no `origin` at all, which is how
+            // the renderer tells *placed* from *arrange it by the default rule*: an invented
+            // `null` here would be a third state neither runtime has.
+            if (room?.origin !== undefined) {
+                composed.origin = room.origin;
+            }
+
+            return composed;
         });
 
         // § 4.6 (card#9273): the floor's LABEL, as the delivered document carries it — a string

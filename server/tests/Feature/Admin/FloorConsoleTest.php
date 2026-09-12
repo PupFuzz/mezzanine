@@ -3,8 +3,10 @@
 namespace Tests\Feature\Admin;
 
 use App\Admin\ConsoleModules;
+use App\Building\Layouts;
 use App\Floor\FloorInventory;
 use App\Floor\FloorMap;
+use App\Floor\Floors;
 use App\Floor\InvalidFloorMap;
 use App\Models\User;
 use App\Sweep\Purge;
@@ -90,6 +92,19 @@ class FloorConsoleTest extends TestCase
         ]);
 
         return $seatRef;
+    }
+
+    /**
+     * ⭐ THE LAYOUT NOW COMES FROM THE STORE, NOT FROM A CONFIG FILE (card#9208's reversal). These
+     * arms used to set `config(['building.floors' => …])`; `config/building.php` is gone, and the
+     * document reaches the reader through the write path an operator actually uses — which is the
+     * seam worth exercising anyway.
+     *
+     * @param  list<array<string, mixed>>  $floors
+     */
+    private function composeTheBuilding(array $floors): void
+    {
+        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com');
     }
 
     private function author(string $installId, string $map, ?User $as = null): TestResponse
@@ -194,6 +209,16 @@ class FloorConsoleTest extends TestCase
             'the .tmx spelling' => [FloorMapFixture::tmx(), 'JSON'],
             'not a map at all' => ['{"type":"tileset"}', 'map'],
             'not json' => ['not json at all', 'JSON'],
+
+            // ⭐ § 10.3's TABLE, AS IT STANDS SINCE card#9208's REVERSAL AND card#9292 — the
+            // section names THIS suite as where "each refusal goes red against the same map with
+            // one property changed", so a row of that table with no case here is a rule the
+            // console claims and nobody has watched refuse.
+            'a grid with no tile width' => [FloorMapFixture::noTileWidth(), 'tilewidth'],
+            'a projection the floor does not draw' => [FloorMapFixture::isometric(), 'isometric'],
+            'a desk slot past the grid' => [FloorMapFixture::deskOutsideTheGrid(), 'wholly inside'],
+            'a desk slot carrying a property' => [FloorMapFixture::deskWithProperties(), 'properties'],
+            'a tileset the repository does not ship' => [FloorMapFixture::unshippedTileset(), 'does not ship'],
         ];
     }
 
@@ -315,7 +340,7 @@ class FloorConsoleTest extends TestCase
         $this->provisionSeat('sola-solo', 'sola');
         $this->provisionSeat('zeta-solo', 'zeta');
 
-        config(['building.floors' => [['rooms' => ['sola' => 'office', 'zeta' => 'office']]]]);
+        $this->composeTheBuilding([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
@@ -327,7 +352,9 @@ class FloorConsoleTest extends TestCase
             ->get(route('admin.floors.index'))
             ->assertOk()
             ->assertSee('operator-composed set of rooms', false)
-            ->assertSee('config/building.php');
+            // The floors page points at the module that owns the composition, which since the
+            // reversal is a page in this console rather than a file in the deploy.
+            ->assertSee(route('admin.layout.edit'), false);
     }
 
     /**
@@ -339,7 +366,9 @@ class FloorConsoleTest extends TestCase
     {
         $this->provisionSeat('aimla-pm');
 
-        config(['building.floors' => []]);
+        // Nothing composed at all — the store holds no layout, which § 8.7 calls today's
+        // building: one floor per install. It is the state a deployment starts in, so it is
+        // asserted by NOT writing one rather than by writing an empty document.
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
@@ -358,7 +387,7 @@ class FloorConsoleTest extends TestCase
     {
         $this->provisionSeat('sola-solo', 'sola');
 
-        config(['building.floors' => [['rooms' => ['sola' => 'office', 'zeta' => 'office']]]]);
+        $this->composeTheBuilding([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
@@ -402,6 +431,11 @@ class FloorConsoleTest extends TestCase
         DB::table('floors')->insert([
             'install_id' => self::INSTALL,
             'map' => FloorMapFixture::base64Layer(),
+            // § 6.11: the revision this row IS. The row is planted BY A WRITER THAT IS NOT THE
+            // CONSOLE — which is the whole premise of this arm — so it is planted the way such a
+            // row actually arrives: pointing at a revision number, with the history behind it
+            // being somebody else's problem, which is exactly why the page must not fall over.
+            'map_version' => 1,
             'updated_by' => 'ops@example.com',
             'created_at' => $now,
             'updated_at' => $now,
@@ -443,6 +477,145 @@ class FloorConsoleTest extends TestCase
             ->post(route('admin.floors.remove', self::INSTALL))
             ->assertRedirect(route('admin.floors.index'))
             ->assertSessionHasErrors('floor');
+    }
+
+    // ── ⭐ card#9208's REVISIONS, DIFF, RESTORE and EXPORT, on the surface an operator uses ──
+
+    /**
+     * ⛔ THE MODULE THAT STANDS IN FOR VERSION CONTROL, driven through the pages rather than
+     * through the store (`Tests\Feature\Building\TheAuthoredStoreKeepsEveryRevisionTest` holds the
+     * store's own properties). What this arm proves is that the three things
+     * `docs/design/FLEET-STATE.md § 6.11` says an operator gets back — blame, diff, revert — are
+     * actually REACHABLE: a store with perfect history behind a page nobody can open gives back
+     * none of them.
+     */
+    public function test_the_revisions_page_lists_every_save_with_its_author_and_its_slot_count(): void
+    {
+        $this->provisionSeat('aimla-pm');
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+        $this->author(self::INSTALL, FloorMapFixture::valid(8))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->operator())
+            ->get(route('admin.floors.revisions', self::INSTALL))
+            ->assertOk()
+            ->assertSee('ops@example.com')
+            ->assertSee('current')
+            // `S` before and after, which is what re-slots every desk in the room (§ 10.3).
+            ->assertSee('12')
+            ->assertSee('8');
+    }
+
+    public function test_the_diff_page_names_the_layer_that_moved_and_the_slot_count_on_both_sides(): void
+    {
+        $this->provisionSeat('aimla-pm');
+
+        $repainted = FloorMapFixture::decoded(12);
+        $repainted['layers'][0]['data'][0] = 7;
+
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+        $this->author(self::INSTALL, FloorMapFixture::encode($repainted))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->operator())
+            ->get(route('admin.floors.diff', self::INSTALL).'?from=1&to=2')
+            ->assertOk()
+            ->assertSee('room')
+            ->assertSee('changed');
+    }
+
+    public function test_a_revision_is_exported_as_the_document_that_was_authored(): void
+    {
+        $this->provisionSeat('aimla-pm');
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+
+        $response = $this->actingAs($this->operator())
+            ->get(route('admin.floors.export', [self::INSTALL, 1]))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename="aimla-r1.tmj"');
+
+        // § 6.11: the export is "the operator's own copy against a lost store", so it is the
+        // document BYTE FOR BYTE and not a re-encoding of what this application parsed out of it.
+        $this->assertSame(FloorMapFixture::valid(12), $response->getContent());
+    }
+
+    public function test_restoring_from_the_page_writes_a_forward_revision_and_says_so(): void
+    {
+        $this->provisionSeat('aimla-pm');
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+        $this->author(self::INSTALL, FloorMapFixture::valid(8))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->operator())
+            ->post(route('admin.floors.restore', [self::INSTALL, 1]))
+            ->assertRedirect(route('admin.floors.revisions', self::INSTALL))
+            ->assertSessionHas('status');
+
+        $this->assertSame(3, (int) Floors::forInstall(self::INSTALL)->map_version);
+        $this->assertSame(12, FloorMap::parse(Floors::forInstall(self::INSTALL)->map)->slots);
+    }
+
+    public function test_a_save_that_changes_the_slot_count_says_every_desk_in_the_room_has_moved(): void
+    {
+        // § 10.3: "a save that changes `S` re-slots EVERY desk in that room — the slot function is
+        // `h mod S` — and the console shows `S` before and after a save for exactly that reason; a
+        // save that keeps `S` moves no desk." Both halves, because the second is what makes the
+        // first a measurement rather than a sentence that is always on the page.
+        $this->provisionSeat('aimla-pm');
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+
+        $this->author(self::INSTALL, FloorMapFixture::valid(8));
+
+        $this->assertStringContainsString('declared 12 before', (string) session('status'));
+        $this->assertStringContainsString('EVERY desk', (string) session('status'));
+
+        // A save that keeps `S`: same count, different tiles.
+        $repainted = FloorMapFixture::decoded(8);
+        $repainted['layers'][0]['data'][0] = 7;
+
+        $this->author(self::INSTALL, FloorMapFixture::encode($repainted));
+
+        $this->assertStringContainsString('no desk moved', (string) session('status'));
+    }
+
+    public function test_a_no_op_save_comes_back_on_the_form_rather_than_as_a_five_hundred(): void
+    {
+        // § 6.11's no-op refusal is thrown by the STORE, not by the form's validation rule — it is
+        // a fact about what is already current and not about the document. It still has to reach
+        // the operator the way every other refusal does.
+        $this->provisionSeat('aimla-pm');
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))
+            ->assertRedirect()
+            ->assertSessionHasErrors('map');
+
+        $this->assertSame(1, (int) Floors::forInstall(self::INSTALL)->map_version);
+    }
+
+    public function test_an_overlap_refused_at_a_maps_write_comes_back_on_the_form_naming_both_rooms(): void
+    {
+        // ⛔ § 6.11's SECOND WRITE SITE, at the surface: the operator is editing a ROOM and the
+        // refusal is about the FLOOR it sits on, so the message has to name the other room or
+        // there is nothing to act on.
+        $this->provisionSeat('sola-solo', 'sola');
+        $this->provisionSeat('zeta-solo', 'zeta');
+
+        $this->author('sola', FloorMapFixture::sized(10, 8))->assertSessionHasNoErrors();
+        $this->author('zeta', FloorMapFixture::sized(10, 8))->assertSessionHasNoErrors();
+
+        $this->composeTheBuilding([['rooms' => [
+            'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
+            'zeta' => ['form' => 'office', 'origin' => ['x' => 320, 'y' => 0]],
+        ]]]);
+
+        $this->actingAs($this->operator())
+            ->patch(route('admin.floors.update', 'sola'), ['map' => FloorMapFixture::sized(11, 8)])
+            ->assertRedirect()
+            ->assertSessionHasErrors('map');
+
+        $this->assertStringContainsString(
+            'zeta',
+            (string) session('errors')->first('map'),
+            'the refusal did not name the room the save would have overlapped',
+        );
     }
 
     // ── ⛔ the (b) line, asserted as an absence ──────────────────────────────────────────────

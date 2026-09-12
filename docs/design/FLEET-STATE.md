@@ -2261,8 +2261,10 @@ them and says which one it does not:
 | **diff** | the console shows two revisions side by side and names what moved: the tile layers whose data differ, the desk count `S` before and after, and a line diff of the two documents pretty-printed. A CSV-encoded map is reviewable in a diff — [FLOOR.md § 10.1](FLOOR.md#101-the-manifest-and-the-two-gates) clause 3 chose CSV partly for that — and the store keeps the document byte for byte, so the diff is of what was authored | **yes**, read in the console rather than in a pull request |
 | **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in that exists only once that renderer does ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) step 7), so until then the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
 
-**The write path, stated once.** The admin console's floors module (card#9085) is the only writer of
-all three tables, and one save is one transaction: validate the document — a room map by
+**The write path, stated once.** The admin console is the only writer of all three tables — its
+**floors** module (card#9085) writes a room's map and its **building layout** module (card#9208's
+build slice 1) writes the layout, and both go through the one serialised path below — and one save is
+one transaction: validate the document — a room map by
 `App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
 by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
 states — since card#9292 the floor plan's among them: a placed room's `origin`; a planned floor's

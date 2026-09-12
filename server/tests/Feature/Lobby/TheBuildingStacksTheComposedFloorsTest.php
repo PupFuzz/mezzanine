@@ -4,6 +4,9 @@ namespace Tests\Feature\Lobby;
 
 use App\Building\BuildingLayout;
 use App\Building\InvalidBuildingLayout;
+use App\Building\Layouts;
+use App\Fold\Clock;
+use Illuminate\Support\Facades\DB;
 use Tests\Feature\Feed\FeedTestCase;
 
 /**
@@ -204,7 +207,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     public function test_two_rooms_composed_onto_one_floor_are_one_plate_and_an_unplaced_install_is_its_own(): void
     {
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => 'office', 'sola' => 'office']]]])->floors;
+        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
 
         $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
         $plates = $probe['building']['plates'];
@@ -274,7 +277,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         // The served body of `threeFloors()` with `aimla` — the install the layout does not
         // place — dropped, so the two composed rooms are the whole building.
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => 'office', 'sola' => 'office']]]])->floors;
+        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
 
         $body['installs'] = array_values(array_filter(
             $body['installs'],
@@ -310,7 +313,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         $this->issueToken('sola', 'sola-solo');
         $body = $this->oneFloor();
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['sola' => 'office', 'zeta' => 'office']]]])->floors;
+        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]])->floors;
 
         $plates = $this->probe(['snapshot' => $body, 'layout' => $layout])['building']['plates'];
 
@@ -338,7 +341,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         $body = $this->threeFloors();
         $layout = BuildingLayout::parse(
-            ['floors' => [['label' => 'the solos', 'rooms' => ['zeta' => 'office', 'sola' => 'office']]]],
+            ['floors' => [['label' => 'the solos', 'rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]],
         )->floors;
 
         $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
@@ -412,8 +415,8 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         $body = $this->threeFloors();
         $layout = BuildingLayout::parse(['floors' => [
-            ['label' => 'reception', 'rooms' => ['aimla' => 'open']],
-            ['rooms' => ['sola' => 'office', 'zeta' => 'office']],
+            ['label' => 'reception', 'rooms' => ['aimla' => ['form' => 'open']]],
+            ['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
         ]])->floors;
 
         $elevator = $this->probe(['snapshot' => $body, 'layout' => $layout, 'cab' => 'ghost'])['building']['elevator'];
@@ -467,9 +470,18 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
                 // and the browser drops reds HERE, on the fixture's own cases, rather than being
                 // caught by whichever screen noticed first.
                 'label' => $row['label'],
-                'rooms' => array_map(fn (array $room) => [
-                    'install' => $room['install_id'], 'form' => $room['form'], 'reported' => $room['reported'],
-                ], $row['rooms']),
+                'rooms' => array_map(
+                    // ⛔ AND FOR card#9292's `origin`, for the same reason and in the same place.
+                    // Appendix B row 11 calls this projection a CROSS-RUNTIME PIN in terms: the
+                    // fixture's planned cases are what make *the plan reaches the browser* a
+                    // property of both runtimes rather than of whichever one was read last. The
+                    // member is carried only where the floor is planned — an `origin => null`
+                    // would be a third state neither runtime has.
+                    fn (array $room) => ['install' => $room['install_id'], 'form' => $room['form']]
+                        + (isset($room['origin']) ? ['origin' => $room['origin']] : [])
+                        + ['reported' => $room['reported']],
+                    $row['rooms'],
+                ),
             ], $rows);
 
             $this->assertSame($case['floors'], $composed, 'fixture case: '.$case['name']);
@@ -483,7 +495,10 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
      */
     public function test_the_page_delivers_the_composed_floors_the_reader_produced(): void
     {
-        config(['building.floors' => [['label' => 'the solos', 'rooms' => ['zeta' => 'office', 'sola' => 'office']]]]);
+        $this->composeTheBuilding([['label' => 'the solos', 'rooms' => [
+            'zeta' => ['form' => 'office'],
+            'sola' => ['form' => 'office'],
+        ]]]);
 
         // The delivered record is the reader's, member for member — including the LABEL, which is
         // the member `main.js` has no other way to learn (card#9273).
@@ -516,7 +531,10 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         $label = '</script><b>the solos</b> & co';
 
-        config(['building.floors' => [['label' => $label, 'rooms' => ['zeta' => 'office', 'sola' => 'office']]]]);
+        $this->composeTheBuilding([['label' => $label, 'rooms' => [
+            'zeta' => ['form' => 'office'],
+            'sola' => ['form' => 'office'],
+        ]]]);
 
         $delivered = $this->deliveredLayout();
 
@@ -549,7 +567,13 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         // § 4.6 / the reader's header: a bad document is a refusal on the surfaces that read it,
         // per request — the lobby is one — and never a repair. The seat side is untouched by it.
-        config(['building.floors' => [['rooms' => ['sola' => 'cubicle']]]]);
+        //
+        // ⚠ SINCE card#9208 THE STORE REFUSES THIS AT THE WRITE, so the row is planted rather than
+        // saved: the state is reachable exactly as `App\Floor\FloorInventory`'s unreadable-map row
+        // is — a rule TIGHTENED after a document was stored, or a writer that is not the console —
+        // and the per-request refusal is the backstop behind the write-time one, not a duplicate
+        // of it.
+        $this->storeALayoutTheReaderWillRefuse('{"floors":[{"rooms":{"sola":{"form":"cubicle"}}}]}');
 
         $this->withoutExceptionHandling();
         $this->expectException(InvalidBuildingLayout::class);
@@ -727,6 +751,32 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     }
 
     /** The rendered page, as an MFA-satisfied session actually receives it. */
+    /**
+     * ⭐ THE LAYOUT COMES FROM THE CONSOLE'S STORE (card#9208's reversal): these arms used to set
+     * `config(['building.floors' => …])` and `config/building.php` is gone. Written through the
+     * real write path, so what the page delivers is what an operator's save would have produced.
+     *
+     * @param  list<array<string, mixed>>  $floors
+     */
+    private function composeTheBuilding(array $floors): void
+    {
+        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com');
+    }
+
+    /** A row no writer in this application would produce — see the caller for why it is planted. */
+    private function storeALayoutTheReaderWillRefuse(string $document): void
+    {
+        $now = Clock::sql(now());
+
+        DB::table('building_layout')->insert([
+            'id' => 1,
+            'document' => $document,
+            'layout_version' => 1,
+            'updated_by' => 'ops@example.com',
+            'updated_at' => $now,
+        ]);
+    }
+
     private function lobbyPage(): string
     {
         return $this->actingAs($this->enrolled())

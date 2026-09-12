@@ -147,16 +147,30 @@ who does not want that property leaves `MAIL_MAILER` unconfigured and the path s
 `/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
 **retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
-where *who retired it, when and why* lives, `card#9078`) and **floors** (each floor's Tiled map: how
-many desks the room has and where they sit, `card#9085`). Pinning a named seat to a chosen desk is
-deferred to `card#9071` because it would store a fact `docs/design/FLOOR.md § 3.2` derives.
+where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
+many desks it has and where they sit, `card#9085`) and the **building layout** (which rooms share a
+floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`).
+Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) because it would
+store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying **any** property is
+refused at the write so that a seat's name cannot arrive as one.
 
-**A floor's map is authored in Tiled and installed through the console** — export it as a JSON map
-(`.tmj`) with the tile layer format set to CSV, referencing the tileset by file rather than
-embedding its image, and paste it in. The console refuses anything else by name, and shows each
-floor's slot count against the seats it renders so a map that is short of desks is visible where it
-can be fixed rather than on the floor. Removing a map removes the room and nothing else: the
-install, its seats and their state are the fleet's.
+**A room's map is authored in Tiled and installed through the console** — export it as a JSON map
+(`.tmj`) with the tile layer format set to CSV, referencing a tileset this repository ships under
+`resources/floor/` rather than embedding its image, and paste it in. The console refuses anything
+else by name, and shows each room's slot count against the seats it renders so a map that is short
+of desks is visible where it can be fixed rather than on the floor. Removing a map puts the room
+back on the shipped default and nothing else: the install, its seats and their state are the
+fleet's.
+
+**Every save is a revision, and any of them can be restored** (`docs/design/FLEET-STATE.md § 6.11`).
+The console lists a room's revisions with who authored each and when, diffs two of them — naming the
+tile layers that differ and the desk count before and after — restores any one as a **new** revision
+rather than by rewriting history, and exports any one as a file, which is the operator's own copy
+against a lost store. A removal is a revision too, so the map it removed is still there to restore,
+and a save that changes nothing is refused rather than recorded. ⚠ **What that does not give back is
+a review**: every authenticated user is an operator, so no second person stands between a save and
+every viewer, and until the floor's renderer can preview a document before it is saved the restore
+is what stands in its place.
 
 **Every account that can reach the console is an operator** — there are no roles, because this
 application has one class of user. ▶ **The trigger that reopens that decision, stated so it is a

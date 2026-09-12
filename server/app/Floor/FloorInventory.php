@@ -3,7 +3,7 @@
 namespace App\Floor;
 
 use App\Building\Building;
-use App\Building\BuildingLayout;
+use App\Building\Layouts;
 use App\Read\Snapshot;
 
 /**
@@ -38,8 +38,8 @@ final class FloorInventory
     /**
      * @return list<array{
      *     install_id: string, floor: string|null, form: string|null, seats: int, renders: bool,
-     *     authored: bool, slots: int|null, unreadable: string|null, short_by: int,
-     *     updated_at: string|null, updated_by: string|null
+     *     authored: bool, map_version: int|null, slots: int|null, unreadable: string|null,
+     *     short_by: int, updated_at: string|null, updated_by: string|null
      * }>
      */
     public static function rows(): array
@@ -53,7 +53,11 @@ final class FloorInventory
         // of them learned about a new case. So the building is composed once and flattened.
         $placement = [];
 
-        foreach (Building::compose(BuildingLayout::fromConfig(), $seats->keys()->map(strval(...))->all()) as $floor) {
+        // ⭐ THE LAYOUT IS READ FROM THE CONSOLE'S OWN STORE since card#9208's reversal
+        // (`App\Building\Layouts`, `docs/design/FLEET-STATE.md § 6.11`), where it was
+        // `config/building.php` before. The composer did not change with it: § 4.6's promise was
+        // that whatever reads the document "takes the DECODED document, never a path".
+        foreach (Building::compose(Layouts::layout(), $seats->keys()->map(strval(...))->all()) as $floor) {
             foreach ($floor['rooms'] as $room) {
                 $placement[$room['install']] = ['floor' => $floor['floor'], 'form' => $room['form']];
             }
@@ -98,6 +102,9 @@ final class FloorInventory
                 'seats' => $count,
                 'renders' => $count > 0,
                 'authored' => $floor !== null,
+                // § 6.11: the revision this row IS. Shown beside the map because *which revision
+                // am I looking at* is the first question a restore makes askable.
+                'map_version' => $floor === null ? null : (int) $floor->map_version,
                 'slots' => $slots,
                 'unreadable' => $unreadable,
                 // § 3.2's overflow: "If the floor's seat count exceeds `S`… the floor shows a

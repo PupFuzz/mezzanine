@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\ConsoleController;
 use App\Http\Controllers\Admin\FloorController;
+use App\Http\Controllers\Admin\LayoutController;
 use App\Http\Controllers\Admin\SeatController;
 use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
@@ -96,3 +97,50 @@ Route::post('/floors', [FloorController::class, 'store'])->name('floors.store');
 Route::get('/floors/{install_id}/edit', [FloorController::class, 'edit'])->name('floors.edit');
 Route::patch('/floors/{install_id}', [FloorController::class, 'update'])->name('floors.update');
 Route::post('/floors/{install_id}/remove', [FloorController::class, 'remove'])->name('floors.remove');
+
+/*
+ * THE REVISIONS, THE DIFF, THE RESTORE AND THE EXPORT — card#9208's reversal (2026-09-12),
+ * `docs/design/FLEET-STATE.md § 6.11`. The store took the four things version control gave a
+ * build artifact and gives back three; these four routes ARE those three, and § 6.11 says in
+ * terms which one is missing — the review, because "every authenticated user is an operator".
+ *
+ * ⛔ RESTORE IS A `POST` TO A NAMED ACT and it DESTROYS NOTHING: § 6.11 makes a restore "a new
+ * revision whose `document` copies revision K's", so the verb is a write forward and never a
+ * rewrite of history. The export is a `GET` because it is a read — it is the operator's own copy
+ * against a lost store.
+ *
+ * ⚠ THE PREVIEW IS NOT HERE, and its absence is `docs/design/FLOOR.md` Appendix B row 11's own
+ * exclusion: it draws with step 7's renderer, which does not exist, so until then restore is the
+ * only thing between a bad save and every viewer. A half-preview would be worse than none — it
+ * would be a check an operator trusted.
+ */
+Route::get('/floors/{install_id}/revisions', [FloorController::class, 'revisions'])->name('floors.revisions');
+Route::get('/floors/{install_id}/diff', [FloorController::class, 'diff'])->name('floors.diff');
+Route::get('/floors/{install_id}/revisions/{revision}/export', [FloorController::class, 'export'])
+    ->whereNumber('revision')->name('floors.export');
+Route::post('/floors/{install_id}/revisions/{revision}/restore', [FloorController::class, 'restore'])
+    ->whereNumber('revision')->name('floors.restore');
+
+/*
+ * THE BUILDING LAYOUT MODULE — card#9208's reversal, `docs/design/FLOOR.md § 4.6`.
+ *
+ * ⭐ WHICH ROOMS SHARE A FLOOR IS AUTHORED HERE NOW, not in `config/building.php`. That file was a
+ * deploy-time document BECAUSE the room map was a build artifact; card#9208 made the map a runtime
+ * document, and a deploy-time layout beside a runtime map is the two-change-path building § 4.6
+ * refused — "rearranging the rooms taking effect on a save while the rooms themselves took effect
+ * on a deploy". The operator ratified the move on 2026-09-12 (card#9208 comment 5).
+ *
+ * ⛔ NO ROUTE HERE TAKES A FLOOR ID, AND THERE IS NOTHING TO GIVE ONE. A floor has no authored id
+ * (§ 4.6): it IS its rooms, and its key is DERIVED — the lexically least `install_id` among them.
+ * The layout is one document with one revision history, which is also why its revision subject is
+ * the empty string (`docs/design/FLEET-STATE.md § 6.4`) and why the plan a floor carries needs no
+ * table, no endpoint and no message of its own (D2 § 13 row 45, card#9292).
+ */
+Route::get('/layout', [LayoutController::class, 'edit'])->name('layout.edit');
+Route::patch('/layout', [LayoutController::class, 'update'])->name('layout.update');
+Route::get('/layout/revisions', [LayoutController::class, 'revisions'])->name('layout.revisions');
+Route::get('/layout/diff', [LayoutController::class, 'diff'])->name('layout.diff');
+Route::get('/layout/revisions/{revision}/export', [LayoutController::class, 'export'])
+    ->whereNumber('revision')->name('layout.export');
+Route::post('/layout/revisions/{revision}/restore', [LayoutController::class, 'restore'])
+    ->whereNumber('revision')->name('layout.restore');
