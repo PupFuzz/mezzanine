@@ -19,6 +19,35 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9146** — **THE PROMOTE CHAIN'S 403 WAS THE WRONG ACCOUNT'S TOKEN, and nothing checked
+  which account it was.** Every `release-promote-cards` run from 2026-08-24 to 2026-09-09 died
+  `✗ card#NNNN: move failed (HTTP 403) — left in place` on every card it named. The cause was not
+  the board: `secrets.KANBAN_WRITEBACK_TOKEN` held a token for kanban **user 10** instead of this
+  repo's writeback account, **user 15**. Measured on the workflow itself, one variable at a time —
+  run `34417338664` probed `user 10` and then 403'd on `card#9077`; the secret was re-set at
+  `2026-09-09T23:37:31Z`; run `34417760754` probed `user 15` and reported
+  `✓ card#9078: moved 107 → 108`. ⛔ **Both accounts are `board_custom` on board 14 with identical
+  `custom_permissions` today, so the role does not explain the refusal, and this repo has NOT
+  established why user 10 is refused** — the identity is the discriminator and that is all this
+  chain needs. **The repo-side defect was the missing check**: the preflight asserted only that
+  the secret was NON-EMPTY while its own error text DECLARED a requirement about the token's user,
+  so a mis-set credential looked like a board-permission mystery and cost four rounds of wrong
+  inference across two agents. `release-promote-cards.yml` now asks `GET /users/current.json`
+  **before the mover runs** and fails the job unless `.data.id` equals the new committed
+  `.release-pr.json` → `.promote.writeback_user_id`; it prints the two numeric ids and nothing
+  else from that response, and sends only to `vars.KANBAN_API_BASE` (the PR-editable `api_base`
+  path is unreachable from it, which is why it carries no second copy of the mover's host guard).
+  **Seen to fail before it was trusted** — run `34674557403` declared `writeback_user_id: 99` and
+  the job red with *"authenticates as kanban user 15, but .release-pr.json declares … user 99"*,
+  with the promote step never reached. **Then seen to work end to end, not as a dry run** — run
+  `34674965476` (`DRY_RUN: false`, on the bytes this ships) reported `✓ card#7334: moved 107 →
+  108` for three cards and `3 moved, 0 already-released, 0 stage-guarded, 0 no-card, 0 failed`,
+  and the board reads 108 for all three. Seven stranded cards were drained across that run and
+  `34674802211`, each re-verified as a `card#<id>`-tokened commit reachable from `main`;
+  **the rest of that backlog is still stranded** and needs the same treatment. **Neither vendored file was touched**, so the #100 body pins stay
+  green. `docs/KANBAN.md` gains **G-17** for the whole mechanism and warns that **G-1 is
+  not what bit this repo** — a token can be a full board member and still be the wrong account.
+
 - **card#9250** — **MIGRATIONS NOW RUN ON THE ENGINE THEY RUN ON.** Until this landed, no
   migration in this repository had ever been executed against MariaDB: the suite is SQLite
   (`server/phpunit.xml`), `php-tests` asserts SQLite by name, and production is MariaDB
