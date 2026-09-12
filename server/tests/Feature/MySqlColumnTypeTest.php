@@ -22,9 +22,14 @@ use Tests\TestCase;
  * ⚠ WHAT THIS IS AND IS NOT EVIDENCE OF, stated because a green here is easy to over-read.
  * It proves the SQL TEXT this application would send to MySQL. It proves nothing about what MySQL
  * then DOES with it — that a `VARBINARY(16)` rejects a 17th byte, that an `ENUM` refuses an
- * unlisted value, that `ascii_bin` compares case-exactly. Those need the engine, they remain on
- * the PR body's unexercised list, and they are card #7523's (the store host). The gap this closes
- * is the narrow one that actually bit: a column TYPE that silently differs from the document.
+ * unlisted value, that `ascii_bin` compares case-exactly. ⚠ **Since card#9250 the blocker on those
+ * three has MOVED, and this file's old claim that they "need the engine … they are card #7523's"
+ * is no longer why they are unexercised.** The `php-tests-mariadb` lane runs the whole suite
+ * against a real MariaDB, so the engine is now reachable from CI on every PR — what is missing is
+ * a TEST that inserts a 17th byte, an unlisted ENUM member, or two ULIDs differing only in case
+ * and asserts the refusal. Nothing here does; they remain unexercised for want of a test, not for
+ * want of a store. The gap this file closes is still the narrow one that actually bit: a column
+ * TYPE that silently differs from the document.
  *
  * ⚠ NO SERVER IS CONTACTED. `Connection::statement()` returns `true` before it ever reaches
  * `getPdo()` while `pretending()`, so the migration below compiles and is never executed. The

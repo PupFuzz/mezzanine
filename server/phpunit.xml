@@ -52,8 +52,15 @@
         <!--
             DB_CONNECTION IS DELIBERATELY NOT FORCED, and the omission is the point:
             forcing it is the shape that turned another repo's MariaDB matrix into a SQLite
-            run reporting green (§ 6.2). Nothing in this repo's CI selects a backend by
-            exporting it today; when something does, it must win.
+            run reporting green (§ 6.2). This declaration is the DEFAULT — what a checkout
+            with nothing exported runs on — and an exported DB_CONNECTION beats it.
+
+            ⭐ Since card#9250 something in CI does export it: `.github/workflows/php-tests.yml`'s
+            `php-tests-mariadb` job exports DB_CONNECTION=mysql to run this same suite against
+            the MariaDB production uses, and it wins here exactly as this comment always said it
+            must. Removing the `force` omission now breaks that lane rather than a hypothetical
+            one. Every OTHER pin above is forced + paired on purpose and correctly DEFEATS that
+            lane's exports — the store is chosen by CI, the isolation is not.
 
             DB_SQLITE_DATABASE rather than DB_DATABASE — see config/database.php's sqlite
             connection. The two variables address different connections on purpose.

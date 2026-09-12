@@ -13,9 +13,12 @@ D2 § 4.9 specifies a task-title merge whose **highest tier is a board card assi
 its columns, its reference format, its freshness bound and its precedence are all pinned there, and
 none of them is restated here. What D2 does not own, and says so twice, is the thing that *produces*
 that fact: [§ 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)
-lists *"Ingest of kanban board events…"* among its non-goals and records that **"The kanban poller is
-designed nowhere yet"**, and [§ 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 names
-*"a ruling on where the board producer is designed"* as one of three things that would close it.
+lists *"Ingest of kanban board events…"* among its non-goals. ⚠ **Two sentences quoted here in an
+earlier revision are gone from D2, because this document is what removed them** — until the
+amendments below were ratified (`card#7582`, 2026-09-12) § 1.2 recorded that the kanban poller was
+designed nowhere yet, and § 14 item 3 asked for a ruling on where the board producer is designed.
+Both now name this document instead, in D2's own text, and the quotations are recorded as history
+rather than left standing as citations of a file that no longer says it.
 
 **This document is that ruling's answer, and the producer.** In one sentence: a scheduled command
 reads the configured kanban boards over HTTPS, joins each card's `assigned_user_id` to a seat through
@@ -26,9 +29,13 @@ with no new event kind, no change to `RebuildCommand::reset()`, and no exclusion
 [AT-D2-10](FLEET-STATE.md#at-d2-10-rebuild-equals-fold). [§ 2](#2-the-rebuildability-question) is the
 argument for that, and it is the reason this document exists in the shape it does.
 
-⛔ **Nothing in this document is built.** Every structural piece of it needs an amendment to a shipped
-design document that this card may not make unilaterally; [§ 13](#13-what-is-deliberately-not-built)
-states the gate and lists the amendments. What is delivered is the design.
+⛔ **The poller is not built, and building it is a separate pull.** ✅ **The D2 amendments every
+structural piece of it needed were RATIFIED and applied on 2026-09-12** (`card#7582`), so D2 § 6.4
+carries the store shape and the two counters have their rows;
+[§ 13](#13-what-is-deliberately-not-built) records where each landed and what is still deliberately
+not built. The one piece of it that DID ship with the ratification is the store itself, and only
+because retirement now clears the board-user mapping in its own transaction
+([§ 7.2](#72-the-upsert)) and had nothing to write against otherwise.
 
 ⚠ **Tier 1 arrives DARK, and that is correct rather than a defect.** Three independent things must be
 true before a single board title reaches a desk, and today none of them is; [§ 10](#10-dark-on-arrival)
@@ -80,9 +87,10 @@ is not a thing to add casually:
 1. **D2 says so.** [§ 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)
    places the kanban poller *outside* D2's contract by name. A design cannot live in the document whose
    non-goals exclude it.
-2. **D2 asks for the ruling.** [§ 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 lists
-   *"a ruling on where the board producer is designed"* as an open question. This is the answer, and it
-   closes that third of the item.
+2. **D2 asked for the ruling.** [§ 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3
+   carried *a ruling on where the board producer is designed* as an open question. This document is the
+   answer; the ratification of 2026-09-12 wrote it into that item, which is why the words are no longer
+   quotable from it — the last of its three producer questions is closed.
 3. **The operator ruled it new scope.** Recorded on card#7582 (2026-08-24, decisions-log s556): the
    task-title producers are *"new scope, not an amendment to a shipped design."*
 
@@ -146,17 +154,25 @@ still loses its title on the documented recovery path; the test simply stops not
 
 ### 2.3 The rule this establishes
 
-AT-D2-10 asserts **reproducibility**. D2 § 6.6 *explains* it with a narrower sentence — *"some fold
-rule is reading state that is not in the log"* — and those are not the same property. **The repository
-already relies on the difference, in two places, deliberately:**
+AT-D2-10 asserts **reproducibility**. D2 § 6.6 used to *explain* it with a narrower sentence — a fold
+rule "reading state that is not in the log" — and those are not the same property. ⭐ **That gap is
+now closed in D2's own text and not only in this one** (`card#7582`, ratified 2026-09-12): § 6.6 and
+AT-D2-10's RED both state the rule in full — *"the fold reads only `events` and the durable inputs a
+rebuild does not destroy (`seats`, `seat_board_task`)"* — so the narrow sentence is no longer live
+anywhere to be read as the definition, which is what an amendment owes rather than leaving two
+readings standing. What follows is the argument that produced it. **The repository already relied on
+the difference before this document was written — and on inspection the clean precedent is ONE:**
 
 - **`seats.retired_at` / `retired_by` / `retired_reason`.** Operator-written, in no event, read by the
   fold on every recompute (`SeatFacts::for()` → `Derivation::render()`), and **not touched by
   `reset()`**. A rebuild re-reads the same durable row and reaches the same answer, so AT-D2-10 is
   green over them.
-- **`seat_state.badge_first_seen`.** Explicitly *not* reset, with the reason argued in `reset()`'s own
-  comment: *"a badge that has been up since Tuesday has been up since Tuesday whether or not its seat
-  was rebuilt this afternoon."*
+- ⚠ **`seat_state.badge_first_seen` is NOT a second precedent of this shape, and an earlier revision
+  of this section counted it as one.** It is explicitly *not* reset, with the reason argued in
+  `reset()`'s own comment — *"a badge that has been up since Tuesday has been up since Tuesday
+  whether or not its seat was rebuilt this afternoon."* — but it is a **projection** column carved out
+  of the reset, which is option (b)'s shape, not a durable INPUT the fold reads. It supports the
+  conclusion by analogy only, and the load-bearing precedent is `seats`, on its own.
 
 ⇒ **The property the fold must hold is not "read only `events`". It is "read only durable inputs that
 a rebuild does not destroy."** `seats` is such an input. `seat_board_task` ([§ 7.1](#71-the-input-table))
@@ -197,18 +213,31 @@ holds no state between runs beyond the rows it writes, so a supervised daemon wo
 cost a unit file. `->withoutOverlapping()` for the same reason `purge` carries it: a slow board must
 not start a second poll beside the first.
 
+⛔ **Two bounds are part of that choice rather than deployment detail, because without them
+`withoutOverlapping()` converts one stuck request into a stalled integration.** Every HTTP request
+carries the timeout [§ 12](#12-every-number-and-where-it-comes-from) states, so a hung board fails
+the poll and increments `board_poll_failed` instead of hanging it; and the overlap lock carries an
+**expiry below** [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)'s
+30-minute bound, because the framework's default is a day — a poll killed mid-run would otherwise
+hold the lock long after every title it was protecting had aged out.
+
 **D2 § 2.1 owes it a row** ([§ 13](#13-what-is-deliberately-not-built)). That table *"is what a host is
 provisioned from"*, and card#9181's finding is exactly what happens to a process that is built without
 one — the feed heartbeat ran as a sixth process against a table of five, and a host provisioned from
 the document supervised everything except it.
 
-### 3.2 The cadence, derived — and the 30-minute bound, re-derived
+### 3.2 The cadence, chosen — and the 30-minute bound, re-derived
 
-D2 § 12 carries the tier-1 freshness bound as **"Chosen, provisional — … re-derived once the board
+D2 § 12 carried the tier-1 freshness bound as **"Chosen, provisional — … re-derived once the board
 producer exists and its poll cadence is known ([§ 14](FLEET-STATE.md#14-open-questions-for-the-review-loop)
-item 3)"**. That re-derivation is owed here, so it is done here, and it is done in the honest
-direction: **the cadence is derived first, because it is the number with a real cost, and the bound is
-derived from it.**
+item 3)"** until the ratification of 2026-09-12 replaced that cell with the derivation below. The
+re-derivation is owed here, so it is done here, and it is done in the honest direction: **the cadence
+is settled first, because it is the number with a real cost, and the bound is measured in cadences.**
+⛔ **"Settled", not "derived": the cadence is a JUDGEMENT and this document's own
+[§ 12](#12-every-number-and-where-it-comes-from) calls it `Chosen`.** An earlier revision of this
+section called it derived, in a document whose number table said otherwise on the same page — and a
+cost argument that rules two alternatives out is what a judgement call looks like when it is made
+well, not a computation.
 
 **Cadence — 5 minutes.** What the poll carries is *which work item is this agent on*, a fact that moves
 at human granularity and whose consumer is a floor a person watches. The cost is one paged HTTPS read
@@ -234,10 +263,16 @@ ceiling:
 
 **30 min = 6 × 5 min ⇒ five consecutive failed polls tolerated**, which is a real board outage rather
 than a blip, and half an hour is still inside "plausibly the current task" for work at this
-granularity. ⇒ D2 § 12's row changes from **Chosen, provisional** to **Derived**, and D2 § 4.9's
-*"re-read at the board poll cadence"* gains the cadence by reference. ⭐ **The published figure survives
-its own re-derivation** — which is worth stating plainly, because a re-derivation that confirms is
-evidence the original judgement was sound, and is not the same thing as never having checked.
+granularity. ⇒ D2 § 12's row loses its **provisional** and states this derivation, **staying
+`Chosen`** — because that table's `Derived` means *computed from another number in that table or in
+D1*, and the cadence is in neither; in THIS document's table the same figure is `Derived`, from a
+cadence that is in it. One figure, two tables, each using its own published vocabulary, and the
+difference is stated here so it cannot be read as drift. ⭐ **The published figure survives its own
+re-derivation** — worth stating plainly, because a re-derivation that confirms is evidence the
+original judgement was sound and is not the same thing as never having checked. ⚠ And it is a
+judgement the multiple cannot launder: six was picked to land on a bound that already existed, so
+what the arithmetic buys is a stated floor — strictly more than two cadences — and a standing
+obligation to re-derive when the cadence moves, which is what D2 § 12's row now carries.
 
 ### 3.3 If it dies
 
@@ -270,11 +305,16 @@ php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id>
 php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear
 ```
 
-`--clear` deletes that seat's `seat_board_task` row **in the same transaction** that nulls the column.
-Two writes, one act: a cleared mapping that left the input row behind would leave the merge answering
-from a card the seat is no longer joined to, and the deletion is the refusable-first half (nothing is
-un-set until the row is gone). An unknown seat is refused with a non-zero exit before anything is
-written; a `--board-user` that is not a positive integer likewise.
+⛔ **ANY write of the column — `--clear` or `--board-user` — deletes that seat's `seat_board_task`
+row IN THE SAME TRANSACTION.** Two writes, one act. For `--clear` the reason is that a cleared mapping
+which left the input row behind would leave the merge answering from a card the seat is no longer
+joined to; for `--board-user` on an ALREADY-mapped seat it is the same defect with a shorter fuse —
+the row still holds the previous user's card, and it would answer for up to one poll cadence before
+the next poll overwrote it, which is a desk showing another person's work with nothing degraded and
+nothing to see. The rule is stated over the COLUMN rather than over the `--clear` flag for that
+reason: a rule that named the flag would be true of one of the two writes. The deletion is the
+refusable-first half (nothing is un-set until the row is gone). An unknown seat is refused with a
+non-zero exit before anything is written; a `--board-user` that is not a positive integer likewise.
 
 ⛔ **What is NOT done: matching a board username to `seats.seat_id`.** It would need no mapping at all
 and it is wrong. A board user name and a Mezzanine seat id are two identifiers from two systems that
@@ -465,7 +505,7 @@ foreign key belong to D2 § 6.4 ([§ 13](#13-what-is-deliberately-not-built)).
 | `seat_ref` | int, PK | no | `seats.id`. One row per seat, so the merge's read is a primary-key lookup | `3` |
 | `card_id` | int | **yes** | the answering board card. **`NULL` means the board ANSWERED and this seat has no assigned card** — a positive fact, not an absence | `9234` |
 | `board_id` | int | **yes** | which configured board answered; `NULL` exactly when `card_id` is | `14` |
-| `title` | string ≤ the `task_title` bound | **yes** | the card `name`, truncated to `seat_state.task_title`'s own bound so the two can never disagree ([§ 8.4](#84-truncation)); `NULL` with `card_id` | `"Drop tier 2 (the GitHub-sourced task title) — …"` |
+| `title` | string ≤ the `task_title` bound | **yes** | the card `name`, truncated to `seat_state.task_title`'s own bound — **120 bytes, by D1 § 7.4's procedure** — so the two can never disagree ([§ 8.4](#84-truncation)); `NULL` with `card_id` | `"Drop tier 2 (the GitHub-sourced task title) — …"` |
 | `card_updated_at` | datetime(3) | **yes** | the board row's own `updated_at` — § 4.2's ordering key, stored so the choice is auditable after the fact. **Never the freshness basis** | `"2026-09-11T02:10:00.000"` |
 | `observed_at` | datetime(3) | no | **server clock at the START of the poll that wrote this row.** D2 § 4.9's bound is measured from this, and it becomes `task.as_of` | `"2026-09-11T03:20:00.000"` |
 
@@ -491,8 +531,12 @@ first falls through to tier 3 clean, the second must eventually drop a title and
 and the only thing that distinguishes them is a fresh `observed_at` on a row whose `card_id` is null.
 Collapsing them into "no row" would make a dead poller indistinguishable from an empty board.
 
-**A retired seat is skipped** (`seats.retired_at IS NOT NULL`), whatever its `board_user_id` still
-says. Retirement takes a seat off every read surface in the transaction that sets the column
+**A retired seat is skipped** (`seats.retired_at IS NOT NULL`) — and since the ratification of
+2026-09-12 it has no row and no `board_user_id` to skip on, because retirement clears both in its
+own transaction ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)). The predicate
+stays, and it is not redundant: it is what makes the poll correct in the window between a
+retirement and anything else, and it is the rule rather than a consequence of one. Retirement takes
+a seat off every read surface in the transaction that sets the column
 ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)), so polling one would be work for a
 desk that does not exist — and, worse, a board fact arriving for a retired seat is the shape
 [D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state) is emphatic about: nothing outside the
@@ -500,10 +544,14 @@ retirement act may write a retired seat's state.
 
 **Retention.** One row per mapped, unretired seat — a population bounded by the seat count, not by
 traffic — so it is retained like `seats` itself and **purged by nothing**. A row leaves in exactly two
-ways: § 4.1's `--clear`, and a seat's retirement. That is a posture
-[D2 § 6.7](FLEET-STATE.md#67-retention-and-purge) owes a line, and it is in
-[§ 13](#13-what-is-deliberately-not-built)'s amendment list for that reason; a table with no stated
-retention is a table § 6.7 is no longer total over.
+ways, and ⭐ **both of them now have a writer**: any write of `seats.board_user_id` by § 4.1's command
+(`--clear` or `--board-user`), and a seat's **retirement**, which deletes it inside the retirement
+transaction. The second way was a sentence with no writer when this document was drafted — the row
+and the UNIQUE `board_user_id` both survived the retirement, so that board user could not be mapped
+to a replacement seat until someone ran an undocumented `--clear` — and the operator's ruling of
+2026-09-12 closed it by giving retirement the write rather than by softening the sentence. The
+posture is now carried by [D2 § 6.7](FLEET-STATE.md#67-retention-and-purge)'s own retention table, so
+§ 6.7 is total over the store again.
 
 The poll **never writes `seat_state`.** That is [§ 2](#2-the-rebuildability-question)'s whole
 conclusion, and it is what a reviewer should check first.
@@ -575,9 +623,22 @@ rebuild re-reads the same stamp.
 
 ### 8.4 Truncation
 
-`title` is truncated **once, at the poller**, to `seat_state.task_title`'s bound, with the same
-`mb_substr` the tier-3 path uses — one bound, one place, so the input row and the projection can never
-disagree about what the title is.
+`title` is truncated **once, at the poller**, to `seat_state.task_title`'s bound — one bound, one
+place, so the input row and the projection can never disagree about what the title is.
+
+⛔ **That bound is 120 BYTES, and the procedure is [D1 § 7.4](EVENT-SCHEMA.md#74-truncation)'s**, the
+one every other title in this system is already held to. D1 states the procedure over the descriptor
+— *"cut at the last character boundary at or before byte 197 and append `…` (U+2026, 3 bytes)"* —
+and then states the title case in the same breath: *"`subagent.spawn.title` uses the same procedure
+at **120 bytes** (117 + `…`)"*. That is the bound and the procedure, cited rather than restated as a
+second arithmetic here.
+
+⚠ **`mb_substr($title, 0, 120)` is NOT that procedure** — it counts CHARACTERS. On the tier-3 path
+it is harmless because its input arrives already byte-capped by the reporter (D1 § 7.4 again), so
+there is nothing left for it to cut; a board card `name` is capped by **nothing**, and 120
+characters of a title carrying an em dash or a box-drawing character is up to 480 bytes. That would blow D2 § 8.2.1's *"≤ 120 B"* bound on
+`task.title` and D2 § 12's measured worst-case seat object with it — a wire-contract violation minted
+by a producer, which is the class this document exists to keep out of the store.
 
 This is not theoretical. Measured on board 14, 2026-09-11, the longest card `name` is **more than
 twice** the column's bound (derivation in [§ 12](#12-every-number-and-where-it-comes-from)). A poller
@@ -653,6 +714,11 @@ degraded one.
 - **Build:** a seat with `board_user_id` set and a `seat_board_task` row inside the bound; replay
   AT-D2-10's event fixture through the live fold; snapshot every projection row; run
   `mezzanine:rebuild --seat=…`; compare on AT-D2-10's terms.
+- ⛔ **The board-poll schedule is OFF for the duration, and the test asserts that it was.** Unlike
+  `seats.retired_at`, this input is REWRITTEN every cadence: a poll landing between the snapshot and
+  the rebuild moves the input the two sides are being compared over, and the divergence it produces
+  is a moved input rather than a fold rule reading what it may not. A test that can red for a reason
+  its RED does not describe is worse than no test, because the next reader believes the message.
 - **GREEN:** AT-D2-10's three named exclusions and no others. All five `task_*` columns are identical,
   `task_source` reads `board_card` on both sides, and the rendered object is byte-identical.
 - **RED:** make the poller write `seat_state.task_*` directly instead of `seat_board_task`. `reset()`
@@ -726,7 +792,7 @@ degraded one.
 - **RED:** treat "no candidates" as a failed poll — `board_poll_failed` climbs forever against a
   perfectly healthy board, which is the alarm that trains an operator to ignore alarms.
 
-### AT-D4-8 clearing a mapping clears the row
+### AT-D4-8 every way a mapping leaves clears the row
 
 - **Build:** a mapped seat with a board title on its desk; run
   `mezzanine:seat-board-user --seat=… --clear`.
@@ -734,6 +800,16 @@ degraded one.
   transaction; the next recompute renders tier 3 with `task_degraded = false`.
 - **RED:** null the column and leave the row — the merge goes on answering from a card the seat is no
   longer joined to, and no poll will ever correct it because the poller no longer writes that seat.
+- **Second build — the re-map:** run `--board-user=<a different id>` on the same mapped seat. **GREEN:**
+  the old row is gone in that transaction, so nothing answers for the seat until the next poll writes
+  the new user's answer. **RED:** leave the row — the desk shows the PREVIOUS user's card for up to one
+  cadence, `task.degraded` false and every field internally consistent, which is the hardest shape of
+  this defect to see.
+- **Third build — the retirement:** `mezzanine:retire` a mapped seat. **GREEN:** `board_user_id` is
+  null and the row is gone, in the retirement's own transaction, and the same board user can then be
+  mapped to a replacement seat. **RED:** leave either behind — the UNIQUE key refuses the replacement
+  mapping, and its whole symptom is the mapping command's bare non-zero exit
+  ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)).
 
 ---
 
@@ -745,12 +821,13 @@ running the command in the cell, which is what a reader re-runs rather than trus
 
 | Value | Number | Basis | Where |
 |---|---|---|---|
-| Board poll cadence | **5 min** | **Chosen** — bounded above by an operator's tolerance for a card move reaching the floor, below by board API load; the two failures at 15 min and 1 min are argued, with the measured payload, in [§ 3.2](#32-the-cadence-derived--and-the-30-minute-bound-re-derived) | [§ 3.1](#31-mezzanineboard-poll) |
-| Tier-1 freshness bound | **30 min** | **Derived** — 6 × the cadence ⇒ five consecutive failed polls tolerated, with a floor of *strictly more than two cadences* so one lost request cannot clear the floor. ⭐ **This re-derives D2 § 12's "Chosen, provisional" row, as that row asks; the figure is unchanged and its basis is not** | [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) |
+| Board poll cadence | **5 min** | **Chosen** — bounded above by an operator's tolerance for a card move reaching the floor, below by board API load; the two failures at 15 min and 1 min are argued, with the measured payload, in [§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived) | [§ 3.1](#31-mezzanineboard-poll) |
+| Tier-1 freshness bound | **30 min** | **Derived** — 6 × the cadence ⇒ five consecutive failed polls tolerated, with a floor of *strictly more than two cadences* so one lost request cannot clear the floor, and a standing re-derivation whenever the cadence moves. ⭐ **This re-derived D2 § 12's "Chosen, provisional" row, as that row asked; the figure is unchanged.** ⚠ **`Derived` HERE and `Chosen` THERE, and that is not drift**: the basis is the cadence, which is in THIS table and in neither D2's nor D1's, and D2 § 12's `Derived` is defined over those two ([§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived)) | [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) |
 | Search page size | **200 rows** | **Cited** — the search endpoint's documented maximum (its default is 50), from the board API's own `/docs.openapi`; a whole-board enumeration's only cost axis is round-trips, so take the max. ⚠ Cited from a live document outside this repository, which is the one class of citation nothing here can re-derive — the poller must therefore treat a page that returns more rows than it asked for as a shape failure like any other | [§ 6.3](#63-pagination-and-the-false-clean-rule) |
+| HTTP request timeout | **20 s**, connect and read, per request | **Chosen** — and it exists at all because `->withoutOverlapping()` makes a hung request a fleet-wide stall rather than one slow poll: the request never returns, so `board_poll_failed` never increments, every later poll is skipped, and the only symptom is titles ageing out one bound later with nothing naming the cause. Bounded above by the cadence — a whole poll, every configured board and its pages, must finish inside 5 min with room to spare, and 20 s leaves room for fifteen requests — and below by a real network's slow-but-working read, which for a ~340 KB page is seconds, not tens of them | [§ 3.1](#31-mezzanineboard-poll) |
 | Page cap | **200 pages** | **Chosen** — a runaway guard, not a truncation policy: 200 × 200 is far past any real board, so reaching it means the pager is looping | [§ 6.3](#63-pagination-and-the-false-clean-rule) |
 | `title` bound | `seat_state.task_title`'s own | **Cited** — D2 § 6.4. Never restated as a figure here: one bound, one home ([§ 8.4](#84-truncation)) | [§ 7.1](#71-the-input-table) |
-| Whole-board payload, board 14 | **Measured 2026-09-11** | `GET /tasks/search.json?q=board_id%3D14&limit=200&page=1` → `200`; then `len(json.dumps(body))`, `len(body["data"])`, `body["meta"]["last_page"]`. ~340 KB on one page. **Re-run it rather than trusting this cell** | [§ 3.2](#32-the-cadence-derived--and-the-30-minute-bound-re-derived) |
+| Whole-board payload, board 14 | **Measured 2026-09-11** | `GET /tasks/search.json?q=board_id%3D14&limit=200&page=1` → `200`; then `len(json.dumps(body))`, `len(body["data"])`, `body["meta"]["last_page"]`. ~340 KB on one page. **Re-run it rather than trusting this cell** | [§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived) |
 | Assigned cards on board 14 | **Measured 2026-09-11** | the same request; `sum(1 for r in body["data"] if r["assigned_user_id"] is not None)` — and `meta.last_page == 1` is what makes it the **population** rather than a sample | [§ 10](#10-dark-on-arrival) |
 | Longest card `name` on board 14 | **Measured 2026-09-11** | the same request; `max(len(r["name"]) for r in body["data"])` — more than twice the `title` bound, which is why [§ 8.4](#84-truncation) is load-bearing | [§ 8.4](#84-truncation) |
 
@@ -758,29 +835,36 @@ running the command in the cell, which is what a reader re-runs rather than trus
 
 ## 13. What is deliberately not built
 
-⛔ **Nothing in this document is implemented by the card that wrote it, and that is a decision with a
-reason rather than an unfinished job.**
+⛔ **The poller is not implemented, and that is a decision with a reason rather than an unfinished
+job.** ✅ **What HAS changed since this section was written: the amendments below were RATIFIED and
+APPLIED** — operator ruling of 2026-09-12 on `card#7582`, taken with an adversarial review's required
+edits and one product fork answered (retirement clears the mapping, [§ 7.2](#72-the-upsert)). The
+table is therefore a record of where each amendment landed rather than a list of what is owed, and
+the design gate below is **discharged**.
 
-Every structural piece needs an amendment to **D2**, a shipped and verifier-gated contract:
-
-| Amendment | Section |
-|---|---|
-| A process row for `mezzanine:board-poll`, and one for `mezzanine:seat-board-user` | D2 § 2.1 |
-| `seats.board_user_id`, and the `seat_board_task` DDL | D2 § 6.4 |
-| `board_poll_ok` / `board_poll_failed`, and their `Exposed` cells | D2 § 7.2, § 8.2.4's `counters` list |
-| § 4.9's *"designed in no document in this repo"* sentence, which this document falsifies | D2 § 4.9 |
-| § 12's tier-1 bound row: **Chosen, provisional** → **Derived**, per [§ 3.2](#32-the-cadence-derived--and-the-30-minute-bound-re-derived) | D2 § 12 |
-| § 1.2's non-goal row and § 14 item 3, which name the poller as designed nowhere | D2 § 1.2, § 14 |
-| `seat_board_task`'s retention posture — retained like `seats`, purged by nothing ([§ 7.2](#72-the-upsert)) — without which § 6.7 is no longer total over the store | D2 § 6.7 |
-| A sizing line for the same table: bounded by the seat count rather than by traffic, so it changes no figure in § 6.8 — which is itself the statement § 6.8 owes | D2 § 6.8 |
+| Amendment | Section | State |
+|---|---|---|
+| A process row for `mezzanine:board-poll`, and one for `mezzanine:seat-board-user` | D2 § 2.1 | ✅ applied |
+| ⭐ **Added by the ratification, not by this list:** § 6.6 and AT-D2-10 state the rebuild rule in full — the fold reads only `events` and the durable inputs a rebuild does not destroy | D2 § 6.6, AT-D2-10 | ✅ applied — [§ 2.3](#23-the-rule-this-establishes)'s rule now lives in D2 rather than only here |
+| `seats.board_user_id`, and the `seat_board_task` DDL | D2 § 6.4 | ✅ applied — and **migrated**, because retirement now writes both ([§ 7.2](#72-the-upsert)) |
+| `board_poll_ok` / `board_poll_failed`, and their `Exposed` cells | D2 § 7.2, § 8.2.4's `counters` list | ✅ applied — both directions of D2's G8 close on it |
+| § 4.9's *"designed in no document in this repo"* sentence, which this document falsified | D2 § 4.9 | ✅ applied — the sentence is gone |
+| § 12's tier-1 bound row: **Chosen, provisional** → **Chosen**, with this document's derivation and a standing re-derivation when the cadence moves, per [§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived) | D2 § 12 | ✅ applied — ⚠ **not** as `Derived`, which is what this row asked for and what the review measured against D2 § 12's own vocabulary |
+| § 1.2's non-goal row and § 14 item 3, which named the poller as designed nowhere | D2 § 1.2, § 14 | ✅ applied — item 3's last third is closed |
+| `seat_board_task`'s retention posture — retained like `seats`, purged by nothing ([§ 7.2](#72-the-upsert)) — without which § 6.7 is no longer total over the store | D2 § 6.7 | ✅ applied, with retirement named as the second way a row leaves |
+| A sizing line for the same table: bounded by the seat count rather than by traffic, so it changes no figure in § 6.8 — which is itself the statement § 6.8 owes | D2 § 6.8 | ✅ applied |
 
 **D2 § 6.4 states the gate in its own words: *"Names are final; a builder may reorder columns and add
-nothing."*** A migration adding a table that § 6.4 does not carry is a builder adding something, and a
-poller written against it is code written against an unratified design. The amendments are stated as
-exact text on this card's pull request, under a heading that says they are not applied.
+nothing."*** A migration adding a table that § 6.4 did not carry would have been a builder adding
+something, and a poller written against it code written against an unratified design — which is why
+the amendments were stated as exact text and not applied by the card that wrote them. ⭐ **§ 6.4 now
+carries both**, so the store change is the ratified shape rather than an invention, and it ships with
+the ratification because retirement's clearing act has nothing to write without it.
 
-Two further reasons hold independently of ratification, so that the gate is not the only thing standing
-here:
+⛔ **The poller itself is still unbuilt, and the ratification did not authorise it** —
+`mezzanine:board-poll`,
+`mezzanine:seat-board-user` and the tier-1 branch of the merge are a separate pull. Two reasons hold
+independently of ratification, so that the gate was never the only thing standing here:
 
 - **The positive path cannot be validated on a real surface.** No board card is assigned and
   `kbcard patch --assign` is not in this seat's released toolkit, so tier 1's answering branch could be
@@ -807,13 +891,16 @@ against.
    board ids it may read.
 2. **⇢ Operator — the seat→board-user values.** The mechanism is [§ 4.1](#41-seat--board-user); the
    values are a declaration only the operator can make. **Blocks:** condition 2.
-3. **⇢ Review — the amendments in [§ 13](#13-what-is-deliberately-not-built).** **Blocks:** every line
-   of implementation. **Closes it:** ratification.
+3. **✅ CLOSED — the amendments in [§ 13](#13-what-is-deliberately-not-built) are ratified** (operator,
+   2026-09-12, `card#7582`), with an adversarial review's edits and F5's product fork answered as
+   *retirement clears the mapping*. What it unblocks is implementation of the poller; what it does not
+   do is authorise it in the same breath, which is the ruling's own sentence.
 4. **⇢ Owed — this document's own verifier.** D1, D2 and D3 each have one, wired into
    `.github/workflows/design-doc-verifiers.yml`; **this document has none**, so no gate re-derives
    its numbers, resolves its anchors or holds its tables against its worked examples.
    `tools/design/README.md` declares the gap on the surface a reader of those gates checks.
-   **Blocks:** nothing today — the document is unbuilt. **Closes it:** ratification, then D4's
-   verifier in its own round, which is the rule that README states for every gate.
+   **Blocks:** nothing today — the poller is unbuilt. ⚠ **Ratification has now happened, which was the
+   first half of what closed this**, so what is left is D4's verifier in its own round — the rule that
+   README states for every gate. The shape a guard would be written against has stopped moving.
 5. **⇢ Deferred — the server-side assignee filter** ([§ 13](#13-what-is-deliberately-not-built)).
    **Blocks:** nothing. **Closes it:** one assigned card, which makes a discriminating control possible.

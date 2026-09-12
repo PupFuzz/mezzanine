@@ -109,7 +109,7 @@ contract every consumer reads.
 |---|---|
 | **The wire schema, ingest auth, validation, error bodies, rate limits, the atomic-batch rule** | [D1](EVENT-SCHEMA.md). This document consumes an accepted batch; it does not re-specify how a batch becomes accepted. Card #7338 builds the ingest from D1; card #7339 builds everything here. |
 | **Anything rendered** — desks, floors, sprites, animation, the identity→desk mapping | D3 (`docs/design/FLOOR.md`). This document ends at a JSON object and a state name. Where D1 or this document says "renders", it is naming the **obligation** D3 inherits, not the pixels. |
-| **Ingest of kanban board events, and the coordination receipt route itself** | ⚠ **Half of this row went stale when D1 § 18 landed and it is repaired rather than reworded.** The **kanban poller** is designed nowhere yet. The **GitHub coordination receipt is designed** — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns its endpoint, authentication, validation order and every derived fact — and what this document adds is the read surface those facts reach a reader on ([§ 8.3.3](#833-the-coordination-objects)), never a second derivation of them. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and carries what is still open about the board producer with its cost, rather than inventing it. |
+| **Ingest of kanban board events, and the coordination receipt route itself** | ⚠ **Half of this row went stale when D1 § 18 landed and it is repaired rather than reworded.** The **kanban poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (D4) — *outside* this contract, which is where this row has always placed it — and what this document adds is the store column its output lands in ([§ 6.4](#64-ddl)) and the merge that reads it ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)), never a second derivation of it. The **GitHub coordination receipt is designed** — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns its endpoint, authentication, validation order and every derived fact — and what this document adds is the read surface those facts reach a reader on ([§ 8.3.3](#833-the-coordination-objects)), never a second derivation of them. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and carries what is still open about the board producer with its cost, rather than inventing it. |
 | **The autonomy watchdog** | Roundtable #341, a separate track. Mezzanine's contribution is the REST snapshot ([`docs/PLAN.md § 3`](../PLAN.md#3-work-breakdown)), and this document specifies it as a first-class consumer. |
 | **MFA and the browser session** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states *which* surfaces MFA gates and what a failed gate returns; it does not specify the second factor. |
 | **Alerting, paging, e-mail** | There is no notifier here. Every degraded condition surfaces as a counter, a badge and a rendered state. A fleet that wants a pager reads the REST snapshot. |
@@ -158,7 +158,9 @@ settled here.
 | **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
 | **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised | every **15 s** | publish [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` on every install's channel, **unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting: [§ 2.2](#22-fail-posture-per-path)'s WebSocket-connect row makes this daemon the messenger of the outage | **a quiet fleet and a dead socket stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a channel with `seat.delta` traffic stays up by accident and a **quiet** channel — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
-| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, and publish the `seat.retired` message and the delta ([§ 4.10](#410-retirement-is-a-rendered-state)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
+| **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
+| **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --clear`) | on demand | the **only** writer of `seats.board_user_id`, and **any** write of that column — setting it or clearing it — deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
+| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 
 **15 s sweep cadence, derived.** The tightest deadline any time-derived transition has is the `stale`
 threshold, 300 s ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm)). A 15 s cadence bounds
@@ -179,6 +181,15 @@ moment it has news, leaving the client unable to tell a stalled fleet from a dea
 the one distinction [§ 8.3](#83-the-websocket-delta-feed) exists to draw. It is the argument
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) makes for `fold_lag_ms`'s basis, one layer
 further out.
+
+**5 min board-poll cadence, chosen — and *chosen*, not *derived*, which is the word its own document
+uses.** `BOARD-TASK.md § 3.2` owns it, with its measured cost and the two failures either side. It is
+the number [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s 30-minute bound is
+measured in — six cadences, so five consecutive failed polls are tolerated before a title is
+dropped — and it is stated by reference rather than re-argued here. ⛔ It is **not** `Derived` in
+[§ 12](#12-every-number-and-where-it-comes-from)'s sense, and the distinction is that section's own:
+`Derived` is reserved for a number computed from another number in that table or in D1, and this one
+is in neither.
 
 ### 2.2 Fail-posture per path
 
@@ -931,17 +942,23 @@ removed is the **second consumer** of that one producer, not the producer.
 - Tier 3 is always available while the seat is live, so the merge never yields "no title" on a working
   seat.
 
-**What is deliberately not specified here, and why.** **Tier 1's producer — a kanban board poller — is
-designed in no document in this repo**, and that is the whole of what is now missing: the tier-2
-producer question retired with the tier (above), so the one open producer is the board's. And the
+**What is deliberately not specified here, and why.** ⚠ **Tier 1's producer is no longer undesigned,
+and this paragraph claimed it was for as long as it had been.**
+[`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (**D4**) designs the kanban board poller — its cadence,
+the seat→board-user join, its credential posture and every failure path — and it is a document of
+its own because [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)
+places the poller outside this contract by name. ⭐ **What it does NOT do is write these columns.**
+The poller writes an input table (`seat_board_task`, [§ 6.4](#64-ddl)) and the fold derives
+`task_*` from it on every recompute, exactly as it derives `render_state` from `seats.retired_at` —
+so a board-sourced title is reproducible by [§ 6.6](#66-rebuild-from-the-log)'s rebuild with no new
+event kind and **no exclusion added to** [AT-D2-10](#at-d2-10-rebuild-equals-fold). And the
 proposal's
 "three-tier status fallback" is a document this repo does not contain: it is named in
 `docs/PLAN.md § 2` and nowhere reproduced. **This document does not invent its tiers.** Specifying a
 fallback from the phrase alone would put a guessed rule in a contract, and a guessed rule that reads
 plausibly is worse than an absent one. So: the merge above is derived from what this repo states, and
-[§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers and
-for a decision on where the **board** producer is designed. Until that answers, an implementer builds tier 3
-(which needs nothing new) and leaves tier 1 as the stated column it populates.
+[§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers.
+Until that answers, the merge is tier 1 over tier 3, with tier 1 dark until D4 is built.
 
 ### 4.10 Retirement is a rendered state
 
@@ -999,6 +1016,19 @@ recompute then agrees with it on every later pass rather than racing it, because
 | Where does the record live once the desk is gone? | the **admin console** (card#9070's agent module). The retirement record does not disappear; it moves off a floor that cannot hold it — a desk was never a queryable home for *who retired this seat, when and why*, and it cost a slot on a finite floor to be one badly |
 | What do connected clients see at the moment of retirement? | the `seat.retired` feed message and the delta carrying `render_state: "retired"`, **both published by the retirement act in the transaction that sets the columns** ([§ 2.1](#21-processes), [§ 8.3](#83-the-websocket-delta-feed)) — so the change is immediate rather than up to one sweep pass late, it carries `cause: operator` rather than `staleness_sweep`, and `seat.retired` reaches the wire at all, which nothing else in this document would have done. ⭐ **Those two messages ARE the removal**: [FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal) takes the desk off the floor on them, and a client that missed them learns from the next full snapshot instead. A desk still never disappears because data went missing — only because a retirement was announced |
 | Does `link_state` or `activity_state` change? | Retirement itself changes neither — it is an administrative fact, not a transport or activity one. But **the axes keep deriving**: the sweeper recomputes `link_state` for every seat on every pass ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)), so a retired seat that stops reporting still reaches `stale` at 300 s and `offline` at 900 s underneath, and `retired` short-circuits above both in [§ 4.2](#42-render-precedence) so the stored render stays right. ⚠ **Since card#9078 nothing RENDERS what that derivation produces** — the seat is off every read surface — so what those columns serve is the ledger and an operator query, not a desk. Whether the sweeper should keep visiting a retired seat at all is [§ 14](#14-open-questions-for-the-review-loop)'s to settle, not this section's: it is a live question the ruling opened rather than a behaviour it decided |
+
+⭐ **RETIREMENT ALSO CLEARS THE SEAT'S BOARD-USER MAPPING, IN THE SAME TRANSACTION (`card#7582`).**
+`seats.board_user_id` goes back to `NULL` and the seat's `seat_board_task` row is deleted
+([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge)) beside the three columns above — one act, one
+transaction, the same rule this section already applies to everything else retirement produces.
+**Why it is part of the act and not left to an operator.** `board_user_id` is UNIQUE, so a retired
+seat that keeps it holds that board user against the whole fleet: the replacement seat cannot be
+mapped to the same person until somebody runs `mezzanine:seat-board-user --clear` on a seat that no
+longer appears on any read surface, and the only symptom of not having done so is the mapping
+command's bare non-zero exit. ⛔ **It is not a deletion of anything the record needs**: the three
+retirement columns, and every row the ledger holds, are untouched — what goes is a JOIN KEY into a
+live board, which is exactly the thing a retired seat must stop holding. The board poll
+([§ 2.1](#21-processes)) already skips a retired seat, so nothing re-creates the row.
 
 `retired` sits at the top of [§ 4.2](#42-render-precedence)'s collapse because it is the one state that
 is true regardless of what the seat is still doing: a retired seat that keeps reporting is a
@@ -1211,8 +1241,15 @@ believed they had already done:
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
 - `DB_CONNECTION` is **not** forced, deliberately, and the omission is commented as load-bearing:
-  nothing in this repo's CI selects a backend by exporting it today, but forcing it is exactly the shape
-  that turned another repo's MariaDB matrix into a SQLite run reporting green.
+  forcing it is exactly the shape that turned another repo's MariaDB matrix into a SQLite run
+  reporting green. ⭐ **Since card#9250 this repo's CI does select a backend by exporting it**, and
+  the omission is what makes that work: `.github/workflows/php-tests.yml`'s `php-tests-mariadb` job
+  exports `DB_CONNECTION=mysql` and runs every migration and the whole suite against a pinned
+  MariaDB service container, alongside — never instead of — the SQLite lane. The two jobs are
+  separate environments, so the SQLite lane's `DB_CONNECTION=sqlite` assertion is untouched by it.
+  Every other pin in the table above is forced + paired and therefore **defeats** that job's
+  exports, which is the designed split: CI chooses the store, CI does not get to choose the
+  isolation.
 - The proof is **deleting one half of a pair**, not a hostile export and not a clean run (corrected
   2026-08-25, card#7334 — this bullet said the opposite). Under an intact pin
   `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test` **passes, and must**: the `<server>` twin beats
@@ -1258,18 +1295,57 @@ CREATE TABLE seats (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   install_ref   SMALLINT UNSIGNED NOT NULL,
   seat_id       VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  board_user_id INT UNSIGNED NULL,          -- § 4.9 tier 1's join. Operator act only, one writer
+                                            -- (§ 2.1's seat→board-user command); never inferred
+                                            -- from a name. NULL = not a tier-1 candidate, and
+                                            -- retirement puts it back there (§ 4.10)
   created_at    DATETIME(3)  NOT NULL,
   retired_at    DATETIME(3)  NULL,          -- operator act only; never set by a timeout. Its
                                             -- one writer is named in § 2.1 / § 4.10
   retired_by    VARCHAR(64)  NULL,
   retired_reason VARCHAR(255) NULL,
   UNIQUE KEY uq_seat (install_ref, seat_id),
+  UNIQUE KEY uq_seat_board_user (board_user_id),
   CONSTRAINT fk_seat_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
 -- A seat row is created at ingest-token issue time (D1 § 3.3), which is why the row can exist
 -- before any event arrives: a provisioned-but-silent seat renders `offline`/`no_data_yet`
 -- rather than being invisible. The token rows themselves live in the ingest's own table
 -- (card #7338, D1 § 3.3) and are never read by anything in this document.
+
+CREATE TABLE seat_board_task (
+  seat_ref        INT UNSIGNED NOT NULL PRIMARY KEY,
+  card_id         INT UNSIGNED NULL,        -- NULL means the board ANSWERED and this seat has no
+                                            -- assigned card -- a positive fact, not an absence
+  board_id        SMALLINT UNSIGNED NULL,   -- which configured board answered; NULL exactly when
+                                            -- card_id is
+  title           VARCHAR(120) NULL,        -- the card name, truncated at the POLLER to 120 BYTES
+                                            -- by D1 § 7.4's procedure -- the same procedure and the
+                                            -- same bound seat_state.task_title's own value is held
+                                            -- to, so the two cannot disagree. § 8.2.1 states that
+                                            -- bound in BYTES; VARCHAR(120) counts CHARACTERS in
+                                            -- MariaDB, and a 120-byte UTF-8 string is at most 120
+                                            -- of them, so this column can never be the thing that
+                                            -- truncates -- which is the point: a silent truncation
+                                            -- at the store would put a different title in the
+                                            -- input than the one the merge renders. NULL with
+                                            -- card_id
+  card_updated_at DATETIME(3) NULL,         -- the board row's own updated_at: the tie-break key,
+                                            -- stored so the choice is auditable. NEVER the
+                                            -- freshness basis
+  observed_at     DATETIME(3) NOT NULL,     -- server clock at the START of the poll that wrote
+                                            -- this row. § 4.9's 30-minute bound is measured from
+                                            -- it, and it becomes task.as_of
+  CONSTRAINT fk_sbt_seat FOREIGN KEY (seat_ref) REFERENCES seats (id)
+) ENGINE=InnoDB;
+-- An INPUT, not a projection: its writer is § 2.1's board poll and § 6.6's rebuild does NOT reset
+-- it, for the same reason it does not reset `seats.retired_at`. § 6.6 states that reason as the
+-- rule the fold is held to and names this table in it, so the comparison is a citation rather than
+-- an analogy. That is what makes a board-sourced task title reproducible by a replay with no new
+-- event kind and no AT-D2-10 exclusion; the argument is `BOARD-TASK.md § 2`.
+-- Two acts delete a row, both of them operator acts and both in their own transaction: any write of
+-- `seats.board_user_id` (§ 2.1's seat→board-user command, setting or clearing), and the seat's
+-- retirement (§ 4.10). Nothing else, and no purge (§ 6.7).
 
 CREATE TABLE batches (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1945,7 +2021,15 @@ This exists for three reasons, in order of weight: it is the recovery path after
 it is the migration path when a projection gains a column; and it is the **strongest available test of
 the derived-not-stored property** — [AT-D2-10](#at-d2-10-rebuild-equals-fold) asserts that a rebuilt
 seat's state equals the incrementally folded one field for field. If it ever does not, some fold rule is
-reading state that is not in the log, and that rule is a defect by construction.
+reading state a replay cannot re-read, and that rule is a defect by construction. ⭐ **The rule, stated
+in full because the narrower form of it was read as the definition for as long as it stood alone
+(`card#7582`): the fold reads only `events` and the durable inputs a rebuild does not destroy
+(`seats`, `seat_board_task`).** Those two are inputs with their own writers — an operator act and
+[§ 2.1](#21-processes)'s board poll — that `reset()` does not touch and a rebuild therefore re-reads
+unchanged, which is why reading them is reproducible and reading a projection's own prior value is
+not. *Read only `events`* would forbid [§ 4.2](#42-render-precedence)'s `render_state`, which has
+been derived from `seats.retired_at` since this document was written; it is the narrower sentence
+that was wrong, not the practice.
 
 Bounded honestly: a rebuild can only reconstruct what the retention window still holds. A seat rebuilt
 after 14 days starts from the oldest retained event, so calls opened before the window are absent and
@@ -1961,6 +2045,7 @@ rather than a silently shortened history.
 | `sessions`, `calls`, `attention_requests` | **14 days** after the row closed; open rows are never purged | a closed fact older than the log it was derived from cannot be re-derived, so purging it early would make a rebuild produce a *different* answer than the live fold — breaking [AT-D2-10](#at-d2-10-rebuild-equals-fold)'s equality for a reason that is not a defect |
 | `seat_state_transitions` | **14 days** | the drill-down's history horizon; same number, one home |
 | `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
+| `seat_board_task` | **never**, like `seats` | **Not traffic-bounded**: one row per mapped, unretired seat, so the population is the fleet and not its traffic. Purged by nothing; a row leaves in exactly two ways, both of them operator acts with a writer named — any write of `seats.board_user_id` by the seat→board-user command, `--clear` or `--board-user`, and the seat's **retirement**, which deletes it in the transaction that sets `retired_at` ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) |
 
 **The retention chain, stated as one inequality because all three numbers move together:**
 
@@ -2024,6 +2109,11 @@ Read the shape rather than the digits: at the fleet sizes this product is for, t
 a few gigabytes, so **no design decision here is made for storage reasons** — not the retention window,
 not the JSON column, not the transitions table. The one number that would change that is the seat count,
 and it scales linearly with a re-derivation that is one multiplication.
+
+**`seat_board_task` moves no figure in this section.** It carries at most one row per seat — a
+population bounded by the fleet, not by traffic — so at the 50-seat scale sized above it is under a
+single page. It is stated rather than omitted, because a table absent from a sizing section reads
+as a table nobody costed.
 
 **Tool-checked vs hand-verified.** The per-seat-day and per-seat figures are **hand-verified** from the
 row-cost model above, and they are the largest block of hand-verified arithmetic left in this document.
@@ -2159,6 +2249,8 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `snapshot_served` / `snapshot_denied` | `global_counters` | fleet health | a REST snapshot was served / refused (`503`, `401`) | fleet health |
 | `token_wrong_surface` | `global_counters` | fleet health | an `mzn_` ingest token was presented to a read endpoint, or an `mzr_` read token to the ingest | **operator alert** — it is either a misconfiguration that will otherwise present as a mysterious dark seat, or a probe |
 | `purge_backlog_rows` | `global_counters` | fleet health | a purge pass hit its 60 s budget with rows still past retention | rising ⇒ the purge cannot keep up; the retention chain's margin is being consumed |
+| `board_poll_ok` | `global_counters` | fleet health | a board poll completed and wrote its transaction ([§ 2.1](#21-processes)) | **Stuck at `0` is the only signal that the board integration NEVER worked** — a poller that stopped after working is visible per seat as `task.degraded` |
+| `board_poll_failed` | `global_counters` | fleet health | a board poll was degraded — credential, transport, status, shape, pagination or the store — and therefore wrote nothing (`BOARD-TASK.md § 9`) | none on its own: the per-seat consequence arrives at [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s bound as `task.degraded`, and this counter is what says the cause was the poll rather than the board |
 
 **Which table, and why the split is not arbitrary.** A counter goes in `seat_counters` when a seat can
 be named for it and the answer is about that seat; in `global_counters` when it cannot, or when the
@@ -2261,7 +2353,7 @@ All four endpoints require authentication ([§ 9](#9-read-side-authentication)).
 | `GET` | `/api/fleet/snapshot` | session+MFA **or** `mzr_` token | the whole fleet: every install, every seat, current state. The snapshot half of snapshot-then-deltas, and the watchdog's entire interface |
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}?resync_from=<state_version>` | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
-| `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the nine fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the eleven fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 
 **There is no fifth endpoint, and in particular none that serves a floor map.** ⭐ **Operator
 ruling, card#9208 (2026-09-09)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38): the authored
@@ -2586,18 +2678,18 @@ a consumer that assumed the three were identical would read a missing `counters`
 | `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat no operator has retired, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
 | `seats_total` | int | no | ≥ 0, excluding retired seats — which leave this count at `retired_at`, in the same transaction that takes their desk off the floor ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
 | `seats_live` | int | no | ≥ 0, `link_state == "live"` | `4` |
-| `counters` | object | **yes** | **`GET /api/fleet/health` only.** The nine fleet-scoped counters whose `Exposed` cell names this surface — `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **all nine members are**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because the nine live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
+| `counters` | object | **yes** | **`GET /api/fleet/health` only.** The eleven fleet-scoped counters whose `Exposed` cell names this surface — `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `board_poll_ok`, `board_poll_failed` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **all eleven members are**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because the eleven live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
 
 **Why `counters` is on the endpoint and not on the object.** [§ 7.1](#71-d1s-server-side-counters--where-they-live)
 declares that its tables answer *where each counter is stored, which surface exposes it, and which badge
-it raises* — and for nine counters the answer to the second was a surface that carried no field for
-them. `purge_backlog_rows` is the instrument [§ 6.7](#67-retention-and-purge) relies on to make a
+it raises* — and for the nine counters this member was minted for, the answer to the second was a surface that
+carried no field for them. `purge_backlog_rows` is the instrument [§ 6.7](#67-retention-and-purge) relies on to make a
 falling-behind purge *"fall behind visibly"*, and `token_wrong_surface` is marked **operator alert**;
 both were readable on no surface this document defined, which is a counter that reads zero forever by
 another route. They belong on `GET /api/fleet/health` rather than on the shared object because that
 endpoint's stated purpose is *"is the aggregation plane telling the truth right now"*
 ([§ 8.2](#82-rest)) and it is polled by an operator, while the shared object rides **every** snapshot
-and a `feed.heartbeat` every 15 s — nine monotonic integers on that path would be permanent bytes
+and a `feed.heartbeat` every 15 s — eleven monotonic integers on that path would be permanent bytes
 carrying, almost always, no news. `tools/design/verify-fleet-state.py` now reds when a counter's
 `Exposed` cell names fleet health and this member does not list it, so the two tables cannot drift
 apart again.
@@ -3473,8 +3565,11 @@ and the gate on trusting the derived signal at all.*
   [§ 8.2.1](#821-the-seat-state-object) — is byte-identical.
 - **RED:** make one fold rule read a value that is not in the log — the classic form is "if the seat is
   currently `idle`, treat this event differently" — and the rebuild diverges. That divergence is the
-  definition of the defect: a rule whose output depends on history the log does not contain cannot be
-  replayed, recovered, or reasoned about.
+  definition of the defect: a rule whose output depends on state that is neither in the log nor in
+  a durable input a rebuild does not destroy cannot be replayed, recovered, or reasoned about.
+  **The permitted reads are `events` and those durable inputs —
+  `seats` and `seat_board_task` ([§ 6.6](#66-rebuild-from-the-log)) — and nothing else**; a
+  projection's own prior value, which is what the classic form above reads, is not one of them.
 - **Discriminating control:** a rebuild of an untouched seat must produce **zero** differences, so the
   comparison is known to be capable of reporting equality.
 
@@ -3869,7 +3964,7 @@ document.
 | Read token expiry | 90 days | **Chosen** — quarterly rotation; a forgotten token dies. Multiple active tokens make rotation issue-then-revoke with no overlap to specify | [§ 9](#9-read-side-authentication) |
 | Rate limit, read token | 120 req/min | **Cited** — D1's per-seat request ceiling, reused so the fleet has one number; ~120× the watchdog's real cadence | [§ 9](#9-read-side-authentication) |
 | Rate limit, browser session | 600 req/min | **Chosen** — ~10 req/s, above any human interaction and far below anything the store notices | [§ 9](#9-read-side-authentication) |
-| Task-title tier staleness | 30 min | **Chosen, provisional** — a card title older than half an hour is likely describing the previous task; re-derived once the board producer exists and its poll cadence is known ([§ 14](#14-open-questions-for-the-review-loop) item 3) | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
+| Task-title tier staleness | 30 min | **Chosen** — six × the **5-minute board poll cadence** (`BOARD-TASK.md § 3.2`, and [§ 2.1](#21-processes)), so five consecutive failed polls are tolerated before a title is dropped, with a hard floor of *more than two cadences* because at two a single transient failure clears every tier-1 title on the floor at once. ⛔ **Chosen and not Derived, and the distinction is this table's own**: the cadence this figure is a multiple of is itself a judgement call, made in another document, so the figure is computed from no number in this table and none in D1. ⭐ **Re-derived on `card#7582` as this row previously asked, and the figure did not move — only its basis did**, which is evidence the original judgement was sound rather than evidence nobody checked; **it is re-derived again whenever the cadence moves**, which is the standing homework this row now carries in place of the one it discharged | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
 | Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h, over the last COMPLETED window (`call_closed_by_wire`), any server ceiling in 24 h and constant-server over ≥ 10 (`attention_resolved_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
 | Store version floor | 11.8.6 | **Ruled** — operator, card#7523 (2026-09-09), replacing MySQL ≥ 8.0.12. The features under it are DOCS-CITED to the MariaDB Knowledge Base: `SKIP LOCKED` (10.6.0), `ALGORITHM=INSTANT` (10.3.2/10.4 by operation), `DATETIME(3)`, and `JSON` as a `LONGTEXT` alias rather than a binary type; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
 | Redis test databases | 11 / 10 | **Chosen** — against the fleet's published claims (14/15, 13/12, 15/14, 2/3 on roundtable #349) and clear of the `0`/`1` defaults every unpinned seat gets | [§ 6.2](#62-database-names-pinned-and-published) |
@@ -3942,7 +4037,7 @@ review can reverse it deliberately rather than discover it later.
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
 | 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
-| 25 | **The task-title merge is specified here; its producers are not** — ⚠ **narrowed since, twice**: tier 2's producer was designed at [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), and then ⭐ **tier 2 itself was RETIRED by operator ruling, card#9234 (2026-09-10)**, so the only producer this row is still waiting on is **tier 1's board poller** ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock. ⛔ Retiring tier 2 did **not** retire the coordination producer: it removed the second consumer of one producer, and [§ 8.3.3](#833-the-coordination-objects) is the first one, unchanged |
+| 25 | **The task-title merge is specified here; its producers are not** — ⚠ **narrowed since, three times**: tier 2's producer was designed at [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer); then ⭐ **tier 2 itself was RETIRED by operator ruling, card#9234 (2026-09-10)**; and then tier 1's board poller was designed too, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (`card#7582`, ratified 2026-09-12). ⇒ **this row's decision stands and its waiting is over**: every producer is designed OUTSIDE this document, which is the decision, and what this document gained is the store column and the merge ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), [§ 6.4](#64-ddl)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly — tier 1 is designed and unbuilt rather than unspecified, and `BOARD-TASK.md § 10` names the three conditions that keep it dark. ⛔ Retiring tier 2 did **not** retire the coordination producer: it removed the second consumer of one producer, and [§ 8.3.3](#833-the-coordination-objects) is the first one, unchanged |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
 | 27 | **The guard asserts the resolved value (`config()`), not the declaration** | assert the `phpunit.xml` contents | All three mechanisms above leave the declaration correct. Reading `getenv()` would have shown `force="true"` "working" in the measurement that disproved it | one extra bootstrap assertion, and a hostile-export run in CI |
 | 28 | **`DB_CONNECTION` is deliberately not forced** | force every DB variable | Forcing a variable a CI matrix exports to select a backend silently re-runs every leg on the wrong backend: green, testing nothing. Nothing in this repo does that today, and the absence is commented as load-bearing so nobody "fixes" it | if a future matrix does select by export, this comment is what stops the next person forcing it |
@@ -3997,17 +4092,22 @@ D1's: they need an operator answer, a proposal document, or D3.
 3. **⇢ Review / operator — the proposal's three-tier status fallback, and the board producer.**
    `docs/PLAN.md § 2` assigns D2 a three-source merge and names a "three-tier status fallback from the
    proposal"; the proposal is not in this repo and this document **does not invent its tiers**
-   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **Two thirds of this item have
-   closed since it was written, by two different acts.** *(a)* The GitHub producer was designed —
+   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **All three of this item's producer
+   questions have closed since it was written, by three different acts.** *(a)* The GitHub producer was designed —
    [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) — and this document carries its read
    surface at [§ 8.3.3](#833-the-coordination-objects). *(b)* ⭐ **Tier 2 was then RETIRED outright by
    operator ruling, card#9234 (2026-09-10)**, which took the tier-2 join with it: the join was needed
    because a GitHub-sourced *title* had to reach a desk, and there is no longer such a title. The
    agent-name→`seat_id` declaration `card#7957` ruled is still wanted — for the **thread line**, which
    is [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line)'s and not this merge's — so it is not
-   closed, it has moved off this item. **Blocks:** tier 1 of the task title, which has no producer. A
-   floor built today shows telemetry-derived titles only. **Closes it:** the proposal's text, and a
-   ruling on where the board producer is designed.
+   closed, it has moved off this item. *(c)* ⭐ **The LAST third closed on `card#7582`: the board
+   producer is designed**, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md), and the ruling this item
+   asked for is that it is a **document of its own** — which is where
+   [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) had already put
+   it. **Blocks:** nothing here any longer — tier 1 has a producer; what it does not have is a BUILT
+   one, and `BOARD-TASK.md § 10` names the three conditions that keep it dark and how each one
+   reads. A floor built today still shows telemetry-derived titles only, now for that reason rather
+   than for want of a design. **Closes what is left:** the proposal's text.
 
 4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
    The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was

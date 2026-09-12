@@ -26,6 +26,120 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   desk's contract says nothing an implementer has to fill in. No code changes — the module already
   does not carry the member; what it lacked was the document saying so.
 
+- **card#7582** — **The D4 amendments are RATIFIED and applied, and retirement now clears the
+  board-user mapping.** Operator ruling of 2026-09-12 on A1–A10 from `BOARD-TASK.md`'s pull
+  request, taken **as amended by an adversarial review** rather than as drafted. `FLEET-STATE.md`
+  gains the two § 2.1 process rows, `seats.board_user_id` (UNIQUE) and the `seat_board_task` DDL at
+  § 6.4, the `board_poll_ok` / `board_poll_failed` counters at § 7.2 and § 8.2.4, the § 6.7
+  retention posture, the § 6.8 sizing line, and the § 1.2 / § 4.9 / § 14 repairs that stop the
+  document saying the poller is designed nowhere.
+  ⭐ **A10, which the review found MISSING, is added: § 6.6 and AT-D2-10 now state the rebuild rule
+  in full** — the fold reads only `events` and the durable inputs a rebuild does not destroy
+  (`seats`, `seat_board_task`). Until this, both stated the narrower *read nothing outside the log*
+  as the definition while D4 relied on the wider one, which is two live readings of one rule.
+  ⛔ **The product fork answered: RETIREMENT CLEARS THE MAPPING, in the retirement transaction**
+  (`App\Fleet\SeatRetirement`, § 4.10, AT-D4-8). The alternative — leave the row and make D4's
+  "a row leaves in exactly two ways" true by deleting one of the ways — was refused because
+  `board_user_id` is UNIQUE: a retired seat keeping it holds that board user against the fleet, so
+  the REPLACEMENT seat cannot be mapped to the same person until someone runs an undocumented
+  `--clear` on a seat that has left every read surface, and the whole symptom is a bare non-zero
+  exit. **The store ships with it** — the ratified § 6.4 shape, one migration — because a clearing
+  act with no column to clear cannot be tested, and the test is what makes it real: it was seen to
+  fail on the unique-key refusal first.
+  ⚠ **Three of the review's findings changed what was ratified, and are applied rather than noted:**
+  the two counters gain counting VERBS in § 2.1 (without them A3 turned `verify-fleet-state.py` RED
+  with two G8 failures, measured — and re-measured here by planting it); the 5-minute cadence is
+  **Chosen**, not *Derived*, which is what D4's own number table said all along; and the poller's
+  title truncation is **120 BYTES by D1 § 7.4's procedure**, not 120 characters — a board card
+  `name` is capped by nothing, and `mb_substr(…, 0, 120)` of a multibyte title is up to 480 bytes
+  against § 8.2.1's `≤ 120 B` contract.
+  ⛔ **The poller is still not built** — `mezzanine:board-poll` and `mezzanine:seat-board-user` are a
+  separate pull, which the ruling says in terms; `seat_board_task` therefore has one writer today and
+  it only deletes.
+- **card#9146** — **THE PROMOTE CHAIN'S 403 WAS THE WRONG ACCOUNT'S TOKEN, and nothing checked
+  which account it was.** Every `release-promote-cards` run from 2026-08-24 to 2026-09-09 died
+  `✗ card#NNNN: move failed (HTTP 403) — left in place` on every card it named. The cause was not
+  the board: `secrets.KANBAN_WRITEBACK_TOKEN` held a token for kanban **user 10** instead of this
+  repo's writeback account, **user 15**. Measured on the workflow itself, one variable at a time —
+  run `34417338664` probed `user 10` and then 403'd on `card#9077`; the secret was re-set at
+  `2026-09-09T23:37:31Z`; run `34417760754` probed `user 15` and reported
+  `✓ card#9078: moved 107 → 108`. ⛔ **Both accounts are `board_custom` on board 14 with identical
+  `custom_permissions` today, so the role does not explain the refusal, and this repo has NOT
+  established why user 10 is refused** — the identity is the discriminator and that is all this
+  chain needs. **The repo-side defect was the missing check**: the preflight asserted only that
+  the secret was NON-EMPTY while its own error text DECLARED a requirement about the token's user,
+  so a mis-set credential looked like a board-permission mystery and cost four rounds of wrong
+  inference across two agents. `release-promote-cards.yml` now asks `GET /users/current.json`
+  **before the mover runs** and fails the job unless `.data.id` equals the new committed
+  `.release-pr.json` → `.promote.writeback_user_id`; it prints the two numeric ids and nothing
+  else from that response, and sends only to `vars.KANBAN_API_BASE` (the PR-editable `api_base`
+  path is unreachable from it, which is why it carries no second copy of the mover's host guard).
+  **Seen to fail before it was trusted** — run `34674557403` declared `writeback_user_id: 99` and
+  the job red with *"authenticates as kanban user 15, but .release-pr.json declares … user 99"*,
+  with the promote step never reached. **Then seen to work end to end, not as a dry run** — run
+  `34674965476` (`DRY_RUN: false`, on the bytes this ships) reported `✓ card#7334: moved 107 →
+  108` for three cards and `3 moved, 0 already-released, 0 stage-guarded, 0 no-card, 0 failed`,
+  and the board reads 108 for all three. Seven stranded cards were drained across that run and
+  `34674802211`, each re-verified as a `card#<id>`-tokened commit reachable from `main`;
+  **the rest of that backlog is still stranded** and needs the same treatment. **Neither vendored file was touched**, so the #100 body pins stay
+  green. `docs/KANBAN.md` gains **G-17** for the whole mechanism and warns that **G-1 is
+  not what bit this repo** — a token can be a full board member and still be the wrong account.
+
+- **card#9250** — **MIGRATIONS NOW RUN ON THE ENGINE THEY RUN ON.** Until this landed, no
+  migration in this repository had ever been executed against MariaDB: the suite is SQLite
+  (`server/phpunit.xml`), `php-tests` asserts SQLite by name, and production is MariaDB
+  (`docs/PLAN.md` D-15 as amended 2026-09-09). Laravel compiles the two through different schema
+  grammars — SQLite has no native `ENUM` and REBUILDS a table where MySQL/MariaDB emits
+  `ALTER … MODIFY` — so a migration that passed CI and failed on MariaDB was discoverable only at
+  deploy, where DDL is non-transactional and a multi-statement migration halts PART-APPLIED.
+  **A second job, `php-tests-mariadb`, now runs every migration and the whole suite against a
+  `mariadb:11.8.6` service container** — the exact floor `docs/design/FLEET-STATE.md § 6.1` pins,
+  not a floating tag, because the point is to execute the minimum the document promises.
+  ⛔ **An ADDITIONAL lane, not a changed one**: the SQLite lane and its `DB_CONNECTION=sqlite`
+  assertion are untouched, and the two jobs share nothing but the checkout. The backend is selected
+  by **exporting** `DB_CONNECTION`, which is the mechanism `phpunit.xml`'s unforced declaration and
+  `§ 6.2` finding 1 always described — *"nothing in this repo's CI selects a backend by exporting
+  it today; when something does, it must win"* is no longer a hypothetical, and the three places
+  that said so are corrected. Every other § 6.2 pin is forced + paired and correctly DEFEATS the
+  new job's exports: CI chooses the store, CI does not choose the isolation.
+  ⭐ **The lane is built so it can fail, and was seen to.** New `tools/ci-store-probe.php` asks the
+  SERVER rather than trusting a declaration: it reds unless `VERSION()` names MariaDB, it **derives**
+  § 6.1's floor from that document's engine row and reds when the live server is below it (the
+  `services:` image tag cannot be interpolated, so the copy is guarded rather than deleted), and it
+  asserts table presence against a caller-stated expectation. The lane runs it as a **control pair**
+  twice — empty, migrate, non-empty; wipe, run the suite, non-empty — and the second pair is the
+  only available proof that the SUITE resolved to MariaDB rather than silently to SQLite, which is
+  § 6.2 finding 4's failure mode (*a MariaDB matrix that re-ran both legs on SQLite, green, testing
+  nothing*). `pdo_sqlite` is deliberately **not installed** in that job for the same reason: a
+  fallback must fatal, not pass.
+  ⚠ **Still not covered, by name**: TLS and the `+00:00` session time zone (the container is
+  plaintext on loopback and `config/database.php` sets no `timezone`); `down()` (only `up()` runs —
+  `bin/deploy.sh` is forward-only on purpose, so a `down()` defect is on no production path); and
+  every concurrency exposure card#7523 lists (`FOR UPDATE SKIP LOCKED`, the `Predicates::record()`
+  lost update, the ABBA ordering), which need two connections working at once and which a
+  single-threaded suite does not produce. What card#7523 gains is that those are now blocked on a
+  TEST rather than on a STORE — the correction is written into `MySqlColumnTypeTest`'s header,
+  which said the opposite.
+  ⭐ **WHAT THE FIRST RUN FOUND, which is the whole argument for the lane.** Every migration
+  applied cleanly on MariaDB — **no migration defect exists**, and that is now a measurement
+  rather than a hope. What the lane did catch is a defect class in the TESTS: **two tests match
+  emitted SQL text against SQLite's `"` identifier quoting**, which MariaDB writes as backticks.
+  The two ends of that class are the reason a lane is worth more than an audit.
+  `Tests\Feature\Admin\SeatConsoleTest` FAILED — its `DB::beforeExecuting` hook never fired and
+  its own precondition assertion said so. `Tests\Feature\Ingest\At13AtomicBatchRejectionTest`
+  **PASSED, vacuously**: its filter matched nothing and an empty set is exactly what it asserts,
+  so AT-13's control-flow assertion — *"a refused batch must issue no INSERT at all"* — was a
+  decoration on that engine, green forever and proving the opposite of its claim. Both now ask
+  the connected grammar through one shared `Tests\TestCase::wrapTable()` rather than spelling a
+  quoting character, so a third site cannot mint it by copying a neighbour.
+  The second run found the second: a fixture wrote `'2026-01-01 00:00:00'` into a `DATETIME(3)`
+  column and asserted the literal back. SQLite returns the string it was handed; MariaDB returns
+  `…00:00:00.000`, which is what `§ 6.4` declares the column to be. **Neither engine nor the
+  application is wrong** — `App\Fold\Clock::toMs()` already absorbs both spellings by name and every
+  wire value goes through `Clock::wire()` — the FIXTURE was not a `DATETIME(3)` value, and now is.
+  Audited for siblings by the shape that produced it (a fraction-less datetime literal in a test):
+  `grep -rnE "'20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'" server/tests server/app`
+  returns that file alone.
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
   derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
@@ -183,8 +297,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   from `seats.retired_at` — an operator-written value in no event that `reset()` deliberately does
   not touch. ⇒ no D1 change, no new event kind, no change to `reset()`, and **no fourth exclusion**.
   D2 § 12 asks for the tier-1 freshness bound to be "re-derived once the board producer exists and
-  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged while its
-  basis moves from *Chosen, provisional* to *Derived*.
+  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged.
+  ⚠ **Superseded by the ratification below:** that row stays **Chosen**, not *Derived* — D2 § 12's
+  `Derived` means computed from a number in D2 or D1, and the cadence is in neither.
   ⛔ **Nothing is implemented and that is the deliverable.** Every structural piece needs a D2
   amendment — a § 2.1 process row, a § 6.4 table and column, two § 7.2 counters — and D2 § 6.4
   says a builder "may reorder columns and add nothing". The amendments are stated as exact text on
