@@ -80,9 +80,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # The prove-it-can-fail harness runs HERE, against THIS checkout — the same bytes about to
-      # judge somebody's PR. It plants a defect of each verifier's own headline class (a stated
-      # figure drifting from what re-derives it) and requires the verifier to reject it, with the
-      # red attributable to the plant rather than to any nonzero exit.
+      # judge somebody's PR. It plants a defect of the class each targeted guard exists for — a
+      # stated figure drifting from what re-derives it, or a name renamed on a surface the gate is
+      # supposed to hold (card#9303) — and requires the verifier to reject it, with the red
+      # attributable to the plant rather than to any nonzero exit. How many plants and of which
+      # kinds is printed by the harness on its own last line rather than restated here.
       - name: Self-test (a planted defect per verifier, each red attributed to its plant)
         run: python3 tools/design/verify-design-docs.selftest.py
 
@@ -110,7 +112,8 @@ jobs:
   # different interpreter, and a red in either job should never hide the other's verdict.
   #
   # It needs no plant harness of its own — unlike the three above it carries its own planted
-  # controls internally and prints the count on every run ("527 checks, 30 planted controls"), so
+  # controls internally and prints the counts on its own last line every run ("N checks, M planted
+  # controls" — the figures are computed there and deliberately not restated here), so
   # the proof travels with the tool. Wiring it is what puts the SHIPPED ARTIFACT under a gate for
   # the first time; before this it was verified by whoever remembered to open the file.
   design-artifact:

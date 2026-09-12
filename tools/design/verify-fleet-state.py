@@ -16,7 +16,11 @@ checking, and it survives exactly the pass that falsifies it.
                                                    see it drift, repaired below)
   G6  Appendix A counts + D1 obligation markers   (R1-24: an obligation with no row; R2-9: and the
                                                    D1/D2 namespace collision that forgave it)
-  G7  feed message-type closure                   (R1-11: `fleet.health` in no table)
+  G7  feed message-type closure                   (R1-11: `fleet.health` in no table; card#9303:
+                                                   and the backtick-delimited POPULATION that put
+                                                   § 8.3's and § 8.4's fences -- the buildable
+                                                   surface -- outside it, so a renamed message
+                                                   there shipped at rc=0)
   G8  counter closure, with Stored/Exposed, BOTH  (R1-15: 14 counters with no home; and the
       directions                                   mirror direction, a section 7.2 row no rule
                                                    writes, which the forward check could not see)
@@ -963,22 +967,77 @@ else:
     rows = table_rows(sec824, r"^\| Field \| Type \| Null\? \| Bounds \| Example \|") or []
     fleet_fields = {m.group(1) for m in
                     (re.match(r"^\|\s*`([a-z_]+)`", r) for r in rows) if m}
+# `coord` joined the prefix set with § 8.3.3 (card#9212): a coordination message type written in
+# prose with no row in § 8.3's table is the same defect as a `feed.` one, and until it was listed
+# here the two new types were declared by the table and unchecked everywhere else.  `room` and
+# `building` joined it with § 8.7 (card#9208's reversal) for the same reason: the prefix set is the
+# namespace this closure runs over, and a message type outside it is declared by the table and held
+# to nothing.
+#
+# WHAT MAKES AN OCCURRENCE A MESSAGE-TYPE USE (card#9303).  Until this card the answer was a
+# SPELLING: the token had to be backtick-delimited with `[a-z_]+` running straight into the closing
+# backtick.  That is not a population, and the surface it excluded is the worst one to exclude --
+# § 8.3's and § 8.4's pseudocode and JSON fences are what an implementer BUILDS from, and every
+# message name in them is bare.  A rename there shipped with the verifier at rc=0; that is how this
+# card was found, by a plant that did not red.
+#
+# Widening the regex ALONE would be a worse gate than the narrow one, because two namespace-SHAPED
+# things in this document are not message types at all: § 8.2.4's argument against an aggregate
+# names `fleet.status: "degraded"` -- a design alternative this document REJECTS, which has no row
+# in § 8.3's table by construction -- and § 2.3's threshold rows write `fleet.fold = "stalled"`.
+# So the population is decided by what the document DOES with the token, in two classifiers, each
+# reading a fact some section here already owns, and never a list of forgiven lines:
+#
+#   TOKEN BOUNDARY -- a message type is a WHOLE token.  `server/config/building.php` and
+#     `private-fleet.aimla-win` -- both live in D3 today, and are what this shape looks like in the
+#     wild -- are namespace-SHAPED and are a path and a host name; each is recognised by what sits
+#     against it (a `/`, a `-`, a word character), so neither needs an exception written for it.
+#     A trailing `.member` chain is a member PATH -- D3's `fleet.reload.reason` names a member of
+#     the `fleet.reload` message -- so the ROOT is what § 8.3 is asked about.
+#   FIELD FORM -- a token given a SCALAR value (`= "lagging"`, `: "degraded"`, `== stalled`) is
+#     being used as a field with a value, which is § 8.2.4's subject and not this one's.  A token
+#     carrying a payload OBJECT -- `fleet.health{db:"up"}`, the fence's own idiom -- is a message,
+#     and `{` is not a scalar, so the two spellings stay apart without either being enumerated.
+#
+# The POLARITY is the point, and is why this is a population rather than a longer alternation:
+# everything namespace-shaped is a message type UNLESS the document demonstrably uses it as a field
+# or a path.  An unseen spelling therefore fails LOUD rather than leaving the gate silently, which
+# is the defect this replaces.  ⚠ Declared limitation, not a closed hole: a message name written in
+# `name: scalar` form reads as a field and is outside the population.  Closing that would take the
+# two spellings apart on the operator, which would red on § 8.2.4's rejected alternative -- the
+# worse gate.  No such site exists in this document; a run that finds one is a rewrite, not a bug.
+NS_TOKEN = re.compile(r"(?<![\w./-])((?:seat|fleet|feed|coord|room|building)"
+                      r"\.[a-z_]+(?:\.[a-z_]+)*)(?![\w-])")
+FIELD_FORM = re.compile(r"""[ \t]*(?:==|=|:)[ \t]*(?:"[^"\n]*"|'[^'\n]*'|\d|[a-z_]+\b)""")
+g7_pop, g7_undelimited = 0, 0
 if declared_types and fleet_fields:
-    # `coord` joined the prefix set with § 8.3.3 (card#9212): a coordination message type written
-    # in prose with no row in § 8.3's table is the same defect as a `feed.` one, and until it was
-    # listed here the two new types were declared by the table and unchecked everywhere else.
-    # `room` and `building` joined it with § 8.7 (card#9208's reversal) for the same reason: the
-    # prefix set is the population this closure runs over, and a message type outside it is
-    # declared by the table and held to nothing.
-    for m in re.finditer(r"`((?:seat|fleet|feed|coord|room|building)\.[a-z_]+)`", raw):
+    for m in NS_TOKEN.finditer(raw):
         tok, line = m.group(1), raw[:m.start()].count("\n") + 1
-        head, _, tail = tok.partition(".")
+        if FIELD_FORM.match(raw, m.end()):
+            continue
+        g7_pop += 1
+        # could the backtick-delimited regex this population replaces have seen this occurrence?
+        if not (m.start() and raw[m.start() - 1] == "`"
+                and m.end() < len(raw) and raw[m.end()] == "`"):
+            g7_undelimited += 1
+        head, tail = tok.split(".")[:2]        # a member path's ROOT is the message type
+        root = f"{head}.{tail}"
         if head == "fleet" and tail in fleet_fields:
             continue
-        if tok not in declared_types:
+        if root not in declared_types:
             fail.append(f"L{line}: G7: `{tok}` is used as a feed message type and has no row in "
                         f"section 8.3's table, which declares {sorted(declared_types)} — a message "
                         f"an acceptance test requires and the contract does not declare")
+    # The widening has to be SEEN to reach past the delimiter, or it decays into the narrow regex
+    # without anything saying so: on a document where every use happens to be backticked, this gate
+    # would report exactly what it reported before card#9303 and a rename inside a fence would
+    # again leave no trace.  Zero is therefore a failure, not a clean.
+    if not g7_undelimited:
+        fail.append("G7 CONTROL: every message-type use in this document is backtick-delimited, so "
+                    "the population above reaches nothing the delimiter-bound regex it replaces "
+                    "could not already see. Either the wire examples and protocol fences of § 8.3 "
+                    "and § 8.4 are gone — which is a much larger finding than this control — or "
+                    "this gate is decorative again")
 
 # The document's WRITING idiom for a counter, in the two word orders it actually uses: the verb
 # before the name (`counting \`x\``) and the name before the verb (`\`x\` increments`, `\`x\` is
@@ -1278,7 +1337,9 @@ if appA:
         print(f"    G6 residue · {row} cites {src!r} — no D1 section number, so no marker in D1 "
               f"can make this row derivable; it is read by a human or its source column moves")
 print(f"G7  feed message types declared: {len(declared_types)}; "
-      f"fleet-object fields exempted: {len(fleet_fields)}")
+      f"fleet-object fields exempted: {len(fleet_fields)}; message-type USES held against that "
+      f"table: {g7_pop}, of which written without backtick delimiters — inside a pseudocode or "
+      f"JSON fence, which is the buildable surface — {g7_undelimited}")
 print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
       f"checked for a rule that WRITES it — the document's counting-verb idiom, in either word "
       f"order — outside that table and outside section 11's tests); fleet-health counters "

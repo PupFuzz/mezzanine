@@ -19,6 +19,34 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9303** — **G7's population is what D2 DOES with a token, not how it spells one.**
+  `verify-fleet-state.py`'s G7 held D2's feed-message types against § 8.3's table but its population
+  was **delimiter-bound** — it saw a message type only inside backticks, so a use inside one of the
+  document's own fenced protocol blocks was invisible to it and an undeclared message could sit in a
+  fence with the gate green. The population is now decided by two classifiers that each read a fact a
+  section already owns: **TOKEN BOUNDARY** (a message type is a whole token, so `building.php` and
+  `private-fleet.aimla-win` are excluded by the characters against them rather than by an exception,
+  and a `.member` chain is a path whose *root* is the message) and **FIELD FORM** (a token given a
+  **scalar** — `= "lagging"`, `: "degraded"` — is a field, § 8.2.4's subject; a token carrying a
+  payload **object**, `fleet.health{db:"up"}`, is a message).
+  ⭐ **The polarity is the point:** everything namespace-shaped is a message type **unless** the
+  document demonstrably uses it otherwise, so an unseen spelling fails **loud** instead of leaving the
+  gate. **One hole is declared, not closed** — a name written `name: scalar` reads as a field, and
+  closing it would red on § 8.2.4, which is the worse gate.
+  ⚠ **Why not a wider regex:** § 8.2.4's `` `fleet.status: "degraded"` `` is a deliberately REJECTED
+  alternative with no § 8.3 row by construction, and § 2.3 writes `` `fleet.fold = "stalled"` ``. Any
+  alternation that reaches the fences also reaches those and reds on correct prose.
+  The plant is seen to red with the pre-change verifier **green on the same bytes** — that
+  differential is what attributes the red to the population rather than to the plant — and a new
+  `G7 CONTROL` fails if no undelimited use is found at all. Coverage is monotone: the uses the gate
+  gained are exactly the fenced bare ones, and the field-form exclusions were never in it.
+  ⛔ **One reachable sibling is reported and NOT fixed here:** G8's forward leg (`WRITER_RE`) is blind
+  to `count feed_resync_required; return` on both of its legs. Its verb leg is binding, so that is a
+  change to G8's own population and its own round — filed on the card rather than folded in.
+  `tools/design/README.md` and the verifier workflow's plant-harness comment move with it, and three
+  bare counts on those surfaces were replaced by the derivations that re-print them rather than by
+  fresh figures.
+
 - **card#9269** — **the shipped default map is a FILE**: `resources/floor/default.tmj`, an office
   interior drawn with the vendored Kenney tileset, its `desks` layer carrying the slot count
   `docs/design/FLOOR.md § 12` declares (the gate now counts the file rather than reading the row).
