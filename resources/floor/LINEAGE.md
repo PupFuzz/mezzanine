@@ -228,5 +228,8 @@ about to adopt is a clause nobody had evidence about.
 - **The hashes prove the bytes did not move since they were vendored; they do not prove the
   bytes came from where this file says.** Re-running the two `curl` / `sha256sum` commands above
   is what re-establishes that, and it is written down so a later reader can.
-- **No map is vendored.** `FLOOR.md` § 10.3 owns that absence and `tools/design/verify-floor.py`
-  holds it; a tileset is not a map, and the floor's `.tmj` is still card#7341's to author.
+- **The map beside this tileset is FIRST-PARTY and nothing here vouches for it.** A tileset is not
+  a map: `resources/floor/default.tmj` — the shipped default, drawn with these tiles by card#9269
+  — was authored in this repository, so it carries a `first-party` manifest row and none of the
+  provenance above. `FLOOR.md` § 10.3 owns what that file is and `tools/design/verify-floor.py`
+  holds its `desks` count against the figure the document declares.
