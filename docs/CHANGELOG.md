@@ -807,6 +807,72 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   console still authors and stores one Tiled document per floor, and under this ruling nothing reads
   that store but the console itself — an operator can author a floor, watch it save, and see no change
   ever. D3 § 14 item 16 carries it with the three answers and says it is an operator call.
+  ⛔⭐ **REVERSED 2026-09-12 — operator ruling on the same card, taking D3 § 14 item 16's third
+  answer and widening it: *"option C. Each floor should be configurable separately, including room
+  design (walls, furniture, etc)"*.** The map is **served at runtime from the admin console's store**,
+  and the console is the source of truth. This is a DESIGN amendment (D2 + D3), and no application
+  code moves with it. Recorded where each half belongs, as before: **D2** gains § 8.7 (the building
+  surface — `GET /api/building`, `GET /api/building/rooms/{install_id}/map`, and the feed messages
+  `room.map` / `building.layout` that say one changed), § 6.11 (the authored store and its append-only
+  revisions: a prior layout IS retrievable after a bad save, a restore is a forward revision, a removal
+  is a revision, and *review* is the one thing version control gave that the store does not give back —
+  said in terms), § 2.2's two posture rows, § 8.1's third posture row, § 9's browser-only row, § 6.4's
+  DDL for `authored_revisions` / `building_layout` / `floors.map_version`, § 6.10's second
+  irreplaceable population, and § 13 row 38 REVERSED with rows 41–44 (own prefix not the fleet plane;
+  notify-then-fetch not poll; append-only revisions; ONE shipped default). **D3** § 10.3 is rewritten:
+  the configurable unit is the **ROOM** and the operator's *each floor* maps onto it (§ 13 row 27);
+  Tiled stays the authoring format and the console validates, previews, revisions, diffs, restores and
+  exports rather than growing an editor (row 28; § 14 item 18 prices the editor); the renderer's closed
+  read of the document is a table, and a desk object carrying ANY property is refused at the write; a
+  map apply fires no animation (row 29) and a failed fetch never draws the default (row 30, § 9 F16).
+  **The layout moves with the map** — § 4.6's deploy-time argument was § 10.3's and inverted with it
+  (§ 13 row 24 amended). ⚠ That move is **this design's inference**, not a clause of the ruling: the
+  operator's card#9070 words point the same way but were about the map, before card#9267 minted a
+  layout at all — § 4.6 says so and names it as the one call to reverse if the two-change-path
+  argument is not accepted. § 14 item 16 CLOSED; items 18 and 19 opened; Appendix A gains T39;
+  Appendix B gains three build slices.
+  ⚠ **Reconciled with card#7341 as the record has it, not as first dispatched:** that card's tileset
+  pull (#107, 2026-09-12) vendored the tileset and **no map**. § 10.3 declares the ONE shipped default
+  at `resources/floor/default.tmj` before any map exists at any path, so the map card#7341 goes on to
+  author is written there from the start and nothing is renamed; `verify-floor.py` G8b reds a map
+  landing at the old per-room path by name in every state (CONTRADICTED while § 10.3 declares the
+  absence; MISPLACED after it, instead of the default or beside it — the gate's own G8b comment
+  records why the *beside* leg was added).
+  ⛔ **`room.map` rides EVERY install's channel, like the heartbeat** — a client's subscriptions are
+  the snapshot's installs, and the room an operator has just drawn may have no seat reporting, so a
+  per-room publish would reach nobody. And the design says plainly what card#9071's *no pinning*
+  ruling protects (no identity in the document, no stored position, every browser agrees) and what no
+  document check can prevent (an author choosing `S` and geometry so a known seat lands at a known
+  desk — arithmetic on a pure function, not a feature).
+  ⛔ **`verify-floor.py` G8 now asserts the INVERSE of what it asserted:** a new leg, **G8d** (G8c is
+  the tileset pull's sprite check), requires § 10.3 to name the read paths a room's map is fetched
+  from and holds them to set-equality with D2 § 8.7's `GET` rows — seen red three ways (an
+  undeclared path; the map path dropped while the layout path stays; no path at all). G8b's existing
+  CONTRADICTED branch was also seen red on a map planted in the tree. `verify-fleet-state.py` G7's
+  prefix set gains `room` / `building`, seen red on a planted `building.reload`.
+  ⚠ **Code comments and docblocks now stale, owed by the build slices — the PREDICATE is the record,
+  and the list below is its full output on 2026-09-12, unrelated hits included and marked, so that
+  the build re-runs the predicate rather than trusting the list:**
+  `grep -rniE "build artifact|never served|no read path|with the page|not from an endpoint|all four|the one endpoint|deploy-time|9208" server/`.
+  **Slice 1** (the layout's home): `server/config/building.php`, `server/routes/web.php`,
+  `server/resources/views/dashboard.blade.php`, `server/resources/views/console/floors/index.blade.php`,
+  `server/public/js/lobby/lobby-model.js`, `server/public/js/lobby/building-model.js`,
+  `server/public/js/lobby/main.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`,
+  `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`. **Slice 2** (the surface):
+  `server/app/Http/Middleware/FleetReadGate.php`. **Slice 3 / the floor route** (the
+  docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* — the surface now
+  exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
+  `server/public/js/drilldown/main.js`, `server/public/js/drilldown/drilldown-model.js`,
+  `server/tests/Feature/Coordination/CoordModuleWiringTest.php`,
+  `server/tests/Feature/Desk/DeskDrawsTheThoughtBubbleTest.php`,
+  `server/tests/Feature/DrillDown/DrillDownModuleWiringTest.php`,
+  `server/tests/Feature/DrillDown/DrillDownRendersTheInternsTest.php`. **Unrelated hits, not stale**
+  (the predicate's false positives, named so the next run can tell them apart): `server/routes/fleet.php`
+  (*all four routes are `GET`* — scoped to that file's four fleet routes, and still true of them),
+  `server/app/Fold/Fold.php`
+  (*all four fold call sites*), `server/app/Http/Controllers/FleetController.php` (a pagination row
+  *never served*), `server/tests/Feature/Feed/At19ReadAuthTest.php` (*the one endpoint that carries
+  `counters`*), `server/tests/Feature/Fold/At10RebuildEqualsFoldTest.php` (*all fourteen*).
 
 - **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
   count.** The table is what an operator provisions a host from, and it listed every process except

@@ -114,7 +114,7 @@ contract every consumer reads.
 | **MFA and the browser session** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states *which* surfaces MFA gates and what a failed gate returns; it does not specify the second factor. |
 | **Alerting, paging, e-mail** | There is no notifier here. Every degraded condition surfaces as a counter, a badge and a rendered state. A fleet that wants a pager reads the REST snapshot. |
 | **Historical analytics beyond the retention window** | Retention is 14 days ([§ 6.7](#67-retention-and-purge)). There is no warehouse, no roll-up table and no trend history, deliberately: the product answers *what is happening now*, and a second, slower copy of the data with its own schema is a second thing to keep true. |
-| **Backups of derived state** | Everything except `events` is re-derivable by replay ([§ 6.6](#66-rebuild-from-the-log)). [§ 6.10](#610-durability-posture) states the whole durability position, including what a total loss of the store actually costs. |
+| **Backups of derived state** | Everything except `events` — and, since card#9208's reversal, the **authored building documents** of [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), which no replay re-derives — is re-derivable by replay ([§ 6.6](#66-rebuild-from-the-log)). [§ 6.10](#610-durability-posture) states the whole durability position, including what a total loss of the store actually costs. |
 | **Any server → seat channel** | D1 § 1 forbids it and nothing here needs it. The read plane is read-only in both directions: it never writes to a seat and never asks one for anything. |
 
 ### 1.3 The boundary, stated as a rule
@@ -209,6 +209,8 @@ is in neither.
 | **Sweep worker** | dead | **OPEN for ingest, CLOSED for the currency claim** — the fleet object's `sweep_last_run_at` keeps its last value and `fleet.sweep` goes `stalled` past **60 s** since it ([§ 8.2.4](#824-the-fleet-health-object)) | Identical reasoning to the fold, and stated separately rather than inherited because the *consequence* differs: a dead fold freezes wire-driven transitions, a dead sweep freezes time-driven ones, and only the second one can leave a dead seat rendering `working`. |
 | **Feed backpressure** | a client cannot drain its queue | **CLOSED for that connection** — at 256 queued messages or 512 KiB the connection is closed with `resync_required`; other clients are untouched | Dropping deltas silently leaves that browser permanently and invisibly wrong. Closing the connection costs one snapshot fetch and is self-healing. |
 | **Read-token verification** | the token store is unreachable | **CLOSED** — `503`, never a cached or assumed grant | A read token gates the whole fleet's activity picture. There is no posture in which "we could not check, so we allowed it" is correct. |
+| **Building surface read** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the store unreachable | **CLOSED** — `503 fleet_unavailable`, **never the shipped default served in its place** | A default served on a failed read is a room the operator authored rendering as one they did not, with confidence — the clean-zero shape one surface over from the snapshot's. The client draws the failure by name ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F16) and keeps every desk's facts |
+| **Building surface read** | the store reachable, **no authored map for the room** | **OPEN, labelled** — `200` with the shipped default, `source: "default"`, `map_version: null` | An unauthored room is a state and not a failure: the default is what every room starts from, and the label is what keeps it distinguishable from an authored map on the same shape. This is the row an implementer gets wrong by answering `404`, which would make every new install a broken room |
 | **Purge job** | dead | **OPEN** — data accumulates; alarm on table size at the stated threshold | Retaining too much costs disk; deleting on a broken assumption costs the dedup guarantee ([§ 6.7](#67-retention-and-purge)). The safe direction is to keep. |
 | **Clock (NTP) on the Mezzanine host** | skewed | **OPEN, visible** — `received_at` remains the authority ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what)) and every seat's `clock_skew_ms` moves together | A fleet-wide skew shows up as *every* seat badging `clock_skew` in the same direction, which is a legible signature. Nothing else can produce it, so no extra instrument is needed — but the reading is stated here so it is not mis-read as a fleet of broken seats. |
 
@@ -1270,7 +1272,7 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 | Surrogate keys | `installs.id SMALLINT UNSIGNED`, `seats.id INT UNSIGNED`; every hot table carries `seat_ref` | a natural key on `events` would be `install_id` (≤ 32 B) + `seat_id` (≤ 48 B) on every row and in every index — ~76 B against 4 |
 | ULIDs | `CHAR(26) CHARACTER SET ascii COLLATE ascii_bin` | 26 bytes, exact comparison, legible in a query, and lexicographically ordered by mint time. `BINARY(16)` would save 10 B/row and make every diagnostic query require a conversion function; at 10,420 events/seat/day that saving is ~0.1 MB/seat/day against permanent illegibility |
 | Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP` | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone |
-| Enums | MariaDB `ENUM` for closed sets D1 owns; `VARCHAR` + application validation for open ones | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted. So: `ENUM` only where the coercion has already happened at the ingest ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10), which is every enum this schema stores |
+| Enums | MariaDB `ENUM` where the column's **writer can only produce members the schema declares** — a D1 value set coerced at the ingest, or a closed set this plane mints and its own fold, sweeper or console writes (`unknown_reason`, `seat_state_transitions.cause`, `feed_tokens.scope`, `authored_revisions.kind` …); `VARCHAR` + application validation where an unknown member is **data to record** rather than a bug to reject — the open sets D1 rule 7 says must be coerced-and-counted. ⚠ Until card#9208's reversal this row said *closed sets D1 owns* and its Reason cell closed with *which is every enum this schema stores* — false of the schema it sat beside: re-derived by `tools/design/verify-fleet-state.py`'s G1, which prints how many ENUM members this document mints on every run, roughly a quarter of them are D2's own and always were. The criterion is restated rather than the list of exceptions, because the list would be most of the schema | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted, and right for a value only this plane's own code can write — an unknown member there is a bug, and a migration per member is the price of the storage layer refusing it. G1 holds the second half honest: every member this document mints must be produced by a rule it states |
 | `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on **any** path — not just not on a hot one — and after the MariaDB repin that is load-bearing rather than incidental: MariaDB's `JSON` is an alias for `LONGTEXT` + `CHECK (json_valid(…))` and has no arrow operators before 13.1 ([§ 6.1](#61-deployment-posture)). Every JSON column is written whole, read whole and decoded in PHP; the column is kept for the drill-down, for replay and for forensics |
 | String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MariaDB counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
 | Nullability | a column is `NULL` only where D1's field table says the wire value is nullable, or where the fact genuinely does not exist yet | a nullable column that "means zero" is a read-time fallback, which is a defect to trace to its write site |
@@ -1706,6 +1708,56 @@ CREATE TABLE feed_tokens (
   UNIQUE KEY uq_hash (token_hash),
   KEY ix_prefix (prefix)
 ) ENGINE=InnoDB;
+
+-- ── THE AUTHORED BUILDING STORE (§ 6.11) — card#9208's reversal, 2026-09-12. Three tables the fold
+-- never reads and a rebuild never touches: an operator writes them in the admin console, § 8.7
+-- serves them. `floors` shipped with card#9085 and is sketched here because it gained a reader;
+-- `map_version` is the one column this amendment adds to it.
+
+CREATE TABLE floors (
+  id            SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  install_id    VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- the ROOM (card#9267).
+                                            -- Deliberately no FK to `installs`: a room may be
+                                            -- authored before its first seat ever reports
+  map           MEDIUMTEXT   NOT NULL,      -- the Tiled JSON document, byte for byte as authored
+  map_version   INT UNSIGNED NOT NULL,      -- = authored_revisions.revision of the row this IS.
+                                            -- The migration adding it seeds revision 1 per
+                                            -- existing row from that row's own map/updated_by/
+                                            -- updated_at, so no row exists without a revision
+  updated_by    VARCHAR(255) NOT NULL,      -- users.email of the last author
+  created_at    DATETIME(3)  NOT NULL,      -- when this room was FIRST authored
+  updated_at    DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_floor (install_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE building_layout (
+  id             TINYINT UNSIGNED NOT NULL PRIMARY KEY,  -- always 1: the building has one layout
+  document       MEDIUMTEXT   NOT NULL,     -- FLOOR.md § 4.6's document as JSON text, validated
+                                            -- at the write by App\Building\BuildingLayout;
+                                            -- the same column type as the revision that is it
+  layout_version INT UNSIGNED NOT NULL,     -- = authored_revisions.revision of the row this IS
+  updated_by     VARCHAR(255) NOT NULL,
+  updated_at     DATETIME(3)  NOT NULL,
+  CONSTRAINT ck_one_layout CHECK (id = 1)
+) ENGINE=InnoDB;
+
+CREATE TABLE authored_revisions (
+  id             INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  kind           ENUM('room_map', 'building_layout') NOT NULL,
+                                            -- ENUM by § 6.3: the console is the only writer and
+                                            -- it enumerates the set, so an unknown kind is a bug
+                                            -- to reject, not a value to record
+  subject        VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- the room's install_id for a room_map; '' for the
+                                            -- building_layout. Never a collision: D1 § 3.1's slug
+                                            -- is at least two characters long
+  revision       INT UNSIGNED NOT NULL,     -- 1, 2, 3 … per (kind, subject); never reused
+  document       MEDIUMTEXT   NULL,         -- NULL = a REMOVAL: the subject went back to its default
+  restored_from  INT UNSIGNED NULL,         -- the revision this one copies, when it is a restore
+  authored_by    VARCHAR(255) NOT NULL,
+  authored_at    DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_revision (kind, subject, revision)
+) ENGINE=InnoDB;
 ```
 
 **Row counts and index choices are sized in [§ 6.8](#68-sizing).**
@@ -2046,6 +2098,7 @@ rather than a silently shortened history.
 | `seat_state_transitions` | **14 days** | the drill-down's history horizon; same number, one home |
 | `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
 | `seat_board_task` | **never**, like `seats` | **Not traffic-bounded**: one row per mapped, unretired seat, so the population is the fleet and not its traffic. Purged by nothing; a row leaves in exactly two ways, both of them operator acts with a writer named — any write of `seats.board_user_id` by the seat→board-user command, `--clear` or `--board-user`, and the seat's **retirement**, which deletes it in the transaction that sets `retired_at` ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) |
+| `floors`, `building_layout`, `authored_revisions` | **never** | **Not traffic-bounded**: a row is written by an operator's save in the admin console and by nothing else, so the population is the number of times a person pressed *save* — [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) sizes it — and a revision purged is exactly the prior layout the recovery rule there exists to keep retrievable. Purged by nothing; a room's map is **removed** by a revision that records the removal, never by deleting its history |
 
 **The retention chain, stated as one inequality because all three numbers move together:**
 
@@ -2115,6 +2168,10 @@ population bounded by the fleet, not by traffic — so at the 50-seat scale size
 single page. It is stated rather than omitted, because a table absent from a sizing section reads
 as a table nobody costed.
 
+**The authored building store moves no figure here either, and [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) costs it
+where it is defined:** its rows are operator saves, bounded by a person's patience and not by the
+fleet's traffic, and each is at most the console's 512 KiB write bound.
+
 **Tool-checked vs hand-verified.** The per-seat-day and per-seat figures are **hand-verified** from the
 row-cost model above, and they are the largest block of hand-verified arithmetic left in this document.
 `tools/design/verify-fleet-state.py` checks that each of them appears at the
@@ -2143,21 +2200,89 @@ ingest outage. Three rules, and the first one is the one that gets skipped:
 
 ### 6.10 Durability posture
 
-**The only irreplaceable asset in this store is `events`, and its value expires in 14 days.** Everything
-else is derived and rebuildable ([§ 6.6](#66-rebuild-from-the-log)). So the honest position, stated
-rather than assumed:
+**Two populations in this store are irreplaceable, and they differ in how long their value lasts:
+`events`, whose value expires in 14 days, and — since card#9208's reversal of 2026-09-12 — the
+authored building documents of [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), whose value does not expire at all.**
+Everything else is derived and rebuildable ([§ 6.6](#66-rebuild-from-the-log)). So the honest position,
+stated rather than assumed:
 
 - **Total loss of the store** costs the retained history and nothing structural. Seats keep reporting;
   the fleet re-derives from the events that arrive after the loss, and seats that still hold spool
   (≤ 8 days, [D1 § 11.3](EVENT-SCHEMA.md#113-rotation-and-the-overflow-policy)) re-deliver what they had
   not yet sent. Within minutes the floor is correct again and within a day the drill-downs are useful
   again.
-- **Backups are therefore an operational choice, not a correctness requirement**, and this document does
-  not specify one. What it does specify is that the *decision* is recorded at provisioning
-  ([§ 14](#14-open-questions-for-the-review-loop) item 6) rather than discovered during an incident.
+- **Total loss of the store also loses every authored floor, and nothing re-derives one** — no seat
+  reports a wall. What stands between an operator and redrawing the building is
+  [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s export (a `.tmj` in the operator's own hands, and the repository's
+  shipped default where a room was re-vendored from one) and the backup decision below.
+- **Backups are therefore an operational choice for the fleet's derived state, and the difference
+  between an incident and a loss for the authored documents.** This document still does not specify
+  one. What it does specify is that the *decision* is recorded at provisioning
+  ([§ 14](#14-open-questions-for-the-review-loop) item 6) rather than discovered during an incident —
+  and that item now says what the decision covers.
 - **What is not survivable is a silent partial loss** — a store that returns some seats and not others.
   That is why the snapshot read fails closed ([§ 2.2](#22-fail-posture-per-path)) rather than serving
   what it can reach.
+
+### 6.11 The authored building store — room maps, the layout, and their revisions
+
+⭐ **Operator ruling, card#9208 (2026-09-12)**, reversing the same card's ruling of 2026-09-09 —
+[§ 13](#13-decisions-taken-revisable-at-review) row 38 carries the reversal, its alternatives and its
+cost; this section is the **store** half of it and [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) is the **read** half. What
+an operator authors in the admin console — one Tiled document per **room** (an install, card#9267) and
+one **building layout** (which rooms share a floor, each room's form, a floor's label —
+[FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s document) — is served to the floor at runtime,
+and the console is the source of truth for both. The DDL is in [§ 6.4](#64-ddl)'s block, under its
+own heading, so that the one gate that reads that block reads these tables too.
+
+**These rows are the second irreplaceable population in this store, and the fold never reads them.**
+[§ 6.6](#66-rebuild-from-the-log)'s rule is untouched: the fold reads `events` and the durable inputs
+a rebuild does not destroy, and none of these three tables is among them — a wall is not a fact any
+seat reported, and `render_state` does not depend on where a desk is drawn. What changes is
+[§ 6.10](#610-durability-posture): a total loss of the store now loses every authored floor, and no
+replay brings one back.
+
+**Every save is a revision, and a prior layout IS retrievable after a bad save — designed, because the
+ruling owes it and *the database is the record* is not an answer.** The reversed build-artifact shape
+had four things for free — a diff, a review, a revert and a blame — and this store gives back three of
+them and says which one it does not:
+
+| Lost with version control | What stands in its place | Recovered? |
+|---|---|---|
+| **revert** | `authored_revisions` is append-only: a save inserts revision N+1 for its `(kind, subject)` and points `floors.map_version` — or `building_layout.layout_version` — at it in one transaction. A **restore** is a new revision whose `document` copies revision K's, with `restored_from = K`; history is never rewritten, and *undo the restore* is itself a restore. A **removal** is a revision with `document NULL`, so a removed map is as retrievable as an edited one, and the room renders the shipped default until it is authored again | **yes**, to any prior revision |
+| **blame** | `authored_by` and `authored_at` on every revision — the console session's user, the same value `floors.updated_by` already records | **yes** |
+| **diff** | the console shows two revisions side by side and names what moved: the tile layers whose data differ, the desk count `S` before and after, and a line diff of the two documents pretty-printed. A CSV-encoded map is reviewable in a diff — [FLOOR.md § 10.1](FLOOR.md#101-the-manifest-and-the-two-gates) clause 3 chose CSV partly for that — and the store keeps the document byte for byte, so the diff is of what was authored | **yes**, read in the console rather than in a pull request |
+| **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in that exists only once that renderer does ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) step 7), so until then the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
+
+**The write path, stated once.** The admin console's floors module (card#9085) is the only writer of
+all three tables, and one save is one transaction: validate the document — a room map by
+`App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
+by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
+states — insert the `room_map` or `building_layout` revision, write the current row, commit, and **on
+commit** publish [§ 8.3](#83-the-websocket-delta-feed)'s `room.map` or `building.layout`. A save that
+fails validation writes nothing and publishes nothing. A save whose document is byte-identical to the
+current revision is refused as a no-op rather than minting an empty revision, so a revision always
+records a change. A **removal** deletes the room's `floors` row and inserts its `document NULL`
+revision in the same transaction — `floors` holds only rooms with an authored map current, and the
+revision log is the history — so [§ 6.7](#67-retention-and-purge)'s *purged by nothing* is a claim
+about the log, and the current table is a projection of it. **Existing rows are not orphaned by the
+amendment:** the migration that adds `map_version` seeds one `room_map` revision 1 per `floors` row
+from the row's own `map`, `updated_by` and `updated_at`, so the invariant *no current row without a
+revision behind it* holds from the first migration onward. A `room_map` revision's `subject` is the room's `install_id`; a `building_layout`
+revision's is the empty string, and the DDL says why that can never name a room.
+
+**Export, and the way back into version control.** The console serves any revision as a `.tmj`
+download. That is the operator's own copy against a lost store, and it is how an authored room becomes
+the repository's **shipped default** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map))
+— vendored under `resources/floor/` with its `docs/ATTRIBUTION.md` row, where it regains the diff, the
+review and the blame the store cannot give. The two homes are not two truths: the store is what a floor
+renders, and the repository is what a room starts from.
+
+**Retention and size.** All three tables are retained forever ([§ 6.7](#67-retention-and-purge)). The
+population is not traffic-bounded — a row is an operator pressing *save* — and a document is at most
+**512 KiB**, the console's write bound ([§ 12](#12-every-number-and-where-it-comes-from)). A thousand
+saves across a building would be under half a gigabyte at the bound and, at a realistic ~25 KB per
+CSV-encoded map, about 25 MB; [§ 6.8](#68-sizing)'s figures do not move.
 
 ---
 
@@ -2336,6 +2461,7 @@ no second copy of a number the wire already carries.
 |---|---|---|---|
 | **REST** `GET /api/fleet/*` | the browser **and** machine consumers — the bridge's autonomy watchdog ([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why): "One producer, clean boundary, either side deployable alone") | **independently** — the watchdog is another team's deploy | carries `api_version`; additive changes are free and a consumer must ignore unknown fields; a removal, a rename or a **meaning change** is a version bump with a stated window — the same rules as [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules) 1, 3, 4 and 7, for the same reason: two parties that upgrade separately |
 | **WebSocket** `private-fleet.<install_id>` | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
+| **REST** `GET /api/building/*` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the browser only | **together** — the same deploy serves the client that fetches it | carries `api_version` for detection and takes **the WebSocket row's posture, not the fleet REST row's**: no support window and no N/N-1 obligation, because its one consumer ships with the server. It is a REST surface because a map is fetched once and cached by version rather than streamed; it is outside `/api/fleet/*` because an authored document is not a fleet fact ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)). The property that would move it to the first row is checkable: a machine consumer of its own that upgrades on its own schedule |
 
 **Stating the second row is the point.** Inheriting D1's wire-compatibility discipline for a channel
 whose two ends ship in one act would cost a support window, a version negotiation and a set of rules
@@ -2345,8 +2471,8 @@ upgrades on its own schedule, this row is wrong and the row above it applies.
 
 ### 8.2 REST
 
-All four endpoints require authentication ([§ 9](#9-read-side-authentication)). All responses are
-`application/json; charset=utf-8` and carry `server_time`.
+All four fleet endpoints require authentication ([§ 9](#9-read-side-authentication)). All responses
+are `application/json; charset=utf-8` and carry `server_time`.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -2355,15 +2481,21 @@ All four endpoints require authentication ([§ 9](#9-read-side-authentication)).
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the eleven fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 
-**There is no fifth endpoint, and in particular none that serves a floor map.** ⭐ **Operator
-ruling, card#9208 (2026-09-09)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38): the authored
-floor map is a **build artifact of the client**, never served at runtime, so this plane publishes no map
-surface and no map member — what it publishes for a floor is the seat→desk binding of
-[§ 8.2.1](#821-the-seat-state-object) and nothing else. Where the client's map comes from instead, and
-what a floor edit costs under this ruling, is [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)'s.
-**It is written here as a declaration rather than left as an omission**, because an absent read surface
-and an undesigned one are indistinguishable from D3, and the last time that ambiguity stood a renderer
-invented the member it needed (card#8075).
+**There is no fifth FLEET endpoint, and the fleet plane still serves no floor map — but a map IS
+served, on a surface of its own, and the sentence that stood here until 2026-09-12 is REVERSED.**
+⭐ **Operator ruling, card#9208 (2026-09-12)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38),
+reversing the same card's ruling of 2026-09-09: the authored floor map is **served at runtime from the
+admin console's store**, and each floor is separately configurable, room design included. The read
+surface is [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s — `GET /api/building` and
+`GET /api/building/rooms/{install_id}/map`, under [§ 9](#9-read-side-authentication)'s browser-only
+row — and what this table's four endpoints publish for a floor is still the seat→desk binding of
+[§ 8.2.1](#821-the-seat-state-object) and nothing else: no snapshot member carries a map, a slot or a
+version of either, which is [§ 13](#13-decisions-taken-revisable-at-review) row 41's decision. **It is
+still written here as a declaration rather than left as an omission**, for the reason the reversed
+sentence gave and which the reversal does not touch: an absent read surface and an undesigned one are
+indistinguishable from D3, and the last time that ambiguity stood a renderer invented the member it
+needed (card#8075). A reader who arrives at this table looking for the map is sent to § 8.7 by name,
+rather than left to infer that the four rows above are the whole of what a floor can fetch.
 
 Every snapshot this plane answers counts `snapshot_served`
 ([§ 7.2](#72-this-planes-own-counters-and-badges)); the refusal path is
@@ -2467,7 +2599,9 @@ snapshot repeats per seat and the delta patches.
 
 **`install_id` and `seat_id` are the seat→desk binding, and they are the whole of it.**
 ⭐ **Declared here by operator ruling, card#9208 (2026-09-09)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38),
-because a floor's whole layout rests on this pair and nothing in this document said so. The two members
+because a floor's whole layout rests on this pair and nothing in this document said so — **and it
+SURVIVED that card's reversal of 2026-09-12 unchanged**: serving the map ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed))
+moved where a room's map comes from and nothing about what a seat carries. The two members
 above ride **every** seat object and **every** seat-scoped feed message — `seat.delta` and
 `seat.retired` both carry them ([§ 8.3](#83-the-websocket-delta-feed)) — and D1's identity rule makes
 them config-file resident and stable across session restarts, `/clear`, reboots, host renames and
@@ -2716,6 +2850,8 @@ floor subscribes to what it renders and a future per-install authorization has a
 | `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
 | `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
+| `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, published on commit of the revision it announces, on **every** install's channel: a client's subscriptions are the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, so its own channel may have no listener | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
+| `building.layout` | server → client | the building layout was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), published on **every** install's channel as `feed.heartbeat` is — there is no building-wide channel, and a layout change concerns every floor | `layout_version`, `at` |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
 [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
@@ -3206,6 +3342,162 @@ The one outcome forbidden everywhere on this surface: **a `200` with an empty fl
 `docs/KANBAN.md § G-1` shape — a clean zero that means "we could not answer" — and on a dashboard it
 renders as an empty office, which is indistinguishable from a fleet that has gone home.
 
+### 8.7 The building surface — the layout, the room maps, and the message that says one changed
+
+⭐ **Operator ruling, card#9208 (2026-09-12)** — [§ 13](#13-decisions-taken-revisable-at-review) row 38
+carries the reversal; [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) is the store this reads. Two endpoints and two feed
+messages, and the rule that binds all four: **an authored document is served whole and by version —
+never inlined into fleet state, and never carried on a message.**
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/building` | session+MFA | the **layout** — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s floors, already keyed, labelled and sorted, exactly as the page delivered them before this surface existed — and, for every room that has an authored map, its **`map_version`**. It is what a client fetches beside the snapshot on connect, and again on every `building.layout` |
+| `GET` | `/api/building/rooms/{install_id}/map` | session+MFA | one room's **map**: the Tiled document the floor draws that room from, with the version it is. Answered from the room's authored document where one is current and from the **shipped default** where none is — the same shape either way, with `source` saying which |
+
+Both require authentication under [§ 9](#9-read-side-authentication)'s browser-only row; both are
+`application/json; charset=utf-8` and carry `api_version` and `server_time`; both fail **closed**
+exactly as the snapshot does ([§ 2.2](#22-fail-posture-per-path)) — a store that cannot be read is
+`503 fleet_unavailable`, never a default served as though it were the answer, because a client that
+could not tell *the operator authored nothing* from *the store is down* would draw the wrong building
+with confidence. Both postures — the failure, and the *unauthored room* that is not one — are rows of
+[§ 2.2](#22-fail-posture-per-path)'s register, stated there in their own words rather than inherited
+from the snapshot's row.
+
+**`GET /api/building`, worked:**
+
+```json
+{
+  "api_version": 1,
+  "server_time": "2026-09-12T09:14:02.118Z",
+  "layout": {
+    "layout_version": 3,
+    "floors": [
+      { "floor": "aimla", "label": null,
+        "rooms": [ { "install": "aimla", "form": "open" } ] },
+      { "floor": "sola", "label": "the solos",
+        "rooms": [ { "install": "sola", "form": "office" }, { "install": "zeta", "form": "office" } ] }
+    ]
+  },
+  "rooms": [
+    { "install_id": "aimla", "map_version": 7, "updated_at": "2026-09-12T09:13:58.402Z" }
+  ]
+}
+```
+
+- `layout.floors` is the **placed** floors only — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s
+  one client-side rule (an install the layout does not place is a floor of its own, alone, `open`) is
+  applied by the client against the snapshot's installs, as it is today; this surface does not carry
+  `reported`, because whether a room's seats are on the wire is the snapshot's fact and not the
+  layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
+  building, one floor per install.
+- `rooms[]` lists the rooms with an **authored** map and nothing else. It is not a population
+  statement — a room absent here renders the shipped default, and a room named here whose install the
+  snapshot does not list is still a room whose seats have not reported, which
+  [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) draws and labels rather than omits.
+
+**`GET /api/building/rooms/aimla/map`, worked** — the envelope; `map` is the Tiled document as
+authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)'s table:
+
+```json
+{
+  "api_version": 1,
+  "server_time": "2026-09-12T09:14:02.118Z",
+  "install_id": "aimla",
+  "source": "authored",
+  "map_version": 7,
+  "updated_at": "2026-09-12T09:13:58.402Z",
+  "map": { "type": "map", "orientation": "orthogonal", "width": 40, "height": 25,
+           "tilewidth": 32, "tileheight": 32,
+           "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
+           "layers": [ { "type": "tilelayer", "name": "floor", "data": [ 1, 1, 1 ] },
+                       { "type": "objectgroup", "name": "desks",
+                         "objects": [ { "id": 1, "x": 64, "y": 96, "width": 116, "height": 64 } ] } ] }
+}
+```
+
+| Member | Values | Rule |
+|---|---|---|
+| `source` | `authored` · `default` | which document this is. `default` is the repository's one shipped map, `resources/floor/default.tmj` ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)), served for every room with no authored revision current — including a room that had one and was **removed** back to it, and a room whose install has never reported. The surface answers for any `install_id` that matches [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s slug; one that does not is `404` |
+| `map_version` | ≥ 1, or `null` | the `authored_revisions.revision` that is current ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)); `null` iff `source` is `default`. A client caches a room's map by this value and re-fetches on a `room.map` whose `map_version` differs from the one it holds |
+| `updated_at` | rfc3339_ms, or `null` | the current revision's `authored_at`; `null` iff `source` is `default` |
+| `map` | the Tiled document | byte for byte what was authored, re-serialised through this envelope. At most **512 KiB** at the write ([§ 12](#12-every-number-and-where-it-comes-from)), so the response is bounded by the console's bound and not by this surface |
+
+**Versioning, and how a client learns a map changed — it is told, then it fetches.**
+[§ 8.3](#83-the-websocket-delta-feed) carries two messages: `room.map` when a room's map is saved,
+restored or removed, carrying its `install_id` and the new `map_version` (`null` after a removal); and
+`building.layout` when the layout is saved or restored, carrying `layout_version`. **Both are published
+on every install's channel**, as `feed.heartbeat` is, and for `room.map` that is a correctness
+condition rather than a convenience: a client subscribes to the **snapshot's** installs and never to
+the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and a room an operator has just
+drawn is exactly the room that may have no seat reporting yet — so a `room.map` published on that
+room's own channel would reach nobody, and the operator watching for their save would see nothing.
+A client applies a `room.map` only for a room it renders and ignores the rest; it fetches
+`GET /api/building` again on a `building.layout` whose `layout_version` differs from the one it
+holds, so N copies of one message cost one fetch. Neither carries the document, and the reason is
+arithmetic rather than taste: a map is bounded at 512 KiB and a feed message at 8 KiB
+([§ 8.3](#83-the-websocket-delta-feed)),
+so the document cannot ride the message, and a truncated one would be worse than none. The messages
+are notifications and the endpoints are the state — the same split as `fleet.health` beside
+`GET /api/fleet/health`. Three shapes were declined, in [§ 13](#13-decisions-taken-revisable-at-review)
+row 42: polling `/api/building` on a cadence (a version a client asks for every N seconds is N seconds
+of a wrong building on every save, and a request every N seconds from every client for a document that
+changes on a designer's schedule); a `fleet.reload` on every save (it stops delta application and
+demands a reload, for furniture); and carrying the document on the message (above). A client in
+[FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1's polling mode holds no subscription
+and sees neither message — it fetches `/api/building` again when it reconnects, which is the one
+staleness this shape accepts, and it is stated there rather than met on a floor.
+
+⚠ **What the fan-out spends, named rather than
+discovered:** `room.map` is the one message on this feed that carries **another install's
+`install_id`** onto a channel, and the per-install channel is the surface
+[§ 14](#14-open-questions-for-the-review-loop) item 7's future ACL is meant to attach to. Under
+[§ 9](#9-read-side-authentication)'s all-or-nothing read that costs nothing today — every subscriber
+may see every room — and a client-side *ignore the rest* is a rendering rule, not an authorization
+boundary. If fleet-read ever becomes per-install, `room.map` must be filtered per subscriber, or
+moved to a building channel of its own, **before** that ACL is real; item 7 carries it as the second
+cost of that ruling, and [§ 13](#13-decisions-taken-revisable-at-review) row 42 records that the
+declined channel of its own is the shape that would not have spent it. **And it is not the only
+thing that ACL would have to rule on, which is why item 7 prices it as a design question and not a
+filter:** `feed.heartbeat` and `fleet.health` carry the fleet-wide `fleet{}` — `seats_total`,
+`seats_live`, `max_fold_lag_ms`, aggregates over every seat — on every per-install channel already,
+so what a per-install viewer may see of the fleet's health is a product answer nobody has given.
+
+**What this surface never carries, so that the boundary card#9071 ruled on is a property of the wire
+and not of the console's forms.** No seat, no `seat_id`, no slot index, no desk-to-seat pair: the seat
+object ([§ 8.2.1](#821-the-seat-state-object)) carries no slot and no map reference, the map carries no
+seat, and the two meet only in the client's own slot function
+([FLOOR.md § 3.2](FLOOR.md#32-the-desk-slot-function)), which reads the seat key off the wire and `S`
+off the map. ⛔ **The console may NOT pin a seat to a desk — operator ruling, card#9071
+(2026-09-12)** — and what that ruling protects, and what it cannot, are stated apart rather than run
+together. **Protected, at the write:** the document carries no identity — [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)
+refuses a desk object carrying any property, so a map cannot name a seat and the wire never carries a
+stored position; two browsers, two reloads and two restarts still agree from the seat key and `S`
+alone, which is the property the ruling was reasoned on. **Not prevented, and not preventable by any
+check on the document:** an author chooses `S` and where each slot index is drawn, `h(seat)` is fixed
+and published, so an author who wants a known seat at a known desk can choose `S` and the geometry
+so that it lands there — trivially with one desk in a one-seat room. That is arithmetic on a pure
+function, not a pin feature: nothing is stored, nothing is served, and the next seat to arrive can
+displace it. It is written here because *the ruling is enforced at the write* would otherwise be
+read as *an operator cannot arrange it*, and the second is false. What an author does to a desk in
+the ordinary case, stated so it is not discovered: a save that changes `S` re-slots **every** desk
+in that room, because the slot function is `h mod S` — the console shows `S` before and after a save
+for exactly that reason — and a save that keeps `S` moves no desk at all.
+
+**What D3 owes this surface, named here so the obligation has a row:** fetch a room's map by
+`map_version` and re-render that room on a `room.map`, **without animation** — a map is a layout act
+and not a fleet event; fetch the layout again on a `building.layout`; and on a map or layout request that fails,
+draw the failure by name rather than the shipped default — or the empty layout's building — in its
+place, because a default drawn silently is a room the operator authored rendering as one they did
+not, and a building composed from a failed fetch is the same defect one level up.
+
+**Counters: none, and why.** `snapshot_served` / `snapshot_denied` exist so that a read plane refusing
+everything reads as refusing rather than idle ([§ 8.2](#82-rest)), and that pair counts the snapshot
+route alone — it does **not** observe this surface. What makes a second pair unnecessary is that the
+*conditions* are shared, not the instrument: a store that refuses this surface refuses the snapshot
+the same client always fetches first, and a map refused is drawn on the floor by name
+([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F16) rather than as a silent default.
+A `map_served` pair would count a condition the snapshot pair already makes visible.
+
 ---
 
 ## 9. Read-side authentication
@@ -3219,6 +3511,7 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 | the floor, the drill-down, the WebSocket handshake, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the websocket handshake **and** the REST snapshot |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
 | the WebSocket, from a machine consumer | **not supported** | see below |
+| the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
 **The live feed is browser-only, and that is a decision with a cost.** A long-lived socket authenticated
 by a bearer token needs a revocation story *on an already-open connection* — a token revoked at 09:00
@@ -3933,6 +4226,7 @@ document.
 | Sweep cadence | 15 s | **Derived** — 5 % of the tightest deadline any time-derived transition has (the 300 s `stale` threshold), at 5,760 passes/day of two indexed range scans | [§ 2.1](#21-processes) |
 | `fold_lag` badge | 60 s | **Derived** — one heartbeat interval (D1 § 9.1): a seat a whole heartbeat behind in derivation has certainly missed an input, so the badge cannot fire on a healthy pass. Healthy value is ~1 s | [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) |
 | `fleet.fold = stalled` | 300 s | **Derived** — the `stale` threshold reused, so transport silence and derivation silence become visible at the same age and are comparable in one unit | [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) |
+| Authored document size bound | **512 KiB** | **Chosen** — the console's write bound on one Tiled document (`App\Floor\FloorMap::MAX_BYTES`, card#9085), carried into this contract because the read surface serves what the console accepted. A CSV-encoded 1,200-tile layer is ~6 KB, so a room of a dozen layers is under a tenth of it, and the bound exists so a pasted document that is not a map fails on size before it fails on shape. Sixty-four times the 8 KiB feed message bound, which is the arithmetic behind the document never riding a message | [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) |
 | Fold batch size | 500 events | **Derived** — ~2.5 D1 batches (200-event cap), a few ms of row locks per transaction; ~70 min of one seat's ceiling traffic, so it binds only during a drain | [§ 6.5](#65-the-fold) |
 | Fold claim size | 8 seats | **Chosen** — small enough that a second worker partitions cleanly under `SKIP LOCKED`, large enough that a four-seat fleet is one claim | [§ 6.5](#65-the-fold) |
 | Purge batch / budget | 5,000 rows / 60 s | **Chosen** — bounded DELETEs keep the transaction and the binlog small; the wall-clock budget makes a purge that cannot keep up fall behind *visibly* (`purge_backlog_rows`) instead of holding a long transaction | [§ 6.7](#67-retention-and-purge) |
@@ -4050,9 +4344,13 @@ review can reverse it deliberately rather than discover it later.
 | 35 | **`retired` is a `render_state` member, and a retired seat leaves the read surfaces AT `retired_at`** — ⚠ **REVERSED by operator ruling, card#9078 (2026-09-09)**; this row previously decided the opposite and the alternative column is where that reading now lives | keep the seat in the snapshot for the 14-day retention window, rendered `retired` with its `at` / `by` / `reason` — the shape this row chose until the ruling | The window was defended as keeping *"we removed it"* distinguishable from *"it went quiet"*, and that is false on this document's own render table: a quiet seat is visibly present and degraded, so a removed seat being gone is maximally different from it. [§ 4.5](#45-link-states)'s "never vanishes between two refreshes" is a guard against a client INFERRING a removal from missing data, and an operator retirement is an announcement, not an inference — so the invariant is fully served by removing on the explicit event | the retirement record has no rendered home, so the admin console gains one (card#9070) — better than a ghost desk: queryable, unbounded by a window, and it consumes no slot on a finite floor. And the removal path must now be exactly one thing: the announcement |
 | 36 | **A server counter never writes a member of D1's `degraded` array** | follow D1 § 12.7's `seq_gap` row literally and raise `lossy` | D1 contradicts itself here — § 9.3 declares `seq_gap` a server badge and *not* a member, § 12.7 and § 10.2 say the server renders the seat `lossy` — and § 9.3's reading is the one with a mechanism: `lossy` means the reporter discarded events *and counted them*, so a server-raised `lossy` with a zero counter beside it is a badge contradicting its own number | D2 carries its own `seq_gap` badge, so a consumer sees two members where D1's text implies one; filed as an amendment need ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
-| 38 | **The floor map is a build artifact of the client; this plane publishes no read surface for it, and the seat→desk binding is the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⭐ **operator ruling, card#9208 (2026-09-09)**, which the card put as three candidate shapes and the operator answered | (a) a map read surface per install/floor, versioned like [§ 8](#8-the-feed-contract)'s others; (c) the map riding the snapshot as an additive member | Authoring a floor is a **design act**, not a runtime event: an operator authors a map ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) and editing one is the stated remedy for a floor short of desks ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F13) — neither is a fact this plane observes, derives or versions. Serving it would buy a surface, a compatibility posture and a cache for bytes that change on a designer's schedule, and (c) would put them on every snapshot of every seat | **A floor edit is a redeploy** — the operator accepted that explicitly in the ruling. And card#9085's authored-map store gains no reader: a map authored in the console does not reach a floor, which [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 carries as an open question rather than a silent consequence |
+| 38 | **The floor map is SERVED AT RUNTIME from the admin console's store, on a surface of its own ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)); the fleet plane still publishes no map member, and the seat→desk binding is still the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⚠ **REVERSED by operator ruling, card#9208 (2026-09-12)**; this row previously decided the opposite — *a build artifact of the client, never served at runtime* — and the alternative column is where that reading now lives, beside the two shapes the first ruling also declined | **the first ruling's shape (2026-09-09)**: the map is a build artifact shipped with the client, never served, and a floor edit is a redeploy; **(c)** the map riding the snapshot as an additive member; **(a′)** a map endpoint under `/api/fleet/` rather than under a prefix of its own | The reason the first ruling was taken — a map that changes is a design act, not a runtime event — was answered by the operator at the product level: floors ARE to be configured at runtime, separately, and the scope widened from a map of desk slots to **room design** — walls, furniture, the layout itself — which is authoring, and authoring wants a save to take effect without a deploy. That is a reason that was not on the table on 2026-09-09, which is the bar [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 set for a reversal. (c) is still refused for the reason it was refused then — bytes that change on a designer's schedule on every snapshot of every seat, and a watchdog paying for furniture; (a′) is refused because an authored document on the fleet plane looks like something the fleet reported ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) | **Floor layout leaves version control** — no diff, no review, no revert and no blame for free — and the answer to that is designed rather than defaulted: [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s append-only revisions give back three of the four and say which one they do not. A second irreplaceable population joins `events` in the store ([§ 6.10](#610-durability-posture)). And the read plane gains a surface, a compatibility posture ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) and two feed messages, each priced in § 8.7 |
 | 39 | **The coordination objects are first-class objects on the existing feed, not members of the seat object** ([§ 8.3.3](#833-the-coordination-objects)) | a `coord` member on [§ 8.2.1](#821-the-seat-state-object)'s seat object, replicated onto each participant's desk | A thread spans desks and its participants may name agents no desk holds, so a per-seat copy is one fact with N homes, free to disagree with itself and free to make a seat object's size a function of another plane's traffic. The ruling's own words are that **the thread is the object on the wire**, and [§ 4.8](#48-what-may-never-mint-a-state) is where the corollary is written — a coordination fact touches no seat state — added there in this same change rather than asserted here, so the rule sits with the rules of its kind | a consumer wanting *this desk's threads* filters `participants` itself, over whatever the feed has delivered since it connected — and, until `card#7957`'s (d) lands, over names that may resolve to no desk at all |
 | 40 | **The coordination objects ride the delta feed only — no snapshot member, no fifth endpoint** ([§ 8.3.3](#833-the-coordination-objects)) | a `threads[]` member on `GET /api/fleet/snapshot`, or a coordination endpoint beside [§ 8.2](#82-rest)'s four | A snapshot is a read of stored state, and the coordination store is explicitly a later slice: [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) hands both of its open decisions — the receipt route's counters, and the idempotency digest's retention — to *"the slice that designs the coordination store"*. Specifying a read over a store nobody has designed is how a guessed rule enters a contract | a client that has just connected draws no thread line until the next post on that thread. Priced at § 8.3.3 and carried as [§ 14](#14-open-questions-for-the-review-loop) item 14, rather than discovered when the floor is built |
+| 41 | **The building surface is its own REST prefix, `/api/building/*`, browser-only — not a fleet endpoint and not a snapshot member** ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | a fifth row in [§ 8.2](#82-rest)'s table; `installs[].map_version` and the layout as additive snapshot members; the layout inlined with the page and only the map fetched | An authored document is not a fact the fleet reported, and putting it on the fleet plane would make it look like one ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — and the fleet plane has a machine consumer with a support window that furniture must not be billed to. A snapshot member would put a designer's bytes on every seat of every snapshot, which is (c)'s cost under another name. Inlining the layout with the page while fetching the map from an endpoint gives one building two delivery paths, which is the *which of the two am I looking at* question that section refuses | two more routes behind one gate, and a client that fetches three things on connect instead of one. If a machine consumer ever wants the map, [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s third row says which row it moves to and what that costs |
+| 42 | **A client learns that a map or the layout changed from a feed notification carrying the new version, and then fetches — never by polling, never by `fleet.reload`, and the message never carries the document** ([§ 8.3](#83-the-websocket-delta-feed), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | poll `/api/building` on a cadence; publish `fleet.reload` on every save; carry the document on the message; a `private-building` channel of its own | Polling is N seconds of a wrong building per save and a request per client per N seconds for a document that changes on a designer's schedule. `fleet.reload` stops delta application and demands a reload, which is the right response to a deploy and the wrong one to furniture. The document cannot ride the message: 512 KiB against an 8 KiB bound. A channel of its own is one more subscription and one more authorization for two messages that already have a home — both ride every channel, as the heartbeat does — `room.map` too, because the client's subscriptions are the snapshot's installs and the room just drawn may have no seat reporting, so its own channel may have no listener | a client in polling mode (F1) sees neither message and holds the old building until it reconnects, stated in § 8.7 rather than met on a floor; and both messages fan out to every channel, which at 50 installs is 50 publishes per save — an operator act, so bounded by a person — and a client holding N installs receives N copies and fetches once, by version. **And `room.map` spends a property**: it is the one message carrying another install's `install_id` onto a channel, so a future per-install ACL ([§ 14](#14-open-questions-for-the-review-loop) item 7) must filter it per subscriber or move it to the channel this row declined — and the fleet-wide `fleet{}` on every channel is that ACL's other unanswered question, recorded on that item beside it |
+| 43 | **Recovery is an append-only revision log: every save is a revision, a restore is a forward revision that copies an older one, a removal is a revision with no document, and nothing is ever purged** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | *the database is the record* — the current row and nothing else; a ring of the last N revisions; export-only, with the repository as the one history | The ruling owes an answer on recovery and refuses the default. The current row alone is what the console shipped with (card#9085) and it loses a layout on the first bad save. A ring bounds a population that is already bounded by a person pressing *save* and would purge exactly the revision someone wants back. Export-only puts the history where an operator has to remember to put it. Append-only with restore-as-forward keeps the log a log: nothing rewrites it, and *undo* is a row rather than a deletion | the store grows by one document per save, forever ([§ 6.7](#67-retention-and-purge)) — costed in § 6.11 and small; and **review is not recovered**, said in that section's own table rather than implied by the word *revisions* |
+| 44 | **One shipped default map, `resources/floor/default.tmj`, is what every room renders until it is authored — and there is no per-room shipped tier** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) | `resources/floor/<install_id>.tmj` per room, then the default; seed the store from vendored files at first boot; no default — an unauthored room draws every desk in the overflow row | A per-room shipped file is a third answer to *where does this room's map come from* on top of *authored* and *default*, and the first question anyone asks of a wrong room is which of the three they are looking at. Seeding is a write-site with an *already seeded?* state of its own. No default draws a new install as a room full of overflow, which is legal and honest and a bad product for the case [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) exists to make good — provisioning an install renders it without a deploy | card#7341's floor-v1 map — still that card's to author; its tileset pull (#107, 2026-09-12) vendored **no map** — lands at this path rather than at the per-room `resources/floor/aimla.tmj` the reversed ruling declared for it. Nothing is renamed, because the path moves before any file exists at either; `verify-floor.py` holds the tree to § 10.3's declared path in both directions, so a map landing at the old path reds by name in every state: CONTRADICTED while § 10.3 still declares the absence, MISPLACED after it — instead of the default, or beside it ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states the branches) |
 
 ---
 
@@ -4135,12 +4433,31 @@ D1's: they need an operator answer, a proposal document, or D3.
    (D-15), but D-13's **sandbox** instance may land on a shared box — if it does, the pinned names of
    [§ 6.2](#62-database-names-pinned-and-published) are load-bearing rather than precautionary.
    **Blocks:** provisioning (D-15). **Closes it:** two operator answers.
+   ⚠ **Raised, not closed, by card#9208's reversal (2026-09-12):** the store now also holds the
+   authored room maps and the building layout ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), which no replay re-derives
+   and which [§ 6.10](#610-durability-posture) now names as the second irreplaceable population — so the
+   backup answer this item asks for covers everything an operator ever drew, not fourteen days of
+   history. The console's export is the operator's own copy in the meantime, and it is a copy someone
+   has to remember to take.
 
 7. **⇢ Operator — is fleet-read all-or-nothing?**
    Today any MFA-authenticated user and any `fleet_read` token sees every install
    ([§ 9](#9-read-side-authentication)). The channel and endpoint shapes are per-install so an ACL has
    somewhere to attach. **Blocks:** nothing while every install belongs to one operator.
    **Closes it:** a ruling, ideally before a second organisation's install reports in.
+   ⚠ **A second cost joined the ruling on 2026-09-12 (card#9208's reversal):** [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
+   `room.map` is published on every install's channel carrying the changed room's `install_id`, so a
+   per-install ACL cannot be attached at the channel alone — the message must be filtered per
+   subscriber, or moved to a building channel of its own, in the same change. **And a second
+   thing the same ACL has to answer was already on every channel before that message existed:**
+   `feed.heartbeat` and `fleet.health` carry the fleet-wide `fleet{}` — aggregates over every seat —
+   per install ([§ 8.3](#83-the-websocket-delta-feed)), so what a per-install viewer may see of the
+   fleet's health is a product question, not a filter. Today, under the all-or-nothing read, every
+   subscriber may see every room and every aggregate and nothing is exposed; the cost is that the
+   ACL, when ruled, is a filter on `room.map`, a rule for `fleet{}`, and the authorization it always
+   was — on the channel, **and on the fleet-wide snapshot and health endpoints, which take no
+   per-install parameter** ([§ 8.2](#82-rest)) and would filter `installs[]` per caller — three
+   edits, one of them a design answer, and it is written here so the ruling is priced with them.
 
 8. **✅ CLOSED — a D2 verifier exists and ships with this document.**
    `tools/design/verify-fleet-state.py` mechanises **eleven** guard classes (G1–G11), listed with their
