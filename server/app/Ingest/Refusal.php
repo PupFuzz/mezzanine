@@ -67,7 +67,7 @@ final class Refusal
 
     public static function malformedBody(string $detail): self
     {
-        return new self(400, 'malformed_body', 'The request body is not parseable JSON.', [
+        return new self(400, 'malformed_body', 'The request body is not a parseable JSON object.', [
             'detail' => $detail,
         ]);
     }
