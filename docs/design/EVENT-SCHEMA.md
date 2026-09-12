@@ -628,6 +628,27 @@ timestamp + 80 random bits, lexicographically sortable by mint time, generated i
 fractional digits; `enum` = a closed set given per field; all string bounds are **bytes** of UTF-8,
 NFC-normalised; all integers fit in a JS safe integer.
 
+⭐ **Every per-field byte bound in this section's tables is ENFORCED AT THE INGEST, and an event
+carrying a field over one is REFUSED** — `422 invalid_event` naming the field, the bound and what
+arrived ([§ 12.1](#121-validation-order) step 10, [§ 12.2](#122-error-responses)). Not truncated and
+not accepted-and-counted: the server never edits telemetry, because [§ 7](#7-sanitization-at-the-reporter)'s
+sanitize-at-the-reporter rule keeps that in exactly one place, and a bound nothing checks is a
+suggestion that every consumer sized to it is exposed by.
+**D2-CITED:** [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta) builds its worst-case seat object at these bounds, and [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) carries `action.tool_name` and `action.descriptor` at them.
+The accepted cost is stated rather than discovered:
+**an outdated or non-conforming reporter's events start disappearing at upgrade** — loudly, since a
+refusal is counted against the seat and renders it degraded, where both alternatives fail quietly.
+⚠ What is enforced is the **bound on a field** and nothing else, and the exclusions are named rather
+than left to be discovered: a field's *type* and *pattern* are not checked at the ingest (the reason
+is step 9's own note, and it has not moved), so a `26 chars` ULID or a `16 hex chars` fingerprint
+inside `data` is not re-checked either; and a figure stated on a capped object's **keys** rather than
+on the object — [§ 6.14](#614-reporterheartbeat)'s `selftest`, whose keys are `≤ 32 B` each — is not
+separately enforced, because that object's own serialized cap already bounds the whole of it. The
+envelope's and the common fields' own bounds ([§ 4.2](#42-batch-envelope-fields),
+[§ 4.3](#43-common-per-event-fields)) are step 8's and step 9's and were already enforced; the
+identity pair is bounded by the equality check at step 7 rather than by a length test, since the
+binding it must equal is stored in columns of exactly these widths. Ruled 2026-09-12, card#9283.
+
 **Missing vs null.** A missing key and an explicit `null` are the same thing. The server normalises
 missing → `null` before validation. Producers should send `null` explicitly for legibility.
 
@@ -2447,6 +2468,12 @@ the last character boundary at or before byte 197 and append `…` (U+2026, 3 by
 ≤ 200 bytes. Set `descriptor_truncated: true` and increment `sanitizer_truncations`.
 `subagent.spawn.title` uses the same procedure at **120 bytes** (117 + `…`).
 
+⭐ **Truncation stays HERE, and the ingest refuses rather than repeating it** (card#9283). The server
+enforces both bounds ([§ 12.1](#121-validation-order) step 10) and a value over one is a `422`, never
+a server-side clip: two truncators would make *what the reporter sent* and *what the store holds* two
+different things with nothing saying so, which is the property this section exists to keep in one
+place. A reporter that does not run this procedure has its batches refused, loudly.
+
 **Derivation of 200 bytes.** Three independent constraints agree on this order of magnitude, which is
 why it is the number: the drill-down panel renders a desk's current action on about two lines of ~80
 characters (≈ 160), so bytes past ~200 could not be displayed; the commands this is meant to label —
@@ -3667,7 +3694,11 @@ Cheapest and most-fatal first; **the first failure wins and nothing is ingested*
    [§ 11.5](#115-retry-and-backoff)), which is the trade [§ 12.4](#124-batches-are-atomic) says the
    design must never make by accident.
 10. Per-kind `data` validation for **known** kinds. An **unknown** kind skips this step, is ignored,
-    and is counted in `ignored_unknown_kinds`. Within a known kind, an unrecognised value in a
+    and is counted in `ignored_unknown_kinds`. Within a known kind: a `data` field over the **byte
+    bound [§ 6](#6-event-kinds) publishes for it** is `422 invalid_event`, naming the field, the
+    bound and the received size ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read);
+    card#9283) — measured in **bytes** of UTF-8, and on the *serialized* form for the three capped
+    objects [§ 6.14](#614-reporterheartbeat) states a serialized cap on. An unrecognised value in a
     closed-enum field is **coerced to that field's unknown member and counted** in
     `coerced_enum_values`, never rejected — the receiving half of
     [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules) rule 7, and the reason a
@@ -3711,7 +3742,7 @@ reporter can branch on `error` and a human can read `message`.
 | identity ≠ token binding | `403` | `identity_mismatch` | `expected_install_id`, `expected_seat_id` | permanent → quarantine, badge `degraded` |
 | **unaccepted schema version** | `400` | `unsupported_schema_version` | `received_version`, `accepted_versions` | permanent → quarantine, `REJECTED.txt`, badge `degraded` |
 | **batch** envelope validation failure ([§ 12.1](#121-validation-order) step 8) | `422` | `invalid_batch` | `field`, `reason` | permanent → quarantine, badge `degraded` |
-| **event** validation failure ([§ 12.1](#121-validation-order) steps 9–10) | `422` | `invalid_event` | `index`, `field`, `reason` | permanent → quarantine, badge `degraded` |
+| **event** validation failure ([§ 12.1](#121-validation-order) steps 9–10) | `422` | `invalid_event` | `index`, `field`, `reason`; **and, on a per-field byte-bound overrun, `kind`, `max_bytes`, `received_bytes`** | permanent → quarantine, badge `degraded` |
 | rate limited | `429` | `rate_limited` | `retry_after_s`, `limit`, `window_s` | back off, retry |
 | server fault | `5xx` | `server_error` | `detail` (no internals) | back off, retry |
 
@@ -3724,6 +3755,14 @@ malformed envelope indistinguishable from a bad event 137 in the one place that 
 diagnosable. Reporter behaviour is unchanged either way — `fleet-reporter.js`'s `classify()` treats
 any `422` as permanent — so the cost was paid entirely by whoever had to work out which check
 fired. (Split 2026-08-25, card#7338.)
+
+**`field` is DOTTED for a `data` key and bare for a common field** — `data.descriptor`, but
+`session_id`. Two fields on this wire share a name across those two homes, and a reporter's operator
+reading `"field": "session_id"` has no way to tell which one the ingest meant. The byte-bound refusal
+also carries `max_bytes` and `received_bytes` rather than leaving the reader to compute the overrun
+from a bound they must first go and look up: a status code with no detail changes the question from
+*"which field, and by how much?"* to *"what is wrong with the request?"* and sends the reader into
+the wrong subsystem — card#9146 is this repo's worked case of that costing four diagnostic rounds.
 
 **The deliberately-invalid example.** A reporter at schema 3 posting to an ingest that accepts `[1,2]`,
 with a token bound to `(aimla, impl-2)`:
@@ -3812,6 +3851,15 @@ weight:
    stream; refusing all 200 with `index` and `field` in the body puts the bug on somebody's screen.
 3. **Atomicity makes retry trivially idempotent**: a batch is either fully present or fully absent, so
    a retry needs no reconciliation beyond per-event dedup.
+
+⚠ **A per-field byte-bound overrun takes this path, and that is a behaviour change rather than an
+inheritance** (card#9283, 2026-09-12). One field over its published bound refuses the whole batch —
+its ≤ 199 conforming neighbours included — for reason 2 above, which applies to it exactly: every
+event in a batch comes from one reporter at one version, so a reporter emitting an over-long
+`descriptor` is emitting them by the thousand, and accepting the 199 would hide a systemic producer
+bug behind a mostly-working stream. The bound was previously unchecked at the ingest, so a
+non-conforming reporter that was being accepted starts being refused at upgrade; that is the cost
+[§ 6.0](#60-conventions-and-how-harness-payloads-are-read) records as accepted.
 
 The cost — one malformed event costs its ≤ 199 neighbours — is bounded by the 200-event cap and by the
 poison-pill rule ([§ 11.5](#115-retry-and-backoff)), which stops one bad batch from wedging the

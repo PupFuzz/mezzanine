@@ -13,16 +13,24 @@ namespace App\Ingest;
  *   genuine reporter bug — which is exactly what it should mean. Without the producer-side clamp
  *   this step would convert any bound overrun into 200 permanently-quarantined events."
  *
- * That licence covers the bounds § 12.1 step 9 names and nothing else. Every check below is one
- * of them, or a storage type the batch could not otherwise be written under.
+ * That licence covers the bounds § 12.1 step 9 names and nothing else. Every check in the step-9
+ * block below is one of them, or a storage type the batch could not otherwise be written under.
+ * The per-field byte bounds are step 10's and are further down, under their own heading.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * STEP 10 NEVER REFUSES EXCEPT ON A REPORTER-MINTED ENUM. See `KindRegistry` for the full
- * derivation; the short form is that an unknown kind, an unknown `data` key and an unrecognised
- * HARNESS-sourced enum value are each absorbed and counted, because under § 12.4's atomic
- * rejection "treating an additive change as invalid would convert one new harness value into the
- * permanent loss of 200 good events, which is the exact trade this rule exists to avoid making by
- * accident".
+ * STEP 10 REFUSES ON EXACTLY TWO THINGS: a REPORTER-MINTED ENUM outside its set, and a `data`
+ * field over the BYTE BOUND § 6 publishes for it (card#9283's operator ruling — reject, never
+ * truncate and never accept-and-count). See `KindRegistry` for the full derivation; the short
+ * form is that an unknown kind, an unknown `data` key and an unrecognised HARNESS-sourced enum
+ * value are each absorbed and counted instead, because under § 12.4's atomic rejection "treating
+ * an additive change as invalid would convert one new harness value into the permanent loss of
+ * 200 good events, which is the exact trade this rule exists to avoid making by accident".
+ *
+ * A bound overrun is not an additive change and takes the other answer: the value is one the
+ * producer's own contract says it may not send, every consumer that sized to the published bound
+ * is exposed while it is accepted, and the cost — an outdated or non-conforming reporter's events
+ * disappearing at upgrade — is accepted ON THE RECORD on card#9283 because a refusal is visible,
+ * counted and attributable where both alternatives fail quietly.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * TWO THINGS THIS VALIDATOR DELIBERATELY DOES NOT DO, both of which look like omissions:
@@ -129,6 +137,39 @@ final class EventValidator
         $spec = KindRegistry::KINDS[$kind];
         $coerced = 0;
         $unknownFields = 0;
+
+        // ── the per-field BYTE bounds § 6 publishes (card#9283) ──────────────────────────────
+        //
+        // BEFORE the enum loop, because that loop MUTATES `$data` to coerce harness-sourced
+        // values: a refusal must be a function of what arrived on the wire, not of what this
+        // validator had already rewritten. D1 orders the two nowhere, so the order is chosen
+        // here and stated rather than inherited.
+        //
+        // ⛔ `strlen` AND NEVER `mb_strlen`. § 6.0: "all string bounds are **bytes** of UTF-8."
+        // `mb_strlen` counts CHARACTERS, so it passes a 200-byte value against a 120-byte bound
+        // whenever the value is multibyte — which is card#9282, one layer over, shipped and
+        // reviewed twice before anyone noticed. The unit is the defect, not the comparison.
+        //
+        // ⚠ A NON-STRING, NON-OBJECT VALUE IS NOT MEASURED AND IS NOT REFUSED. There is no byte
+        // length to compare for an int, a bool or a null, and inventing a type check here is the
+        // permanent-outage trade the docblock above and § 12.1's own note on step 9 both refuse:
+        // this check enforces the published BOUND, and nothing else about the value.
+        foreach ($spec['bounds'] as $field => $maxBytes) {
+            $value = Wire::field($data, $field);
+
+            $bytes = match (true) {
+                // `≤ 1.5 KiB serialized` (§ 6.14's three open-keyed objects) is measured on the
+                // serialized form, in the SAME serialization every other cap in D1 is measured
+                // on — `Wire::serialize`, whose docblock owns why PHP's defaults are not it.
+                is_array($value) => strlen(Wire::serialize($value)),
+                is_string($value) => strlen($value),
+                default => null,
+            };
+
+            if ($bytes !== null && $bytes > $maxBytes) {
+                return Refusal::fieldOverBound($index, $kind, $field, $maxBytes, $bytes);
+            }
+        }
 
         foreach ($spec['enums'] as $field => $enum) {
             $value = Wire::field($data, $field);

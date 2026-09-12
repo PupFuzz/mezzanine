@@ -140,6 +140,45 @@ final class Refusal
         ), ['index' => $index, 'field' => $field, 'reason' => $reason]);
     }
 
+    /**
+     * A `data` field over the byte bound D1 § 6 publishes for it (§ 12.1 step 10; card#9283).
+     *
+     * ⛔ THE BODY CARRIES THE BOUND AND THE MEASUREMENT, NOT JUST THE STATUS, and that is the
+     * requirement rather than a nicety. The operator's ruling on card#9283 chose refusal over
+     * truncation precisely because "a refusal is a loud, counted, attributable event" — and a
+     * refusal a reporter's operator cannot act on is none of those. card#9146 is this repo's
+     * worked case of the opposite: a bare status with its body discarded cost four diagnostic
+     * rounds chasing the wrong subsystem, because a status code alone changes the shape of the
+     * question from *"which field, and by how much?"* to *"what is wrong with the request?"*.
+     *
+     * So the four facts needed to fix the producer are all present and none has to be inferred:
+     * WHICH field (`data.<name>`, dotted so it cannot be read as the common field of the same
+     * name), WHICH bound, WHAT arrived, and on which KIND — a bound is per-kind and `tool_name`
+     * carries one on two of them.
+     */
+    public static function fieldOverBound(int $index, string $kind, string $field, int $maxBytes, int $receivedBytes): self
+    {
+        return new self(422, 'invalid_event', sprintf(
+            'Event %d, field data.%s: is %d bytes; %s.%s is bounded at %d bytes by '
+            .'docs/design/EVENT-SCHEMA.md § 6. The reporter must clamp this field to its bound '
+            .'before sending (§ 7.4); the ingest does not truncate on its behalf. No event in '
+            .'this batch was stored (§ 12.4).',
+            $index,
+            $field,
+            $receivedBytes,
+            $kind,
+            $field,
+            $maxBytes,
+        ), [
+            'index' => $index,
+            'field' => 'data.'.$field,
+            'reason' => sprintf('is %d bytes; the bound is %d', $receivedBytes, $maxBytes),
+            'kind' => $kind,
+            'max_bytes' => $maxBytes,
+            'received_bytes' => $receivedBytes,
+        ]);
+    }
+
     public function withBatchId(?string $batchId): self
     {
         if ($batchId === null) {
