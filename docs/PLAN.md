@@ -214,11 +214,14 @@ task-title merge — the kanban poller, the seat→board-user join, the credenti
 input table the fold derives the title from rather than a value written into `seat_state`, which is
 what keeps a board-sourced title reproducible by D2 § 6.6's rebuild. **It exists as a document of
 its own because D2 puts it there:** D2 § 1.2 lists the kanban poller among its non-goals by name,
-and D2 § 14 item 3 asks for "a ruling on where the board producer is designed". It is held to the
-D-14 bar above like every document listed before it.
+and D2 § 14 item 3 asked for a ruling on where the board producer is designed — a question that item
+now answers with this document's name, the ratification of 2026-09-12 having written the answer into
+it. It is held to the D-14 bar above like every document listed before it.
 
-Status: **designed, nothing built** — card#7582. Every structural piece needs a D2 amendment that
-is stated and not applied; `docs/design/BOARD-TASK.md § 13` is the list and the gate.
+Status: **designed and ratified; the poller is not built** — card#7582. The D2 amendments every
+structural piece needed were ratified and applied on 2026-09-12, and the store shape shipped with
+them because retirement now clears the board-user mapping; `docs/design/BOARD-TASK.md § 13` records
+where each landed and what remains unbuilt.
 
 ## 3. Work breakdown
 
