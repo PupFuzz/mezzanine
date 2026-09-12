@@ -457,7 +457,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   were those two, and `server/phpunit.xml` carries one they missed. Two hand-kept copies of one
   enumeration are two copies free to drift, and D2 Appendix B step 9's retirement is exactly the act
   that reads one and orphans the rest — so **both are replaced by the derivation**
-  (`git grep -n BROADCAST_CONNECTION -- server`) rather than by a corrected list. **F8** — Appendix B
+  (`git grep -n BROADCAST_CONNECTION`, **unscoped** — the `-- server` pathspec this round first wrote
+  excludes `bin/deploy.sh`, which D2 Appendix B step 9 requires editing, and `bin/deploy.selftest.sh`
+  with it, so the replacement derivation was itself scoped past the files it commands) rather than by
+  a corrected list. **F8** — Appendix B
   step 8 gated on AT-D2-19 while step 9 builds the handler its stream legs drive, and step 9's gate
   named it nowhere: step 8's citation is scoped to the REST, token and MFA legs and step 9 gains the
   stream legs.

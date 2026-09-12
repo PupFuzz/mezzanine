@@ -51,7 +51,12 @@ use Illuminate\Support\Facades\Broadcast;
  * files is two copies free to drift, and the retirement at D2 Appendix B step 9 is exactly the act
  * that reads one and leaves the rest orphaned. NO LIST IS WRITTEN HERE. Re-derive it:
  *
- *     git grep -n BROADCAST_CONNECTION -- server
+ *     git grep -n BROADCAST_CONNECTION
+ *
+ * ⛔ UNSCOPED, corrected again (card#9287, maintainer round): the `-- server` pathspec this line
+ * carried excludes `bin/deploy.sh` — which step 9 requires editing — and `bin/deploy.selftest.sh`.
+ * A derivation scoped past the files it commands cannot see them go stale, which is the hand-list
+ * defect in a command's clothing. Hits under docs/ are prose about the key, not occurrences.
  *
  * ⭐ SUPERSEDED BY card#9287 (2026-09-12): D2 § 8.3 re-pinned the feed to native Server-Sent Events
  * on `GET /api/fleet/stream`, gated by the route's ordinary session + MFA middleware and RE-CHECKED
