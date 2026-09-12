@@ -124,6 +124,38 @@ PLANTS = [
         "retains `feed_outbox` for",
     ),
     (
+        # card#9296.  The declared protocol agent name is ONE value set with THREE homes across TWO
+        # documents -- D1's field table, D2's `ENUM`, D2's read surface -- and card#7957's finding
+        # was that NO ACT FAILED when the two identity surfaces disagreed.  The plant renames a
+        # member on the STORE's side, which is the surface a migration touches and a document read
+        # does not, and G13 must say so rather than leaving a state one surface can emit and
+        # another cannot hold.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(protocol_agent_name_check ENUM\('checked','unchecked','disagreed',')([a-z_]+)(')",
+        "rename",
+        "a member of the declared agent-name check's value set in \u00a7 6.4's `ENUM`, which G13 holds "
+        "against D1's own declaration and against \u00a7 8.2.1's row (card#9296)",
+        "One value set, three homes, two documents",
+    ),
+    (
+        # card#9296, G13's SECOND leg -- the refusal that no coordination object names a desk.  Its
+        # forbidden set is re-derived from § 8.2.1's own binding sentence, so the shape that would
+        # make it report clean over everything is that sentence moving out from under the reader.
+        # This plant is therefore aimed at the CONTROL rather than at the forbidden-field check: a
+        # `rename` there must make the gate SAY it can no longer read its population, never pass.
+        # Adding a desk field to § 8.3.3 -- the defect the leg exists for -- is not expressible as a
+        # `bump` or a `rename` and is proven by hand; that limit is stated here rather than left to
+        # be inferred from a plant list.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\*\*`install_id` and `seat_id` are the seat→)(desk)( binding)",
+        "rename",
+        "§ 8.2.1's declaration of WHICH members are the seat→desk binding, which G13 re-derives the "
+        "set no coordination object may name from (card#9296)",
+        "no longer declares which members ARE the seat",
+    ),
+    (
         "verify-floor.py",
         "docs/design/FLOOR.md",
         r"(\| spare \| \*\*)([\d,]+)( B\*\*)",

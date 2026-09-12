@@ -18,10 +18,20 @@ use Tests\TestCase;
  *   (c) it DOES NOT SUPPRESS the rest of the object — a round with one resolved and one
  *       unresolved participant renders what it can.
  *
- * ⛔ TODAY (b) IS THE ONLY OUTCOME THAT EVER HAPPENS, and that is what makes this suite worth
- * more than a green: nothing in this deployment produces a name→`seat_id` join, so a client
- * that guessed one would look CORRECT on screen — a wrong line is drawn exactly like a right
- * one. The controls below are the only instrument that can tell them apart.
+ * ⛔ (b) IS STILL THE ONLY OUTCOME THIS DEPLOYMENT EVER PRODUCES, and that is what makes this
+ * suite worth more than a green: no code here hands `coordModel` a name→`seat_id` join, so a
+ * client that guessed one would look CORRECT on screen — a wrong line is drawn exactly like a
+ * right one. The controls below are the only instrument that can tell them apart.
+ *
+ * ⚠ WHAT CHANGED ON card#9296, AND WHY THIS TEST DID NOT. The DESIGN now carries the join:
+ * a seat declares its own protocol agent name (D1 § 3.1), it rides the heartbeat (D1 § 6.14),
+ * and D2 § 8.2.1 publishes it. This suite asserts what THE CODE does, and the code passes no
+ * join — so every assertion below is still true and none of them is loosened. When the build
+ * slice constructs the map from the seat population, THIS TEST'S SUBJECT SPLITS IN TWO: the
+ * no-join case stays exactly as it is (a fleet whose seats declare nothing is the permanent
+ * unresolved arm, D3 § 5.7 clause 1), and a new case covers a supplied join — including the two
+ * states that must NOT resolve, `disagreed` and `undeclared`, and the `seat_id`-equality
+ * control below, which must go on failing to resolve after the join exists.
  */
 class CoordDrawsNoLineWithoutAJoinTest extends TestCase
 {

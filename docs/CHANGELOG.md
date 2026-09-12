@@ -19,6 +19,46 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9296** — **BUILT `card#7957`'s ruling (d): a seat DECLARES its own protocol agent name,
+  and a disagreement between the two identity surfaces now FAILS AN ACT.** `card#7957` established
+  that nothing joined a protocol agent name (`pm`, `magento`) to a `seat_id`, ruled option (d) —
+  the seat declares its own — and left the CHECK leg open with the finding that **no act would
+  fail today**. This lands both. **D1:** [§ 3.1](docs/design/EVENT-SCHEMA.md) gains one optional
+  seat-config row, `protocol_agent_name`, with its four states and the roster check; the
+  declaration and `protocol_agent_name_check` ride `reporter.heartbeat` (§ 6.14) — the only event
+  a seat is guaranteed to emit, so an **idle** seat still declares; § 9.3 gains two counters, § 6.14
+  a seventh `selftest` member `protocol_agent_name_in_roster`, and § 13 the acceptance test AT-27.
+  **D2:** two nullable columns on `seat_state`, two members on the seat object, and
+  [§ 8.3.3](docs/design/FLEET-STATE.md) rewritten — the mapping EXISTS, it is DECLARED, it lives
+  on the seat object, and the coordination objects still carry **no desk reference**. **D3:**
+  § 5.7's resolve arm resolves.
+  ⛔ **Three refusals survive unchanged, and they are the point of the change rather than caveats
+  on it.** *(1)* An unresolved participant is still first-class and permanent — no line to a
+  guessed desk, no line to nothing, reported as unresolved — which is the honest render for every
+  seat that declares nothing. *(2)* Equality with a `seat_id` is still **not** a join: only a
+  declaration resolves, and AT-D2-24's byte-identical control stays discriminating. *(3)* A
+  `disagreed` or `undeclared` declaration resolves to nothing.
+  ⚠ **The act that fails:** `fleet-reporter selftest` exits non-zero naming
+  `protocol_agent_name_in_roster` when the declared name is absent from a roster readable on that
+  box, and the failure rides every heartbeat in `selftest` → `reporter.selftest_failed`. Where no
+  roster is readable the reporter **says so** (`unchecked`) rather than omitting the field — the
+  name-what-you-cannot-verify leg, and an omitted field would be byte-identical to a seat that
+  declares nothing.
+  ⚠ **This supersedes the standing claims that no join exists** — D3 § 5.7's *"No join exists
+  today … no line is drawn on any floor"*, D1 § 18.13 row 6's UNVERIFIED, D2 § 8.3.3's *"this
+  plane publishes no mapping"*, and D3's *"all three are unreachable today"* for A18/A19/A20. Each
+  is rewritten in this change; earlier changelog entries stating them are historical records and
+  are left standing, superseded by this one.
+  ⚠ **NOT built here, and named rather than left to be discovered:** no CODE constructs the join
+  yet. `server/public/js/coord/main.js` still passes no `options.join` and
+  `CoordDrawsNoLineWithoutAJoinTest` still pins that — both assert what the code does, which this
+  change does not move, and both now say what the follow-up build slice owes (build the map from
+  the seats of the floor's `install_id` whose check is `checked` or `unchecked`, and split the
+  test's subject in two). **Gates:** `tools/design/verify-fleet-state.py` gains **G13**, which
+  re-derives the check's value set from all three of its homes across two documents and reds when
+  they disagree, and holds the coordination objects to declaring no seat→desk member; the plant
+  harness gains a rename plant against it, watched red before it was trusted.
+
 - **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
   are asked two different questions, and the comments that promised to fold them into one are
   removed.** The card proposed hoisting a shared predicate out of `App\Ingest\Wire` so `App\Floor`

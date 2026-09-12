@@ -45,6 +45,14 @@ checking, and it survives exactly the pass that falsifies it.
                                                   the withdrawn posture while the prose refused
                                                   it -- so the population is the RULING's sites,
                                                   and one of them is in docs/design/FLOOR.md)
+  G13 the declared agent-name join: one value       (card#9296: the join card#7957 ruled has THREE
+      set across the wire, the store and the         homes across TWO documents, and a join is
+      read surface, every member dispositioned       never more trustworthy than its weaker end --
+      by the consumer rule, and no desk              a member spelled differently on any one of
+      reference on a coordination object             them is a state one surface emits and another
+                                                     cannot hold; the second leg is the REFUSAL
+                                                     the join had to survive, checked on the field
+                                                     tables rather than on the prose about them)
 
 Three things are NOT fully mechanizable and say so in the output rather than reporting a clean
 over a population they never measured (canon: a clean result over an unnamed population reports
@@ -1536,6 +1544,85 @@ elif not _reload_fenced:
                 f"a healthy fleet. That is the exact defect this member was minted to close, and "
                 f"the declaring prose keeps the close table's cardinal matching while it regresses")
 
+# ------------- G13. the declared agent-name join, across the two identity surfaces ----
+# card#9296 built card#7957's ruling (d): a seat DECLARES its own protocol agent name, D1 carries it
+# on the heartbeat, and this plane stores and publishes it.  That puts ONE value set in THREE homes
+# across TWO documents -- D1 section 6.14's field-table row (the wire), section 6.4's `ENUM` (the
+# store) and section 8.2.1's row (the read surface) -- and card#7957's own finding was that NO ACT
+# FAILED when the two identity surfaces disagreed.  This is an act that fails.  Every population is
+# re-derived per run: D1's set with the same extractor G4 uses for the four enums it checks, the
+# store's from the DDL, the read surface's from its own field table.  Only the COLUMN NAME is
+# written here, exactly as G4 writes the four it checks -- a name is the check's subject, a set is
+# what it must never store.
+#
+# Leg 2 is the refusal the join had to survive.  The whole reason (d) is safe is that the desk is
+# resolved by the CONSUMER against the seat population and never published onto a coordination
+# object, which is AT-D2-24's first RED.  A field table is where that would break first, so the
+# check is on the field names rather than on the prose that describes them: no coordination field
+# may be a member of the seat->desk binding or of the declaration, `install_id` excepted -- it is
+# the hook binding's room scope and the one seat-object member these objects legitimately carry.
+DECL_ENUM_COL = "protocol_agent_name_check"          # the subject, not a population
+g13_sets, g13_forbidden, g13_coord = {}, set(), set()
+sec833 = section_text("833-the-coordination-objects")
+
+
+def g13_bounds_set(sec, field):
+    """The LEADING run of backticked members in a field table's Bounds cell, which is how this
+    document writes a value set (`live`.`catching_up`....).  The run stops at the first
+    non-member token, so the prose after the em dash cannot join the set by mentioning a field."""
+    m = re.search(rf"^\|\s*`{re.escape(field)}`\s*\|[^|]*\|[^|]*\|\s*((?:`[a-z_]+`[\u00b7\s]*)+)",
+                  sec or "", re.M)
+    return set(re.findall(r"`([a-z_]+)`", m.group(1))) if m else set()
+
+
+g13_sets["D1 section 6.14's field table (the wire)"] = d1_enum_set(DECL_ENUM_COL)
+g13_sets["section 6.4's `ENUM` (the store)"] = d2_enum_set(DECL_ENUM_COL)
+g13_sets["section 8.2.1's field table (the read surface)"] = g13_bounds_set(sec821, DECL_ENUM_COL)
+_empty = [k for k, v in g13_sets.items() if not v]
+if _empty:
+    fail.append(f"G13 CONTROL: no value set for `{DECL_ENUM_COL}` could be re-derived from "
+                f"{_empty} \u2014 a containment check over an empty set passes over anything, and the "
+                f"set this one guards is what tells a checked declaration from an unchecked one")
+elif not sec833:
+    fail.append("G13 CONTROL: section 8.3.3 not found, so neither the consumer rule nor the "
+                "no-desk-reference refusal below is read at all")
+else:
+    ref = g13_sets["D1 section 6.14's field table (the wire)"]
+    for where, got in g13_sets.items():
+        if got != ref:
+            fail.append(f"G13: `{DECL_ENUM_COL}`'s members at {where} are {sorted(got)}; D1's "
+                        f"declared set is {sorted(ref)}. One value set, three homes, two documents "
+                        f"\u2014 a member this plane can store and no producer can emit, or one a "
+                        f"producer emits and this plane cannot hold, is the two identity surfaces "
+                        f"disagreeing where card#7957 found that nothing would fail")
+    for member in sorted(ref):
+        if f"`{member}`" not in sec833:
+            fail.append(f"G13: `{DECL_ENUM_COL}` has the member `{member}` and section 8.3.3's "
+                        f"join rules never name it \u2014 a consumer reaching that state has to guess "
+                        f"whether it resolves, and guessing is the whole of what card#7957 forbids")
+
+    # ---- leg 2: no desk reference on a coordination object -----------------------
+    m_bind = re.search(r"\*\*`([a-z_]+)` and `([a-z_]+)` are the seat\u2192desk binding", sec821 or "")
+    if not m_bind:
+        fail.append("G13 CONTROL: section 8.2.1 no longer declares which members ARE the seat\u2192desk "
+                    "binding, so the set a coordination object may not carry cannot be re-derived")
+    else:
+        stem = DECL_ENUM_COL.rsplit("_", 1)[0]
+        g13_forbidden = ({m_bind.group(1), m_bind.group(2)} |
+                         {f for f in g2_table if f.startswith(stem)}) - {"install_id"}
+        g13_rows = re.findall(r"^\|\s*`(coord_(?:thread|round)\.([a-z_]+))`\s*\|", sec833, re.M)
+        g13_coord = {leaf for _, leaf in g13_rows}
+        if len({full for full, _ in g13_rows}) < 20:
+            fail.append(f"G13 CONTROL: only {len({f for f, _ in g13_rows})} field rows parsed from "
+                        f"section 8.3.3's two field tables \u2014 the reader is under-reading them, and "
+                        f"a desk reference added to the half it cannot see would pass")
+        for bad in sorted(g13_coord & g13_forbidden):
+            fail.append(f"G13: the coordination objects declare a field `{bad}`, which is a member "
+                        f"of the seat\u2192desk binding or of the seat's own declaration. These objects "
+                        f"name agents and never desks: the resolution is the CONSUMER's, against "
+                        f"the seat population it already holds, and publishing a desk here is the "
+                        f"invented join AT-D2-24's first RED exists for")
+
 # ---------------- the count of guard classes, which is itself a prose count ----
 # Section 14 item 8 and section 12's status table state how much of this document is tool-checked.
 # They said "ten" against eleven for a whole revision.  A gate that checks every other count in
@@ -1615,6 +1702,10 @@ print(f"G12 `feed.close` reasons re-derived from this document's own uses: {g12_
       f"stream rows holding the close: {len(_stream_rows)}; ruling-statement sites held to naming it: "
       f"{[f'{d}#{a}' for _, a, d, _w in G12_SITES]}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
+print(f"G13 `{DECL_ENUM_COL}` re-derived per home: "
+      f"{ {k.split(' (')[0]: sorted(v) for k, v in g13_sets.items()} }; coordination fields read: "
+      f"{len(g13_coord)} distinct leaves, held against the {len(g13_forbidden)} seat members "
+      f"they may not name {sorted(g13_forbidden)}")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's manual residue, printed "
       "above — a row whose D1-source column names no section number cannot be reached by any "
       "marker convention, so it stays a human read; D1 § 1's `D2:` convention (§ 14 item 13) "
