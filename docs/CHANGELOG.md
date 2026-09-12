@@ -19,6 +19,34 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
+  are asked two different questions, and the comments that promised to fold them into one are
+  removed.** The card proposed hoisting a shared predicate out of `App\Ingest\Wire` so `App\Floor`
+  and `App\Building` could reach it. ⛔ **The requirement difference is what keeps them two.** The
+  ingest must end `{}` and `[]` DIFFERENTLY — `{}` is D1 § 6.0's legal all-null event and is
+  ACCEPTED, `[]` is REFUSED — so the distinction has to survive the decode, which FORCES object
+  mode (card#9295's fix, one entry below). The console refuses BOTH spellings, because an empty
+  document is neither a Tiled map nor a layout and all that differed was the WORDING — one
+  outcome, so the distinction buys it nothing and associative mode is exact there. A single shared
+  predicate could span that only through a per-caller mode flag: the duplication wearing a
+  parameter, not its removal.
+  ⚠ **This supersedes the card#9295 entry's closing sentence**, which said the four object/array
+  checks needed the predicate hoisted "because `App\Floor` cannot depend on that namespace, and
+  that is card#9299". Both halves are false. Nothing blocks the reach — `App\Floor\FloorMap`
+  already calls `App\Building\AuthoredDocument::isJsonObject` — and the layering is a **convention
+  nothing in this repo enforces**: measured at this branch point, there is no deptrac, no
+  static-analysis config, no architecture test under `server/tests/`, no lint script in
+  `server/composer.json`, and PSR-4 maps `App\` flat onto `app/`. It is worth keeping; it is not a
+  mechanism, and "cannot" read as a constraint that had already refused the option.
+  ⛔ **COMMENT-ONLY — no executable line changed.** `BodyReader`'s note claimed a hand-kept
+  call-site count that `grep -rn isJsonObject server/app/` refutes; the grep replaces it rather
+  than a freshly-counted number, which is what would go stale next. `AuthoredDocument`'s and
+  `BuildingLayout`'s pointers at the now-closed card are replaced by the requirement difference
+  and, where a console reader genuinely needs the two spellings to end differently, by the answer
+  that would apply then — a decode change on the console side, mirroring the ingest's, not a
+  borrowed predicate and not a wider clause. `BuildingLayout`'s `"floors": {}`/`"floors": []`
+  conflation is UNCHANGED and still named where it sits; only its pointer moved.
+
 - **card#9269** — **the shipped default map is a FILE**: `resources/floor/default.tmj`, an office
   interior drawn with the vendored Kenney tileset, its `desks` layer carrying the slot count
   `docs/design/FLOOR.md § 12` declares (the gate now counts the file rather than reading the row).

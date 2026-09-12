@@ -50,11 +50,14 @@ final class AuthoredDocument
      * reaches the check with something true to say — *a floor map is a Tiled MAP and this declares
      * none*, *this document declares no `floors` key*.
      *
-     * ⛔ IF EITHER READER EVER NEEDS THE TWO SPELLINGS TO END DIFFERENTLY, this is not enough and
-     * the answer is card#9299's hoisted predicate — `App\Floor` and `App\Building` cannot reach
-     * `App\Ingest\Wire`, which is what that card exists to fix — not a wider clause here. Until
-     * then this is the console's ONE copy rather than one per reader, so the hoist has a single
-     * call site to fold in.
+     * ⛔ IF EITHER READER EVER NEEDS THE TWO SPELLINGS TO END DIFFERENTLY, this is not enough —
+     * and the answer is the one the ingest reached, at the DECODE and on this side: read the
+     * document with `json_decode($text, false, …)`, so `{}` arrives as `stdClass` and can be told
+     * from `[]`. Not a wider clause here, and not `App\Ingest\Wire::isJsonObject` borrowed — that
+     * predicate is exact for an object-mode value and false of every value this one is handed.
+     * (`App\Building` reaching into `App\Ingest` is also against a layering convention this tree
+     * keeps BY HAND; nothing checks it, so it is a reason to ask, not a refusal that already
+     * happened.) Until then this stays the console's ONE copy rather than one per reader.
      */
     public static function isJsonObject(mixed $decoded): bool
     {

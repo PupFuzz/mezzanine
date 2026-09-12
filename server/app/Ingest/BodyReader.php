@@ -96,10 +96,15 @@ final class BodyReader
         //   3. `EventValidator`'s event, and 4. its `data` — both `Wire::isJsonObject`.
         //
         // ⚠ TWO OF THE FOUR SHARE A PREDICATE; THE OTHER TWO ARE HAND-ROLLED HERE AND IN
-        // `BatchValidator`. `grep -rn isJsonObject server/app/` returns those two call sites and
-        // no more, so "one predicate for all four" would be false of what shipped. Hoisting the
-        // pair out of `App\Ingest\Wire` so `App\Floor` can reach them too (it cannot depend on
-        // `App\Ingest`) is card#9299, and until it lands the count above is the honest one.
+        // `BatchValidator`. ⛔ AND THE TREE HOLDS TWO `isJsonObject`s ON PURPOSE — this one and
+        // `App\Building\AuthoredDocument`'s. `grep -rn isJsonObject server/app/` prints both
+        // definitions and every call site, and IS the count; a number written here is not.
+        // They are asked DIFFERENT QUESTIONS. Here `{}` is ACCEPTED (§ 6.0's all-null event) and
+        // `[]` is REFUSED — two outcomes, so the distinction has to survive the decode, which is
+        // this whole note. The console refuses BOTH spellings — an empty document is neither a
+        // Tiled map nor a layout — one outcome, which its associative decode answers exactly.
+        // Folding the two into one predicate needs a per-caller mode flag: the duplication
+        // wearing a parameter, not its removal.
         //
         // It also preserves the SPELLING through to the store: `Wire::serialize` writes `{}` for
         // an empty object where an associative decode would have written `[]`, and D2 § 6.4 calls

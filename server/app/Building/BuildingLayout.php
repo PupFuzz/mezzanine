@@ -227,7 +227,8 @@ final class BuildingLayout
         // named rather than left to be discovered: after an associative decode `"floors": {}` is
         // indistinguishable from `"floors": []`, which is a LEGAL and meaningful document (§ 4.6's
         // empty building), so the typo is accepted as the building it cannot be told apart from.
-        // No clause here can close that; card#9299's hoisted predicate is what could.
+        // No clause here can close that; only a decode that keeps `{}` and `[]` apart could —
+        // `AuthoredDocument::isJsonObject`'s note names that condition and what the answer is.
         if (! is_array($floors) || ! array_is_list($floors)) {
             throw new InvalidBuildingLayout(
                 '`floors` is not a LIST of floors. docs/design/FLOOR.md § 4.6: a floor has no '
