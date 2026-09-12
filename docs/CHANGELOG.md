@@ -19,6 +19,24 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
+  report that the configurable unit was the room: the floor is configurable too — *a hallway with
+  5 office rooms*, *a big room and a small room*. D3 § 14 item 19 had asked in what ORDER N rooms
+  sit and said *Blocks: nothing*; both answers it offered were too small, and it is closed as
+  under-scoped from the one-room case. The plan is two members of the floor's layout entry
+  (D3 § 4.6): a room's `at` — a position, never a size, because a room's extent is its map's grid
+  and has that one home (§ 10.3) — and a floor's `hallway`, a Tiled document for the space no room
+  occupies, read by § 10.3's table with `desks` refused; two rooms whose footprints would intersect
+  are refused at every write, naming both (D2 § 6.11), and the one read-time case is § 9 F18. A
+  floor with no plan keeps item 19's interim rule as its default (side by side, key order, the
+  § 12 gap). No new table, subject, surface or message: the plan inherits the layout's revisions,
+  `building.layout` and `GET /api/building` (D2 § 8.7, § 13 row 45). D3 § 13 rows 31–33, row 27
+  amended; card#9269 re-scoped to the office's interior, the hallway being the plan's. Both
+  operator floors are worked in § 4.6. ⚠ Not built: a room's value in `rooms` becomes a record
+  there, and the shipped `BuildingLayout` refuses `at` and `hallway` by name until Appendix B
+  step 11 — which also owes the code comments and refusal messages the record shape makes stale,
+  re-derived by `grep -rn -E "install(_id| id)? =>" server/config server/app server/tests` rather
+  than listed here, and not edited here because this PR is design-only.
 - **card#9283** — **Per-field BYTE bounds are now ENFORCED at the ingest; an event carrying a field
   over one is REFUSED.** D1 publishes a byte bound per `data` field — `tool.start.descriptor` ≤ 200 B,
   `tool_name` ≤ 64 B, `subagent.spawn.title` ≤ 120 B, the heartbeat's three capped objects, and the
