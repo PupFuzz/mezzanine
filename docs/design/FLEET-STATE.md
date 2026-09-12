@@ -2230,7 +2230,8 @@ stated rather than assumed:
 [§ 13](#13-decisions-taken-revisable-at-review) row 38 carries the reversal, its alternatives and its
 cost; this section is the **store** half of it and [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) is the **read** half. What
 an operator authors in the admin console — one Tiled document per **room** (an install, card#9267) and
-one **building layout** (which rooms share a floor, each room's form, a floor's label —
+one **building layout** (which rooms share a floor, each room's form, a floor's label — and, since
+card#9292, the floor **plan**: each room's position and a floor's hallway —
 [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s document) — is served to the floor at runtime,
 and the console is the source of truth for both. The DDL is in [§ 6.4](#64-ddl)'s block, under its
 own heading, so that the one gate that reads that block reads these tables too.
@@ -2258,7 +2259,19 @@ them and says which one it does not:
 all three tables, and one save is one transaction: validate the document — a room map by
 `App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
 by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
-states — insert the `room_map` or `building_layout` revision, write the current row, commit, and **on
+states — since card#9292 the floor plan's among them: a placed room's `origin`; a planned floor's
+`hallway`, held to `App\Floor\FloorMap`'s rules with its `desks` layer refused rather than required;
+and **two rooms on one floor whose footprints would intersect** — share a pixel; a shared edge is
+not an intersection, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) — computed from each room's
+current extent: the grid of its authored map, else of the default this store's read half answers for
+it. A layout **restore** is checked exactly as a save is, against today's room maps and not the ones
+revision K was checked against, so *undo* cannot re-create an overlap a later map made. ⚠ **That last
+refusal has a SECOND write site**: a room map's save, restore or removal changes the room's extent, so
+on a planned floor it is checked against the current layout in the same transaction and refused by
+name, naming both rooms, before any revision is written. **Both paths take the `building_layout`
+current row `FOR UPDATE` first**, so a layout write and a room-map write serialise and neither can pass
+its check against a state the other is replacing — the coupling
+[FLOOR.md § 13](FLOOR.md#13-decisions-taken-revisable-at-review) row 32 prices — insert the `room_map` or `building_layout` revision, write the current row, commit, and **on
 commit** publish [§ 8.3](#83-the-websocket-delta-feed)'s `room.map` or `building.layout`. A save that
 fails validation writes nothing and publishes nothing. A save whose document is byte-identical to the
 current revision is refused as a no-op rather than minting an empty revision, so a revision always
@@ -2280,7 +2293,10 @@ renders, and the repository is what a room starts from.
 
 **Retention and size.** All three tables are retained forever ([§ 6.7](#67-retention-and-purge)). The
 population is not traffic-bounded — a row is an operator pressing *save* — and a document is at most
-**512 KiB**, the console's write bound ([§ 12](#12-every-number-and-where-it-comes-from)). A thousand
+**512 KiB**, the console's write bound ([§ 12](#12-every-number-and-where-it-comes-from)) — the layout
+document included, its hallways and all (card#9292): at the ~25 KB a CSV-encoded map realistically
+costs, that is on the order of twenty planned floors' hallways before a layout save is refused by the
+bound, and the refusal names it. A thousand
 saves across a building would be under half a gigabyte at the bound and, at a realistic ~25 KB per
 CSV-encoded map, about 25 MB; [§ 6.8](#68-sizing)'s figures do not move.
 
@@ -2858,7 +2874,7 @@ floor subscribes to what it renders and a future per-install authorization has a
 | `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, published on commit of the revision it announces, on **every** install's channel: a client's subscriptions are the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, so its own channel may have no listener | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
-| `building.layout` | server → client | the building layout was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), published on **every** install's channel as `feed.heartbeat` is — there is no building-wide channel, and a layout change concerns every floor | `layout_version`, `at` |
+| `building.layout` | server → client | the building layout — the floor plan included, card#9292 — was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), published on **every** install's channel as `feed.heartbeat` is — there is no building-wide channel, and a layout change concerns every floor | `layout_version`, `at` |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
 [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
@@ -3382,11 +3398,18 @@ from the snapshot's row.
       { "floor": "aimla", "label": null,
         "rooms": [ { "install": "aimla", "form": "open" } ] },
       { "floor": "sola", "label": "the solos",
-        "rooms": [ { "install": "sola", "form": "office" }, { "install": "zeta", "form": "office" } ] }
+        "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
+                   { "install": "zeta", "form": "office", "origin": { "x": 288, "y": 160 } } ],
+        "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
+                     "tilewidth": 32, "tileheight": 32,
+                     "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
+                     "layers": [ { "type": "tilelayer", "name": "corridor", "data": [ 1, 1, 1 ] } ] } }
     ]
   },
   "rooms": [
-    { "install_id": "aimla", "map_version": 7, "updated_at": "2026-09-12T09:13:58.402Z" }
+    { "install_id": "aimla", "map_version": 7, "updated_at": "2026-09-12T09:13:58.402Z" },
+    { "install_id": "sola",  "map_version": 2, "updated_at": "2026-09-12T08:41:10.007Z" },
+    { "install_id": "zeta",  "map_version": 1, "updated_at": "2026-09-12T08:39:52.615Z" }
   ]
 }
 ```
@@ -3397,6 +3420,17 @@ from the snapshot's row.
   `reported`, because whether a room's seats are on the wire is the snapshot's fact and not the
   layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
   building, one floor per install.
+- A floor the operator **planned** ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout), card#9292)
+  carries `origin` on every room and, where one was authored, its `hallway` — the Tiled document as
+  authored, whole, because it is part of the layout document and not a room's; a floor with neither
+  is laid out by that section's default rule in the client. `origin` is a position and never a size: a
+  room's extent is the grid of the map this surface answers for it below, which is why no member
+  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 256 px wide, which
+  is why they may sit 288 px apart; two unauthored rooms would take the shipped default's grid and the
+  save would be checked against that. **The response grows by every hallway on every connect**, bounded by
+  the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
+  and by nothing this surface adds; the hallway endpoint of its own that was declined is
+  [§ 13](#13-decisions-taken-revisable-at-review) row 45's.
 - `rooms[]` lists the rooms with an **authored** map and nothing else. It is not a population
   statement — a room absent here renders the shipped default, and a room named here whose install the
   snapshot does not list is still a room whose seats have not reported, which
@@ -4358,6 +4392,7 @@ review can reverse it deliberately rather than discover it later.
 | 42 | **A client learns that a map or the layout changed from a feed notification carrying the new version, and then fetches — never by polling, never by `fleet.reload`, and the message never carries the document** ([§ 8.3](#83-the-websocket-delta-feed), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | poll `/api/building` on a cadence; publish `fleet.reload` on every save; carry the document on the message; a `private-building` channel of its own | Polling is N seconds of a wrong building per save and a request per client per N seconds for a document that changes on a designer's schedule. `fleet.reload` stops delta application and demands a reload, which is the right response to a deploy and the wrong one to furniture. The document cannot ride the message: 512 KiB against an 8 KiB bound. A channel of its own is one more subscription and one more authorization for two messages that already have a home — both ride every channel, as the heartbeat does — `room.map` too, because the client's subscriptions are the snapshot's installs and the room just drawn may have no seat reporting, so its own channel may have no listener | a client in polling mode (F1) sees neither message and holds the old building until it reconnects, stated in § 8.7 rather than met on a floor; and both messages fan out to every channel, which at 50 installs is 50 publishes per save — an operator act, so bounded by a person — and a client holding N installs receives N copies and fetches once, by version. **And `room.map` spends a property**: it is the one message carrying another install's `install_id` onto a channel, so a future per-install ACL ([§ 14](#14-open-questions-for-the-review-loop) item 7) must filter it per subscriber or move it to the channel this row declined — and the fleet-wide `fleet{}` on every channel is that ACL's other unanswered question, recorded on that item beside it |
 | 43 | **Recovery is an append-only revision log: every save is a revision, a restore is a forward revision that copies an older one, a removal is a revision with no document, and nothing is ever purged** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | *the database is the record* — the current row and nothing else; a ring of the last N revisions; export-only, with the repository as the one history | The ruling owes an answer on recovery and refuses the default. The current row alone is what the console shipped with (card#9085) and it loses a layout on the first bad save. A ring bounds a population that is already bounded by a person pressing *save* and would purge exactly the revision someone wants back. Export-only puts the history where an operator has to remember to put it. Append-only with restore-as-forward keeps the log a log: nothing rewrites it, and *undo* is a row rather than a deletion | the store grows by one document per save, forever ([§ 6.7](#67-retention-and-purge)) — costed in § 6.11 and small; and **review is not recovered**, said in that section's own table rather than implied by the word *revisions* |
 | 44 | **One shipped default map, `resources/floor/default.tmj`, is what every room renders until it is authored — and there is no per-room shipped tier** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) | `resources/floor/<install_id>.tmj` per room, then the default; seed the store from vendored files at first boot; no default — an unauthored room draws every desk in the overflow row | A per-room shipped file is a third answer to *where does this room's map come from* on top of *authored* and *default*, and the first question anyone asks of a wrong room is which of the three they are looking at. Seeding is a write-site with an *already seeded?* state of its own. No default draws a new install as a room full of overflow, which is legal and honest and a bad product for the case [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) exists to make good — provisioning an install renders it without a deploy | card#7341's floor-v1 map — still that card's to author; its tileset pull (#107, 2026-09-12) vendored **no map** — lands at this path rather than at the per-room `resources/floor/aimla.tmj` the reversed ruling declared for it. Nothing is renamed, because the path moves before any file exists at either; `verify-floor.py` holds the tree to § 10.3's declared path in both directions, so a map landing at the old path reds by name in every state: CONTRADICTED while § 10.3 still declares the absence, MISPLACED after it — instead of the default, or beside it ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states the branches) |
+| 45 | **The floor plan — a room's position and a floor's hallway — rides the layout document: no new table, no new `authored_revisions.kind`, no new endpoint and no new message** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed); the plan's shape is [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s, card#9292) | a `floor_plan` revision kind with a subject of its own; `GET /api/building/floors/{floor}/hallway`; a `floor.plan` message | A revision subject and an endpoint both need a key, and a floor's key is derived and moves when a lower-sorting room is added ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — a document keyed by it has to move when it does, its history split across subjects on every re-key. Inside the layout the plan has the layout's revisions, its restore, its diff, its `building.layout` and its one fetch for free, and the reason maps were given revisions (row 43) is satisfied by inheritance rather than by a second mechanism | `GET /api/building` carries every hallway inline on every connect, and the layout document — one revision per save — grows by every hallway toward the 512 KiB write bound: a building of many large hallways meets it at a save, refused by name. And a room map's write now reads the layout for the overlap check ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), a second table in that transaction |
 
 ---
 
