@@ -4625,9 +4625,17 @@ and the gate on trusting the derived signal at all.*
   timestamp after the write loop → the difference is the 250 ms sleep for every input and the bound
   fires for none; leg (a) regresses to the RED above **while the code still contains a stall check**,
   which is the failure this test is really for.
-- **Third RED — check after the read:** move the comparison below the `SELECT` → leg (b) advances its
-  cursor over rows the purge removed during the freeze and the client silently loses them; assert on a
-  `coord.round` in that window, which no gap check can recover.
+- **Third RED — check after the read:** move the comparison below the `SELECT`, and drive leg **(a)**
+  past [§ 6.7](#67-retention-and-purge)'s **60 s** outbox retention rather than merely past the 45 s
+  bound → the slow consumer's handler resumes, reads, and advances its cursor **over rows the purge
+  removed while it was blocked**, where the check-before-read placement would have ended the stream
+  instead; the client silently loses them. Assert on a `coord.round` in that window, which no gap check
+  can recover. ⚠ **It is leg (a), and an earlier revision of this RED named leg (b)** — which cannot
+  produce it: GREEN (b) four lines above rules that on the frozen path the handler *"ends nothing"* and
+  instructs the reader to assert nothing about the cursor, because the handler is suspended inside its
+  write and no line of the loop runs at all, so the moved comparison is never reached. A RED that
+  cannot be produced is a decoration ([canon #9](../../CLAUDE.md)), and this is the one guarding the
+  placement [§ 6.7](#67-retention-and-purge)'s retention argument rests on.
 - **Fourth RED — skip rows instead of ending the stream:** on resume, advance the cursor past what the
   stalled handler could not write → a skipped `seat.delta` is caught by the plus-one rule at that seat's
   next delta and costs a resync, but a skipped `coord.round` is caught by nothing
