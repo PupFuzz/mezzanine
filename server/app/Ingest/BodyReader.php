@@ -75,17 +75,50 @@ final class BodyReader
         }
 
         // ── step 3 ───────────────────────────────────────────────────────────────────────────
+        //
+        // ⛔ ASSOCIATIVE DECODE IS OFF, AND THAT IS THE WHOLE OF card#9295. `json_decode($raw,
+        // true)` maps BOTH `{}` and `[]` onto the same PHP value — `[]` — after which no check
+        // anywhere downstream can tell a JSON object from a JSON array, because the distinction
+        // the wire draws has already been destroyed. That is not a cosmetic loss: D1 § 12.1 step
+        // 9 refuses an event whose `data` is not an object, so an ingest that cannot see the
+        // difference must either refuse `{}` (which § 6.0 permits, and which § 12.4 then makes
+        // cost the batch's ≤ 199 valid neighbours, permanently, § 11.5) or accept `[]` (which
+        // § 12.1 refuses). It had been doing the first.
+        //
+        // Decoding objects as `stdClass` keeps the distinction the producer actually sent, so
+        // the four checks that turn on it — this one, `BatchValidator`'s `events` (which wants an
+        // ARRAY, and was passing an empty OBJECT through to be refused as an empty array one line
+        // later), and `EventValidator`'s event and `data` — each get a true answer instead of a
+        // guess, and each now refuses for the reason it actually has rather than a nearby one. It
+        // also preserves the SPELLING through to the store: `Wire::serialize` writes `{}` for an
+        // empty object where an associative decode would have written `[]`, and D2 § 6.4 calls
+        // `events.data`'s heartbeat objects "verbatim".
+        //
+        // JSON arrays are UNAFFECTED — they decode to PHP lists exactly as before, which is why
+        // `events` is still read with `array_is_list`. `Wire::field` reads both shapes, so the
+        // twenty field reads in §§ 12.1's steps 6–10 are untouched.
         try {
-            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($raw, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             return Refusal::malformedBody($e->getMessage());
         }
 
-        if (! is_array($decoded) || array_is_list($decoded)) {
+        if (! $decoded instanceof \stdClass) {
             return Refusal::malformedBody('The body must be a JSON object.');
         }
 
-        return [$decoded, $raw];
+        // A SHALLOW cast, and shallow is what makes it safe: the envelope becomes the array the
+        // pipeline and `BatchValidator` already index, while every NESTED value — `events`, and
+        // each event's `data` — keeps the type the decoder gave it. Casting deeply (or decoding
+        // associatively) is the erasure this change exists to undo.
+        //
+        // ⚠ An empty body object `{}` now reaches step 6 rather than being refused here, and
+        // that is D1's own order rather than a widening: step 3's condition is "body parses as
+        // JSON", which `{}` does, and § 12.1's closing note requires that "the version answer
+        // must be reachable even for a batch that is wrong in other ways". `{}` is refused
+        // either way — it is `400 unsupported_schema_version` naming the accepted set instead of
+        // `400 malformed_body`, which is the answer a stuck seat can act on.
+        return [(array) $decoded, $raw];
     }
 
     /**

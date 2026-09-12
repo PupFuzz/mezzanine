@@ -19,6 +19,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9295** — **An event whose `data` is `{}` is now ACCEPTED, and the fix is at the DECODE
+  rather than at the check.** D1 § 6.0 — "a missing key and an explicit `null` are the same thing"
+  — makes `{}` the legal spelling of an event every one of whose `data` fields is null, and the
+  ingest refused it `422 invalid_event`, taking the batch's ≤ 199 valid neighbours with it (§ 12.4)
+  permanently (§ 11.5). The cause was not a rule anyone wrote: `json_decode($raw, true)` maps **both
+  `{}` and `[]` onto the same PHP value**, `[]`, for which `array_is_list()` is `true`, so § 12.1
+  step 9's "`data` an object" test had nothing left to test.
+  ⛔ **The one-clause repair is wrong, and was measured being wrong** — `$data !== [] &&
+  array_is_list($data)` accepts `{}` and accepts `"data": []` with it, because after an associative
+  decode the two documents are one value and no predicate downstream can recover the difference. So
+  `BodyReader` stopped erasing it: the body is decoded with PHP's associative mode **off**, objects
+  arrive as `stdClass`, and `Wire::isJsonObject()` is the one predicate that answers the question.
+  `Wire::field()` reads both shapes, which is what kept the change from becoming an `(array)` cast
+  at each of § 12.1's twenty field reads — each of which would have re-erased the distinction.
+  ⭐ **Three more copies of the same conflation went with it, found by the card's sibling audit.**
+  `"events": {}` was refused as an EMPTY array rather than as a non-array; an event of `{}` was
+  refused for "not being a JSON object" rather than for the `event_id` it actually lacks; and a
+  body of `{}` took `400 malformed_body` instead of reaching step 6's version answer, which
+  § 12.1's own closing note requires be "reachable even for a batch that is wrong in other ways".
+  All three are the same `422`/`400` as before with a diagnosis a reporter's operator can act on;
+  the body case additionally moves that refusal's attribution from `unattributed_refusals` to the
+  seat the token binds, which is § 12.1's attribution table applied rather than amended.
+  ⚠ **The wire's spelling now survives into the store**: `events.data` holds `{}` where an
+  associative decode wrote `[]` (D2 § 6.4). ⚠ **`EventValidator`'s byte-bound loop measures
+  `is_object` as well as `is_array`** — § 6.14's three open-keyed objects arrive as `stdClass`
+  now, and without that arm card#9283's bound would have stopped being enforced on exactly those
+  three fields while `Tests\Unit\Ingest\EventFieldByteBoundsTest`, which drives the validator with
+  hand-built PHP arrays, stayed green; the guard for it is at the HTTP surface, where the decode is.
+  **No document changed its rules** — D1 § 6.0 and § 12.1 steps 3 and 9 were already right and the
+  code was the wrong party; D2 § 6.4's `events.data` column gained the spelling guarantee the fix
+  mints.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

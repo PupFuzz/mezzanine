@@ -89,13 +89,54 @@ final class Wire
     }
 
     /**
+     * Is this decoded value a JSON **object** (`{…}`) rather than a JSON **array** (`[…]`)?
+     *
+     * ⛔ THE WHOLE REASON THIS PREDICATE EXISTS, AND WHY THE OBVIOUS SPELLING IS WRONG (card#9295).
+     * `json_decode($raw, true)` decodes `{}` and `[]` TO THE SAME PHP VALUE — `[]`, for which
+     * `array_is_list()` is `true`. Measured, not recalled:
+     *
+     *     json_decode('{}', true) === json_decode('[]', true)   // true
+     *     array_is_list(json_decode('{}', true))                // true
+     *
+     * So `! is_array($v) || array_is_list($v)` refuses `{}` — a document D1 § 6.0 permits, since
+     * "a missing key and an explicit `null` are the same thing" makes `{}` the legal spelling of
+     * an event every one of whose `data` fields is null. Under § 12.4 that refusal takes the
+     * batch's ≤ 199 valid neighbours with it, permanently (§ 11.5).
+     *
+     * ⭐ AND THE ONE-CLAUSE REPAIR IS ALSO WRONG, WHICH IS WHY THE FIX IS AT THE DECODE.
+     * `$v !== [] && array_is_list($v)` accepts `{}` — and accepts `"data":[]` with it, because
+     * after an associative decode THERE IS NOTHING LEFT TO TELL THEM APART. The distinction the
+     * wire makes was destroyed one layer up, so no predicate written here can recover it. That is
+     * why `BodyReader` now decodes objects as `stdClass` (see its own note) and why this test is
+     * `instanceof` first: the ingest stopped erasing the distinction rather than trying to guess
+     * it back.
+     *
+     * The array arm is the SECOND caller shape and is deliberately narrower than the object arm:
+     * a hand-built PHP associative array (`Tests\Unit\Ingest\EventFieldByteBoundsTest` drives the
+     * validator directly with one) is a JSON object by construction — but an EMPTY PHP array is
+     * ambiguous by the same argument as above, so it is refused. A test that means "the empty
+     * object" writes `new \stdClass`, the same value the decoder produces for `{}`.
+     */
+    public static function isJsonObject(mixed $value): bool
+    {
+        return $value instanceof \stdClass
+            || (is_array($value) && $value !== [] && ! array_is_list($value));
+    }
+
+    /**
      * § 6.0: "A missing key and an explicit `null` are the same thing. The server normalises
      * missing → `null` before validation."
      *
-     * @param  array<mixed>  $subject
+     * `object` as well as `array` since card#9295: the decoded wire document is a `stdClass` tree
+     * (`BodyReader`), and this is the ONE accessor every step of § 12.1 reads a field through, so
+     * teaching it both shapes is what kept that change from becoming an `(array)` cast at each of
+     * the twenty call sites — each of which would have re-erased the object/array distinction the
+     * decode change exists to preserve.
+     *
+     * @param  array<mixed>|object  $subject
      */
-    public static function field(array $subject, string $key): mixed
+    public static function field(array|object $subject, string $key): mixed
     {
-        return $subject[$key] ?? null;
+        return is_array($subject) ? ($subject[$key] ?? null) : ($subject->{$key} ?? null);
     }
 }
