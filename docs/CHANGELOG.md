@@ -19,6 +19,66 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9303** — **G7's population is what D2 DOES with a token, not how it spells one.**
+  `verify-fleet-state.py`'s G7 held D2's feed-message types against § 8.3's table but its population
+  was **delimiter-bound** — it saw a message type only inside backticks, so a use inside one of the
+  document's own fenced protocol blocks was invisible to it and an undeclared message could sit in a
+  fence with the gate green. The population is now decided by two classifiers that each read a fact a
+  section already owns: **TOKEN BOUNDARY** (a message type is a whole token, so `building.php` and
+  `private-fleet.aimla-win` are excluded by the characters against them rather than by an exception,
+  and a `.member` chain is a path whose *root* is the message) and **FIELD FORM** (a token given a
+  **scalar** — `= "lagging"`, `: "degraded"` — is a field, § 8.2.4's subject; a token carrying a
+  payload **object**, `fleet.health{db:"up"}`, is a message).
+  ⭐ **The polarity is the point:** every token in a namespace **§ 8.3's own table declares** is a
+  message type **unless** the document demonstrably uses it otherwise, so an unseen spelling fails
+  **loud** instead of leaving the gate. The namespace set is the ROOTS of that table's types,
+  re-derived per run and printed — never a list stored in the checker, which is what it was until
+  the review round below.
+  ⚠ **Why not a wider regex:** § 8.2.4's `` `fleet.status: "degraded"` `` is a deliberately REJECTED
+  alternative with no § 8.3 row by construction, and § 2.3 writes `` `fleet.fold = "stalled"` ``. Any
+  alternation that reaches the fences also reaches those and reds on correct prose.
+  The plant is seen to red with the pre-change verifier **green on the same bytes** — that
+  differential is what attributes the red to the population rather than to the plant — and a new
+  `G7 CONTROL` fails if no undelimited use is found at all. Coverage is monotone: the uses the gate
+  gained are exactly the fenced bare ones, and the field-form exclusions were never in it.
+  ⛔ **One reachable sibling is reported and NOT fixed here:** G8's forward leg (`WRITER_RE`) is blind
+  to `count feed_resync_required; return` on both of its legs. Its verb leg is binding, so that is a
+  change to G8's own population and its own round — filed on the card rather than folded in.
+  `tools/design/README.md` and the verifier workflow's plant-harness comment move with it, and the
+  workflow's `"527 checks, 30 planted controls"` — the one bare count those two surfaces carried
+  that this change had in hand — gave way to the derivation the artifact gate prints itself.
+  🔎 **Review round (PupFuzz/mezzanine#116), two blocking findings, both about a CLAIM that outran
+  the code:**
+  **(1) the polarity claim was false.** The checker hard-coded six namespace prefixes, so the real
+  rule was "everything with one of six stored prefixes" while this entry, the code comment and
+  `tools/design/README.md` all stated the polarity above verbatim. A maintainer who added a
+  namespace to § 8.3 and read any of the three would believe G7 covered its uses; it did not, and
+  the code's own comment recorded it biting twice (card#9212 added `coord`, card#9208 added `room`
+  and `building`). The prefixes are now derived from the declared-types table G7 already parses —
+  a **no-op** against today's document, which is the point: the claim becomes true as written
+  without the verdict moving. ⚠ The residue is now **stated** on every surface instead of claimed
+  away: a namespace with no declared row at all is still invisible, and the obvious widening to
+  every `word.word` token is the worse gate (it reaches D1's event names, D2's SQL column paths and
+  its object member paths).
+  **(2) the declared `name: scalar` hole had no observability and escaped on the protected
+  surface.** The skip was a bare `continue` — the occurrence was not merely forgiven but
+  **uncounted** — and the comment closed on "no such site exists in this document", a claim nothing
+  evaluated and nothing printed. Reproduced: that spelling planted **inside § 8.4's fence** yielded
+  `ALL D2 CHECKS PASS` at rc=0 with the population unmoved. Skips are now **counted and printed**
+  beside the population, and a skip **inside a fenced block is a failure** — the fence/prose split
+  the comment already argued for and did not use, which bounds the hole to prose without touching
+  the operator that would red on § 8.2.4's rejected aggregate. Both halves of the widening now have
+  a decay control; the asymmetry was the finding.
+  Seen to fail, each against a scratch copy of the whole tree with the **pre-change verifier green
+  on the same bytes**: the fence escape, an undeclared member of a newly declared namespace, and
+  both new `G7 CONTROL`s (no fenced block; an unclosed fence). Two controls that must NOT red were
+  held green: the same field-form spelling in prose, and the declared residue.
+  Doc-sync owed by this round: § 12's guard row (which still claimed "every `t` value named
+  anywhere", with no hole marker), the workflow **step name** that shows in the CI UI (it read "a
+  planted defect per verifier" against four plants over three verifiers), and the two bare guard-
+  class counts this diff had in hand — `tools/design/README.md`'s and the verifier docstring's
+  "eleven" — each replaced by the derivation that re-prints it rather than by a fresh figure.
+
 - **card#9269** — **the shipped default map is a FILE**: `resources/floor/default.tmj`, an office
   interior drawn with the vendored Kenney tileset, its `desks` layer carrying the slot count
   `docs/design/FLOOR.md § 12` declares (the gate now counts the file rather than reading the row).
