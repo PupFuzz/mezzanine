@@ -15,25 +15,30 @@ use Illuminate\Foundation\Events\Dispatchable;
  * heartbeats would learn about a store outage up to 15 s late, ON THE ONE PATH WHERE THE CLIENT
  * IS WAITING TO BE TOLD WHY THERE IS NOTHING."
  *
- * § 2.2's "WebSocket connect / Reverb up, MySQL down" row is the case that makes it required
+ * § 2.2's "Stream connect / the app up, the store down" row is the case that makes it required
  * rather than nice: the connection is accepted and IMMEDIATELY sent `fleet.health` with
- * `db: "down"`, "which is the whole reason the socket stays up in that posture". That is also the
+ * `db: "down"`, "which is the whole reason the stream stays open in that posture". That is also the
  * ONE surface on which `db: "down"` is a complete answer — `App\Read\FleetHealth::down()` carries
  * only the members that are knowable with the store unreadable, and on REST that object rides a
  * `503` rather than a `200`.
  *
- * ⚠ THE ON-CONNECT HALF IS NOT BUILT AND CANNOT BE, and the reason is the transport: "on connect"
- * is a socket-server event, and no socket server is installed (see `FeedEnvelope`'s note on
- * `laravel/reverb`). Wiring it belongs with that host (card #7523): a subscribe hook publishing
- * this message to the joining connection alone. Reported rather than stubbed, because a stub here
- * would be a message nothing sends on the one path § 2.2 built it for.
+ * ⚠ THE ON-CONNECT HALF IS NOT BUILT — AND SINCE card#9287 IT CAN BE, WHICH RETIRES THE CLAIM
+ * THIS PARAGRAPH USED TO MAKE. Until 2026-09-12 this docblock said the on-connect half "cannot
+ * be" built because "on connect" was a socket-server event and no socket server was installed.
+ * § 8.3 now pins the feed to Server-Sent Events served by PHP-FPM, and under that transport the
+ * on-connect `fleet.health` is the stream handler's FIRST YIELD — read from the store before the
+ * outbox is opened, `db: "down"` when the read fails (§ 2.2's stream-connect row, § 8.3's handler
+ * loop). It is built at D2 Appendix B step 9 with the handler, not here: this class is the
+ * message, and the handler is what sends it to a joining connection alone. Still reported rather
+ * than stubbed here, because a stub in this class would be a message nothing sends on the one
+ * path § 2.2 built it for — but the reason it is absent is now "not yet", not "cannot".
  *
  * ⚠ WHAT THE MISSING HALF ACTUALLY COSTS, stated exactly rather than at its worst. A client that
  * connects after a transition is NOT blind to health: `feed.heartbeat` carries § 8.2.4's object
  * every 15 s unconditionally, so it learns the current triple on the next tick. The cost is the
  * LATENCY, and it is the one § 8.3 names in terms — "a client that inferred health only from
  * heartbeats would learn about a store outage up to 15 s late, ON THE ONE PATH WHERE THE CLIENT IS
- * WAITING TO BE TOLD WHY THERE IS NOTHING" — which is § 2.2's WebSocket-connect-with-MySQL-down
+ * WAITING TO BE TOLD WHY THERE IS NOTHING" — which is § 2.2's stream-connect-with-the-store-down
  * row, and the half of AT-D2-12's GREEN this application cannot yet drive.
  *
  * What IS built is the CHANGE half — `App\Feed\Publisher::healthChanged()` publishes whenever

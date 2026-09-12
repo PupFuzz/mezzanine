@@ -154,6 +154,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   not a false claim about shipped code. It was deliberately not minted as its own card — there is
   no user-visible harm to reach while nothing serves the route (canon #18's gate), and the surface
   that owns the subject is the document itself.
+- **card#9287** — **THE FEED'S TRANSPORT IS RE-PINNED TO NATIVE SERVER-SENT EVENTS — design only, no
+  application code.** The card priced four ways to keep a Pusher-protocol daemon (`laravel/reverb`
+  pins `guzzlehttp/psr7 ^2.6` against this tree's 3.1.0) and never asked whether the daemon was
+  needed; the operator's challenge was right: **the feed is one-way** — every row of D2 § 8.3's
+  message table is `server → client`, § 8.5 refuses a client→server channel, § 9 refuses the feed to
+  machines — so a bidirectional daemon was surplus and its dependency pin the price of it. D2 § 8.3
+  now pins `GET /api/fleet/stream` served by PHP-FPM through the framework's own `eventStream()`
+  (verified in this tree), **one stream fleet-wide** with the handler filtering per subscriber —
+  which retires the per-install channel, the browser's six-connection limit it would have hit, and
+  FLOOR.md § 14 item 14's cold-start window (closed). Fan-in is a **`feed_outbox` table** (§ 6.4)
+  polled at the design's own 250 ms tick behind § 6.5's 2 s visibility lag — transient, retained
+  60 s (§ 6.7), **never resumed from**: no `id:`/`Last-Event-ID`, a cursor that starts at the head,
+  and a row nobody consumed is purged unread. **Two host conditions are written as named, checked
+  deploy requirements with observables, not assumptions** — R1 the proxy must not buffer the stream
+  (its signature: *feed down* against a green fleet with REST fine; FLOOR § 9 F19), R2 the FPM pool
+  must hold a worker per browser and release a dead one (its signature: the console, not the feed,
+  goes dark; F20). **Two things SSE unlocks are built in:** the on-connect `fleet.health` is the
+  handler's first yield (`FleetHealthMessage`'s *cannot be built* claim retired), and § 9 re-checks
+  the session every heartbeat tick, closing FLOOR § 14 item 5 and F7's residual — ⚠ without opening
+  the feed to machine consumers, which is filed as D2 § 14 item 15 and not taken. **F1 answered:**
+  the 256-message / 512 KiB bound has no referent under SSE (a draining client is never behind; a
+  non-draining one blocks the handler), so the bound is a **45 s stall bound on the tick** with
+  `feed.close{reason}` as the stream's last message; memory stays flat structurally; what is not
+  provided is stated. The card's F1 sentence *provided by no candidate transport* is corrected on
+  D2 § 13 row 46 (Centrifugo and Mercure bound it; the sentence exists nowhere in this repo — grep
+  audited). `coalescing` withdrawn from § 8.3 as never legal under § 8.5's plus-one rule. D2 § 13
+  rows 46–48, FLOOR § 13 rows 34–36; AT-D2-15 rewritten, AT-D2-25 added; `verify-fleet-state.py`
+  G3's retired queue check replaced by the stall/retention equalities, seen red on two plants and
+  wired into the selftest harness. ⚠ **Left for the sweep after card#9208 lands** (its sections are
+  off-limits to this PR): D2 § 8.7's *every install's channel* prose, FLOOR § 4.6's subscription
+  language and Appendix B step 3's *subscribe*; § 8.3's heading anchor keeps the word *WebSocket*
+  until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
+  `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

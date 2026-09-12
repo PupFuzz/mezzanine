@@ -20,8 +20,8 @@ control failure that says nothing the author can act on.  The differential answe
 question this file is asking -- does the verdict RESPOND to this defect -- and keeps answering it
 while the document is broken.
 
-WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: three plants over three verifiers carrying
-some fifty guard classes prove those three guards live, never that the rest do.  Nothing here is
+WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: four plants over three verifiers carrying
+some fifty guard classes prove those four guards live, never that the rest do.  Nothing here is
 evidence about `verify-harness-facts.py` (see the workflow header for why it is unwired) or about
 `floor-preview.selftest.mjs` and `floor-preview.browser.mjs`, which carry their own planted
 controls internally and need no harness around them.
@@ -72,6 +72,14 @@ PLANTS = [
         r"(State-changing events per seat-day at the ceiling:.*?= \*\*)([\d,]+)(\*\*)",
         "§ 8.3's stated per-seat-day event total, which G3 re-ADDS from its seven named components",
         "and states",
+    ),
+    (
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(a gap over \*\*)(\d+)( s\*\* ends the stream)",
+        "§ 8.5's stream stall bound, which G3 holds equal to § 8.3's dead-feed figure and one "
+        "heartbeat below § 6.7's `feed_outbox` retention (card#9287)",
+        "ends a stalled stream at",
     ),
     (
         "verify-floor.py",
@@ -175,5 +183,5 @@ if failures:
         print(f"  - {f}")
     sys.exit(1)
 
-print(f"ALL PLANTS CAUGHT — {len(PLANTS)} verifiers each seen to red on a defect of its own "
+print(f"ALL PLANTS CAUGHT — {len(PLANTS)} plants over {len({p[0] for p in PLANTS})} verifiers, each plant seen to red on a defect of its verifier's own "
        f"headline class, each red attributable to its plant")

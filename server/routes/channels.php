@@ -41,6 +41,14 @@ use Illuminate\Support\Facades\Broadcast;
  * /broadcasting/auth route, not this callback, and that is what the MFA-gate tests assert.
  * Whichever broadcaster the transport card configures, that middleware stack is the thing that
  * must not be removed.
+ *
+ * ⭐ SUPERSEDED BY card#9287 (2026-09-12): D2 § 8.3 re-pinned the feed to native Server-Sent Events
+ * on `GET /api/fleet/stream`, gated by the route's ordinary session + MFA middleware and RE-CHECKED
+ * every 15 s on the open stream (§ 9). There is no channel and no `/broadcasting/auth` under that
+ * design, so this file and the `/broadcasting/auth` route are retired at D2 Appendix B step 9.
+ * Everything above describes the code as it stands today, not the design; the sentence "must not
+ * be removed" holds for the middleware stack — which moves to the stream route — and not for
+ * this callback.
  */
 
 Broadcast::channel('fleet.{install}', function (User $user, string $install) {

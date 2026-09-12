@@ -460,17 +460,36 @@ else:
                 fail.append(f"G3: section 12's {what} does not carry the re-derived value "
                             f"({delta_day:,}/seat/day, {per_s:.3f} msg/s/seat, {fleet_s:.1f} msg/s, "
                             f"{kib:.1f} KiB/s)")
-        # the backpressure queue, sized in seconds of that same fleet rate
-        q = re.search(r"\*\*(\d+) messages or (\d+) KiB[^*]*\*\*",
-                      section_text("85-gaps-reconnect-and-why-state_version-is-not-seq") or "")
-        if not q:
-            fail.append("G3 CONTROL: section 8.5's outbound queue bound did not parse, so the "
-                        "seconds-of-traffic it is sized in rests on nothing")
-        elif not re.search(rf"{q.group(1)} messages is ~{round(int(q.group(1)) / fleet_s)} seconds",
-                           section_text("85-gaps-reconnect-and-why-state_version-is-not-seq")):
-            fail.append(f"G3: section 8.5 sizes its {q.group(1)}-message queue in seconds of the "
-                        f"fleet's ceiling traffic; at the re-derived {fleet_s:.2f} msg/s that is "
-                        f"~{round(int(q.group(1)) / fleet_s)} seconds")
+
+# the stream's stall bound and the outbox's retention, re-derived from their three definition sites
+# (card#9287).  Under SSE the earlier "256 messages or 512 KiB" queue bound has no referent, and the
+# check that sized it in seconds of fleet traffic went with it.  What replaced it is two equalities
+# the document STATES between numbers it defines at three sites: the stall bound (§ 8.5) IS § 8.3's
+# dead-feed figure applied server-side, and `feed_outbox`'s retention (§ 6.7) IS that bound plus one
+# heartbeat interval (§ 8.3).  All four figures are read from the document on every run and nothing
+# is written here, so a figure moved at one site without the others reds by name.
+sec85_txt = section_text("85-gaps-reconnect-and-why-state_version-is-not-seq") or ""
+sec67_txt = section_text("67-retention-and-purge") or ""
+g3_stall = re.search(r"a gap over \*\*(\d+) s\*\* ends the stream", sec85_txt)
+g3_dead = re.search(r"seen no message of any\s+kind for (\d+) s \((\d+) intervals\)", sec83_txt)
+g3_beat = re.search(r"sends a\s+heartbeat every (\d+) s whether or not", sec83_txt)
+g3_keep = re.search(r"\| `feed_outbox` \| \*\*(\d+) s\*\* after `created_at`", sec67_txt)
+g3_stream = None
+if not (g3_stall and g3_dead and g3_beat and g3_keep):
+    fail.append("G3 CONTROL: the stream's stall bound (section 8.5), the dead-feed figure and the "
+                "heartbeat interval (section 8.3) or `feed_outbox`'s retention (section 6.7) did not "
+                "parse, so the two equalities between them rest on nothing")
+else:
+    g3_stream = tuple(int(x.group(1)) for x in (g3_stall, g3_dead, g3_beat, g3_keep))
+    st, dd, bt, kp = g3_stream
+    if st != dd:
+        fail.append(f"G3: section 8.5 ends a stalled stream at {st} s and section 8.3 declares the "
+                    f"feed dead at {dd} s — the bound is defined as that figure applied server-side, "
+                    f"so the two must be one number")
+    if kp != st + bt:
+        fail.append(f"G3: section 6.7 retains `feed_outbox` for {kp} s; section 8.5's stall bound plus "
+                    f"section 8.3's heartbeat interval is {st} + {bt} = {st + bt} s, and a stream "
+                    f"inside its bound must find every row it may still deliver")
 
 # ------------------- G4. cross-document enum containment, with prose counts ----
 def d1_enum_set(field):
@@ -1245,6 +1264,7 @@ print(f"G1  ENUM members re-derived: {len(g1_members)} "
 print(f"G2  wire fields: {len(g2_table)} declared, {len(g2_seen)} in {len(seat_objs)} worked "
       f"seat objects, {len(g2_table ^ g2_seen)} in symmetric difference")
 print(f"G3  byte figures re-serialized: {figs}")
+print(f"G3  stream stall bound / dead-feed / heartbeat / outbox retention (s): {g3_stream}")
 print(f"    inputs re-derived from the document (none written into this checker): "
       f"delta volume {delta_day}/seat-day re-added from {len(parts) if m83 else 0} components, "
       f"message bound {msg_bound} B, snapshot seat counts {seat_counts}, "

@@ -204,7 +204,8 @@ Status: **merged 2026-08-23** (PR #7).
 
 **D2 — fleet-state model + feed contract (`docs/design/FLEET-STATE.md`).** What the store keeps
 (per-seat current state + a short activity window, keyed by install/seat), retention, and what
-the browser receives: **snapshot-on-connect, deltas after**, over Reverb; the REST snapshot for
+the browser receives: **snapshot-on-connect, deltas after**, over native Server-Sent Events
+(card#9287; Reverb until then); the REST snapshot for
 non-browser consumers (the watchdog). Merge rules for the three sources (telemetry supplies the
 live *action*; GitHub/board events supply the human-readable *task title*; the three-tier status
 fallback from the proposal).
@@ -251,9 +252,9 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P1 telemetry** | `fleet-reporter` core: spool + flusher (#7335) | D1 | hermetic selftest; **never blocks the agent**; survives server down; sanitizer has RED fixtures |
 | | installer, Linux + **Windows validated** (#7336) | #7335 | real install on a Windows seat before anything trusts the signal |
 | | kill-vs-idle proof (#7337) | #7335 | the D1-specified test, run for real against a `/clear` |
-| **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **websocket handshake**, and REST snapshot; seat-token ingest is separate and never browser-facing |
+| **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
-| | fleet-state store + Reverb feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
+| | fleet-state store + SSE feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
 | | MariaDB provisioning on the dedicated DB host (new card, D-15, as amended 2026-09-09) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
@@ -355,13 +356,16 @@ rule violations anyone could have committed at the time.
   exercised at all.
 - **One divergence from the sample's topology, ruled binding by rt#347 item 1:** the deploy
   restarts the long-lived daemons *inside* the window — `mezzanine:fold`, `mezzanine:sweep`,
-  `mezzanine:feed-heartbeat` and, once card#7339 makes Reverb the broadcaster, Reverb. The sample's
+  `mezzanine:feed-heartbeat` — and no feed daemon: card#9287 re-pinned the feed to Server-Sent
+  Events served by PHP-FPM, so the feed's code is reloaded with FPM, after `mezzanine:feed-reload`
+  has told every open stream to end (`docs/design/FLEET-STATE.md § 2.1`). The sample's
   host runs a host-scoped shared daemon serving several tenants and is silent about restarting it;
   this host is single-tenant, so every long-lived PHP process on it holds *this* app's code, and
-  copying that silence would leave every deploy serving stale broadcast code invisibly — sockets
-  up, floor rendering, payloads one release old. Reverb's membership in the restart set is
-  **derived** from `BROADCAST_CONNECTION` rather than asserted, so it becomes mandatory the moment
-  #7339 flips it with nobody having to remember.
+  copying that silence would leave every deploy serving stale code invisibly — daemons up, floor
+  rendering, payloads one release old. ⚠ `bin/deploy.sh` still models a Reverb unit derived from
+  `BROADCAST_CONNECTION`; retiring that, adding the feed-reload step before the FPM reload, and
+  running § 8.3's two host checks (R1, R2) is deploy-script work the amendment files rather than
+  does, this being design-only.
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
@@ -434,7 +438,8 @@ rule violations anyone could have committed at the time.
   still need the password to sign in). That is inherent to the mechanism and was accepted
   knowingly; it is why the destination is read from the user row and is never a request parameter,
   and it is why an install that does not want the property simply leaves `MAIL_MAILER` alone.
-- Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
+- Plan-side obligations, host-agnostic: Laravel behind the web server, the feed served as SSE by
+  PHP-FPM (card#9287), from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
   credential; **`php artisan mezzanine:user:create` run there too, because nothing else creates a
