@@ -65,6 +65,11 @@ class ConsoleShellTest extends TestCase
             DB::table('floors')->insert([
                 'install_id' => $installId,
                 'map' => FloorMapFixture::valid(),
+                // § 6.11 (card#9208): the row points at the `authored_revisions` row it IS. This
+                // fixture plants no revision to go with it — the gate arms under test read the
+                // page and never the history — so the column carries the number a first save
+                // would have written rather than a revision that exists.
+                'map_version' => 1,
                 'updated_by' => 'ops@example.com',
                 'created_at' => $now,
                 'updated_at' => $now,

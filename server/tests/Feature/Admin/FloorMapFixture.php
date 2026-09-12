@@ -48,13 +48,14 @@ final class FloorMapFixture
             'tiledversion' => '1.10.2',
             'orientation' => 'orthogonal',
             'renderorder' => 'right-down',
-            // ⚠ 20 × 8 TILES OF 32 px — 640 × 256 — AND THE SIZE IS LOAD-BEARING since card#9292:
-            // every desk object below must be WHOLLY INSIDE the grid (§ 10.3), because the grid is
-            // the room's footprint on a planned floor and a desk past it would overhang a
-            // neighbour the footprint check had passed. The twelfth slot reaches x = 408, so a
-            // 10-tile grid — what this fixture declared while nothing checked — is too narrow and
-            // would make the VALID map invalid.
-            'width' => 20,
+            // ⚠ THE GRID IS DERIVED FROM THE SLOT COUNT, AND THAT IS card#9292 rather than a
+            // convenience: every desk object below must be WHOLLY INSIDE the grid (§ 10.3),
+            // because the grid is the room's footprint on a planned floor and a desk past it
+            // would overhang a neighbour the footprint check had passed. The slots are laid at
+            // `x = 32 · i`, so the `$slots`th reaches `32 · $slots + 24` — a fixed width would
+            // make `valid(20)` an INVALID map while `valid(12)` passed, which is the shape that
+            // turns a fixture into a trap for whoever next asks it for one more desk.
+            'width' => self::tilesWide($slots),
             'height' => 8,
             'tilewidth' => 32,
             'tileheight' => 32,
@@ -76,11 +77,11 @@ final class FloorMapFixture
                     'name' => 'room',
                     'x' => 0,
                     'y' => 0,
-                    'width' => 20,
+                    'width' => self::tilesWide($slots),
                     'height' => 8,
                     'opacity' => 1,
                     'visible' => true,
-                    'data' => array_fill(0, 160, 1),
+                    'data' => array_fill(0, self::tilesWide($slots) * 8, 1),
                 ],
                 [
                     'id' => 2,
@@ -95,6 +96,16 @@ final class FloorMapFixture
                 ],
             ],
         ];
+    }
+
+    /**
+     * Wide enough in 32 px tiles to hold `$slots` desks laid at `x = 32 · i`, and never narrower
+     * than the 20 tiles the control map has always declared — so a fixture asked for more desks
+     * grows rather than earning card#9292's outside-the-grid refusal.
+     */
+    private static function tilesWide(int $slots): int
+    {
+        return max(20, $slots + 2);
     }
 
     /** @param array<string, mixed> $map */

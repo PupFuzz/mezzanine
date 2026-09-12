@@ -431,6 +431,11 @@ class FloorConsoleTest extends TestCase
         DB::table('floors')->insert([
             'install_id' => self::INSTALL,
             'map' => FloorMapFixture::base64Layer(),
+            // § 6.11: the revision this row IS. The row is planted BY A WRITER THAT IS NOT THE
+            // CONSOLE — which is the whole premise of this arm — so it is planted the way such a
+            // row actually arrives: pointing at a revision number, with the history behind it
+            // being somebody else's problem, which is exactly why the page must not fall over.
+            'map_version' => 1,
             'updated_by' => 'ops@example.com',
             'created_at' => $now,
             'updated_at' => $now,
