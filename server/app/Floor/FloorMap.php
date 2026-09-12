@@ -2,6 +2,8 @@
 
 namespace App\Floor;
 
+use App\Building\AuthoredDocument;
+
 /**
  * A room's Tiled map, read for the facts the rest of the system needs from it: **`S`, the number
  * of desk slots it declares**, and — since card#9292 — **its GRID, which is the room's footprint
@@ -145,24 +147,15 @@ final class FloorMap
             throw new InvalidFloorMap(self::notJsonMessage($document, $e->getMessage()), previous: $e);
         }
 
-        // ⛔ `$decoded !== []` IS card#9295's DEFECT SHAPE, HERE — the same one PR #111 fixed at the
-        // ingest, recorded against this line on card#9208 (comment 4794) and left for this slice
-        // because it holds this file. `json_decode($document, true)` decodes `{}` and `[]` to the
-        // SAME PHP value, `[]`, for which `array_is_list()` is `true` — so a map pasted as `{}`
-        // was refused HERE, as *"This is not a JSON object (No error)"*: a false sentence (it IS a
-        // JSON object) with a parenthetical that says the decode succeeded.
-        //
-        // ⚠ `App\Ingest\Wire::isJsonObject`'s docblock calls this one-clause form "also wrong" and
-        // it is right about the INGEST, where `{}` must be ACCEPTED and `[]` REFUSED — two
-        // outcomes from a value that can no longer tell them apart, which is why that fix had to
-        // be at the decode. **Here both spellings are refused**, and only the WORDING differed:
-        // letting `{}` through lands it on the `type` check one line down, which answers *a floor
-        // map is a Tiled MAP and this document declares none* — true of `{}` and of `[]` alike,
-        // and the sentence an operator can act on. So this class keeps its associative decode
-        // (every check below reads arrays) and this clause is exact for what it is asked.
-        // ⇒ If this file ever needs the two spellings to end DIFFERENTLY, the one-clause form
-        // stops being enough and the answer is card#9299's hoisted predicate, not a wider clause.
-        if (! is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+        // ⛔ card#9295's DEFECT SHAPE, HERE — recorded against this line on card#9208 (comment
+        // 4794) and left for this slice because it holds this file. `json_decode($document, true)`
+        // decodes `{}` and `[]` to the same PHP value, so a map pasted as `{}` was refused as
+        // *"This is not a JSON object (No error)"*: a false sentence about a document that IS one.
+        // The predicate — and the whole argument for why the ingest's answer does not transfer to
+        // a reader where both spellings are refused anyway — is the console's one copy, in
+        // `App\Building\AuthoredDocument`, so the layout's reader and this one cannot come to
+        // answer it differently.
+        if (! AuthoredDocument::isJsonObject($decoded)) {
             throw new InvalidFloorMap(self::notAnObjectMessage($decoded));
         }
 

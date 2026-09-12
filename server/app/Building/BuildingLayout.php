@@ -175,14 +175,13 @@ final class BuildingLayout
             );
         }
 
-        // ⛔ `$decoded !== []` IS card#9295's DEFECT SHAPE — `json_decode(…, true)` decodes `{}`
-        // and `[]` to the same PHP value, so `{}` was refused here as *"not a JSON object (No
-        // error)"*: a false sentence about a document that IS one. Both spellings are refused
-        // either way, and only the WORDING differed — `{}` now reaches the `floors` refusal in
-        // `parse()`, which names the member the author has to add. `App\Floor\FloorMap` carries
-        // the long form of why the ingest's decode-side fix does not transfer to a reader where
-        // the two spellings end the same way.
-        if (! is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+        // ⛔ card#9295's DEFECT SHAPE — `json_decode(…, true)` decodes `{}` and `[]` to the same
+        // PHP value, so `{}` was refused here as *"not a JSON object (No error)"*: a false
+        // sentence about a document that IS one. Both spellings are refused either way and only
+        // the WORDING differed — `{}` now reaches the `floors` refusal in `parse()`, which names
+        // the member the author has to add. `App\Building\AuthoredDocument` owns the predicate
+        // and the argument, for this reader and the room map's alike.
+        if (! AuthoredDocument::isJsonObject($decoded)) {
             throw new InvalidBuildingLayout(sprintf(
                 'This is %s, and a layout is a JSON object with a `floors` list in it: '
                 .'`{"floors": []}` is the empty building — one floor per install — and is what '
@@ -223,6 +222,12 @@ final class BuildingLayout
 
         $floors = $document['floors'];
 
+        // ⚠ THIS ONE ASKS THE OPPOSITE QUESTION — `floors` is a LIST — so it is not
+        // `AuthoredDocument::isJsonObject()`'s. ⛔ And it carries that predicate's residue,
+        // named rather than left to be discovered: after an associative decode `"floors": {}` is
+        // indistinguishable from `"floors": []`, which is a LEGAL and meaningful document (§ 4.6's
+        // empty building), so the typo is accepted as the building it cannot be told apart from.
+        // No clause here can close that; card#9299's hoisted predicate is what could.
         if (! is_array($floors) || ! array_is_list($floors)) {
             throw new InvalidBuildingLayout(
                 '`floors` is not a LIST of floors. docs/design/FLOOR.md § 4.6: a floor has no '
@@ -429,7 +434,7 @@ final class BuildingLayout
      */
     private static function room(mixed $record, string $installId, int $position): array
     {
-        if (! is_array($record) || array_is_list($record)) {
+        if (! AuthoredDocument::isJsonObject($record)) {
             throw new InvalidBuildingLayout(sprintf(
                 'Room `%s` (floor #%d) declares %s where a record belongs. Since card#9292 a '
                 ."room's value is `['form' => 'open'|'office']`, optionally with "
@@ -493,7 +498,7 @@ final class BuildingLayout
      */
     private static function origin(mixed $origin, string $installId, int $position): array
     {
-        if (! is_array($origin) || array_is_list($origin)) {
+        if (! AuthoredDocument::isJsonObject($origin)) {
             throw new InvalidBuildingLayout(sprintf(
                 'Room `%s` (floor #%d) declares an `origin` that is not a mapping of `x` and `y` '
                 .'(docs/design/FLOOR.md § 4.6).',
@@ -574,7 +579,7 @@ final class BuildingLayout
 
         $hallway = $entry['hallway'];
 
-        if (! is_array($hallway) || array_is_list($hallway)) {
+        if (! AuthoredDocument::isJsonObject($hallway)) {
             throw new InvalidBuildingLayout(sprintf(
                 'Floor `%s` (#%d) declares a `hallway` that is not a Tiled document '
                 .'(docs/design/FLOOR.md § 4.6, § 10.3). It is the same JSON map a room takes, '
