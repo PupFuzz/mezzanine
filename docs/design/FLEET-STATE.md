@@ -2998,6 +2998,16 @@ bumps `state_version`, and the fold bumps once per pass over a seat's unfolded w
 tick bounds is delivery granularity per stream, and the *4 msg/s per seat regardless of what the seat
 does* that the earlier revision promised is not a property anything here provides.
 
+⭐ **This withdrawal reconciles the document to code that already shipped, rather than asking for a
+change to it.** `server/app/Feed/SeatDelta.php` (card#7827, ratified on its PR) emits **one delta per
+`state_version` increment** and says why in its own docblock — *"a coalesced message and a lost message
+are the same wire shape to a consumer"*, so every merged burst would cost the client a full seat
+resync and the optimisation would **add** traffic. That build filed the contradiction back at this
+document as card#7838's first item, which asked D2 either to drop coalescing or to give a merged
+message an explicit spanned-versions field. This section takes the first, which is what the running
+code already does — so the doc-vs-code divergence that item exists to close is closed by deletion, and
+no builder has to reconcile anything.
+
 **Volume, derived from D1's kind-table ceiling.** State-changing events per seat-day at the ceiling:
 6,000 tool events + 1,200 turn events + 1,440 context samples + 120 subagent + 80 session + 100
 attention + 40 compaction = **8,980**, i.e. **0.104 msg/s/seat** before coalescing. The population is

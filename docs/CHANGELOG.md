@@ -202,7 +202,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
   prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; § 8.3's heading anchor keeps the word *WebSocket*
   until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
-  `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed.
+  `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed as **card#9300**
+  (Backlog) together with the build of D2 Appendix B step 9 and the retirement of the broadcast
+  wiring — a card this PR created, because reviewing it found the work had no open home (#7459 is
+  released, #7827 shipped) and a "filed" claim naming no card is an abandoned finding. ⭐ **This
+  amendment also discharges card#7838's first two items** — settle the coalescing contradiction, and
+  restate AT-D2-15 in terms something can drive — and the coalescing withdrawal reconciles the
+  document to code that already shipped (`server/app/Feed/SeatDelta.php` emits one delta per version
+  increment), so a doc-vs-code divergence closes here rather than opening. #7838's remaining items are
+  untouched and it is not reopened.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
