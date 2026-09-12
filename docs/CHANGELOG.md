@@ -54,6 +54,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   single-threaded suite does not produce. What card#7523 gains is that those are now blocked on a
   TEST rather than on a STORE — the correction is written into `MySqlColumnTypeTest`'s header,
   which said the opposite.
+  ⭐ **WHAT THE FIRST RUN FOUND, which is the whole argument for the lane.** Every migration
+  applied cleanly on MariaDB — **no migration defect exists**, and that is now a measurement
+  rather than a hope. What the lane did catch is a defect class in the TESTS: **two tests match
+  emitted SQL text against SQLite's `"` identifier quoting**, which MariaDB writes as backticks.
+  The two ends of that class are the reason a lane is worth more than an audit.
+  `Tests\Feature\Admin\SeatConsoleTest` FAILED — its `DB::beforeExecuting` hook never fired and
+  its own precondition assertion said so. `Tests\Feature\Ingest\At13AtomicBatchRejectionTest`
+  **PASSED, vacuously**: its filter matched nothing and an empty set is exactly what it asserts,
+  so AT-13's control-flow assertion — *"a refused batch must issue no INSERT at all"* — was a
+  decoration on that engine, green forever and proving the opposite of its claim. Both now ask
+  the connected grammar through one shared `Tests\TestCase::wrapTable()` rather than spelling a
+  quoting character, so a third site cannot mint it by copying a neighbour.
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
   derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>

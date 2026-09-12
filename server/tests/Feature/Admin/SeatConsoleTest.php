@@ -262,10 +262,12 @@ class SeatConsoleTest extends SweepTestCase
      * ⚠ WHAT THIS DRIVES AND WHAT IT CANNOT. It drives the guard's PLACE: the other act is
      * committed on the connection immediately before the UPDATE is executed, so the UPDATE's
      * predicate is the only thing that can still see it — the old code passes its guard here and
-     * writes, this one matches zero rows. It does NOT drive concurrency: `lockForUpdate()` is a
-     * no-op on the SQLite this suite runs on and SQLite serialises writers anyway, so two genuinely
-     * interleaved transactions are not producible here on any store the suite has. That leg is
-     * reasoned in `App\Fleet\SeatRetirement`, not executed.
+     * writes, this one matches zero rows. It does NOT drive concurrency: the suite runs on ONE
+     * connection on either store — `lockForUpdate()` is a no-op on SQLite and SQLite serialises
+     * writers anyway, and on the MariaDB of the `php-tests-mariadb` lane (card#9250) the lock is
+     * real but has no second session to exclude — so two genuinely interleaved transactions are
+     * not producible here on any store the suite has. That leg is reasoned in
+     * `App\Fleet\SeatRetirement`, not executed.
      */
     public function test_a_retirement_that_lands_after_another_one_writes_nothing(): void
     {
@@ -277,8 +279,13 @@ class SeatConsoleTest extends SweepTestCase
         $seatRef = $this->seatRef;
         $injected = false;
 
-        DB::beforeExecuting(function (string $query) use (&$injected, $seatRef): void {
-            if ($injected || ! str_contains($query, 'update "seats"')) {
+        // ⛔ THE TABLE IS QUOTED BY THE CONNECTED STORE'S GRAMMAR, NEVER BY HAND — card#9250.
+        // This read `update "seats"`, which is SQLite's quoting; on MariaDB it is backticks, the
+        // hook never fired, and `$injected` below is what caught it on the new lane's first run.
+        $updateSeats = 'update '.$this->wrapTable('seats');
+
+        DB::beforeExecuting(function (string $query) use (&$injected, $seatRef, $updateSeats): void {
+            if ($injected || ! str_contains($query, $updateSeats)) {
                 return;
             }
 
