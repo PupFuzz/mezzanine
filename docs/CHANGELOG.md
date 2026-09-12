@@ -201,9 +201,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   independent reviews found that all three commands — added by round 1 to make the check *able to
   fail* — were written from reading the primitive rather than from running anything: `php -i` reads
   the CLI SAPI, which force-overrides `output_buffering` to `0` and so could not fail for the setting
-  it named; `grep -c` counts lines and every message carries `t` on both its `event:` and `data:`
-  line, so a correct stream prints twice the asserted figure; `head -c 400` is exhausted by the
-  response headers before any body byte. A check that cannot fail is a decoration and one that cannot
+  it named; `grep -c` asserts an equality against a figure that is phase-dependent — 125 s ÷ 15 s =
+  8.33, so a correct 125-second window holds 8 **or** 9 heartbeats; `head -c 400` is exhausted by
+  the response headers before any body byte. A check that cannot fail is a decoration and one that cannot
   pass gets weakened until it does — so R1 is now a **condition, an instrument and an observable**,
   and card#9300 owns writing the commands on a host where they can be run and **seen to fail once**.
   R1/R2 ownership also split: the credential-free config checks gate `bin/deploy.sh`; R1's wire half
@@ -230,6 +230,29 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   document to code that already shipped (`server/app/Feed/SeatDelta.php` emits one delta per version
   increment), so a doc-vs-code divergence closes here rather than opening. #7838's remaining items are
   untouched and it is not reopened.
+  ⛔ **Round 3 (two fresh reviewers again) found that round 2's own fix had left the document
+  contradicting itself, and four independent defects are fixed here.** **(1)** § 8.3 stated the
+  framing rule twice and incompatibly — `event:` carries `t`, and then `event:` carries the fixed
+  literal `mezzanine` — so the wrong half is **deleted** rather than reworded, leaving the ruling as
+  the only statement of it; the round-2 entry above said the same wrong thing and is corrected with
+  it, which is the only sibling the claim had (FLOOR § 2.2 and D2 § 8.3's primitive sentence were
+  audited and are correct). **(2)** That fix did not reach the **buildable** surface: § 8.3's
+  pseudocode yields bare values, and `eventStream()` names the event `update` unless the yield is a
+  `StreamedEvent` — so a builder following the block ships `event: update` on every message and the
+  client's one listener never fires. Every yield is now stated as
+  `new StreamedEvent('mezzanine', $json)`, in the block and under it. **(3)** R1's instrument was
+  named from reading for the **second** time: `php-fpm -tt` exits `failed to open error_log …
+  Permission denied` before printing anything, and dumps FPM's configuration rather than ini
+  directives. Replaced by **`php-fpm -i`**, which was RUN — `output_buffering => 4096 => 4096`,
+  `Loaded Configuration File => /etc/php/8.5/fpm/php.ini`, with nothing under `pool.d/` setting it —
+  and the rule restated as baseline-then-pool-override. **(4)** Appendix B step 9's list of tests to
+  re-point before `CapturingBroadcaster` is deleted was **provably short**: the row's own
+  `-i broadcast` grep cannot see a test that drives `$this->wire` without spelling the word, so the
+  population is now stated as the grep that re-derives it, and `FeedTestCase::setUp()`'s inherited
+  breakage is named. That exposed an **ordering** defect: AT-D2-23 is in that set and is step 11's
+  gate, while step 11 runs after step 9 — so step 9 would delete the class its own successor's gate
+  is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned is NOT
+  touched here** — it is separate design work, and this entry does not claim it settled.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
