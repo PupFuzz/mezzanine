@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D2 verification gate: docs/design/FLEET-STATE.md.
 
-ELEVEN guard classes, G1-G11, one per defect class a review of this document found by hand.
+TWELVE guard classes, G1-G12, one per defect class a review of this document found by hand.
 Every population below is RE-DERIVED on each run -- from this document's own tables, from the
 JSON blocks it publishes, or from docs/design/EVENT-SCHEMA.md -- and never from a list stored
 here.  A number written into a checker is a number free to disagree with the document it is
@@ -24,6 +24,11 @@ checking, and it survives exactly the pass that falsifies it.
   G10 retention chain 8 < 10 < 14                 (regression guard on the one number D1 says
                                                    corrupts a timeline silently)
   G11 section 10's trace, counted from its table  (R1-21: "one transition row" against two)
+  G12 `feed.close` reason closure + the ruling  (card#9287 R6: five rounds of one premise --
+      it is stated at, both directions           a stream surviving a store outage -- withdrawn;
+                                                  the three sites that state the close are held
+                                                  to naming it, and the reason set to its own
+                                                  declared size)
 
 Three things are NOT fully mechanizable and say so in the output rather than reporting a clean
 over a population they never measured (canon: a clean result over an unnamed population reports
@@ -1236,6 +1241,74 @@ else:
             if WORD.get(word.lower()) != actual:
                 fail.append(f"G11: section 10 claims {word} {what}; its own table has {actual}")
 
+# ------------------ G12. the `feed.close` reason set, and the ruling it carries ----
+# card#9287's operator ruling (2026-09-12): a read of the store that does not ANSWER ends the stream,
+# and the client is told which condition ended it.  Four sites carry that rule -- section 8.3's
+# `feed.close` row declares the vocabulary, section 2.2's two stream rows state the posture, section
+# 9's re-check states its non-answer branch, and section 8.3's handler fence is the buildable form --
+# and the defect class this guard exists for is a site drifting off it: a posture row that goes back
+# to holding the stream open through an outage, a re-check branch that stops naming a close, or a
+# reason invented for one posture.  Five review rounds produced exactly those three.  NOTHING is
+# written here: the reason SET is re-derived from the document's own uses, its declaration from the
+# section 8.3 row, and the cardinal from the prose that states it -- so a fourth reason minted
+# anywhere reds by name, and so does a count that stopped matching.
+MSG_HEADER = r"^\| Message `t` \| Direction \| When \| Payload \|"
+g12_reasons = ()
+_rows83 = table_rows(sec83_txt, MSG_HEADER) or []
+_close_row = next((r for r in _rows83 if r.startswith("| `feed.close` |")), None)
+_used = sorted(set(re.findall(r'feed\.close\{reason:\s*"([a-z_]+)"\}', raw)))
+if not _close_row:
+    fail.append("G12 CONTROL: section 8.3's message table carries no `feed.close` row, so the close "
+                "reasons this document uses are declared nowhere and every use below would be "
+                "checked against an empty set")
+elif not _used:
+    fail.append("G12 CONTROL: not one `feed.close{reason:\"...\"}` occurs in this document — the "
+                "set would then be reported closed over nothing, which is the empty-population "
+                "clean this file exists against")
+else:
+    g12_reasons = tuple(_used)
+    undeclared = [r for r in _used if f"`{r}`" not in _close_row]
+    if undeclared:
+        fail.append(f"G12: `feed.close` is used with {undeclared} and section 8.3's own row does not "
+                    f"declare {'them' if len(undeclared) > 1 else 'it'} — a reason minted at a use "
+                    f"site is a member the table that closes the set never admitted")
+    m = re.search(r"the set is \*\*exactly (\w+)\*\*", _close_row)
+    if not m:
+        fail.append("G12 CONTROL: section 8.3's `feed.close` row no longer states the size of its "
+                    "set, so the closure it claims is unstated and unguarded")
+    elif WORD.get(m.group(1).lower()) != len(_used):
+        fail.append(f"G12: section 8.3 says the `feed.close` set is exactly {m.group(1)}, and this "
+                    f"document uses {len(_used)} reasons ({_used}). The declaration and the usage "
+                    f"are one fact with two homes")
+
+# the ruling's three statement sites, each held to naming the close POSITIVELY -- a site that reverts
+# to a surviving stream stops naming it, which is what makes this check able to fail
+CLOSE_UNAVAIL = 'feed.close{reason:"unavailable"}'
+sec22_txt = section_text("22-fail-posture-per-path") or ""
+_prows = table_rows(sec22_txt, r"^\| Path \| Store/dependency unavailable \| Posture \|") or []
+_stream_rows = [c for c in (cells(r) for r in _prows)
+                if len(c) >= 3 and re.search(r"[Ss]tream", c[0])
+                and re.search(r"store (?:down|becomes unreachable|unreachable)", c[1])]
+if len(_stream_rows) < 2:
+    fail.append(f"G12 CONTROL: section 2.2 carries {len(_stream_rows)} stream rows whose condition is "
+                f"the store being unreadable; the connect case and the mid-stream case are two, so "
+                f"the fail-posture table has lost a path this ruling is stated on")
+else:
+    for c in _stream_rows:
+        if CLOSE_UNAVAIL not in c[2]:
+            fail.append(f"G12: section 2.2's `{c[0]}` row meets an unreadable store and its posture "
+                        f"does not end the stream with {CLOSE_UNAVAIL} — card#9287's ruling is that "
+                        f"the stream ENDS and the client is told which condition ended it, and a "
+                        f"stream held open through an outage is the posture that ruling withdrew")
+for _anchor, _what in (("9-read-side-authentication",
+                        "section 9's re-check: a read that did not answer ABOUT THE SESSION ends the "
+                        "stream under `unavailable` rather than under `session`"),
+                       ("83-the-websocket-delta-feed",
+                        "section 8.3's handler loop, which is the buildable form of it")):
+    if CLOSE_UNAVAIL not in (section_text(_anchor) or ""):
+        fail.append(f"G12: {CLOSE_UNAVAIL} appears nowhere in #{_anchor} — {_what}. A rule stated at "
+                    f"some of its sites and not the others is the drift this gate exists for")
+
 # ---------------- the count of guard classes, which is itself a prose count ----
 # Section 14 item 8 and section 12's status table state how much of this document is tool-checked.
 # They said "ten" against eleven for a whole revision.  A gate that checks every other count in
@@ -1305,6 +1378,7 @@ print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len
       f"declared by section 8.2.4: {len(health_counters)}")
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
+print(f"G12 `feed.close` reasons re-derived from this document's own uses: {g12_reasons}; section 2.2 stream rows holding the close: {len(_stream_rows)}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's manual residue, printed "
       "above — a row whose D1-source column names no section number cannot be reached by any "

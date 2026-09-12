@@ -41,9 +41,17 @@ use Illuminate\Support\Facades\Broadcast;
  * ⛔ CORRECTED card#9287 (2026-09-12): an earlier revision of this comment reasoned from "the `log`
  * and `null` broadcasters, config/broadcasting.php, and BROADCAST_CONNECTION in .env.example". That
  * mechanism is NOT this tree's: `ls server/config` carries no broadcasting.php, so
- * BROADCAST_CONNECTION is read by NOTHING (grep it — .env.example and this comment are its only
- * occurrences). The conclusion above happens to be right, but it was reached through a config file
- * this repository does not have, so the reasoning could not be checked by anyone who tried.
+ * BROADCAST_CONNECTION is read by NOTHING. The conclusion above happens to be right, but it was
+ * reached through a config file this repository does not have, so the reasoning could not be
+ * checked by anyone who tried.
+ *
+ * ⛔ AND THE CORRECTION SHIPPED ITS OWN DEFECT, corrected in turn (card#9287, round 6): it went on
+ * to ENUMERATE the key's occurrences — ".env.example and this comment are its only occurrences" —
+ * which was checkable and false — `server/phpunit.xml` carries one it missed. An enumeration in two
+ * files is two copies free to drift, and the retirement at D2 Appendix B step 9 is exactly the act
+ * that reads one and leaves the rest orphaned. NO LIST IS WRITTEN HERE. Re-derive it:
+ *
+ *     git grep -n BROADCAST_CONNECTION -- server
  *
  * ⭐ SUPERSEDED BY card#9287 (2026-09-12): D2 § 8.3 re-pinned the feed to native Server-Sent Events
  * on `GET /api/fleet/stream`, gated by the route's ordinary session + MFA middleware and RE-CHECKED

@@ -17,7 +17,11 @@ use Illuminate\Foundation\Events\Dispatchable;
  *
  * § 2.2's "Stream connect / the app up, the store down" row is the case that makes it required
  * rather than nice: the connection is accepted and IMMEDIATELY sent `fleet.health` with
- * `db: "down"`, "which is the whole reason the stream stays open in that posture". That is also the
+ * `db: "down"`, "which is the whole reason the connection is accepted at all in that posture: it is
+ * opened to say why, and ends with `feed.close{reason:"unavailable"}` in the same breath". ⛔ That
+ * quotation changed on card#9287's operator ruling (2026-09-12): the stream no longer OUTLIVES a
+ * store outage under any posture, so this message is the last thing a doomed connection says rather
+ * than the first thing a surviving one does. The message itself is unchanged. That is also the
  * ONE surface on which `db: "down"` is a complete answer — `App\Read\FleetHealth::down()` carries
  * only the members that are knowable with the store unreadable, and on REST that object rides a
  * `503` rather than a `200`.

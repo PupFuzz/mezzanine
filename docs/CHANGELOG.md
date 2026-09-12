@@ -253,7 +253,11 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   gate, while step 11 runs after step 9 — so step 9 would delete the class its own successor's gate
   is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned was NOT
   touched by those four fixes** — it was separate design work, and round 4 below is where it is settled.
-  ⛔ **Round 4 settles it, and it was a CONTRADICTION BETWEEN TWO SECTIONS rather than an open
+  ⛔ **ROUND 4 IS SUPERSEDED BY ROUND 6 BELOW and is kept as the record of what was tried, not as a
+  statement of the design.** Every posture the next paragraph settles — the already-open row, the third
+  auth outcome, the frozen cursor, AT-D2-19's *still open at 60 s* leg — was WITHDRAWN by the operator
+  on 2026-09-12. Read it for why the reversal was needed; read round 6 for what the design says.
+  ⛔ **Round 4 settled it as a CONTRADICTION BETWEEN TWO SECTIONS rather than an open
   product question.** § 2.2's *feed stream, ALREADY OPEN* row rules that a store outage under an open
   stream keeps it **open as the messenger** — `fleet.health{db:"down"}`, no cursor advance, no end —
   while § 9 re-checked the session every **15 s by re-reading the user record from that same store**
@@ -290,6 +294,68 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   G7's message-type closure only sees BACKTICK-DELIMITED tokens, so § 8.3's pseudocode fence and every
   braced prose token sit outside its population — a real gap, filed as its own card rather than bundled
   into this design change, where it would inherit this entry's review.
+  ⭐⭐ **ROUND 6 — OPERATOR RULING, 2026-09-12: the premise under rounds 1-5 is WITHDRAWN. When the
+  store is unreachable the stream ENDS and the client says so.** Five review rounds circled one
+  assumption — *the fleet dashboard should stay useful while the store is unreachable* — and the fifth
+  round's own stopping criterion fired (a fix re-minting the class it existed to prevent, twice) rather
+  than converging. The operator took it as a product question and answered it: with the store gone
+  there is nothing to show, nothing to advance a cursor past and nothing a session re-check can be
+  checked against, so the design stops and says so instead of building a recovery path back to a place
+  with no value. **`feed.close{reason:"unavailable"}` · FLOOR renders *fleet data unavailable* · the
+  client retries on a BACKED-OFF cadence.**
+  **What this DELETED rather than answered — each one removed, not qualified beside its replacement:**
+  **(1)** D2 § 2.2's *feed stream, ALREADY OPEN* row and its whole posture; the row is now
+  **Feed stream, MID-STREAM**, posture **CLOSED**. **(2)** § 9's *unverifiable* outcome as a state that
+  keeps a stream alive — the re-check now continues the stream on ONE outcome and ends it on every
+  other, and § 8.3's loop writes the non-answer branch as `default` so that no exception escapes the
+  switch into the primitive's `catch (Throwable)` and ends the response with no `feed.close` at all.
+  **(3)** The frozen cursor, everywhere it was stated: nothing holds a cursor across an outage, so
+  recovery is a reconnect and a fresh snapshot. **(4)** § 6.7's 60 s retention arithmetic **did not
+  move and did not need to**: 45 + 15 was always derived from § 8.5's stall bound — a SLOW consumer
+  blocked in a write — and never from a stream outliving a store outage; what the frozen cursor did was
+  falsify it, and deleting the cursor restores § 8.5's *no row is ever skipped for any client* rather
+  than amending either. **(5)** AT-D2-19's *still open at 60 s* leg and its two runs, rewritten against
+  the close.
+  **Which reason a failed session re-check sends is now a stated RENDER decision, not an implementer's
+  guess:** `unavailable`, never `session` — a sign-in cannot be completed while the store is
+  unreadable, because authenticating reads the tables the check just failed on, and *your session is
+  gone* is the wrong sentence when what is true is *the store is down*. The closed set of three
+  `feed.close` reasons is unchanged and this mints no fourth member.
+  **The cost the operator is buying, stated so nobody re-litigates it:** F20's reconnect stampede is
+  real, and the answer is **client backoff**, which D3 § 2.2 now owns — after a
+  `feed.close{reason:"unavailable"}` the retry interval doubles from the 10 s cadence to an **80 s**
+  ceiling, that being the first interval at which a browser makes fewer than one request a minute
+  against a store refusing all of them, with the ceiling derived from the cadence rather than minted.
+  ⛔ **F1's 10 s poll is NOT backed off**: that path is a dead stream over a READABLE store, where the
+  polled floor is the product working.
+  **Also in this round, the four review findings the ruling left standing as ordinary work.** **F3** —
+  AT-D2-19's restore assertion was unproducible in its run 2 and the leg claimed *"the assertions below
+  hold in both"*; recovery is now its own leg, producible in both runs, and what differs between them is
+  stated as the BOUND (one tick where the tick read fails, one auth interval where only the re-check
+  does) rather than as the cursor. **F4** — `db: "up"` is not a member of § 8.2.4's `db` enum; every
+  site that introduced it is deleted by the ruling except AT-D2-19's, which now **cites § 8.2.4 for the
+  value instead of restating it**, because a vocabulary with two homes is one that drifts. **F7** —
+  `routes/channels.php` and `.env.example` each claimed `BROADCAST_CONNECTION`'s *"only occurrences"*
+  were those two, and `server/phpunit.xml` carries one they missed. Two hand-kept copies of one
+  enumeration are two copies free to drift, and D2 Appendix B step 9's retirement is exactly the act
+  that reads one and orphans the rest — so **both are replaced by the derivation**
+  (`git grep -n BROADCAST_CONNECTION -- server`) rather than by a corrected list. **F8** — Appendix B
+  step 8 gated on AT-D2-19 while step 9 builds the handler its stream legs drive, and step 9's gate
+  named it nowhere: step 8's citation is scoped to the REST, token and MFA legs and step 9 gains the
+  stream legs.
+  **And one carried doc-sync debt (canon #16), held out of `PupFuzz/mezzanine#115` because this branch
+  is live in the file:** D2 § 13 row 44's *Cost if wrong* cell said card#7341's floor-v1 map was *still
+  that card's to author* and its tileset pull *vendored no map*. Both were false once card#9269
+  authored `resources/floor/default.tmj` (#115). The row's RULE is untouched; the cell no longer
+  restates the tree's state at all — it points at `git ls-files resources/floor` and at
+  `verify-floor.py`'s two-directional hold on § 10.3, because a state written into a cell is a state
+  free to drift from the tree.
+  ⚠ **One deviation from the ruling's letter, named rather than absorbed:** the ruling said D2 § 2.1's
+  heartbeat-daemon row *stays as it is*. Its *"told … by the heartbeat's ABSENCE … the one case where
+  silence is the message"* clause was written for an outage the stream survived, and under the close it
+  is false — the close is the messenger within one 250 ms tick. That one clause is corrected; the row's
+  ruling (a daemon writing to the same store is not the messenger of that store's outage) is untouched,
+  and silence keeps its one remaining meaning: a stream that ended without saying so.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
