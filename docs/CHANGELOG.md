@@ -19,6 +19,13 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7897** — D3 § 5.1 rule 4 states that `task.as_of` is **not drawn on the desk**, and § 13 gains
+  **decision 26** recording it with its alternative and reversal cost. Operator ruling, 2026-09-12,
+  taking option (b) of the amendment PupFuzz/mezzanine#95 proposed and did not apply: the member stays
+  in § 5.1's field list and is EXCLUDED by a stated rule rather than dropped from the list, so the
+  desk's contract says nothing an implementer has to fill in. No code changes — the module already
+  does not carry the member; what it lacked was the document saying so.
+
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
   derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
