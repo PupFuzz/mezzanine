@@ -25,10 +25,13 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
   G7  state and badge render closure            a D2 enum member with no render, or a render for a
                                                member D2 does not declare
-  G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key,
-                                               and `S` against the MAP FILE -- present, its
-                                               `desks` objects are counted; absent, section 10.3
-                                               must SAY so and no map may exist in the tree
+  G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key;
+                                               `S` against the SHIPPED DEFAULT map file -- present,
+                                               its `desks` objects are counted; absent, section
+                                               10.3 must SAY so and no map may exist in the tree;
+                                               the desk sprite's size against its PNG; and the
+                                               READ PATHS section 10.3 says a room's map is fetched
+                                               from must be exactly the ones D2 section 8.7 declares
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -1393,7 +1396,7 @@ if not m or (int(m.group(1)), int(m.group(2))) != (2166136261, 16777619):
     fail.append("G8 CONTROL: section 3.2's FNV-1a constants did not parse or do not match the "
                 "function this check implements — the worked example would be checked against a "
                 "different hash than the document specifies")
-m = re.search(prose(r"the `aimla` floor map, S = (\d+)"), sec32)
+m = re.search(prose(r"the shipped default map, S = (\d+)"), sec32)
 S = int(m.group(1)) if m else 0
 if not S:
     fail.append("G8 CONTROL: section 3.2's slot count did not parse")
@@ -1456,7 +1459,14 @@ else:
             fail.append("G8: section 3.3 says the arriving seat takes the slot, but it does not "
                         "sort lower in the (h, seat_id) order the function uses")
 
-# ---- G8b. `S` against the MAP FILE, and the absence of one declared rather than implied ----
+# ---- G8b. `S` against the SHIPPED DEFAULT map file, and its absence declared rather than implied ----
+# WHAT MOVED UNDER card#9208's REVERSAL (2026-09-12) AND WHAT DID NOT.  The file this leg counts is no
+# longer "the client's build artifact": it is the SHIPPED DEFAULT, the one map every room renders until
+# an operator authors one, and an authored room's `S` lives in a database column this gate cannot read.
+# The three branches are unchanged, because the claim they hold is unchanged -- section 10.3 declares
+# a path and either the file is there (COUNTED), or it is not and the document says so (ABSENT), or the
+# two disagree (CONTRADICTED / MISPLACED).  What is NEW is G8d below: the document used to be required
+# to say there was NO read path, and now it is required to NAME the ones D2 declares.
 # WHAT THIS REPLACES.  The leg above reads `S` out of section 3.2's prose and re-derives the worked
 # table from it -- which checks the document against itself and nothing else.  Until card#9208 the
 # sentence it read called the map SHIPPED while NO Tiled map existed anywhere in this repository, so
@@ -1477,8 +1487,8 @@ SWEEP_SKIP = {".git", "node_modules", "vendor", "storage"}
 
 m_sp = re.search(prose(r"\*\*`(\.tm[a-z])`, `(\.tm[a-z])`\*\* — Tiled's map"), sec101)
 m_layer = re.search(prose(r"object layer named `([a-z_]+)`"), sec103)
-m_path = re.search(prose(r"that artifact is `([^`]+)`"), sec103)
-m_s103 = re.search(prose(r"The `aimla` floor map declares \*\*(\d+)\*\*"), sec103)
+m_path = re.search(prose(r"the \*\*shipped default\*\*, `([^`]+)`"), sec103)
+m_s103 = re.search(prose(r"The shipped default map declares \*\*(\d+)\*\*"), sec103)
 g8_branch = "NOT MEASURED"
 if not m_sp:
     fail.append("G8 CONTROL: section 10.1 clause 1 no longer names Tiled's two map spellings in the "
@@ -1488,16 +1498,16 @@ elif not m_layer:
     fail.append("G8 CONTROL: section 10.3 no longer names the object layer the slots live on, so a "
                 "map file could be counted on the wrong layer or on none")
 elif not m_path:
-    fail.append("G8 CONTROL: section 10.3 declares no path for the `aimla` floor's map artifact — "
-                "under card#9208's ruling the map is a build artifact, and an artifact nothing names "
-                "the location of is one no gate can ever read")
+    fail.append("G8 CONTROL: section 10.3 declares no path for the shipped default map — the one map "
+                "the repository ships is the one every unauthored room renders, and a file nothing "
+                "names the location of is one no gate can ever read")
 else:
     SPELLINGS = {m_sp.group(1), m_sp.group(2)}
     layer_name = m_layer.group(1)
     declared = m_path.group(1)
     absence_declared = re.search(ABSENCE, sec103) is not None
     if not any(declared.endswith(s) for s in SPELLINGS):
-        fail.append(f"G8: section 10.3 declares the map artifact at `{declared}`, whose suffix is "
+        fail.append(f"G8: section 10.3 declares the shipped default at `{declared}`, whose suffix is "
                     f"none of Tiled's map spellings {sorted(SPELLINGS)} that section 10.1 clause 1 "
                     f"admits — the declared path could not be a map")
     stem = re.sub(r"\.[^.]+$", "", declared)
@@ -1533,7 +1543,8 @@ else:
         g8_branch = "MISPLACED"
         fail.append(f"G8: Tiled maps exist in this repository — {in_tree} — and none of them is at "
                     f"the path section 10.3 declares ({[str(q.relative_to(ROOT)) for q in candidates]}), "
-                    f"so the client's build artifact is not where this document says it is")
+                    f"so the shipped default is not where this document says it is — a floor-v1 map "
+                    f"landing at the per-room path the reversed ruling declared is this branch by name")
     elif present:
         g8_branch = f"COUNTED from {', '.join(str(q.relative_to(ROOT)) for q in present)}"
         if absence_declared:
@@ -1564,12 +1575,12 @@ else:
                         f"not declare the absence either — so S = {S} is a count of a file that does "
                         f"not exist, stated by the only document that cites it")
     if m_s103 and S and int(m_s103.group(1)) != S:
-        fail.append(f"G8: section 10.3 states the `aimla` map declares {m_s103.group(1)} slots and "
+        fail.append(f"G8: section 10.3 states the shipped default declares {m_s103.group(1)} slots and "
                     f"section 3.2 states S = {S} — one count, two homes, and the map is not there to "
                     f"settle which is right")
     elif not m_s103:
-        fail.append("G8 CONTROL: section 10.3 no longer restates the `aimla` map's slot count in the "
-                    "form this leg closes against section 3.2, so the two homes are unguarded")
+        fail.append("G8 CONTROL: section 10.3 no longer restates the shipped default's slot count in "
+                    "the form this leg closes against section 3.2, so the two homes are unguarded")
 
 # ---- G8c. the desk sprite's declared size, against the FILE -----------------------------------
 # Section 12's viewport row waited on "a desk's rendered width [being] a measured number rather than
@@ -1612,6 +1623,44 @@ if m_sprite:
                 fail.append(f"G8: section 10.3 states the desk sprite is {_dw}x{_dh} px and "
                             f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
                             f"section 12's viewport row rests on the document's copy")
+
+# ---- G8d. THE READ PATHS section 10.3 names must be EXACTLY the ones D2 § 8.7 declares -------------
+# Under the 2026-09-09 ruling this document was required to say the map had NO read path, and D2 was
+# required to say so too (its section 8.2 declared "no fifth endpoint ... none that serves a floor
+# map").  card#9208's reversal inverted both: the map is served, so section 10.3 must NAME the surface
+# it is fetched from -- and a path this document names that D2 does not declare is card#8075's defect
+# in its exact shape, a renderer fetching from a surface nobody designed.  The closure runs BOTH ways
+# against D2 section 8.7's own table: every path 10.3 names must be a `GET` row somewhere in D2, and
+# every `GET` row of section 8.7 must be named by 10.3 -- so dropping the map path while the layout
+# path stays is a red, not a quieter green.  Every population is re-derived: 10.3's paths from its own
+# backticked `GET /api/...` spans, D2's rows from its tables on every run, so a surface D2 moves or
+# renames moves this check with it.
+d3_paths = set(re.findall(r"`GET (/api/[^`\s]+)`", sec103))
+d2_paths, d2_87_paths = set(), set()
+for _m in re.finditer(r"^\|\s*`GET`\s*\|\s*`([^`\s?]+)", d2_raw, re.M):
+    d2_paths.add(_m.group(1))
+_sec87 = section_text("87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed",
+                      d2_lines, d2_by_anchor) or ""
+for _m in re.finditer(r"^\|\s*`GET`\s*\|\s*`([^`\s?]+)", _sec87, re.M):
+    d2_87_paths.add(_m.group(1))
+if len(d2_paths) < 4:
+    fail.append(f"G8d CONTROL: only {len(d2_paths)} `GET` rows parsed out of D2's endpoint tables — the "
+                f"declared set is under-read, and every path section 10.3 names would red as undeclared")
+if len(d2_87_paths) < 2:
+    fail.append(f"G8d CONTROL: D2 § 8.7's table yields {len(d2_87_paths)} `GET` rows — the building "
+                f"surface's own population did not parse, so the equality below would be vacuous")
+if not d3_paths:
+    fail.append("G8d CONTROL: section 10.3 names no `GET /api/...` read path for a room's map — under "
+                "card#9208's reversal the map is served, so a section that names no surface is the "
+                "silence card#8075's renderer filled in with a surface of its own")
+for _p in sorted(d3_paths - d2_paths):
+    fail.append(f"G8d: section 10.3 fetches from `GET {_p}` and no D2 endpoint table declares that path "
+                f"(D2 declares {sorted(d2_paths)}) — a read surface this document names and the "
+                f"contract does not, which is card#8075's shape")
+for _p in sorted(d2_87_paths - d3_paths):
+    fail.append(f"G8d: D2 § 8.7 declares `GET {_p}` for the building and section 10.3 no longer names "
+                f"it — the document has stopped saying where that document comes from, which is the "
+                f"silence this leg exists to refuse")
 
 # --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
 # G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
@@ -2497,9 +2546,13 @@ print(f"G7  render closure, both directions: {len(state_rendered)}/{len(render_m
       f"{len(ur_rendered)}/{len(ur_m)} unknown_reason, {len(badge_rendered)}/{len(badge_m)} badges, "
       f"{len(link_rendered)}/{len(link_m)} link_state, {len(act_rendered)}/{len(act_m)} "
       f"activity_state, {len(aet_rendered)}/{len(aet_m)} api_error_type (the last from D1 § 6.4)")
+print(f"G8d the read paths: section 10.3 names {len(d3_paths)} `GET /api/...` path(s) for the building, "
+      f"held to set-equality with D2 § 8.7's {len(d2_87_paths)} `GET` rows and to membership of D2's "
+      f"{len(d2_paths)} — the INVERSE of the rule this leg held under the 2026-09-09 ruling, which "
+      f"required the document to say there was none")
 print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair; "
       f"the map artifact: {g8_branch}. The two branches are different claims and the output says "
-      f"which one ran — COUNTED means S was held against a file's `desks` layer; ABSENT means it "
+      f"which one ran — COUNTED means S was held against the shipped default's `desks` layer; ABSENT means it "
       f"was held against nothing but this document's own declaration that there is no file, "
       f"which is the strongest true claim available and is NOT evidence about the number. The "
       f"tree sweep for a map skips {sorted(SWEEP_SKIP)}.")

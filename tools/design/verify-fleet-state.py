@@ -967,7 +967,10 @@ if declared_types and fleet_fields:
     # `coord` joined the prefix set with § 8.3.3 (card#9212): a coordination message type written
     # in prose with no row in § 8.3's table is the same defect as a `feed.` one, and until it was
     # listed here the two new types were declared by the table and unchecked everywhere else.
-    for m in re.finditer(r"`((?:seat|fleet|feed|coord)\.[a-z_]+)`", raw):
+    # `room` and `building` joined it with § 8.7 (card#9208's reversal) for the same reason: the
+    # prefix set is the population this closure runs over, and a message type outside it is
+    # declared by the table and held to nothing.
+    for m in re.finditer(r"`((?:seat|fleet|feed|coord|room|building)\.[a-z_]+)`", raw):
         tok, line = m.group(1), raw[:m.start()].count("\n") + 1
         head, _, tail = tok.partition(".")
         if head == "fleet" and tail in fleet_fields:
