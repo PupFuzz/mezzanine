@@ -572,7 +572,7 @@ class StateRecompute
             // The procedure is cited rather than re-implemented here: `BOARD-TASK.md § 8.4`
             // holds the tier-1 poller to the same bound through the same primitive, which is
             // what makes "one bound, one place" true of the input row and this projection.
-            'task_title' => mb_substr($title, 0, self::TASK_TITLE_MAX_BYTES),
+            'task_title' => ByteTruncation::toBytes($title, self::TASK_TITLE_MAX_BYTES),
             'task_source' => 'telemetry',
             'task_ref' => null,
             // NEVER null on this branch, and § 8.2.1 is why it has to be argued: `task.as_of` is
