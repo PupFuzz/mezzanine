@@ -19,6 +19,61 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9250** — **MIGRATIONS NOW RUN ON THE ENGINE THEY RUN ON.** Until this landed, no
+  migration in this repository had ever been executed against MariaDB: the suite is SQLite
+  (`server/phpunit.xml`), `php-tests` asserts SQLite by name, and production is MariaDB
+  (`docs/PLAN.md` D-15 as amended 2026-09-09). Laravel compiles the two through different schema
+  grammars — SQLite has no native `ENUM` and REBUILDS a table where MySQL/MariaDB emits
+  `ALTER … MODIFY` — so a migration that passed CI and failed on MariaDB was discoverable only at
+  deploy, where DDL is non-transactional and a multi-statement migration halts PART-APPLIED.
+  **A second job, `php-tests-mariadb`, now runs every migration and the whole suite against a
+  `mariadb:11.8.6` service container** — the exact floor `docs/design/FLEET-STATE.md § 6.1` pins,
+  not a floating tag, because the point is to execute the minimum the document promises.
+  ⛔ **An ADDITIONAL lane, not a changed one**: the SQLite lane and its `DB_CONNECTION=sqlite`
+  assertion are untouched, and the two jobs share nothing but the checkout. The backend is selected
+  by **exporting** `DB_CONNECTION`, which is the mechanism `phpunit.xml`'s unforced declaration and
+  `§ 6.2` finding 1 always described — *"nothing in this repo's CI selects a backend by exporting
+  it today; when something does, it must win"* is no longer a hypothetical, and the three places
+  that said so are corrected. Every other § 6.2 pin is forced + paired and correctly DEFEATS the
+  new job's exports: CI chooses the store, CI does not choose the isolation.
+  ⭐ **The lane is built so it can fail, and was seen to.** New `tools/ci-store-probe.php` asks the
+  SERVER rather than trusting a declaration: it reds unless `VERSION()` names MariaDB, it **derives**
+  § 6.1's floor from that document's engine row and reds when the live server is below it (the
+  `services:` image tag cannot be interpolated, so the copy is guarded rather than deleted), and it
+  asserts table presence against a caller-stated expectation. The lane runs it as a **control pair**
+  twice — empty, migrate, non-empty; wipe, run the suite, non-empty — and the second pair is the
+  only available proof that the SUITE resolved to MariaDB rather than silently to SQLite, which is
+  § 6.2 finding 4's failure mode (*a MariaDB matrix that re-ran both legs on SQLite, green, testing
+  nothing*). `pdo_sqlite` is deliberately **not installed** in that job for the same reason: a
+  fallback must fatal, not pass.
+  ⚠ **Still not covered, by name**: TLS and the `+00:00` session time zone (the container is
+  plaintext on loopback and `config/database.php` sets no `timezone`); `down()` (only `up()` runs —
+  `bin/deploy.sh` is forward-only on purpose, so a `down()` defect is on no production path); and
+  every concurrency exposure card#7523 lists (`FOR UPDATE SKIP LOCKED`, the `Predicates::record()`
+  lost update, the ABBA ordering), which need two connections working at once and which a
+  single-threaded suite does not produce. What card#7523 gains is that those are now blocked on a
+  TEST rather than on a STORE — the correction is written into `MySqlColumnTypeTest`'s header,
+  which said the opposite.
+  ⭐ **WHAT THE FIRST RUN FOUND, which is the whole argument for the lane.** Every migration
+  applied cleanly on MariaDB — **no migration defect exists**, and that is now a measurement
+  rather than a hope. What the lane did catch is a defect class in the TESTS: **two tests match
+  emitted SQL text against SQLite's `"` identifier quoting**, which MariaDB writes as backticks.
+  The two ends of that class are the reason a lane is worth more than an audit.
+  `Tests\Feature\Admin\SeatConsoleTest` FAILED — its `DB::beforeExecuting` hook never fired and
+  its own precondition assertion said so. `Tests\Feature\Ingest\At13AtomicBatchRejectionTest`
+  **PASSED, vacuously**: its filter matched nothing and an empty set is exactly what it asserts,
+  so AT-13's control-flow assertion — *"a refused batch must issue no INSERT at all"* — was a
+  decoration on that engine, green forever and proving the opposite of its claim. Both now ask
+  the connected grammar through one shared `Tests\TestCase::wrapTable()` rather than spelling a
+  quoting character, so a third site cannot mint it by copying a neighbour.
+  The second run found the second: a fixture wrote `'2026-01-01 00:00:00'` into a `DATETIME(3)`
+  column and asserted the literal back. SQLite returns the string it was handed; MariaDB returns
+  `…00:00:00.000`, which is what `§ 6.4` declares the column to be. **Neither engine nor the
+  application is wrong** — `App\Fold\Clock::toMs()` already absorbs both spellings by name and every
+  wire value goes through `Clock::wire()` — the FIXTURE was not a `DATETIME(3)` value, and now is.
+  Audited for siblings by the shape that produced it (a fraction-less datetime literal in a test):
+  `grep -rnE "'20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'" server/tests server/app`
+  returns that file alone.
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
   derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>

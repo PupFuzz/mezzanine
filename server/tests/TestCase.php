@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
@@ -50,5 +51,25 @@ abstract class TestCase extends BaseTestCase
         }
 
         return $app;
+    }
+
+    /**
+     * A table name quoted the way the CONNECTED store quotes it — for the tests that match on
+     * emitted SQL text.
+     *
+     * ⛔ WHY THIS EXISTS, measured rather than imagined (card#9250). Two tests matched query text
+     * against a hand-written `"events"` / `"seats"`, which is SQLite's identifier quoting. MariaDB
+     * uses backticks, so the first run of the `php-tests-mariadb` lane split them cleanly:
+     * `SeatConsoleTest` FAILED, because its injection hook never fired and its own precondition
+     * assertion caught that — and `At13AtomicBatchRejectionTest` PASSED, vacuously, because its
+     * filter matched nothing and an empty set is exactly what it asserts. The second is the
+     * dangerous one: a check that cannot fail reports green forever.
+     *
+     * The grammar is asked rather than branched on, so a third site cannot mint the bug by
+     * copying a neighbouring line, and no test carries a list of engines.
+     */
+    protected function wrapTable(string $table): string
+    {
+        return DB::connection()->getQueryGrammar()->wrapTable($table);
     }
 }
