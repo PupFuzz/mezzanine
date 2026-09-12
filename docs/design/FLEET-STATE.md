@@ -1272,7 +1272,7 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 | Surrogate keys | `installs.id SMALLINT UNSIGNED`, `seats.id INT UNSIGNED`; every hot table carries `seat_ref` | a natural key on `events` would be `install_id` (≤ 32 B) + `seat_id` (≤ 48 B) on every row and in every index — ~76 B against 4 |
 | ULIDs | `CHAR(26) CHARACTER SET ascii COLLATE ascii_bin` | 26 bytes, exact comparison, legible in a query, and lexicographically ordered by mint time. `BINARY(16)` would save 10 B/row and make every diagnostic query require a conversion function; at 10,420 events/seat/day that saving is ~0.1 MB/seat/day against permanent illegibility |
 | Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP` | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone |
-| Enums | MariaDB `ENUM` for closed sets D1 owns; `VARCHAR` + application validation for open ones — **and for a closed set this plane mints for the admin console** (`authored_revisions.kind`, [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)): no ingest coercion exists for it, an unknown member there is a console bug and not a wire value, and storage-layer rejection would buy a migration per member for nothing. ⚠ The one exception this row carried unstated until card#9208's reversal named it: `feed_tokens.scope ENUM('fleet_read')` ([§ 9](#9-read-side-authentication)), a one-member credential scope this plane mints — a member added there is a credential class, which is a migration by nature, so the storage-layer refusal costs nothing it would not cost anyway. So the closing clause of the next cell is true of every enum but that one, and that one is named | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted. So: `ENUM` only where the coercion has already happened at the ingest ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10), which is every enum this schema stores |
+| Enums | MariaDB `ENUM` where the column's **writer can only produce members the schema declares** — a D1 value set coerced at the ingest, or a closed set this plane mints and its own fold, sweeper or console writes (`unknown_reason`, `seat_state_transitions.cause`, `feed_tokens.scope`, `authored_revisions.kind` …); `VARCHAR` + application validation where an unknown member is **data to record** rather than a bug to reject — the open sets D1 rule 7 says must be coerced-and-counted. ⚠ Until card#9208's reversal this row said *closed sets D1 owns* and its Reason cell closed with *which is every enum this schema stores* — false of the schema it sat beside: re-derived by `tools/design/verify-fleet-state.py`'s G1, which prints how many ENUM members this document mints on every run, roughly a quarter of them are D2's own and always were. The criterion is restated rather than the list of exceptions, because the list would be most of the schema | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted, and right for a value only this plane's own code can write — an unknown member there is a bug, and a migration per member is the price of the storage layer refusing it. G1 holds the second half honest: every member this document mints must be produced by a rule it states |
 | `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on **any** path — not just not on a hot one — and after the MariaDB repin that is load-bearing rather than incidental: MariaDB's `JSON` is an alias for `LONGTEXT` + `CHECK (json_valid(…))` and has no arrow operators before 13.1 ([§ 6.1](#61-deployment-posture)). Every JSON column is written whole, read whole and decoded in PHP; the column is kept for the drill-down, for replay and for forensics |
 | String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MariaDB counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
 | Nullability | a column is `NULL` only where D1's field table says the wire value is nullable, or where the fact genuinely does not exist yet | a nullable column that "means zero" is a read-time fallback, which is a defect to trace to its write site |
@@ -1743,10 +1743,10 @@ CREATE TABLE building_layout (
 
 CREATE TABLE authored_revisions (
   id             INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  kind           VARCHAR(16)  CHARACTER SET ascii NOT NULL,  -- 'room_map' | 'building_layout';
-                                            -- VARCHAR + application validation by § 6.3, because
-                                            -- no ingest coercion exists for it and an unknown
-                                            -- kind here is a bug in the console, not a wire value
+  kind           ENUM('room_map', 'building_layout') NOT NULL,
+                                            -- ENUM by § 6.3: the console is the only writer and
+                                            -- it enumerates the set, so an unknown kind is a bug
+                                            -- to reject, not a value to record
   subject        VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- the room's install_id for a room_map; '' for the
                                             -- building_layout. Never a collision: D1 § 3.1's slug
@@ -3433,8 +3433,9 @@ drawn is exactly the room that may have no seat reporting yet — so a `room.map
 room's own channel would reach nobody, and the operator watching for their save would see nothing.
 A client applies a `room.map` only for a room it renders and ignores the rest; it fetches
 `GET /api/building` again on a `building.layout` whose `layout_version` differs from the one it
-holds, so N copies of one message cost one fetch. Neither carries the document, and the reason is arithmetic rather than
-taste: a map is bounded at 512 KiB and a feed message at 8 KiB ([§ 8.3](#83-the-websocket-delta-feed)),
+holds, so N copies of one message cost one fetch. Neither carries the document, and the reason is
+arithmetic rather than taste: a map is bounded at 512 KiB and a feed message at 8 KiB
+([§ 8.3](#83-the-websocket-delta-feed)),
 so the document cannot ride the message, and a truncated one would be worse than none. The messages
 are notifications and the endpoints are the state — the same split as `fleet.health` beside
 `GET /api/fleet/health`. Three shapes were declined, in [§ 13](#13-decisions-taken-revisable-at-review)
@@ -4453,9 +4454,10 @@ D1's: they need an operator answer, a proposal document, or D3.
    per install ([§ 8.3](#83-the-websocket-delta-feed)), so what a per-install viewer may see of the
    fleet's health is a product question, not a filter. Today, under the all-or-nothing read, every
    subscriber may see every room and every aggregate and nothing is exposed; the cost is that the
-   ACL, when ruled, is a filter on `room.map`, a rule for `fleet{}`, and the channel authorization
-   it always was — three edits, one of them a design answer — and it is written here so the ruling
-   is priced with them.
+   ACL, when ruled, is a filter on `room.map`, a rule for `fleet{}`, and the authorization it always
+   was — on the channel, **and on the fleet-wide snapshot and health endpoints, which take no
+   per-install parameter** ([§ 8.2](#82-rest)) and would filter `installs[]` per caller — three
+   edits, one of them a design answer, and it is written here so the ruling is priced with them.
 
 8. **✅ CLOSED — a D2 verifier exists and ships with this document.**
    `tools/design/verify-fleet-state.py` mechanises **eleven** guard classes (G1–G11), listed with their

@@ -1552,6 +1552,14 @@ else:
         # the strays went uncounted, so the sentence "the gate holds the tree in both directions" was
         # true only while no default existed (found by the third review pass of card#9208's reversal).
         strays = sorted(set(in_tree) - {str(q.relative_to(ROOT)) for q in present})
+        if len(present) > 1:
+            # Section 10.3 admits either spelling of the ONE default, never both: two files at one
+            # stem are two shipped maps free to disagree, with nothing saying which is served.
+            g8_branch += "; TWO SPELLINGS"
+            fail.append(f"G8: the shipped default exists in both Tiled spellings — "
+                        f"{[str(q.relative_to(ROOT)) for q in present]} — and section 10.3 declares "
+                        f"one map in either spelling, not one in each; two files at one stem are two "
+                        f"answers to *where does a room's map come from*")
         if strays:
             g8_branch += f"; MISPLACED beside it: {strays}"
             fail.append(f"G8: section 10.3 declares one shipped map, at "

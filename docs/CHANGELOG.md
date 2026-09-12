@@ -836,8 +836,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   at `resources/floor/default.tmj` before any map exists at any path, so the map card#7341 goes on to
   author is written there from the start and nothing is renamed; `verify-floor.py` G8b reds a map
   landing at the old per-room path by name in every state (CONTRADICTED while § 10.3 declares the
-  absence; MISPLACED after it, instead of the default or beside it — the *beside* leg was added by
-  the third review pass, which measured that a stray map next to a present default went undetected).
+  absence; MISPLACED after it, instead of the default or beside it — the gate's own G8b comment
+  records why the *beside* leg was added).
   ⛔ **`room.map` rides EVERY install's channel, like the heartbeat** — a client's subscriptions are
   the snapshot's installs, and the room an operator has just drawn may have no seat reporting, so a
   per-room publish would reach nobody. And the design says plainly what card#9071's *no pinning*
@@ -855,11 +855,11 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   the build re-runs the predicate rather than trusting the list:**
   `grep -rniE "build artifact|never served|no read path|with the page|not from an endpoint|all four|the one endpoint|deploy-time|9208" server/`.
   **Slice 1** (the layout's home): `server/config/building.php`, `server/routes/web.php`,
-  `server/resources/views/dashboard.blade.php` (two hits), `server/resources/views/console/floors/index.blade.php`,
+  `server/resources/views/dashboard.blade.php`, `server/resources/views/console/floors/index.blade.php`,
   `server/public/js/lobby/lobby-model.js`, `server/public/js/lobby/building-model.js`,
   `server/public/js/lobby/main.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`,
   `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`. **Slice 2** (the surface):
-  `server/app/Http/Middleware/FleetReadGate.php` (three hits). **Slice 3 / the floor route** (the
+  `server/app/Http/Middleware/FleetReadGate.php`. **Slice 3 / the floor route** (the
   docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* — the surface now
   exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
   `server/public/js/drilldown/main.js`, `server/public/js/drilldown/drilldown-model.js`,
