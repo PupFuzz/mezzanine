@@ -21,17 +21,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
-  five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had asked in what ORDER N rooms
-  sit and said *Blocks: nothing*; both answers it offered were too small, and it is closed as
-  under-scoped from the one-room case. The plan is two members of the floor's layout entry
-  (D3 § 4.6): a room's `at` — a position, never a size, because a room's extent is its map's grid
+  five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
+  space between and offered an authored position member — and still priced itself *Blocks: nothing
+  that ships*, parked the hallway on card#9269 and designed neither extent nor overlap; it is closed
+  as under-scoped from the one-room case, with what it got right kept as the default. The plan is two members of the floor's layout entry
+  (D3 § 4.6): a room's `origin` — a position, never a size, because a room's extent is its map's grid
   and has that one home (§ 10.3) — and a floor's `hallway`, a Tiled document for the space no room
   occupies, read by § 10.3's table with `desks` refused; two rooms whose footprints would intersect
   are refused at every write, naming both (D2 § 6.11), and the one read-time case is § 9 F18. A
   floor with no plan keeps item 19's interim rule as its default (side by side, key order, the
   § 12 gap). No new table, subject, surface or message: the plan inherits the layout's revisions,
-  `building.layout` and `GET /api/building` (D2 § 8.7, § 13 row 45). D3 § 13 rows 31–33, row 27
-  amended; card#9269 re-scoped to the office's interior, the hallway being the plan's. Both
+  `building.layout` and `GET /api/building` (D2 § 8.7, § 13 row 45). D3 § 13 rows 31–33, rows 25 and 27
+  amended, D2 § 8.3's `building.layout` row; card#9269 re-scoped to the office's interior, the hallway being the plan's. Both
   operator floors are worked in § 4.6. ⚠ Not built: a room's value in `rooms` becomes a record
   there, and the shipped `BuildingLayout` refuses `hallway` by name and a room record as a
   non-scalar form until Appendix B step 11 — which also owes the code comments and refusal messages the record shape makes stale,

@@ -2259,14 +2259,18 @@ them and says which one it does not:
 all three tables, and one save is one transaction: validate the document — a room map by
 `App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
 by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
-states — since card#9292 the floor plan's among them: a placed room's `at`; a planned floor's
+states — since card#9292 the floor plan's among them: a placed room's `origin`; a planned floor's
 `hallway`, held to `App\Floor\FloorMap`'s rules with its `desks` layer refused rather than required;
-and **two rooms whose footprints would intersect** — share a pixel; a shared edge is not an
-intersection, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) — computed from each room's current
-extent: the grid of its authored map, else of the default this store's read half answers for it. ⚠ **That last
+and **two rooms on one floor whose footprints would intersect** — share a pixel; a shared edge is
+not an intersection, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) — computed from each room's
+current extent: the grid of its authored map, else of the default this store's read half answers for
+it. A layout **restore** is checked exactly as a save is, against today's room maps and not the ones
+revision K was checked against, so *undo* cannot re-create an overlap a later map made. ⚠ **That last
 refusal has a SECOND write site**: a room map's save, restore or removal changes the room's extent, so
 on a planned floor it is checked against the current layout in the same transaction and refused by
-name, naming both rooms, before any revision is written — the coupling
+name, naming both rooms, before any revision is written. **Both paths take the `building_layout`
+current row `FOR UPDATE` first**, so a layout write and a room-map write serialise and neither can pass
+its check against a state the other is replacing — the coupling
 [FLOOR.md § 13](FLOOR.md#13-decisions-taken-revisable-at-review) row 32 prices — insert the `room_map` or `building_layout` revision, write the current row, commit, and **on
 commit** publish [§ 8.3](#83-the-websocket-delta-feed)'s `room.map` or `building.layout`. A save that
 fails validation writes nothing and publishes nothing. A save whose document is byte-identical to the
@@ -3394,8 +3398,8 @@ from the snapshot's row.
       { "floor": "aimla", "label": null,
         "rooms": [ { "install": "aimla", "form": "open" } ] },
       { "floor": "sola", "label": "the solos",
-        "rooms": [ { "install": "sola", "form": "office", "at": { "x": 0,   "y": 160 } },
-                   { "install": "zeta", "form": "office", "at": { "x": 288, "y": 160 } } ],
+        "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
+                   { "install": "zeta", "form": "office", "origin": { "x": 288, "y": 160 } } ],
         "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
                      "tilewidth": 32, "tileheight": 32,
                      "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
@@ -3403,7 +3407,9 @@ from the snapshot's row.
     ]
   },
   "rooms": [
-    { "install_id": "aimla", "map_version": 7, "updated_at": "2026-09-12T09:13:58.402Z" }
+    { "install_id": "aimla", "map_version": 7, "updated_at": "2026-09-12T09:13:58.402Z" },
+    { "install_id": "sola",  "map_version": 2, "updated_at": "2026-09-12T08:41:10.007Z" },
+    { "install_id": "zeta",  "map_version": 1, "updated_at": "2026-09-12T08:39:52.615Z" }
   ]
 }
 ```
@@ -3415,11 +3421,13 @@ from the snapshot's row.
   layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
   building, one floor per install.
 - A floor the operator **planned** ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout), card#9292)
-  carries `at` on every room and, where one was authored, its `hallway` — the Tiled document as
+  carries `origin` on every room and, where one was authored, its `hallway` — the Tiled document as
   authored, whole, because it is part of the layout document and not a room's; a floor with neither
-  is laid out by that section's default rule in the client. `at` is a position and never a size: a
+  is laid out by that section's default rule in the client. `origin` is a position and never a size: a
   room's extent is the grid of the map this surface answers for it below, which is why no member
-  here says how big a room is. **The response grows by every hallway on every connect**, bounded by
+  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 256 px wide, which
+  is why they may sit 288 px apart; two unauthored rooms would take the shipped default's grid and the
+  save would be checked against that. **The response grows by every hallway on every connect**, bounded by
   the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
   and by nothing this surface adds; the hallway endpoint of its own that was declined is
   [§ 13](#13-decisions-taken-revisable-at-review) row 45's.
