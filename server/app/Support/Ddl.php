@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\DB;
  * (§ 6.1 named `utf8mb4_0900_ai_ci` until the 2026-09-09 MariaDB repin, card#7523; that collation
  * is not native to MariaDB and is no longer named anywhere.)
  *
- * SQLite — the store `phpunit.xml` pins the suite to — has no `ascii_bin`, and emitting it is a
+ * SQLite — the store `phpunit.xml` DEFAULTS the suite to, and the one the `php-tests` CI lane
+ * runs; since card#9250 the `php-tests-mariadb` lane runs this same suite against MariaDB, where
+ * the branch below is taken rather than skipped — has no `ascii_bin`, and emitting it is a
  * hard error. It also does not need it: SQLite's default `BINARY` collation is already exact, so
  * omitting the clause there preserves the comparison semantics § 6.1 is actually buying rather
  * than dropping them. What is lost on SQLite is the byte-per-character storage win, which is a
@@ -49,9 +51,10 @@ final class Ddl
      *
      * INDEX NAMES ARE PER-TABLE ON MySQL AND PER-DATABASE ON SQLITE, and § 6.4 uses one name on
      * two tables: `ix_open` is declared on both `calls` ("WHERE seat_ref=? AND closed_at IS NULL")
-     * and `attention_requests`. That is legal MySQL and a hard error on SQLite, which is where the
-     * suite runs — so the *production* engine gets the document's names verbatim, and the test
-     * store gets them qualified. Qualifying everywhere instead would have been simpler and would
+     * and `attention_requests`. That is legal MySQL and a hard error on SQLite — so the engine
+     * family production runs gets the document's names verbatim, and SQLite gets them qualified.
+     * Both arms are now executed by CI: `php-tests` takes the qualified one, `php-tests-mariadb`
+     * (card#9250) takes the verbatim one. Qualifying everywhere instead would have been simpler and would
      * have shipped MySQL a set of index names § 6.4 does not contain, which is the one thing that
      * section says a builder may not do.
      *

@@ -19,6 +19,41 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9250** — **MIGRATIONS NOW RUN ON THE ENGINE THEY RUN ON.** Until this landed, no
+  migration in this repository had ever been executed against MariaDB: the suite is SQLite
+  (`server/phpunit.xml`), `php-tests` asserts SQLite by name, and production is MariaDB
+  (`docs/PLAN.md` D-15 as amended 2026-09-09). Laravel compiles the two through different schema
+  grammars — SQLite has no native `ENUM` and REBUILDS a table where MySQL/MariaDB emits
+  `ALTER … MODIFY` — so a migration that passed CI and failed on MariaDB was discoverable only at
+  deploy, where DDL is non-transactional and a multi-statement migration halts PART-APPLIED.
+  **A second job, `php-tests-mariadb`, now runs every migration and the whole suite against a
+  `mariadb:11.8.6` service container** — the exact floor `docs/design/FLEET-STATE.md § 6.1` pins,
+  not a floating tag, because the point is to execute the minimum the document promises.
+  ⛔ **An ADDITIONAL lane, not a changed one**: the SQLite lane and its `DB_CONNECTION=sqlite`
+  assertion are untouched, and the two jobs share nothing but the checkout. The backend is selected
+  by **exporting** `DB_CONNECTION`, which is the mechanism `phpunit.xml`'s unforced declaration and
+  `§ 6.2` finding 1 always described — *"nothing in this repo's CI selects a backend by exporting
+  it today; when something does, it must win"* is no longer a hypothetical, and the three places
+  that said so are corrected. Every other § 6.2 pin is forced + paired and correctly DEFEATS the
+  new job's exports: CI chooses the store, CI does not choose the isolation.
+  ⭐ **The lane is built so it can fail, and was seen to.** New `tools/ci-store-probe.php` asks the
+  SERVER rather than trusting a declaration: it reds unless `VERSION()` names MariaDB, it **derives**
+  § 6.1's floor from that document's engine row and reds when the live server is below it (the
+  `services:` image tag cannot be interpolated, so the copy is guarded rather than deleted), and it
+  asserts table presence against a caller-stated expectation. The lane runs it as a **control pair**
+  twice — empty, migrate, non-empty; wipe, run the suite, non-empty — and the second pair is the
+  only available proof that the SUITE resolved to MariaDB rather than silently to SQLite, which is
+  § 6.2 finding 4's failure mode (*a MariaDB matrix that re-ran both legs on SQLite, green, testing
+  nothing*). `pdo_sqlite` is deliberately **not installed** in that job for the same reason: a
+  fallback must fatal, not pass.
+  ⚠ **Still not covered, by name**: TLS and the `+00:00` session time zone (the container is
+  plaintext on loopback and `config/database.php` sets no `timezone`); `down()` (only `up()` runs —
+  `bin/deploy.sh` is forward-only on purpose, so a `down()` defect is on no production path); and
+  every concurrency exposure card#7523 lists (`FOR UPDATE SKIP LOCKED`, the `Predicates::record()`
+  lost update, the ABBA ordering), which need two connections working at once and which a
+  single-threaded suite does not produce. What card#7523 gains is that those are now blocked on a
+  TEST rather than on a STORE — the correction is written into `MySqlColumnTypeTest`'s header,
+  which said the opposite.
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
   derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
