@@ -1510,6 +1510,32 @@ for _get, _anchor, _doc, _what in G12_SITES:
                     f"stated at some of its sites and not the others is the drift this gate exists "
                     f"for")
 
+# ⭐ G12b -- THE `reload` HALF OF THE SAME RULING, WHICH G12_SITES ABOVE CANNOT SEE.
+# card#9287's round minted `reload` and guarded only `unavailable`: every tuple above holds a site
+# to CLOSE_UNAVAIL and nothing holds any site to the close the round ADDED.  It is not enough to
+# hold it at section 8.3 either -- `_used` is derived over the WHOLE document (the findall on `raw`
+# above), and the `fleet.reload` row's own prose carries the literal, so the "exactly four" cardinal
+# keeps matching after the HANDLER stops writing it.  Measured, not reasoned: deleting the handler's
+# `yield feed.close{reason:"reload"}` left this verifier at rc 0 and every other gate green.
+# So the site this holds is the FENCE -- section 8.3's pseudocode is what an implementer BUILDS
+# from, and a close that survives only in prose is a close no build emits.
+CLOSE_RELOAD = 'feed.close{reason:"reload"}'
+_reload_fenced = [_i for _i, _line in enumerate(raw.splitlines(), 1)
+                  if CLOSE_RELOAD in _line and _i in FENCED]
+_reload_anywhere = [_i for _i, _line in enumerate(raw.splitlines(), 1) if CLOSE_RELOAD in _line]
+if not _reload_anywhere:
+    fail.append(f"G12b CONTROL: {CLOSE_RELOAD} appears nowhere in this document at all, so the "
+                f"member section 8.3's close table declares is used by nothing — the check below "
+                f"would pass vacuously and name the wrong defect")
+elif not _reload_fenced:
+    fail.append(f"G12b: {CLOSE_RELOAD} appears in this document only in PROSE "
+                f"(line(s) {', '.join(str(_i) for _i in _reload_anywhere)}) and in no pseudocode "
+                f"fence — so section 8.3's handler does not write it. The terminal `fleet.reload` "
+                f"then ends every stream with no server-chosen reason, which FLOOR.md section 9 F3 "
+                f"renders as *feed down — polling* in front of every viewer on every deploy against "
+                f"a healthy fleet. That is the exact defect this member was minted to close, and "
+                f"the declaring prose keeps the close table's cardinal matching while it regresses")
+
 # ---------------- the count of guard classes, which is itself a prose count ----
 # Section 14 item 8 and section 12's status table state how much of this document is tool-checked.
 # They said "ten" against eleven for a whole revision.  A gate that checks every other count in

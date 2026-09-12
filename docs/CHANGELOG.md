@@ -529,6 +529,35 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   a close reason the loop never counts, § 8.3's latency bound was measured from the commit while its
   predicate reads `created_at` at INSERT, and this list omitted § 13 row 42, now deferred with the
   § 8.7 prose it is written in.
+  ⭐ **ROUND 8 — the second independent review (2026-09-12), run over the ROUND-7 FIX DELTA only.**
+  Eleven findings, **no blocker**: every mechanism a builder implements was already correct. What is
+  fixed here is the round-7 delta's own residue, on canon #16's rule that a change owes the docs it
+  invalidates — **this delta is what made these clauses false.** *(1)* **Round 7's own root-cause
+  lesson was applied to one of its two blockers.** G12's population became the RULING's sites for
+  `unavailable`, and the `reload` member round 7 MINTED got no guard at all. Measured, not reasoned:
+  deleting the handler's `yield feed.close{reason:"reload"}` left every gate at **rc 0** — because
+  `_used` is derived over the whole document and the `fleet.reload` row's own prose (lines 2439, 2977)
+  keeps the close table's *exactly four* cardinal matching while the handler regresses. The new **G12b**
+  holds the close at the **FENCE** rather than at a section, since section 8.3's pseudocode is what an
+  implementer builds from and a close surviving only in prose is a close no build emits; seen red on
+  that exact plant, naming both prose lines, and reverted byte-identically. *(2)* **The enforcement
+  bound moved at six sites and stayed 4× short at two more** — FLOOR § 9's *"up to one tick — 15 s"*,
+  the phrasing D2 § 9 forbids by name three lines below the row round 7 did fix, and § 13's F7 note
+  citing **decision 36** as authority for a figure decision 36 itself records as retired. Both now point
+  at D2 § 9's guarantee instead of restating a figure. *(3)* **The stall bound was corrected at every
+  CONSUMER and not at its OWNER.** § 8.5 still read *"that worker, for up to the bound"* — in the very
+  clause that hands the figure to R2's `pm.max_children` arithmetic — while § 9 case (b), written by
+  round 7, rules it *"a DETECTOR, not a cap"*. A pool sized from the owner's clause is sized short;
+  § 8.5 and the § 2 backpressure row now say detector, and name R2's teardown as what actually caps
+  occupancy. *(4)* Appendix A's second cardinal stayed at *thirty-nine* against forty T-rows, outside
+  G6's regex; the restatement is deleted rather than re-synced by hand (canon #16). ⚠ **Filed, not
+  fixed here:** the enforcement bound is still restated at ≥ 6 sites across two documents with no
+  guard — fixing N copies in place is what let the N+1th survive round 7 — and G12b guards one reason
+  by name where the site loop should derive its reasons from the declared set; both are consolidation
+  items in their own right. § 8.3's split ruling still assigns card#9300 the R1/R2 ini gate that R1
+  itself forbids building unmeasured, § 14 item 20's site inventory is short by one (§ 13 row 42 takes
+  a position on the parked question), and AT-D3-8 asserts on an input round 7's own fixture edit made
+  unproducible. All five gates rc 0, floor-preview included.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

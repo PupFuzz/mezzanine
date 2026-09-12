@@ -2941,9 +2941,11 @@ session and its MFA on every 15 s heartbeat tick and ends the stream with `feed.
 when the check comes back **invalid** — the store answered and the session or its MFA is gone; a check
 that comes back without an answer about the session ends the stream too, under `unavailable` rather
 than `session`, and renders as F5 — which is the rule [§ 14](#14-open-questions-for-the-review-loop) item 5 asked for.
-**What remains, and is accepted rather than hidden:** up to one tick — 15 s — between an expiry and its
+**What remains, and is accepted rather than hidden:** the window between an expiry and its
 enforcement, during which the stream delivers what the session was entitled to when the tick before
-ran. This document does not paper over that window with a client-side guess: the status strip keeps
+ran. ⚠ **That window is [D2 § 9](FLEET-STATE.md#9-read-side-authentication)'s to state and this
+document does not restate it as a figure** — a bare "one tick" is never the bound, and D2 § 9 names
+a case (a pass that overruns the stall bound) it does not bound at all. This document does not paper over that window with a client-side guess: the status strip keeps
 [decision 18](#13-decisions-taken-revisable-at-review)'s rule — **live** only while the client has both
 a fresh feed message and a REST response newer than the last `401` — and any `401` on any surface still
 tears the stream down, so a REST refusal that lands inside the window ends the claim sooner than the
@@ -4817,9 +4819,11 @@ reason to leave two readings live.
    the session or its MFA is gone, and with `feed.close{reason:"unavailable"}` when the check comes back
    without an answer about the session at all (card#9287's operator ruling: the stream ends and the
    client says so; [§ 9](#9-failure-paths-and-their-observables) F5 is that render).
-   [§ 9](#9-failure-paths-and-their-observables) F7 carries the render; the ≤ 15 s window between expiry
+   [§ 9](#9-failure-paths-and-their-observables) F7 carries the render; the window between expiry
    and enforcement is accepted on the record at both ends
-   ([decision 36](#13-decisions-taken-revisable-at-review)). The *live* claim's two-surface rule
+   ([decision 36](#13-decisions-taken-revisable-at-review)) — as
+   [D2 § 9](FLEET-STATE.md#9-read-side-authentication)'s guarantee, **not as a figure this document
+   restates**, which is what decision 36 says it accepted. The *live* claim's two-surface rule
    ([decision 18](#13-decisions-taken-revisable-at-review)) is kept, not because the residual it hedged
    still exists but because a claim resting on two surfaces is cheaper than one and costs nothing.
 
@@ -5268,7 +5272,7 @@ over it.
 | U12 | § 12.2 | The schema-version refusal, stated as **required behaviour and not merely a status code**: the seat *"renders **visibly degraded** on the floor with the received and accepted versions **readable in its drill-down**"* | Half is rendered and half is filed, and the split is stated rather than blurred. **The visibly-degraded half:** [§ 7.2](#72-badges-every-member-has-a-render)'s `batches_rejected` badge is on the desk's cluster and its count is in the panel — a badge is D1's visible degradation for a *past* refusal, not a currency treatment, so [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) is deliberately not widened for it ([§ 5.4](#54-what-is-never-rendered): the desk still renders `render_state`). **The version pair:** `received_version` and `accepted_versions` appear in D1's refusal body and **nowhere in D2 at all**, so no read surface carries them and this document renders no guess in their place — [§ 14](#14-open-questions-for-the-review-loop) item 9 carries it as the seventh member of that class |
 | U11 | § 6.4 | `D2-MUST` #1's rendering half: `stalled` carries `api_error_type` "so the drill-down can say *which* error" — and D1 mints a **twelfth** member, `unrecognised`, precisely so the harness's own `unknown` is not overloaded as the coercion target | [§ 7.1](#71-the-render-per-state)'s `stalled` row, [§ 5.1](#51-the-desk), and [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable), which publishes all twelve with the two-way distinction spelled out |
 
-**Nothing addressed to this document is undischarged.** **Thirteen** of the thirty-nine are
+**Nothing addressed to this document is undischarged.** **Thirteen** of them are
 discharged with a stated gap in the upstream contract rather than by a rendering alone, and every one
 is filed in [§ 14](#14-open-questions-for-the-review-loop) rather than absorbed silently: T6's timeline
 has no field table and T28's `detail` has none either (item 1, one class filed once); the membership
