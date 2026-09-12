@@ -3,6 +3,9 @@
 namespace Tests\Feature\Admin;
 
 use App\Admin\ConsoleModules;
+use App\Building\Layouts;
+use App\Floor\FloorMap;
+use App\Floor\Floors;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +39,9 @@ class ConsoleShellTest extends TestCase
         // all" arm can exercise the same URL as the others.
         $subject = User::factory()->create();
 
+        // The layout's diff and export name a REVISION, so there have to be two — see below.
+        $this->savedLayout();
+
         return [
             'admin.index' => route('admin.index'),
             'admin.users.index' => route('admin.users.index'),
@@ -45,6 +51,18 @@ class ConsoleShellTest extends TestCase
             'admin.floors.index' => route('admin.floors.index'),
             'admin.floors.create' => route('admin.floors.create'),
             'admin.floors.edit' => route('admin.floors.edit', $this->authoredFloor()),
+
+            // card#9208's revisions, diff and export. The diff and the export name a REVISION, so
+            // the fixture below authors two — a page that 404s because its fixture has nothing to
+            // show is a gate arm asserting nothing.
+            'admin.floors.revisions' => route('admin.floors.revisions', $this->authoredFloor()),
+            'admin.floors.diff' => route('admin.floors.diff', $this->authoredFloor()).'?from=1&to=2',
+            'admin.floors.export' => route('admin.floors.export', [$this->authoredFloor(), 1]),
+
+            'admin.layout.edit' => route('admin.layout.edit'),
+            'admin.layout.revisions' => route('admin.layout.revisions'),
+            'admin.layout.diff' => route('admin.layout.diff', ['from' => 1, 'to' => 2]),
+            'admin.layout.export' => route('admin.layout.export', 1),
         ];
     }
 
@@ -52,31 +70,42 @@ class ConsoleShellTest extends TestCase
      * A floor with a map, because `admin.floors.edit` is a page ABOUT one: with nothing authored
      * it is a 404, and a gate arm asserting `assertOk()` on a 404 would be asserting nothing.
      *
-     * The row is written directly rather than through the console's own store action, so the
-     * fixture does not depend on the module whose gate is under test.
+     * ⚠ It goes through `App\Floor\Floors` and NOT through the console's own store action — the
+     * fixture must not depend on the module whose gate is under test, and since card#9208 it must
+     * not plant a bare row either. See the note inside.
      */
     private function authoredFloor(): string
     {
         $installId = 'aimla';
 
         if (! DB::table('floors')->where('install_id', $installId)->exists()) {
-            $now = now()->format('Y-m-d H:i:s.v');
-
-            DB::table('floors')->insert([
-                'install_id' => $installId,
-                'map' => FloorMapFixture::valid(),
-                // § 6.11 (card#9208): the row points at the `authored_revisions` row it IS. This
-                // fixture plants no revision to go with it — the gate arms under test read the
-                // page and never the history — so the column carries the number a first save
-                // would have written rather than a revision that exists.
-                'map_version' => 1,
-                'updated_by' => 'ops@example.com',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+            // ⭐ TWO SAVES, THROUGH THE STORE — card#9208. Two, because the revisions, diff and
+            // export pages name a revision and a fixture with one has no diff to draw; through
+            // `App\Floor\Floors` because since § 6.11 a `floors` row is a projection of the
+            // revision log, and a row planted with an INSERT would be a state the application
+            // cannot produce — `map_version` pointing at a revision nobody wrote.
+            //
+            // ⚠ It is still not the console's own store ACTION, which is what the note above is
+            // about: nothing here posts a form, so the fixture does not depend on the module whose
+            // gate is under test.
+            Floors::save($installId, FloorMap::parse(FloorMapFixture::valid(12)), 'ops@example.com');
+            Floors::save($installId, FloorMap::parse(FloorMapFixture::valid(8)), 'ops@example.com');
         }
 
         return $installId;
+    }
+
+    /**
+     * The building layout, saved twice — the layout module's diff and export name a revision for
+     * the same reason a room's do, and `layout_version` 0 is a deployment that has never saved
+     * one (`docs/design/FLEET-STATE.md § 8.7`), which has no revision to show.
+     */
+    private function savedLayout(): void
+    {
+        if (Layouts::version() === 0) {
+            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "open"}}}]}', 'ops@example.com');
+            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "office"}}}]}', 'ops@example.com');
+        }
     }
 
     private function unenrolled(): User
@@ -163,6 +192,12 @@ class ConsoleShellTest extends TestCase
                 'map' => FloorMapFixture::valid(),
             ]],
             'admin.floors.remove' => ['post', route('admin.floors.remove', $this->authoredFloor()), []],
+
+            // card#9208's two write acts that are not a save: a restore is a forward revision
+            // (§ 6.11), and the layout has a save of its own.
+            'admin.floors.restore' => ['post', route('admin.floors.restore', [$this->authoredFloor(), 1]), []],
+            'admin.layout.update' => ['patch', route('admin.layout.update'), ['layout' => '{"floors": []}']],
+            'admin.layout.restore' => ['post', route('admin.layout.restore', 1), []],
         ];
     }
 
@@ -224,15 +259,32 @@ class ConsoleShellTest extends TestCase
     {
         $modules = ConsoleModules::all();
         $this->assertNotSame([], $modules);
+        $checked = 0;
 
-        foreach ($this->pages() as $url) {
+        foreach ($this->pages() as $name => $url) {
             $response = $this->actingAs($this->enrolled())->get($url);
+
+            // ⚠ A DOWNLOAD IS NOT A PAGE, and card#9208's two export routes are downloads: § 6.11
+            // serves any revision as a file, which carries no navigation by construction. They
+            // stay in `pages()` — the gate arms above are about every admin GET there is, and that
+            // population control is the point — but the NAV claim is about the HTML an operator
+            // navigates. The discriminator is the response's own content type rather than a list
+            // of route names, which would be one edit behind the next download.
+            if (! str_contains((string) $response->headers->get('Content-Type'), 'text/html')) {
+                continue;
+            }
+
+            $checked++;
 
             foreach ($modules as $module) {
                 $response->assertSee(route($module['route']));
                 $response->assertSee($module['label']);
             }
         }
+
+        // The control for that skip: if everything answered as a download this test would have
+        // asserted nothing at all and said so with a pass.
+        $this->assertGreaterThan(count($modules), $checked, 'almost every console page skipped the nav check');
     }
 
     /**
