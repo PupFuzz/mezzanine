@@ -2534,7 +2534,7 @@ snapshot repeats per seat and the delta patches.
 | `action` | object | **yes** | the newest open call; `null` when none is open | see below |
 | `action.call_id` | ULID | no | 26 chars | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `action.tool_name` | string | no | ≤ 64 B | `"Bash"` |
-| `action.descriptor` | string | **yes** | ≤ 200 B, sanitized at the reporter | `"Bash: composer test"` |
+| `action.descriptor` | string | **yes** | ≤ 200 B, sanitized at the reporter — and **enforced at the ingest** since card#9283, so this bound holds for a consumer sizing to it rather than being a producer-side promise ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10) | `"Bash: composer test"` |
 | `action.started_at` | rfc3339_ms | no | seat clock — a narrative timestamp, never an age | `"2026-08-23T14:23:09.882Z"` |
 | `action.started_received_at` | rfc3339_ms | no | server clock — what an age is computed from | `"2026-08-23T14:23:14.201Z"` |
 | `action.agent_scope` | enum | **yes** | `main`·`subagent`; a label, never gated on | `"main"` |
@@ -2670,7 +2670,14 @@ well as the byte count:
 
 1. **Every nullable field is populated**, including the ones no real seat carries together — a retired
    seat with an open call is not a reachable state, and this is a size bound rather than a scenario.
-2. **Every bounded string is at its bound**: 32 B `install_id`, 48 B `seat_id`, 64 B `tool_name`, 200 B
+2. **Every bounded string is at its bound** — and for the WIRE-SOURCED ones (`tool_name`,
+   `descriptor`, the subagent titles and types, `model_label`, `project_label`, `harness_label`)
+   that bound is, since card#9283, **enforced at the ingest**: an event carrying one of those
+   fields over its published bound is refused outright ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order)
+   step 10), so this rule rests on a checked contract rather than on producer-side discipline, and
+   no larger value can reach this object. The server-minted strings below (`retired.by`,
+   `retired.reason`, `task.ref`, `task.title`) are bounded at their own write sites instead. The
+   list: 32 B `install_id`, 48 B `seat_id`, 64 B `tool_name`, 200 B
    `descriptor`, 8 subagents at 120 B titles and 32 B types, 120 B `task.title`, 64 B `task.ref`, 48 B
    `model_label`, 128 B `session_id`, 48 B `project_label`, 32 B `harness_label`, 32 B
    `activity.last_kind`, 24 B `reporter.version`, 64 B `retired.by`, 255 B `retired.reason`, and 175 B

@@ -19,6 +19,34 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9283** — **Per-field BYTE bounds are now ENFORCED at the ingest; an event carrying a field
+  over one is REFUSED.** D1 publishes a byte bound per `data` field — `tool.start.descriptor` ≤ 200 B,
+  `tool_name` ≤ 64 B, `subagent.spawn.title` ≤ 120 B, the heartbeat's three capped objects, and the
+  rest — and **nothing on the server re-checked any of them**: `EventValidator` bounded only the
+  serialized `data` blob (§ 4.3's 3 KiB cap), so a holder of a valid per-seat ingest token could put
+  a descriptor at ~20× its published bound on the wire and the server stored and served it. Every
+  consumer that sized to a published bound — D2 § 8.3.2's worst-case seat object is *built from*
+  these numbers — was relying on producer-side discipline alone.
+  ⭐ **The ruling (operator, 2026-09-12) was REJECT, LOUDLY** — not truncate, not accept-and-count.
+  Truncating would put the server in the business of silently editing telemetry, which D1 § 7's
+  sanitize-at-the-reporter rule exists to keep in exactly one place; accepting-and-counting turns the
+  bound into a suggestion. ⚠ **BEHAVIOUR CHANGE, and the cost is accepted on the record: an outdated
+  or non-conforming reporter's events start disappearing at upgrade.** A field over its bound is
+  `422 invalid_event` and, under § 12.4's existing atomic rule, takes its ≤ 199 conforming neighbours
+  with it — the whole batch is refused and nothing is stored. That is chosen because a refusal is
+  visible, counted against the seat and attributable, where both alternatives fail quietly.
+  ⛔ **The refusal names the field, the bound and what arrived** — `field: "data.descriptor"`, dotted
+  so it cannot be read as the common field of the same name, plus `kind`, `max_bytes` and
+  `received_bytes` in the body and all three in `message`. A bare status re-mints card#9146's shape
+  one layer down: it changes the question from *which field, and by how much* to *what is wrong with
+  the request*, and sends the reader into the wrong subsystem.
+  **The bound population is DERIVED, never listed.** `KindRegistry::KINDS[$kind]['bounds']` is a
+  transcription of D1 § 6's field tables, and `EventSchemaDriftTest` re-derives it from those tables
+  on every run — a bound added to D1 reds the registry until it carries it, so a field cannot become
+  unchecked silently. The unit is **bytes**: `strlen`, never `mb_strlen`, and every fixture is
+  multibyte and *inside* its bound when measured in characters, so the suite cannot pass against the
+  character-counting implementation card#9282 fixed one layer over.
+
 - **card#9282** — **The tier-3 task title truncated by CHARACTERS against a BYTE contract, and up
   to 200 B reached a 120 B wire member.** `StateRecompute::taskTier3()` held `task.title` to
   `mb_substr($title, 0, 120)`. D2 § 8.2.1 declares that member `≤ 120 B`; on the branch that answers
