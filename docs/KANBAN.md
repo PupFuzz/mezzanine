@@ -18,14 +18,17 @@ read them as reference, not as a to-do list. What is true right now:
 | board 14 structure | ✅ live | 8 stages, 5 card types, 10 custom fields, 4 swimlanes; 11 cards seeded |
 | bridge `writeback.json` mapping | ✅ deployed | validated through the bridge's own loader in a temp config dir **before** deploying (G-4 makes a bad edit fail every repo closed), with two negative controls proven to throw; `bridge:check` green afterwards |
 | bridge webhook HMAC secret | ✅ written | `<secret_dir>/github/webhook-secret-scope-PupFuzz%2Fmezzanine`, mode 0600 |
-| `KANBAN_WRITEBACK_TOKEN` + `KANBAN_EXPECTED_HOST` | ✅ set by the operator | **not verifiable from an agent seat** — a fine-grained PAT is 403 on both stores, so the first workflow run is the check |
+| `KANBAN_WRITEBACK_TOKEN` + `KANBAN_EXPECTED_HOST` | ✅ set, and the token's **identity is now checked every run** | the secret's *value* is still unreadable from an agent seat, but it no longer has to be: the job's identity preflight prints which kanban user it authenticates as and fails the run if that is not the account `.release-pr.json` declares (G-17). It had held the **wrong account** since the chain was wired |
 | **repo webhook** | ✅ live | created with **Pull requests + Pushes** (G-13); `ping`, `pull_request` and `push` deliveries all observed `200 OK` from the bridge |
 | the mover, against board 14 | ✅ dry-run proven **both ways** | a Backlog card reports `⊘ not a Shipped-class source stage — SKIPPED`; the same card staged to *Shipped to dev* reports `→ would move 107 → 108`. A one-directional check would not have distinguished a working guard from a broken mover. |
-| a successful live promote | ⛔ never run | still requires a real Actions run — see G-1 and G-16 |
+| a successful live promote | ✅ run, not a dry run | run `34674965476` (2026-09-12, `DRY_RUN: false`) moved three real cards — `✓ card#7334: moved 107 → 108` … `3 moved, 0 already-released, 0 stage-guarded, 0 no-card, 0 failed` — and the board reads 108 for all three. It had never happened before 2026-09-09 because of G-17 |
 
 ⚠ **The bridge's writeback token is a different credential from `KANBAN_WRITEBACK_TOKEN`.**
-`bridge:check` proving the former sees board 14 says nothing about the latter — G-1 stays open
-for the CI token until a dry-run dispatch reports a non-zero census.
+`bridge:check` proving the former sees board 14 says nothing about the latter. That used to
+leave G-1 open for the CI token until a dispatch reported a non-zero census; it no longer
+does — the job's identity preflight names the CI token's user on **every** run (G-17), which
+is a stronger answer than a census, because a census cannot tell a member from the *right*
+member.
 
 ---
 
@@ -58,6 +61,14 @@ gh variable set KANBAN_EXPECTED_HOST   --repo PupFuzz/mezzanine --body '<kanban-
 | `KANBAN_WRITEBACK_TOKEN` | **secret** | The bearer token the mover sends. Its kanban user must be a **member of board 14 with move permission** — see G-1. Never printed by any workflow here. |
 | `KANBAN_API_BASE` | **variable** | The real API base. The committed `.release-pr.json` value is a host-scrubbed **placeholder**; the real one arrives out-of-band, so a PR editing that file cannot redirect the token by itself. |
 | `KANBAN_EXPECTED_HOST` | **variable** | The **only** host the token may be sent to, checked before any request. It has **no baked default**: unset ⇒ the mover refuses and the token is never sent. |
+
+⚠ **Which account that secret must be is declared in the repo, not left to trust.**
+`.release-pr.json` → `.promote.writeback_user_id` holds the expected numeric kanban user id,
+and the job refuses to promote unless the secret authenticates as exactly that user (G-17).
+It is **not** a fourth thing to set by hand — it is committed board state, re-read from
+`GET /api/v3/boards/14/members.json` if the writeback account ever changes. Unlike `api_base`
+it addresses no host and can send a credential nowhere, which is why it lives in the
+PR-editable file and the other three do not.
 
 **Why `KANBAN_EXPECTED_HOST` is a variable and not a literal in the workflow.** The guard
 exists to catch an `api_base` edit redirecting the writeback token to an attacker host. If the
@@ -105,6 +116,52 @@ does not look like an auth failure; it looks like a release that named no cards.
 **Before trusting a promote run, confirm the token's user is a member of board 14 with move
 permission.** The mover's own residue report will say `UNAVAILABLE` rather than "0 stranded"
 on a blind read, which is the signal to check membership.
+
+⚠ **G-1 is NOT what actually bit this repo — see G-17.** The observed failure was the opposite
+shape: the cards resolved fine and the *move* was refused `HTTP 403`. Reading G-1 as the
+complete statement of "wrong token" is what sent card#9146 looking at the board's permission
+model three times. **A token can be a full board member and still be the wrong account.**
+
+### G-17 — the secret can hold the WRONG ACCOUNT'S token, and everything else looks fine
+This is what broke every promote run from 2026-08-24 to 2026-09-09.
+`secrets.KANBAN_WRITEBACK_TOKEN` held a token for kanban **user 10** — a real, current member
+of board 14 with `board_custom {create, update, move}` — instead of this repo's writeback
+account, **user 15**. Every preflight passed (the secret was non-empty), every card resolved
+(the account can read board 14), and then every single `PATCH /tasks/<id>.json` came back
+`HTTP 403`, which the mover reports as `✗ card#NNNN: move failed (HTTP 403) — left in place`
+with no attribution. Measured across the one variable, on the workflow itself:
+
+| run | the secret authenticates as | the move |
+|---|---|---|
+| `34417338664` (2026-09-09 23:31) | user 10 | `✗ card#9077: move failed (HTTP 403)` |
+| `34417760754` (2026-09-09 23:37, after the secret was re-set at `23:37:31Z`) | user 15 | `✓ card#9078: moved 107 → 108` |
+
+⛔ **Do not read "user 10 is refused" as a rule about roles or destination stages.** Both
+accounts are `board_custom` with identical `custom_permissions` today
+(`GET /api/v3/boards/14/members.json`), so the board role does not explain it and **this repo
+has not established why user 10 is refused** — that question belongs to that account's owner.
+What is established, and all that this repo needs, is that **the identity is the discriminator**.
+
+**The guard.** `release-promote-cards.yml` now asks `GET /users/current.json` before the mover
+runs and fails the job unless `.data.id` equals `.promote.writeback_user_id` in
+`.release-pr.json`. It prints the two ids and nothing else from that response. A mis-rotated
+secret is now one named error line instead of a board-permission investigation.
+
+**Seen to fail before it was trusted.** Run `34674557403` declared `writeback_user_id: 99`:
+`::error::the writeback secret authenticates as kanban user 15, but .release-pr.json declares
+the writeback account is user 99` — job red, promote step never reached. Runs `34674802211`
+and `34674965476` then promoted real cards with the declaration correct; `34674965476` is the
+one that ran the bytes this repo ships.
+
+⚠ **The backlog the 403 created is only partly drained.** Cards that shipped while the chain
+was broken were never promoted and the mover cannot resurrect them from a later release's
+range — the token that named them is behind the base. Those two runs promoted `card#7455`,
+`7456`, `7457`, `7521`, `7334`, `7335` and `7337`, each re-verified as a `card#<id>`-tokened
+commit reachable from `main`. **The rest are not done** — re-derive what is left from
+`kbcard --board mezzanine list --column shipped_to_dev` against `git log origin/main`, and
+verify each against `main` before promoting it: `--cards` skips range derivation, not the
+Shipped-class stage guard, so the guard will stop a backlog card but not a wrong-but-shipped
+one.
 
 ### G-2 — an un-derivable range is REFUSED, never guessed; `--base` is the escape
 The mover never sweeps full history. It takes the released range from a base it can defend,
