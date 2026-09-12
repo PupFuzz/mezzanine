@@ -179,6 +179,22 @@ the resync counter, the event log — outside the rule that exists to catch exac
 | 6 | **Sort orders** | floors by floor id ascending, and a floor's rooms by `install_id` ascending ([§ 4.6](#46-the-building-layout)) — and, on a floor with **no plan**, each room's **origin**: left to right in that order, top edges aligned, each room's `x` the sum of the widths of the rooms before it plus [§ 12](#12-every-number-and-where-it-comes-from)'s gap per boundary ([§ 4.6](#46-the-building-layout) rule 3, card#9292); desks by slot; timeline as served | Deterministic ordering of received objects — and, for the unplanned origin, arithmetic over the maps the client holds and one published constant, which is the same kind of computation as a desk's slot: identity and a document in, a position out, no state read |
 | 7 | **Client self-narration** — the feed-liveness verdict, the *live* claim, counters over the client's own events (*resyncs: N*), the client's event log, the *membership as of* stamp, the overflow determination, [§ 9](#9-failure-paths-and-their-observables) F9's once-per-distinct-value dedup, F18's overlap determination (two footprints the client computed sharing a pixel — card#9292), and the **wall clock's reading and the sky phase** — the viewer's own clock, sampled only where [§ 6.2](#62-the-animation-table--the-closed-set) A17 constraint 4 says it is, and never on a timer | the client's own connection state, its own request outcomes, the seat set it holds, and the **viewer's own clock** ([§ 5.5](#55-the-clients-own-narration)) | Every one is a fact about **the client**, not about a seat. It is labelled as the client's own wherever it renders, it is never drawn as a seat's field or mixed into a fleet number the wire carries, and it never becomes a desk's pose, currency label or badge. [§ 5.5](#55-the-clients-own-narration) is its render map and its honesty rule |
 
+⛔ **One rule in this section is a FILTER on a delivered object rather than a computed value, and it
+is written here — outside the table — because the table is closed and this adds no eighth row to it.**
+**The client ignores a `fleet{}` whose `server_time` is not newer than the one it already holds**, on
+`fleet.health` and `feed.heartbeat` alike. [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) owns
+the wire fact that makes it necessary: a heartbeat written up to one visibility lag before this stream
+connected is delivered **after** the handler's connect-time `fleet.health`, and it carries a whole
+`fleet{}` — `seats_total` and `seats_live` included — so the counts row 5 and
+[§ 4.1](#41-the-lobby--the-building-summary) read can be REGRESSED to a ≤ 2 s-old value, spending one
+spurious snapshot fetch on a discrepancy that is not real. Nothing is computed: two delivered
+timestamps are compared and the older object is dropped, which is why it is not a row. It is a
+**discard**, not the last-known-good merge the list below forbids — that one holds a stale object and
+mixes it with a fresh one; this one keeps the fresh object and drops the stale one whole.
+⚠ Stated here rather than left in D2 because this list is closed: a builder reading it as the whole of
+what the client does would have been right to refuse a rule stated nowhere in this document
+(card#9287, maintainer round).
+
 **Forbidden, named because each is a computation an implementer would otherwise reach for:** deriving
 `render_state` from the two axes; inferring `idle`, `busy` or "gone" from the absence of deltas;
 smoothing or extrapolating `context.used_pct` beyond the one stated tween
@@ -5164,7 +5180,7 @@ reason to leave two readings live.
 
 ## Appendix A — every obligation addressed to this document
 
-[D2](FLEET-STATE.md) addresses this document in **thirty-nine** places — a `D3` mention, a "renders"
+[D2](FLEET-STATE.md) addresses this document in **forty** places — a `D3` mention, a "renders"
 that names an obligation rather than a pixel, a "the drill-down can say", a rule only the render layer
 can keep. [D1](EVENT-SCHEMA.md) addresses it in **twelve** more, directly or through its
 "constraining D2/D3" clause. All of them are
@@ -5232,6 +5248,7 @@ over it.
 | T37 | § 6.7 | A provisioned seat that has never reported "**must render, not vanish**"; a retired seat drops out of the read surfaces **at `retired_at`** by a query filter and not a deletion, so its row and its reason stay answerable after its desk is gone | [§ 3.4](#34-a-new-seats-first-appearance), [§ 3.5](#35-retirement-and-the-only-removal), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) |
 | T38 | § 10 | `close_source: reap_session_boundary` exists "so the drill-down can say *the clear killed these*, not *these ended*" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
 | T39 | § 8.7 | The building surface: fetch a room's map by `map_version` and re-render that room on `room.map` **without animation**; fetch the layout again on `building.layout`; on a map or layout request that fails, draw the failure by name and never the shipped default — or the empty layout's building — in its place | [§ 2.5](#25-what-re-renders-and-when), [§ 9](#9-failure-paths-and-their-observables) F16 and F17, [§ 10.3](#103-the-floor-map), [§ 13](#13-decisions-taken-revisable-at-review) rows 29 and 30 |
+| T40 | § 8.3 | **D3 ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a heartbeat written up to one visibility lag before this stream connected is delivered after the connect-time `fleet.health` and carries a whole `fleet{}`, so the fleet counts can be regressed to a ≤ 2 s-old value and [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check spends a spurious snapshot fetch on it | [§ 2.1](#21-the-seven-client-computed-values-closed)'s delivered-object filter, stated outside the closed table because it computes nothing |
 
 ### The obligations D1 addresses to the render layer
 
