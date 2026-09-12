@@ -86,7 +86,9 @@ class At13AtomicBatchRejectionTest extends IngestTestCase
         // so a partial-ingest implementation fails here even if its rollback happens to work.
         DB::enableQueryLog();
 
-        $this->postBatch($this->validBatch($this->twoHundredWithABadOne()))->assertStatus(422);
+        // ⛔ TEMPORARY — card#9250's control. A VALID batch, which DOES write, so the filter below
+        // must catch it and `assertSame([], $writes)` must FAIL. Reverted in the next commit.
+        $this->postBatch($this->validBatch([$this->event(['seq' => 49000])]))->assertStatus(202);
 
         // ⛔ THE TABLES ARE QUOTED BY THE CONNECTED STORE'S GRAMMAR, NEVER BY HAND — card#9250.
         // These read `insert into "events"` / `"batches"`, which is SQLite's quoting. On MariaDB
