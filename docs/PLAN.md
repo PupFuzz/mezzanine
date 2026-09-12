@@ -364,8 +364,10 @@ rule violations anyone could have committed at the time.
   copying that silence would leave every deploy serving stale code invisibly — daemons up, floor
   rendering, payloads one release old. ⚠ `bin/deploy.sh` still models a Reverb unit derived from
   `BROADCAST_CONNECTION`; retiring that, adding the feed-reload step before the FPM reload, and
-  running § 8.3's two host checks (R1, R2) is deploy-script work the amendment files rather than
-  does, this being design-only.
+  running § 8.3's host checks (R1, R2) is deploy-script work the amendment files rather than
+  does, this being design-only — and ⚠ **neither ini check becomes a gate that refuses a deploy until
+  card#9300 has run its commands on a host where they can be run and seen to fail once**, which is
+  § 8.3 R1's own rule and what D2 Appendix B step 9 now defers to it rather than ordering.
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
