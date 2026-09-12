@@ -967,12 +967,25 @@ else:
     rows = table_rows(sec824, r"^\| Field \| Type \| Null\? \| Bounds \| Example \|") or []
     fleet_fields = {m.group(1) for m in
                     (re.match(r"^\|\s*`([a-z_]+)`", r) for r in rows) if m}
-# `coord` joined the prefix set with § 8.3.3 (card#9212): a coordination message type written in
-# prose with no row in § 8.3's table is the same defect as a `feed.` one, and until it was listed
-# here the two new types were declared by the table and unchecked everywhere else.  `room` and
-# `building` joined it with § 8.7 (card#9208's reversal) for the same reason: the prefix set is the
-# namespace this closure runs over, and a message type outside it is declared by the table and held
-# to nothing.
+# THE NAMESPACE SET IS DERIVED FROM § 8.3's TABLE, NEVER STORED HERE.  It used to be six literals
+# written into the pattern below, and that stored list was edited TWICE after the fact -- `coord`
+# with § 8.3.3 (card#9212), `room` and `building` with § 8.7 (card#9208's reversal) -- each time
+# because a namespace § 8.3 had ALREADY DECLARED was held to nothing until somebody remembered this
+# file.  A stored list is the very defect this gate exists against, one layer up: it is a spelling
+# of the population rather than the population.  So the prefixes are the ROOTS of the types § 8.3
+# declares, re-derived from the same table rows the closure is run against, and adding a row to that
+# table now extends this closure by itself.  The derived set is printed on every run.
+#
+# ⚠ THE RESIDUE THIS DOES NOT CLOSE, stated rather than claimed away: a namespace with NO declared
+# row at all is invisible here.  `desk.moved` written in a fence, with nothing `desk.*` in § 8.3, is
+# not a use this gate can see, because the table it would be held against never mentions the
+# namespace.  That is not closable FROM the table -- it is the same set -- and the obvious widening,
+# every `word.word` token in the document, is the worse gate by a wide margin: it pulls in D1's own
+# event names (`turn.end`, `session.end`), this document's SQL column paths (`seats.retired_at`,
+# `events.id`), its object member paths (`delivery.last_receipt_at`) and file names (`phpunit.xml`),
+# none of which § 8.3 could ever declare.  Measured by relaxing the alternation below to `[a-z]+`,
+# which is the one-line experiment that reproduces it.  What this DOES close is the drift the two
+# cards above are: a namespace § 8.3 declares can no longer be silently outside the population.
 #
 # WHAT MAKES AN OCCURRENCE A MESSAGE-TYPE USE (card#9303).  Until this card the answer was a
 # SPELLING: the token had to be backtick-delimited with `[a-z_]+` running straight into the closing
@@ -1000,17 +1013,20 @@ else:
 #     and `{` is not a scalar, so the two spellings stay apart without either being enumerated.
 #
 # The POLARITY is the point, and is why this is a population rather than a longer alternation:
-# everything namespace-shaped is a message type UNLESS the document demonstrably uses it as a field
-# or a path.  An unseen spelling therefore fails LOUD rather than leaving the gate silently, which
-# is the defect this replaces.  ⚠ Declared limitation, not a closed hole: a message name written in
-# `name: scalar` form reads as a field and is outside the population.  Closing that would take the
-# two spellings apart on the operator, which would red on § 8.2.4's rejected alternative -- the
-# worse gate.  No such site exists in this document; a run that finds one is a rewrite, not a bug.
-NS_TOKEN = re.compile(r"(?<![\w./-])((?:seat|fleet|feed|coord|room|building)"
-                      r"\.[a-z_]+(?:\.[a-z_]+)*)(?![\w-])")
+# every token in a namespace § 8.3 DECLARES is a message type UNLESS the document demonstrably uses
+# it as a field or a path.  An unseen spelling therefore fails LOUD rather than leaving the gate
+# silently, which is the defect this replaces.  That sentence is now TRUE AS WRITTEN, which it was
+# not while the namespaces were six literals: the rule was "everything with one of six stored
+# prefixes", so a maintainer who added a namespace to § 8.3 and read the polarity claim on this
+# surface or in `tools/design/README.md` would believe G7 covered its uses, and it did not.
+NS_PREFIXES = sorted({t.split(".")[0] for t in declared_types})
 FIELD_FORM = re.compile(r"""[ \t]*(?:==|=|:)[ \t]*(?:"[^"\n]*"|'[^'\n]*'|\d|[a-z_]+\b)""")
 g7_pop, g7_undelimited = 0, 0
 if declared_types and fleet_fields:
+    # Compiled INSIDE the guard: on an unparsed table `"|".join([])` is an empty alternation, which
+    # matches the empty string and turns this into a scan for every `.word` in the document.
+    NS_TOKEN = re.compile(r"(?<![\w./-])((?:" + "|".join(NS_PREFIXES) + r")"
+                          r"\.[a-z_]+(?:\.[a-z_]+)*)(?![\w-])")
     for m in NS_TOKEN.finditer(raw):
         tok, line = m.group(1), raw[:m.start()].count("\n") + 1
         if FIELD_FORM.match(raw, m.end()):
@@ -1336,10 +1352,12 @@ if appA:
         src = next((cells(r)[1] for r in further_rows if cells(r)[0] == row), "?")
         print(f"    G6 residue · {row} cites {src!r} — no D1 section number, so no marker in D1 "
               f"can make this row derivable; it is read by a human or its source column moves")
-print(f"G7  feed message types declared: {len(declared_types)}; "
-      f"fleet-object fields exempted: {len(fleet_fields)}; message-type USES held against that "
-      f"table: {g7_pop}, of which written without backtick delimiters — inside a pseudocode or "
-      f"JSON fence, which is the buildable surface — {g7_undelimited}")
+print(f"G7  feed message types declared: {len(declared_types)}, over the namespaces "
+      f"{NS_PREFIXES} derived from that same table (a namespace with no row there is the declared "
+      f"residue, not a covered case); fleet-object fields exempted: {len(fleet_fields)}; "
+      f"message-type USES held against that table: {g7_pop}, of which written without backtick "
+      f"delimiters — inside a pseudocode or JSON fence, which is the buildable surface — "
+      f"{g7_undelimited}")
 print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
       f"checked for a rule that WRITES it — the document's counting-verb idiom, in either word "
       f"order — outside that table and outside section 11's tests); fleet-health counters "
