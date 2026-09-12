@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """D2 verification gate: docs/design/FLEET-STATE.md.
 
-ELEVEN guard classes, G1-G11, one per defect class a review of this document found by hand.
+One guard class per defect class a review of this document found by hand, numbered G1 onward and
+ENUMERATED just below -- that enumeration is the population, and no count of it is written into
+THIS FILE: `grep -cE '^  G[0-9]+ ' tools/design/verify-fleet-state.py` re-prints the figure, and so
+does every run, which prints one line per class.  D2 itself DOES state the count, in section 14
+item 8, and that one is deliberately kept rather than deleted -- it is a claim about how much of
+the document is mechanised, made where no reader can follow a pointer into this file, so it is
+PINNED AND CHECKED instead: the guard near the end of this file holds it against the `G1-Gn` bound
+it names and against section 12's count of `**tool-checked**` rows, three homes for one fact that
+must agree ("they said ten against eleven for a whole revision").
 Every population below is RE-DERIVED on each run -- from this document's own tables, from the
 JSON blocks it publishes, or from docs/design/EVENT-SCHEMA.md -- and never from a list stored
 here.  A number written into a checker is a number free to disagree with the document it is
@@ -114,7 +122,7 @@ def fenced_lines(text):
     line after it read as fenced, which would make the split below measure the wrong thing while
     still producing a number -- the false-clean shape this directory exists against.
     """
-    out, opener, i = set(), None, 0
+    out, opener = set(), None
     for i, line in enumerate(text.split("\n"), start=1):
         m = re.match(r"^\s*(`{3,})(.*)$", line)
         if m and opener is None:

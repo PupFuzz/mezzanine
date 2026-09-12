@@ -85,7 +85,9 @@ jobs:
       # supposed to hold (card#9303) — and requires the verifier to reject it, with the red
       # attributable to the plant rather than to any nonzero exit. How many plants and of which
       # kinds is printed by the harness on its own last line rather than restated here.
-      - name: Self-test (a planted defect per verifier, each red attributed to its plant)
+      # The NAME is what shows in the CI UI, so it carries no count either: "per verifier" was
+      # already false once the second plant against `verify-fleet-state.py` landed (card#9303).
+      - name: Self-test (a planted defect per targeted guard, each red attributed to its plant — the harness prints how many, over how many verifiers, on its own last line)
         run: python3 tools/design/verify-design-docs.selftest.py
 
       # Three separate steps, each `!cancelled()` DELIBERATELY and UNIFORMLY: these three gates
