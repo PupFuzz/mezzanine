@@ -111,6 +111,73 @@ jobs:
           fi
           exit $rc
 
+      # ⛔ WHICH CREDENTIAL IS THIS, ACTUALLY — the check that was missing, and the whole cause
+      # of card#9146. Every promote run from 2026-08-24 to 2026-09-09 died `✗ card#NNNN: move
+      # failed (HTTP 403)` on every card, and four rounds of inference across two agents failed
+      # to explain it, because every hypothesis was about the BOARD (role, custom permissions,
+      # the destination stage's lane_type) and none about the CREDENTIAL. The secret held a
+      # token for the WRONG kanban user. Measured, one variable at a time, on this very
+      # workflow:
+      #
+      #   run 34417338664  identity probe -> user 10   promote -> ✗ card#9077 HTTP 403
+      #   `gh secret list` -> KANBAN_WRITEBACK_TOKEN updated 2026-09-09T23:37:31Z
+      #   run 34417760754  identity probe -> user 15   promote -> ✓ card#9078: moved 107 → 108
+      #
+      # The step above only asks whether the secret is NON-EMPTY, while its own ::error:: text
+      # DECLARES a requirement about the token's USER that nothing checked — a declaration with
+      # no check, which is worse than silence: it hands the next reader confidence where a
+      # question was owed. This step is that check. It fails the job BEFORE the mover touches a
+      # card, so a mis-rotated secret is named in one line instead of costing another four
+      # rounds of board-permission archaeology.
+      #
+      # ⚠ IT PRINTS ONLY the HTTP status and `.data.id`. That endpoint also returns `name`,
+      # `initials` and `email`; none of those belong in a job log.
+      #
+      # ⚠ THE BEARER HEADER RIDES STDIN (`-H @-`), NOT ARGV — the same idiom, for the same
+      # reason, as the mover's own `api` helper: argv is world-readable via `ps aux`, and a
+      # runner is not a reason to hold a credential differently than the tool next to it does.
+      # `printf | curl` rather than a `<<<` herestring so the token never reaches a temp file
+      # either.
+      #
+      # ⚠ NO HOST GUARD HERE, DELIBERATELY, and this is not an oversight to "fix" later. The
+      # mover's `host_ok` exists for ONE threat: `.release-pr.json` is PR-editable and carries
+      # an `api_base`, so a PR could redirect the token. This step never reads that file — it
+      # sends only to `vars.KANBAN_API_BASE`, and the preceding step has already hard-failed
+      # the job if that variable is empty, so the PR-editable path cannot be reached from here.
+      # Re-stating `host_ok` in YAML would add no protection and would mint a third copy of a
+      # guard whose two existing copies are only kept honest by being few.
+      - name: Preflight — the secret must authenticate AS the declared writeback user
+        env:
+          KANBAN_WRITEBACK_TOKEN: ${{ secrets.KANBAN_WRITEBACK_TOKEN }}
+          KANBAN_API_BASE: ${{ vars.KANBAN_API_BASE }}
+        run: |
+          set -euo pipefail
+          # The expectation is BOARD STATE, so it lives with board_id and the stage ids in
+          # .release-pr.json — not as a literal here. Unlike `api_base` this key cannot
+          # redirect a credential anywhere: the worst a hostile edit to it achieves is a guard
+          # that stops guarding, which is exactly the state this commit replaces.
+          expected="$(jq -r '.promote.writeback_user_id // empty' .release-pr.json)"
+          if [ -z "$expected" ]; then
+            echo "::error::.promote.writeback_user_id is missing from .release-pr.json — this job cannot confirm which kanban user the writeback secret is. Put the expected numeric board user id there."
+            exit 1
+          fi
+          code="$(printf 'Authorization: Bearer %s' "$KANBAN_WRITEBACK_TOKEN" \
+                  | curl -sS -o /tmp/whoami.json -w '%{http_code}' \
+                         -H @- -H 'Accept: application/json' \
+                         "${KANBAN_API_BASE%/}/users/current.json" || echo 000)"
+          if [ "$code" != "200" ]; then
+            rm -f /tmp/whoami.json
+            echo "::error::the writeback secret did not authenticate — GET /users/current.json returned HTTP $code. The token is malformed, revoked or expired; this is not a board-permission question. Re-issue it and: gh secret set KANBAN_WRITEBACK_TOKEN --repo PupFuzz/mezzanine. See docs/KANBAN.md § G-17."
+            exit 1
+          fi
+          actual="$(jq -r '.data.id // "absent"' /tmp/whoami.json 2>/dev/null || echo unparseable)"
+          rm -f /tmp/whoami.json
+          echo "writeback identity: the secret authenticates as kanban user id=$actual (expected $expected)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::the writeback secret authenticates as kanban user $actual, but .release-pr.json declares the writeback account is user $expected. Promoting with the wrong account is what made every card move 403 for three weeks (card#9146). Re-set the secret to the right account's token, or correct .promote.writeback_user_id if the account genuinely changed. See docs/KANBAN.md § G-17."
+            exit 1
+          fi
+
       - name: Promote cards named in the released range
         env:
           # A kanban API token whose user is a MEMBER of board 14 WITH move permission.
