@@ -19,6 +19,33 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9282** — **The tier-3 task title truncated by CHARACTERS against a BYTE contract, and up
+  to 200 B reached a 120 B wire member.** `StateRecompute::taskTier3()` held `task.title` to
+  `mb_substr($title, 0, 120)`. D2 § 8.2.1 declares that member `≤ 120 B`; on the branch that answers
+  from `calls.descriptor`, the input arrives byte-capped at the descriptor's own **200 B** (D1
+  § 7.4), so a multibyte descriptor shorter than 120 CHARACTERS — an accented path, a non-Latin repo
+  name, an em dash — was not cut at all and went out at up to its full 200 bytes. Neither plane
+  caught it: `seat_state.task_title` is `VARCHAR(120)` and MariaDB counts `VARCHAR` in characters
+  (D2 § 6.3), which is that column being *sized to hold* the bound rather than to enforce it.
+  ⭐ **D1 § 7.4's procedure now has ONE implementation — `App\Support\ByteTruncation`** — cut at the
+  last character boundary at or before the bound less the mark, then append `…`. It is extracted
+  rather than written inline because `BOARD-TASK.md § 8.4` holds the (unbuilt) tier-1 poller to the
+  same bound through the same procedure, and *"one bound, one place"* is false the moment there are
+  two copies of the arithmetic; the bound itself is `StateRecompute::TASK_TITLE_MAX_BYTES`.
+  ⚠ **The magnitude here is 200 B against 120 B, and NOT the ~480 B first reported** — that figure
+  multiplies the bound by a 4-byte character against an input already capped at 200 B upstream. 480
+  belongs to the tier-1 path, where a board card `name` is capped by nothing; § 8.4 now says so, and
+  says that neither figure re-derives the other. That section also carried the claim that tier 3 was
+  *harmless* because its input was already byte-capped — true of the capping, wrong about which cap —
+  and the sentence that let this ship is corrected in the same change.
+  ⭐ **The `mb_substr` sibling audit the card owed is run and its result is recorded: NO third
+  member.** `FoldEvent::str()` is the only other character-counting truncation in `server/app/`, and
+  it is unit-correct for what it is — a storage guard sized to the COLUMN's character width (D2
+  § 6.3), explicitly not a second sanitizer. `TwoFactorReset`'s `Str::limit(…, 250)` writes a
+  `VARCHAR(255)` audit column that is on no wire. What the audit DID surface, for its own card and
+  not fixed here: nothing on the server re-checks a per-field BYTE cap the reporter is trusted to
+  apply, so a non-conforming reporter can still overrun `action.descriptor`'s `≤ 200 B`.
+
 - **card#7897** — D3 § 5.1 rule 4 states that `task.as_of` is **not drawn on the desk**, and § 13 gains
   **decision 26** recording it with its alternative and reversal cost. Operator ruling, 2026-09-12,
   taking option (b) of the amendment PupFuzz/mezzanine#95 proposed and did not apply: the member stays

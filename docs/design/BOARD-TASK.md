@@ -633,9 +633,22 @@ and then states the title case in the same breath: *"`subagent.spawn.title` uses
 at **120 bytes** (117 + `…`)"*. That is the bound and the procedure, cited rather than restated as a
 second arithmetic here.
 
-⚠ **`mb_substr($title, 0, 120)` is NOT that procedure** — it counts CHARACTERS. On the tier-3 path
-it is harmless because its input arrives already byte-capped by the reporter (D1 § 7.4 again), so
-there is nothing left for it to cut; a board card `name` is capped by **nothing**, and 120
+⭐ **The procedure has ONE implementation in this repository — `App\Support\ByteTruncation` — and
+the poller calls it rather than writing the arithmetic a second time.** `StateRecompute::taskTier3()`
+is its other caller, at the same bound (`StateRecompute::TASK_TITLE_MAX_BYTES`), which is what makes
+*one bound, one place* above true of the projection as well as of the input row.
+
+⚠ **`mb_substr($title, 0, 120)` is NOT that procedure** — it counts CHARACTERS. ⛔ **An earlier
+revision of this section called the tier-3 path HARMLESS for that reason, and it reasoned from the
+wrong bound** (`card#9282`, fixed 2026-09-12). Tier 3's input IS byte-capped by the reporter — at
+**200 bytes**, the `action.descriptor` cap, not the title's — so a multibyte descriptor shorter than
+120 CHARACTERS was not cut at all and reached the wire at up to its full 200 bytes against
+§ 8.2.1's *"≤ 120 B"*. The store could not catch it either: `seat_state.task_title` is
+`VARCHAR(120)` and MariaDB counts `VARCHAR` in characters
+([D2 § 6.3](FLEET-STATE.md#63-conventions)).
+
+⚠ **The tier-1 magnitude is LARGER and comes from a DIFFERENT arithmetic — neither figure re-derives
+the other.** A board card `name` is capped by **nothing**, so 120
 characters of a title carrying an em dash or a box-drawing character is up to 480 bytes. That would blow D2 § 8.2.1's *"≤ 120 B"* bound on
 `task.title` and D2 § 12's measured worst-case seat object with it — a wire-contract violation minted
 by a producer, which is the class this document exists to keep out of the store.
