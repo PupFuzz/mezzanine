@@ -43,7 +43,7 @@ posts the JSON. No model is asked to describe itself.
 server/                     the Laravel host + MFA-gated shell   ← exists
 server/resources/js/floor/  Pixi.js office floor (scene, characters, camera)
 resources/characters/       the procedural character generator + LINEAGE.md ← exists
-resources/floor/            the CC0 tileset + Tiled map (card #7341)
+resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
 fleet-reporter/             cross-platform hook bundle + installer
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
@@ -173,6 +173,14 @@ retired, and its record survives so that everything it did still resolves.
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships
 `docs/ATTRIBUTION.md` naming every upstream. Office tiles are CC0. **No commercially-licensed
 assets are vendored here.**
+
+The office tiles are Kenney's **Furniture Kit** (CC0), and they are a **bridge, not the
+destination**: the operator chose them on 2026-09-12 explicitly as a stand-in for first-party
+vector art, and being pre-rendered raster they do not meet the resolution-independence the ratified
+art direction requires (`docs/design/FLOOR.md § 10.4`). `resources/floor/LINEAGE.md` records the
+terms as read at the source, the downloaded archive's hash, what was curated and what was
+deliberately not taken — including the pack's 3D sources, which the asset allowlist refuses
+outright.
 
 The character generator is a **port** of munder-difflin's (MIT), at a pinned commit:
 `resources/characters/LINEAGE.md` records the upstream, the commit, the reproduced MIT notice,

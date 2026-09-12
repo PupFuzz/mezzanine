@@ -2780,11 +2780,13 @@ anticipated. So the gate is an **allowlist**, and it fails on anything no clause
 it was `resources/characters/` while Gate 1 already walked everything, which was correct while Gate 2
 asserted an **absence peculiar to that tree** and became a leftover the moment the sentence above
 rewrote its claim as a **universal** one — *every asset is a file Gate 1 can see* says nothing about
-characters. The consequence was that `resources/floor/`, the tree about to receive this project's
-**first vendored third-party art** ([§ 10.3](#103-the-floor-map), card#7341), was the one tree Gate 2
+characters. The consequence was that `resources/floor/` — the tree that has since received this
+project's **first vendored third-party art** ([§ 10.3](#103-the-floor-map), card#7341, 2026-09-12) —
+was the one tree Gate 2
 did not inspect: a `.psd` there passed with a valid row, and image bytes pasted into a `.js` there had
-no path, no row, and nothing to object. **The widening landed before that tree exists rather than on
-top of its contents.** And note what "widen Gate 2" actually means, because it is the thing that is
+no path, no row, and nothing to object. **The widening landed before that tree existed rather than on
+top of its contents**, which is what the tileset's own clean first run through all three clauses
+tested rather than assumed. And note what "widen Gate 2" actually means, because it is the thing that is
 easy to get half-right: **Gate 2 has TWO scoping knobs — the tree AND this clause's file-type
 allowlist — and moving one without the other is not a widening.** With the tree widened and the
 allowlist left alone, every Tiled artifact fails clause 1 by name for a reason that has nothing to do
@@ -3023,7 +3025,8 @@ nothing in the port's licence work is undone by the art direction changing.
   obligation is to reproduce the copyright notice and permission notice; a link is not a reproduction.
 - **The upstream repository and commit are recorded** — closed by card#7340 on 2026-08-25 and carried
   in the two files above ([§ 14](#14-open-questions-for-the-review-loop) item 7's generator half).
-  What is still open there is the **tileset**, not the generator.
+  That item's other half, the **tileset**, closed on 2026-09-12 and is
+  [§ 10.3](#103-the-floor-map)'s; nothing about it touches the port.
 
 ### 10.3 The floor map
 
@@ -3033,6 +3036,45 @@ nothing in the port's licence work is undone by the art direction changing.
 - **The map is exported with the tile layer format set to CSV, and the tileset references its image by
   path rather than embedding it** — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 fails the
   build otherwise. Both are Tiled export settings, not code.
+
+⭐ **THE TILESET IS CHOSEN AND VENDORED, AND IT IS A BRIDGE — operator ruling, 2026-09-12, which
+closes [§ 14](#14-open-questions-for-the-review-loop) item 7.** The floor's tiles are Kenney's
+**Furniture Kit** (<https://kenney.nl/assets/furniture-kit>, author Kenney, **`CC0-1.0`**), vendored
+as the Tiled tileset `resources/floor/tiles/furniture-kit.tsx` over the PNG renders beside it, each
+with the `docs/ATTRIBUTION.md` row Gate 1 requires. `resources/floor/LINEAGE.md` records the terms as
+read at the source, the archive's hash, what was curated, and what was deliberately not taken — the
+same job `resources/characters/LINEAGE.md` does for the port, for a vendoring rather than a port.
+Four things belong here rather than there, because they are this document's rulings and not that
+file's notes:
+
+- ⚠ **IT DOES NOT MEET [§ 10.4](#104-the-art-direction-as-a-specification)'s BAR, AND IT IS NOT MEANT
+  TO.** That subsection requires the shipped look to be **resolution-independent**, which is
+  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s capability and not a style note; this pack
+  is **pre-rendered raster at one scale**, so it fails that requirement by construction. The operator
+  chose it **explicitly as a bridge to first-party vector art** — so the floor can be built, laid out
+  and measured against real sprites instead of against an intent, while the art that ships is drawn.
+  **Nothing about it is a precedent for what ships**, and the day the vector art lands this tileset
+  leaves the tree with its rows. Written here, and again where a reader meets the files, because an
+  interim asset nobody labelled is an interim asset somebody later mistakes for a decision.
+- **The `Side/` renders, not the `Isometric/` ones.** The ratified reference is a building seen in
+  **cross-section** — [§ 4.1](#41-the-lobby--the-building-summary)'s stacked floor plates with an
+  elevator between them — and [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera zooms
+  and pans over it. That is an **elevation**: each floor is a horizontal band and the camera's zoom is
+  a scale change inside one projection. Isometric tiles recede along two axes, which is a *different*
+  projection whose floors cannot stack into a section without occluding each other. **Nothing in
+  this document asks for that projection**, and until this bullet was written the word did not occur
+  in it at all — every occurrence today is in this bullet, explaining the choice. Taking both was
+  rejected rather than overlooked: a renderer draws one projection, and the second set is four renders
+  per object that every Gate 1 row would have to keep true for nothing drawn.
+- **A desk sprite is 116 px wide and 57 px tall** (`resources/floor/tiles/furniture-kit/desk.png`),
+  which is the measurement [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row has been
+  waiting on. What that settles, and the half of the derivation it does **not** settle, is that
+  table's row to say and is not restated here.
+- **A tileset is not a map, and the absence below is untouched by this bullet.** What
+  [§ 14](#14-open-questions-for-the-review-loop) item 7 asked for was the tileset *recorded*; the
+  `aimla` map is still card#7341's to author, and `tools/design/verify-floor.py` still holds the
+  absence because its sweep is for Tiled's two **map** spellings and a `.tsx` is neither.
+
 - The map declares an **object layer named `desks`** whose objects are the slots of
   [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The `aimla` floor map
   declares **12**.
@@ -3043,8 +3085,9 @@ nothing in the port's licence work is undone by the art direction changing.
   ([§ 4.6](#46-the-building-layout)) — in either Tiled spelling, since
   [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1 admits both and the choice between them stays
   the implementer's. For the `aimla` floor that artifact is `resources/floor/aimla.tmj`, and
-  **card#7341 vendors it** — with the `docs/ATTRIBUTION.md` row Gate 1 requires, and the tileset
-  [§ 14](#14-open-questions-for-the-review-loop) item 7 is still open on.
+  **card#7341 vendors it** — with the `docs/ATTRIBUTION.md` row Gate 1 requires, drawn with the
+  tileset the bullet above vendors ([§ 14](#14-open-questions-for-the-review-loop) item 7, closed
+  2026-09-12).
   `tools/design/verify-floor.py` holds both halves — while no map exists it requires this paragraph to
   say so and reds if a map appears anywhere in the trees this repository authors while it still does
   (the gate prints the trees it skips), and the day one lands at that path it counts the objects of
@@ -3203,6 +3246,15 @@ artifact is the worked example of it.
   rather than joining it, a null task draws nothing, and it is not drawn on a desk with no character
   to anchor to. Those four are [§ 5.1](#51-the-desk)'s, stated there in full with the upstream
   behaviour that was refused and why, and this bullet states none of them a second time.
+- ⚠ **AN INTERIM FLOOR TILESET IS VENDORED AND IT DOES NOT MEET THE FIRST BULLET — see
+  [§ 10.3](#103-the-floor-map).** It is pre-rendered raster at one scale, so it fails the
+  resolution-independence requirement by construction, and the operator's ruling of 2026-09-12 chose
+  it **as a bridge to first-party vector art** rather than as a reading of this subsection. Nothing
+  above is relaxed by it: the reasoning, the view chosen and what retires with the pack are
+  § 10.3's, stated there once. **It is flagged here because this is the subsection a reader consults
+  to find out what may be drawn**, and an interim asset that only the asset tree admits to being
+  interim is one somebody eventually reads as a decision — which is the same failure mode
+  [§ 10.2](#102-characters-the-munder-difflin-port)'s interim pixel art needed a bullet to prevent.
 - **What is deliberately NOT specified here:** the palette's hex values, the drawing itself, the file
   layout of the art, and the renderer. [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s
   non-goal stands — **no framework, bundler or state library is specified**, and this subsection does
@@ -4215,18 +4267,23 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Desk slots the `aimla` floor map declares | **12** | **Chosen** — 3× the install's four seats (`docs/PLAN.md § 5`'s rollout order), which leaves room for the Windows validation seat and the next few without an edit. ⚠ **Chosen, not measured, and it stays that way until the map is a file**: the gate holds the figure against whichever of the two states [§ 10.3](#103-the-floor-map) declares — the artifact's ABSENCE while there is none, its `desks` layer once there is | [§ 3.2](#32-the-desk-slot-function) |
 | The worked slot assignment | 0 · 2 · 3 · 7 | **Measured** — FNV-1a-32 of the four keys, mod 12, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
 | Collision chance per arrival | `N/S` = **1 in 3** on the `aimla` map | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
-| Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. Re-derived once the tileset is chosen and a desk's rendered width is a measured number rather than a design intent | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
+| **Desk sprite width** | **116 px** | **Measured** — the IHDR width of `resources/floor/tiles/furniture-kit/desk.png`, the sprite of the tileset [§ 10.3](#103-the-floor-map) vendors, read out of the file's own header by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — **both the number and the path re-derived from that sentence**, so re-curating the tileset moves the check with it. ⚠ **It is the BRIDGE tileset's number** ([§ 10.3](#103-the-floor-map)): [§ 10.4](#104-the-art-direction-as-a-specification)'s art is resolution-independent and has no native pixel width at all, so this figure retires with the pack rather than surviving it | [§ 10.3](#103-the-floor-map) |
+| Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. ⭐ **The input it was waiting on arrived on 2026-09-12 and the number did not move — which is a verdict, not an omission.** A desk sprite is now a measured 116 px (row above), and the first thing that measurement buys is a fact the old wording assumed away: a 12-slot room laid out as one native-scale row is 12 × 116 px of desk plus the pack's two 108 px walls = **1,608 px**, which is **wider than this viewport floor, not narrower**. So the tileset does not settle the number by making the room fit — it shows the room does not, at 1:1. That is not a contradiction of this row and it is not an argument for raising it: [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera is navigation, so the floor is reached by zooming out (~0.80 here) or by panning, and **which of those is taken is exactly what decides whether a nameplate is legible** — the thing this row is actually about. **What still cannot be derived** is therefore unchanged in substance and sharper in statement: the criterion is a property of the **rendered** desk (native width × camera zoom) and of a type size, and no renderer, camera or nameplate exists to measure one from ([§ 4.4](#44-routes-and-what-each-one-fetches): no `/floor` route is served today). **And the sprite measured is the bridge's, not the ship's**: re-deriving a ratified floor off pre-rendered raster that § 10.4 has already superseded would pin a permanent number to a temporary asset. **What re-derives it:** the first build that draws a nameplate and a badge cluster on a desk at the camera's floor zoom | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
 | **Seeded appearance dimensions** | **10** | **Chosen** — the independent draw fields of the ratified art direction (silhouette, hue, size, pattern, ears, sprout, eye style, mouth, accessory, tilt). One dimension is a palette; ten is a space, and the operator's ruling was that colour alone is not variety. **What re-derives it:** the shipped generator's own field list | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **The full appearance tuple's space** | **8,064,000** | **Derived** — 7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3, the ten cardinalities above multiplied out | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Expected full-tuple collisions at 50 seats** | **1 in 6,583** | **Derived**, and explicitly **not** the acceptance — a birthday estimate over the space above, resting on an assumption (ten independent, uniform draws) that a **searched** salt is precisely what perturbs. § 10.4 requires the real figure to be **measured** over the shipped generator and the real roster, and the measurement is what the acceptance reads | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and now **re-derived against a real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **62 B** (in `index.js`, measured 2026-08-27), sixteen times under the ceiling — and far below the smallest useful sprite sheet, so clause 2 cannot fire on the port and cannot miss a vendored one. This row previously deferred that measurement to *"the moment the port lands"*; the port landed on 2026-08-25 and the number is above. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
+| Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and **re-derived against the real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **107 B**, in the whitespace-stripped prose of `resources/floor/LINEAGE.md` (re-measured 2026-09-12, when the tileset was vendored — it was 62 B in `index.js` on 2026-08-27, and this row's own trigger is what moved it). Still an order of magnitude under the ceiling and far below the smallest useful sprite sheet, so clause 2 cannot fire on the tree and cannot miss a vendored asset. ⚠ **Note what the longest run now IS:** English prose with its spaces removed, not code and not art — which is the residue [§ 10.1](#101-the-manifest-and-the-two-gates) clause 2 already names, observed rather than supposed. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
 | D2 § 8.2.1's nullable members | **37** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
 | Client event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
 
-**One figure rests on an intent rather than a measurement and says so at its definition:** the 1,280 ×
-800 viewport floor, which cannot be derived until the tileset is chosen and a desk has a rendered width
-([§ 14](#14-open-questions-for-the-review-loop) item 7). Every other **Chosen** row states what would
-re-derive it.
+**One figure still rests on an intent rather than a measurement and says so at its definition:** the
+1,280 × 800 viewport floor. ⭐ **Its stated blocker cleared on 2026-09-12 and the figure did not
+move** — [§ 10.3](#103-the-floor-map)'s tileset landed and a desk sprite is a measured 116 px — **and
+that is a narrower result than the old wording expected.** A *native* sprite width was only ever half
+the input: this row's criterion is a legible nameplate and badge cluster, which is a property of the
+**rendered** desk, so what still cannot be derived is now named by what is missing (a renderer, a
+camera, a nameplate at a type size) rather than by an open question that has been answered. Every
+other **Chosen** row states what would re-derive it.
 
 **Tool-checked versus hand-verified.** `tools/design/verify-floor.py` is **this document's** verifier and
 it ships with this change. It is a fourth, separate script: `verify-event-schema.py`,
@@ -4413,12 +4470,13 @@ reason to leave two readings live.
    second on a D1/D2 shape for a coordination object with no single install.
    [§ 4.6](#46-the-building-layout) names the render form the second will need and builds none of it.
 
-7. **◑ HALF CLOSED — the generator's source is recorded; the tileset is still unnamed.**
+7. **✅ CLOSED — both upstreams are recorded in the repository: the generator (2026-08-25) and the
+   tileset (2026-09-12).**
    D-07 names *CC0 tilesets* and *munder-difflin's procedural generator*, and this item was opened
-   because the repository recorded neither. **It is closed for the generator and open for the tileset,
-   and it stays one item because it is one question — *which upstream art does D-07 mean* — asked of two
-   assets.** Splitting it would file one class twice and would let the closed half's evidence read as
-   though it settled the open one.
+   because the repository recorded neither. **It stayed ONE item while one half was closed and the
+   other open, because it is one question — *which upstream art does D-07 mean* — asked of two
+   assets**, and splitting it would have filed one class twice and let the closed half's evidence
+   read as though it settled the open one. It closes as one item too.
 
    **✅ The generator half, closed by card#7340 (2026-08-25).** The upstream repository
    (`https://github.com/chaitanyagiri/munder-difflin`), the **pinned commit**
@@ -4432,16 +4490,29 @@ reason to leave two readings live.
    them, so taking any of them is now an ordinary **port** decision carrying an ISC notice
    obligation, and `resources/characters/LINEAGE.md § 3` states it that way rather than as a gate.
 
-   **⇢ The tileset half, still open, still an operator/review question.** No tileset is chosen and none
-   is recorded. **Still blocks:** card #7341 (floor v1), and the 1,280 × 800 viewport floor still cannot
-   be re-derived from a measured desk width ([§ 12](#12-every-number-and-where-it-comes-from)) —
-   that derivation needs a tile size, which is the half that did not close. **In the meantime:** the
-   licence allowlist, the manifest and both gates are specified, built and seen to fail
-   ([§ 10](#10-art-and-assets--provenance-as-a-gate)), and the asset root is the repo-root `resources/`
-   **entire**, so whichever directory the tileset lands in is covered by Gate 1 on the day it lands —
-   there is no tree list to remember to extend first, and a tileset with no row fails the build.
-   **Closes it:** the chosen CC0 tileset, recorded in `docs/ATTRIBUTION.md` with its source URL, author,
-   SPDX identifier and hash — not in a message.
+   **✅ The tileset half, closed by the operator's ruling of 2026-09-12 (card#7341).** The choice is
+   Kenney's **Furniture Kit** — <https://kenney.nl/assets/furniture-kit>, author Kenney,
+   **`CC0-1.0`** — and it is recorded where this item asked for it: `docs/ATTRIBUTION.md` carries a
+   row per vendored file with the source URL, the author, the SPDX identifier and the hash, and
+   `resources/floor/LINEAGE.md` carries the terms as read in the pack's own `License.txt`, the
+   downloaded archive's hash, what was curated and what was deliberately not taken. **In the
+   repository, not in a message** — the same bar the generator half was held to.
+
+   ⚠ **The ruling is a BRIDGE and the item closes saying so, because a closed question is exactly
+   where that gets forgotten.** The pack is pre-rendered raster and does **not** meet
+   [§ 10.4](#104-the-art-direction-as-a-specification)'s resolution-independence requirement; the
+   operator chose it explicitly as a bridge to first-party vector art.
+   [§ 10.3](#103-the-floor-map) is where that is stated for an implementer and
+   `resources/floor/LINEAGE.md` is where a reader meets it beside the files. **What this item was
+   asking — *which upstream art does D-07 mean* — is answered; what art SHIPS is § 10.4's question
+   and was never this one's.**
+
+   **What it unblocks, and the one obligation it only half discharges.** Card #7341 (floor v1) is
+   unblocked — the map is still that card's to author, and a tileset is not a map. The
+   1,280 × 800 viewport floor now has its **measured desk width** (116 px,
+   [§ 12](#12-every-number-and-where-it-comes-from)) and **still does not re-derive**: a native
+   sprite width was half the input, and the other half — a rendered nameplate at a camera zoom — has
+   no artifact to measure. § 12's row states that in full and is not restated here.
 
 8. **✅ CLOSED — the `subagents` cap is 8.**
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9 handed this to D3.

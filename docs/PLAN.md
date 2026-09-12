@@ -68,6 +68,21 @@ its date, its decider and the scope of what it moved. The original row above sta
   [`§ 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates): they move from asserting an
   absence to asserting declared provenance, at a named cost.
 
+- **D-07 · the first clause EXERCISED, not superseded — operator, 2026-09-12 (card#7341).**
+  D-07's *"floor art from **CC0 tilesets**"* now names one: Kenney's **Furniture Kit**
+  (<https://kenney.nl/assets/furniture-kit>, `CC0-1.0`), vendored under `resources/floor/` with a
+  `docs/ATTRIBUTION.md` row per file and its terms, archive hash and omissions recorded in
+  `resources/floor/LINEAGE.md`. This closes
+  [`docs/design/FLOOR.md § 14`](design/FLOOR.md#14-open-questions-for-the-review-loop) item 7, whose
+  generator half closed on 2026-08-25. **The decision is recorded as an append rather than left
+  implicit because of the clause attached to it:** the operator chose this pack **explicitly as a
+  bridge to first-party vector art**, and being pre-rendered raster it does **not** meet the
+  2026-08-27 amendment's resolution-independence requirement. So the two appends stand together —
+  the ported pixel art is interim, and so is this — and neither is a reading of the other.
+  **What does NOT move:** the last clause (*the upstream's commercial tilesets are never vendored*)
+  is untouched and permanent, and nothing here widens the licence allowlist, which remains an
+  operator decision taken separately.
+
 - **D-12 · the required-check clause only — measured, not re-decided; 2026-09-09 (card#9054).**
   D-12 records *"`card-token-lint` is a required check on both"*. That was the measured state on
   2026-08-23 and it is no longer the whole list — contexts have been added since, and a reader who

@@ -19,6 +19,53 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7341** — **THE FLOOR TILESET IS VENDORED AND D3 § 14 ITEM 7 IS CLOSED — and the ruling is
+  that it is a BRIDGE.** Operator ruling of 2026-09-12: Kenney's **Furniture Kit**
+  (<https://kenney.nl/assets/furniture-kit>, `CC0-1.0`), chosen **explicitly as a bridge to
+  first-party vector art**. A curated subset of the pack's `Side/` renders lands under
+  `resources/floor/tiles/furniture-kit/` behind the Tiled tileset `furniture-kit.tsx`, each file
+  with the `docs/ATTRIBUTION.md` row Gate 1 requires, and `resources/floor/LINEAGE.md` records the
+  terms as read in the pack's own `License.txt`, the downloaded archive's SHA-256, what was curated
+  and what was deliberately not taken. `docs/PLAN.md § 0` carries it as an **append** beside D-07.
+  ⚠ **It does NOT meet D3 § 10.4's resolution-independence requirement and is not meant to** —
+  pre-rendered raster fails that bar by construction. Said in four places a reader can arrive at
+  independently (§ 10.3, § 10.4, `ATTRIBUTION.md`, `LINEAGE.md`), because an interim asset that only
+  the asset tree admits to being interim is one somebody later reads as a decision.
+  ⭐ **`Side/`, not `Isometric/`, and that was the judgement call.** The ratified reference is a
+  building in **cross-section** (§ 4.1's stacked plates) with a camera that zooms and pans (§ 4.5) —
+  an elevation, in which floors stack as bands; isometric tiles recede along two axes and cannot
+  stack into a section without occluding each other — and nothing in D3 asks for that projection,
+  which until § 10.3's new bullet was written the word's total absence from the document said for
+  it.
+  Taking both was refused rather than overlooked: a renderer draws one projection, and the isometric
+  set is four renders per object that every Gate 1 row would have to keep true for nothing drawn.
+  ⛔ **THE PROVENANCE GATE HAD NEVER BEEN RUN AGAINST THIS TILESET SHAPE.** Individually-sized
+  renders need an **image-collection** tileset — `columns="0"`, one `<tile><image source="…"/></tile>`
+  per PNG — and every clause-3 fixture in `bin/asset-provenance.selftest.py` was a sliced grid sheet
+  with one document-level `<image>`. It **passes** all three clauses unmodified, and no parser change
+  was needed or made; what was missing was evidence, so the selftest gains the collection form as a
+  control **plus two REDs of its own** (a per-tile `<image>` holding its bytes inline; a JSON tile
+  whose `image` is a `data:` URI), because a green over a shape no fixture ever fed the parser
+  reports where the fixtures stopped rather than what the parser does.
+  ⭐ **§ 12's viewport row is answered, and the answer is narrower than the row expected.** A desk
+  sprite is a **measured 116 px** wide — a new **Measured** row, held against the PNG's own IHDR
+  header by a new `verify-floor.py` G8 leg with both the number and the path re-derived from § 10.3's
+  sentence, seen to red on all three of its arms (wrong size, missing file, not a PNG). The
+  1,280 × 800 floor **does not move**, and the measurement's first result is one the old wording
+  assumed away: a 12-slot room as one native-scale row is 12 × 116 px of desk plus two 108 px walls =
+  **1,608 px**, *wider* than the viewport floor, so the tileset shows the room does not fit at 1:1
+  rather than showing that it does. The camera is navigation (§ 4.5), so the floor is reached by
+  zooming out or panning — and which one is taken is exactly what decides nameplate legibility, which
+  is what this row turns on and what no renderer exists to measure. Recorded as a verdict rather than
+  left silently unmet.
+  ⚠ **§ 12's Gate-2 embedded-literal row re-derived on its own stated trigger** (*"whenever art is
+  added"*): the longest look-encoded run of base64's alphabet under `resources/` is now **107 B**, in
+  the whitespace-stripped prose of the new lineage file — not 62 B in `index.js`. Still an order of
+  magnitude under the 1,024 B ceiling, and the new longest run being English prose is clause 2's
+  named residue observed rather than supposed.
+  **No map is vendored** — a tileset is not a map, `verify-floor.py`'s sweep is for Tiled's two *map*
+  spellings, and § 10.3's declared absence stands with its branch still reporting `ABSENT`.
+
 - **card#7897** — D3 § 5.1 rule 4 states that `task.as_of` is **not drawn on the desk**, and § 13 gains
   **decision 26** recording it with its alternative and reversal cost. Operator ruling, 2026-09-12,
   taking option (b) of the amendment PupFuzz/mezzanine#95 proposed and did not apply: the member stays
