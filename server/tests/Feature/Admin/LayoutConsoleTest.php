@@ -204,9 +204,11 @@ class LayoutConsoleTest extends TestCase
 
     public function test_an_overlap_is_refused_at_the_layouts_own_save_and_names_both_rooms(): void
     {
-        // card#9292's rule at the surface. The two rooms have no authored maps, so the refusal an
-        // operator meets FIRST is the missing shipped default (Appendix B step 7) — which is the
-        // honest answer on this tree and names the file. Either way what must not happen is a
+        // card#9292's rule at the surface. Neither room has an authored map, so both are measured
+        // against the SHIPPED DEFAULT's grid (§ 8.7, § 10.3) — and two rooms at one origin then
+        // cover the same pixels. ⭐ Until card#9269 vendored that file the refusal an operator met
+        // first was the missing default, and this arm asserted the file's name; the rule it is
+        // actually about is the one it asserts now. What must not happen, in either state, is a
         // plan being stored with no extent ever measured.
         $this->save($this->document([['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
@@ -214,10 +216,12 @@ class LayoutConsoleTest extends TestCase
         ]]]))->assertSessionHasErrors('layout');
 
         $this->assertSame(0, Layouts::version());
-        $this->assertStringContainsString(
-            'resources/floor/default.tmj',
-            (string) session('errors')->first('layout'),
-        );
+
+        $refusal = (string) session('errors')->first('layout');
+
+        $this->assertStringContainsString('would share pixels', $refusal);
+        $this->assertStringContainsString('`sola`', $refusal);
+        $this->assertStringContainsString('`zeta`', $refusal);
     }
 
     public function test_no_route_in_this_module_takes_a_floor_id_because_a_floor_has_none(): void

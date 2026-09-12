@@ -117,7 +117,8 @@ very fact it exists to check.
 | `resources/floor/tiles/furniture-kit/wallWindow.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `50f9029b7ff9893b021e1c4c5b016f89ab66f52ce9ae948c0d3796442b235a05` |
 | `resources/floor/tiles/furniture-kit/wallWindowSlide.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `671bef582ebc9e4c3708b539ddd992442f75cc0a514c3960a73f66ff9581e7e8` |
 | `resources/floor/tiles/furniture-kit.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `3eadf855dbabc1a12621d4fbc21bad1357cfa6b5e346de3b8c1daab0133272a6` |
-| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `364f9caa358af2c75d14afc766e1ca92d8fd319097ab509d9d23f5a44e476564` |
+| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `d5dddf60a60738ec9274fc60f630f0e0ed22d30bcd68518276b0169d08490cce` |
+| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `41b5e3bb1bae8501387b7bb717256105dc56740afdd4d7779de3896feee5949f` |
 <!-- asset-manifest:end -->
 
 **`portrait-art.js` is the one `licensed` row here, and that is the column doing its job.** It is
