@@ -19,6 +19,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#7582** — **The D4 amendments are RATIFIED and applied, and retirement now clears the
+  board-user mapping.** Operator ruling of 2026-09-12 on A1–A10 from `BOARD-TASK.md`'s pull
+  request, taken **as amended by an adversarial review** rather than as drafted. `FLEET-STATE.md`
+  gains the two § 2.1 process rows, `seats.board_user_id` (UNIQUE) and the `seat_board_task` DDL at
+  § 6.4, the `board_poll_ok` / `board_poll_failed` counters at § 7.2 and § 8.2.4, the § 6.7
+  retention posture, the § 6.8 sizing line, and the § 1.2 / § 4.9 / § 14 repairs that stop the
+  document saying the poller is designed nowhere.
+  ⭐ **A10, which the review found MISSING, is added: § 6.6 and AT-D2-10 now state the rebuild rule
+  in full** — the fold reads only `events` and the durable inputs a rebuild does not destroy
+  (`seats`, `seat_board_task`). Until this, both stated the narrower *read nothing outside the log*
+  as the definition while D4 relied on the wider one, which is two live readings of one rule.
+  ⛔ **The product fork answered: RETIREMENT CLEARS THE MAPPING, in the retirement transaction**
+  (`App\Fleet\SeatRetirement`, § 4.10, AT-D4-8). The alternative — leave the row and make D4's
+  "a row leaves in exactly two ways" true by deleting one of the ways — was refused because
+  `board_user_id` is UNIQUE: a retired seat keeping it holds that board user against the fleet, so
+  the REPLACEMENT seat cannot be mapped to the same person until someone runs an undocumented
+  `--clear` on a seat that has left every read surface, and the whole symptom is a bare non-zero
+  exit. **The store ships with it** — the ratified § 6.4 shape, one migration — because a clearing
+  act with no column to clear cannot be tested, and the test is what makes it real: it was seen to
+  fail on the unique-key refusal first.
+  ⚠ **Three of the review's findings changed what was ratified, and are applied rather than noted:**
+  the two counters gain counting VERBS in § 2.1 (without them A3 turned `verify-fleet-state.py` RED
+  with two G8 failures, measured — and re-measured here by planting it); the 5-minute cadence is
+  **Chosen**, not *Derived*, which is what D4's own number table said all along; and the poller's
+  title truncation is **120 BYTES by D1 § 7.4's procedure**, not 120 characters — a board card
+  `name` is capped by nothing, and `mb_substr(…, 0, 120)` of a multibyte title is up to 480 bytes
+  against § 8.2.1's `≤ 120 B` contract.
+  ⛔ **The poller is still not built** — `mezzanine:board-poll` and `mezzanine:seat-board-user` are a
+  separate pull, which the ruling says in terms; `seat_board_task` therefore has one writer today and
+  it only deletes.
 - **card#9146** — **THE PROMOTE CHAIN'S 403 WAS THE WRONG ACCOUNT'S TOKEN, and nothing checked
   which account it was.** Every `release-promote-cards` run from 2026-08-24 to 2026-09-09 died
   `✗ card#NNNN: move failed (HTTP 403) — left in place` on every card it named. The cause was not
@@ -260,8 +290,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   from `seats.retired_at` — an operator-written value in no event that `reset()` deliberately does
   not touch. ⇒ no D1 change, no new event kind, no change to `reset()`, and **no fourth exclusion**.
   D2 § 12 asks for the tier-1 freshness bound to be "re-derived once the board producer exists and
-  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged while its
-  basis moves from *Chosen, provisional* to *Derived*.
+  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged.
+  ⚠ **Superseded by the ratification below:** that row stays **Chosen**, not *Derived* — D2 § 12's
+  `Derived` means computed from a number in D2 or D1, and the cadence is in neither.
   ⛔ **Nothing is implemented and that is the deliverable.** Every structural piece needs a D2
   amendment — a § 2.1 process row, a § 6.4 table and column, two § 7.2 counters — and D2 § 6.4
   says a builder "may reorder columns and add nothing". The amendments are stated as exact text on

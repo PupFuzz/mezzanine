@@ -47,7 +47,13 @@ use Illuminate\Support\Facades\DB;
  *
  * ⛔ AND WHAT IS NOT A DELETION. "Is it purged? **No.** `seats` is retained forever (§ 6.7); the
  * disappearance is a READ FILTER, not a deletion, so an operator query can still find the row and
- * its reason." Nothing here deletes anything, and `Purge` has no plan row for `seats`.
+ * its reason." The `seats` row survives, every ledger row survives, and `Purge` has no plan row
+ * for `seats`. ⚠ **This paragraph used to say "nothing here deletes anything", and since
+ * card#7582 that is no longer literally true**: the act deletes the seat's `seat_board_task` row
+ * and nulls `seats.board_user_id` (§ 4.10, § 6.7), which is a JOIN KEY into a live board rather
+ * than a record of anything. The old sentence is recorded rather than quietly replaced, because
+ * the property it was protecting — the retirement RECORD is never deleted — is the one a reader
+ * must still be able to rely on, and the way to keep relying on it is to know which clause moved.
  *
  * ⛔ WHAT card#9078's OPERATOR RULING CHANGED, AND WHAT IT DID NOT TOUCH IN THIS CLASS. The desk
  * now goes at `retired_at` instead of fourteen days later — a change to `App\Read\RetirementFilter`
@@ -182,6 +188,34 @@ final class SeatRetirement
 
                 return SeatRetirementOutcome::alreadyRetired((string) $already);
             }
+
+            // ⛔ THE BOARD-USER MAPPING GOES WITH THE SEAT, IN THIS TRANSACTION — § 4.10 and
+            // § 6.7, ratified on card#7582 (2026-09-12). § 6.7 states the invariant this holds up:
+            // a `seat_board_task` row "leaves in exactly two ways", any write of
+            // `seats.board_user_id` and the seat's retirement, and until this the SECOND WAY HAD
+            // NO WRITER — the sentence was true of nothing.
+            //
+            // ⚠ AND THE COST OF LEAVING IT IS NOT TIDINESS. `board_user_id` is UNIQUE (§ 6.4), so
+            // a retired seat that keeps it holds that board user against the whole fleet: the
+            // replacement seat cannot be mapped to the same person until an operator runs
+            // `mezzanine:seat-board-user --clear` on a seat that has left every read surface, and
+            // the only symptom is that command's bare non-zero exit. The alternative resolution —
+            // make the sentence true by declaring retirement leaves the row in place — was put to
+            // the operator and refused for exactly that reason.
+            //
+            // ⛔ IT IS NOT A DELETION OF ANYTHING THE RECORD NEEDS, which is the one thing § 4.10
+            // is emphatic about ("the disappearance is a READ FILTER, not a deletion"). The three
+            // retirement columns and every ledger row are untouched; what goes is a JOIN KEY into
+            // a live board, which is the thing a retired seat must stop holding. `seat_board_task`
+            // is an INPUT (§ 6.4) and not a projection, so nothing derives a fact from its absence
+            // — the poll that would rewrite it skips retired seats anyway (BOARD-TASK.md § 7.2).
+            //
+            // NOT FOLDED INTO THE GUARDED UPDATE ABOVE, deliberately: that UPDATE's affected count
+            // IS the § 2.1 no-op decision ("Re-running it on an already-retired seat is a no-op"),
+            // and widening its SET list would leave the decision reading the same while a second
+            // act's worth of columns rode along with it. This runs only on the branch that wrote.
+            DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => null]);
+            DB::table('seat_board_task')->where('seat_ref', $seatRef)->delete();
 
             // The recompute is the SHARED one (§ 6.5's per-writer rule names this act as one of
             // the three writers), so `render_state` collapses through § 4.2's precedence rather
