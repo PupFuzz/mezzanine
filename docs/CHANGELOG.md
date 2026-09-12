@@ -75,6 +75,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `400 unsupported_schema_version`, naming the accepted set. D1 § 6.0 and
   § 12.1 step 9 were already right and the code was the wrong party; D2 § 6.4's `events.data`
   column gained the spelling guarantee the fix mints.
+  ⚠ **The § 12.1 step 3 amendment had an un-audited SIBLING, and it is now amended too.** The
+  coordination-webhook receipt (§ 18.8) states its validation order in the same construct and its
+  step 5 still read the unamended "body parses as JSON → else `400`" — the same under-specification
+  in the same document, missed because the audit that found the amendment searched the INGEST's
+  steps rather than the claim's shape. It now reads "parses as JSON **and is a JSON object**",
+  with step 6's `repository.full_name` read named as the thing that already presupposed it.
+  ⭐ **No code changed and none was owed**: that endpoint is unbuilt (no `X-Hub-Signature-256`
+  anywhere in `server/`), so this is an under-specified spec being closed BEFORE it is built,
+  not a false claim about shipped code. It was deliberately not minted as its own card — there is
+  no user-visible harm to reach while nothing serves the route (canon #18's gate), and the surface
+  that owns the subject is the document itself.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

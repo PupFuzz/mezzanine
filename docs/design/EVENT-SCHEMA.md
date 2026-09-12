@@ -5964,7 +5964,13 @@ silence.
 4. `X-GitHub-Event` and `X-GitHub-Delivery` present → else `400`. **`X-GitHub-Delivery`'s value is
    required and unused** — DL-176's finding, adopted rather than re-derived: it sits outside the HMAC,
    so a validly-signed body replayed under a fresh header would mint a fresh key.
-5. Body parses as JSON → else `400`.
+5. Body parses as JSON **and is a JSON object** → else `400`. The second half is not a
+   formality, and it is not a new rule either — it is [§ 12.1](#121-validation-order) step 3's
+   reasoning applying unchanged one endpoint over: `[]`, `"x"`, `1`, `true` and `null` all parse,
+   and none of them is a webhook delivery. A step that tested only *parses* would pass them to
+   step 6, which reads `repository.full_name` and so already presupposes the object this step
+   failed to require. The object test is **shape only**; an empty object `{}` passes it and is
+   refused at step 6 for the binding it has nowhere to carry.
 6. `repository.full_name` equals the hook binding's repository → else `403`.
 7. `delivery_digest` — SHA-256 of the signed body — is the **idempotency key**, and step 4 is why it
    is not the header. The header's value is stored as an **operator-facing label only**, so a human
