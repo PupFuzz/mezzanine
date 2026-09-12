@@ -70,6 +70,28 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
 
         $this->assertContains(null, $labels, 'no fixture floor reads as its key');
         $this->assertNotEmpty(array_filter($labels, 'is_string'), 'no fixture floor carries a label');
+
+        // ⭐ card#9292: and of the PLAN. Three properties, because a runtime that dropped `origin`,
+        // one that invented it everywhere, and one that paged a `hallway` onto every composed floor
+        // would each walk a fixture missing one of these clean.
+        $composedRooms = array_merge(...array_map(
+            fn (array $c) => array_merge(...array_map(fn (array $f) => $f['rooms'], $c['floors'])),
+            $cases,
+        ));
+
+        $this->assertNotEmpty(
+            array_filter($composedRooms, fn (array $room) => isset($room['origin'])),
+            'no fixture room is PLACED, so a runtime that dropped `origin` would walk this clean',
+        );
+        $this->assertNotEmpty(
+            array_filter($composedRooms, fn (array $room) => ! isset($room['origin'])),
+            'every fixture room is placed, so a runtime that invented an origin would walk this clean',
+        );
+        $this->assertContains(
+            true,
+            array_map(fn (array $c) => array_filter($c['layout'], fn (array $f) => isset($f['hallway'])) !== [], $cases),
+            'no fixture layout carries a hallway, so *the composer never carries one* is untested',
+        );
     }
 
     public function test_every_fixture_case_composes_to_exactly_the_floors_it_states(): void
@@ -89,7 +111,7 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         // room's `install_id` — which IS the channel, the snapshot grouping and the ACL point —
         // is carried through untouched whether the room is placed or not, and the composed floor
         // is the ONLY thing that differs between the two arms below.
-        $placed = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => ['sola' => 'office', 'zeta' => 'office']]]]), ['sola', 'zeta']);
+        $placed = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]]), ['sola', 'zeta']);
         $unplaced = Building::compose(BuildingLayout::parse(['floors' => []]), ['sola', 'zeta']);
 
         $rooms = fn (array $b) => array_merge(...array_map(
@@ -111,7 +133,7 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         // differ ONLY in labels compose to the same floors, the same keys and the same rooms. The
         // reader's own copy of this property (`BuildingLayoutTest`) is about the document; this is
         // about the BUILDING, which is what the console and the page actually read.
-        $rooms = ['sola' => 'office', 'zeta' => 'office'];
+        $rooms = ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']];
         $installs = ['sola', 'zeta', 'aimla'];
 
         $plain = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => $rooms]]]), $installs);

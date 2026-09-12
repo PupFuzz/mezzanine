@@ -11,10 +11,11 @@
     </p>
 
     <p>
-        <strong>Which rooms share a floor is not authored here.</strong> It is
-        <code>config/building.php</code>, a deploy-time document (§ 4.6), so rearranging the
-        building is a deploy and gets a diff and a review. Rooms sharing a <em>Floor</em> value
-        below are drawn on one screen; a room the layout does not place gets a floor of its own.
+        <strong>Which rooms share a floor is not authored here.</strong> It is the
+        <a href="{{ route('admin.layout.edit') }}">building layout</a> — its own module, with its
+        own revisions, since card#9208's reversal moved it out of a deploy-time file (§ 4.6). Rooms
+        sharing a <em>Floor</em> value below are drawn on one screen; a room the layout does not
+        place gets a floor of its own.
     </p>
 
     <table>
@@ -55,6 +56,7 @@
                             <strong>this map can no longer be read:</strong> {{ $row['unreadable'] }}
                         @else
                             {{ $row['slots'] }} desk slots
+                            <br>revision {{ $row['map_version'] }}
                             @if ($row['short_by'] > 0)
                                 <br><strong>floor map is short {{ $row['short_by'] }} desks</strong>
                                 — every seat past the {{ $row['slots'] }}th is drawn in § 3.2's
@@ -80,6 +82,11 @@
                         @elseif ($row['renders'])
                             <a href="{{ route('admin.floors.create') }}">Author a map</a>
                         @endif
+
+                        {{-- The history is offered for every room, authored or not: a room whose
+                             map was REMOVED has no current row and every one of its revisions is
+                             still there to restore (§ 6.11). --}}
+                        <br><a href="{{ route('admin.floors.revisions', $row['install_id']) }}">Revisions</a>
                     </td>
                 </tr>
             @empty
@@ -95,7 +102,9 @@
     <p><a href="{{ route('admin.floors.create') }}">Author a room's map</a></p>
 
     <p>
-        Removing a map removes the room and nothing else: the install, its seats and their state
-        are the fleet's, and this console does not write them.
+        Removing a map puts the room back on the shipped default and nothing else: the install, its
+        seats and their state are the fleet's, and this console does not write them. The removal is
+        itself a revision (<code>docs/design/FLEET-STATE.md § 6.11</code>), so the map it removed is
+        still there to restore.
     </p>
 @endsection

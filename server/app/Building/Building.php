@@ -37,6 +37,14 @@ namespace App\Building;
  * this composer neither refuses nor repairs — "a refusal there would take the building down for a
  * name", and provisioning an install must render it without a deploy.
  *
+ * ⭐ IT CARRIES THE ROOM'S `origin` AND NOT THE FLOOR'S `hallway` (card#9292, § 4.6), and the
+ * asymmetry is the two members' own. `origin` is where a room is DRAWN — three integers' worth of
+ * the composition every reader of a composed floor needs, and the fixture pins both runtimes to
+ * carrying it. A `hallway` is a whole Tiled document that only the floor SCREEN draws (§ 4.2,
+ * Appendix B step 7); putting it on every composed floor would page it into the lobby, which draws
+ * plates, for a screen that does not exist yet. It stays in the layout document, where the floor
+ * route will read it.
+ *
  * ⚠ IT MINTS NO RENDERED STRING. `reported: false` is the FACT; § 4.6's wording for it — *no seats
  * reported for this room* — is the client's own narration (§ 5.5) and belongs to whatever draws
  * the room. A sentence composed here would be a second home for it, and the two would disagree the
@@ -52,7 +60,7 @@ final class Building
      * floor has no authored position to honour anyway.
      *
      * @param  list<string>  $installs  the installs the fleet reports, in any order
-     * @return list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, reported: bool}>}>
+     * @return list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}, reported: bool}>}>
      */
     public static function compose(BuildingLayout $layout, array $installs): array
     {

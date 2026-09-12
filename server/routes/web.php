@@ -1,6 +1,6 @@
 <?php
 
-use App\Building\BuildingLayout;
+use App\Building\Layouts;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
 use Illuminate\Support\Facades\Route;
@@ -83,11 +83,21 @@ Route::middleware('guest')->group(function () {
  * (§ 9 adds the `mzr_` machine path) and could not be expressed by leaving the route here.
  */
 Route::middleware(['auth', 'mfa'])->group(function () {
-    // The lobby is served WITH the building layout — `docs/design/FLOOR.md § 4.6`: the composed
-    // floors reach the browser with the page and never from an endpoint, because the layout is
-    // not fleet state and § 1.2 forbids D3 minting a read surface. An invalid layout refuses
-    // here, per request, on this surface — never at boot, where it would take ingest down too.
-    Route::get('/dashboard', fn () => view('dashboard', ['layout' => BuildingLayout::fromConfig()->floors]))
+    // The lobby is served WITH the building layout — `docs/design/FLOOR.md § 4.6`. An invalid
+    // layout refuses here, per request, on this surface — never at boot, where it would take
+    // ingest down too.
+    //
+    // ⭐ THE DOCUMENT NOW COMES FROM THE CONSOLE'S STORE (card#9208's reversal, 2026-09-12;
+    // `App\Building\Layouts`, `docs/design/FLEET-STATE.md § 6.11`) rather than from
+    // `config/building.php`. The READER is unchanged, which is § 4.6's promise being kept: "the
+    // SHAPE is the contract; the store is the caller's."
+    //
+    // ⚠ AND THE DELIVERY IS STILL THE PAGE'S, WHICH IS BUILD SLICE 3's TO MOVE. § 4.6 now reaches
+    // the browser from `GET /api/building` (D2 § 8.7) "because a layout an operator saves has to
+    // reach a client that is already open, and a page-inlined document reaches only a page that is
+    // loaded after it" — that surface is Appendix B row 12's and the client's fetch is row 13's.
+    // Until then this inlines what the store holds, hallways and all.
+    Route::get('/dashboard', fn () => view('dashboard', ['layout' => Layouts::layout()->floors]))
         ->name('dashboard');
 });
 

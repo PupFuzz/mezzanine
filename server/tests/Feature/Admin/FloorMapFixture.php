@@ -48,15 +48,26 @@ final class FloorMapFixture
             'tiledversion' => '1.10.2',
             'orientation' => 'orthogonal',
             'renderorder' => 'right-down',
-            'width' => 10,
+            // ⚠ 20 × 8 TILES OF 32 px — 640 × 256 — AND THE SIZE IS LOAD-BEARING since card#9292:
+            // every desk object below must be WHOLLY INSIDE the grid (§ 10.3), because the grid is
+            // the room's footprint on a planned floor and a desk past it would overhang a
+            // neighbour the footprint check had passed. The twelfth slot reaches x = 408, so a
+            // 10-tile grid — what this fixture declared while nothing checked — is too narrow and
+            // would make the VALID map invalid.
+            'width' => 20,
             'height' => 8,
             'tilewidth' => 32,
             'tileheight' => 32,
             'infinite' => false,
             'nextlayerid' => 3,
             'nextobjectid' => $slots + 1,
+            // ⚠ THE TILESET THE REPOSITORY ACTUALLY SHIPS, and it has to be: since card#9208 the
+            // console refuses a `source` that does not resolve under `resources/floor/`
+            // (docs/design/FLOOR.md § 10.3 — the residue the reversal closed). A made-up name here
+            // would make the VALID fixture invalid, and every refusal below would then be earned
+            // for the wrong reason.
             'tilesets' => [
-                ['firstgid' => 1, 'source' => 'office.tsj'],
+                ['firstgid' => 1, 'source' => 'tiles/furniture-kit.tsx'],
             ],
             'layers' => [
                 [
@@ -65,11 +76,11 @@ final class FloorMapFixture
                     'name' => 'room',
                     'x' => 0,
                     'y' => 0,
-                    'width' => 10,
+                    'width' => 20,
                     'height' => 8,
                     'opacity' => 1,
                     'visible' => true,
-                    'data' => array_fill(0, 80, 1),
+                    'data' => array_fill(0, 160, 1),
                 ],
                 [
                     'id' => 2,
@@ -90,6 +101,29 @@ final class FloorMapFixture
     public static function encode(array $map): string
     {
         return json_encode($map, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * A valid map of a chosen GRID — which since card#9292 is the room's FOOTPRINT on a planned
+     * floor (`docs/design/FLOOR.md § 4.6`), so this is how a test says *this room is this big*.
+     * The desk slots are drawn at the origin, one pixel each, so they are inside any grid and the
+     * size under test is the only thing that varies.
+     */
+    public static function sized(int $tilesWide, int $tilesHigh, int $slots = 1): string
+    {
+        $map = self::decoded($slots);
+
+        $map['width'] = $tilesWide;
+        $map['height'] = $tilesHigh;
+        $map['layers'][0]['width'] = $tilesWide;
+        $map['layers'][0]['height'] = $tilesHigh;
+        $map['layers'][0]['data'] = array_fill(0, $tilesWide * $tilesHigh, 1);
+        $map['layers'][1]['objects'] = array_map(
+            fn (int $id) => ['id' => $id, 'x' => 0, 'y' => 0, 'width' => 1, 'height' => 1],
+            range(1, $slots),
+        );
+
+        return self::encode($map);
     }
 
     /** The layer data as base64 — Tiled's DEFAULT export, and § 10.1 clause 3's subject. */
@@ -193,6 +227,80 @@ final class FloorMapFixture
             'x' => 0, 'y' => 0, 'width' => 16, 'height' => 16,
             'data' => array_fill(0, 256, 1),
         ]];
+
+        return self::encode($map);
+    }
+
+    /**
+     * ⭐ A FLOOR'S HALLWAY (card#9292): the valid map with its `desks` layer taken OFF, because
+     * § 10.3 reads a hallway "by this table too, with one row inverted" — a hallway seats nobody.
+     * Decoded rather than encoded: a hallway lives INSIDE the layout document and has no bytes of
+     * its own (§ 4.6).
+     *
+     * @return array<string, mixed>
+     */
+    public static function hallway(): array
+    {
+        $map = self::decoded();
+
+        unset($map['layers'][1]);
+        $map['layers'] = array_values($map['layers']);
+
+        return $map;
+    }
+
+    /** A desk object drawn PAST the room's grid — card#9292's overhang, refused since § 10.3. */
+    public static function deskOutsideTheGrid(): string
+    {
+        $map = self::decoded();
+        $map['layers'][1]['objects'][0]['x'] = ($map['width'] * $map['tilewidth']) - 4;
+
+        return self::encode($map);
+    }
+
+    /** A desk object carrying a property — card#9071's seat name, arriving as an allowlist of one. */
+    public static function deskWithProperties(): string
+    {
+        $map = self::decoded();
+        $map['layers'][1]['objects'][0]['properties'] = [
+            ['name' => 'seat_id', 'type' => 'string', 'value' => 'aimla-pm'],
+        ];
+
+        return self::encode($map);
+    }
+
+    /** A tileset the repository does not ship — a reference that would draw an empty room. */
+    public static function unshippedTileset(): string
+    {
+        $map = self::decoded();
+        $map['tilesets'][0]['source'] = 'tiles/nobody-vendored-this.tsx';
+
+        return self::encode($map);
+    }
+
+    /** A `source` that climbs out of the asset root — a path, arriving from a form. */
+    public static function tilesetOutsideTheAssetRoot(string $relative): string
+    {
+        $map = self::decoded();
+        $map['tilesets'][0]['source'] = $relative;
+
+        return self::encode($map);
+    }
+
+    /** The other projection: isometric tiles recede along two axes and the floor is an elevation. */
+    public static function isometric(): string
+    {
+        $map = self::decoded();
+        $map['orientation'] = 'isometric';
+
+        return self::encode($map);
+    }
+
+    /** A map with no `tilewidth` — a room with no pixel size, so no footprint on a planned floor. */
+    public static function noTileWidth(): string
+    {
+        $map = self::decoded();
+        unset($map['tilewidth']);
 
         return self::encode($map);
     }

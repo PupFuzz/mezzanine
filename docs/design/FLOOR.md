@@ -1237,15 +1237,20 @@ given one building **two change paths** — rearranging the rooms taking effect 
 themselves took effect on a deploy — and the first question anyone would ask of a floor that looked
 wrong is which of the two they were looking at. The reversal made the map a runtime document, and the
 same argument now runs the other way: a deploy-time layout beside a runtime map is exactly the
-two-path building it refused, with the roles swapped. So the layout moves with the map. ⚠ **That is
-this design's inference, and it is said so rather than dressed as an instruction.** The 2026-09-12
-ruling names the map and room design and says nothing of the layout. The operator's words on
+two-path building it refused, with the roles swapped. So the layout moves with the map. ⭐ **RATIFIED
+by the operator, 2026-09-12 (card#9208), in those terms — it was put to them as an inference rather
+than as a clause of their ruling, and the answer was *"keep it in the console"*.** It is therefore a
+settled call and not one a later reader should re-raise; what follows is the argument it was ratified
+ON, kept because a ruling whose reasoning is lost is a ruling nobody can apply to the next case.
+⚠ **It began as this design's inference, and was said so rather than dressed as an instruction.** The
+2026-09-12 *option C* ruling names the map and room design and says nothing of the layout. The operator's words on
 card#9070 (2026-09-08) — *"I want to be able to add/remove floors and to be able to design the floor
 layout."* — point the same way but do not settle it: that card's own ruling read *the floor layout*
 as the map's desk slots and shape, three days before card#9267 gave the building a layout document
-at all. So the move rests on the two-change-path argument above and on nothing else, it is taken
-rather than assumed, and it is the one call in this amendment a reviewer should reverse if they
-disagree with that argument — [§ 13](#13-decisions-taken-revisable-at-review) row 24. What the
+at all. So the move rested on the two-change-path argument above and on nothing else, it was taken
+rather than assumed, and it was put to the operator as the one call in this amendment a reviewer
+should reverse if they disagreed with that argument — [§ 13](#13-decisions-taken-revisable-at-review) row 24 — which is the
+question the ratification above answers. What the
 deploy-time document bought — a diff, a review and a revert — is [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s
 answer now, revision by revision, with review the one it does not give back and says so.
 
@@ -1284,23 +1289,31 @@ already manages rooms.
 composition above and the lobby half are built: the lobby stacks the composed floors, a plate of
 several rooms names them, a plate and the elevator's stop carry the floor's label where the layout
 gives one and its key where it does not (card#9273), the elevator rides between floors, and the
-console's floors module shows each room's floor. The shipped document is **empty** — which by the
-rule above is *one floor per install*, exactly the building the client drew before the ruling. ⚠ **And the layout's BUILT home is still `server/config/building.php`, a deploy-time file, until
-card#9208's build slices land** ([Appendix B](#appendix-b--what-an-implementer-builds-from-this)):
-the reversal moves it to the console's store, and the shipped file is what the reader reads today.
+console's floors module shows each room's floor. ⭐ **And the layout's BUILT home is the console's
+store** — `building_layout`, one revision per save ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) — since
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 11 landed (card#9208, build
+slice 1): `server/config/building.php` is **gone**, its deploy-time docblock with it, and the
+console's **building layout** module is where an operator composes a floor. A deployment that has
+never saved one is at `layout_version` 0 with no floors, which by the rule above is *one floor per
+install* — exactly the building the client drew before the ruling, and exactly what the empty
+shipped file used to say.
 What is **not** built is
 [§ 4.4](#44-routes-and-what-each-one-fetches)'s floor route, which does not exist at all (card#9208's
 build slices, the same appendix), so a composed floor is a plate in the lobby and not yet a
 screen; and the office map a room's `office` form will select — card#9269, **re-scoped by card#9292
 to the office's INTERIOR alone**: the hallway that card's title named is this section's plan, so one
-card designs the hallway and one the office, never both ([§ 13](#13-decisions-taken-revisable-at-review) row 33). ⚠ **And the plan is
-not built (card#9292):** the shipped reader refuses `hallway` **by name** (a floor member it does not know) and a room
-record **as a non-scalar form** — `origin` is reachable only inside a record, so no message names it —
-and the fixture's cases still author the bare form. The plan lands only in the console's store,
-never in `server/config/building.php`: a hallway document inside a `config:cache`d file is a window
-step 11 closes before it opens. [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 11 — the slice that moves the layout into the
-console's store — is where the record, `origin`, `hallway` and the overlap check land, with the fixture's
-cases rewritten to the record and a case added for each refusal the table above states.
+card designs the hallway and one the office, never both ([§ 13](#13-decisions-taken-revisable-at-review) row 33). ⭐ **And the plan IS
+built (card#9292), in the same slice that moved the layout:** the room record, `origin`, `hallway`
+and the overlap check are the console's, the fixture's cases author the record, and the refusals
+this section states each have a case. ⚠ **One of them is refused for a reason this section did not
+anticipate, and it is a BUILD-ORDER fact rather than a rule:** a plan that places a room with **no
+authored map** needs the shipped default's grid for that room's extent, and
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7's default is not in the tree
+— step 11 landed first, against this section's assumption that it would not. That save is refused
+**by name**, naming the room and `resources/floor/default.tmj`, until the default lands; authoring
+the room's map first is the way through, and it is one save. The alternative — a grid invented in
+the reader — is a number with no derivation, which this section refuses for bounds and refuses here
+for the same reason.
 
 **How it reaches the browser: the LAYOUT, validated and normalised, from `GET /api/building`
 ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — fetched beside the snapshot on connect ([§ 2.2](#22-connect-snapshot-deltas)
@@ -5124,7 +5137,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 8 | the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised), and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** |
 | 9 | the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
 | 10 | the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) |
-| 11 | the **authored building store** — `authored_revisions`, `building_layout`, `floors.map_version` — and the console's **revisions, diff, restore, export and layout modules** ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), [§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)) (card#9208, build slice 1). Moves the layout out of `server/config/building.php` and retires that file's *deploy-time* docblock with it. ⚠ The console's **preview** is not in this slice: it draws with step 7's renderer and lands with or after it, so until then restore is the only thing between a bad save and every viewer ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) says so in its review row). ⚠ card#9292's plan lands in this slice too: the room record with `origin`, the floor's `hallway`, and the overlap check at the layout save and at a room map's save, restore and removal ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)); the fixture's cases move to the record and each refusal § 4.6 states gains a case — and the fixture is a cross-runtime pin, so `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest`'s projection over `install` / `form` / `reported` and `lobby-model.js`'s `floors()` must carry `origin` through, or a planned case reds the lobby suite rather than the store's | the D2 acceptance test that slice owes and this document does not own: a save is one revision, a restore is a forward revision, a removal is retrievable, and a byte-identical save is refused |
+| 11 | **✅ LANDED 2026-09-12** — the **authored building store** — `authored_revisions`, `building_layout`, `floors.map_version` — and the console's **revisions, diff, restore, export and layout modules** ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), [§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)) (card#9208, build slice 1). Moves the layout out of `server/config/building.php` and retires that file's *deploy-time* docblock with it. ⚠ The console's **preview** is not in this slice: it draws with step 7's renderer and lands with or after it, so until then restore is the only thing between a bad save and every viewer ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) says so in its review row). ⚠ card#9292's plan lands in this slice too: the room record with `origin`, the floor's `hallway`, and the overlap check at the layout save and at a room map's save, restore and removal ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)); the fixture's cases move to the record and each refusal § 4.6 states gains a case — and the fixture is a cross-runtime pin, so `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest`'s projection over `install` / `form` / `reported` and `lobby-model.js`'s `floors()` must carry `origin` through, or a planned case reds the lobby suite rather than the store's | the D2 acceptance test that slice owes and this document does not own: a save is one revision, a restore is a forward revision, a removal is retrievable, and a byte-identical save is refused |
 | 12 | the **building surface** — `GET /api/building`, `GET /api/building/rooms/{install_id}/map`, `room.map` and `building.layout` on the feed ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) (card#9208, build slice 2) | D2's acceptance test for the surface: a `503` on a store that cannot be read and never a default served in its place; a token refused as the timeline refuses one; the shipped default answered for an unauthored room with `source: "default"` |
 | 13 | the **room map fetch** and the client's map cache by `map_version`; the lobby's layout fetch replacing the page-inlined document ([§ 2.2](#22-connect-snapshot-deltas) step 4b, [§ 4.4](#44-routes-and-what-each-one-fetches), [§ 2.5](#25-what-re-renders-and-when)) (card#9208, build slice 3 — the floor route's own build, step 7, is where the fetched map is first drawn) | the client halves of T39: a `room.map` re-renders one room with no [§ 6.2](#62-the-animation-table--the-closed-set) row fired and one event-log line written; F16 draws no default and F17 composes no building. Named here as owed rather than numbered, because an acceptance test in this document is bound to a fixture and a suite that do not exist until the slice does ([§ 11](#11-acceptance-tests)) |
 
