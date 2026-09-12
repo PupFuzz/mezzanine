@@ -28,11 +28,15 @@ use Illuminate\Support\Facades\DB;
  * refuses for bounds in general ("a bound would be a number with no derivation behind it") and
  * which would make the overlap check report clean over a room it never measured.
  *
- * ⚠ THE SHIPPED DEFAULT IS NOT IN THE TREE ON THIS REPOSITORY YET (Appendix B step 7 /
- * card#7341 — see `App\Floor\ShippedDefaultMap`), so the refusal above is REACHABLE today and is
- * the one an operator meets if they plan a floor before authoring its rooms' maps. It names both
- * the room and the file, so the two ways out — author the map, or land the default — are in the
- * message rather than in a document nobody has open.
+ * ⭐ THE SHIPPED DEFAULT IS IN THE TREE SINCE card#9269 (`resources/floor/default.tmj`, FLOOR.md
+ * § 10.3 — see `App\Floor\ShippedDefaultMap`). Until it landed, the no-default refusal below was
+ * the one an operator met for planning a floor before authoring its rooms' maps; it is no longer
+ * reachable that way. ⚠ IT IS KEPT, AND NOT AS A DEFENCE AGAINST AN IMPOSSIBLE STATE: the default
+ * is a FILE, so a deployment that ships without it — a partial upload, a pruned asset tree — puts
+ * this class back in front of a plan it cannot measure, and the honest answer there is the same
+ * named refusal rather than a size invented here. It names both the room and the file, so the two
+ * ways out — author the map, or repair the deployment — are in the message rather than in a
+ * document nobody has open.
  */
 final class RoomExtents
 {
@@ -104,11 +108,12 @@ final class RoomExtents
             if ($default === null) {
                 throw new InvalidBuildingLayout(sprintf(
                     'Room `%s` is placed on a planned floor and has no authored map, so its '
-                    .'footprint would be the shipped default\'s grid — and this repository ships '
-                    .'no default map yet (`%s`; docs/design/FLOOR.md § 10.3, Appendix B step 7, '
-                    .'card#7341). Author that room\'s map first and the plan can be checked '
-                    .'against the room the operator actually drew; a size guessed here would make '
-                    .'this check report clean over a room nothing measured.',
+                    .'footprint would be the shipped default\'s grid — and this deployment is '
+                    .'missing that file (`%s`; docs/design/FLOOR.md § 10.3, which card#9269 '
+                    .'vendored: a deployment without it is incomplete). Restore the file, or '
+                    .'author that room\'s map so the plan is checked against the room the '
+                    .'operator actually drew; a size guessed here would make this check report '
+                    .'clean over a room nothing measured.',
                     $installId,
                     'resources/floor/'.ShippedDefaultMap::STEM.'.tmj',
                 ));

@@ -7,17 +7,17 @@ namespace App\Floor;
  * an operator authors one".
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ IT IS NOT IN THE TREE YET, AND THIS CLASS IS WRITTEN FOR BOTH STATES RATHER THAN FOR THE ONE
- * THE DESIGN ASSUMES. `docs/design/FLOOR.md` Appendix B lands the default at **step 7**
- * (card#7341) and the authored store at **step 11** (card#9208, this slice), and § 4.6 leans on
- * that order in terms — the overlap check "always has one to read, because Appendix B step 7
- * lands the default before step 11 lands the plan". On this repository step 11 landed FIRST:
- * card#7341's pull (PupFuzz/mezzanine#107) vendored the TILESET and no map, and § 10.3 still
- * declares the absence. So the premise is false here, and what this slice does about it is state
- * the consequence by name rather than invent a grid nothing derived: a floor plan that places a
- * room with **no authored map** is refused, naming this file, until it exists
- * (`App\Building\RoomExtents`). Authoring the rooms' maps first is one save each and is what an
- * operator planning a floor would do anyway.
+ * ⭐ IT IS IN THE TREE SINCE card#9269 (2026-09-12) — the office interior the operator ruled the
+ * default's content, drawn with the vendored tileset. THIS CLASS IS STILL WRITTEN FOR BOTH STATES,
+ * and that is not a defence against an impossible state: the default is a FILE, and a deployment
+ * that ships without it — a partial upload, a pruned asset tree — is a real state this class is
+ * the only thing that can report. `docs/design/FLOOR.md` Appendix B lands the default at **step 7**
+ * and the authored store at **step 11** (card#9208), and § 4.6 leans on that order in terms — the
+ * overlap check "always has one to read". On this repository step 11 landed FIRST: card#7341's
+ * pull (PupFuzz/mezzanine#107) vendored the TILESET and no map, so for the window between that
+ * pull and card#9269 a floor plan placing a room with **no authored map** was refused by name
+ * rather than measured against a grid nothing derived (`App\Building\RoomExtents`). That window is
+ * closed; the refusal it left behind now answers for a broken deployment instead.
  *
  * ⛔ ONE SPELLING IS READ, AND THE OTHER IS A LOUD REFUSAL RATHER THAN AN ABSENCE. § 10.1 clause 1
  * admits `.tmj` and `.tmx` and leaves the choice to the implementer; `App\Floor\FloorMap` made

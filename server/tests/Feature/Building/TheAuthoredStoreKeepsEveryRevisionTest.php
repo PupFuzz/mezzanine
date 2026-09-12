@@ -9,6 +9,7 @@ use App\Building\Revisions;
 use App\Floor\FloorMap;
 use App\Floor\Floors;
 use App\Floor\InvalidFloorMap;
+use App\Floor\ShippedDefaultMap;
 use App\Sweep\Purge;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -300,20 +301,36 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         Floors::restore('sola', 1, self::OPERATOR);
     }
 
-    public function test_a_room_maps_REMOVAL_is_refused_when_the_default_it_falls_back_to_cannot_be_read(): void
+    public function test_a_room_maps_REMOVAL_is_refused_when_the_default_it_falls_back_to_would_overlap(): void
     {
         // ⛔ THE THIRD WRITE SITE, and the one whose extent change is least obvious: a removal puts
         // the room back on the SHIPPED DEFAULT (§ 8.7), whose grid may be larger than the map it
-        // replaces. On this repository the default is not vendored yet (Appendix B step 7), so the
-        // refusal names the file rather than guessing a size — which is the honest answer and the
-        // one that changes to a real overlap check the day the default lands.
+        // replaces — and the office card#9269 drew IS wider than the fixture room beside it.
+        // ⭐ THIS IS THE CHECK THE DEFAULT'S LANDING TURNED ON. Until card#9269 vendored the file
+        // there was no grid to fall back to, and this arm asserted the refusal that named the
+        // missing file; it now asserts the real geometry, which is what that arm's own comment
+        // said it would become.
         $this->twoRoomsSideBySide();
+
+        // BOTH WIDTHS ARE DERIVED, neither typed: a redrawn default (or a re-sized fixture) moves
+        // this arm's premise with it instead of leaving a constant here to be wrong quietly. If the
+        // default ever becomes narrow enough to fit in the gap, this guard says so rather than
+        // letting the refusal below pass for some other reason.
+        $default = ShippedDefaultMap::map();
+        $this->assertNotNull($default, 'the repository ships no default map, and § 10.3 says it does');
+        $this->assertGreaterThan(
+            FloorMap::parse(FloorMapFixture::sized(10, 8))->pixelWidth(),
+            $default->pixelWidth(),
+            'the shipped default fits in the gap `twoRoomsSideBySide` leaves, so this arm asserts nothing',
+        );
 
         try {
             Floors::remove('sola', self::OPERATOR);
             $this->fail('a removal changed a placed room\'s extent without checking it');
         } catch (InvalidBuildingLayout $e) {
-            $this->assertStringContainsString('resources/floor/default.tmj', $e->getMessage());
+            $this->assertStringContainsString('would share pixels', $e->getMessage());
+            $this->assertStringContainsString('`sola`', $e->getMessage());
+            $this->assertStringContainsString('`zeta`', $e->getMessage());
         }
 
         $this->assertNotNull(Floors::forInstall('sola'), 'the refused removal still deleted the row');
@@ -332,20 +349,43 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $this->assertNull(Floors::forInstall('sola'));
     }
 
-    public function test_a_plan_that_places_a_room_with_no_map_is_refused_by_name_while_no_default_is_shipped(): void
+    public function test_a_plan_that_places_a_room_with_no_map_measures_it_against_the_shipped_default(): void
     {
-        // The build-order fact § 4.6 assumed away: step 11 landed before step 7's shipped default,
-        // so an unauthored room has no grid to measure. Refusing by name is the alternative to
-        // inventing one, and the message carries both ways out.
+        // ⭐ § 4.6's rule, once its premise is true: an unauthored room's extent IS the shipped
+        // default's grid (card#9269 vendored it), so a plan that places one is MEASURED rather
+        // than refused. The build-order fact this arm used to assert — step 11 landing before
+        // step 7's default, leaving nothing to measure and a refusal naming the file — is closed.
+        //
+        // Both bounds are derived from the file so that a redrawn default moves them: `zeta` is
+        // unauthored, so it covers `origin.x` to `origin.x + <the default's pixel width>`, and a
+        // room authored one pixel inside that span is the overlap this arm needs to see refused.
+        $default = ShippedDefaultMap::map();
+        $this->assertNotNull($default, 'the repository ships no default map, and § 10.3 says it does');
+
         $this->save('sola', FloorMapFixture::sized(10, 8));
+        $this->save('nova', FloorMapFixture::sized(10, 8));
 
-        $this->expectException(InvalidBuildingLayout::class);
-        $this->expectExceptionMessage('has no authored map');
-
-        $this->compose([['rooms' => [
+        // `zeta` starts where `sola` ends, so the two authored rooms share an edge and only the
+        // unauthored room's own span can produce an overlap — read off the fixture, not typed.
+        $zetaAt = FloorMap::parse(FloorMapFixture::sized(10, 8))->pixelWidth();
+        $rooms = fn (int $novaAt): array => [['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
-            'zeta' => ['form' => 'office', 'origin' => ['x' => 320, 'y' => 0]],
-        ]]]);
+            'zeta' => ['form' => 'office', 'origin' => ['x' => $zetaAt, 'y' => 0]],
+            'nova' => ['form' => 'office', 'origin' => ['x' => $novaAt, 'y' => 0]],
+        ]]];
+
+        // THE CONTROL first, so the refusal below cannot be a plan refused for some other reason:
+        // `nova` placed exactly where the unauthored room's span ENDS shares an edge and is saved.
+        $this->assertSame(1, $this->compose($rooms($zetaAt + $default->pixelWidth())));
+
+        try {
+            $this->compose($rooms($zetaAt + $default->pixelWidth() - 1));
+            $this->fail('a room placed inside the unauthored room\'s default extent was stored');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString('would share pixels', $e->getMessage());
+            $this->assertStringContainsString('`zeta`', $e->getMessage());
+            $this->assertStringContainsString('`nova`', $e->getMessage());
+        }
     }
 
     public function test_the_sweeper_purges_none_of_the_three_tables_however_old_a_revision_gets(): void

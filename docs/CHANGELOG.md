@@ -19,6 +19,35 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9269** — **the shipped default map is a FILE**: `resources/floor/default.tmj`, an office
+  interior drawn with the vendored Kenney tileset, its `desks` layer carrying the slot count
+  `docs/design/FLOOR.md § 12` declares (the gate now counts the file rather than reading the row).
+  ⭐ **Its content is an office by operator ruling (2026-09-12), and that ruling closed
+  `docs/design/FLOOR.md § 13` row 33's open question by refusing a SECOND shipped default**: the
+  `office` form selects no file of its own, `docs/design/FLEET-STATE.md § 13` row 44's one-default
+  rule stands unamended, and an unauthored room of either form now renders a plausible office
+  rather than a bare grid. The map is an ELEVATION — the tileset's `Side/` renders, § 4.1's
+  cross-section — so its desks are one row along the floor in two banks with an aisle, its walls
+  are the back plane with a doorway onto the floor's hallway (card#9292's, not drawn here), and
+  every sprite lands inside the grid, because the grid is the room's footprint on a planned floor
+  and art drawn past it would cover a neighbour no check refused.
+  ⛔ **The file's landing turned two live states over, and both moved in this PR rather than
+  later.** (1) `verify-floor.py`'s G8 was already written for both arms and switched itself: `S` is
+  now COUNTED from the map's `desks` objects instead of being asserted by the prose that cites it,
+  so § 12's row for it reads **Measured** — a perturbed map reds the gate by name. (2)
+  `App\Building\RoomExtents` no longer refuses a plan that places an unauthored room: there is a
+  grid to read, so the check card#9292 built is the one that runs, and the three tests that
+  encoded the absence now assert the geometry instead — each with its control, and each bound to
+  the shipped file's own pixel width rather than to a constant typed beside it.
+  ⚠ **The refusal naming the missing file is KEPT rather than deleted with its cause**: the default
+  is a file, and a deployment that ships without one is a real state whose honest answer is still a
+  named refusal instead of an invented size.
+  Re-points `default.tmj`'s authorship from card#7341 to card#9269 across § 10.3, § 3.2 and § 4.6 —
+  the operator ruling that made this card's subject that file's content landed after the text that
+  said otherwise — which is also what discharges card#7341's orphaned deliverable. `ATTRIBUTION.md`
+  carries the map's `first-party` row, and `resources/floor/LINEAGE.md` says what its provenance is
+  NOT: the tileset's vendoring vouches for the tiles, never for the room drawn with them.
+
 - **card#9297** — **A heartbeat's `counters: {}` is stored and served as `{}` rather than as the
   JSON array `[]`** — the READ half of card#9295, one plane downstream.
   `docs/design/FLEET-STATE.md § 6.4` declares `seat_state.heartbeat_counters` and
