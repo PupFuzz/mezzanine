@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Ingest;
 
+use App\Ingest\KindRegistry;
+use App\Ingest\Wire;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -136,6 +138,65 @@ class IngestFieldByteBoundsTest extends IngestTestCase
         $data = json_decode((string) $stored[1]->data, true);
 
         $this->assertSame($descriptor, $data['descriptor']);
+    }
+
+    /**
+     * ⛔ A `≤ 1.5 KiB serialized` BOUND, MEASURED THROUGH THE DECODE (card#9295).
+     *
+     * § 6.14's three open-keyed fields are OBJECTS on the wire, and since `BodyReader` stopped
+     * decoding associatively they reach `EventValidator` as `stdClass` rather than as PHP
+     * arrays. The bounds loop measures `is_array($value) || is_object($value)` for exactly that
+     * reason — and the hazard this test exists for is that `Tests\Unit\Ingest\
+     * EventFieldByteBoundsTest`, which covers every bound including these three, drives the
+     * validator DIRECTLY with hand-built PHP arrays and would have stayed green through an
+     * `is_array`-only arm that had silently stopped enforcing them at the surface. The unit
+     * file's population is the bounds; this one's is the path.
+     *
+     * ⚠ The fixture is built to the bound rather than asserted at a written figure: the size
+     * comes from `KindRegistry` (guarded against D1's own table by `EventSchemaDriftTest`), so
+     * nothing here is a second copy of a number § 6.14 owns.
+     */
+    public function test_a_serialized_object_bound_is_enforced_at_the_http_surface(): void
+    {
+        $maxBytes = KindRegistry::KINDS['reporter.heartbeat']['bounds']['counters'];
+
+        // `{"a":"…"}` is 8 bytes of punctuation around the value in `Wire::serialize`'s
+        // spelling, so the padding puts the SERIALIZED object one byte over its bound.
+        $overBound = (object) ['a' => str_repeat('x', $maxBytes + 1 - 8)];
+
+        $this->assertSame($maxBytes + 1, strlen(Wire::serialize($overBound)), 'the fixture is not one byte over');
+
+        $this->postBatch($this->validBatch([
+            $this->event(['kind' => 'reporter.heartbeat', 'data' => (object) ['counters' => $overBound]]),
+        ]))
+            ->assertStatus(422)
+            ->assertJson([
+                'error' => 'invalid_event',
+                'field' => 'data.counters',
+                'kind' => 'reporter.heartbeat',
+                'max_bytes' => $maxBytes,
+                'received_bytes' => $maxBytes + 1,
+            ]);
+
+        $this->assertSame(0, $this->storedEvents());
+    }
+
+    /**
+     * THE CONTROL for the test above — without it, an ingest that refused every heartbeat would
+     * pass it. Exactly AT the bound, through the same decode, and accepted.
+     */
+    public function test_a_serialized_object_exactly_at_its_bound_passes_the_http_surface(): void
+    {
+        $maxBytes = KindRegistry::KINDS['reporter.heartbeat']['bounds']['counters'];
+        $atBound = (object) ['a' => str_repeat('x', $maxBytes - 8)];
+
+        $this->assertSame($maxBytes, strlen(Wire::serialize($atBound)), 'the fixture is not exactly at the bound');
+
+        $this->postBatch($this->validBatch([
+            $this->event(['kind' => 'reporter.heartbeat', 'data' => (object) ['counters' => $atBound]]),
+        ]))
+            ->assertStatus(202)
+            ->assertJson(['accepted' => 1]);
     }
 
     /**
