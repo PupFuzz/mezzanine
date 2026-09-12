@@ -3262,9 +3262,22 @@ running anything against a stream:**
 and both failures were shipped under a decision row that calls R1 *checked*. So R1 is stated here as a
 **condition, an instrument and an observable**, and card#9300 owns writing the commands **on a host
 where they can be run, and seen to fail once against a deliberately broken proxy, before they are
-trusted**. *The instruments:* the ini values are read from **the SAPI that serves the route** — `php-fpm -tt`
-or the pool file, never the CLI's `php -i`, and the pool's own `php_admin_value` overrides the ini, so
-the effective value is what counts; the wire is read from a stream opened with a **signed-in MFA
+trusted**. *The instruments:* the ini values are read from **the SAPI that serves the route**, never the CLI's
+`php -i` — the baseline is **`php-fpm -i`**, the FPM binary's own phpinfo, which resolves the
+directives as that SAPI resolves them and names the file it read (run on the box this design was
+written on: `output_buffering => 4096 => 4096`, `Loaded Configuration File =>
+/etc/php/8.5/fpm/php.ini` — which is where the value is set, since no file under
+`/etc/php/8.5/fpm/pool.d/` sets it at all). A `php_admin_value` or `php_value` for the directive in
+the SERVING POOL's file overrides that baseline, so the effective value is **the baseline, then the
+pool's override**, and the gate reads both rather than either. ⛔ **Not `php-fpm -tt`, which an
+earlier revision of this sentence named**: it dumps FPM's own configuration — pools, listeners,
+process management — rather than ini directives, and it opens the error log before it prints
+anything, so on that same box `php-fpm8.5 -tt` exits `ERROR: failed to open error_log … Permission
+denied` under a user without the privilege. An instrument the deploy user cannot run, printing a
+surface the setting does not live on, is not a check of this condition. ⚠ **That is the SECOND
+instrument this section has named from reading rather than from running** — the `php -i` bullet
+above is the first — which is why card#9300's commands are owed on a host where they can be run
+before the gate is trusted ([canon #9](../../CLAUDE.md)); the wire is read from a stream opened with a **signed-in MFA
 session**, asserting on the **arrival timing** of the on-connect `fleet.health` and on the **inter-arrival
 gap** of successive heartbeats — never on a count over a fixed window. ⚠ Whatever client is used must
 send `Accept-Encoding` **explicitly**: `curl` sends none by default, so a proxy that gzips `text/*`
