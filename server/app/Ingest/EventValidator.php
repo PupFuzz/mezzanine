@@ -121,12 +121,12 @@ final class EventValidator
             return Refusal::invalidEvent($index, 'data', 'must be a JSON object');
         }
 
-        // From here `$data` is one shape. The cast is FROM the validated object-or-associative-
-        // array the predicate just accepted, so it can only produce a keyed object: the step-10
-        // block below reads it with `Wire::field`, mutates enum members on it, and hands it to
-        // `BatchWriter`, and a single shape is what keeps that from needing three spellings.
-        $data = (object) $data;
-
+        // From here `$data` IS a `stdClass` — `Wire::isJsonObject` accepts nothing else — which
+        // is what lets the step-10 block below read it with `Wire::field`, mutate enum members on
+        // it, and hand it to `BatchWriter` in one spelling. There was a `(object) $data` cast
+        // here; with the predicate narrowed to `instanceof` it was a provable no-op on a value
+        // that is already an object, and a cast that can never convert anything is a defence
+        // against a state the line above has already refused.
         $serialized = Wire::serialize($data);
 
         if (strlen($serialized) > Wire::DATA_MAX_BYTES) {
@@ -180,11 +180,19 @@ final class EventValidator
                 // Those three fields ARE objects on the wire, so since `BodyReader` stopped
                 // decoding associatively they arrive here as `stdClass` and `is_array` alone
                 // would stop measuring them — card#9283's bound silently unenforced on exactly
-                // the three fields it was hardest to get right. `Tests\Unit\Ingest\
-                // EventFieldByteBoundsTest` drives this validator directly with PHP arrays and
-                // would have stayed green through that, which is why
-                // `IngestFieldByteBoundsTest::test_a_serialized_object_bound_is_enforced_at_the_
-                // http_surface` measures it through the decode instead.
+                // the three fields it was hardest to get right. TWO tests hold it, and the class
+                // and method names are written whole on their own lines so they are greppable
+                // from this comment:
+                //
+                //   Tests\Feature\Ingest\IngestFieldByteBoundsTest
+                //     test_a_serialized_object_bound_is_enforced_at_the_http_surface
+                //   Tests\Unit\Ingest\EventFieldByteBoundsTest
+                //     test_one_byte_over_its_bound_is_refused_by_name
+                //
+                // The Feature one measures through the real decode. The Unit one reds too only
+                // because its object-shaped fixtures are now `(object)` casts; while they were
+                // hand-built PHP associative arrays it stayed green through a missing `is_object`
+                // arm, which is why the Feature guard was written and why it stays.
                 is_array($value), is_object($value) => strlen(Wire::serialize($value)),
                 is_string($value) => strlen($value),
                 default => null,

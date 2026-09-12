@@ -86,17 +86,28 @@ final class BodyReader
         // § 12.1 refuses). It had been doing the first.
         //
         // Decoding objects as `stdClass` keeps the distinction the producer actually sent, so
-        // the four checks that turn on it — this one, `BatchValidator`'s `events` (which wants an
-        // ARRAY, and was passing an empty OBJECT through to be refused as an empty array one line
-        // later), and `EventValidator`'s event and `data` — each get a true answer instead of a
-        // guess, and each now refuses for the reason it actually has rather than a nearby one. It
-        // also preserves the SPELLING through to the store: `Wire::serialize` writes `{}` for an
-        // empty object where an associative decode would have written `[]`, and D2 § 6.4 calls
+        // the four checks that turn on it each get a true answer instead of a guess, and each now
+        // refuses for the reason it actually has rather than a nearby one:
+        //
+        //   1. this one (`! $decoded instanceof \stdClass`, below);
+        //   2. `BatchValidator`'s `events` (`! is_array || ! array_is_list`, which wants an ARRAY
+        //      and was passing an empty OBJECT through to be refused as an empty array one line
+        //      later);
+        //   3. `EventValidator`'s event, and 4. its `data` — both `Wire::isJsonObject`.
+        //
+        // ⚠ TWO OF THE FOUR SHARE A PREDICATE; THE OTHER TWO ARE HAND-ROLLED HERE AND IN
+        // `BatchValidator`. `grep -rn isJsonObject server/app/` returns those two call sites and
+        // no more, so "one predicate for all four" would be false of what shipped. Hoisting the
+        // pair out of `App\Ingest\Wire` so `App\Floor` can reach them too (it cannot depend on
+        // `App\Ingest`) is card#9299, and until it lands the count above is the honest one.
+        //
+        // It also preserves the SPELLING through to the store: `Wire::serialize` writes `{}` for
+        // an empty object where an associative decode would have written `[]`, and D2 § 6.4 calls
         // `events.data`'s heartbeat objects "verbatim".
         //
         // JSON arrays are UNAFFECTED — they decode to PHP lists exactly as before, which is why
         // `events` is still read with `array_is_list`. `Wire::field` reads both shapes, so the
-        // twenty field reads in §§ 12.1's steps 6–10 are untouched.
+        // twenty field reads in § 12.1's steps 6–10 are untouched.
         try {
             $decoded = json_decode($raw, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
@@ -114,7 +125,10 @@ final class BodyReader
         //
         // ⚠ An empty body object `{}` now reaches step 6 rather than being refused here, and
         // that is D1's own order rather than a widening: step 3's condition is "body parses as
-        // JSON", which `{}` does, and § 12.1's closing note requires that "the version answer
+        // JSON and is a JSON object", which `{}` satisfies on both counts — the "and is a JSON
+        // object" half is the rule the check above has always enforced and which D1 had left
+        // unwritten until this card wrote it (§ 12.1 step 3, § 12.2's `malformed_body` row) —
+        // and § 12.1's closing note requires that "the version answer
         // must be reachable even for a batch that is wrong in other ways". `{}` is refused
         // either way — it is `400 unsupported_schema_version` naming the accepted set instead of
         // `400 malformed_body`, which is the answer a stuck seat can act on.

@@ -161,8 +161,9 @@ class IngestEmptyDataObjectTest extends IngestTestCase
     }
 
     /**
-     * A `{}` BODY parses as JSON, so § 12.1 step 3 ("body parses as JSON") never refused it —
-     * the associative decode did. It now reaches step 6, which is § 12.1's own closing
+     * A `{}` BODY parses as JSON and IS a JSON object, which is both halves of § 12.1 step 3
+     * ("body parses as JSON and is a JSON object"), so step 3 never refused it — the associative
+     * decode did. It now reaches step 6, which is § 12.1's own closing
      * requirement: "the version answer must be reachable even for a batch that is wrong in other
      * ways, because 'which versions do you accept' is the question a stuck seat needs answered."
      * Still a `400`, still permanent, and now it names the accepted set.
@@ -180,7 +181,12 @@ class IngestEmptyDataObjectTest extends IngestTestCase
             ]);
     }
 
-    /** A body that is a JSON ARRAY is still not a batch envelope, and still refuses at step 3. */
+    /**
+     * A body that is a JSON ARRAY is still not a batch envelope, and still refuses at step 3 —
+     * on that step's SECOND half ("and is a JSON object"), which is the half this card had to
+     * write into § 12.1 because the published sentence tested only *parses* and would have had an
+     * independent implementer accept `[]` here. `[]` parses perfectly; it is simply not an object.
+     */
     public function test_a_json_array_body_is_still_malformed(): void
     {
         $this->postBatch('[]')

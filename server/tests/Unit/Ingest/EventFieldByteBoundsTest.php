@@ -108,7 +108,7 @@ class EventFieldByteBoundsTest extends TestCase
     public function test_the_over_bound_fixtures_are_invisible_to_a_character_count(string $kind, string $field, int $maxBytes): void
     {
         $value = $this->valueOfBytes($kind, $field, $maxBytes + 1);
-        $serialized = is_array($value) ? Wire::serialize($value) : $value;
+        $serialized = is_string($value) ? $value : Wire::serialize($value);
 
         $this->assertSame($maxBytes + 1, strlen($serialized));
         $this->assertLessThanOrEqual(
@@ -152,8 +152,14 @@ class EventFieldByteBoundsTest extends TestCase
      */
     private function validate(string $kind, array $data, ?string $wireKind = null): ValidEvent|Refusal
     {
+        // ⛔ `(object)`, AND NOT A PHP ASSOCIATIVE ARRAY (card#9295 review). `BodyReader` decodes
+        // with associative mode OFF, so every event and every `data` the validator sees at the
+        // HTTP surface is a `stdClass`. A fixture built as a PHP array is a shape production
+        // cannot produce, and the last time this file used one it bought a widened arm in
+        // `Wire::isJsonObject` that existed only to keep this file green — a production predicate
+        // paying for a test's convenience. The fixture moved instead, and the arm is gone.
         return (new EventValidator)->validate(
-            [
+            (object) [
                 'event_id' => '01K3T8ZQ6P2R4S8T0VWXYZ1234',
                 'schema_version' => 1,
                 'kind' => $wireKind ?? $kind,
@@ -162,7 +168,7 @@ class EventFieldByteBoundsTest extends TestCase
                 'install_id' => 'aimla',
                 'seat_id' => 'aimla-pm',
                 'session_id' => 'e3c1a5f0-9b21-4a77-8f0e-2d61c4b8a913',
-                'data' => $data,
+                'data' => (object) $data,
             ],
             7,
             new ValidBatch(
@@ -182,7 +188,7 @@ class EventFieldByteBoundsTest extends TestCase
 
     private function measure(mixed $value): int
     {
-        return strlen(is_array($value) ? Wire::serialize($value) : (string) $value);
+        return strlen(is_string($value) ? $value : Wire::serialize($value));
     }
 
     /**
@@ -197,8 +203,11 @@ class EventFieldByteBoundsTest extends TestCase
         }
 
         // `{"a":"…"}` is 8 bytes of punctuation around the value, in the serialization
-        // `Wire::serialize` produces (no escaped slashes, no `\uXXXX`).
-        return ['a' => $this->multibyte($bytes - 8)];
+        // `Wire::serialize` produces (no escaped slashes, no `\uXXXX`) — and the object is a
+        // `stdClass` for the reason `validate()` gives: that is the only shape the decode can
+        // hand the validator. `json_encode` writes `(object) ['a' => …]` and `['a' => …]`
+        // identically, so the byte arithmetic is unchanged by the cast.
+        return (object) ['a' => $this->multibyte($bytes - 8)];
     }
 
     /**

@@ -594,7 +594,7 @@ because that exact shape already cost this document one finding.
 
 | Policy rule | How D1 complies |
 |---|---|
-| [rule 1](../VERSIONING.md#the-rules) | [§ 4.3](#43-common-per-event-fields) puts `schema_version` in the per-event common fields and [§ 4.2](#42-batch-envelope-fields) on the batch, with server-enforced equality between them; a batch without it is `400 malformed_body` — invalid input, not a legacy payload to guess at |
+| [rule 1](../VERSIONING.md#the-rules) | [§ 4.3](#43-common-per-event-fields) puts `schema_version` in the per-event common fields and [§ 4.2](#42-batch-envelope-fields) on the batch, with server-enforced equality between them; a batch without it is `400 unsupported_schema_version`, naming the received value and the accepted set in the body ([§ 12.2](#122-error-responses)) — invalid input, not a legacy payload to guess at. **It is not `malformed_body`**: that answer belongs to a body that does not parse or is not a JSON object ([§ 12.1](#121-validation-order) step 3), and a well-formed envelope that simply omits `schema_version` is neither, so it reaches step 6 and gets the version answer [§ 12.1](#121-validation-order)'s closing note requires be reachable |
 | [rule 2](../VERSIONING.md#the-rules) | `GET /api/ingest/health` reports that declaration ([§ 4.1](#41-endpoints)); **this doc names no accepted set**, deliberately ([§ 15](#15-decisions-taken-revisable-at-review)) |
 | [rule 3](../VERSIONING.md#the-rules) | **D2:** the server ignores unknown `data` keys at a known version and counts them in `ignored_unknown_fields`, per seat ([§ 12.7](#127-server-side-counters)); the reporter defaults absent optional fields to `null` ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) |
 | [rule 4](../VERSIONING.md#the-rules) | binding on every future edit of [§ 6](#6-event-kinds), and invoked twice by name in this document: adding a member to a **reporter-minted** enum ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), and the `used_pct` fallback that would otherwise re-mean one field ([§ 6.11](#611-contextsample)) |
@@ -3663,7 +3663,12 @@ Cheapest and most-fatal first; **the first failure wins and nothing is ingested*
 2. Body ≤ 256 KiB → else `413`. When `Content-Encoding: gzip` is set, decompression is **capped at
    256 KiB and aborted past it** — an uncapped inflate is an unbounded allocation from an
    authenticated-but-compromised seat.
-3. Body parses as JSON → else `400 malformed_body`.
+3. Body parses as JSON **and is a JSON object** → else `400 malformed_body`. The second half is
+   not a formality: `[]`, `"x"`, `1`, `true` and `null` all parse, and none of them is a batch
+   envelope — a step that tested only *parses* would pass them to step 6 to be refused for a
+   `schema_version` they have nowhere to carry. The object test is **shape only**; an empty object
+   `{}` passes it, and is refused at step 6 with the version answer this section's closing note
+   requires be reachable.
 4. `Authorization` present and resolves to an active token → else the **failed-authentication path**:
    increment `auth_failed_by_ip` for the source IP, then return `429 rate_limited` if that IP is over
    the 60/hour failed-authentication limit ([§ 12.3](#123-rate-limits)) and `401 unauthenticated`
@@ -3737,7 +3742,7 @@ reporter can branch on `error` and a human can read `message`.
 | accepted | `202` | — | `accepted`, `duplicates`, `ignored_unknown_kinds`, `coerced_enum_values`, `server_time` | advance cursor, reset backoff |
 | wrong content type | `415` | `unsupported_media_type` | `expected` | permanent → quarantine |
 | body too large | `413` | `batch_too_large` | `max_bytes`, `received_bytes` | halve and retry once ([§ 11.5](#115-retry-and-backoff)) |
-| unparseable body | `400` | `malformed_body` | `detail` | permanent → quarantine |
+| unparseable or non-object body ([§ 12.1](#121-validation-order) step 3) | `400` | `malformed_body` | `detail` | permanent → quarantine |
 | missing/unknown/revoked token | `401` | `unauthenticated` | — | permanent → quarantine, badge `degraded` |
 | identity ≠ token binding | `403` | `identity_mismatch` | `expected_install_id`, `expected_seat_id` | permanent → quarantine, badge `degraded` |
 | **unaccepted schema version** | `400` | `unsupported_schema_version` | `received_version`, `accepted_versions` | permanent → quarantine, `REJECTED.txt`, badge `degraded` |

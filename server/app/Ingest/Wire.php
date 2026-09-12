@@ -108,19 +108,23 @@ final class Wire
      * after an associative decode THERE IS NOTHING LEFT TO TELL THEM APART. The distinction the
      * wire makes was destroyed one layer up, so no predicate written here can recover it. That is
      * why `BodyReader` now decodes objects as `stdClass` (see its own note) and why this test is
-     * `instanceof` first: the ingest stopped erasing the distinction rather than trying to guess
-     * it back.
+     * an `instanceof` and nothing else: the ingest stopped erasing the distinction rather than
+     * trying to guess it back.
      *
-     * The array arm is the SECOND caller shape and is deliberately narrower than the object arm:
-     * a hand-built PHP associative array (`Tests\Unit\Ingest\EventFieldByteBoundsTest` drives the
-     * validator directly with one) is a JSON object by construction — but an EMPTY PHP array is
-     * ambiguous by the same argument as above, so it is refused. A test that means "the empty
-     * object" writes `new \stdClass`, the same value the decoder produces for `{}`.
+     * ⛔ THERE IS NO ARRAY ARM, AND ADDING ONE BACK RE-OPENS THE BUG. Every value this predicate
+     * ever sees came out of `BodyReader`'s `json_decode($raw, false, …)`, and that decoder emits
+     * exactly three things: `stdClass` for a JSON object, a PHP LIST for a JSON array, and a
+     * scalar. Measured over a document carrying every shape the wire can carry — including the
+     * numeric-keyed object `{"0":1}` that is the classic counter-example — it produced no
+     * non-list PHP array anywhere in the tree, so an `is_array(…) && ! array_is_list(…)` arm is
+     * true of nothing that can reach here. An arm like that only ever answers for a HAND-BUILT
+     * PHP associative array, i.e. for a test fixture, and a production predicate widened to keep
+     * a fixture green is the fixture's bug moved into the code under test. A test that means
+     * "the empty object" writes `(object) []`, the same value the decoder produces for `{}`.
      */
     public static function isJsonObject(mixed $value): bool
     {
-        return $value instanceof \stdClass
-            || (is_array($value) && $value !== [] && ! array_is_list($value));
+        return $value instanceof \stdClass;
     }
 
     /**

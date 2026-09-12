@@ -30,7 +30,13 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   array_is_list($data)` accepts `{}` and accepts `"data": []` with it, because after an associative
   decode the two documents are one value and no predicate downstream can recover the difference. So
   `BodyReader` stopped erasing it: the body is decoded with PHP's associative mode **off**, objects
-  arrive as `stdClass`, and `Wire::isJsonObject()` is the one predicate that answers the question.
+  arrive as `stdClass`, and `Wire::isJsonObject()` answers the question wherever an event or a
+  `data` is tested. **Two of the four object/array checks call that predicate** (`EventValidator`'s
+  event and its `data`); the other two are hand-rolled where they sit — `BodyReader`'s
+  `instanceof \stdClass` on the envelope and `BatchValidator`'s `is_array`/`array_is_list` on
+  `events`, which asks the opposite question. Putting all four behind one predicate needs it
+  hoisted out of `App\Ingest` first, because `App\Floor` cannot depend on that namespace, and that
+  is **card#9299**.
   `Wire::field()` reads both shapes, which is what kept the change from becoming an `(array)` cast
   at each of § 12.1's twenty field reads — each of which would have re-erased the distinction.
   ⭐ **Three more copies of the same conflation went with it, found by the card's sibling audit.**
@@ -45,11 +51,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   associative decode wrote `[]` (D2 § 6.4). ⚠ **`EventValidator`'s byte-bound loop measures
   `is_object` as well as `is_array`** — § 6.14's three open-keyed objects arrive as `stdClass`
   now, and without that arm card#9283's bound would have stopped being enforced on exactly those
-  three fields while `Tests\Unit\Ingest\EventFieldByteBoundsTest`, which drives the validator with
-  hand-built PHP arrays, stayed green; the guard for it is at the HTTP surface, where the decode is.
-  **No document changed its rules** — D1 § 6.0 and § 12.1 steps 3 and 9 were already right and the
-  code was the wrong party; D2 § 6.4's `events.data` column gained the spelling guarantee the fix
-  mints.
+  three fields while `Tests\Unit\Ingest\EventFieldByteBoundsTest`, which drove the validator with
+  hand-built PHP arrays, stayed green. Those fixtures are now `(object)` casts — the shape the
+  decode actually produces — so the Unit suite reds on a missing `is_object` arm too (seen to fail,
+  three reds), and `Wire::isJsonObject()` dropped the associative-array arm it had been carrying
+  for them: `json_decode(…, false, …)` emits `stdClass`, lists and scalars only, so that arm was
+  true of nothing reachable from the wire. The HTTP-surface guard stays, because it is the one that
+  measures through the real decode.
+  ⚠ **`{"events": {"0": e0, "1": e1}}` was ACCEPTED before this change and is now `422
+  invalid_batch`** — permanent under § 11.5. An associative decode turned numeric-string keys into
+  a PHP list (`array_is_list(json_decode('{"0":1,"1":2}', true))` is `true`, measured), so an
+  `events` **object** walked through the array test. It is a JSON object, § 12.1 step 8 requires an
+  array, and the new answer is the one the document always specified. `fleet-reporter.js` builds a
+  real JS array and cannot emit that shape, so no conforming producer is affected — stated because
+  it is a batch that used to be stored and no longer is.
+  ⚠ **D1 gained two rules it had always enforced but never written** — § 12.1 step 3 now reads
+  "body parses as JSON **and is a JSON object**" and § 12.2's `malformed_body` row now reads
+  "unparseable **or non-object** body", because `[]`, `"x"`, `1`, `true` and `null` all parse and
+  are all refused, and this change relies on that distinction to accept `{}` while keeping `[]`
+  refused. The **VERSIONING-compliance table's rule-1 row** was corrected with them: it said a
+  batch with no `schema_version` is `400 malformed_body`, and `{}` was the last body that made that
+  true — no batch envelope reaches `malformed_body` for a missing version any more. It is
+  `400 unsupported_schema_version`, naming the accepted set. D1 § 6.0 and
+  § 12.1 step 9 were already right and the code was the wrong party; D2 § 6.4's `events.data`
+  column gained the spelling guarantee the fix mints.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
