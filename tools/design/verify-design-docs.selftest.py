@@ -20,8 +20,11 @@ control failure that says nothing the author can act on.  The differential answe
 question this file is asking -- does the verdict RESPOND to this defect -- and keeps answering it
 while the document is broken.
 
-WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: four plants over three verifiers carrying
-some fifty guard classes prove those four guards live, never that the rest do.  Nothing here is
+WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: the plants below -- their number, their
+verifiers and their guard classes are all derivable from PLANTS and are printed by the summary
+rather than written here -- prove that THOSE guards live, never that the fifty-odd others do.  Two
+plants can share one guard class (both G3 equalities do) without either being redundant: they
+discriminate opposite directions of the same check.  Nothing here is
 evidence about `verify-harness-facts.py` (see the workflow header for why it is unwired) or about
 `floor-preview.selftest.mjs` and `floor-preview.browser.mjs`, which carry their own planted
 controls internally and need no harness around them.
@@ -80,6 +83,14 @@ PLANTS = [
         "§ 8.5's stream stall bound, which G3 holds equal to § 8.3's dead-feed figure and one "
         "heartbeat below § 6.7's `feed_outbox` retention (card#9287)",
         "ends a stalled stream at",
+    ),
+    (
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `feed_outbox` \| \*\*)(\d+)( s\*\* after `created_at`)",
+        "\u00a7 6.7's `feed_outbox` retention, the OTHER side of the same G3 equality -- planted "
+        "separately because one plant proves one direction of it discriminates, not both (card#9287)",
+        "retains `feed_outbox` for",
     ),
     (
         "verify-floor.py",

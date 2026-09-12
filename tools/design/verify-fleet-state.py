@@ -361,8 +361,8 @@ else:
                     f"total by luck, so the extraction is not trusted while the two disagree")
     elif sum(parts) != stated:
         fail.append(f"G3: section 8.3 adds {' + '.join(str(p) for p in parts)} = {sum(parts):,} "
-                    f"and states **{stated:,}** — every feed volume, the queue sizing and the "
-                    f"per-client traffic figure descend from this one addition")
+                    f"and states **{stated:,}** — every feed volume, the outbox's row counts and "
+                    f"the per-client traffic figure descend from this one addition")
     else:
         delta_day = sum(parts)
 

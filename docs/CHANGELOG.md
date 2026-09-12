@@ -172,19 +172,35 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   must hold a worker per browser and release a dead one (its signature: the console, not the feed,
   goes dark; F20). **Two things SSE unlocks are built in:** the on-connect `fleet.health` is the
   handler's first yield (`FleetHealthMessage`'s *cannot be built* claim retired), and § 9 re-checks
-  the session every heartbeat tick, closing FLOOR § 14 item 5 and F7's residual — ⚠ without opening
+  the session **from the store** every 15 s, closing FLOOR § 14 item 5 and F7's residual — with the
+  consequence stated rather than discovered: an open stream refreshes no session, so a floor left open
+  is signed out at `SESSION_LIFETIME` (120 min here) and F7/F6 render it, with the ruling filed as D2
+  § 14 item 16 — ⚠ without opening
   the feed to machine consumers, which is filed as D2 § 14 item 15 and not taken. **F1 answered:**
   the 256-message / 512 KiB bound has no referent under SSE (a draining client is never behind; a
-  non-draining one blocks the handler), so the bound is a **45 s stall bound on the tick** with
-  `feed.close{reason}` as the stream's last message; memory stays flat structurally; what is not
-  provided is stated. The card's F1 sentence *provided by no candidate transport* is corrected on
+  non-draining one blocks the handler), so the bound is a **45 s stall bound on the tick**, measured
+  from the tick's START and tested BEFORE the read — both placements load-bearing: stamped at the
+  tick's end the bound never fires, and tested after the read a blocked stream advances its cursor
+  over rows the purge took. It ends a **slow** consumer on the server's clock and a **frozen** one at
+  the moment its write returns, which is the host's to bring about (R2's teardown clause) and is
+  stated as a requirement rather than promised; memory stays flat structurally; what is not provided
+  is stated. The card's F1 sentence *provided by no candidate transport* is corrected on
   D2 § 13 row 46 (Centrifugo and Mercure bound it; the sentence exists nowhere in this repo — grep
   audited). `coalescing` withdrawn from § 8.3 as never legal under § 8.5's plus-one rule. D2 § 13
   rows 46–48, FLOOR § 13 rows 34–36; AT-D2-15 rewritten, AT-D2-25 added; `verify-fleet-state.py`
   G3's retired queue check replaced by the stall/retention equalities, seen red on two plants and
-  wired into the selftest harness. ⚠ **Left for the sweep after card#9208 lands** (its sections are
-  off-limits to this PR): D2 § 8.7's *every install's channel* prose, FLOOR § 4.6's subscription
-  language and Appendix B step 3's *subscribe*; § 8.3's heading anchor keeps the word *WebSocket*
+  wired into the selftest harness. Round-1 adversarial review (two fresh reviewers, mechanism and coherence) returned 4 BLOCKER-class
+  findings between them, all fixed here and all with a test: the stall bound's two placements
+  (AT-D2-15 gains a slow-consumer leg, a frozen-consumer leg and REDs for both wrong placements), the
+  connect cursor's missing visibility lag (AT-D2-25 gains the connect arm — a tick-only test passes
+  over it), `eventStream()`'s `endStreamWith` default appending `event: update`/`data: </stream>`
+  after every `feed.close` (pinned to `null`), and R2's sizing unit (per open **stream/tab**, not per
+  browser; the dedicated pool is now required, since `request_terminate_timeout: 0` on a shared pool
+  removes the runaway kill for every request). R1's check was rewritten to be able to fail — it sent
+  no `Accept-Encoding`, so a proxy gzipping `text/*` stayed dormant for the check and engaged for
+  every browser — and no longer puts a session cookie in `argv`. ⚠ **Left for the sweep after
+  card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
+  prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; § 8.3's heading anchor keeps the word *WebSocket*
   until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
   `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
