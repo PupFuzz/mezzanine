@@ -19,9 +19,9 @@ use App\Ingest\Wire;
  * Every field read below therefore goes through `App\Ingest\Wire::field()`, the one accessor the
  * ingest reads its twenty § 12.1 fields through, which answers for both shapes. It is the SAME
  * primitive card#9295 used one plane up, deliberately: a second predicate for one question is how
- * the two planes drift apart. `array<string, mixed>` stays in the union because the rows written
- * before that card decoded associatively hold `[]` where the wire sent `{}`, and those rows still
- * fold.
+ * the two planes drift apart. The ARRAY arm stays in the union because the rows written before that
+ * card decoded associatively hold `[]` where the wire sent `{}`, and those rows still fold —
+ * `field()` answers for both shapes, which is the whole reason it is the accessor here.
  *
  * What is NOT tolerated is a value outside a column's declared ENUM, because that is a write the
  * store would refuse on MySQL and silently accept on SQLite — the worst possible asymmetry between
