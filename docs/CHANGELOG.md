@@ -279,7 +279,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   resolves it truthfully and ends the stream with `feed.close{reason:"session"}` if the session really
   had expired: late by the length of the outage, and correct. § 9's *15 s + one 250 ms tick*
   enforcement bound is therefore now stated as holding **on a re-check that can reach the store**, which
-  is the one existing sentence this change made false.
+  is the one existing sentence this change made false. ⭐ **AT-D2-19 gains the leg that keeps the defect
+  out** — the store made unreadable under an already-open stream, `fleet.health{db:"down"}` inside one
+  auth interval, **no `feed.close` of ANY reason** (asserted against the reason SET, so a fourth member
+  invented for this posture reds too), the stream still open at 60 s past the 45 s stall bound, and
+  `db: "up"` with delivery resumed on restore; its REDs are the two-outcome re-check itself and that
+  fourth reason, and its discriminating control is the existing expiry leg, which must still close with
+  `session` against a READABLE store — without it the absence assertion could pass over a test that
+  watched nothing. ⚠ **One thing this change does NOT carry, and it is deliberate:** `verify-fleet-state.py`
+  G7's message-type closure only sees BACKTICK-DELIMITED tokens, so § 8.3's pseudocode fence and every
+  braced prose token sit outside its population — a real gap, filed as its own card rather than bundled
+  into this design change, where it would inherit this entry's review.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

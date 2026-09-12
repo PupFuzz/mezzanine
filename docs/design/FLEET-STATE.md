@@ -4074,6 +4074,8 @@ more rarely than that. The same clock answers
   *unverifiable* is not a fourth member of it**: nothing is being ended, so there is no ending to name.
   The auth interval is re-stamped on this outcome exactly as on the other two — it is a clock and not a
   result — so an outage costs one re-check attempt per 15 s rather than one per 250 ms tick.
+  [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) drives this outcome and asserts the absence of
+  a close **against the whole reason set**, so a fourth member invented for this posture reds there.
 
 ⛔ **Without the third outcome [§ 2.2](#22-fail-posture-per-path)'s already-open row is unreachable,
 and the arithmetic is what makes it so**: the stall bound is 45 s and this section's auth interval is
@@ -4685,6 +4687,36 @@ and the gate on trusting the derived signal at all.*
   clear the user's enrolment) with the stream open → within **15 s + one 250 ms tick** (§ 9's auth interval plus the loop tick it is checked on — assert that bound, not a flat 15 s, which reds at ~15.25 s against a correct build) the stream's last message is
   `feed.close{reason:"session"}` and it ends; the client's reconnect is refused as the browser-session
   case above is. Assert the **close reason** and the tick bound, not merely that the stream ended.
+- **GREEN — the store goes away under an ALREADY-OPEN stream, and the stream stays open:** open a
+  stream under a valid MFA session, then make the session read **fail rather than answer**, and hold it
+  failing for **60 s**. ⚠ **Two runs, because the instrument decides which case is exercised:** drop the
+  connection the handler holds, so BOTH reads go — the ordinary outage — and then revoke `SELECT` on the
+  session table **alone**, which is [§ 9](#9-read-side-authentication)'s split-read case, where the
+  outbox read keeps succeeding and the stream keeps DELIVERING while the session cannot be verified. The
+  assertions below hold in both; only the cursor differs, and the last one says how. Within one auth interval (**15 s + one 250 ms tick**) the client receives `fleet.health`
+  carrying `db: "down"`; **no `feed.close` of ANY reason arrives** — ⛔ assert the absence over the
+  whole window **against the reason set as a whole and never against `session` alone**, because
+  [§ 9](#9-read-side-authentication)'s *unverifiable* outcome ends nothing and mints no member, so an
+  implementation that invents a fourth reason for this posture must fail this leg too; the stream is
+  **still open at 60 s**, past [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s
+  stall bound, which is what shows neither the re-check nor the stall bound ended it; and on restoring
+  the store the next successful tick yields `fleet.health` carrying `db: "up"` — and in the first run
+  delivery resumes from the cursor the handler never advanced, while in the split run the cursor never
+  stopped moving at all, which is the difference between the two and not a defect in either
+  ([§ 2.2](#22-fail-posture-per-path)'s *feed stream, ALREADY OPEN* row,
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F21).
+- **RED — the two-outcome re-check, which is the defect this leg exists to keep out:** implement the
+  re-check with *valid* / *invalid* only, so a read that FAILED lands on *invalid* → within 15 s of the
+  store going away the stream ends with `feed.close{reason:"session"}` and every viewer on the fleet is
+  sent to a sign-in page that cannot be completed, because authenticating reads the same tables the
+  check just failed on — and § 2.2's already-open row is unreachable in practice, the 15 s auth
+  interval always beating the 45 s stall bound. **Second RED — a fourth close reason:** end the stream
+  for this posture under any new reason → the absence assertion above reds on the reason SET, which is
+  the whole reason it is not written against `session`.
+- **Discriminating control for that absence:** the *"the stream re-checks"* leg above, run with the
+  store **readable** and the session genuinely expired, must still produce `feed.close{reason:"session"}`
+  inside the same bound — so the assertion that no close arrived is known to be capable of seeing one
+  that is owed, rather than passing because nothing was ever watched.
 - **RED — the in-memory re-check:** implement the tick's re-check against the session the request
   already loaded rather than re-reading it → it can never fail, so the GREEN above passes only because
   nothing was checked; assert the same expiry with the stream open and see it survive.
