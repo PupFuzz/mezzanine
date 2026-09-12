@@ -138,11 +138,13 @@ export function bubbleText(facts) {
  *   - `degraded_note` — T19's other half, in `wire/task.js`'s one wording, non-null only when
  *     `task.degraded`.
  *
- * ⚠ `task.as_of` IS DELIBERATELY NOT CARRIED, and this is named rather than left as a silence:
- * § 5.1's `task` row lists it among the bubble's fields, but no rule in this document states a
- * FORM for it on the desk, and § 2.4 governs every instant the page draws. Inventing a wording
- * here would be the desk minting a claim nobody ratified. The member is rendered at full
- * fidelity in the drill-down (§ 5.2), and card#7897's PR carries the proposed D3 sentence.
+ * ⚠ `task.as_of` IS DELIBERATELY NOT CARRIED, and since 2026-09-12 that is a RULED exclusion
+ * rather than an unstated one: D3 § 5.1 rule 4 states it, and § 13 decision 26 records it with
+ * its alternative and its reversal cost (operator ruling, card#7897). § 5.1's `task` row still
+ * lists the member among the bubble's fields — the list was deliberately NOT trimmed, so the
+ * exclusion is stated rather than the member merely being absent. The reason is § 2.4's: an
+ * instant drawn beside a title is read as the title's freshness, and those are different claims.
+ * The member is rendered at full fidelity in the drill-down (§ 5.2).
  */
 export function taskBubble(seat, options = {}) {
     if (!deskDrawsCharacter(seat?.render_state)) {
