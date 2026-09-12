@@ -43,9 +43,9 @@
 # and arrives here by re-vendoring; forking the body further is not the escape hatch.
 #   RE-VENDOR = replace everything below this header with upstream's BODY, where "body" is
 #   the same rule the pin uses — so DERIVE the start line, never write one down (upstream's
-#   header grows too, and a copied-out number is wrong the moment it does):
-#     U=<upstream>/bin/promote-cards-by-token
-#     sed -n "$(awk 'NR>1 && $0 ~ /[^[:space:]]/ && substr($0,1,1)!="#" {print NR; exit}' "$U"),\$p" "$U"
+#   header grows too, and a copied-out number is wrong the moment it does). The ONE spelling of
+#   that rule is `BODY_AWK` in `bin/vendor-pin-check.sh`; apply it to upstream's file and take
+#   everything from the line it prints to EOF. It is not restated here so it cannot drift.
 #   Then re-apply (1) and (2), or drop either ON PURPOSE and delete it from the list above AND
 #   from the FRAGMENTS table; then re-pin the sha in `bin/vendor-pin-check.sh`. ⚠ UPSTREAM HAS
 #   MOVED ON: by

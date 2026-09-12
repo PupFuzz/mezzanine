@@ -12,12 +12,14 @@
 # happened to be TRUE — it is pinned here too, because "true today" is not a check.
 #
 # WHAT IT PINS. The BODY only, never the header. Body = from the first line after line 1 (the
-# shebang) that is neither blank nor a `#` comment, to EOF — DERIVED at run time by the awk
-# below and never written down as a line number, so the headers above it are free to grow (and
-# they have) without touching the pin. Blank lines count as header for that same reason: a
-# comment block that gains a paragraph break must not read as a body change. A header edit is
-# expected and passes; a body edit reds. That split is the whole design: the header is
-# mezzanine's to write, the body is not.
+# shebang) that is neither blank nor a `#` comment (indented `   # …` included), to EOF —
+# DERIVED at run time by the awk below and never written down as a line number, so the headers
+# above it are free to grow (and they have) without touching the pin. A header edit is expected
+# and passes; a body edit reds. That split is the whole design: the header is mezzanine's to
+# write, the body is not. Blank lines are tolerated as header by the PIN so a re-wrapped header
+# cannot shift it — but do NOT add one to the mover's header: its own `--help` prints the header
+# up to the first non-`#` line, blanks INCLUDED, so a blank truncates the help text while this
+# check stays green. That is the mover's contract, not this one's; this check does not see it.
 #
 # WHAT IT ALSO CHECKS, AND WHAT IT CANNOT. Each DECLARED local edit — the mover's two sites
 # from #51 — is named in the FRAGMENTS table below by an unbroken fragment of its own text, the
@@ -49,8 +51,11 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # --- The manifest: <repo-relative path>|<pin commit it was vendored from>|<sha256 of its BODY>
 # Re-pin with the command the failure message prints. Never re-pin without also updating the
-# declared-local-edits list in that file's own header AND the FRAGMENTS table below — those
-# two are the same list written twice, and this check is what keeps them from drifting apart.
+# declared-local-edits list in that file's own header AND the FRAGMENTS table below. Those two
+# are the same list written twice, and this check enforces it in ONE direction only: every
+# FRAGMENTS entry must be present in the body. A header entry with no FRAGMENTS twin is NOT
+# detected here — the header's list is read by humans, the table by this script, and a review
+# of any change to either owes a glance at the other.
 MANIFEST=(
   "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|8ce23f47b6761e6f2f712e0fce52a66ab2fd4ed1bf97c86671ff26598ad63657"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|e9f6f87704f14541c2e194c926d0b0a44399f858b31cbdf607605648fcc53cf5"
@@ -71,7 +76,7 @@ FRAGMENTS=(
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim
 # so a human re-derives the sha exactly the way this script did.
-BODY_AWK='NR>1 && $0 ~ /[^[:space:]]/ && substr($0,1,1)!="#" {print NR; exit}'
+BODY_AWK='NR>1 && $0 ~ /[^[:space:]]/ && $0 !~ /^[[:space:]]*#/ {print NR; exit}'
 
 # (`awk -- prog file` is not portable — the program text is already positional, so the path is
 # passed plain. Every path this is called with is absolute, so it can never read as an option.)
