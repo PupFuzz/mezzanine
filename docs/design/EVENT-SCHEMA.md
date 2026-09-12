@@ -6413,7 +6413,8 @@ Stated by name, because a condition that cannot be established locally is named 
 other end reads. **The other end is not one party and that is why the list is mixed.** For the payload
 rows it is GitHub, which will not be reading — so naming them here is the whole of what can be done.
 For the rest there is a reader: the coordination protocol's owner for the quorum, `card#7957`'s owner
-for the join, and the slice that builds the store for the last two rows. A row whose other end can
+for the join — who has since acted, so what row 6 still carries now reads to whoever PROVISIONS a
+seat — and the slice that builds the store for the last two rows. A row whose other end can
 read it is a row somebody can close.
 
 | Not established | Cost if it is wrong | The act that closes it |
