@@ -1547,9 +1547,18 @@ else:
                     f"landing at the per-room path the reversed ruling declared is this branch by name")
     elif present:
         g8_branch = f"COUNTED from {', '.join(str(q.relative_to(ROOT)) for q in present)}"
-        if absence_declared:
-            fail.append(f"G8: the map artifact exists at {[str(q.relative_to(ROOT)) for q in present]} "
-                        f"and section 10.3 still declares that no floor map is vendored")
+        # A stray map BESIDE the default is the same claim broken -- section 10.3 declares ONE shipped
+        # map -- and until this leg existed it was not detected at all: `present` took the branch and
+        # the strays went uncounted, so the sentence "the gate holds the tree in both directions" was
+        # true only while no default existed (found by the third review pass of card#9208's reversal).
+        strays = sorted(set(in_tree) - {str(q.relative_to(ROOT)) for q in present})
+        if strays:
+            g8_branch += f"; MISPLACED beside it: {strays}"
+            fail.append(f"G8: section 10.3 declares one shipped map, at "
+                        f"{[str(q.relative_to(ROOT)) for q in present]}, and these Tiled maps sit "
+                        f"beside it at paths it does not declare: {strays} — a second shipped map is "
+                        f"a second answer to *where does a room's map come from*, which is what the "
+                        f"one-default rule (D2 § 13 row 44) exists to refuse")
         for q in present:
             try:
                 n_desks = desks_in(q)

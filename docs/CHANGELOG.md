@@ -835,8 +835,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   pull (#107, 2026-09-12) vendored the tileset and **no map**. § 10.3 declares the ONE shipped default
   at `resources/floor/default.tmj` before any map exists at any path, so the map card#7341 goes on to
   author is written there from the start and nothing is renamed; `verify-floor.py` G8b reds a map
-  landing at the old per-room path by name (CONTRADICTED while § 10.3 declares the absence,
-  MISPLACED once it declares the default present).
+  landing at the old per-room path by name in every state (CONTRADICTED while § 10.3 declares the
+  absence; MISPLACED after it, instead of the default or beside it — the *beside* leg was added by
+  the third review pass, which measured that a stray map next to a present default went undetected).
   ⛔ **`room.map` rides EVERY install's channel, like the heartbeat** — a client's subscriptions are
   the snapshot's installs, and the room an operator has just drawn may have no seat reporting, so a
   per-room publish would reach nobody. And the design says plainly what card#9071's *no pinning*
@@ -858,16 +859,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `server/public/js/lobby/lobby-model.js`, `server/public/js/lobby/building-model.js`,
   `server/public/js/lobby/main.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`,
   `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`. **Slice 2** (the surface):
-  `server/app/Http/Middleware/FleetReadGate.php` (three hits), `server/routes/fleet.php` (*all four*
-  routes are `GET` — still true of the fleet routes, false as a count of the gate's). **Slice 3 / the
-  floor route** (eight docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* —
-  the surface now exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
+  `server/app/Http/Middleware/FleetReadGate.php` (three hits). **Slice 3 / the floor route** (the
+  docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* — the surface now
+  exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
   `server/public/js/drilldown/main.js`, `server/public/js/drilldown/drilldown-model.js`,
   `server/tests/Feature/Coordination/CoordModuleWiringTest.php`,
   `server/tests/Feature/Desk/DeskDrawsTheThoughtBubbleTest.php`,
   `server/tests/Feature/DrillDown/DrillDownModuleWiringTest.php`,
   `server/tests/Feature/DrillDown/DrillDownRendersTheInternsTest.php`. **Unrelated hits, not stale**
-  (the predicate's false positives, named so the next run can tell them apart): `server/app/Fold/Fold.php`
+  (the predicate's false positives, named so the next run can tell them apart): `server/routes/fleet.php`
+  (*all four routes are `GET`* — scoped to that file's four fleet routes, and still true of them),
+  `server/app/Fold/Fold.php`
   (*all four fold call sites*), `server/app/Http/Controllers/FleetController.php` (a pagination row
   *never served*), `server/tests/Feature/Feed/At19ReadAuthTest.php` (*the one endpoint that carries
   `counters`*), `server/tests/Feature/Fold/At10RebuildEqualsFoldTest.php` (*all fourteen*).
