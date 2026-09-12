@@ -8,8 +8,8 @@ namespace App\Ingest;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHAT STEP 10 ACTUALLY DOES, because "per-kind `data` validation" reads as more than it is.
  *
- * D1 specifies exactly three behaviours for this step, and this class carries exactly the data
- * those three need:
+ * D1 specifies exactly four behaviours for this step, and this class carries exactly the data
+ * those four need:
  *
  *   1. An UNKNOWN KIND skips the step entirely, is ignored, and counts `ignored_unknown_kinds`
  *      (step 10; `docs/VERSIONING.md` rule 7). So `KINDS`' key set is the "known" set.
@@ -18,6 +18,11 @@ namespace App\Ingest;
  *   3. An unrecognised value in a REPORTER-MINTED closed enum is `422 invalid_event`. This is not
  *      an inference: D1 § 6.0 says it outright — "A value outside a reporter-minted set is a
  *      reporter bug, not a harness change, and the ingest refuses it as `422 invalid_event`."
+ *   4. A `data` field OVER THE BYTE BOUND § 6 publishes for it is `422 invalid_event` (`bounds`
+ *      below). Ruled by the operator on card#9283 against truncating and against accepting-and-
+ *      counting: the server never silently edits telemetry — D1 § 7's sanitize-at-the-reporter
+ *      rule keeps that in one place — and a bound nothing checks is a suggestion that every
+ *      consumer sized to it (D2 § 8.3's worst-case construction) is exposed by.
  *
  * The two sides are distinguished by ONE property, `unknown`: non-null means harness-sourced
  * (coerce), null means reporter-minted (refuse). D1 § 6.0's classification table is the source
@@ -29,18 +34,20 @@ namespace App\Ingest;
  * WHAT STEP 10 DELIBERATELY DOES NOT DO — the decision this card had to make, stated rather than
  * left implicit.
  *
- * It does NOT type-check the non-enum `data` fields, and it does NOT require the declared fields
- * to be present. D1 specifies no such rule anywhere, and inventing one is the exact failure
- * D1 § 12.1's own note on step 9 and this card's brief both warn against: a validation rule
- * stricter than the schema turns a benign field into a permanent seat outage, because
- * § 12.4 rejects the whole batch and § 11.5 quarantines it forever. The `harness_label` incident
- * recorded in § 6.1 is that failure having already happened once, on paper, from a pattern one
- * character too narrow.
+ * It does NOT type-check the non-enum `data` fields, it does NOT check their PATTERNS, and it
+ * does NOT require the declared fields to be present. D1 specifies no such rule anywhere, and
+ * inventing one is the exact failure D1 § 12.1's own note on step 9 and this card's brief both
+ * warn against: a validation rule stricter than the schema turns a benign field into a permanent
+ * seat outage, because § 12.4 rejects the whole batch and § 11.5 quarantines it forever. The
+ * `harness_label` incident recorded in § 6.1 is that failure having already happened once, on
+ * paper, from a pattern one character too narrow.
  *
- * The bound that does exist is § 12.1 STEP 9's — `data` is an object ≤ 3 KiB — and it is
- * enforced there, where D1 puts it, with § 12.1's own justification: it is "safe to keep strict
- * only because the reporter clamps every bound before it writes". Nothing in D1 extends that
- * safety to a per-field type check at step 10, so nothing here does either. Field-level
+ * ⛔ `bounds` IS NOT A HOLE IN THAT, AND THE DISTINCTION IS THE WHOLE OF CARD#9283. A byte bound
+ * is a number D1 PUBLISHES per field and that every consumer is entitled to rely on; a type or a
+ * pattern is a shape D1 leaves to the producer. So the check below refuses a value that is over a
+ * PUBLISHED BOUND and refuses nothing else: a field of an unexpected type is measured by no rule
+ * here and passes through exactly as it did before, because widening the refusal beyond the
+ * bound is the permanent-outage trade above, taken for a rule D1 never wrote. Field-level
  * projection into typed columns is the fold's, and card #7339 owns it.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -50,7 +57,10 @@ namespace App\Ingest;
  * of `data` only: the three open-keyed objects `reporter.heartbeat.counters`, `.predicates` and
  * `.selftest` have key sets D1 explicitly leaves open at the ingest (§ 6.14: "The keys are
  * declared, not closed at the ingest, and the difference is deliberate"), so nothing descends
- * into them.
+ * into them. Their `bounds` entries do not descend either: § 6.14 states each one's cap on the
+ * SERIALIZED object ("≤ 1.5 KiB serialized"), so the measurement is of the whole value and says
+ * nothing about which keys are in it — which is what lets § 6.14's "a reporter that ships a
+ * seventh check ahead of the table takes no `422`" stay true while the cap is enforced.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * THIS TABLE IS A RESTATEMENT, SO IT IS GUARDED. Every value below is transcribed from
@@ -58,8 +68,11 @@ namespace App\Ingest;
  * declarations is the exact defect shape D1 § 6.0 records paying for twice. A pointer is not
  * available — a PHP request path cannot follow a link to a markdown table — so the restatement
  * is guarded instead: `tests/Feature/Ingest/EventSchemaDriftTest` re-derives every field name,
- * every enum member and every unknown member from the document's own tables on each run and
- * fails if this class and the document disagree in either direction.
+ * every enum member, every unknown member AND every byte bound from the document's own tables on
+ * each run and fails if this class and the document disagree in either direction. The bound
+ * population is DERIVED there and is deliberately written down nowhere: it is every row of a § 6
+ * `data` field table whose bounds cell opens with a `≤ N B`/`≤ N KiB` figure, re-read on every
+ * run, so a bound added to the document is a red here rather than a field silently unchecked.
  */
 final class KindRegistry
 {
@@ -77,12 +90,17 @@ final class KindRegistry
     ];
 
     /**
-     * @var array<string, array{fields: list<string>, enums: array<string, array{members: list<string>, unknown: ?string, array: bool}>}>
+     * @var array<string, array{fields: list<string>, bounds: array<string, int>, enums: array<string, array{members: list<string>, unknown: ?string, array: bool}>}>
      */
     public const KINDS = [
         // ── § 6.1 ────────────────────────────────────────────────────────────────────────────
         'session.start' => [
             'fields' => ['source', 'project_label', 'harness_label', 'previous_session_id'],
+            'bounds' => [
+                'project_label' => 48,
+                'harness_label' => 32,
+                'previous_session_id' => 128,
+            ],
             'enums' => [
                 'source' => [
                     'members' => ['startup', 'resume', 'clear', 'compact', 'fork', 'unknown'],
@@ -95,6 +113,7 @@ final class KindRegistry
         // ── § 6.2 ────────────────────────────────────────────────────────────────────────────
         'session.end' => [
             'fields' => ['end_reason', 'duration_ms', 'turns', 'aborted_calls'],
+            'bounds' => [],
             'enums' => [
                 'end_reason' => [
                     'members' => ['clear', 'resume', 'logout', 'prompt_input_exit', 'other', 'inferred_silence'],
@@ -107,6 +126,9 @@ final class KindRegistry
         // ── § 6.3 ────────────────────────────────────────────────────────────────────────────
         'turn.start' => [
             'fields' => ['prompt_chars', 'project_label'],
+            'bounds' => [
+                'project_label' => 48,
+            ],
             'enums' => [],
         ],
 
@@ -117,6 +139,7 @@ final class KindRegistry
                 'aborted_call_ids', 'stop_hook_active', 'background_tasks_open',
                 'tool_calls', 'failed_calls',
             ],
+            'bounds' => [],
             'enums' => [
                 'end_reason' => [
                     'members' => ['stop_hook', 'api_error', 'session_cleared', 'session_ended'],
@@ -148,6 +171,11 @@ final class KindRegistry
                 // § 6.5's own field table until this card added it. See the PR round.
                 'synthesized',
             ],
+            'bounds' => [
+                'tool_name' => 64,
+                'descriptor' => 200,
+                'harness_call_ref' => 64,
+            ],
             'enums' => [
                 'agent_scope' => [
                     'members' => ['main', 'subagent'],
@@ -162,6 +190,9 @@ final class KindRegistry
             'fields' => [
                 'call_id', 'tool_name', 'outcome', 'abort_reason', 'duration_ms',
                 'duration_source', 'close_source', 'match',
+            ],
+            'bounds' => [
+                'tool_name' => 64,
             ],
             'enums' => [
                 'outcome' => [
@@ -211,12 +242,17 @@ final class KindRegistry
         // ── § 6.7 ────────────────────────────────────────────────────────────────────────────
         'subagent.spawn' => [
             'fields' => ['call_id', 'title', 'title_truncated', 'subagent_type'],
+            'bounds' => [
+                'title' => 120,
+                'subagent_type' => 32,
+            ],
             'enums' => [],
         ],
 
         // ── § 6.8 — every enum here is § 6.6's, by reference and never restated there ────────
         'subagent.stop' => [
             'fields' => ['call_id', 'outcome', 'abort_reason', 'duration_ms', 'close_source'],
+            'bounds' => [],
             'enums' => [
                 'outcome' => [
                     'members' => ['completed', 'failed', 'aborted'],
@@ -245,6 +281,7 @@ final class KindRegistry
         // ── § 6.9 ────────────────────────────────────────────────────────────────────────────
         'compaction.start' => [
             'fields' => ['trigger', 'context_used_pct', 'context_used_pct_age_s', 'open_calls'],
+            'bounds' => [],
             'enums' => [
                 'trigger' => [
                     'members' => ['auto', 'manual', 'unknown'],
@@ -257,6 +294,7 @@ final class KindRegistry
         // ── § 6.10 — a DIFFERENT set of three from § 6.6's close_source ─────────────────────
         'compaction.end' => [
             'fields' => ['duration_ms', 'close_source'],
+            'bounds' => [],
             'enums' => [
                 'close_source' => [
                     'members' => ['post_compact', 'session_start_compact', 'timeout'],
@@ -271,6 +309,9 @@ final class KindRegistry
             'fields' => [
                 'used_pct', 'used_tokens', 'total_tokens', 'used_pct_source',
                 'model_label', 'sample_reason',
+            ],
+            'bounds' => [
+                'model_label' => 48,
             ],
             'enums' => [
                 'used_pct_source' => [
@@ -289,6 +330,7 @@ final class KindRegistry
         // ── § 6.12 ───────────────────────────────────────────────────────────────────────────
         'attention.request' => [
             'fields' => ['request_id', 'source', 'notification_kind', 'call_id', 'open_calls'],
+            'bounds' => [],
             'enums' => [
                 'source' => [
                     'members' => ['permission_request_hook', 'notification_hook'],
@@ -309,6 +351,7 @@ final class KindRegistry
         // ── § 6.13 ───────────────────────────────────────────────────────────────────────────
         'attention.resolved' => [
             'fields' => ['request_id', 'resolution', 'resolution_source', 'waited_ms'],
+            'bounds' => [],
             'enums' => [
                 'resolution' => [
                     'members' => ['granted', 'denied', 'human_input', 'session_ended', 'timeout'],
@@ -333,6 +376,11 @@ final class KindRegistry
                 'oldest_unsent_age_s', 'last_hook_at', 'open_calls', 'open_sessions',
                 'open_attention', 'enabled', 'degraded', 'counters', 'counters_omitted',
                 'predicates', 'selftest', 'config_fingerprint',
+            ],
+            'bounds' => [
+                'counters' => 1536,
+                'predicates' => 512,
+                'selftest' => 256,
             ],
             'enums' => [
                 // § 9.3's twelve-member table IS this field's value set, declared there and
