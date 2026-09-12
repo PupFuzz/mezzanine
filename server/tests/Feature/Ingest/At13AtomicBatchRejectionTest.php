@@ -88,10 +88,19 @@ class At13AtomicBatchRejectionTest extends IngestTestCase
 
         $this->postBatch($this->validBatch($this->twoHundredWithABadOne()))->assertStatus(422);
 
+        // ⛔ THE TABLES ARE QUOTED BY THE CONNECTED STORE'S GRAMMAR, NEVER BY HAND — card#9250.
+        // These read `insert into "events"` / `"batches"`, which is SQLite's quoting. On MariaDB
+        // it is backticks, so the filter matched NOTHING and `assertSame([], $writes)` passed
+        // vacuously — green, and proving the opposite of what it claims. Unlike its sibling in
+        // SeatConsoleTest there was no precondition to catch it, which is why the grammar is now
+        // asked rather than assumed.
+        $events = 'insert into '.strtolower($this->wrapTable('events'));
+        $batches = 'insert into '.strtolower($this->wrapTable('batches'));
+
         $writes = array_filter(
             DB::getQueryLog(),
-            fn ($q) => str_contains(strtolower($q['query']), 'insert into "events"')
-                || str_contains(strtolower($q['query']), 'insert into "batches"'),
+            fn ($q) => str_contains(strtolower($q['query']), $events)
+                || str_contains(strtolower($q['query']), $batches),
         );
 
         DB::disableQueryLog();

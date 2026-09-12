@@ -1241,8 +1241,15 @@ believed they had already done:
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
 - `DB_CONNECTION` is **not** forced, deliberately, and the omission is commented as load-bearing:
-  nothing in this repo's CI selects a backend by exporting it today, but forcing it is exactly the shape
-  that turned another repo's MariaDB matrix into a SQLite run reporting green.
+  forcing it is exactly the shape that turned another repo's MariaDB matrix into a SQLite run
+  reporting green. ⭐ **Since card#9250 this repo's CI does select a backend by exporting it**, and
+  the omission is what makes that work: `.github/workflows/php-tests.yml`'s `php-tests-mariadb` job
+  exports `DB_CONNECTION=mysql` and runs every migration and the whole suite against a pinned
+  MariaDB service container, alongside — never instead of — the SQLite lane. The two jobs are
+  separate environments, so the SQLite lane's `DB_CONNECTION=sqlite` assertion is untouched by it.
+  Every other pin in the table above is forced + paired and therefore **defeats** that job's
+  exports, which is the designed split: CI chooses the store, CI does not get to choose the
+  isolation.
 - The proof is **deleting one half of a pair**, not a hostile export and not a clean run (corrected
   2026-08-25, card#7334 — this bullet said the opposite). Under an intact pin
   `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test` **passes, and must**: the `<server>` twin beats
