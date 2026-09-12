@@ -4499,7 +4499,11 @@ and the gate on trusting the derived signal at all.*
 - **GREEN:** `POST /api/ingest/events` returns `503` (retryable — the reporter spools and nothing is
   acknowledged); `GET /api/fleet/snapshot` returns `503 fleet_unavailable` with a machine-readable body
   and **no `installs` key at all**; a client that opens the stream receives `fleet.health` with
-  `db: "down"` as its **first** message and the floor renders an unavailable state, not an empty office.
+  `db: "down"` as its **first** message and `feed.close{reason:"unavailable"}` as its **last**, the
+  stream then **ending** ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row), and the floor renders
+  an unavailable state, not an empty office. ⛔ **Assert the close and the end, not merely the first
+  message**: a GREEN that stopped there passes equally against a stream held open through the outage,
+  which is the posture card#9287's ruling withdrew.
 - **RED:** return `200` with `{"installs": []}` → the floor renders as a building where everyone went
   home, which is `docs/KANBAN.md § G-1`'s defect exactly: a clean zero that means "we could not answer".
   Assert the body, not the status code — a `200` with an empty array is the failure, and it looks fine
@@ -4507,6 +4511,12 @@ and the gate on trusting the derived signal at all.*
 - **Second RED:** acknowledge the ingest batch (`202`) while the write failed → the reporter advances its
   spool cursor and the events are gone from both copies. Assert the events are absent from the store
   afterwards; that is the only way to see the loss.
+- **Third RED — hold the stream open after the `db: "down"`:** accept the connection, send the health
+  message and keep the stream alive → the viewer is told the store is down over a connection that is
+  still claiming to be live, nothing on the wire says the server chose to end anything, and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 therefore reads the eventual drop as
+  silence the server did not choose. This is the withdrawn posture arriving through the test that
+  gates the ruling, so assert the **last** message and not only the first.
 
 ### AT-D2-13 every predicate can answer both ways
 

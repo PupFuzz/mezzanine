@@ -38,9 +38,13 @@ checking, and it survives exactly the pass that falsifies it.
   G11 section 10's trace, counted from its table  (R1-21: "one transition row" against two)
   G12 `feed.close` reason closure + the ruling  (card#9287 R6: five rounds of one premise --
       it is stated at, both directions           a stream surviving a store outage -- withdrawn;
-                                                  the three sites that state the close are held
-                                                  to naming it, and the reason set to its own
-                                                  declared size)
+      -- AND the two acceptance tests that       every site that states the close is held to
+      GATE it, one per document                  naming it, and the reason set to its own
+                                                  declared size.  The maintainer round found the
+                                                  tests OUTSIDE this population, both certifying
+                                                  the withdrawn posture while the prose refused
+                                                  it -- so the population is the RULING's sites,
+                                                  and one of them is in docs/design/FLOOR.md)
 
 Three things are NOT fully mechanizable and say so in the output rather than reporting a clean
 over a population they never measured (canon: a clean result over an unnamed population reports
@@ -74,11 +78,18 @@ import json, re, sys, pathlib
 ROOT = pathlib.Path(__file__).parent.parent.parent
 DOC = ROOT / "docs/design/FLEET-STATE.md"
 D1 = ROOT / "docs/design/EVENT-SCHEMA.md"
+# D3 is read by exactly one guard -- G12, whose subject is a RULING and not a document: two of the
+# sites that state it are acceptance tests in FLOOR.md, and a guard whose population stops at its
+# own file's edge is how those two came to certify the posture the ruling withdrew.  Nothing else
+# in this file reads it, and FLOOR.md's own gate stays verify-floor.py.
+D3 = ROOT / "docs/design/FLOOR.md"
 
 fail, notes = [], []
 raw = DOC.read_text()
 lines = raw.split("\n")
 d1_raw = D1.read_text()
+d3_raw = D3.read_text()
+d3_lines = d3_raw.split("\n")
 
 WORD = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
         "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
@@ -170,11 +181,18 @@ def heading_index(text):
 
 HEADS = heading_index(raw)
 BY_ANCHOR = {h[2]: h for h in HEADS}
+D3_BY_ANCHOR = {h[2]: h for h in heading_index(d3_raw)}
 
 
 def section_text(anchor):
     h = BY_ANCHOR.get(anchor)
     return None if h is None else "\n".join(lines[h[3]:h[4]])
+
+
+def d3_section_text(anchor):
+    """G12 only.  Same resolver, over FLOOR.md -- see the note at D3's definition."""
+    h = D3_BY_ANCHOR.get(anchor)
+    return None if h is None else "\n".join(d3_lines[h[3]:h[4]])
 
 
 def table_rows(text, header_re):
@@ -1440,7 +1458,7 @@ else:
                     f"document uses {len(_used)} reasons ({_used}). The declaration and the usage "
                     f"are one fact with two homes")
 
-# the ruling's three statement sites, each held to naming the close POSITIVELY -- a site that reverts
+# the ruling's statement sites, each held to naming the close POSITIVELY -- a site that reverts
 # to a surviving stream stops naming it, which is what makes this check able to fail
 CLOSE_UNAVAIL = 'feed.close{reason:"unavailable"}'
 sec22_txt = section_text("22-fail-posture-per-path") or ""
@@ -1459,14 +1477,38 @@ else:
                         f"does not end the stream with {CLOSE_UNAVAIL} — card#9287's ruling is that "
                         f"the stream ENDS and the client is told which condition ended it, and a "
                         f"stream held open through an outage is the posture that ruling withdrew")
-for _anchor, _what in (("9-read-side-authentication",
-                        "section 9's re-check: a read that did not answer ABOUT THE SESSION ends the "
-                        "stream under `unavailable` rather than under `session`"),
-                       ("83-the-websocket-delta-feed",
-                        "section 8.3's handler loop, which is the buildable form of it")):
-    if CLOSE_UNAVAIL not in (section_text(_anchor) or ""):
-        fail.append(f"G12: {CLOSE_UNAVAIL} appears nowhere in #{_anchor} — {_what}. A rule stated at "
-                    f"some of its sites and not the others is the drift this gate exists for")
+# ⭐ THE ACCEPTANCE TESTS ARE IN THIS POPULATION, and they were not until card#9287's maintainer
+# round.  The two tests that GATE this ruling -- D2's AT-D2-12 and D3's AT-D3-8 -- both certified a
+# stream that survives the outage while the three prose sites said it ends, and neither was reachable
+# from here: a guard whose population excludes the tests that decide whether the ruling shipped is a
+# guard that can only ever agree with the prose.  Both resolve by anchor exactly as the prose sites
+# do, one per document, so the population is the RULE's sites and not one file's.
+G12_SITES = (
+    (section_text, "9-read-side-authentication", "D2",
+     "section 9's re-check: a read that did not answer ABOUT THE SESSION ends the stream under "
+     "`unavailable` rather than under `session`"),
+    (section_text, "83-the-websocket-delta-feed", "D2",
+     "section 8.3's handler loop, which is the buildable form of it"),
+    (section_text, "at-d2-12-the-store-failing-is-never-a-quiet-zero", "D2",
+     "AT-D2-12, the test that gates the store-down posture: its stream leg must assert the stream "
+     "ENDS saying why, and a leg that asserts only the on-connect `fleet.health` passes equally "
+     "against the held-open stream this ruling withdrew"),
+    (d3_section_text, "at-d3-8-a-refusal-is-never-an-empty-office", "D3",
+     "AT-D3-8 in docs/design/FLOOR.md, the client half of the same posture: its `db: \"down\"` leg "
+     "asserted the connection indicator stays *connected*, which is the render FLOOR § 9 F5's own "
+     "Never column forbids — a build passing D3's gate shipped what D3 forbids by name"),
+)
+for _get, _anchor, _doc, _what in G12_SITES:
+    _txt = _get(_anchor)
+    if _txt is None:
+        fail.append(f"G12 CONTROL: #{_anchor} resolves to no heading in {_doc} — the site this gate "
+                    f"holds the ruling at has been renamed or removed, and an unresolved anchor "
+                    f"would otherwise be checked as empty text and reported below as a missing "
+                    f"close, which names the wrong defect")
+    elif CLOSE_UNAVAIL not in _txt:
+        fail.append(f"G12: {CLOSE_UNAVAIL} appears nowhere in {_doc} #{_anchor} — {_what}. A rule "
+                    f"stated at some of its sites and not the others is the drift this gate exists "
+                    f"for")
 
 # ---------------- the count of guard classes, which is itself a prose count ----
 # Section 14 item 8 and section 12's status table state how much of this document is tool-checked.
@@ -1543,7 +1585,9 @@ print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len
       f"declared by section 8.2.4: {len(health_counters)}")
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
-print(f"G12 `feed.close` reasons re-derived from this document's own uses: {g12_reasons}; section 2.2 stream rows holding the close: {len(_stream_rows)}")
+print(f"G12 `feed.close` reasons re-derived from this document's own uses: {g12_reasons}; section 2.2 "
+      f"stream rows holding the close: {len(_stream_rows)}; ruling-statement sites held to naming it: "
+      f"{[f'{d}#{a}' for _, a, d, _w in G12_SITES]}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's manual residue, printed "
       "above — a row whose D1-source column names no section number cannot be reached by any "

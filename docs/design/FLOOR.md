@@ -3757,7 +3757,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
 | `fx-membership` | **three legs.** (a) a delta for a seat absent from `fx-snapshot-4`; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on the stream **during** the ADMIT (b) round trip, at `state_version` one above what (b) returns |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped |
-| `fx-refusals` | the four responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, a `fleet.health` with `db: "down"`, and a `fleet.reload` |
+| `fx-refusals` | the four responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close`. ⛔ A fixture that held either stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
 | `fx-nulls` | **two** seats, because the **37** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 37, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
 
 ### AT-D3-1 no animation without its event
@@ -4134,7 +4134,13 @@ resync itself, and the line the record gains, are the protocol's and are observa
 - **GREEN:** `503` renders the store-unavailable statement — on a warm client over a floor labelled
   *last known good*, on a cold one as words; `401` renders the sign-in prompt with the floor beneath
   dimmed and labelled *not live since HH:MM:SS*, **and the client closes the stream**; `db: "down"`
-  renders the same statement as `503` while the connection indicator stays *connected*; `fleet.reload`
+  renders the same statement as `503` **and the stream ENDS** — the fixture delivers it as the stream's
+  first message and `feed.close{reason:"unavailable"}` as its last ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)),
+  so the connection indicator **no longer reads *connected***, which is
+  [§ 9](#9-failure-paths-and-their-observables) F5's render. ⛔ An earlier revision of this leg asserted
+  the indicator **stays** *connected*, which is the render F5's own **Never** column forbids by name —
+  *a held-open stream rendered as a live one* — so a build passing this gate shipped the posture the
+  card#9287 ruling withdrew; `fleet.reload`
   renders its banner and **delta application stops** — assert a delta delivered after it changes
   nothing.
 - **RED:** render a `503` as a floor with no desks → an empty office, which is indistinguishable from a
@@ -4142,6 +4148,13 @@ resync itself, and the line the record gains, are the protocol's and are observa
   forbids on the wire, arriving through the renderer instead.
 - **Second RED:** keep animating the floor behind the `401` modal → a live-looking floor whose data the
   client is no longer authorized to have.
+- **Third RED — the held-open stream rendered as a live one:** deliver `fleet.health` with `db: "down"`
+  and then **hold the stream open** rather than ending it, and let the client keep its connection
+  indicator at *connected* → the statement renders, every other assertion above passes, and the build
+  ships exactly the render [§ 9](#9-failure-paths-and-their-observables) F5's **Never** column names.
+  Assert the indicator **after** the stream's end, and assert the end itself; a GREEN that stopped at
+  the statement is a GREEN over the posture [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)
+  withdrew, which is what this RED exists to make impossible.
 - **Discriminating control:** a `200` snapshot in the same harness renders the floor normally.
 
 ### AT-D3-9 the client half of snapshot-then-deltas
