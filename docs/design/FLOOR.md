@@ -4773,8 +4773,12 @@ reason to leave two readings live.
    asking — *which upstream art does D-07 mean* — is answered; what art SHIPS is § 10.4's question
    and was never this one's.**
 
-   **What it unblocks, and the one obligation it only half discharges.** Card #7341 (floor v1) is
-   unblocked — the map is still that card's to author, and a tileset is not a map. The
+   **What it unblocks, and the one obligation it only half discharges.** Card #7341 (floor v1) was
+   unblocked by this ruling and no more than unblocked — a tileset is not a map, and the map was
+   still that card's to author for as long as no file existed. ⭐ **It exists since card#9269**
+   (`resources/floor/default.tmj`, [§ 10.3](#103-the-floor-map)): the operator ruled that file's
+   content an office interior, card#9269 drew it with this pack, and that is what discharges the
+   deliverable this item left open. The
    1,280 × 800 viewport floor now has its **measured desk width** (116 px,
    [§ 12](#12-every-number-and-where-it-comes-from)) and **still does not re-derive**: a native
    sprite width was half the input, and the other half — a rendered nameplate at a camera zoom — has

@@ -42,7 +42,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   ⚠ **The refusal naming the missing file is KEPT rather than deleted with its cause**: the default
   is a file, and a deployment that ships without one is a real state whose honest answer is still a
   named refusal instead of an invented size.
-  Re-points `default.tmj`'s authorship from card#7341 to card#9269 across § 10.3, § 3.2 and § 4.6 —
+  Re-points `default.tmj`'s authorship from card#7341 to card#9269 on every surface that named that
+  card as its author — § 10.3, § 3.2, § 4.6 and § 14's D-07 closure item, which is what a grep for
+  the claim returns rather than a list kept by hand —
   the operator ruling that made this card's subject that file's content landed after the text that
   said otherwise — which is also what discharges card#7341's orphaned deliverable. `ATTRIBUTION.md`
   carries the map's `first-party` row, and `resources/floor/LINEAGE.md` says what its provenance is
