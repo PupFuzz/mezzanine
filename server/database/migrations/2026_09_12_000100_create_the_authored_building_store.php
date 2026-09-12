@@ -64,6 +64,14 @@ return new class extends Migration
 
     public function up(): void
     {
+        // ⛔ THE CONFIGURED LAYOUT IS READ AND VALIDATED **BEFORE ANY DDL**, and the order is the
+        // whole of what makes this migration re-runnable. A refusal after the tables exist leaves
+        // a migration that is neither applied nor recorded: the next `migrate` re-enters `up()`
+        // and dies on *table already exists*, so the operator's only way out of a typo would be
+        // to drop tables by hand. Validated first, a refusal leaves the schema exactly as it was
+        // and the fix is *edit the document, migrate again*.
+        $configured = $this->theConfiguredLayout();
+
         Schema::create('authored_revisions', function (Blueprint $table) {
             $table->increments('id');
 
@@ -131,7 +139,9 @@ return new class extends Migration
             $table->unsignedInteger('map_version')->nullable(false)->change();
         });
 
-        $this->seedTheConfiguredLayout();
+        if ($configured !== null) {
+            $this->seed($configured);
+        }
     }
 
     public function down(): void
@@ -166,15 +176,16 @@ return new class extends Migration
     }
 
     /**
-     * § 6.11's invariant 2: the deploy-time document becomes the store's revision 1, or the
-     * migration fails naming what it could not seed.
+     * § 6.11's invariant 2, first half: the deploy-time document, translated and VALIDATED — the
+     * text to seed, or `null` where nothing was ever configured. It writes nothing, so that the
+     * refusal below can happen before the schema moves.
      */
-    private function seedTheConfiguredLayout(): void
+    private function theConfiguredLayout(): ?string
     {
         $floors = config('building.floors');
 
         if (! is_array($floors) || $floors === []) {
-            return;
+            return null;
         }
 
         $document = ['floors' => array_map($this->toRecords(...), array_values($floors))];
@@ -195,7 +206,12 @@ return new class extends Migration
             );
         }
 
-        $text = (string) json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return (string) json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    /** § 6.11's invariant 2, second half: the validated document, as the store's revision 1. */
+    private function seed(string $text): void
+    {
         // The instant the store LEARNED this document, which is what actually happened: nobody
         // pressed save, and a timestamp copied from the file's mtime or from a floors row would
         // be a claim about when it was authored that this migration cannot make.

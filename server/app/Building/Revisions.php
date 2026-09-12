@@ -82,6 +82,26 @@ final class Revisions
         return $revision;
     }
 
+    /**
+     * ⛔ § 6.11's NO-OP RULE, IN ONE PLACE: "a save whose document is byte-identical to the current
+     * revision is refused as a no-op rather than minting an empty revision, so a revision always
+     * records a change." Answers the current revision when `$document` IS it, and `null`
+     * otherwise; the REFUSAL's wording is the caller's, because a map's names the room and a
+     * layout's names the building.
+     *
+     * ⚠ It is asked of the current REVISION and never of the current row, and the difference is
+     * the room whose map was REMOVED: it has no row and its current revision is the removal, so a
+     * comparison against the row would have nothing to compare and would call the re-authoring of
+     * a removed map a first save. The row is a projection of the log (§ 6.11); the log is where a
+     * question about *what is current* is answered.
+     */
+    public static function noOp(string $kind, string $subject, ?string $document): ?object
+    {
+        $current = self::current($kind, $subject);
+
+        return $current !== null && $current->document === $document ? $current : null;
+    }
+
     /** The highest revision for a subject, or `null` when nothing was ever authored for it. */
     public static function current(string $kind, string $subject): ?object
     {

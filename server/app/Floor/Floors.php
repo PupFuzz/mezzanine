@@ -68,13 +68,11 @@ final class Floors
     public static function save(string $installId, FloorMap $map, string $by): int
     {
         $written = Layouts::serialise(function () use ($installId, $map, $by) {
-            $current = Revisions::current(Revisions::ROOM_MAP, $installId);
+            // § 6.11's no-op rule, asked of `App\Building\Revisions` so that this store has ONE
+            // byte comparison rather than one per write path (the layout's is the same rule).
+            $current = Revisions::noOp(Revisions::ROOM_MAP, $installId, $map->document);
 
-            // § 6.11: "A save whose document is byte-identical to the current revision is refused
-            // as a no-op rather than minting an empty revision, so a revision always records a
-            // change." Compared against the REVISION rather than the row, because a room whose
-            // map was removed has no row and the comparison must still have a current answer.
-            if ($current !== null && $current->document === $map->document) {
+            if ($current !== null) {
                 throw new InvalidFloorMap(sprintf(
                     'This map is byte for byte revision %d, which is already current for %s, so '
                     .'there is nothing to record. docs/design/FLEET-STATE.md § 6.11 refuses a '
@@ -122,9 +120,9 @@ final class Floors
                 ));
             }
 
-            $current = Revisions::current(Revisions::ROOM_MAP, $installId);
+            $current = Revisions::noOp(Revisions::ROOM_MAP, $installId, $row->document);
 
-            if ($current !== null && $current->document === $row->document) {
+            if ($current !== null) {
                 throw new InvalidFloorMap(sprintf(
                     'Revision %d is byte for byte what is already current for %s (revision %d), '
                     .'so restoring it would change nothing. docs/design/FLEET-STATE.md § 6.11 '

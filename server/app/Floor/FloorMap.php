@@ -86,6 +86,28 @@ final class FloorMap
         public readonly array $grid,
     ) {}
 
+    /**
+     * § 3.2's `S` for a stored document, or `null` where there is none to read — a REMOVAL's
+     * `document NULL` (`docs/design/FLEET-STATE.md § 6.11`), a layout revision, or a map from
+     * before a rule tightened.
+     *
+     * ⛔ ONE DERIVATION, and it is here because `S` has one home: the document. The console's
+     * revisions list and its diff both ask it, and a second `try { parse() } catch { null }`
+     * beside either would be a second answer to *how many desks does this revision declare*.
+     */
+    public static function slotsOf(?string $document): ?int
+    {
+        if ($document === null) {
+            return null;
+        }
+
+        try {
+            return self::parse($document)->slots;
+        } catch (InvalidFloorMap) {
+            return null;
+        }
+    }
+
     /** § 4.6: the room's FOOTPRINT on a planned floor — `width × tilewidth` pixels. */
     public function pixelWidth(): int
     {

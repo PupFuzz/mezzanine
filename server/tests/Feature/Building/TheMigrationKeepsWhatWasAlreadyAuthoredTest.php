@@ -6,6 +6,7 @@ use App\Building\Layouts;
 use App\Building\Revisions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Tests\Feature\Admin\FloorMapFixture;
 use Tests\TestCase;
@@ -138,10 +139,22 @@ class TheMigrationKeepsWhatWasAlreadyAuthoredTest extends TestCase
             $this->assertStringContainsString('broom-cupboard', $e->getMessage());
         }
 
-        // ⚠ The tables exist by then — the failure is in the SEED, after the schema — so the state
-        // a re-run meets is a store with no layout in it, which is what makes the fix (edit the
-        // document, migrate again) actually work.
-        $this->assertSame(0, Layouts::version());
+        // ⛔ AND THE SCHEMA DID NOT MOVE, which is what makes *edit the document and migrate
+        // again* a real instruction. A migration that had created its tables before refusing
+        // would be neither applied nor recorded: the next `migrate` re-enters `up()` and dies on
+        // *table already exists*, and the operator's only way out of a typo is dropping tables by
+        // hand. The document is therefore validated before any DDL.
+        $this->assertFalse(Schema::hasTable('authored_revisions'));
+        $this->assertFalse(Schema::hasTable('building_layout'));
+        $this->assertFalse(Schema::hasColumn('floors', 'map_version'));
+
+        // THE OTHER HALF OF THE SAME PROPERTY: the operator fixes the document and the SAME
+        // migration object runs clean — no manual repair in between.
+        config(['building.floors' => [['rooms' => ['sola' => 'office']]]]);
+
+        $migration->up();
+
+        $this->assertSame(1, Layouts::version());
     }
 
     public function test_an_empty_configured_layout_seeds_nothing_because_nobody_ever_pressed_save(): void

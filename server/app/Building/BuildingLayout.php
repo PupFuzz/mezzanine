@@ -194,7 +194,14 @@ final class BuildingLayout
      */
     public static function parse(array $document): self
     {
-        $floors = $document['floors'] ?? [];
+        // ⚠ `array_key_exists` RATHER THAN `??`, and the difference is a document that says
+        // `"floors": null`. Coalesced away, that reads as the EMPTY building — today's building,
+        // one floor per install — which is a deliberate authoring choice this reader would be
+        // inventing on the author's behalf. § 4.6 refuses an ABSENT `floors` for exactly that
+        // reason ("a document this reader cannot tell apart from a typo"), and an explicit null is
+        // the same typo one character further on. It is NOT the `label => null` case: there,
+        // absent is legal and null is how a JSON column spells it; here, absent is a refusal.
+        $floors = array_key_exists('floors', $document) ? $document['floors'] : [];
 
         if (! is_array($floors) || ! array_is_list($floors)) {
             throw new InvalidBuildingLayout(
@@ -411,7 +418,7 @@ final class BuildingLayout
                 .'than read as a form.',
                 $installId,
                 $position,
-                is_scalar($record) ? '`'.$record.'`' : 'a '.get_debug_type($record),
+                is_scalar($record) ? '`'.$record.'`' : 'a value of type '.get_debug_type($record),
             ));
         }
 

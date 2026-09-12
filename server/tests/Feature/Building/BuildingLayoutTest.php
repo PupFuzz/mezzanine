@@ -390,6 +390,16 @@ class BuildingLayoutTest extends TestCase
         BuildingLayout::fromJson('{"rooms": {"aimla": {"form": "open"}}}');
     }
 
+    public function test_an_explicit_null_floors_is_refused_rather_than_read_as_the_empty_building(): void
+    {
+        // ⚠ THE SIBLING OF THE ARM ABOVE, and the one a `??` swallows: `{"floors": null}` reads as
+        // the empty building — a deliberate authoring choice — unless the reader looks for the KEY
+        // rather than for a truthy value. It is not the `label => null` case, where absent is
+        // legal and null is how a JSON column spells it; here absent is itself a refusal, so null
+        // cannot mean absent.
+        $this->refuses(['floors' => null], 'is not a LIST of floors');
+    }
+
     // ── § 6.11's TEXT intake: what the console hands the reader ──────────────────────────────
 
     public function test_the_empty_document_the_console_offers_is_a_layout_this_reader_accepts(): void

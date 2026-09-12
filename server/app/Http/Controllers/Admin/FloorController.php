@@ -146,7 +146,7 @@ class FloorController extends Controller
                 'restored_from' => $row->restored_from === null ? null : (int) $row->restored_from,
                 'authored_by' => (string) $row->authored_by,
                 'authored_at' => (string) $row->authored_at,
-                'slots' => self::slotsOf($row->document),
+                'slots' => FloorMap::slotsOf($row->document),
                 'bytes' => $row->document === null ? null : strlen((string) $row->document),
             ])->all(),
         ]);
@@ -252,6 +252,12 @@ class FloorController extends Controller
     {
         $map = FloorMap::parse(AuthoredDocument::fromForm($document));
 
+        // ⛔ `S` BEFORE, READ BEFORE THE WRITE — § 10.3: "a save that changes `S` re-slots EVERY
+        // desk in that room … and the console shows `S` before and after a save for exactly that
+        // reason". It is what an operator needs to know they have just moved every desk, and it
+        // is unreadable a line later, so it is taken here rather than reconstructed.
+        $before = FloorMap::slotsOf(Floors::forInstall($installId)?->map);
+
         try {
             $version = Floors::save($installId, $map, (string) $request->user()->email);
         } catch (InvalidFloorMap|InvalidBuildingLayout $e) {
@@ -259,13 +265,22 @@ class FloorController extends Controller
         }
 
         return redirect()->route('admin.floors.index')->with('status', sprintf(
-            '%s now has a map declaring %d desk slot%s, saved as revision %d. Which seat sits at '
+            '%s now has a map declaring %d desk slot%s, saved as revision %d.%s Which seat sits at '
             .'which desk is still derived from the seats themselves (docs/design/FLOOR.md § 3.2) '
             .'— the map decides how many desks there are and where they sit, never who is at them.',
             $installId,
             $map->slots,
             $map->slots === 1 ? '' : 's',
             $version,
+            match (true) {
+                $before === null => '',
+                $before === $map->slots => ' The slot count is unchanged, so no desk moved.',
+                default => sprintf(
+                    ' It declared %d before, and the slot function is `h mod S` — so EVERY desk in '
+                    .'this room is now at a different slot.',
+                    $before,
+                ),
+            },
         ));
     }
 
@@ -301,20 +316,6 @@ class FloorController extends Controller
             .'removed the room, not the install.',
             $installId,
         ));
-    }
-
-    /** `S` for a revision's document, or `null` for a removal or a map a later rule refuses. */
-    private static function slotsOf(?string $document): ?int
-    {
-        if ($document === null) {
-            return null;
-        }
-
-        try {
-            return FloorMap::parse($document)->slots;
-        } catch (InvalidFloorMap) {
-            return null;
-        }
     }
 
     /**

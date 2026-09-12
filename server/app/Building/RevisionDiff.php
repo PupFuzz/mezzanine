@@ -3,7 +3,6 @@
 namespace App\Building;
 
 use App\Floor\FloorMap;
-use App\Floor\InvalidFloorMap;
 
 /**
  * ⭐ THE DIFF — one of the three things `docs/design/FLEET-STATE.md § 6.11` gives back for what
@@ -131,17 +130,10 @@ final class RevisionDiff
      */
     private static function slots(?string $document): ?int
     {
-        if ($document === null) {
-            return null;
-        }
-
-        try {
-            return FloorMap::parse($document)->slots;
-        } catch (InvalidFloorMap) {
-            // A layout revision, or a map from before a rule tightened. Neither has an `S` to
-            // show, and neither is an error in the DIFF: the line half still reads.
-            return null;
-        }
+        // A layout revision, and a map from before a rule tightened, both answer `null` — neither
+        // has an `S` to show and neither is an error in the DIFF, because the line half still
+        // reads. `App\Floor\FloorMap` owns that derivation for every reader of it.
+        return FloorMap::slotsOf($document);
     }
 
     /** @return array<mixed>|null */

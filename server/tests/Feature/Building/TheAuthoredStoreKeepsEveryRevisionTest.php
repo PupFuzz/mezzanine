@@ -9,6 +9,7 @@ use App\Building\Revisions;
 use App\Floor\FloorMap;
 use App\Floor\Floors;
 use App\Floor\InvalidFloorMap;
+use App\Sweep\Purge;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Admin\FloorMapFixture;
@@ -345,6 +346,37 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 320, 'y' => 0]],
         ]]]);
+    }
+
+    public function test_the_sweeper_purges_none_of_the_three_tables_however_old_a_revision_gets(): void
+    {
+        // ⛔ § 6.7: these tables are "purged by NOTHING" — "a row is written by an operator's save
+        // in the admin console and by nothing else, so the population is the number of times a
+        // person pressed save — and a revision purged is exactly the prior layout the recovery
+        // rule exists to keep retrievable". The sweeper's plan is a private constant, so this is
+        // asserted by RUNNING a pass rather than by reading it: a later card adding one of these
+        // tables to that plan is the edit this arm exists to red, and it would not touch this file.
+        $this->save('aimla', FloorMapFixture::valid(12));
+        $this->compose([['rooms' => ['aimla' => ['form' => 'open']]]]);
+        Floors::remove('aimla', self::OPERATOR);
+
+        // Age every authored row far past the retention boundary — the state in which a purge
+        // that DID cover them would take them.
+        $ancient = '2020-01-01 00:00:00.000';
+
+        DB::table('authored_revisions')->update(['authored_at' => $ancient]);
+        DB::table('building_layout')->update(['updated_at' => $ancient]);
+
+        app(Purge::class)->pass(retentionDays: Purge::DEDUP_WINDOW_DAYS);
+
+        $this->assertSame(3, DB::table('authored_revisions')->count());
+        $this->assertSame(1, DB::table('building_layout')->count());
+
+        // And the recovery rule still works over the aged rows, which is the property § 6.7 is
+        // protecting rather than the row count itself. The room's own history is save (1) and
+        // removal (2), so the restore is 3 — the layout's revision is a different subject and
+        // numbers separately (§ 6.4's `(kind, subject, revision)` key).
+        $this->assertSame(3, Floors::restore('aimla', 1, self::OPERATOR));
     }
 
     // ── the publish seam (card#9287 fills it; § 6.11 says WHEN it fires) ─────────────────────

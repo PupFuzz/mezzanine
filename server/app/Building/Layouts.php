@@ -212,12 +212,13 @@ final class Layouts
     }
 
     /**
-     * ⛔ § 6.11: "A save whose document is byte-identical to the current revision is refused as a
-     * no-op rather than minting an empty revision, so a revision always records a change."
+     * ⛔ § 6.11's no-op rule. The comparison itself is `App\Building\Revisions::noOp()` — one
+     * byte comparison for both kinds — and what belongs here is only how the refusal is WORDED to
+     * an operator who is looking at the building rather than at a room.
      */
     private static function refuseANoOp(string $document, ?int $restoring = null): void
     {
-        if (self::documentText() !== $document) {
+        if (Revisions::noOp(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, $document) === null) {
             return;
         }
 

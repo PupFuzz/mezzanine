@@ -72,7 +72,10 @@ class LayoutConsoleTest extends TestCase
             ->get(route('admin.layout.edit'))
             ->assertOk()
             ->assertSee('No layout has ever been saved', false)
-            ->assertSee('"floors": []', false);
+            // ⚠ ESCAPED, and that is the assertion rather than a detail: the document is rendered
+            // inside a `<textarea>` through Blade's `{{ }}`, so the quotes reach the page as
+            // `&quot;`. A raw-needle assertion here would red against a page that is correct.
+            ->assertSee('"floors": []');
     }
 
     public function test_a_saved_layout_is_revision_one_and_the_page_says_which_revision_is_current(): void

@@ -20,10 +20,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 ## [Unreleased]
 
 - **card#9208** — **THE AUTHORED BUILDING STORE IS BUILT, AND THE BUILDING LAYOUT HAS LEFT THE
-  DEPLOY** (`docs/design/FLOOR.md` Appendix B row 11, build slice 1). Three tables behind
-  `docs/design/FLEET-STATE.md § 6.11`: `authored_revisions` (append-only, one row per save, per
-  `(kind, subject)`), `building_layout` (the layout that is current) and `floors.map_version`
-  (the room map that is). Every save is a revision, a **restore** is a forward revision copying an
+  DEPLOY** (`docs/design/FLOOR.md` Appendix B row 11, build slice 1). Two tables and a column
+  behind `docs/design/FLEET-STATE.md § 6.11`: `authored_revisions` (append-only, one row per save,
+  per `(kind, subject)`), `building_layout` (the layout that is current) and `floors.map_version`
+  (the revision the room's current map IS). Every save is a revision, a **restore** is a forward revision copying an
   old one, a **removal** is a revision with a `document NULL` — so a removed map is as retrievable
   as an edited one — and a byte-identical save is **refused** rather than recorded, so a revision
   always records a change. `server/config/building.php` is **deleted**: the console's new

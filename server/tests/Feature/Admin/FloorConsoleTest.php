@@ -209,6 +209,16 @@ class FloorConsoleTest extends TestCase
             'the .tmx spelling' => [FloorMapFixture::tmx(), 'JSON'],
             'not a map at all' => ['{"type":"tileset"}', 'map'],
             'not json' => ['not json at all', 'JSON'],
+
+            // ⭐ § 10.3's TABLE, AS IT STANDS SINCE card#9208's REVERSAL AND card#9292 — the
+            // section names THIS suite as where "each refusal goes red against the same map with
+            // one property changed", so a row of that table with no case here is a rule the
+            // console claims and nobody has watched refuse.
+            'a grid with no tile width' => [FloorMapFixture::noTileWidth(), 'tilewidth'],
+            'a projection the floor does not draw' => [FloorMapFixture::isometric(), 'isometric'],
+            'a desk slot past the grid' => [FloorMapFixture::deskOutsideTheGrid(), 'wholly inside'],
+            'a desk slot carrying a property' => [FloorMapFixture::deskWithProperties(), 'properties'],
+            'a tileset the repository does not ship' => [FloorMapFixture::unshippedTileset(), 'does not ship'],
         ];
     }
 
@@ -535,6 +545,29 @@ class FloorConsoleTest extends TestCase
 
         $this->assertSame(3, (int) Floors::forInstall(self::INSTALL)->map_version);
         $this->assertSame(12, FloorMap::parse(Floors::forInstall(self::INSTALL)->map)->slots);
+    }
+
+    public function test_a_save_that_changes_the_slot_count_says_every_desk_in_the_room_has_moved(): void
+    {
+        // § 10.3: "a save that changes `S` re-slots EVERY desk in that room — the slot function is
+        // `h mod S` — and the console shows `S` before and after a save for exactly that reason; a
+        // save that keeps `S` moves no desk." Both halves, because the second is what makes the
+        // first a measurement rather than a sentence that is always on the page.
+        $this->provisionSeat('aimla-pm');
+        $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
+
+        $this->author(self::INSTALL, FloorMapFixture::valid(8));
+
+        $this->assertStringContainsString('declared 12 before', (string) session('status'));
+        $this->assertStringContainsString('EVERY desk', (string) session('status'));
+
+        // A save that keeps `S`: same count, different tiles.
+        $repainted = FloorMapFixture::decoded(8);
+        $repainted['layers'][0]['data'][0] = 7;
+
+        $this->author(self::INSTALL, FloorMapFixture::encode($repainted));
+
+        $this->assertStringContainsString('no desk moved', (string) session('status'));
     }
 
     public function test_a_no_op_save_comes_back_on_the_form_rather_than_as_a_five_hundred(): void
