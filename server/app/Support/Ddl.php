@@ -54,9 +54,9 @@ final class Ddl
      * and `attention_requests`. That is legal MySQL and a hard error on SQLite — so the engine
      * family production runs gets the document's names verbatim, and SQLite gets them qualified.
      * Both arms are now executed by CI: `php-tests` takes the qualified one, `php-tests-mariadb`
-     * (card#9250) takes the verbatim one. Qualifying everywhere instead would have been simpler and would
-     * have shipped MySQL a set of index names § 6.4 does not contain, which is the one thing that
-     * section says a builder may not do.
+     * (card#9250) takes the verbatim one. Qualifying everywhere instead would have been simpler
+     * and would have shipped MySQL a set of index names § 6.4 does not contain, which is the one
+     * thing that section says a builder may not do.
      *
      * The branch lives here rather than at each call site for the same reason `ascii()` does: the
      * version of this that gets it wrong is the one where an index is added later and its author

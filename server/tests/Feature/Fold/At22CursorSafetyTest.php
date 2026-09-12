@@ -15,10 +15,9 @@ use Illuminate\Support\Facades\DB;
  * commits. Drive it 20 times." The suite runs over ONE in-process connection on whichever store
  * it is pointed at — SQLite `:memory:` in the `php-tests` lane, MariaDB in the `php-tests-mariadb`
  * lane card#9250 added — so two overlapping write transactions on one seat cannot exist on either,
- * and THE RACE IS NOT DRIVEN AND THE 20 ITERATIONS ARE NOT RUN. `FOR UPDATE SKIP LOCKED` is now
- * at least PARSED by the MariaDB lane (SQLite has no syntax for it at all), but parsing is not
- * exercising: with one connection nothing is ever skipped, and the fold's concurrency correctness
- * is still unproven.
+ * and THE RACE IS NOT DRIVEN AND THE 20 ITERATIONS ARE NOT RUN. Neither is `FOR UPDATE SKIP
+ * LOCKED`, which is the fold's concurrency correctness and which SQLite has no syntax for at all —
+ * and a real engine does not change that: with one connection nothing is ever skipped.
  *
  * What IS driven here is each MECHANISM the race would exercise, deterministically:
  *   · the visibility lag as a property — an event inside the 2 s window is not read and the cursor
