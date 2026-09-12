@@ -196,9 +196,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   over it), `eventStream()`'s `endStreamWith` default appending `event: update`/`data: </stream>`
   after every `feed.close` (pinned to `null`), and R2's sizing unit (per open **stream/tab**, not per
   browser; the dedicated pool is now required, since `request_terminate_timeout: 0` on a shared pool
-  removes the runaway kill for every request). R1's check was rewritten to be able to fail — it sent
-  no `Accept-Encoding`, so a proxy gzipping `text/*` stayed dormant for the check and engaged for
-  every browser — and no longer puts a session cookie in `argv`. ⚠ **Left for the sweep after
+  removes the runaway kill for every request). ⛔ **R1's shell commands were then REMOVED
+  altogether in round 2, and that reversal is the single most important thing in this entry.** Two
+  independent reviews found that all three commands — added by round 1 to make the check *able to
+  fail* — were written from reading the primitive rather than from running anything: `php -i` reads
+  the CLI SAPI, which force-overrides `output_buffering` to `0` and so could not fail for the setting
+  it named; `grep -c` counts lines and every message carries `t` on both its `event:` and `data:`
+  line, so a correct stream prints twice the asserted figure; `head -c 400` is exhausted by the
+  response headers before any body byte. A check that cannot fail is a decoration and one that cannot
+  pass gets weakened until it does — so R1 is now a **condition, an instrument and an observable**,
+  and card#9300 owns writing the commands on a host where they can be run and **seen to fail once**.
+  R1/R2 ownership also split: the credential-free config checks gate `bin/deploy.sh`; R1's wire half
+  needs a signed-in MFA session no unattended deploy can hold, so it is an operator runbook step.
+  Round 2 also fixed three mechanism errors: a store outage under an **open** stream had no specified
+  behaviour and would have ended every stream silently (the primitive swallows the exception),
+  putting the whole fleet on a 10 s reconnect cadence and taking the console down by F20 — the tick
+  read now holds its cursor and the stream becomes the messenger, and a failed **connect** read ends
+  with a new third `feed.close{reason:"unavailable"}`; the frozen-consumer story was false in two
+  sections, because the primitive's `break` abandons a suspended generator, so no `feed.close` and no
+  `feed_resync_required` ever fire on that path; and `eventStream()` writes an `event:` line on every
+  message, which means `EventSource.onmessage` can **never** fire — a builder writing `es.onmessage`
+  would have got zero messages on a healthy stream — so `event:` is pinned to the literal `mezzanine`
+  and FLOOR § 2.2 now names the single listener and the unknown-`t` branch. ⚠ **Left for the sweep after
   card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
   prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; § 8.3's heading anchor keeps the word *WebSocket*
   until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
