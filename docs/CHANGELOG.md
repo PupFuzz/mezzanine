@@ -272,6 +272,292 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   not a false claim about shipped code. It was deliberately not minted as its own card — there is
   no user-visible harm to reach while nothing serves the route (canon #18's gate), and the surface
   that owns the subject is the document itself.
+- **card#9287** — **THE FEED'S TRANSPORT IS RE-PINNED TO NATIVE SERVER-SENT EVENTS — design only, no
+  application code.** The card priced four ways to keep a Pusher-protocol daemon (`laravel/reverb`
+  pins `guzzlehttp/psr7 ^2.6` against this tree's 3.1.0) and never asked whether the daemon was
+  needed; the operator's challenge was right: **the feed is one-way** — every row of D2 § 8.3's
+  message table is `server → client`, § 8.5 refuses a client→server channel, § 9 refuses the feed to
+  machines — so a bidirectional daemon was surplus and its dependency pin the price of it. D2 § 8.3
+  now pins `GET /api/fleet/stream` served by PHP-FPM through the framework's own `eventStream()`
+  (verified in this tree), **one stream fleet-wide** with the handler filtering per subscriber —
+  which retires the per-install channel, the browser's six-connection limit it would have hit, and
+  FLOOR.md § 14 item 14's cold-start window (closed). Fan-in is a **`feed_outbox` table** (§ 6.4)
+  polled at the design's own 250 ms tick behind § 6.5's 2 s visibility lag — transient, retained
+  60 s (§ 6.7), **never resumed from**: no `id:`/`Last-Event-ID`, a cursor that starts at the head,
+  and a row nobody consumed is purged unread. **Two host conditions are written as named, checked
+  deploy requirements with observables, not assumptions** — R1 the proxy must not buffer the stream
+  (its signature: *feed down* against a green fleet with REST fine; FLOOR § 9 F19), R2 the FPM pool
+  must hold a worker per browser and release a dead one (its signature: the console, not the feed,
+  goes dark; F20). **Two things SSE unlocks are built in:** the on-connect `fleet.health` is the
+  handler's first yield (`FleetHealthMessage`'s *cannot be built* claim retired), and § 9 re-checks
+  the session **from the store** every 15 s, closing FLOOR § 14 item 5 and F7's residual — with the
+  consequence stated rather than discovered: an open stream refreshes no session, so a floor left open
+  is signed out at `SESSION_LIFETIME` (120 min here) and F7/F6 render it, with the ruling filed as D2
+  § 14 item 16 — ⚠ without opening
+  the feed to machine consumers, which is filed as D2 § 14 item 15 and not taken. **F1 answered:**
+  the 256-message / 512 KiB bound has no referent under SSE (a draining client is never behind; a
+  non-draining one blocks the handler), so the bound is a **45 s stall bound on the tick**, measured
+  from the tick's START and tested BEFORE the read — both placements load-bearing: stamped at the
+  tick's end the bound never fires, and tested after the read a blocked stream advances its cursor
+  over rows the purge took. It ends a **slow** consumer on the server's clock and a **frozen** one at
+  the moment its write returns, which is the host's to bring about (R2's teardown clause) and is
+  stated as a requirement rather than promised; memory stays flat structurally; what is not provided
+  is stated. The card's F1 sentence *provided by no candidate transport* is corrected on
+  D2 § 13 row 46 (Centrifugo and Mercure bound it; the sentence exists nowhere in this repo — grep
+  audited). `coalescing` withdrawn from § 8.3 as never legal under § 8.5's plus-one rule. D2 § 13
+  rows 46–48, FLOOR § 13 rows 34–36; AT-D2-15 rewritten, AT-D2-25 added; `verify-fleet-state.py`
+  G3's retired queue check replaced by the stall/retention equalities, seen red on two plants and
+  wired into the selftest harness. Round-1 adversarial review (two fresh reviewers, mechanism and coherence) returned 4 BLOCKER-class
+  findings between them, all fixed here and all with a test: the stall bound's two placements
+  (AT-D2-15 gains a slow-consumer leg, a frozen-consumer leg and REDs for both wrong placements), the
+  connect cursor's missing visibility lag (AT-D2-25 gains the connect arm — a tick-only test passes
+  over it), `eventStream()`'s `endStreamWith` default appending `event: update`/`data: </stream>`
+  after every `feed.close` (pinned to `null`), and R2's sizing unit (per open **stream/tab**, not per
+  browser; the dedicated pool is now required, since `request_terminate_timeout: 0` on a shared pool
+  removes the runaway kill for every request). ⛔ **R1's shell commands were then REMOVED
+  altogether in round 2, and that reversal is the single most important thing in this entry.** Two
+  independent reviews found that all three commands — added by round 1 to make the check *able to
+  fail* — were written from reading the primitive rather than from running anything: `php -i` reads
+  the CLI SAPI, which force-overrides `output_buffering` to `0` and so could not fail for the setting
+  it named; `grep -c` asserts an equality against a figure that is phase-dependent — 125 s ÷ 15 s =
+  8.33, so a correct 125-second window holds 8 **or** 9 heartbeats; `head -c 400` is exhausted by
+  the response headers before any body byte. A check that cannot fail is a decoration and one that cannot
+  pass gets weakened until it does — so R1 is now a **condition, an instrument and an observable**,
+  and card#9300 owns writing the commands on a host where they can be run and **seen to fail once**.
+  R1/R2 ownership also split: the credential-free config checks gate `bin/deploy.sh`; R1's wire half
+  needs a signed-in MFA session no unattended deploy can hold, so it is an operator runbook step.
+  Round 2 also fixed three mechanism errors: a store outage under an **open** stream had no specified
+  behaviour and would have ended every stream silently (the primitive swallows the exception),
+  putting the whole fleet on a 10 s reconnect cadence and taking the console down by F20 — the tick
+  read now holds its cursor and the stream becomes the messenger, and a failed **connect** read ends
+  with a new third `feed.close{reason:"unavailable"}`; the frozen-consumer story was false in two
+  sections, because the primitive's `break` abandons a suspended generator, so no `feed.close` and no
+  `feed_resync_required` ever fire on that path; and `eventStream()` writes an `event:` line on every
+  message, which means `EventSource.onmessage` can **never** fire — a builder writing `es.onmessage`
+  would have got zero messages on a healthy stream — so `event:` is pinned to the literal `mezzanine`
+  and FLOOR § 2.2 now names the single listener and the unknown-`t` branch. ⚠ **Left for the sweep after
+  card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
+  prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; **§ 13 decision row 42**,
+  whose *Alternatives* and *Cost if wrong* cells are written entirely in the retired channel model — a
+  `private-building` channel, both messages fanning out to every channel, N publishes per save — in a
+  table this amendment added rows to, and deferred with the § 8.7 prose it describes rather than
+  half-rewritten here, because the row's subject is that section's (added to this list in the card#9287
+  maintainer round, which found the list short by it); § 8.3's heading anchor keeps the word *WebSocket*
+  until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
+  `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed as **card#9300**
+  (Backlog) together with the build of D2 Appendix B step 9 and the retirement of the broadcast
+  wiring — a card this PR created, because reviewing it found the work had no open home (#7459 is
+  released, #7827 shipped) and a "filed" claim naming no card is an abandoned finding. ⭐ **This
+  amendment also discharges card#7838's first two items** — settle the coalescing contradiction, and
+  restate AT-D2-15 in terms something can drive — and the coalescing withdrawal reconciles the
+  document to code that already shipped (`server/app/Feed/SeatDelta.php` emits one delta per version
+  increment), so a doc-vs-code divergence closes here rather than opening. #7838's remaining items are
+  untouched and it is not reopened.
+  ⛔ **Round 3 (two fresh reviewers again) found that round 2's own fix had left the document
+  contradicting itself, and four independent defects are fixed here.** **(1)** § 8.3 stated the
+  framing rule twice and incompatibly — `event:` carries `t`, and then `event:` carries the fixed
+  literal `mezzanine` — so the wrong half is **deleted** rather than reworded, leaving the ruling as
+  the only statement of it; the round-2 entry above said the same wrong thing and is corrected with
+  it, which is the only sibling the claim had (FLOOR § 2.2 and D2 § 8.3's primitive sentence were
+  audited and are correct). **(2)** That fix did not reach the **buildable** surface: § 8.3's
+  pseudocode yields bare values, and `eventStream()` names the event `update` unless the yield is a
+  `StreamedEvent` — so a builder following the block ships `event: update` on every message and the
+  client's one listener never fires. Every yield is now stated as
+  `new StreamedEvent('mezzanine', $json)`, in the block and under it. **(3)** R1's instrument was
+  named from reading for the **second** time: `php-fpm -tt` exits `failed to open error_log …
+  Permission denied` before printing anything, and dumps FPM's configuration rather than ini
+  directives. Replaced by **`php-fpm -i`**, which was RUN — `output_buffering => 4096 => 4096`,
+  `Loaded Configuration File => /etc/php/8.5/fpm/php.ini`, with nothing under `pool.d/` setting it —
+  and the rule restated as baseline-then-pool-override. **(4)** Appendix B step 9's list of tests to
+  re-point before `CapturingBroadcaster` is deleted was **provably short**: the row's own
+  `-i broadcast` grep cannot see a test that drives `$this->wire` without spelling the word, so the
+  population is now stated as the grep that re-derives it, and `FeedTestCase::setUp()`'s inherited
+  breakage is named. That exposed an **ordering** defect: AT-D2-23 is in that set and is step 11's
+  gate, while step 11 runs after step 9 — so step 9 would delete the class its own successor's gate
+  is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned was NOT
+  touched by those four fixes** — it was separate design work, and round 4 below is where it is settled.
+  ⛔ **ROUND 4 IS SUPERSEDED BY ROUND 6 BELOW and is kept as the record of what was tried, not as a
+  statement of the design.** Every posture the next paragraph settles — the already-open row, the third
+  auth outcome, the frozen cursor, AT-D2-19's *still open at 60 s* leg — was WITHDRAWN by the operator
+  on 2026-09-12. Read it for why the reversal was needed; read round 6 for what the design says.
+  ⛔ **Round 4 settled it as a CONTRADICTION BETWEEN TWO SECTIONS rather than an open
+  product question.** § 2.2's *feed stream, ALREADY OPEN* row rules that a store outage under an open
+  stream keeps it **open as the messenger** — `fleet.health{db:"down"}`, no cursor advance, no end —
+  while § 9 re-checked the session every **15 s by re-reading the user record from that same store**
+  and gave that check only **two** outcomes. A read that *failed* therefore landed on *invalid* and
+  fired `feed.close{reason:"session"}`, and 15 s beats § 8.5's 45 s stall bound, **so § 2.2's ruling
+  was unreachable in practice**: every viewer on the fleet was sent to a sign-in page within 15 s of a
+  store outage — one that **cannot be completed, because authenticating reads the same tables the check
+  just failed on**. § 9's re-check now has **THREE outcomes — valid, invalid, and *unverifiable***,
+  where *unverifiable* is *the check could not reach the store* and is explicitly **not a verdict about
+  the session**: it takes § 2.2's messenger path, the stream stays **open**, and no `feed.close` of any
+  reason is sent. ⭐ **The closed set of three `feed.close` reasons is UNCHANGED** — *unverifiable* is
+  not a fourth member, because nothing is being ended — and `session` keeps exactly its meaning, now
+  said in those words on § 8.3's `feed.close` row, in § 2.1's process-table row, on R2's *declared*
+  sentence and at FLOOR § 9 F3 and § 14 item 5: **the store answered, and said the session or its MFA
+  is gone**. FLOOR § 9 gains **F21** for the mid-stream case it did not carry — F5 covers the
+  **connect**-time one — which **points at F5 for its render rather than restating it** (a restatement
+  drifts) and is **appended, not inserted**, so no existing F-id moves under the cross-references to it.
+  ⚠ **What is NOT resolvable is named rather than engineered around:** while the store is down an
+  *expired* session and an *unverifiable* one are indistinguishable, and an outage outlasting
+  `SESSION_LIFETIME` (120 min here) leaves every open stream in that state. No timer, no heuristic and
+  no client-side guess is specified, because each would be a verdict invented from an absence of
+  evidence — the very defect the third outcome removes. The first re-check after the store answers again
+  resolves it truthfully and ends the stream with `feed.close{reason:"session"}` if the session really
+  had expired: late by the length of the outage, and correct. § 9's *15 s + one 250 ms tick*
+  enforcement bound is therefore now stated as holding **on a re-check that can reach the store**, which
+  is the one existing sentence this change made false. ⭐ **AT-D2-19 gains the leg that keeps the defect
+  out** — the store made unreadable under an already-open stream, `fleet.health{db:"down"}` inside one
+  auth interval, **no `feed.close` of ANY reason** (asserted against the reason SET, so a fourth member
+  invented for this posture reds too), the stream still open at 60 s past the 45 s stall bound, and
+  `db: "up"` with delivery resumed on restore; its REDs are the two-outcome re-check itself and that
+  fourth reason, and its discriminating control is the existing expiry leg, which must still close with
+  `session` against a READABLE store — without it the absence assertion could pass over a test that
+  watched nothing. ⚠ **One thing this change does NOT carry, and it is deliberate:** `verify-fleet-state.py`
+  G7's message-type closure only sees BACKTICK-DELIMITED tokens, so § 8.3's pseudocode fence and every
+  braced prose token sit outside its population — a real gap, filed as its own card rather than bundled
+  into this design change, where it would inherit this entry's review.
+  ⭐⭐ **ROUND 6 — OPERATOR RULING, 2026-09-12: the premise under rounds 1-5 is WITHDRAWN. When the
+  store is unreachable the stream ENDS and the client says so.** Five review rounds circled one
+  assumption — *the fleet dashboard should stay useful while the store is unreachable* — and the fifth
+  round's own stopping criterion fired (a fix re-minting the class it existed to prevent, twice) rather
+  than converging. The operator took it as a product question and answered it: with the store gone
+  there is nothing to show, nothing to advance a cursor past and nothing a session re-check can be
+  checked against, so the design stops and says so instead of building a recovery path back to a place
+  with no value. **`feed.close{reason:"unavailable"}` · FLOOR renders *fleet data unavailable* · the
+  client retries on a BACKED-OFF cadence.**
+  **What this DELETED rather than answered — each one removed, not qualified beside its replacement:**
+  **(1)** D2 § 2.2's *feed stream, ALREADY OPEN* row and its whole posture; the row is now
+  **Feed stream, MID-STREAM**, posture **CLOSED**. **(2)** § 9's *unverifiable* outcome as a state that
+  keeps a stream alive — the re-check now continues the stream on ONE outcome and ends it on every
+  other, and § 8.3's loop writes the non-answer branch as `default` so that no exception escapes the
+  switch into the primitive's `catch (Throwable)` and ends the response with no `feed.close` at all.
+  **(3)** The frozen cursor, everywhere it was stated: nothing holds a cursor across an outage, so
+  recovery is a reconnect and a fresh snapshot. **(4)** § 6.7's 60 s retention arithmetic **did not
+  move and did not need to**: 45 + 15 was always derived from § 8.5's stall bound — a SLOW consumer
+  blocked in a write — and never from a stream outliving a store outage; what the frozen cursor did was
+  falsify it, and deleting the cursor restores § 8.5's *no row is ever skipped for any client* rather
+  than amending either. **(5)** AT-D2-19's *still open at 60 s* leg and its two runs, rewritten against
+  the close.
+  **Which reason a failed session re-check sends is now a stated RENDER decision, not an implementer's
+  guess:** `unavailable`, never `session` — a sign-in cannot be completed while the store is
+  unreadable, because authenticating reads the tables the check just failed on, and *your session is
+  gone* is the wrong sentence when what is true is *the store is down*. The closed set of three
+  `feed.close` reasons is unchanged and this mints no fourth member.
+  **The cost the operator is buying, stated so nobody re-litigates it:** F20's reconnect stampede is
+  real, and the answer is **client backoff**, which D3 § 2.2 now owns — after a
+  `feed.close{reason:"unavailable"}` the retry interval doubles from the 10 s cadence to an **80 s**
+  ceiling, that being the first interval at which a browser makes fewer than one request a minute
+  against a store refusing all of them, with the ceiling derived from the cadence rather than minted.
+  ⛔ **F1's 10 s poll is NOT backed off**: that path is a dead stream over a READABLE store, where the
+  polled floor is the product working.
+  **Also in this round, the four review findings the ruling left standing as ordinary work.** **F3** —
+  AT-D2-19's restore assertion was unproducible in its run 2 and the leg claimed *"the assertions below
+  hold in both"*; recovery is now its own leg, producible in both runs, and what differs between them is
+  stated as the BOUND (one tick where the tick read fails, one auth interval where only the re-check
+  does) rather than as the cursor. **F4** — `db: "up"` is not a member of § 8.2.4's `db` enum; every
+  site that introduced it is deleted by the ruling except AT-D2-19's, which now **cites § 8.2.4 for the
+  value instead of restating it**, because a vocabulary with two homes is one that drifts. **F7** —
+  `routes/channels.php` and `.env.example` each claimed `BROADCAST_CONNECTION`'s *"only occurrences"*
+  were those two, and `server/phpunit.xml` carries one they missed. Two hand-kept copies of one
+  enumeration are two copies free to drift, and D2 Appendix B step 9's retirement is exactly the act
+  that reads one and orphans the rest — so **both are replaced by the derivation**
+  (`git grep -n BROADCAST_CONNECTION`, **unscoped** — the `-- server` pathspec this round first wrote
+  excludes `bin/deploy.sh`, which D2 Appendix B step 9 requires editing, and `bin/deploy.selftest.sh`
+  with it, so the replacement derivation was itself scoped past the files it commands) rather than by
+  a corrected list. **F8** — Appendix B
+  step 8 gated on AT-D2-19 while step 9 builds the handler its stream legs drive, and step 9's gate
+  named it nowhere: step 8's citation is scoped to the REST, token and MFA legs and step 9 gains the
+  stream legs.
+  **And one carried doc-sync debt (canon #16), held out of `PupFuzz/mezzanine#115` because this branch
+  is live in the file:** D2 § 13 row 44's *Cost if wrong* cell said card#7341's floor-v1 map was *still
+  that card's to author* and its tileset pull *vendored no map*. Both were false once card#9269
+  authored `resources/floor/default.tmj` (#115). The row's RULE is untouched; the cell no longer
+  restates the tree's state at all — it points at `git ls-files resources/floor` and at
+  `verify-floor.py`'s two-directional hold on § 10.3, because a state written into a cell is a state
+  free to drift from the tree.
+  ⚠ **One deviation from the ruling's letter, named rather than absorbed:** the ruling said D2 § 2.1's
+  heartbeat-daemon row *stays as it is*. Its *"told … by the heartbeat's ABSENCE … the one case where
+  silence is the message"* clause was written for an outage the stream survived, and under the close it
+  is false — the close is the messenger within one 250 ms tick. That one clause is corrected; the row's
+  ruling (a daemon writing to the same store is not the messenger of that store's outage) is untouched,
+  and silence keeps its one remaining meaning: a stream that ended without saying so.
+  ⭐ **ROUND 7 — the first INDEPENDENT review of this amendment (maintainer round, 2026-09-12), and the
+  yield is why five self-reviews are not one outside read.** Two blockers, and both were the same
+  shape: **a rule stated in prose and CONTRADICTED by the artifact that gates it.** *(1)* The two
+  acceptance tests that decide whether the store-down ruling shipped — AT-D3-8 and AT-D2-12 — both
+  certified the held-open stream the ruling withdrew, AT-D3-8 in the words *"while the connection
+  indicator stays connected"* on the line directly below one this diff edited, and FLOOR § 9 F5's
+  **Never** column forbids that render by name. Both fixed, `fx-refusals` carries the stream's end,
+  and each gained a RED for the held-open stream. **The root defect was G12's population, not the
+  tests:** the guard held the three PROSE sites and neither test, so it could only ever agree with the
+  prose it read — its population is now the RULING's sites, AT-D3-8 included, which is the one check
+  in this file that reads `docs/design/FLOOR.md`; both new legs seen red on a plant and reverted
+  byte-identically, with a CONTROL that reds by name on an anchor that stops resolving. *(2)* The
+  handler returned on `fleet.reload` writing no `feed.close`, which F3 reads as *"a reason the server
+  did not choose"* — so **every routine deploy rendered *feed down — polling* against a healthy
+  fleet**. `reload` is now the fourth member of the close set — which **supersedes the two *closed set
+  of three … UNCHANGED* sentences earlier in this bullet**, and supersedes only their arithmetic: what
+  those rounds ruled is that the *unverifiable* outcome mints no member, and that still stands, because
+  it sends `unavailable` and ends nothing new. ⛔ **What is NOT ruled here and went to
+  the operator: whether a viewer sees a banner on a deploy that does not change `feed_version`.** D2
+  says the wire did not move so nothing should interrupt; FLOOR § 2.5, F8 and AT-D3-8's reload leg say
+  banner, unconditionally. Both are written up with their costs and the sites each answer moves at
+  **FLOOR § 14 item 20**, and neither document was edited toward the other — picking whichever is
+  easier to edit IS the ruling. The stream's END was fixed without waiting on it, because under both
+  answers an unexplained end renders *feed down* first. **Security:** § 9's revocation bound was
+  ~4× short — the re-check fires on a loop PASS and a pass contains the write loop, which § 8.5 lets
+  block for 45 s, so the bound is the auth interval plus that, under 60 s rather than 15.25 s; a
+  revoked session that drains slowly buys the difference. FLOOR F7 and **decision 36 — an acceptance
+  taken on the record at a figure 4× short** — moved with it, and the hoist that would have made
+  250 ms true is refused on the record with its reason, so the next round does not re-propose it. Step
+  9's hand-listed `/broadcasting/auth` tests were short by one (`git grep -ln "broadcasting/auth" --
+  server/tests` returns four) and are now the grep. **And the derivation that replaced round 6's wrong
+  list was itself scoped past the files it commands** — `-- server` hides `bin/deploy.sh`, which step
+  9 requires editing — so all three sites drop the pathspec. **MAJOR-6/8/9/10 dissolve into one
+  edit rather than four debates, because R1 already takes the right position:** *what is true on a
+  real FPM host is UNMEASURED and this document does not assert it either way.* R2 and step 9 did not
+  honour it — R2 named `php-fpm -tt`, the instrument R1 disqualifies eight paragraphs above and which
+  measurably cannot run as the deploy user; step 9 ordered the ini gate R1 forbids building until
+  card#9300 measures it; `pm.status_path` sat as a caveat on a check while § 2.1's feed-reload wait
+  loop depends on it; and the frozen-consumer story cited a `break` the primitive contradicts, when
+  what governs it is **`ignore_user_abort`** — unnamed anywhere, and on this box present and
+  **commented** in the FPM ini with the distribution suggesting `On`, one character from making
+  AT-D2-15's GREEN (b) red against a correct handler. All four now honour R1: named, handed to
+  card#9300, and no instrument prescribed that has not been run. The three minors were each a live
+  inconsistency rather than a taste call and all three are fixed — `feed_resync_required`'s cell named
+  a close reason the loop never counts, § 8.3's latency bound was measured from the commit while its
+  predicate reads `created_at` at INSERT, and this list omitted § 13 row 42, now deferred with the
+  § 8.7 prose it is written in.
+  ⭐ **ROUND 8 — the second independent review (2026-09-12), run over the ROUND-7 FIX DELTA only.**
+  Eleven findings, **no blocker**: every mechanism a builder implements was already correct. What is
+  fixed here is the round-7 delta's own residue, on canon #16's rule that a change owes the docs it
+  invalidates — **this delta is what made these clauses false.** *(1)* **Round 7's own root-cause
+  lesson was applied to one of its two blockers.** G12's population became the RULING's sites for
+  `unavailable`, and the `reload` member round 7 MINTED got no guard at all. Measured, not reasoned:
+  deleting the handler's `yield feed.close{reason:"reload"}` left every gate at **rc 0** — because
+  `_used` is derived over the whole document and the `fleet.reload` row's own prose (lines 2439, 2977)
+  keeps the close table's *exactly four* cardinal matching while the handler regresses. The new **G12b**
+  holds the close at the **FENCE** rather than at a section, since section 8.3's pseudocode is what an
+  implementer builds from and a close surviving only in prose is a close no build emits; seen red on
+  that exact plant, naming both prose lines, and reverted byte-identically. *(2)* **The enforcement
+  bound moved at six sites and stayed 4× short at two more** — FLOOR § 9's *"up to one tick — 15 s"*,
+  the phrasing D2 § 9 forbids by name three lines below the row round 7 did fix, and § 13's F7 note
+  citing **decision 36** as authority for a figure decision 36 itself records as retired. Both now point
+  at D2 § 9's guarantee instead of restating a figure. *(3)* **The stall bound was corrected at every
+  CONSUMER and not at its OWNER.** § 8.5 still read *"that worker, for up to the bound"* — in the very
+  clause that hands the figure to R2's `pm.max_children` arithmetic — while § 9 case (b), written by
+  round 7, rules it *"a DETECTOR, not a cap"*. A pool sized from the owner's clause is sized short;
+  § 8.5 and the § 2 backpressure row now say detector, and name R2's teardown as what actually caps
+  occupancy. *(4)* Appendix A's second cardinal stayed at *thirty-nine* against forty T-rows, outside
+  G6's regex; the restatement is deleted rather than re-synced by hand (canon #16). ⚠ **Filed, not
+  fixed here:** the enforcement bound is still restated at ≥ 6 sites across two documents with no
+  guard — fixing N copies in place is what let the N+1th survive round 7 — and G12b guards one reason
+  by name where the site loop should derive its reasons from the declared set; both are consolidation
+  items in their own right. § 8.3's split ruling still assigns card#9300 the R1/R2 ini gate that R1
+  itself forbids building unmeasured, § 14 item 20's site inventory is short by one (§ 13 row 42 takes
+  a position on the parked question), and AT-D3-8 asserts on an input round 7's own fixture edit made
+  unproducible. All five gates rc 0, floor-preview included.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

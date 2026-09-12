@@ -48,10 +48,10 @@ contract every consumer reads.
    fail-posture for the store being unreachable on every path that touches it ([§ 2.2](#22-fail-posture-per-path)).
 7. **Two read surfaces with two different compatibility postures.** The REST snapshot has an
    independently-upgraded consumer (the bridge's autonomy watchdog), so it carries a version line and
-   the additive-change discipline. The WebSocket delta feed ships with the browser code in the same
+   the additive-change discipline. The SSE delta feed ships with the browser code in the same
    deploy act, so it does not — and says so, rather than inheriting a rule it does not need
    ([§ 8.1](#81-two-surfaces-two-compatibility-postures)).
-8. **Snapshot-then-deltas is a protocol, not a sequence.** The client subscribes first, buffers, then
+8. **Snapshot-then-deltas is a protocol, not a sequence.** The client opens the stream first, buffers, then
    fetches the snapshot, then discards buffered deltas at or below the snapshot's watermark. The
    watermark is a server-minted per-seat `state_version`, **not** D1's `(seq_epoch, seq)` — and
    [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states exactly why both exist and which
@@ -83,7 +83,7 @@ contract every consumer reads.
                         │          │  derive() ─ one function               │
                         │          ├──────────▶ GET /api/fleet/snapshot ────┼─▶ browser (MFA)
                         │          │            GET /api/fleet/seats/…      │   watchdog (mzr_ token)
-                        │          └──────────▶ Reverb  private-fleet.<id> ─┼─▶ browser only
+                        │          └──────────▶ GET /api/fleet/stream  SSE ─┼─▶ browser only
                         │   sweeper (15 s): staleness, orphans, ceilings    │
 ```
 
@@ -99,7 +99,7 @@ contract every consumer reads.
 | Server-side predicates and the control that proves each can answer both ways | [§ 5](#5-server-side-predicates-and-their-controls) |
 | The store: deployment posture, database names, DDL, the fold, retention, sizing, migrations | [§ 6](#6-the-store) |
 | Where D1 § 12.7's server-side counters live and how they are exposed, plus this plane's own counters | [§ 7](#7-counters) |
-| The feed: REST snapshot, WebSocket deltas, snapshot-then-deltas, gaps, reconnect, backpressure | [§ 8](#8-the-feed-contract) |
+| The feed: REST snapshot, SSE deltas, snapshot-then-deltas, gaps, reconnect, backpressure | [§ 8](#8-the-feed-contract) |
 | The coordination read surface: which of [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer)'s coordination facts reach a reader, on which message, and what a consumer may conclude from them | [§ 8.3.3](#833-the-coordination-objects) |
 | Read-side authentication and rate limits | [§ 9](#9-read-side-authentication) |
 
@@ -145,18 +145,23 @@ with nothing erroring anywhere (card#9181). A figure beside the set it counts is
 that set and goes stale the moment a process is added; the set is what an operator actually reads.
 **Add a process, add a row** — and there is no number here to update with it.
 
-⚠ **The WebSocket transport itself is not a row here, and that is a gap rather than a decision.**
-[§ 8.3](#83-the-websocket-delta-feed) names Reverb as the feed's transport and `bin/deploy.sh`
-supervises it as a unit of its own, but this table has never carried it, so *provision what § 2.1
-lists* still stands no socket server up. Found as card#9181's sibling and reported there rather than
-settled here.
+⭐ **The transport is a row here since card#9287, and the row is a request, not a daemon.** An earlier
+revision named Reverb as the feed's transport and said outright that this table did not carry it — *a
+gap rather than a decision* — so *provision what § 2.1 lists* stood no socket server up. That gap is
+closed by removing the thing it was a gap for: [§ 8.3](#83-the-websocket-delta-feed) now pins the feed
+to native Server-Sent Events served by PHP-FPM, and the process that serves it is the **feed stream**
+row below — one ordinary HTTP request per open browser, supervised by nothing but the FPM pool that
+serves every other request. Its cost is a worker pinned per browser, priced in § 8.3 as a **named,
+checked deploy requirement** rather than a sizing note.
 
 | Process | Kind | Cadence | Job | If it dies |
 |---|---|---|---|---|
 | **ingest** | HTTP request (PHP-FPM) | per batch | validate per [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order), write `events` + `batches`, the seat's **`head_event_id`**, and — only where it is still `NULL`, i.e. on the seat's first-ever event — the **seed of `fold_cursor_received_at`** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)), all in one transaction, return `202` | the reporter spools and retries ([D1 § 11.5](EVENT-SCHEMA.md#115-retry-and-backoff)); nothing is lost until a seat's 8-day residency cap |
 | **fold** | long-lived daemon (`mezzanine:fold`), supervised | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
-| **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised | every **15 s** | publish [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` on every install's channel, **unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting: [§ 2.2](#22-fail-posture-per-path)'s WebSocket-connect row makes this daemon the messenger of the outage | **a quiet fleet and a dead socket stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a channel with `seat.delta` traffic stays up by accident and a **quiet** channel — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
+| **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised | every **15 s** | write [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` to `feed_outbox` — **one row, fleet-wide, unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting — ⛔ **but only where the store is readable-but-degraded, and an earlier revision of this row overstated it.** This daemon's publish target is `feed_outbox`, which is in the SAME store ([§ 6.4](#64-ddl)): in a full outage it can write nothing, so it is not the messenger of that outage and this row no longer claims to be. Who tells whom, exactly: a **connecting** browser is told by the handler's on-connect `fleet.health`, a direct yield needing no outbox row ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row); an **already-connected** browser is told by this daemon where the store still takes writes, and where the store takes none the messenger is the stream's own `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)) — not this daemon and not its silence. What the heartbeat's ABSENCE still means, and the whole of what it means, is a stream that ended without saying so — a killed worker, the proxy, the network — which arms the client's 45 s dead-feed timer ([§ 8.3](#83-the-websocket-delta-feed)) and is the reason the heartbeat is unconditional | **a quiet fleet and a dead stream stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a stream with `seat.delta` traffic stays up by accident and a **quiet** fleet's stream — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
+| **feed stream** | HTTP request (PHP-FPM), **long-lived** — `GET /api/fleet/stream`, one per open browser, and a worker pinned for as long as it is open ([§ 8.3](#83-the-websocket-delta-feed)) | polls `feed_outbox` every **250 ms**; re-checks the session every **15 s** ([§ 9](#9-read-side-authentication)) | yield `fleet.health` first — `db: "down"` if the store is unreadable ([§ 2.2](#22-fail-posture-per-path)) — then deliver every outbox row past its cursor that [§ 9](#9-read-side-authentication)'s filter admits, in `id` order, behind [§ 6.5](#65-the-fold)'s 2 s visibility lag; end the stream on `fleet.reload`, on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, on **any read of the store that fails** — the connect read, a tick's read, or [§ 9](#9-read-side-authentication)'s session re-check coming back without an answer about the session — or on a re-check that came back **invalid**, saying which with `feed.close` ([§ 8.3](#83-the-websocket-delta-feed)) | that browser's `EventSource` errors and the client re-opens on the cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1, F3) — every other stream is a separate worker and notices nothing. **What a dead pool looks like is the one failure here that is not the feed's:** with every worker pinned, the snapshot, the health endpoint and the console queue behind the streams, which is § 8.3's requirement R2 and its named observable |
+| **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **before** PHP-FPM is reloaded | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait for the streams to go**: a row is invisible to every handler for [§ 6.5](#65-the-fold)'s 2 s visibility lag and is delivered on the tick after that, so the command returns no sooner than **lag + tick + margin (3 s)**, and then polls the stream pool's active-process count (**the pool's `pm.status_path`, which [§ 8.3](#83-the-websocket-delta-feed) R2 requires for exactly this reason**) until it reaches zero **or a 30 s ceiling elapses, whichever comes first — at the ceiling it returns success and logs the residual count**, because a deploy must not block indefinitely on one wedged stream and FPM's own reload escalation is the backstop for whatever is left (R2's `process_control_timeout`). ⚠ *Preferably* stood here in an earlier revision, which is not a buildable instruction: one builder writes `sleep 3`, another blocks forever, and the two differ on whether a single frozen client can stall every deploy. Every open stream then delivers it and **ends** ([§ 8.3](#83-the-websocket-delta-feed)), which is what returns the pinned workers before the reload asks for them — ⚠ a deploy that writes the row and reloads in the next line reloads while every stream is still inside the lag window, returns no worker by this path, and falls back on FPM's own escalation, whose behaviour at the default `process_control_timeout` this document marks UNVERIFIED (R2) | streams keep serving the previous release's code until FPM's own reload escalation finishes them (R2's `process_control_timeout`), and each client learns of the deploy from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) rather than from a message that says so — later, and by the failure path instead of the announcement |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
 | **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --clear`) | on demand | the **only** writer of `seats.board_user_id`, and **any** write of that column — setting it or clearing it — deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
@@ -177,7 +182,7 @@ coincidence — one is derived above from the 300 s `stale` threshold, the other
 channel — and folding the heartbeat into a sweep pass would put the instrument inside the thing it
 reports on: [§ 2.2](#22-fail-posture-per-path) makes a dead sweeper a **reportable** condition
 (`fleet.sweep` goes `stalled`), and a heartbeat riding that pass would fall silent at exactly the
-moment it has news, leaving the client unable to tell a stalled fleet from a dead socket — which is
+moment it has news, leaving the client unable to tell a stalled fleet from a dead stream — which is
 the one distinction [§ 8.3](#83-the-websocket-delta-feed) exists to draw. It is the argument
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) makes for `fold_lag_ms`'s basis, one layer
 further out.
@@ -202,12 +207,13 @@ is in neither.
 | **Ingest write** | the store unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing. |
 | **REST snapshot read** | the store unreachable | **CLOSED** — `503 fleet_unavailable`, machine-readable, **never `200` with an empty or partial fleet** | An empty fleet is indistinguishable from a calm fleet. This is `docs/KANBAN.md § G-1`'s defect (a 200 with empty data reading as a clean zero) and [`docs/VERSIONING.md § The failure direction`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)'s rule, on the read side. |
 | **REST snapshot read** | the store reachable, **some seats' fold cursors stale** | **OPEN, labelled** — serve the state, with `derivation.fold_lag_ms` per seat and `fleet.fold` ≠ `ok` | Frozen state is still the last true state; refusing the whole fleet because one seat's derivation is behind would turn a partial degradation into a total outage. The label is what stops it being read as current. |
-| **WebSocket connect** | Reverb up, the store down | **CLOSED** — the connection is accepted and immediately sent `fleet.health` with `db: "down"`; no snapshot is served | Same argument as the REST read. The socket stays up deliberately, because it is the channel that tells the browser *why* there is nothing. |
-| **WebSocket feed** | Reverb down, the store up | **OPEN for reading, CLOSED for the live claim** — REST still serves; the client polls at **10 s** and must render a `feed_down` indicator | A dashboard that silently degrades from live to polled is a dashboard whose age nobody can trust. The poll interval matches D1's flush interval, so the polled floor is no more stale than the live one's own input cadence. |
+| **Stream connect** | the app up, the store down | **CLOSED** — the request is accepted, the handler's **first message** is `fleet.health` with `db: "down"`, and the stream then **ends** with `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)); no snapshot is served | Same argument as the REST read. The connection is accepted only far enough to say *why* there is nothing — under SSE that message is the handler's first yield rather than a hook nobody had ([§ 8.3](#83-the-websocket-delta-feed)) — and then it ends, because every datum it would carry comes out of the store it could not read. |
+| **Stream** | the stream unreachable — the pool exhausted, the proxy buffering it, the network — the store up | **OPEN for reading, CLOSED for the live claim** — REST still serves; the client polls at **10 s** and must render a `feed_down` indicator | A dashboard that silently degrades from live to polled is a dashboard whose age nobody can trust. The poll interval matches D1's flush interval, so the polled floor is no more stale than the live one's own input cadence. |
 | **Fold worker** | dead or lagging | **OPEN for ingest, CLOSED for the currency claim** — receipts keep landing, state freezes, seats badge `fold_lag`, `fleet.fold` goes `stalled` | Refusing ingest because *derivation* is broken would discard data we can still store and later derive. Freezing silently is the failure this whole product exists to prevent, so the freeze is announced. See [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation). |
 | **Fold worker** | a single event raises during projection | **OPEN, counted, quarantined-in-place** — the cursor advances past it, `fold_error` increments, the seat badges `derivation_error`; the event stays in `events` for replay | One malformed event must not wedge a seat's derivation forever — the same judgement [D1 § 11.4](EVENT-SCHEMA.md#114-corruption-the-torn-last-line-and-a-lost-statejson) makes for a torn spool line. Because the log is retained, the fix plus a rebuild recovers the seat exactly. |
 | **Sweep worker** | dead | **OPEN for ingest, CLOSED for the currency claim** — the fleet object's `sweep_last_run_at` keeps its last value and `fleet.sweep` goes `stalled` past **60 s** since it ([§ 8.2.4](#824-the-fleet-health-object)) | Identical reasoning to the fold, and stated separately rather than inherited because the *consequence* differs: a dead fold freezes wire-driven transitions, a dead sweep freezes time-driven ones, and only the second one can leave a dead seat rendering `working`. |
-| **Feed backpressure** | a client cannot drain its queue | **CLOSED for that connection** — at 256 queued messages or 512 KiB the connection is closed with `resync_required`; other clients are untouched | Dropping deltas silently leaves that browser permanently and invisibly wrong. Closing the connection costs one snapshot fetch and is self-healing. |
+| **Feed backpressure** | a client cannot drain the stream | **CLOSED for that connection** — a tick the handler cannot complete within **45 s** is detected at the top of the following pass and ends the stream with `feed.close`, and other clients are untouched ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq), whose bound is a detector and not a cap on how long the worker is held) | Dropping deltas silently leaves that browser permanently and invisibly wrong. Ending the stream costs one snapshot fetch and is self-healing — and returns the worker, which under SSE is the resource a stalled client actually consumes. |
+| **Feed stream, MID-STREAM** | the store becomes unreachable while the stream is open | **CLOSED** — the tick's read of `feed_outbox` fails, or [§ 9](#9-read-side-authentication)'s 15 s session re-check comes back without an answer about the session, and the handler **ends the stream** with `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)). No cursor is held across the outage, no delivery is resumed from one, and nothing is frozen | Every datum this stream carries comes out of that store, so a stream that cannot read it has nothing left to deliver and no way to tell whether it still may — and a recovery path back to a place with no value is not a posture, it is a pretence. What the viewer gets instead is the truth by name: [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 is the render, and the client retries on the **backed-off** cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns. That backoff — not a held-open stream — is the answer to the reconnect stampede F20 prices, and it is cheap and local where holding streams open was neither |
 | **Read-token verification** | the token store is unreachable | **CLOSED** — `503`, never a cached or assumed grant | A read token gates the whole fleet's activity picture. There is no posture in which "we could not check, so we allowed it" is correct. |
 | **Building surface read** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the store unreachable | **CLOSED** — `503 fleet_unavailable`, **never the shipped default served in its place** | A default served on a failed read is a room the operator authored rendering as one they did not, with confidence — the clean-zero shape one surface over from the snapshot's. The client draws the failure by name ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F16) and keeps every desk's facts |
 | **Building surface read** | the store reachable, **no authored map for the room** | **OPEN, labelled** — `200` with the shipped default, `source: "default"`, `map_version: null` | An unauthored room is a state and not a failure: the default is what every room starts from, and the label is what keeps it distinguishable from an authored map on the same shape. This is the row an implementer gets wrong by answering `404`, which would make every new install a broken room |
@@ -1715,6 +1721,36 @@ CREATE TABLE feed_tokens (
   KEY ix_prefix (prefix)
 ) ENGINE=InnoDB;
 
+-- ── THE FEED OUTBOX (§ 8.3, card#9287). The one queue between every writer of a feed message and
+-- every open stream, and the table § 6.5's per-writer rule enqueues to. TRANSIENT: a row is delivered
+-- by every stream that is open when it commits and by nothing else — no stream ever resumes from it
+-- (§ 8.5 refuses a replay buffer, and this is not one) — so a row nobody was connected to read is
+-- purged unread at § 6.7's retention, and the state it announced reaches that reader at its next
+-- snapshot instead. Written as the LAST statement before the writer's COMMIT (§ 8.3), for the same
+-- reason `events` is read behind a visibility lag: an id must not be held across a long transaction.
+
+CREATE TABLE feed_outbox (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  created_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),  -- the store's clock, stamped inside the
+                                                                  -- writer's transaction: § 6.5's visibility
+                                                                  -- lag and § 6.7's purge both read it
+  t           ENUM('seat.delta','feed.heartbeat','seat.retired','fleet.reload','fleet.health',
+                   'coord.thread','coord.round','room.map','building.layout') NOT NULL,
+                                                -- § 8.3's message type, outside the body so no filter
+                                                -- parses JSON; an ENUM by § 6.3's criterion — only this
+                                                -- plane's own code writes it, so a new type is a migration.
+                                                -- ⛔ `feed.close` is NOT a member and must not become one:
+                                                -- it is minted by ONE handler about ITS OWN stream (§ 8.3),
+                                                -- and a row carrying it would be fanned out to every open
+                                                -- stream — the loop has no `return` on it — telling every
+                                                -- client the server ended a stream that is still running
+  install_id  VARCHAR(32) NULL,                 -- the message's install where it has one (seat.*, coord.*,
+                                                -- room.map); NULL on a fleet-wide message. § 9's filter key
+  message     JSON NOT NULL CHECK (LENGTH(message) <= 8192),   -- the § 8.3 envelope, serialized ONCE by
+                                                -- the writer; § 8.3's 8 KiB bound, enforced at the write
+  KEY ix_created (created_at)                   -- the purge's range scan (§ 6.7); the handler reads the PK
+) ENGINE=InnoDB;
+
 -- ── THE AUTHORED BUILDING STORE (§ 6.11) — card#9208's reversal, 2026-09-12. Three tables the fold
 -- never reads and a rebuild never touches: an operator writes them in the admin console, § 8.7
 -- serves them. `floors` shipped with card#9085 and is sketched here because it gained a reader;
@@ -2102,6 +2138,7 @@ rather than a silently shortened history.
 | `batches` | **14 days** | aligned with `events` so a forensic question about an event can always reach its batch. D1 § 10.4's 24 h idempotency memory is a timestamp comparison, not a deletion ([§ 6.4](#64-ddl)) |
 | `sessions`, `calls`, `attention_requests` | **14 days** after the row closed; open rows are never purged | a closed fact older than the log it was derived from cannot be re-derived, so purging it early would make a rebuild produce a *different* answer than the live fold — breaking [AT-D2-10](#at-d2-10-rebuild-equals-fold)'s equality for a reason that is not a defect |
 | `seat_state_transitions` | **14 days** | the drill-down's history horizon; same number, one home |
+| `feed_outbox` | **60 s** after `created_at` | **the only transient table in this store, and the only one whose retention is measured in seconds.** It is [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound (45 s) plus one heartbeat interval (15 s): a stream that resumes at the edge of its bound finds every row it may still deliver, and a stream past it has already been ended and never reads again — which is a property of WHERE the bound is checked, not only of its value: [§ 8.3](#83-the-websocket-delta-feed)'s handler tests it **before** its read, so a stream that was blocked longer than this retention ends instead of advancing its cursor over a row the purge took. Were the test after the read, this row's number would have to bound something no clock in the handler measures. It is **not** a replay buffer — no stream starts below the head it connected at ([§ 8.3](#83-the-websocket-delta-feed)) — so no reader ever needs a row older than the longest a reader may lag, and 60 s is that figure with the margin stated. **A row nobody consumed is the ordinary case** — no browser open, and the writers write regardless, as the heartbeat daemon always did — **and it is purged unread**: the fact it announced lives in `seat_state` and the projections and reaches a later reader at its snapshot. The one message class no store holds, the coordination objects, is lost to an absent reader exactly as § 8.5 already says it is lost to a dropped one |
 | `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
 | `seat_board_task` | **never**, like `seats` | **Not traffic-bounded**: one row per mapped, unretired seat, so the population is the fleet and not its traffic. Purged by nothing; a row leaves in exactly two ways, both of them operator acts with a writer named — any write of `seats.board_user_id` by the seat→board-user command, `--clear` or `--board-user`, and the seat's **retirement**, which deletes it in the transaction that sets `retired_at` ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) |
 | `floors`, `building_layout`, `authored_revisions` | **never** | **Not traffic-bounded**: a row is written by an operator's save in the admin console and by nothing else, so the population is the number of times a person pressed *save* — [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) sizes it — and a revision purged is exactly the prior layout the recovery rule there exists to keep retrievable. Purged by nothing; a room's map is **removed** by a revision that records the removal, never by deleting its history |
@@ -2122,7 +2159,12 @@ a timeline, and the reason D1 states the first half of this chain at all.
 deletes fewer than the limit or a **60-second wall-clock budget** expires, then the next table. Bounded
 batches keep the transaction and the binlog small and keep the store responsive during the pass; the
 budget means a purge that cannot keep up **falls behind visibly** (`purge_backlog_rows` is counted)
-rather than holding a long transaction. Table-size alarm: `events` past **20 GB** raises
+rather than holding a long transaction. `feed_outbox` is in the pass on the same `created_at` range
+scan; against the hourly cadence its rows linger up to an hour past their 60 s, which at the 50-seat
+ceiling is 8,980 × 50 ÷ 24 = 18,708 rows (~7.5 MB at ~400 B a row — both figures in
+[§ 12](#12-every-number-and-where-it-comes-from)) and is never read
+by anything: the handler's poll is a primary-key range from its cursor and is unmoved by the rows behind
+it. Table-size alarm: `events` past **20 GB** raises
 `store_size_alarm` — that is ~2.9× the 50-seat 14-day figure of [§ 6.8](#68-sizing), so it can only
 fire on a fleet much larger than planned or a purge that has been dead for a long time, either of which
 is worth a human.
@@ -2144,6 +2186,7 @@ first week of live data.
 | aimla today (4 seats) | **~0.54 GB** | × 4 |
 | a plausible fleet (12 seats) | **~1.6 GB** | × 12 |
 | a large fleet (50 seats) | **~6.8 GB** | × 50 |
+| `feed_outbox`, lingering between purges | **~7.5 MB** | ≤ 1 h of ceiling traffic between hourly purges ([§ 6.7](#67-retention-and-purge)): 8,980 × 50 ÷ 24 = 18,708 rows × ~400 B, both in [§ 12](#12-every-number-and-where-it-comes-from). Transient, and outside every per-seat-day figure above |
 
 **Transitions are sized from the render-change rate, not from the delta rate**, and the two are
 different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written when
@@ -2393,7 +2436,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
-| `feed_resync_required` | `global_counters` | fleet health | a connection was closed for backpressure or a version mismatch | rising ⇒ clients or the network cannot keep up |
+| `feed_resync_required` | `global_counters` | fleet health | the handler ended a stream on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s **stall bound** — that branch and no other, which is what [§ 8.3](#83-the-websocket-delta-feed)'s loop writes; never on a client that simply went away, and never on the other server-chosen ends. ⚠ **This cell read *or a version mismatch* until the card#9287 maintainer round**, naming a close reason [§ 8.3](#83-the-websocket-delta-feed)'s set did not carry and the loop never counted. ⛔ **A `feed.close{reason:"reload"}` in particular does NOT count it**: a deploy ends every open stream at once, so counting it would move this counter by the number of open browsers on every release and destroy the one reading it exists to support | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
 | `snapshot_served` / `snapshot_denied` | `global_counters` | fleet health | a REST snapshot was served / refused (`503`, `401`) | fleet health |
 | `token_wrong_surface` | `global_counters` | fleet health | an `mzn_` ingest token was presented to a read endpoint, or an `mzr_` read token to the ingest | **operator alert** — it is either a misconfiguration that will otherwise present as a mysterious dark seat, or a probe |
@@ -2484,8 +2527,8 @@ no second copy of a number the wire already carries.
 | Surface | Consumers | Upgrades | Compatibility posture |
 |---|---|---|---|
 | **REST** `GET /api/fleet/*` | the browser **and** machine consumers — the bridge's autonomy watchdog ([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why): "One producer, clean boundary, either side deployable alone") | **independently** — the watchdog is another team's deploy | carries `api_version`; additive changes are free and a consumer must ignore unknown fields; a removal, a rename or a **meaning change** is a version bump with a stated window — the same rules as [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules) 1, 3, 4 and 7, for the same reason: two parties that upgrade separately |
-| **WebSocket** `private-fleet.<install_id>` | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
-| **REST** `GET /api/building/*` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the browser only | **together** — the same deploy serves the client that fetches it | carries `api_version` for detection and takes **the WebSocket row's posture, not the fleet REST row's**: no support window and no N/N-1 obligation, because its one consumer ships with the server. It is a REST surface because a map is fetched once and cached by version rather than streamed; it is outside `/api/fleet/*` because an authored document is not a fleet fact ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)). The property that would move it to the first row is checkable: a machine consumer of its own that upgrades on its own schedule |
+| **SSE** `GET /api/fleet/stream` ([§ 8.3](#83-the-websocket-delta-feed)) | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
+| **REST** `GET /api/building/*` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the browser only | **together** — the same deploy serves the client that fetches it | carries `api_version` for detection and takes **the stream row's posture, not the fleet REST row's**: no support window and no N/N-1 obligation, because its one consumer ships with the server. It is a REST surface because a map is fetched once and cached by version rather than streamed; it is outside `/api/fleet/*` because an authored document is not a fleet fact ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)). The property that would move it to the first row is checkable: a machine consumer of its own that upgrades on its own schedule |
 
 **Stating the second row is the point.** Inheriting D1's wire-compatibility discipline for a channel
 whose two ends ship in one act would cost a support window, a version negotiation and a set of rules
@@ -2866,35 +2909,91 @@ from these three; the wire keeps them apart.
 
 ### 8.3 The WebSocket delta feed
 
-**Transport: Laravel Reverb**, the framework's first-party WebSocket server, speaking the Pusher
-protocol, with channel authorization through the standard `/broadcasting/auth` endpoint (DOCS-CITED,
-Laravel documentation; pinned at build, and the only properties this design depends on are private
-channels and per-message publish). **Channel: `private-fleet.{install_id}`** — one per install, so a
-floor subscribes to what it renders and a future per-install authorization has a channel to hang on.
+⭐ **Transport: native Server-Sent Events — `GET /api/fleet/stream`, `text/event-stream`, served by
+PHP-FPM through `Illuminate\Routing\ResponseFactory::eventStream()` (verified in this tree:
+`Illuminate\Routing\ResponseFactory::eventStream()`, laravel/framework 13.26.1 — cited by symbol
+rather than by vendor line, which a `composer update` moves). No daemon, no broadcasting package, no protocol library, no websocket-capable proxy module.**
+Ruled on card#9287 (2026-09-12), reversing the earlier pin to Laravel Reverb, on one load-bearing fact:
+**this feed is one-way.** Every row of the table below reads `server → client` in its Direction
+column and none reads the reverse — re-derive it by reading the column, not this sentence;
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states there is no client→server channel
+on this surface and refuses to add one; [§ 9](#9-read-side-authentication) refuses the live feed to
+machine consumers. A bidirectional Pusher-protocol daemon was more machinery than this design uses, and
+Reverb's `guzzlehttp/psr7 ^2.6` pin against this tree's 3.1.0 — three HTTP-stack downgrades to install
+it — was the price of that surplus. [§ 13](#13-decisions-taken-revisable-at-review) row 46 carries the
+alternatives and the reversal cost.
+
+**One stream, fleet-wide — no per-install channel.** Every message carries its `install_id` where it
+has one ([§ 8.3.1](#831-worked-delta)); a client holds one stream and reads every install off it, and
+the handler filters per subscriber under [§ 9](#9-read-side-authentication) — today that filter admits
+everything, and it is where a per-install ACL attaches when [§ 14](#14-open-questions-for-the-review-loop)
+item 7 is ruled. The earlier revision's `private-fleet.{install_id}` channel is retired with the
+protocol that needed it, and two costs go with it: the browser's **six-connections-per-origin** limit
+on HTTP/1.1, which one `EventSource` per install would have exhausted at the second tab of a
+three-install fleet; and [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 14's
+cold-start window, which existed only because a client had to know an install to subscribe to it.
+Both close by construction rather than by rule. (The connection limit is DOCS-CITED — the HTTP/1.1
+specification's own guidance and every mainstream browser's implementation of it put the per-origin
+ceiling at six; it is **UNVERIFIED** for this deployment's actual browsers and protocol version, and
+over HTTP/2 it does not bind at all. The closure act is cheap and is not required by anything here:
+one stream is at the limit under no version of the claim.)
+
+**Authentication is the route's ordinary middleware.** `EventSource` sends the session cookie on a
+same-origin request (DOCS-CITED, WHATWG HTML § *Server-sent events*: the fetch is made with the
+request's credentials mode set to `same-origin` unless `withCredentials` is set), so the stream is
+gated by the same session + MFA stack as the page
+([§ 9](#9-read-side-authentication)); there is no `/broadcasting/auth` and no channel authorization
+callback. **Framing:** each message is one SSE event and `data:` carries the whole envelope, `t`
+included — ⛔ **`t` is the SOLE discriminator a client may dispatch on, and an
+earlier revision of this section said a client "may dispatch on either", which is false against the
+primitive this design pins.** `ResponseFactory::eventStream()` writes an `event:` line for **every**
+message unconditionally, defaulting to the literal `update` when the yielded value is not a
+`StreamedEvent`. Per WHATWG HTML, a non-empty `event:` field sets the dispatched event's type, and the
+`message` type — the one `EventSource.onmessage` listens for — is used **only** when that field is
+absent or empty. So under this primitive `onmessage` can **never** fire, whatever is yielded: a builder
+who writes `es.onmessage` receives **zero** messages on a stream that opened perfectly, which renders as
+F19 and sends an operator after the proxy for a client-side bug. ⭐ **Therefore `event:` carries the
+fixed literal `mezzanine` on every message of this feed**, the client registers exactly one
+`addEventListener("mezzanine", …)` ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)), and `t` inside the
+envelope is what it switches on. One listener rather than one per type is the deliberate choice: with
+per-type listeners a message type added in a later release is **silently dropped** by an older bundle,
+whereas a single listener carries an unknown `t` to a default branch that can ignore-and-count it
+**and the branch is fixed here, because no other section owns it: an unknown `t` is IGNORED and
+counted, never a trigger for resync.** [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s
+ship-together row is why that branch is narrow rather than why it is safe — it is reachable only across
+a deploy window, where a reloaded server is writing types an already-open bundle does not know, which is
+precisely the window `fleet.reload` exists to close. The envelope is still one
+value written twice by one writer. ⛔ **No `id:` field is ever written and `Last-Event-ID` is ignored
+on the request**: SSE's built-in resume is exactly the replay buffer
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) refuses, and the primitive as shipped
+writes none — a builder who adds one has re-opened that decision. No `retry:` is written either; the
+reconnect cadence is the client's ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)).
 
 | Message `t` | Direction | When | Payload |
 |---|---|---|---|
 | `seat.delta` | server → client | a seat's `state_version` advanced | `install_id`, `seat_id`, `state_version`, `at`, `changed[]`, `patch{}` |
-| `feed.heartbeat` | server → client | every **15 s**, per channel, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
+| `feed.heartbeat` | server → client | every **15 s**, one row fleet-wide, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
 | `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer. ⭐ **This message is a REMOVAL instruction**: the consumer drops the seat ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)), and it is the only message on this feed that does | `install_id`, `seat_id`, `reason`, `at` |
-| `fleet.reload` | server → client | `feed_version` changed under a running client (a deploy) | `feed_version`, `reason` |
-| `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `fleet.reload` | server → client | a deploy — written by `mezzanine:feed-reload` ([§ 2.1](#21-processes)) before PHP-FPM is reloaded, carrying the release's `feed_version` whether or not it changed, because the deploy is the one act that knows the code moved. ⛔ **Terminal**: the handler ends the stream after delivering it — **and writes `feed.close{reason:"reload"}` first**, so the end is a stated server decision rather than the unexplained silence [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 routes to the dead-feed render (the `feed.close` row below owns that member) — which is what returns a pinned worker before the reload asks for it. ⚠ **The message is written on every deploy; the client's RELOAD BANNER is not raised by every one** — it is raised on a `feed_version` the client does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F8), which is unchanged by this row. An unchanged `feed_version` after a deploy means **the wire did not move**, and a client whose bundle is one release old is by that definition still correct on it — so it reconnects, keeps rendering, and is asked to reload only when the wire actually changes. Reading the terminal end as a reload prompt would put a banner in front of every viewer on every deploy | `feed_version`, `reason` |
+| `fleet.health` | server → client | **on connect** — the handler's first yield, read from the store before the outbox is opened, `db: "down"` when that read fails — and whenever `db`, `fold` or `sweep` changes value ([§ 2.1](#21-processes)'s heartbeat daemon writes the change) | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
 | `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
-| `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, published on commit of the revision it announces, on **every** install's channel: a client's subscriptions are the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, so its own channel may have no listener | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
-| `building.layout` | server → client | the building layout — the floor plan included, card#9292 — was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), published on **every** install's channel as `feed.heartbeat` is — there is no building-wide channel, and a layout change concerns every floor | `layout_version`, `at` |
+| `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, written on commit of the revision it announces, carrying the room's `install_id`, and delivered on the one stream — a client's rendered set is the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, which under the retired per-install channels was why this row had to fan out to every channel; the stream has nothing to fan out to | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
+| `building.layout` | server → client | the building layout — the floor plan included, card#9292 — was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), one row on the stream, as `feed.heartbeat` is — a layout change concerns every floor | `layout_version`, `at` |
+| `feed.close` | server → client | the handler is ending this stream **on its own decision**, and says why, and the set is **exactly four**: `stalled` — a tick did not complete within [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s bound; `session` — [§ 9](#9-read-side-authentication)'s 15 s re-check **reached the store, and the store said the session or its MFA is gone**; `unavailable` — **a read of the store did not answer**, which is one condition reached three ways: the **connect** read of `feed_outbox` failed, so this stream never had a cursor to start from; a **tick**'s read failed, so it has nothing left to deliver; or [§ 9](#9-read-side-authentication)'s session re-check came back without an answer about the session. The three carry one reason because the viewer's situation is one situation — the store cannot be read — and [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 renders it once. On `unavailable` the client retries on the **backed-off** cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns, which is not the flat one an ordinary drop takes; `reload` — **the deploy's terminal `fleet.reload` has been delivered and the handler is ending the stream because of it** (the `fleet.reload` row above, written by [§ 2.1](#21-processes)'s `mezzanine:feed-reload`). ⭐ **This member exists because the alternative is an ending the client cannot tell from a killed worker.** The handler already returned on that row and wrote nothing, so every routine deploy ended a stream with no `feed.close` at all — and [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 rules that such a stream *"ended for a reason the server did not choose, and is F1's silence arriving early"*, which puts **feed down — polling** in front of every viewer on every deploy against a perfectly healthy fleet. Here the store is readable, nothing was lost, and the server chose: the reason says all three. ⛔ **What the CLIENT does with it — a reload banner, or a silent reconnect — is NOT settled by this row, and this row does not settle it**: that is the open operator question at [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 20. The two are independent, and this row is written so that they stay independent: under **either** answer a stream that ended with no server-chosen reason renders *feed down*, so the close is owed whichever way the banner is ruled. A stream that ends with no `feed.close` ended for a reason the server did not choose (a worker killed, the proxy, the network), and the client treats the two alike except that `session` sends it to sign in rather than to reconnect ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3, F7) | `reason`, `at` |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
 [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
 connection is accepted and immediately sent `fleet.health` with `db: "down"`, which is the whole reason
-the socket stays up in that posture. It is a separate message type from `feed.heartbeat` even though
+the connection is accepted at all in that posture: it is opened to say why, and ends with
+`feed.close{reason:"unavailable"}` in the same breath ([§ 2.2](#22-fail-posture-per-path)). It is a separate message type from `feed.heartbeat` even though
 both carry the same object, because the heartbeat is unconditional and periodic — a client that inferred
 health only from heartbeats would learn about a store outage up to 15 s late, on the one path where the
 client is waiting to be told why there is nothing.
 
 **Envelope** — every message: `{"feed_version":1,"t":…,"server_time":"…", …}`.
 
-**`feed.heartbeat` is the property that makes the whole surface honest.** Without it, a socket that has
+**`feed.heartbeat` is the property that makes the whole surface honest.** Without it, a stream that has
 silently died is indistinguishable from a fleet where nothing is happening — which is exactly the
 failure this product exists to remove, one layer further out than D1 solved it. So: the server sends a
 heartbeat every 15 s whether or not anything changed, and **a client that has seen no message of any
@@ -2902,13 +3001,32 @@ kind for 45 s (3 intervals) treats the feed as dead**, renders a feed-down indic
 15 s and 3× are the same shape as D1's own 60 s/300 s heartbeat-and-alarm pair, scaled to a channel
 where the round trip is milliseconds instead of a WAN flush.
 
-**Coalescing: one delta per seat per 250 ms.** A seat's changes inside a tick are merged into one
-message. 250 ms is chosen because it is below the ~300 ms at which a human notices a change in latency
-(the same threshold D1 derives its hook budget against, and — separately — the same order as the
-~300 ms status-line debounce D1 records for the harness itself,
-[D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED), so the
-floor cannot be made to flicker faster than a person can see. It bounds a single seat's
-outbound rate at **4 msg/s** regardless of what the seat does.
+**The tick: 250 ms, and it delivers rather than merges.** The handler reads `feed_outbox` every
+250 ms and writes every admitted row past its cursor, in `id` order, as one flush. 250 ms is chosen
+because it is below the ~300 ms at which a human notices a change in latency (the same threshold D1
+derives its hook budget against, and — separately — the same order as the ~300 ms status-line
+debounce D1 records for the harness itself,
+[D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED), so a
+stream delivers at most **4 batches/s** and the floor cannot be made to flicker faster than a person
+can see. ⚠ **An earlier revision called this coalescing — *a seat's changes inside a tick are merged
+into one message* — and it is withdrawn here (card#9287), because it was never legal:**
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s rule applies a delta iff its
+`state_version` is the client's plus one, so a message carrying the *last* of two versions minted in
+one tick is a gap to every client, not a merge. The per-seat message rate is therefore the writers'
+property and not the transport's: [§ 6.5](#65-the-fold)'s rule enqueues one row per transaction that
+bumps `state_version`, and the fold bumps once per pass over a seat's unfolded window — so what this
+tick bounds is delivery granularity per stream, and the *4 msg/s per seat regardless of what the seat
+does* that the earlier revision promised is not a property anything here provides.
+
+⭐ **This withdrawal reconciles the document to code that already shipped, rather than asking for a
+change to it.** `server/app/Feed/SeatDelta.php` (card#7827, ratified on its PR) emits **one delta per
+`state_version` increment** and says why in its own docblock — *"a coalesced message and a lost message
+are the same wire shape to a consumer"*, so every merged burst would cost the client a full seat
+resync and the optimisation would **add** traffic. That build filed the contradiction back at this
+document as card#7838's first item, which asked D2 either to drop coalescing or to give a merged
+message an explicit spanned-versions field. This section takes the first, which is what the running
+code already does — so the doc-vs-code divergence that item exists to close is closed by deletion, and
+no builder has to reconcile anything.
 
 **Volume, derived from D1's kind-table ceiling.** State-changing events per seat-day at the ceiling:
 6,000 tool events + 1,200 turn events + 1,440 context samples + 120 subagent + 80 session + 100
@@ -2930,11 +3048,381 @@ Its members are **edge-triggered**, single digits per seat-day, and no more belo
 the sweeper's own `stale` transition does: 8,980 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
 
+**What the outbox adds to that, on the write side.** Every message above is one `feed_outbox` row
+written in its producer's transaction — so every figure in this paragraph is also a row count: at the
+ceiling, 8,980 rows/seat/day of deltas plus one fleet-wide heartbeat row per 15 s (86,400 ÷ 15 a day,
+not one per install), each carrying its envelope serialized once, whether or not a browser is open to
+read it. That is the cost of a queue with no memory of its own: ~400 B per delta row against the
+~732 B [§ 6.8](#68-sizing) already spends on the event that caused it, retained a minute rather than
+fourteen days. And on the read side, each open stream is **four primary-key range reads per second**
+of a table that is almost always empty past the cursor — at ten browsers, forty reads a second, each an
+index seek over a table whose rows past the cursor are, at the 50-seat ceiling, 5.20 ÷ 4 ≈ **1.3 rows**
+on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
+number this amendment mints.
+
 **Message bound: 8 KiB.** The worst-case delta is 6,169 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
-breach it fails a test rather than a client. Reverb's own configured maximum is read at provisioning
-(**UNVERIFIED** — the host is not built; closure act: read the deployed `config/reverb.php` and record
-it here), and 8 KiB is chosen far below any plausible value so that the two limits cannot interact.
+breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
+line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
+no length limit on a field value) — and what sits between the handler and the browser buffers by chunk,
+never by message, so there is no second limit for this one to interact with (the earlier revision's
+*read the deployed `config/reverb.php`* closure act is retired with the daemon). The
+`feed_outbox.message` column carries the same 8 KiB as a `CHECK` ([§ 6.4](#64-ddl)), so a breach fails
+at the write rather than at a client.
+
+**The handler, stated as the loop it is.** One FPM worker, one browser, one generator handed to
+`eventStream()`; nothing below is a daemon and nothing survives the request.
+⛔ **Every store read in it is inside a `try`, and an earlier revision of this pseudocode had no error
+path at all** — which mattered more than a missing branch usually does, because the primitive wraps the
+whole generator in `try { … } catch (Throwable $e) { report($e); }`: an uncaught `PDOException` ends the
+response **silently**, with no `feed.close`, after whatever had already flushed — and a silent end is
+the one ending this design refuses, because the client cannot tell it from a killed worker and takes
+the flat reconnect cadence instead of the backed-off one F20's stampede is priced against
+([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)). **Both reads fail the same way and carry the
+same reason**: the store cannot be read, so the stream has nothing left to deliver and ends with
+`feed.close{reason:"unavailable"}` ([§ 2.2](#22-fail-posture-per-path)). ⛔ An earlier revision held the
+stream open on a tick failure, froze its cursor and made the stream the messenger of the outage; that
+posture is **withdrawn** (operator ruling, 2026-09-12, card#9287) and nothing below restates it:
+
+```
+GET /api/fleet/stream                       -- session + MFA middleware (§ 9); text/event-stream
+  set_time_limit(0)
+  -- EVERY yield below is `new StreamedEvent('mezzanine', $json)` and never a bare value.
+  -- The message names are shorthand for that object; see the note under this block.
+  yield fleet.health(read the store now)    -- FIRST, before the outbox is opened; db:"down" if the
+                                            -- read fails (§ 2.2's stream-connect row)
+  cursor    = SELECT COALESCE(MAX(id), 0) FROM feed_outbox   -- ON FAILURE: cursor = 0 is REFUSED
+               WHERE created_at <= server_now - INTERVAL 2 SECOND   -- (it would replay the whole
+                                            -- retention window); the handler ends the stream with
+                                            -- feed.close{reason:"unavailable"} and the browser
+                                            -- retries on FLOOR § 2.2's backed-off cadence.
+                                            -- THE HEAD BEHIND
+                                            -- THE LAG, not
+                                            -- MAX(id): the same term the tick's read carries, and for
+                                            -- the same reason.  no history, ever (§ 8.5)
+  tick_started = now;  auth_done = now
+  loop:
+     sleep until 250 ms after tick_started
+     if now - tick_started > 45 s:          -- the PREVIOUS tick's writes blocked that long.  checked
+                                            -- HERE -- before the read -- so a stream that was blocked
+         yield feed.close{reason:"stalled"} -- past § 6.7's retention ENDS rather than reading past a
+         count feed_resync_required; return -- purged row.  see the three notes below
+     tick_started = now                     -- stamped BEFORE the writes it is there to measure
+     rows = SELECT id, t, install_id, message FROM feed_outbox   -- ON FAILURE: yield
+             WHERE id > cursor AND created_at <= server_now - INTERVAL 2 SECOND   -- feed.close
+             ORDER BY id                                  -- {reason:"unavailable"} and RETURN.  no
+                                            -- cursor is held, nothing is frozen, and there is no
+                                            -- resume: the client re-opens and re-snapshots (§ 2.2)
+     for row in rows:
+         if visible_to(reader, row): yield row.message     -- § 9's per-subscriber filter
+         cursor = row.id
+         if row.t == "fleet.reload":                        -- terminal (§ 2.1's feed reload)
+             yield feed.close{reason:"reload"}              -- the server CHOSE this end, so it SAYS so.
+             return                                         -- a bare return here ends the stream with
+                                                            -- no feed.close at all, which FLOOR § 9 F3
+                                                            -- reads as "a reason the server did not
+                                                            -- choose" -- F1's 45 s silence path, and
+                                                            -- `feed down -- polling` on every routine
+                                                            -- deploy against a healthy fleet
+     if now - auth_done >= 15 s:
+         switch session_and_mfa_recheck(reader):            -- re-READ from the store (§ 9).  ONE
+             case valid:        auth_done = now             -- outcome continues the stream; every
+                                                            -- other one ENDS it
+             case invalid:      yield feed.close{reason:"session"}   -- the store ANSWERED: gone
+                                return
+             default:           yield feed.close{reason:"unavailable"}  -- the read did not answer
+                                return                      -- ABOUT THE SESSION -- an error, a lock,
+                                            -- a permission refusal, a lost connection.  `default`
+                                            -- and not a named third case, so no exception escapes
+                                            -- the switch into the primitive's catch(Throwable) and
+                                            -- ends the response with no feed.close at all (§ 9)
+```
+
+⛔ **Every `yield` above is `new StreamedEvent('mezzanine', $json)` — a bare value is a DIFFERENT
+wire.** The pseudocode names the message; it does not name the object that carries it, and the
+difference is the whole of the rule the framing paragraph above states. `eventStream()` sets
+`$event = 'update'` and reads an event name off the yielded value **only** when that value is
+`instanceof \Illuminate\Http\StreamedEvent`, whose constructor is `(string $event, mixed $data)`
+(`Illuminate\Routing\ResponseFactory::eventStream()` and `Illuminate\Http\StreamedEvent`,
+laravel/framework v13.26.1, read at source in this tree). So a builder who follows this block
+literally and yields the bare envelope ships `event: update` on **every** message, the client's one
+`addEventListener("mezzanine", …)` ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)) never
+fires, and the floor renders F19 against a stream that opened perfectly — the same failure the
+framing rule exists to prevent, reached by the one route that rule does not close. ⚠ **`$data` is the
+already-encoded JSON STRING**, not an array or an object: the primitive re-encodes only a value that
+is neither string nor numeric, so passing the string is what puts the bytes
+[§ 8.3.1](#831-worked-delta) shows on the wire rather than a re-encoding of them.
+
+⛔ **`eventStream()`'s third argument is passed `null`.** Its default is the string `'</stream>'`, and
+on the generator's return the primitive writes one more frame — `event: update`, `data: </stream>`
+(`Illuminate\Routing\ResponseFactory::eventStream()`, the `filled($endStreamWith)` branch). That frame
+carries an `event:` in no row of the table above, a `data:` that is not JSON, and it would arrive
+**after** every `feed.close` — which is exactly what
+[FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) reads to decide whether the server chose to end
+the stream. A builder who omits the argument ships a wire the client cannot dispatch and a close
+reason it cannot see.
+
+Three things in it are load-bearing and each is argued elsewhere, so they are named here once. **The
+first yield is `fleet.health`**, read before anything else, which is [§ 2.2](#22-fail-posture-per-path)'s
+stream-connect posture and the half of [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero)
+the previous transport could not build — *on connect* was a socket-server event with no server
+installed, and here it is the handler's first line. **The read is behind [§ 6.5](#65-the-fold)'s 2 s
+visibility lag** — the same term, the same number, for the same reason: `feed_outbox.id` is
+auto-incremented and assigned inside the writer's transaction, so a row's id can be below the cursor
+while its transaction is still open, and a reader that advanced past it would never deliver it. The
+lag is sufficient only because every writer inserts its outbox row as the **last statement before its
+`COMMIT`**, holding the id for one round trip rather than for the transaction's length — a rule on the
+writers, stated here and tested by [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor).
+**The cursor starts at the head *behind the lag*** and is set by nothing the client sends, which is
+what makes the outbox transient — below. ⚠ **A bare `MAX(id)` at connect would be the defect this
+paragraph exists to prevent, one query earlier**: `MAX(id)` reads committed rows only, and ids are
+assigned at `INSERT` while commits land in their own order, so a writer holding a lower id open at the
+instant a browser connects has its row jumped by that stream **forever** — the steady-state read never
+looks below the cursor again. The connect read therefore carries the same
+`created_at <= server_now - INTERVAL 2 SECOND` term as the tick's, which costs a connecting stream at
+most one lag-window of rows it may also see in its snapshot — harmless, because
+[§ 8.4](#84-snapshot-then-deltas)'s per-seat watermark is what discards those, and the classes with no
+watermark ([§ 8.3.3](#833-the-coordination-objects)) had nothing before connect to duplicate. ⚠ **The fleet-wide classes are the exception that enumeration missed, and they are not covered by a watermark.** A `feed.heartbeat` written up to one lag-window before connect is delivered AFTER the handler's connect-time `fleet.health`, and it carries a whole `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) — including `seats_total`/`seats_live`, which move without a `fleet.health` change-row behind them. So a client's fleet counts can be REGRESSED to a ≤2 s-old value until the next heartbeat, and [FLOOR.md § 2.3](FLOOR.md#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s lobby discrepancy check runs off exactly those counts, spending one spurious snapshot fetch. **D3 therefore ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a monotonicity rule that costs one comparison, owed because the symptom is a periodic unexplained fetch rather than a visible error. ⛔ **The wire fact is this document's and the filter is the render layer's, and saying it only here is what card#9287's maintainer round found**: the rule existed at exactly one site in the repository, in the document a client builder does not build from, while [FLOOR.md § 2.1](FLOOR.md#21-the-seven-client-computed-values-closed) — the **closed** statement of what that client does for itself — never carried it, so a builder working from D3 neither had the rule nor was permitted to invent it. It is now carried there and tracked as an obligation in [FLOOR.md Appendix A](FLOOR.md#appendix-a--every-obligation-addressed-to-this-document), which is the mechanism this repository has for a rule that crosses the boundary; this paragraph states the condition and cites the discharge rather than being the only home of both.
+[AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) tests both
+reads, because a test of the tick alone passes over a defect in the connect.
+
+**The stall check is at the top of the loop, before the read, and measures from the previous tick's
+START.** Both halves are load-bearing and an earlier revision of this pseudocode had neither, which
+made the bound unfireable: it stamped the clock *after* the flush, so the difference it computed was
+the sleep and never the blocked write. Measured from the tick's start, the difference spans the writes;
+checked before the read, a stream whose write blocked longer than
+[§ 6.7](#67-retention-and-purge)'s 60 s **ends instead of reading**, so it can never advance its cursor
+across a row the purge removed while it was blocked — the silent loss a skipped `coord.round` would be
+([§ 8.3.3](#833-the-coordination-objects)). ⚠ **What this check cannot do is fire while a write is
+blocked**, because a blocked `yield` runs no further line of the handler: `eventStream()` does the
+`echo`/`ob_flush()`/`flush()` itself on the generator's behalf, and a client that stops reading
+altogether suspends the handler inside it. So the bound ends a **slow** consumer on its own clock, and
+a **frozen** one at the moment its write returns — which is the host's to bring about, and is stated as
+R2's teardown clause below rather than promised here.
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) prices both.
+
+**`feed_outbox` is a transient queue and not the replay buffer [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)
+refuses — stated as a rule, with the two mechanisms that keep it one.** It is the queue
+[§ 6.5](#65-the-fold)'s per-writer rule enqueues to, and under this transport that sentence is literally
+true for the first time: the row is inserted in the transaction that bumps `state_version`, so a delta
+and the state it announces commit together or not at all — a property the broadcast-after-commit shape
+of the previous transport could not offer. A stream's cursor starts at the outbox head *at connect* and
+only ever moves forward; no request parameter, header (`Last-Event-ID` included) or message can set it
+lower. So a row is delivered to the streams that were open when it committed and to nothing else: a
+client that reconnects gets a snapshot, exactly as § 8.5 says, and never *the messages it missed*.
+That is what makes the table's retention a property of **reader lag** and not of **reader absence**:
+[§ 6.7](#67-retention-and-purge) keeps a row 60 s — the stall bound plus one heartbeat — because no
+stream past the stall bound is still reading, and a row nobody was connected to read is purged unread.
+**What happens to that row is nothing**, and that is the point: the fact it announced lives in
+`seat_state`, `seat_state_transitions` and the rest of the store, and reaches every later reader at
+its next snapshot; the outbox never held anything the store did not. The one message class that is
+*not* in any store — the coordination objects, [§ 8.3.3](#833-the-coordination-objects) — is lost to
+an absent reader exactly as it was lost under the previous transport, which § 8.5 already names and
+[§ 14](#14-open-questions-for-the-review-loop) item 14 already owns.
+
+⛔ **Two conditions this transport depends on cannot be established from this repository, and they
+are written here as named, checked deploy requirements — never as assumptions.** When a condition is
+not establishable locally, the check's correct output is to say so, by name, on a surface the far end
+reads. This section is that surface. ⭐ **Who runs them is SPLIT, because one of the two cannot be
+automated and an earlier revision of this section assigned both to `bin/deploy.sh` anyway.** R2's
+configuration half, and R1's ini half, read the host's own FPM configuration, need no credential, and
+belong in `bin/deploy.sh` as a gate that refuses on a red. R1's **wire** half needs a stream opened
+with a signed-in MFA session — [§ 9](#9-read-side-authentication) refuses machine consumers on
+this route deliberately, so there is no credential a deploy script can present — and could not run
+during a deploy in any case, because `bin/deploy.sh` holds the application in maintenance mode across
+the window a 125-second stream check would need. It is therefore an **operator runbook step**, run
+against the deployed origin after any deploy that changed the stream path, the proxy, or the pool.
+Assigning it to the deploy script would have shipped a check that is skipped on every run, which is
+worse than one nobody claimed to have run.
+
+**R1 — nothing between PHP-FPM and the browser may buffer or compress the stream.** *Declared:* the
+handler sends `X-Accel-Buffering: no` and `Cache-Control: no-cache` on every stream response (the
+primitive sets both, with `Content-Type: text/event-stream`, in
+`Illuminate\Routing\ResponseFactory::eventStream()`'s header array) and flushes after every message.
+*What this repository cannot see:* whether the reverse proxy honours that header for a FastCGI
+upstream; whether a compression or output filter sits in the path — **in the proxy or in PHP itself**,
+since `zlib.output_compression` and a non-zero `output_buffering` are ini settings the handler does not
+control; and what the proxy's read timeout is — the heartbeat's 15 s is what keeps a 60 s default alive, and a timeout below it would end
+every stream on a schedule. ⛔ **A THIRD ini directive belongs in this set, and it is the one this design leans on hardest while
+never naming it** (card#9287, maintainer round). ⚠ **It is not a buffering hazard, and it is read here
+anyway**: R1 is where this document reads ini directives off the SAPI that serves the route, and the
+instrument, the baseline-then-pool-override rule and the *card#9300 owes the reading before it gates a
+deploy* posture are all R1's. A third top-level condition would put one kind of fact in two homes and
+give the same discipline two owners; a directive in R1's set that governs something other than
+buffering costs one sentence, which is this one. `ignore_user_abort` governs whether a
+PHP script keeps running once the client has gone away, and **the frozen-consumer story at
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) and at R2's teardown clause rests on it
+being OFF** — those sections say *the primitive `break`s out of its loop and `break` abandons a
+suspended generator, so no line after the pending `yield` ever runs*, and that reasoning does not hold
+on its own. `eventStream()` tests `connection_aborted()` at the **TOP of its loop body**, so a `break`
+there is reached only after `foreach` has already resumed the generator past its pending `yield` — the
+lines after the `yield` DO run, on that reading (`Illuminate\Routing\ResponseFactory::eventStream()`,
+laravel/framework v13.26.1, the `composer.lock` pin, read at source in the card#9287 maintainer round;
+this repository carries no `vendor/` tree, so the read is cited rather than repeated here). What
+actually keeps them from running is that with `ignore_user_abort` off PHP **terminates the script** at
+the aborted write, and the generator is destroyed rather than resumed. ⛔ **So the conclusion is right
+and its stated mechanism is not, and the difference is a host setting the document never named.**
+*The condition:* `ignore_user_abort` is **off** on the SAPI that serves the stream. *What this
+repository cannot see:* its effective value there. *Measured on the box this design was written on,
+and it is closer to false than it reads:* no ini file under `/etc/php/8.5/` sets the directive in any
+SAPI — all three carry it **commented**, and what the distribution's commented line suggests is
+`ignore_user_abort = On`, one character from true. Both SAPIs therefore take PHP's built-in default,
+which the CLI reports as `0`; the value on the FPM SAPI is read the way R1 reads the other two, from
+`php-fpm -i` and then the serving pool's override, and card#9300 owes that reading. *The observable
+when it is false:* the handler resumes past its pending `yield` on a frozen client, so a `feed.close`
+is written into a dead socket and `feed_resync_required` is counted on the one path
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) says it is not —
+[AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others)'s GREEN (b) reds against a
+correct handler, for a host reason no document named.
+
+⛔ **The other two ini settings are NOT one hazard, and an earlier revision of this section put them in one
+sentence and got one of them wrong.** `zlib.output_compression` compresses the body and is genuinely
+not defeated by the handler's flush; it must be `Off` on the SAPI that serves the stream. `output_buffering`
+is a different matter: the primitive calls `ob_flush()` whenever `ob_get_level() > 0`, which is exactly
+the branch a non-zero `output_buffering` opens, so the handler may well defeat it. **Which is true on a
+real FPM host is UNMEASURED, and this document does not assert it either way.** That is not academic —
+the box this design was written on carries `output_buffering = 4096` in its *FPM* ini, so if the flush
+does not defeat it, that host is R1-false today and every browser on it renders F19. Card#9300 owes the
+measurement — serve the stream from FPM with `output_buffering = 4096` once and look — before either
+value is written into a gate that refuses a deploy.
+
+⛔ **The exact commands are deliberately NOT written here, and that is a REVERSAL of an earlier
+revision of this section.** That revision shipped three copy-paste commands with asserted outputs.
+All three were wrong, and wrong the same way — **written from reading the primitive rather than from
+running anything against a stream:**
+
+  - `php -i` reads the **CLI** SAPI, which force-overrides `output_buffering` to `0` whatever the ini
+    says, and reads the CLI's ini file. It could not fail for the setting it named, and it reports a
+    pass for an FPM pool carrying the hazard. Measured, not recalled: on this box `php -i` prints
+    `output_buffering => 0` while `/etc/php/8.5/cli/php.ini` *sets* `4096`.
+  - `grep -c feed.heartbeat` counts **lines**, and the figure it would be asserted against is not a
+    constant. Under this section's framing rule `t` is written **once** per message, inside the
+    `data:` envelope — `event:` carries the fixed literal `mezzanine` — so the line count IS the
+    message count; what defeats the leg is that the message count is **phase-dependent**: 125 s ÷
+    15 s = 8.33, so a correct 125-second window holds **8 or 9** heartbeats depending on the
+    daemon's phase, and an equality against a constant is not satisfiable. ⚠ An earlier revision of
+    this bullet deleted the leg for a DOUBLED count instead, reading a framing rule that put `t` on
+    the `event:` line as well; that rule is retired above and the arithmetic is the whole reason.
+  - `head -c 400` is exhausted by the response headers before any body byte — the `web` group alone
+    sets two encrypted `Set-Cookie`s — so the leg's stated pass criterion was unobservable.
+
+**A check that cannot fail is a decoration; a check that cannot pass gets weakened until it does** —
+and both failures were shipped under a decision row that calls R1 *checked*. So R1 is stated here as a
+**condition, an instrument and an observable**, and card#9300 owns writing the commands **on a host
+where they can be run, and seen to fail once against a deliberately broken proxy, before they are
+trusted**. *The instruments:* the ini values are read from **the SAPI that serves the route**, never the CLI's
+`php -i` — the baseline is **`php-fpm -i`**, the FPM binary's own phpinfo, which resolves the
+directives as that SAPI resolves them and names the file it read (run on the box this design was
+written on: `output_buffering => 4096 => 4096`, `Loaded Configuration File =>
+/etc/php/8.5/fpm/php.ini` — which is where the value is set, since no file under
+`/etc/php/8.5/fpm/pool.d/` sets it at all). A `php_admin_value` or `php_value` for the directive in
+the SERVING POOL's file overrides that baseline, so the effective value is **the baseline, then the
+pool's override**, and the gate reads both rather than either. ⛔ **Not `php-fpm -tt`, which an
+earlier revision of this sentence named**: it dumps FPM's own configuration — pools, listeners,
+process management — rather than ini directives, and it opens the error log before it prints
+anything, so on that same box `php-fpm8.5 -tt` exits `ERROR: failed to open error_log … Permission
+denied` under a user without the privilege. An instrument the deploy user cannot run, printing a
+surface the setting does not live on, is not a check of this condition. ⚠ **That is the SECOND
+instrument this section has named from reading rather than from running** — the `php -i` bullet
+above is the first — which is why card#9300's commands are owed on a host where they can be run
+before the gate is trusted ([canon #9](../../CLAUDE.md)); the wire is read from a stream opened with a **signed-in MFA
+session**, asserting on the **arrival timing** of the on-connect `fleet.health` and on the **inter-arrival
+gap** of successive heartbeats — never on a count over a fixed window. ⚠ Whatever client is used must
+send `Accept-Encoding` **explicitly**: `curl` sends none by default, so a proxy that gzips `text/*`
+stays dormant for a bare `curl` and engages for every real browser — the check would pass and every
+viewer would see F19. ⛔ And the session cookie is read from a mode-600 jar, **never passed on the
+command line**: a cookie in `argv` is readable in `ps` and lands in the transcript. *The observable when
+it is false:* every browser renders **feed down — polling** 45 s after connecting, forever, against a
+fleet whose `GET /api/fleet/health` is green and whose outbox is advancing — and the strip adds *the
+stream opened and never spoke*, because the on-connect message is the first byte and its absence is
+this failure's signature ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19). REST is
+untouched, which is what distinguishes it from R2.
+
+**R2 — a DEDICATED PHP-FPM pool serves `/api/fleet/stream`, sized in concurrently open STREAMS, and
+the host must take a dead one back.** *Declared:* a stream is a request that does not end —
+the handler calls `set_time_limit(0)` and returns only on `fleet.reload`, on the stall bound, on a
+session re-check that came back **invalid** ([§ 9](#9-read-side-authentication)), or when a write fails because the client is gone. *What this repository
+cannot see:* the pool's `pm.max_children`, `request_terminate_timeout` and `process_control_timeout`.
+*The requirement, in those terms:* the stream route has **its own pool**, and that pool's
+`pm.max_children` ≥ the number of **concurrently open streams** — which is one per browser **tab**, not
+one per browser: a lobby and a floor open side by side are two, the same arithmetic that retires the
+per-install channel three paragraphs above, and a reload or a closed tab leaves its predecessor pinned
+until a write fails, so the live count exceeds the open-tab count during churn. On that pool
+`request_terminate_timeout` is **0** (any other value ends every healthy stream on that period, which
+renders as every browser reconnecting in lockstep) and `process_control_timeout` is **non-zero**, so a
+reload can finish over a half-open stream whose client vanished without a `FIN`. ⛔ **And BOTH pools
+set `pm.status_path`** — a requirement, not a convenience of the check below, because
+[§ 2.1](#21-processes)'s `mezzanine:feed-reload` **polls the stream pool's active-process count** to
+decide when the streams have gone before FPM is reloaded, and a pool without a status path answers
+that poll with nothing. Deploy behaviour depends on it, so it is stated here with the pool's other
+three values rather than as a caveat on an instrument (card#9287, maintainer round).
+⭐ **The dedicated pool is a REQUIREMENT and not a recommendation, and the reason is the line above
+it**: `request_terminate_timeout: 0` is the runaway-request kill, and switching it off for the *shared*
+pool switches it off for every request the application serves — a price this design is not willing to
+pay to avoid one pool definition and one location rule. Separated, `0` costs only the streams, which
+are supposed to run forever, and a stream can never starve a snapshot: F20 becomes structurally
+impossible rather than merely sized against.
+
+⛔ **The host must end a connection whose client has stopped reading, and this is the clause that
+returns the one worker the handler cannot.** [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s
+stall bound ends a slow consumer on the handler's own clock, but a client that stops reading altogether
+suspends the handler **inside** the write, where no line of it runs; what ends that is the proxy giving
+up on the client and tearing down the upstream, which makes the blocked write fail. ⛔ **What does NOT
+then happen is the handler's own exit path**, and an earlier revision of this section claimed it did:
+no line after the pending `yield` ever runs, so there is no `feed.close`, no `feed_resync_required`,
+and no cursor left to inspect. ⚠ **Why** is the abort, not the `break` — the primitive's
+`connection_aborted()` test sits at the top of its loop body, so the `break` follows a resumption of
+the generator rather than preventing one, and it is PHP's own termination of the script at the aborted
+write that stops the later lines. That holds while `ignore_user_abort` is **off** on the serving SAPI,
+which R1 names as a third ini condition and hands to card#9300 with the other two. The worker comes back because the request was
+torn down, not because the handler noticed. *The requirement:* the proxy's
+client-send timeout is **finite** (nginx `send_timeout`, Apache `Timeout`) and its upstream teardown
+follows it. *What this repository cannot see:* both values. *The observable when THIS clause is false:* a worker
+pinned per frozen client for the kernel's retransmission budget — minutes — and, at enough of them, F20
+arriving from clients rather than from load. *The check:* read the serving pool's own configuration file for every value the requirement above
+states and confirm the stream route resolves to that pool; then open N streams with the R1 command in N shells and, with all
+N open, `GET /api/fleet/health` — which is served by **the other** pool, and that is the point of the
+check — must answer at its ordinary latency, while the **stream pool's** `pm.status_path` shows
+`listen queue` at 0 and `max children reached` unmoved. ⛔ **NOT `php-fpm -tt`, which an earlier
+revision of this sentence named — and naming it here was the SECOND time this section reached for an
+instrument R1 had already disqualified eight paragraphs above**, by name and for this exact reason: it
+opens the error log before it prints anything, so under a user without that privilege it exits
+`ERROR: failed to open error_log … Permission denied` (measured, card#9287 maintainer round) — an
+instrument the deploy user cannot run, prescribed as a **deploy gate** at
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 9. ⚠ **Whether any instrument
+dumps the EFFECTIVE merged pool configuration under the deploy user is UNMEASURED, and this document
+does not assert one**: reading the pool file is what a deploy user can certainly do, and it sees the
+file rather than the resolution. That gap is card#9300's, with R1's — the same rule applied to this
+condition: an instrument is named after it has been run on a host where it can be, not before. *The observable
+when it is false:* **the console, not the feed, goes dark** — the snapshot, the health endpoint and every
+admin page queue behind the pinned workers and time out or `504`, against a healthy fleet, while FPM
+logs `server reached pm.max_children setting` and its status counter `max children reached` climbs
+([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F20). That the whole application fails
+rather than one feature is why this is a requirement with a check and not a note. ⚠ Whether a graceful
+reload with `process_control_timeout` at its default of 0 waits on an in-flight stream indefinitely is
+**UNVERIFIED** here (DOCS-CITED, `php-fpm.conf`: the default is stated, the behaviour at it is not),
+which is why the design relies on it in neither direction — live streams end themselves on
+`fleet.reload`, and the setting is required non-zero for the dead ones.
+
+**What this transport costs, each stated.** (1) One FPM worker per open browser for the length of a
+session — R2, and a real number on a host sized for request-response traffic. (2) A write per message —
+the outbox rows priced under *Volume*, retained a minute. (3) Four index seeks per second per open
+stream. (4) Delivery latency of one visibility lag plus one tick — **≥ 2 s and ≤ 2.25 s after the message's row
+is INSERTED into `feed_outbox`**, which is what the predicate actually measures: the tick's
+`created_at <= server_now - INTERVAL 2 SECOND` term reads a column stamped at `INSERT`. ⚠ **This read
+*after a message's commit* until the card#9287 maintainer round.** The figure does not move — every
+writer inserts its outbox row as the **last statement before its `COMMIT`** (the rule stated above and
+tested by [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor)),
+so the two instants are one round trip apart — but the basis a test asserts against does move: measured
+from the commit the bound is 2 s *minus* that round trip, and a test written to the old wording asserts
+a floor the design does not promise. On top of the fold's own ≥ 2 s behind the wire
+([§ 6.5](#65-the-fold)), which states its own basis correctly — the price of an ordering guarantee this
+document already pays once, in a number it already owns. (5) A deploy must
+publish `fleet.reload` before reloading FPM ([§ 2.1](#21-processes)), or wait on its own escalation.
+(6) The count-and-bytes backpressure bound of the earlier revision has no referent here and is replaced
+by a time bound — [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) says how, and what is
+not provided. What it buys is stated once, in [§ 13](#13-decisions-taken-revisable-at-review) row 46,
+so this paragraph cannot be read as the whole ledger.
 
 #### 8.3.1 Worked delta
 
@@ -3028,7 +3516,7 @@ delta that patches fewer fields is strictly smaller, and no delta can patch more
 #### 8.3.3 The coordination objects
 
 ⭐ **Ruled — card#7897's part-2 ruling (2026-08-27): one feed, one store, one ordering domain.** The
-coordination family joins the five message types above on **this** feed rather than getting one of its
+coordination family joins the seat and fleet message types above on **this** feed rather than getting one of its
 own, in the ruling's own terms: *"`coord.*` joins them on the same WebSocket, the same store, the same
 ordering domain. A second feed is refused"* — because a client reads feed silence as *the fleet is not
 talking to me* ([§ 8.3](#83-the-websocket-delta-feed)'s heartbeat rule), and two feeds would give one
@@ -3037,7 +3525,7 @@ page two liveness verdicts with no honest way to render their disagreement.
 **The two objects are [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)'s and
 [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s, and this section does not re-derive them**
 ([§ 1.3](#13-the-boundary-stated-as-a-rule)). What is this document's is the **read surface**: which of
-those fields reach a reader, under which message, on which channel, and what a consumer may and may not
+those fields reach a reader, under which message, and what a consumer may and may not
 conclude from them. It publishes no field D1 does not send
 ([§ 13](#13-decisions-taken-revisable-at-review) row 29) and it mints **no number** — every bound below
 is D1's, carried beside the field it bounds.
@@ -3057,7 +3545,7 @@ producer that design forbids.
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"AIMLA-org/aimla-coordination#742"` |
-| `coord_thread.install_id` | slug | no | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it equals the channel's install | `"aimla"` |
+| `coord_thread.install_id` | slug | no | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)) | `"aimla"` |
 | `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
 | `coord_thread.carrier` | slug | **yes** | ≤ 16 B — the title's leading bracketed token, lowercased and slug-validated with **no set consulted** ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)); `null` when the title leads with none, or when the token fails validation | `"announce"` |
 | `coord_thread.subject` | string | **yes** | ≤ 200 B — the issue title less its addressing preamble, sanitized at the receiver ([D1 § 18.10](EVENT-SCHEMA.md#1810-sanitization-at-the-coordination-producer)). **The only free-text field either object carries**; no body text transits at any length | `"the coordination-event producer"` |
@@ -3139,9 +3627,10 @@ thread **ended** (`lifecycle`) and that a post **declared the close** (`declares
 neither as convergence. Every other element of the ruling's table has a field above, or — the
 PM-to-intern folder — is already on the reporter wire as a seat's `subagents`, which is where it stays.
 
-**Volume, coalescing, and the message bound.** [§ 8.3](#83-the-websocket-delta-feed)'s 250 ms tick
-coalesces a **seat's** state patches, and merging two patches loses nothing because the later one wins;
-these are posts, and merging two posts loses one. **They are therefore not coalesced** — which is also
+**Volume, the tick, and the message bound.** [§ 8.3](#83-the-websocket-delta-feed)'s 250 ms tick
+delivers and merges nothing — for seat patches because § 8.5's plus-one rule forbids it, and for these
+objects because they are posts, and merging two posts loses one. **They are therefore never
+coalesced** — which is also
 how the ruling's anti-requirement (*no silent cap*) becomes a property of the data rather than a promise
 by the renderer: a broadcast is **one** `coord.round` whose `targets` is the resolved fan-out, so there
 is no set of N messages for anything to cap. They are outside § 8.3's per-seat-day delta figure, which
@@ -3171,8 +3660,8 @@ is stated rather than left to be met:** a client that has just connected draws n
 next post on that thread. [§ 14](#14-open-questions-for-the-review-loop) item 14 carries the closure
 act.
 
-**Authentication and scope are unchanged and are not restated:** these ride
-`private-fleet.{install_id}` like every other message on this feed, under
+**Authentication and scope are unchanged and are not restated:** these ride the one stream like every
+other message on this feed, each row carrying the `install_id` of its hook binding, under
 [§ 9](#9-read-side-authentication)'s read-side rules. Because `install_id` comes from the hook binding
 rather than from the payload, the operator's floor-scoping ruling is a property of the data and not of
 the picture — a broadcast's reach equals the install's, and a renderer that draws wider is drawing past
@@ -3244,7 +3733,7 @@ The hazard is ordinary and the protocol is the ordinary answer, stated exactly b
 subtly wrong produces a client that is permanently and invisibly wrong about one desk:
 
 ```
-1. client connects, subscribes to private-fleet.<install>
+1. client opens GET /api/fleet/stream   -> ONE stream, every install (§ 8.3)
 2. client BUFFERS every seat.delta it receives from this moment
 3. client GETs /api/fleet/snapshot            -> each seat carries its own state_version
 4. client applies the snapshot
@@ -3253,9 +3742,9 @@ subtly wrong produces a client that is permanently and invisibly wrong about one
 6. steady state: apply deltas as they arrive
 ```
 
-Subscribing **before** fetching is what closes the window: a state change that happens while the
+Opening the stream **before** fetching is what closes the window: a state change that happens while the
 snapshot query is in flight is in the buffer, and the snapshot's per-seat `state_version` is the
-watermark that says whether it is already included. Fetching first and subscribing after leaves a hole
+watermark that says whether it is already included. Fetching first and opening after leaves a hole
 exactly the width of the round trip, and the desk that changed in that window stays wrong until
 something else changes it — which on a quiet desk is never.
 
@@ -3266,7 +3755,7 @@ rather than one snapshot-wide sequence number.
 **The coordination messages have no snapshot half, and the asymmetry is stated here rather than met at step 3.**
 Steps 2–5 are about seat state and its per-seat watermark. [§ 8.3.3](#833-the-coordination-objects)'s objects
 carry no `state_version` and are not in `GET /api/fleet/snapshot`, so this protocol neither buffers nor discards
-them: a client applies each as it arrives from the moment it subscribes, and holds nothing about a thread whose
+them: a client applies each as it arrives from the moment it connects, and holds nothing about a thread whose
 last post predates its connection. That is a real cost and § 8.3.3 prices it; what it is **not** is a window of
 the kind step 5 closes, because there is no snapshot for a delta to be older than.
 
@@ -3280,8 +3769,9 @@ equal, the delta is a duplicate or a straggler and is discarded.
 **`feed_gap_detected` is counted by the server, from that parameter, and the parameter exists because
 nothing else can carry the report.** The read plane is four `GET`s and a server→client feed; there is
 no client→server channel on this surface and this document does not add one, because a report endpoint
-would be a write surface with its own authorization, rate limit and abuse story for one integer. A
-resync `GET` is otherwise byte-identical to an ordinary drill-down fetch, so without the parameter the
+would be a write surface with its own authorization, rate limit and abuse story for one integer — and
+since card#9287 the transport itself is one-way by construction, an `EventSource` having no send, so
+this is a property of the wire and not only a refusal. A resync `GET` is otherwise byte-identical to an ordinary drill-down fetch, so without the parameter the
 server cannot tell a gap from a panel being opened — and a counter nothing can increment is a counter
 that reads zero forever, which is the false-clean this document refuses everywhere else. The server
 also validates it: `resync_from` greater than the seat's current version is ignored and counted
@@ -3309,16 +3799,67 @@ newest `(seq_epoch, seq)` the fold has applied.
 re-snapshot is ~92 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
-memory.
+memory. ⛔ **`feed_outbox` is not that buffer, and [§ 8.3](#83-the-websocket-delta-feed) states the two
+mechanisms that keep it from becoming one**: a stream's cursor starts at the head it connected at, and
+`Last-Event-ID` is never written and never read. A reconnecting client gets the snapshot, not the rows
+it missed.
 
-**Backpressure.** Each connection has a bounded outbound queue: **256 messages or 512 KiB, whichever
-binds first**. At the fleet's 5.2 msg/s ceiling, 256 messages is ~49 seconds of a 50-seat fleet's
-traffic — long enough that an ordinary network hiccup drains, short enough that a wedged client is
-noticed within a minute. On overflow the connection is **closed with `resync_required`** and
-`feed_resync_required` is counted. Dropping individual deltas instead would leave that browser
-permanently wrong with no way to know it; closing costs one snapshot and is self-healing. Other
-connections are unaffected, and the bound is per connection precisely so that one slow client cannot
-consume the memory of the process serving the rest.
+**Backpressure — a stall bound of 45 s per stream, and why it is a time and not a count.** The
+earlier revision bounded each connection's outbound queue at *256 messages or 512 KiB* and closed it
+with `resync_required`. Under this transport that bound has no referent: there is no per-connection
+queue in the server's memory to count, because the queue is `feed_outbox`, shared and on disk, and each
+stream is its own FPM worker that either writes everything past its cursor at each tick — a draining
+client — or blocks in the write — a client that is not draining. A draining client is never *behind*;
+a non-draining one blocks the handler, which can measure nothing until the write returns. So the bound
+is on **the tick**: at the top of each pass, **before it reads**, the handler compares the clock to the
+moment its previous tick **started**, and a gap over **45 s** ends the stream with
+`feed.close{reason:"stalled"}` — after which `feed_resync_required` is counted and the worker is
+returned. Both placements are the bound rather than details of it, and
+[§ 8.3](#83-the-websocket-delta-feed) says why: measured from the tick's *completion* the difference is
+the sleep and never the blocked write, so the bound would never fire; checked *after* the read, a
+stream blocked past [§ 6.7](#67-retention-and-purge)'s retention would advance its cursor across rows
+the purge took while it was blocked, which is the silent loss the last paragraph here refuses. 45 s is the client's own dead-feed
+figure ([§ 8.3](#83-the-websocket-delta-feed)) applied in the other direction — the server gives up on
+a silent client on the same clock the client gives up on a silent server — and it is what
+[§ 6.7](#67-retention-and-purge) adds one heartbeat to, so a stream that resumes inside the bound finds
+every row it may still deliver. **What is not provided, stated so nothing reads as more than it is:**
+no message-count bound, no byte bound, and no `resync_required` close frame — SSE has no close frame
+at all (DOCS-CITED, WHATWG HTML § *Server-sent events*, whose only framing is `event:`/`data:`/`id:`/`retry:` fields),
+and the reason travels as the stream's last message instead. **What is still true:** the server's
+memory does not grow with a stalled client's backlog, because the backlog is in the outbox and the
+kernel's socket buffer, both bounded by something other than the client; and other streams are
+untouched, because each is its own worker. What a stalled client *does* consume is that worker — which
+is R2's arithmetic ([§ 8.3](#83-the-websocket-delta-feed)). ⛔ **For how long is NOT this bound:**
+it is a DETECTOR, compared at the top of the FOLLOWING pass, so a write that blocks for longer than
+it does not end at it ([§ 9](#9-read-side-authentication) case (b)). What caps the occupancy R2 sizes
+against is R2's own teardown clause — the proxy's finite client-send timeout — and a pool sized as if
+the bound capped it is sized short.
+⛔ **And the bound ends a SLOW consumer, not a FROZEN one — stated plainly, because the difference is
+the whole of what this mechanism does not do.** A client that drains slowly returns each write late,
+the handler's next pass sees the gap, and the stream ends on the server's own clock. A client that
+stops reading altogether suspends the handler **inside** `eventStream()`'s write, where no line of the
+loop above runs at all — so nothing fires, and what ends it is the host: the proxy's finite
+client-send timeout tears down the upstream and the blocked write fails. **The handler does not then
+get a final pass** — the primitive breaks out of its loop on the aborted connection and no line after
+the pending `yield` runs: no `feed.close`, and `feed_resync_required` is **not** counted on this path.
+⚠ **The mechanism is the ABORT and not the `break`**, corrected in the card#9287 maintainer round:
+`eventStream()` tests `connection_aborted()` at the top of its loop body, so the `break` is reached
+only after `foreach` has resumed the generator past its `yield`. What keeps the later lines from
+running is that PHP terminates the script at the aborted write — which is true only while
+`ignore_user_abort` is **off** on the serving SAPI, a host condition R1 now names and card#9300 owes
+the reading of. The conclusion stands; the reason it stands is a setting, not the framework. The stall bound is the SLOW consumer's exit
+and only that; the frozen consumer's exit is the host's alone. That is a **requirement on
+the deployment, not a property of this design**, and it is R2's teardown clause
+([§ 8.3](#83-the-websocket-delta-feed)) with its own observable. The design's honest claim is
+therefore: no row is ever skipped for any client, the server's memory never grows with one, and the
+*worker* comes back on the handler's clock for a slow consumer and on the host's for a frozen one. Dropping rows instead of ending the stream is refused for the same reason as
+before, and for one more: a skipped `seat.delta` is caught by the plus-one rule at the seat's next
+delta, but a skipped coordination message is caught by nothing
+([§ 8.3.3](#833-the-coordination-objects)), and a transport that loses posts silently is the failure
+this section refuses everywhere else. ⚠ The one worker neither clock returns promptly is a client that
+vanished mid-write without closing and whose proxy has no send timeout either: the write then blocks
+until the kernel gives up on the connection, which is R2's `process_control_timeout` clause and its
+teardown clause, named there rather than here.
 
 **The gap rule covers seat deltas and nothing else.** [§ 8.3.3](#833-the-coordination-objects)'s coordination
 messages carry neither `state_version` nor `(seq_epoch, seq)` — [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)
@@ -3557,26 +4098,155 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 
 | Surface | Credential | Notes |
 |---|---|---|
-| the floor, the drill-down, the WebSocket handshake, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the websocket handshake **and** the REST snapshot |
+| the floor, the drill-down, the stream, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the feed **and** the REST snapshot — and on the stream the gate is re-applied every **15 s** for as long as it is open, below |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
-| the WebSocket, from a machine consumer | **not supported** | see below |
+| the stream, from a machine consumer | **not supported** | see below — the reason it was refused is gone and the refusal stands until someone rules otherwise |
 | the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
-**The live feed is browser-only, and that is a decision with a cost.** A long-lived socket authenticated
-by a bearer token needs a revocation story *on an already-open connection* — a token revoked at 09:00
-must not keep streaming until the client disconnects — which means either periodic re-authorization on
-the socket or accepting a revocation lag. The known machine consumer is the bridge's autonomy watchdog,
-whose decision cadence is minutes ([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why)),
-so REST polling serves it exactly. The cost, stated: a future machine consumer that genuinely needs
-sub-second fleet state gets polling latency instead, and reversing this means specifying socket
-re-authorization, not just opening a port.
+**The stream re-checks its own authorization every 15 s, so revocation on an open connection is a
+property this feed has — for the browser.** A long-lived connection authenticated once needs a
+revocation story *on an already-open connection* — a session that expires at 09:00, or a token revoked
+then, must not keep streaming until the client disconnects. Under the previous transport that story did
+not exist: the handshake was authorized once at `/broadcasting/auth` and nothing on the daemon could
+re-ask, which is why machine consumers were refused the socket and why
+[FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F7 carried the browser's expiry as a
+residual. An SSE handler is PHP with the store in reach, so **every 15 s it re-runs the check the route's
+middleware ran at connect — the session is live and its MFA enrolment holds — and a check that comes
+back **invalid** ends the stream with `feed.close{reason:"session"}`**. ⛔ **It re-READS both from the store**, the session
+record by its id and the user's MFA enrolment, and never re-inspects the copy the request loaded at
+connect: a re-check of an in-memory session is a check that cannot fail, which is the decoration
+[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) exists to forbid, re-minted inside the fix for
+it
+([§ 8.3](#83-the-websocket-delta-feed)). The lag between an expiry and its enforcement is therefore **the auth
+interval plus one loop pass**, and the pass is what makes that larger than it reads: it CONTAINS the
+write loop, so a consumer that drains slowly holds the handler inside it. **Two cases, and the second
+is the one no revision of this section has stated.**
+
+- **(a) Every pass inside [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s stall
+  bound.** The re-check fires within the auth interval plus that bound, so the enforcement lag is
+  **under 60 s** — and on a client that drains promptly it is **15 s + one 250 ms tick**, which is the
+  figure a test on a healthy consumer asserts.
+- **(b) A pass that OVERRUNS the stall bound.** ⛔ **That bound is a DETECTOR, not a cap**: it is
+  compared at the top of the FOLLOWING pass, so a write that blocks for longer than 45 s does not end
+  at 45 s — it simply makes that pass the last one, and the stream then ends on `stalled` rather than
+  on `session`. Every row written during the overrun went to a session that was already revoked, and
+  **nothing in this handler caps how long that is.** What caps it is R2's teardown clause
+  ([§ 8.3](#83-the-websocket-delta-feed)) — the proxy's finite client-send timeout — which is a
+  requirement on the deployment and not a property of this design.
+
+⛔ **The guarantee this section offers is (a), and (b) is named rather than rounded away**: a
+revocation story whose worst case belongs to the host is not one that may quote a number without
+saying so.
+⚠ **An earlier revision of this sentence stated the 250 ms figure as THE bound**, reasoning only from
+the re-check's position at the bottom of the loop body. It was short by ~4×, and what the difference
+buys a revoked session that drains slowly is ~45 s of fleet data it is no longer entitled to — which
+is a security figure, so it is corrected here rather than softened (card#9287 maintainer round).
+⛔ **Hoisting the re-check ABOVE the write loop does not make 250 ms true, and is refused here rather
+than left as an open option.** The exposure is created by the write loop itself: for as long as it
+blocks it is delivering rows to that session, so moving the check to the top of the pass decides only
+whether the close is taken at the end of pass N or the start of pass N+1 — the same rows have already
+gone in both orderings. And at the top the **stall** check reaches the blocked pass first, so the one
+thing the hoist reliably changes is the reason the viewer is given: `stalled` where `session` is true.
+Closing the window rather than restating it means a check the blocked write cannot outrun — a
+per-message check, which the sentence below prices and refuses — and that is a different decision from
+where this check sits. ⚠ And the hoist does not close case (b) either: a pass that begins just inside
+the auth interval and then blocks is a pass whose re-check was not yet due, wherever in the body it
+sits.
+
+⚠ **"Tick" carries two
+values in this document**: the stream's loop tick is 250 ms ([§ 8.3](#83-the-websocket-delta-feed)) and
+the heartbeat's is 15 s, so *the auth interval* is this section's name for the 15 s one and a bare
+"one tick" is never the bound — nor, on a stream whose consumer is slow, is one 250 ms one. A test
+asserting a flat 15 s reds intermittently at ~15.25 s against a correct implementation on a draining
+client, and a test asserting 15.25 s reds outright against a correct one whose consumer is slow. During that window the stream delivers messages the session was entitled to when the
+tick before ran; that window is accepted on the record rather than closed with a per-message check,
+because a per-message check is a session read per delta at 5.2 msg/s for a property that changes far
+more rarely than that. The same clock answers
+[FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 5.
+
+⛔ **The re-check CONTINUES the stream on exactly one outcome and ENDS it on every other.**
+
+- **valid** — the store answered, the session is live and its MFA enrolment holds: the stream continues.
+- **the store answered, and what it said is that the session or its MFA is gone**: the stream ends with
+  `feed.close{reason:"session"}` ([§ 8.3](#83-the-websocket-delta-feed)), and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6's sign-in is the render. That is the
+  revocation-on-an-already-open-connection case this re-check was written for, and its meaning is
+  exactly this one.
+- **anything else** — a lost connection, a timeout, a lock, a corrupt page, a per-table permission
+  refusal: the read did not come back with **an answer about the session**, so the stream ends with
+  `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)) and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 is the render — that row owns the words and this one does not restate them.
+
+⛔ **The predicate on that last branch is *the read returned an answer about the session*, and never
+*the store was reachable*.** A per-table permission refusal and a corrupt page both REACH the store and
+both answer, with an error. An implementation that tested reachability would leave those two matching
+no branch at all, and an exception matching no branch is swallowed by the primitive's
+`catch (Throwable)` ([§ 8.3](#83-the-websocket-delta-feed)): the response then ends **silently, with no
+`feed.close`**, which is the ending this design refuses everywhere else. [§ 8.3](#83-the-websocket-delta-feed)'s
+loop writes it as a `default` case for that reason, not as a third named outcome.
+
+**Which of the two reasons is sent is a RENDER decision, and it is taken here rather than left to an
+implementer.** `session` sends the viewer to a sign-in, and a sign-in cannot be completed while the
+store is unreadable, because authenticating reads the same tables the check just failed on. It would
+also render *your session is gone* when what is true is *the store is down* — an absence of evidence
+read as evidence of absence, on the surface a viewer's authentication is decided from. So a read that
+did not answer sends `unavailable`: the same member a failed **tick** read sends, because it is the
+same condition. ⛔ **This outcome mints NO new member of [§ 8.3](#83-the-websocket-delta-feed)'s closed set** — it
+sends `unavailable`, which that set already carries. The set's members and its size are declared on
+that row and guarded there; this section does not restate either.
+
+**This is [§ 2.2](#22-fail-posture-per-path)'s *read-token verification* posture — *"there is no
+posture in which 'we could not check, so we allowed it' is correct"* — applied to revoking rather than
+to granting, with no carve-out from it.** A stream whose session cannot be verified stops; what the
+viewer is told is the truth about the store, rather than a verdict about a session nobody reached.
+Nothing is held open, so nothing has to be said about what an open stream may deliver while the check
+is unanswered, and no timer, heuristic or client-side guess is specified for the case where an outage
+outlasts `SESSION_LIFETIME`: there is no open stream for it to outlast.
+
+⚠ **One case is labelled loosely, and it is stated rather than hidden: a session read that fails while
+reads of `feed_outbox` keep succeeding.** They are two tables in one store — a lock or a per-table
+grant can take one and not the other — so the floor takes F5's render over a store whose
+fleet data was, in fact, readable. The mislabel is in the safe direction, the alternative is the one
+this design refuses (the whole fleet's activity picture delivered to a session nobody could verify),
+and the client's own next act settles it: a reconnect re-runs the route's middleware against the same
+unreadable table and is refused there.
+
+⚠ **A consequence of re-reading the session that is this design's to state rather than an
+implementer's to discover: an open stream does not keep a session alive, so a floor left open is signed
+out on the session's own schedule.** The framework writes the session record once per request, when the
+response is returned — for a stream that is at connect, before the body has streamed a single byte —
+and a client with a healthy stream makes no other request, because [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables)
+F1's 10 s poll runs only while the feed is **down**. So `last_activity` is stamped at connect and never
+again, and at `SESSION_LIFETIME` after connecting — **120 minutes** on this application's configuration
+(`server/config/session.php`, `database` driver) — the re-check finds the session expired and ends the
+stream, which [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 renders as a sign-in
+over a dimmed floor. **The tick deliberately does not touch `last_activity`**, and that is the decision
+rather than an oversight: touching it would make an unattended tab immortal and defeat idle expiry on
+exactly the screen this product leaves on a wall, which is a security property nobody has ruled may be
+spent. The cost is the other half — an operator's floor asks for MFA again every two hours — and it is
+filed, not absorbed: [§ 14](#14-open-questions-for-the-review-loop) item 16 puts the ruling where it
+belongs, because the fix (a longer lifetime for this route, a kiosk credential, a re-auth that does not
+blank the floor) is an authorization decision and not a render.
+
+⚠ **The live feed stays browser-only, and the reason has changed, which is stated so nobody reads the
+old reason as still standing.** The refusal rested on *no revocation story on an open connection*; that
+story now exists, and a machine consumer's `mzr_` token could be re-checked on the same tick against
+`feed_tokens.revoked_at` with no new mechanism. **What has not happened is a ruling that machines may
+hold the stream** — an authorization decision with its own costs (a worker pinned per machine consumer
+under R2's arithmetic, a token's 120 req/min limit that means nothing on a stream, the all-or-nothing
+read of the paragraph below granted to a credential rather than a person), and this amendment removes
+the blocker without taking the decision. [§ 14](#14-open-questions-for-the-review-loop) item 15 files
+it. The known machine consumer is the bridge's autonomy watchdog, whose decision cadence is minutes
+([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why)), so REST polling
+serves it exactly, as before. The cost, stated: a future machine consumer that genuinely needs
+sub-second fleet state gets polling latency until that ruling is made.
 
 | Property | Value | Derivation |
 |---|---|---|
 | Token entropy and storage | 32 CSPRNG bytes → 43 base64url chars; SHA-256 stored, plaintext never | [D1 § 3.3](EVENT-SCHEMA.md#33-authentication-and-the-identity-binding-rule), cited |
 | Prefix | `mzr_` | greppable and distinct from the ingest's `mzn_`; the distinction is what makes `token_wrong_surface` detectable rather than a mystery `401`. This document mints a credential prefix D1's sanitizer did not know, which [§ 14](#14-open-questions-for-the-review-loop) item 11 filed and D1 has since closed: [D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 3's known-prefix regex now enumerates `mzr_` beside `mzn_`, so a read token pasted into a descriptor is redacted by that rule. Reachability was low either way — D1 § 7.1's descriptor allowlist runs first, and a read token has no reason to be near a seat — but [§ 1.3](#13-the-boundary-stated-as-a-rule) obliges the sentence that adds a rule on top of a D1 fact to file the gap rather than work around it, and filing it is what got it fixed |
 | Expiry | **90 days** | long enough that rotation is quarterly rather than constant, short enough that a forgotten token dies. Multiple tokens may be active, so rotation is issue-then-revoke with no overlap window to specify |
-| Revocation | checked **per request**, never cached | a revoked credential that keeps working for a cache TTL is a revocation that did not happen. One indexed lookup per request, at a consumer rate of ≤ 1/min |
+| Revocation | checked **per request**, never cached — and on the stream, **per 15 s tick** for the session that opened it | a revoked credential that keeps working for a cache TTL is a revocation that did not happen. One indexed lookup per request, at a consumer rate of ≤ 1/min; one session read per open stream per tick |
 | Rate limit, token | **120 req/min** | the same ceiling D1 sets for a seat's ingest requests, reused so the fleet has one request-rate number; the watchdog's real cadence is ~1/min, so this is ~120× headroom and can only be reached by a loop |
 | Rate limit, session | **600 req/min** | a browser opening drill-downs bursts; 600 is ~10 req/s sustained, far above any human interaction and far below anything that threatens the store |
 | Over limit | `429` with `retry_after_s` | — |
@@ -3586,8 +4256,9 @@ re-authorization, not just opening a port.
 
 **Authorization within the fleet is currently all-or-nothing**: any MFA-authenticated user sees every
 install, and any `fleet_read` token does too. That is stated rather than assumed, because the moment a
-second organisation's install reports into one Mezzanine it is wrong. The channel and endpoint shapes
-are already per-install so that a future ACL has somewhere to attach; whether one is needed is
+second organisation's install reports into one Mezzanine it is wrong. Every outbox row carries its
+`install_id` and the stream handler filters per subscriber ([§ 8.3](#83-the-websocket-delta-feed)), and
+the endpoint shapes are per-install, so a future ACL has somewhere to attach; whether one is needed is
 [§ 14](#14-open-questions-for-the-review-loop) item 7, and it is an operator question, not a design one.
 
 ---
@@ -3852,13 +4523,13 @@ and the gate on trusting the derived signal at all.*
 
 ### AT-D2-7 snapshot-then-deltas has no window
 
-- **Build:** a client harness that subscribes, buffers, snapshots and drains per
-  [§ 8.4](#84-snapshot-then-deltas), with a **forced 500 ms delay** injected between the subscribe and
+- **Build:** a client harness that opens the stream, buffers, snapshots and drains per
+  [§ 8.4](#84-snapshot-then-deltas), with a **forced 500 ms delay** injected between the stream's open and
   the snapshot query, and a state change driven inside that window.
 - **GREEN:** the client's final state equals the server's `seat_state` exactly, whether the change landed
   before or after the snapshot's read; the buffered delta at or below the watermark is discarded and the
   one above it is applied; running the same scenario 100 times yields 100 identical results.
-- **RED — order:** snapshot first, subscribe after → the change made in the window is in neither, and the
+- **RED — order:** snapshot first, stream after → the change made in the window is in neither, and the
   desk stays wrong until something unrelated changes it. Assert the divergence explicitly; on a quiet
   desk it is permanent.
 - **Second RED — no watermark:** apply every buffered delta unconditionally → a delta already included
@@ -3934,8 +4605,12 @@ and the gate on trusting the derived signal at all.*
 - **Build:** run the app with the store stopped.
 - **GREEN:** `POST /api/ingest/events` returns `503` (retryable — the reporter spools and nothing is
   acknowledged); `GET /api/fleet/snapshot` returns `503 fleet_unavailable` with a machine-readable body
-  and **no `installs` key at all**; a connected WebSocket client receives `fleet.health` with
-  `db: "down"` and the floor renders an unavailable state, not an empty office.
+  and **no `installs` key at all**; a client that opens the stream receives `fleet.health` with
+  `db: "down"` as its **first** message and `feed.close{reason:"unavailable"}` as its **last**, the
+  stream then **ending** ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row), and the floor renders
+  an unavailable state, not an empty office. ⛔ **Assert the close and the end, not merely the first
+  message**: a GREEN that stopped there passes equally against a stream held open through the outage,
+  which is the posture card#9287's ruling withdrew.
 - **RED:** return `200` with `{"installs": []}` → the floor renders as a building where everyone went
   home, which is `docs/KANBAN.md § G-1`'s defect exactly: a clean zero that means "we could not answer".
   Assert the body, not the status code — a `200` with an empty array is the failure, and it looks fine
@@ -3943,6 +4618,12 @@ and the gate on trusting the derived signal at all.*
 - **Second RED:** acknowledge the ingest batch (`202`) while the write failed → the reporter advances its
   spool cursor and the events are gone from both copies. Assert the events are absent from the store
   afterwards; that is the only way to see the loss.
+- **Third RED — hold the stream open after the `db: "down"`:** accept the connection, send the health
+  message and keep the stream alive → the viewer is told the store is down over a connection that is
+  still claiming to be live, nothing on the wire says the server chose to end anything, and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 therefore reads the eventual drop as
+  silence the server did not choose. This is the withdrawn posture arriving through the test that
+  gates the ruling, so assert the **last** message and not only the first.
 
 ### AT-D2-13 every predicate can answer both ways
 
@@ -3992,15 +4673,55 @@ and the gate on trusting the derived signal at all.*
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 
-- **Build:** two connected clients; stop reading on one; drive fleet traffic past its queue bound.
-- **GREEN:** the stalled client's connection is closed with `resync_required`, `feed_resync_required`
-  increments, and it converges after reconnecting; the healthy client misses nothing (assert its final
-  state equals the server's, field by field); the server's memory does not grow with the stalled
-  client's backlog.
-- **RED — unbounded queue:** remove the bound → the process's memory grows with the stalled client and
-  the healthy client's latency rises with it. **Second RED — drop deltas instead:** the stalled client
-  reconnects to a *wrong* state with no gap detected, because dropping a delta without closing loses the
-  `state_version` step the gap check depends on.
+- **Build — two legs, because the bound does two different things and one of them is the host's.**
+  *(a) the SLOW consumer:* two open streams, one of which drains at a rate that makes each write return
+  late — a few bytes per second is enough — driven for longer than
+  [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s stall bound. *(b) the FROZEN
+  consumer:* the same pair, but the second harness stops reading altogether while holding the
+  connection open, and the proxy in front is configured with a finite client-send timeout (R2's
+  teardown clause, [§ 8.3](#83-the-websocket-delta-feed)) — **this leg tests a deployment property and
+  must be run against one; it is not satisfiable against PHP's built-in server**, and saying so is the
+  test rather than a gap in it.
+- **GREEN (a):** the slow stream is ended by its handler with `feed.close{reason:"stalled"}` as its last
+  message, `feed_resync_required` increments **once**, the handler's worker is returned to the pool
+  (assert the pool's active-process count, or the handler's own exit, not merely the client's view), and
+  the client converges after reconnecting; the healthy stream misses nothing (assert its final state
+  equals the server's, field by field); **the server's memory does not grow with the stalled client's
+  backlog** — assert the stalled worker's RSS is flat across the stall, because the backlog is in
+  `feed_outbox` and the kernel's socket buffer and in no PHP array.
+- **GREEN (b):** while the frozen client holds the connection, the handler is **blocked in its write and
+  ends nothing** — assert that, because it is what the design claims rather than what a reader hopes.
+  When the proxy's timeout tears the upstream down, the worker is **returned by the host, not by the
+  handler** — assert the pool's active-process count falls back, and assert `feed_resync_required` does
+  **not** increment, because on this path the handler never resumes to count it. ⛔ **Assert nothing
+  about `feed.close`, and nothing about the cursor:** both live in a generator the primitive abandoned
+  mid-`yield`, and a GREEN that named them would be asserting a step that does not execute. The healthy
+  stream misses nothing throughout — that is the leg's actual subject, one connection closing and no
+  others.
+- **RED — no stall bound:** remove the tick comparison → leg (a)'s worker stays blocked until the
+  kernel gives up, and every such client holds one of `pm.max_children` for minutes; with enough of them
+  the snapshot and the health endpoint queue behind the streams, which is R2's observable arriving
+  through a test rather than a host.
+- **Second RED — stamp the clock at the tick's END:** restore the comparison but assign the tick's
+  timestamp after the write loop → the difference is the 250 ms sleep for every input and the bound
+  fires for none; leg (a) regresses to the RED above **while the code still contains a stall check**,
+  which is the failure this test is really for.
+- **Third RED — check after the read:** move the comparison below the `SELECT`, and drive leg **(a)**
+  past [§ 6.7](#67-retention-and-purge)'s **60 s** outbox retention rather than merely past the 45 s
+  bound → the slow consumer's handler resumes, reads, and advances its cursor **over rows the purge
+  removed while it was blocked**, where the check-before-read placement would have ended the stream
+  instead; the client silently loses them. Assert on a `coord.round` in that window, which no gap check
+  can recover. ⚠ **It is leg (a), and an earlier revision of this RED named leg (b)** — which cannot
+  produce it: GREEN (b) four lines above rules that on the frozen path the handler *"ends nothing"* and
+  instructs the reader to assert nothing about the cursor, because the handler is suspended inside its
+  write and no line of the loop runs at all, so the moved comparison is never reached. A RED that
+  cannot be produced is a decoration ([canon #9](../../CLAUDE.md)), and this is the one guarding the
+  placement [§ 6.7](#67-retention-and-purge)'s retention argument rests on.
+- **Fourth RED — skip rows instead of ending the stream:** on resume, advance the cursor past what the
+  stalled handler could not write → a skipped `seat.delta` is caught by the plus-one rule at that seat's
+  next delta and costs a resync, but a skipped `coord.round` is caught by nothing
+  ([§ 8.3.3](#833-the-coordination-objects)): assert on the coordination message, which is the loss no
+  counter and no gap check can see.
 
 ### AT-D2-16 server-side closes write no wire events
 
@@ -4069,9 +4790,59 @@ and the gate on trusting the derived signal at all.*
   not merely that the status is non-200.
 - **GREEN — no revocation cache:** revoke a token mid-run and issue the next request immediately → it is
   refused on the first attempt, not after a TTL.
-- **RED:** cache the token row for 60 s → a revoked credential keeps reading the fleet for a minute, which
-  is a revocation that did not happen. **Second RED:** accept the `mzn_` token → the ingest credential
-  becomes a read credential, and every seat's token is now a fleet-wide read grant.
+- **GREEN — the stream re-checks:** open a stream under a valid MFA session, then expire the session (or
+  clear the user's enrolment) with the stream open → within **[§ 9](#9-read-side-authentication)'s enforcement bound — the auth interval plus one loop PASS**, which on this leg's draining consumer is 15 s + one 250 ms tick; that section owns the bound for every other consumer, including the case it does not cap — the stream's last message is
+  `feed.close{reason:"session"}` and it ends; the client's reconnect is refused as the browser-session
+  case above is. Assert the **close reason** and the tick bound, not merely that the stream ended.
+- **GREEN — the store goes away under an OPEN stream, and the stream ENDS saying so:** open a stream
+  under a valid MFA session, then make the store's reads **fail rather than answer**. ⚠ **Two runs,
+  because the instrument decides WHICH read fails**: drop the connection the handler holds, so both
+  reads go — the ordinary outage — and then revoke `SELECT` on the session table **alone**, which is
+  [§ 9](#9-read-side-authentication)'s split case, where the outbox read keeps succeeding and only the
+  re-check fails. **The assertion below holds in both runs and only the BOUND differs**, because the
+  two runs fail different reads: in the first the tick read fails, so the close arrives within **one
+  250 ms tick**; in the second only the re-check does, so it arrives within **the auth interval plus
+  one loop pass** ([§ 9](#9-read-side-authentication)), which on a draining consumer is 15 s + one
+  250 ms tick. In both runs the stream's
+  **last message is `feed.close{reason:"unavailable"}`** and the stream **ends**. ⛔ Assert the bound [§ 9](#9-read-side-authentication) states and not a flat 15 s, which reds at ~15.25 s against a correct build; and drive both runs with a consumer that DRAINS, because on a slow one the bound is the auth interval plus the stall bound and this leg would red against a correct handler. ⛔ Assert the reason,
+  and assert it is a member of [§ 8.3](#83-the-websocket-delta-feed)'s **declared** set — that row
+  owns the members and their number and this leg does not restate either — so an implementation that
+  invents a member for this posture reds here; and assert it is **not** `session`,
+  because closing is correct and calling it a session is not.
+- **GREEN — recovery is a RECONNECT, not a resumed cursor:** restore the store, let the client re-open
+  on [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s backed-off cadence, and assert the new
+  stream's **first** message is `fleet.health` carrying `db` at the value
+  [§ 8.2.4](#824-the-fleet-health-object) declares for a readable store — that table owns the
+  vocabulary and this leg does not restate it — followed by
+  [§ 8.4](#84-snapshot-then-deltas)'s snapshot-then-deltas. ⛔ **Assert that no row predating the
+  reconnect arrives**: nothing held a cursor across the outage, so a build that resumed one is
+  delivering history this feed does not keep
+  ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). This leg is producible in **both**
+  runs above, which is why it is stated once here rather than inside either.
+- **RED — a failed READ classified as *invalid*:** land a read that failed on the *invalid* branch →
+  the stream ends with `feed.close{reason:"session"}` and every viewer on the fleet is sent to a
+  sign-in page that cannot be completed, because authenticating reads the same tables the check just
+  failed on. The close is right and the reason is wrong, and on this surface the reason is the whole of
+  the render.
+- **RED — a failed read that matches no branch:** classify only a lost connection as *did not answer*
+  and drive run 2's `REVOKE SELECT` → the permission exception matches nothing, the primitive's
+  `catch (Throwable)` swallows it ([§ 8.3](#83-the-websocket-delta-feed)), and the stream ends
+  **silently with no `feed.close` at all**. ⛔ Assert the last **message**, never merely that the
+  stream ended: this RED and the GREEN above are indistinguishable by *did it end*.
+- **Discriminating control for the reason:** the *"the stream re-checks"* leg above, run with the store
+  **readable** and the session genuinely expired, must still produce `feed.close{reason:"session"}`
+  inside the same bound — so an assertion of `unavailable` is known to be made by an instrument capable
+  of seeing a `session` that is owed, rather than passing because this build sends one reason for
+  everything.
+- **RED — the in-memory re-check:** implement the tick's re-check against the session the request
+  already loaded rather than re-reading it → it can never fail, so the GREEN above passes only because
+  nothing was checked; assert the same expiry with the stream open and see it survive.
+- **Second RED:** cache the token row for 60 s → a revoked credential keeps reading the fleet for a minute, which
+  is a revocation that did not happen. **Third RED:** accept the `mzn_` token → the ingest credential
+  becomes a read credential, and every seat's token is now a fleet-wide read grant. **Fourth RED —
+  authorize once:** check the session at connect only → an expired session keeps streaming every seat's
+  activity until the browser is closed, which is the revocation-that-did-not-happen this test exists to
+  refuse, on the surface that used to be exempt from it.
 
 ### AT-D2-20 catching up is not current, and not stale
 
@@ -4217,7 +4988,7 @@ the whole reason this test was not simply removed with its behaviour.
 
 ⚠ **Its input is a webhook delivery rather than an event fixture** — the fixtures above are wire events
 and this test's producer is not the reporter. It drives [D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s
-receipt route with signed deliveries and reads what reaches a subscribed client
+receipt route with signed deliveries and reads what reaches a connected client
 ([§ 8.3.3](#833-the-coordination-objects)).
 
 - **Build:** one folded, live seat and a connected client. Deliver one signed `issues.opened` and one
@@ -4245,6 +5016,32 @@ receipt route with signed deliveries and reads what reaches a subscribed client
 - **Discriminating control:** re-deliver both bodies with the signature broken. Nothing reaches the
   feed at all (D1 § 18.8 step 3), which is what makes a GREEN above evidence that the receipt path ran
   rather than that the test published its own objects.
+
+### AT-D2-25 a concurrent writer cannot strand a message behind a stream's cursor
+
+*The test for the outbox's use of [§ 6.5](#65-the-fold)'s visibility lag — the same defect
+[AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) catches on the fold's
+cursor, one table over, with a stream as the reader.*
+
+- **Build:** one open stream; two writers overlapping in time. Writer 1 inserts its `feed_outbox` row
+  (taking the lower `id`) and holds its transaction open; writer 2 inserts and commits; then writer 1
+  commits. Make writer 1's message a `coord.round`, because that is the one class no gap check can
+  recover. Drive it 20 times, as AT-D2-22 does, for the same reason.
+- **GREEN:** the stream delivers both messages, in `id` order, on every iteration — assert the **message
+  set** received, not the client's final seat state, which can match while a post was lost.
+- **RED — remove the visibility lag from the TICK:** drop the `created_at <= server_now - INTERVAL 2
+  SECOND` term from the read → a tick that lands between the two commits advances the cursor past
+  writer 1's lower `id`, and that post is **never delivered** to this stream: no counter moves and no
+  client detects it.
+- **Second RED — remove it from the CONNECT, which is the arm a tick-only test passes over:** restore
+  the tick's term and initialise the cursor with a bare `SELECT MAX(id)`, then **open the stream**
+  between the two commits rather than before them → writer 1's row is below the new stream's starting
+  cursor and is never delivered to it, while every already-open stream gets it and the test's other
+  assertions all pass. Assert on the newly-connected client's message set.
+- **Third RED — the early insert:** move a writer's outbox `INSERT` from the last statement before
+  `COMMIT` to the first, and hold the transaction longer than 2 s → the lag no longer covers the window,
+  and the same loss returns. This is the RED for the writer-side rule, which the query term alone does
+  not enforce.
 
 ---
 
@@ -4291,12 +5088,17 @@ document.
 | Delta message | **323 B** typical, **6,169 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.33× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.33× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta coalescing tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds one seat at 4 msg/s | [§ 8.3](#83-the-websocket-delta-feed) |
+| Stream tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds a stream's delivery at 4 batches/s, and merges nothing (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed heartbeat | 15 s, dead at 45 s | **Derived** — the same assert-and-alarm shape as D1's 60 s/300 s heartbeat pair, scaled to a channel whose round trip is milliseconds; 3× is the same multiple D1's flusher-lock staleness uses against its own cadence | [§ 8.3](#83-the-websocket-delta-feed) |
-| Feed outbound queue | 256 messages / 512 KiB | **Derived** — 256 messages is ~49 s of a 50-seat fleet's ceiling traffic: long enough that an ordinary hiccup drains, short enough that a wedged client is noticed within a minute | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
+| Stream stall bound | 45 s | **Derived** — the feed's own dead-at-45 s figure applied server-side: the handler gives up on a client that has not drained a tick for as long as a client gives up on a server that has sent nothing (card#9287; the earlier 256-message / 512 KiB queue bound had no referent under SSE) | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
+| `feed_outbox` retention | 60 s | **Derived** — the stall bound plus one heartbeat interval, so a stream inside its bound finds every row it may still deliver | [§ 6.7](#67-retention-and-purge) |
+| Stream session re-check | 15 s | **Derived** — the heartbeat tick, reused so the stream has one clock; a per-message check would be a session read per delta for a property that moves once a day. ⚠ **This is the INTERVAL and not the enforcement bound**, and reading it as one is how *"at most 15 s + one 250 ms tick"* stood on the record at ~4× short: the check fires on a loop pass, and a pass is bounded by the stall bound above rather than by the tick, so the bound is this interval plus that one — [§ 9](#9-read-side-authentication) states it and owns it | [§ 9](#9-read-side-authentication) |
+| `feed_outbox` row cost | **~400 B** | **Derived** — the measured 323 B typical delta ([§ 8.3.1](#831-worked-delta)) carried whole in `message`, plus the row's own `id`, `created_at`, `t` and `install_id` columns and InnoDB's per-row overhead | [§ 6.7](#67-retention-and-purge), [§ 6.8](#68-sizing) |
+| `feed_outbox` lingering size | **~7.5 MB** | **Derived** — one hour of ceiling traffic between hourly purge passes: 8,980 × 50 ÷ 24 = 18,708 rows (plus 240 heartbeat rows, immaterial) × ~400 B | [§ 6.8](#68-sizing) |
+| Outbox visibility lag | 2 s | **Derived** — equal to the fold visibility lag above: the same primitive for the same reason, a reader must not advance past an id whose transaction has not committed | [§ 8.3](#83-the-websocket-delta-feed) |
 | `fleet.sweep = stalled` | 60 s | **Derived** — four sweep passes at the 15 s cadence: one missed pass is a hiccup, four is a dead daemon, and the fleet object needs a threshold it can render ([§ 8.2.4](#824-the-fleet-health-object)) | [§ 2.2](#22-fail-posture-per-path) |
 | Fold visibility lag | 2 s | **Derived** — ~3 orders of magnitude above the ingest transaction (one multi-row `INSERT` of ≤ 200 events plus one `batches` row), which is what makes "the transaction that assigned this id has finished" true rather than hoped; an ingest transaction past 2 s is a slow-query alarm in its own right | [§ 6.5](#65-the-fold) |
 | Compaction ceiling | 15 min | **Derived** — the ordinary orphan ceiling reused, because a compaction is a harness operation of the same order as a tool call and reusing the number keeps one home for it | [§ 4.6](#46-every-open-fact-has-a-ceiling) |
@@ -4337,6 +5139,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | **Fixture arity** | a fixture described as "§ N's *k* events" against § N's own row count | **tool-checked** |
 | **Retention chain** `8 < 10 < 14` | the three numbers extracted from their one home each, as an inequality | **tool-checked** |
 | **§ 10's trace** | delta count and transition count re-derived from the table's own columns | **tool-checked** |
+| **`feed.close` reason closure, and the ruling the reasons carry** | the reason set re-derived from every `feed.close{reason:"…"}` this document writes, held against [§ 8.3](#83-the-websocket-delta-feed)'s declaring row **and against the size that row states**; then the three sites that state card#9287's close rule — [§ 2.2](#22-fail-posture-per-path)'s two stream rows, [§ 9](#9-read-side-authentication)'s re-check and [§ 8.3](#83-the-websocket-delta-feed)'s handler loop — each required to name `feed.close{reason:"unavailable"}`, so a site that reverts to a stream surviving the outage stops naming it and reds | **tool-checked** |
 | The store sizing model (row costs, index entry sizes) | — | **hand-verified**: it needs a provisioned host to measure, and [§ 6.8](#68-sizing) says so |
 | Every **Cited** row's agreement with D1 | — | **hand-verified**: the tool checks the number's presence at its D2 home, not its truth at D1's |
 
@@ -4364,9 +5167,9 @@ review can reverse it deliberately rather than discover it later.
 | 6 | **Visit in `events.id` order behind a 2 s visibility lag, apply with `(event_time, seq_epoch, seq)` last-write-wins** | order the cursor by `(seq_epoch, seq)` | `seq` can have permanent holes ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over it can wait forever for an event that will never arrive. `events.id` is **not** gapless and the cursor does not need it to be — what it needs is that no row at or below it becomes visible afterwards, which the lag buys for the reading advance and a guarded write buys for the purged-window one ([§ 6.5](#65-the-fold)) | three `applied_*` columns on every projection row (~40 B), and derivation is ≥ 2 s behind the wire |
 | 7 | **The comparator includes `seq_epoch`** | `(event_time, seq)` exactly as `D2-MUST` #4 words it | `seq` restarts at a new epoch, so the literal two-part key is not a total order across a reset. The three-part key reduces to it whenever the epoch is constant, which is every comparison but one | none functionally; it is a wording divergence from D1 and is filed as such ([§ 14](#14-open-questions-for-the-review-loop) item 4) rather than left to be discovered |
 | 8 | **The feed's ordering key is a server-minted `state_version`, not `(seq_epoch, seq)`** | order deltas by the wire key | State transitions are also minted by rules with **no wire event** — orphan closes, staleness, ceilings, quiescence. Those carry no `seq` and there is no honest value to invent. A `seq`-ordered feed could not sequence precisely the transitions that fire when a seat goes quiet | two ordering keys in the system, which is why [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states the division explicitly and the snapshot carries the wire key as provenance |
-| 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
-| 10 | **The live feed is browser-only; machine consumers poll REST** | authenticate the socket with an `mzr_` token too | A long-lived socket needs revocation *on an open connection*, which is a mechanism nobody has asked for; the known machine consumer's decision cadence is minutes | a future consumer needing sub-second fleet state gets polling latency; reversing this means specifying socket re-authorization, not opening a port |
-| 11 | **REST carries the compatibility discipline; the WebSocket does not** | apply `docs/VERSIONING.md § Wire compatibility` to both | Only REST has a consumer that upgrades on someone else's schedule. An N/N-1 window on a channel whose two ends ship in one act is an obligation nobody can exercise, and therefore one nobody maintains | if the delta feed ever gains an independent consumer this is wrong — which is a checkable condition, stated in [§ 8.1](#81-two-surfaces-two-compatibility-postures) as the trigger |
+| 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat). `feed_outbox` (card#9287) is not that buffer: a stream never starts below the head it connected at and `Last-Event-ID` is never written ([§ 8.3](#83-the-websocket-delta-feed)) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
+| 10 | **The live feed is browser-only; machine consumers poll REST** — ⚠ **the reason changed on card#9287 and the decision did not** | authenticate the stream with an `mzr_` token too | Until card#9287: a long-lived socket needs revocation *on an open connection*, which was a mechanism nobody had asked for. Since: the stream re-checks its session every 15 s ([§ 9](#9-read-side-authentication)) and could re-check a token the same way, so the blocker is gone — and admitting machines is an authorization ruling with its own costs (a worker per consumer, a rate limit that means nothing on a stream) that nobody has made; [§ 14](#14-open-questions-for-the-review-loop) item 15 holds it | a future consumer needing sub-second fleet state gets polling latency until item 15 is ruled; reversing this is now one row here, one tick check and one ruling — not a mechanism |
+| 11 | **REST carries the compatibility discipline; the stream does not** | apply `docs/VERSIONING.md § Wire compatibility` to both | Only REST has a consumer that upgrades on someone else's schedule. An N/N-1 window on a channel whose two ends ship in one act is an obligation nobody can exercise, and therefore one nobody maintains | if the delta feed ever gains an independent consumer this is wrong — which is a checkable condition, stated in [§ 8.1](#81-two-surfaces-two-compatibility-postures) as the trigger |
 | 12 | **`events` is not partitioned** | RANGE partition on `received_at` for O(1) purge by `DROP PARTITION` | MariaDB requires every unique key to contain every partitioning column, so `uq_dedup` would become `(seat_ref, event_id, received_at)` — under which a re-sent event on a later day no longer conflicts and **`D2-MUST` #3's dedup silently stops working**. A cheap purge is not worth the guarantee it would break | purge is bounded `DELETE`s with a wall-clock budget instead, and `purge_backlog_rows` says when that stops keeping up |
 | 13 | **`data` stays opaque JSON; the fold projects every field the state model reads** | generated/stored columns or functional indexes over `data` | One home per fact, and a projection change needs no `ALTER` on the largest table — just a rebuild. Indexing into a JSON column would make the log's shape part of the query plan | the projections must be kept in step with D1's field tables, which is what [AT-D2-10](#at-d2-10-rebuild-equals-fold) and the fixtures are for |
 | 14 | **ULIDs stored as `CHAR(26) ascii_bin`** | `BINARY(16)` | 10 B/row cheaper is ~0.1 MB/seat/day against every diagnostic query needing a conversion function, on a store whose total is single-digit gigabytes. Legibility wins where storage is not scarce | ~1.4 % of the store |
@@ -4399,8 +5202,11 @@ review can reverse it deliberately rather than discover it later.
 | 41 | **The building surface is its own REST prefix, `/api/building/*`, browser-only — not a fleet endpoint and not a snapshot member** ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | a fifth row in [§ 8.2](#82-rest)'s table; `installs[].map_version` and the layout as additive snapshot members; the layout inlined with the page and only the map fetched | An authored document is not a fact the fleet reported, and putting it on the fleet plane would make it look like one ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — and the fleet plane has a machine consumer with a support window that furniture must not be billed to. A snapshot member would put a designer's bytes on every seat of every snapshot, which is (c)'s cost under another name. Inlining the layout with the page while fetching the map from an endpoint gives one building two delivery paths, which is the *which of the two am I looking at* question that section refuses | two more routes behind one gate, and a client that fetches three things on connect instead of one. If a machine consumer ever wants the map, [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s third row says which row it moves to and what that costs |
 | 42 | **A client learns that a map or the layout changed from a feed notification carrying the new version, and then fetches — never by polling, never by `fleet.reload`, and the message never carries the document** ([§ 8.3](#83-the-websocket-delta-feed), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | poll `/api/building` on a cadence; publish `fleet.reload` on every save; carry the document on the message; a `private-building` channel of its own | Polling is N seconds of a wrong building per save and a request per client per N seconds for a document that changes on a designer's schedule. `fleet.reload` stops delta application and demands a reload, which is the right response to a deploy and the wrong one to furniture. The document cannot ride the message: 512 KiB against an 8 KiB bound. A channel of its own is one more subscription and one more authorization for two messages that already have a home — both ride every channel, as the heartbeat does — `room.map` too, because the client's subscriptions are the snapshot's installs and the room just drawn may have no seat reporting, so its own channel may have no listener | a client in polling mode (F1) sees neither message and holds the old building until it reconnects, stated in § 8.7 rather than met on a floor; and both messages fan out to every channel, which at 50 installs is 50 publishes per save — an operator act, so bounded by a person — and a client holding N installs receives N copies and fetches once, by version. **And `room.map` spends a property**: it is the one message carrying another install's `install_id` onto a channel, so a future per-install ACL ([§ 14](#14-open-questions-for-the-review-loop) item 7) must filter it per subscriber or move it to the channel this row declined — and the fleet-wide `fleet{}` on every channel is that ACL's other unanswered question, recorded on that item beside it |
 | 43 | **Recovery is an append-only revision log: every save is a revision, a restore is a forward revision that copies an older one, a removal is a revision with no document, and nothing is ever purged** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | *the database is the record* — the current row and nothing else; a ring of the last N revisions; export-only, with the repository as the one history | The ruling owes an answer on recovery and refuses the default. The current row alone is what the console shipped with (card#9085) and it loses a layout on the first bad save. A ring bounds a population that is already bounded by a person pressing *save* and would purge exactly the revision someone wants back. Export-only puts the history where an operator has to remember to put it. Append-only with restore-as-forward keeps the log a log: nothing rewrites it, and *undo* is a row rather than a deletion | the store grows by one document per save, forever ([§ 6.7](#67-retention-and-purge)) — costed in § 6.11 and small; and **review is not recovered**, said in that section's own table rather than implied by the word *revisions* |
-| 44 | **One shipped default map, `resources/floor/default.tmj`, is what every room renders until it is authored — and there is no per-room shipped tier** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) | `resources/floor/<install_id>.tmj` per room, then the default; seed the store from vendored files at first boot; no default — an unauthored room draws every desk in the overflow row | A per-room shipped file is a third answer to *where does this room's map come from* on top of *authored* and *default*, and the first question anyone asks of a wrong room is which of the three they are looking at. Seeding is a write-site with an *already seeded?* state of its own. No default draws a new install as a room full of overflow, which is legal and honest and a bad product for the case [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) exists to make good — provisioning an install renders it without a deploy | card#7341's floor-v1 map — still that card's to author; its tileset pull (#107, 2026-09-12) vendored **no map** — lands at this path rather than at the per-room `resources/floor/aimla.tmj` the reversed ruling declared for it. Nothing is renamed, because the path moves before any file exists at either; `verify-floor.py` holds the tree to § 10.3's declared path in both directions, so a map landing at the old path reds by name in every state: CONTRADICTED while § 10.3 still declares the absence, MISPLACED after it — instead of the default, or beside it ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states the branches) |
+| 44 | **One shipped default map, `resources/floor/default.tmj`, is what every room renders until it is authored — and there is no per-room shipped tier** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) | `resources/floor/<install_id>.tmj` per room, then the default; seed the store from vendored files at first boot; no default — an unauthored room draws every desk in the overflow row | A per-room shipped file is a third answer to *where does this room's map come from* on top of *authored* and *default*, and the first question anyone asks of a wrong room is which of the three they are looking at. Seeding is a write-site with an *already seeded?* state of its own. No default draws a new install as a room full of overflow, which is legal and honest and a bad product for the case [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) exists to make good — provisioning an install renders it without a deploy | card#7341's floor-v1 map lands at **this** path rather than at the per-room `resources/floor/aimla.tmj` the reversed ruling declared for it, and nothing is renamed because the path moved before any file existed at either. ⛔ **Whether a map is vendored at it is not restated here.** An earlier revision of this cell said the map was *still that card's to author* and that the tileset pull *vendored no map*; both were false the day card#9269 authored one (`PupFuzz/mezzanine#115`), which is how a state written into a cell drifts. Re-derive it — `git ls-files resources/floor` — and note that `verify-floor.py` holds the tree to § 10.3's declared path in both directions, so a map landing at the old path reds by name in every state: CONTRADICTED while § 10.3 still declares the absence, MISPLACED after it — instead of the default, or beside it ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states the branches) |
 | 45 | **The floor plan — a room's position and a floor's hallway — rides the layout document: no new table, no new `authored_revisions.kind`, no new endpoint and no new message** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed); the plan's shape is [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s, card#9292) | a `floor_plan` revision kind with a subject of its own; `GET /api/building/floors/{floor}/hallway`; a `floor.plan` message | A revision subject and an endpoint both need a key, and a floor's key is derived and moves when a lower-sorting room is added ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — a document keyed by it has to move when it does, its history split across subjects on every re-key. Inside the layout the plan has the layout's revisions, its restore, its diff, its `building.layout` and its one fetch for free, and the reason maps were given revisions (row 43) is satisfied by inheritance rather than by a second mechanism | `GET /api/building` carries every hallway inline on every connect, and the layout document — one revision per save — grows by every hallway toward the 512 KiB write bound: a building of many large hallways meets it at a save, refused by name. And a room map's write now reads the layout for the overlap check ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), a second table in that transaction |
+| 46 | **The feed's transport is native Server-Sent Events served by PHP-FPM — no daemon, no broadcasting package, no protocol library, no websocket-capable proxy** ([§ 8.3](#83-the-websocket-delta-feed)). ⭐ **Operator ruling, 2026-09-12, card#9287**, reversing the Reverb pin on the fact that the feed is one-way | **(1)** install Reverb by downgrading guzzle 8.1 / psr7 3.1 / promises 3.0 to their previous majors — a configuration the framework declares supported, inert for this app's code, reversible the day Reverb moves; **(2)** wait for Reverb to widen its pin — issues disabled, no branch, no timeline; **(3)** a hosted broadcaster — a data-governance decision made by default, the fleet's activity picture transiting a third party; **(4)** a fork of Reverb with the pin widened — verified to resolve and pass its own suite, costing a fork to rebase forever; **(5)** the runner-up, Centrifugo — Apache-2.0, current, a unidirectional SSE transport of its own, the one candidate with a verified byte bound on a slow consumer, costing a daemon | Every option on the card that priced the four was an answer to *how do we keep a Reverb-shaped thing*; the question was *what does the feed require*. It requires server→client only, a session-gated read, and per-message publish. SSE from the framework's own `eventStream()` is those three with nothing to install, nothing to supervise, nothing to proxy, an on-connect `fleet.health` that was previously *not built and cannot be*, and a revocation re-check that was previously the reason the feed was browser-only. What it costs is priced under § 8.3 — a worker per browser, an outbox write per message, ≥ 2 s of delivery latency, two host conditions that are requirements and not assumptions — and the two things on the card's F1 that this transport does **not** provide: a count-or-bytes backpressure bound and a `resync_required` close frame, replaced by a time bound and a last message ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). ⚠ **And a correction to that F1, recorded where the ruling is:** it said the bound was *provided by no candidate transport* — true of the four it priced, false of the field. Centrifugo bounds it (`centrifuge/writer.go:299-301`, `client.queue_max_size`, disconnect 3008) and Mercure bounds it (`localsubscriber.go`, `outBufferLength = 1000`), both read at source on the card's 2026-09-12 comment. The claim that survives is that no candidate provides exactly *256 messages or 512 KiB closed with `resync_required`* — and under SSE that exact shape has no referent anyway. The sentence lives on the card and nowhere in this repository (audited by grep for its shape across every design document); it is corrected here because this row is where the ruling it misled is recorded | **switch to the runner-up if** the host cannot stream from FPM — R1 or R2 unmeetable — or one worker per browser is judged unacceptable at the fleet's real browser count, or the design grows a client→server need on the feed. **Reversing to Reverb** re-imports the pin, the daemon, the proxy module, the on-connect hook that does not exist, and the § 2.1 gap; the message table, the envelope and the snapshot protocol are unchanged by this row and survive either way, which is what bounds the reversal at the transport section rather than the document |
+| 47 | **Fan-in is a `feed_outbox` table polled at the stream's own 250 ms tick — transient, retained 60 s, never resumed from** ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge), [§ 8.3](#83-the-websocket-delta-feed)) | Redis pub/sub between the daemons and the handlers; an in-process channel in a daemon of the feed's own; no fan-in — each handler recomputes from `seat_state` on a timer | Redis is not in this tree — no `predis`, no `ext-redis` — and the host's Redis is unknown, so a design resting on it would rest on an assumption this document refuses to make. A daemon of the feed's own is the thing this ruling removed. Recomputing from `seat_state` per stream loses the messages that are not state — `seat.retired`, the coordination objects, the building notifications. A table is the one primitive every writer here already has a transaction open on, and it makes [§ 6.5](#65-the-fold)'s *enqueues a delta in the same transaction* literally true | a write per message, retained a minute; four index seeks per second per open stream; and one visibility lag of delivery latency, all priced in § 8.3. If Redis is ever provisioned and read into this tree, the outbox becomes the durable half of a pub/sub and the tick becomes a subscription — a migration of one read loop, not of the contract |
+| 48 | **Two host conditions — R1, the proxy must not buffer the stream; R2, the FPM pool must hold a worker per browser and release a dead one — are declared as checked deploy requirements with named observables, never assumed** ([§ 8.3](#83-the-websocket-delta-feed)) | assume them and let the first deploy find out; design around them silently — a short stream lifetime the handler ends on a timer, or a chunked-polling fallback | Neither condition can be established from this repository, and a design that assumed either would be reporting a clean that nobody measured. Designing around them silently would cost every browser a reconnect-and-snapshot on the handler's timer, to hedge a host fact an operator can check in one command. Declaring them with a check and an observable is what lets a false one be found on the day it is false, by name | a deploy that skips the checks and meets neither: R1 false renders every floor *feed down* against a healthy fleet with REST green; R2 false takes the console down with the fleet healthy. Both are named in [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19/F20 so the symptom is recognisable |
 
 ---
 
@@ -4492,7 +5298,9 @@ D1's: they need an operator answer, a proposal document, or D3.
 
 7. **⇢ Operator — is fleet-read all-or-nothing?**
    Today any MFA-authenticated user and any `fleet_read` token sees every install
-   ([§ 9](#9-read-side-authentication)). The channel and endpoint shapes are per-install so an ACL has
+   ([§ 9](#9-read-side-authentication)). ⚠ **The two paragraphs below predate card#9287 and say
+   *channel* where the feed no longer has one; the ⭐ paragraph at the end of this item is the current
+   attachment point and supersedes them.** The endpoint shapes are per-install so an ACL has
    somewhere to attach. **Blocks:** nothing while every install belongs to one operator.
    **Closes it:** a ruling, ideally before a second organisation's install reports in.
    ⚠ **A second cost joined the ruling on 2026-09-12 (card#9208's reversal):** [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
@@ -4508,9 +5316,15 @@ D1's: they need an operator answer, a proposal document, or D3.
    was — on the channel, **and on the fleet-wide snapshot and health endpoints, which take no
    per-install parameter** ([§ 8.2](#82-rest)) and would filter `installs[]` per caller — three
    edits, one of them a design answer, and it is written here so the ruling is priced with them.
+   ⭐ **Under one fleet-wide stream (card#9287) the ACL's attachment point on the feed is the handler's
+   per-subscriber filter ([§ 8.3](#83-the-websocket-delta-feed), [§ 9](#9-read-side-authentication)),
+   not a channel:** every `feed_outbox` row carries its `install_id`, or `NULL` for fleet-wide, so the
+   filter on `room.map` this item priced is a predicate over that column, and the `fleet{}` question is
+   the same product question over the `NULL` rows. The three edits stand; the first of them moved from
+   *a channel per install* to *a predicate in one place*.
 
 8. **✅ CLOSED — a D2 verifier exists and ships with this document.**
-   `tools/design/verify-fleet-state.py` mechanises **eleven** guard classes (G1–G11), listed with their
+   `tools/design/verify-fleet-state.py` mechanises **twelve** guard classes (G1–G12), listed with their
    status in [§ 12](#12-every-number-and-where-it-comes-from); it is a separate script and D1's two
    verifiers are unmodified. It runs green on this document, and every check in it has been watched
    failing against a planted defect.
@@ -4612,6 +5426,31 @@ D1's: they need an operator answer, a proposal document, or D3.
     are visible from this document rather than only from D1.** If the objects are then served over
     [§ 8.2](#82-rest)'s REST surface, D1 § 18.7's enum-classification obligation attaches at that
     publication — the trigger is the act, not a review round.
+
+15. **⇢ Operator — may a machine consumer hold the stream, now that revocation on an open connection
+    exists?** [§ 9](#9-read-side-authentication) refused the live feed to machine consumers because a
+    long-lived connection authenticated by a bearer token had no revocation story; card#9287's stream
+    re-checks its session every 15 s and could re-check an `mzr_` token against `feed_tokens.revoked_at`
+    on the same tick with no new mechanism. **The blocker is removed and the decision is not made**,
+    because they are different things: admitting machines is an authorization ruling with costs of its
+    own — one FPM worker pinned per machine consumer under R2's arithmetic, a 120 req/min token limit
+    that bounds nothing on a stream, and the all-or-nothing fleet read granted to a credential rather
+    than a person. **Blocks:** nothing — the known machine consumer polls REST at a cadence of minutes
+    and is served exactly. **Closes it:** a ruling; if yes, one row in § 9's surface table, the token
+    re-check on the tick, and a per-token stream cap, in one change.
+
+16. **⇢ Operator — a floor left open re-authenticates every `SESSION_LIFETIME`; is that the product?**
+    [§ 9](#9-read-side-authentication)'s 15 s re-check reads the session from the store and deliberately
+    does **not** refresh it, so an open stream does not keep a session alive: a floor on a wall asks for
+    MFA again 120 minutes after it connected, every time. The alternative — the tick touching
+    `last_activity` — makes an unattended tab immortal and spends an idle-expiry property on the screen
+    most likely to be unattended, which is why it is not taken here. **Blocks:** nothing; the floor
+    renders [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 correctly and an operator
+    signs in. **Closes it:** a ruling, with three shapes priced — a longer lifetime for this route only,
+    a kiosk credential with its own expiry, or a re-auth that restores the stream without blanking the
+    floor. ⚠ The number is **this application's configuration, not a constant**: it is
+    `SESSION_LIFETIME` in `server/.env`, and a deployment that changes it changes this item's answer
+    without touching this document.
 
 ---
 
@@ -4732,16 +5571,16 @@ everything from step 3 onward.
 |---|---|---|
 | 0 | the pinned test database, the paired `phpunit.xml` entries and the resolved-value guard | **[AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)** RED (delete one half of a pin under an export — NOT the hostile export alone, which correctly passes) then GREEN — first, because every test below runs against a database, and a suite that cannot prove its isolation must not run |
 | 1 | migrations: `installs`, `seats`, `events`, `batches` | the ingest can write and the dedup key holds — [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) |
-| 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens` | schema only |
+| 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens`, `feed_outbox` | schema only |
 | 3 | `project()` — the per-kind projections, with the LWW comparator | [AT-D2-11](#at-d2-11-out-of-order-batches-converge) |
 | 4 | `derive_activity()` + link states + `render_state` | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), **[AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle)** — the gate on trusting the derived signal at all — [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits) |
 | 5 | `mezzanine:fold` — cursor, transaction, claim, visibility lag, poison rule | [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart), [AT-D2-10](#at-d2-10-rebuild-equals-fold), [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) |
 | 6 | `mezzanine:rebuild` | [AT-D2-10](#at-d2-10-rebuild-equals-fold) |
 | 7 | `mezzanine:sweep` — the seven time-derived jobs [§ 2.1](#21-processes) lists, which is their one home | [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle), [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy), [AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
-| 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
-| 9 | Reverb channel, deltas, coalescing, feed heartbeat, backpressure | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others) |
+| 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — **its REST, token and MFA legs only; every leg that opens a stream gates step 9, where the handler they drive is built** — [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
+| 9 | the stream handler and `feed_outbox` — the on-connect `fleet.health`, deltas in `id` order behind the visibility lag, the feed heartbeat, the stall bound, the session re-check, `mezzanine:feed-reload`; `bin/deploy.sh`'s edit (retire the Reverb unit, add `mezzanine:feed-reload` **before** the FPM reload). ⛔ **The R1/R2 ini gate is NOT in this row, and card#9300 is its prerequisite** (card#9287, maintainer round): [§ 8.3](#83-the-websocket-delta-feed) R1 rules that the commands are owed *"on a host where they can be run, and seen to fail once against a deliberately broken proxy, before they are trusted"*, and that neither `output_buffering` value may be *"written into a gate that refuses a deploy"* until card#9300 measures it — so this row ordering that gate anyway was R1's own rule broken by the document that states it, on the strength of instruments the same section had disqualified. Until the measurement lands, R1's and R2's conditions are the **operator runbook's** and this row builds neither into `bin/deploy.sh`; and the retirement of the previous transport's wiring. ⛔ **The retirement's blast radius is larger than the three files an earlier revision of this row named, and two of this row's own gates run on what it deletes.** Re-derive the set rather than trusting a figure — `grep -rln -i broadcast --include=*.php server --exclude-dir=vendor --exclude-dir=node_modules` — and note that the grep is not the audit ([canon #7](../../CLAUDE.md)): `tests/Feature/Feed/FeedTestCase.php` installs a `CapturingBroadcaster`, and the classes that INHERIT it (`grep -rl 'extends FeedTestCase' server/tests` — re-derive) do not contain the search term. Named because each needs a decision, not just a deletion: `bootstrap/app.php`'s `->withBroadcasting(...)` is the call that registers `/broadcasting/auth` at all; `app/Events/SeatRetired.php` carries `ShouldBroadcastNow` **outside** `app/Feed`; the tests that assert the MFA stack **on `/broadcasting/auth`** — `git grep -ln "broadcasting/auth" -- server/tests`, **re-derived and deliberately not listed**, because the list this row carried hand-named three and the grep returns four, the missing one being a `Feature/Feed` test of the very surface this step builds — carry the assertion that must MOVE to the stream route rather than be deleted with it. ⛔ **Run the grep; the list was written two sentences after this row states the derive-don't-list principle, and being wrong about the set here is being wrong about what the retirement leaves unguarded** — `routes/channels.php`'s own comment says it must not be removed, and it is the only thing standing between the fleet's activity picture and an unauthenticated reader. ⭐ **Every test that reaches the broadcaster must be re-pointed before it goes, and the set is stated here as a DERIVATION rather than as a list, because a list in this row was already wrong once**: re-point every file `grep -rln '$this->wire->' server/tests --include=*.php` returns, and expect every class `grep -rl 'extends FeedTestCase' server/tests` returns to fail at `setUp()` regardless — `FeedTestCase::setUp()` constructs the broadcaster for all of them, whether or not they touch it. ⛔ **Run both greps; do not build from a set written here.** The `-i broadcast` grep above does not reach them: a test can drive `$this->wire` and never spell the word, which is exactly how an earlier revision of this row came to name AT-D2-7 and AT-D2-8 alone and miss the rest. Under SSE these tests read `feed_outbox` rows and a consumed `text/event-stream`, not a captured broadcast; keeping `CapturingBroadcaster` alive to hold them green would leave them testing retired code — a green over a mechanism nobody reached, which is the posture this card exists to refuse. ⚠ **ORDERING — AT-D2-23 is in that set and step 11 gates on it**, so this row must not delete the broadcaster while a later step's gate still needs it: either re-point AT-D2-23's test HERE, so step 11 runs against the re-pointed one, or sequence the deletion after step 11. Step 8 gates on AT-D2-23 too and runs before this row, so that test has to be green on both sides of the deletion — which is the argument for re-pointing it here rather than re-sequencing | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others), **[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — its stream legs, which step 8 scopes out of its own gate because the handler does not exist until this row**, [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) |
 | 10 | `mezzanine:purge`, the size alarm, `fold_lag` fleet health | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them), [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) |
-| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
+| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed. ⚠ **And it therefore DEPENDS on what step 9 deletes**: its gate AT-D2-23 is one of the tests that drives step 9's `CapturingBroadcaster`, so step 9 must leave that test runnable — re-pointed, not deleted with the class — or this row has no gate left to run. Step 9 states the same hazard at the deletion | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both

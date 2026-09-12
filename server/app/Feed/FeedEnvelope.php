@@ -27,20 +27,23 @@ use Illuminate\Broadcasting\PrivateChannel;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ TRANSPORT — WHAT IS BUILT AND WHAT IS NOT, STATED SO NOTHING READS AS MORE THAN IT IS.
  *
- * § 8.3 pins the transport to **Laravel Reverb**. `laravel/reverb` IS NOT INSTALLED, and it is
- * not installable on this tree today: every published version (through v1.11.1) requires
- * `guzzlehttp/psr7 ^2.6`, and this application has `3.1.0` by way of `guzzlehttp/guzzle 8.1.0`.
- * `composer require laravel/reverb -W --dry-run` resolves only by DOWNGRADING guzzle 8.1.0 →
- * 7.15.5, promises 3.0.2 → 2.5.3 and psr7 3.1.0 → 2.13.1 — three downgrades of the framework's
- * own HTTP stack, which is a dependency decision this card does not take unilaterally.
+ * ⭐ § 8.3 pins the transport to NATIVE SERVER-SENT EVENTS since card#9287 (2026-09-12): one
+ * fleet-wide `GET /api/fleet/stream` served by PHP-FPM, fed by a `feed_outbox` table every writer
+ * inserts into in its own transaction. It USED to pin Laravel Reverb, and this trait's shape is
+ * that earlier pin's: `laravel/reverb` was never installable on this tree (every version through
+ * v1.11.1 requires `guzzlehttp/psr7 ^2.6` against this application's 3.1.0), and the ruling
+ * removed the daemon rather than downgrade the framework's HTTP stack to admit it.
  *
- * WHAT THAT COSTS AND WHAT IT DOES NOT. The message classes are ordinary Laravel broadcast
- * events: they name a channel, an event name and a payload, and the BROADCASTER is configuration
- * (`BROADCAST_CONNECTION`). Nothing in them is Reverb-specific and nothing changes when Reverb
- * lands. What is genuinely absent is the SOCKET — so § 11's AT-D2-15 (per-connection
- * backpressure, a property of the socket server's outbound queue and not of anything an
- * application publishes) has no surface to run against, and is REPORTED rather than approximated
- * with a mock that would only test itself.
+ * WHAT SURVIVES OF THIS TRAIT UNDER THAT RULING, AND WHAT DOES NOT. `broadcastWith()` IS the
+ * § 8.3 envelope, and under the amendment it is what a writer serializes ONCE into
+ * `feed_outbox.message`; `type()` is the row's `t`. `broadcastOn()` and `broadcastAs()` are the
+ * retired transport's channel and event name — there is no channel and no `/broadcasting/auth`
+ * under SSE (the `event:` field is `t`, written from the same value) — and they, the
+ * `ShouldBroadcastNow` markers on the message classes and `routes/channels.php` are retired at
+ * D2 Appendix B step 9, which builds the outbox writer and the stream handler. Until that step
+ * lands this is the pre-amendment wiring, kept because it compiles and publishes to the `log`
+ * broadcaster, and it must not be read as the design. AT-D2-15 now has a surface to run against
+ * — the handler's stall bound — and is built at the same step.
  */
 trait FeedEnvelope
 {
