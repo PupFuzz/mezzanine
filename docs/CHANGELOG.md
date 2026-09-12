@@ -251,8 +251,35 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   population is now stated as the grep that re-derives it, and `FeedTestCase::setUp()`'s inherited
   breakage is named. That exposed an **ordering** defect: AT-D2-23 is in that set and is step 11's
   gate, while step 11 runs after step 9 — so step 9 would delete the class its own successor's gate
-  is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned is NOT
-  touched here** — it is separate design work, and this entry does not claim it settled.
+  is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned was NOT
+  touched by those four fixes** — it was separate design work, and round 4 below is where it is settled.
+  ⛔ **Round 4 settles it, and it was a CONTRADICTION BETWEEN TWO SECTIONS rather than an open
+  product question.** § 2.2's *feed stream, ALREADY OPEN* row rules that a store outage under an open
+  stream keeps it **open as the messenger** — `fleet.health{db:"down"}`, no cursor advance, no end —
+  while § 9 re-checked the session every **15 s by re-reading the user record from that same store**
+  and gave that check only **two** outcomes. A read that *failed* therefore landed on *invalid* and
+  fired `feed.close{reason:"session"}`, and 15 s beats § 8.5's 45 s stall bound, **so § 2.2's ruling
+  was unreachable in practice**: every viewer on the fleet was sent to a sign-in page within 15 s of a
+  store outage — one that **cannot be completed, because authenticating reads the same tables the check
+  just failed on**. § 9's re-check now has **THREE outcomes — valid, invalid, and *unverifiable***,
+  where *unverifiable* is *the check could not reach the store* and is explicitly **not a verdict about
+  the session**: it takes § 2.2's messenger path, the stream stays **open**, and no `feed.close` of any
+  reason is sent. ⭐ **The closed set of three `feed.close` reasons is UNCHANGED** — *unverifiable* is
+  not a fourth member, because nothing is being ended — and `session` keeps exactly its meaning, now
+  said in those words on § 8.3's `feed.close` row, in § 2.1's process-table row, on R2's *declared*
+  sentence and at FLOOR § 9 F3 and § 14 item 5: **the store answered, and said the session or its MFA
+  is gone**. FLOOR § 9 gains **F21** for the mid-stream case it did not carry — F5 covers the
+  **connect**-time one — which **points at F5 for its render rather than restating it** (a restatement
+  drifts) and is **appended, not inserted**, so no existing F-id moves under the cross-references to it.
+  ⚠ **What is NOT resolvable is named rather than engineered around:** while the store is down an
+  *expired* session and an *unverifiable* one are indistinguishable, and an outage outlasting
+  `SESSION_LIFETIME` (120 min here) leaves every open stream in that state. No timer, no heuristic and
+  no client-side guess is specified, because each would be a verdict invented from an absence of
+  evidence — the very defect the third outcome removes. The first re-check after the store answers again
+  resolves it truthfully and ends the stream with `feed.close{reason:"session"}` if the session really
+  had expired: late by the length of the outage, and correct. § 9's *15 s + one 250 ms tick*
+  enforcement bound is therefore now stated as holding **on a re-check that can reach the store**, which
+  is the one existing sentence this change made false.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the

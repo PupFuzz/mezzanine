@@ -160,7 +160,7 @@ checked deploy requirement** rather than a sizing note.
 | **fold** | long-lived daemon (`mezzanine:fold`), supervised | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
 | **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised | every **15 s** | write [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` to `feed_outbox` — **one row, fleet-wide, unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting — ⛔ **but only where the store is readable-but-degraded, and an earlier revision of this row overstated it.** This daemon's publish target is `feed_outbox`, which is in the SAME store ([§ 6.4](#64-ddl)): in a full outage it can write nothing, so it is not the messenger of that outage and this row no longer claims to be. Who tells whom, exactly: a **connecting** browser is told by the handler's on-connect `fleet.health`, a direct yield needing no outbox row ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row); an **already-connected** browser is told by this daemon where the store still takes writes, and otherwise by the heartbeat's ABSENCE, which arms its 45 s dead-feed timer ([§ 8.3](#83-the-websocket-delta-feed)) — the one case where silence is the message, and the reason the heartbeat is unconditional | **a quiet fleet and a dead stream stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a stream with `seat.delta` traffic stays up by accident and a **quiet** fleet's stream — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
-| **feed stream** | HTTP request (PHP-FPM), **long-lived** — `GET /api/fleet/stream`, one per open browser, and a worker pinned for as long as it is open ([§ 8.3](#83-the-websocket-delta-feed)) | polls `feed_outbox` every **250 ms**; re-checks the session every **15 s** ([§ 9](#9-read-side-authentication)) | yield `fleet.health` first — `db: "down"` if the store is unreadable ([§ 2.2](#22-fail-posture-per-path)) — then deliver every outbox row past its cursor that [§ 9](#9-read-side-authentication)'s filter admits, in `id` order, behind [§ 6.5](#65-the-fold)'s 2 s visibility lag; end the stream on `fleet.reload`, on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, or on a failed session re-check, saying which with `feed.close` | that browser's `EventSource` errors and the client re-opens on its 10 s cadence ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1, F3) — every other stream is a separate worker and notices nothing. **What a dead pool looks like is the one failure here that is not the feed's:** with every worker pinned, the snapshot, the health endpoint and the console queue behind the streams, which is § 8.3's requirement R2 and its named observable |
+| **feed stream** | HTTP request (PHP-FPM), **long-lived** — `GET /api/fleet/stream`, one per open browser, and a worker pinned for as long as it is open ([§ 8.3](#83-the-websocket-delta-feed)) | polls `feed_outbox` every **250 ms**; re-checks the session every **15 s** ([§ 9](#9-read-side-authentication)) | yield `fleet.health` first — `db: "down"` if the store is unreadable ([§ 2.2](#22-fail-posture-per-path)) — then deliver every outbox row past its cursor that [§ 9](#9-read-side-authentication)'s filter admits, in `id` order, behind [§ 6.5](#65-the-fold)'s 2 s visibility lag; end the stream on `fleet.reload`, on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, or on a session re-check that came back **invalid**, saying which with `feed.close` — never on one that could not REACH the store, which is [§ 9](#9-read-side-authentication)'s third outcome and ends nothing | that browser's `EventSource` errors and the client re-opens on its 10 s cadence ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1, F3) — every other stream is a separate worker and notices nothing. **What a dead pool looks like is the one failure here that is not the feed's:** with every worker pinned, the snapshot, the health endpoint and the console queue behind the streams, which is § 8.3's requirement R2 and its named observable |
 | **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **before** PHP-FPM is reloaded | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait for the streams to go**: a row is invisible to every handler for [§ 6.5](#65-the-fold)'s 2 s visibility lag and is delivered on the tick after that, so the command returns no sooner than **lag + tick + margin (3 s)**, and then polls the stream pool's active-process count until it reaches zero **or a 30 s ceiling elapses, whichever comes first — at the ceiling it returns success and logs the residual count**, because a deploy must not block indefinitely on one wedged stream and FPM's own reload escalation is the backstop for whatever is left (R2's `process_control_timeout`). ⚠ *Preferably* stood here in an earlier revision, which is not a buildable instruction: one builder writes `sleep 3`, another blocks forever, and the two differ on whether a single frozen client can stall every deploy. Every open stream then delivers it and **ends** ([§ 8.3](#83-the-websocket-delta-feed)), which is what returns the pinned workers before the reload asks for them — ⚠ a deploy that writes the row and reloads in the next line reloads while every stream is still inside the lag window, returns no worker by this path, and falls back on FPM's own escalation, whose behaviour at the default `process_control_timeout` this document marks UNVERIFIED (R2) | streams keep serving the previous release's code until FPM's own reload escalation finishes them (R2's `process_control_timeout`), and each client learns of the deploy from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) rather than from a message that says so — later, and by the failure path instead of the announcement |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
@@ -2980,7 +2980,7 @@ reconnect cadence is the client's ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapsho
 | `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
 | `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, written on commit of the revision it announces, carrying the room's `install_id`, and delivered on the one stream — a client's rendered set is the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, which under the retired per-install channels was why this row had to fan out to every channel; the stream has nothing to fan out to | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
 | `building.layout` | server → client | the building layout — the floor plan included, card#9292 — was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), one row on the stream, as `feed.heartbeat` is — a layout change concerns every floor | `layout_version`, `at` |
-| `feed.close` | server → client | the handler is ending this stream **on its own decision**, and says why, and the set is **exactly three**: `stalled` — a tick did not complete within [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s bound; `session` — [§ 9](#9-read-side-authentication)'s 15 s re-check found the session or its MFA no longer valid; `unavailable` — the **connect** read of `feed_outbox` failed, so this stream never had a cursor to start from (a **tick** read that fails does not end the stream and does not appear here — the stream stays open as the messenger of the outage, [§ 2.2](#22-fail-posture-per-path)). `unavailable` is treated by the client exactly as an ordinary drop: reconnect on the 10 s cadence. A stream that ends with no `feed.close` ended for a reason the server did not choose (a worker killed, the proxy, the network), and the client treats the two alike except that `session` sends it to sign in rather than to reconnect ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3, F7) | `reason`, `at` |
+| `feed.close` | server → client | the handler is ending this stream **on its own decision**, and says why, and the set is **exactly three**: `stalled` — a tick did not complete within [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s bound; `session` — [§ 9](#9-read-side-authentication)'s 15 s re-check **reached the store, and the store said the session or its MFA is gone**. ⛔ A re-check that could not REACH the store is § 9's *unverifiable* outcome, which is not a verdict about the session: it ends nothing and appears nowhere in this set, exactly as a failed **tick** read does; `unavailable` — the **connect** read of `feed_outbox` failed, so this stream never had a cursor to start from (a **tick** read that fails does not end the stream and does not appear here — the stream stays open as the messenger of the outage, [§ 2.2](#22-fail-posture-per-path)). `unavailable` is treated by the client exactly as an ordinary drop: reconnect on the 10 s cadence. A stream that ends with no `feed.close` ended for a reason the server did not choose (a worker killed, the proxy, the network), and the client treats the two alike except that `session` sends it to sign in rather than to reconnect ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3, F7) | `reason`, `at` |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
 [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
@@ -3117,9 +3117,18 @@ GET /api/fleet/stream                       -- session + MFA middleware (§ 9); 
          cursor = row.id
          if row.t == "fleet.reload": return                 -- terminal (§ 2.1's feed reload)
      if now - auth_done >= 15 s:
-         if not session_and_mfa_still_valid(reader):        -- re-READ from the store (§ 9)
-             yield feed.close{reason:"session"}; return
-         auth_done = now
+         switch session_and_mfa_recheck(reader):            -- re-READ from the store (§ 9), and it
+             case valid:        pass                        -- has THREE outcomes, not two
+             case invalid:      yield feed.close{reason:"session"}   -- the store ANSWERED: gone
+                                return
+             case unverifiable: yield fleet.health{db:"down"}        -- the store could not be REACHED:
+                                            -- nothing was learned about the session, so DO NOT close
+                                            -- (§ 2.2's already-open row).  same at-most-once-per-outage
+                                            -- suppression as the tick read above, and the cursor is
+                                            -- untouched here as it is there
+         auth_done = now                    -- re-stamped on ALL THREE outcomes: the auth interval is a
+                                            -- clock, not a result, so an outage costs one re-check
+                                            -- attempt per 15 s and not one per 250 ms tick
 ```
 
 ⛔ **Every `yield` above is `new StreamedEvent('mezzanine', $json)` — a bare value is a DIFFERENT
@@ -3293,7 +3302,7 @@ untouched, which is what distinguishes it from R2.
 **R2 — a DEDICATED PHP-FPM pool serves `/api/fleet/stream`, sized in concurrently open STREAMS, and
 the host must take a dead one back.** *Declared:* a stream is a request that does not end —
 the handler calls `set_time_limit(0)` and returns only on `fleet.reload`, on the stall bound, on a
-failed session re-check, or when a write fails because the client is gone. *What this repository
+session re-check that came back **invalid** ([§ 9](#9-read-side-authentication)), or when a write fails because the client is gone. *What this repository
 cannot see:* the pool's `pm.max_children`, `request_terminate_timeout` and `process_control_timeout`.
 *The requirement, in those terms:* the stream route has **its own pool**, and that pool's
 `pm.max_children` ≥ the number of **concurrently open streams** — which is one per browser **tab**, not
@@ -4031,13 +4040,13 @@ not exist: the handshake was authorized once at `/broadcasting/auth` and nothing
 re-ask, which is why machine consumers were refused the socket and why
 [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F7 carried the browser's expiry as a
 residual. An SSE handler is PHP with the store in reach, so **every 15 s it re-runs the check the route's
-middleware ran at connect — the session is live and its MFA enrolment holds — and a failed check ends
-the stream with `feed.close{reason:"session"}`**. ⛔ **It re-READS both from the store**, the session
+middleware ran at connect — the session is live and its MFA enrolment holds — and a check that comes
+back **invalid** ends the stream with `feed.close{reason:"session"}`**. ⛔ **It re-READS both from the store**, the session
 record by its id and the user's MFA enrolment, and never re-inspects the copy the request loaded at
 connect: a re-check of an in-memory session is a check that cannot fail, which is the decoration
 [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) exists to forbid, re-minted inside the fix for
 it
-([§ 8.3](#83-the-websocket-delta-feed)). The lag between an expiry and its enforcement is therefore at
+([§ 8.3](#83-the-websocket-delta-feed)). The lag between an expiry and its enforcement is therefore, **on a re-check that can reach the store**, at
 most **15 s + one 250 ms tick** (the re-check sits at the BOTTOM of the loop body, so it fires on the
 first 250 ms tick at or past the 15 s mark, after that tick's flush) — ⚠ **and "tick" carries two
 values in this document**: the stream's loop tick is 250 ms ([§ 8.3](#83-the-websocket-delta-feed)) and
@@ -4048,6 +4057,68 @@ tick before ran; that window is accepted on the record rather than closed with a
 because a per-message check is a session read per delta at 5.2 msg/s for a property that changes far
 more rarely than that. The same clock answers
 [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 5.
+
+⛔ **The re-check has THREE outcomes and not two — valid, invalid, and *unverifiable* — and
+*unverifiable* is NOT a verdict about the session.**
+
+- **valid** — the store answered, the session is live and its MFA enrolment holds: the stream continues.
+- **invalid** — **the store answered, and what it said is that the session or its MFA is gone**: the
+  stream ends with `feed.close{reason:"session"}` ([§ 8.3](#83-the-websocket-delta-feed)). That is the
+  revocation-on-an-already-open-connection case this re-check was written for, and its meaning is
+  exactly this one.
+- **unverifiable** — **the check could not REACH the store, so it learned nothing about the session.**
+  The stream takes [§ 2.2](#22-fail-posture-per-path)'s *feed stream, ALREADY OPEN* path and **stays
+  open**: `fleet.health{db:"down"}` is the observable — the same message the tick's failed read yields,
+  at most once per outage and not once per tick — the cursor does not advance, and there is **no
+  `feed.close` of any reason**. ⛔ **The closed set of three `feed.close` reasons is unchanged and
+  *unverifiable* is not a fourth member of it**: nothing is being ended, so there is no ending to name.
+  The auth interval is re-stamped on this outcome exactly as on the other two — it is a clock and not a
+  result — so an outage costs one re-check attempt per 15 s rather than one per 250 ms tick.
+
+⛔ **Without the third outcome [§ 2.2](#22-fail-posture-per-path)'s already-open row is unreachable,
+and the arithmetic is what makes it so**: the stall bound is 45 s and this section's auth interval is
+15 s, so on a store outage the re-check always runs first. A re-check with two outcomes lands a failed
+READ on *invalid* and ends every open stream within 15 s of the store going down —
+`feed.close{reason:"session"}`, which sends the client to sign in rather than to reconnect
+([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6/F7) — onto a sign-in page that
+**cannot be completed, because authenticating reads the same tables the check just failed on**. It also
+renders *your session is gone* when what is true is *the store is down*, which is the absence of
+evidence read as evidence of absence, on the surface a viewer's authentication is decided from. The
+render this posture owns is F5's, at
+[FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F21.
+
+**The one posture this does NOT contradict is [§ 2.2](#22-fail-posture-per-path)'s *read-token
+verification* row**, which fails CLOSED — *"there is no posture in which 'we could not check, so we
+allowed it' is correct"* — and the difference is not a carve-out from it. That row is about **granting**
+access at request time to a credential that gates the whole fleet's activity picture, and a **connect**
+under this same outage is that case and is unchanged: the route's middleware checks against the store
+like any other request, and a stream that cannot be authorized is not opened. This outcome is about
+**revoking** access already granted, on a stream that in this exact posture is carrying **no fleet data
+at all** — the cursor does not advance, no outbox row is delivered, and the only message the handler
+emits is `fleet.health{db:"down"}`. A re-check with nothing to protect buys nothing by closing, and
+spends the operator's one remaining instrument for watching the outage.
+
+⚠ **The one case that argument does not cover in those words, named rather than left for a reader to
+find: a session read that fails while reads of `feed_outbox` keep succeeding.** They are two tables in
+one store and usually fail together, which is the posture above — but a lock, a corrupt page or a
+per-table permission can take one and not the other, and then the stream **is** delivering while the
+session cannot be verified. *Unverifiable* still holds it open, and what that costs is stated rather
+than hidden: deltas continue to a session last confirmed valid one auth interval ago, for as long as
+the session read keeps failing. Closing still buys nothing — the credential that would re-authenticate
+is read from the very table that could not be read, so the sign-in cannot complete in this case either —
+and the exposure ends on the first re-check that answers, in whichever direction it answers.
+
+⚠ **What this leaves unresolvable is stated here rather than engineered around: while the store is
+down, an EXPIRED session and an UNVERIFIABLE one are indistinguishable.** If an outage outlasts
+`SESSION_LIFETIME` — **120 minutes** on this application's configuration, below — every open stream is
+in that state, and nothing in the handler can tell which. **No timer, no heuristic and no client-side
+guess is specified for it**, and none would be an improvement: each would be a verdict invented from an
+absence of evidence, which is the defect this third outcome exists to remove, re-minted one layer down.
+What bounds it is that the stream is delivering nothing while it lasts. **The first re-check after the
+store answers again resolves it truthfully**: if the session really had expired, that check returns
+*invalid* and the stream ends with `feed.close{reason:"session"}` then — late by the length of the
+outage, and correct. So the enforcement lag stated above is the lag *while the store is readable*; under
+an outage it is the outage plus one auth interval, and that is the accepted cost of not guessing.
 
 ⚠ **A consequence of re-reading the session that is this design's to state rather than an
 implementer's to discover: an open stream does not keep a session alive, so a floor left open is signed
