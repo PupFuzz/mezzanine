@@ -4,6 +4,7 @@ namespace App\Fold;
 
 use App\Feed\Publisher;
 use App\Ingest\Counters;
+use App\Support\ByteTruncation;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -42,6 +43,18 @@ use Illuminate\Support\Facades\DB;
  */
 class StateRecompute
 {
+    /**
+     * `docs/design/FLEET-STATE.md § 8.2.1`'s `task.title` bound — **BYTES**, and § 6.4's
+     * `seat_state.task_title VARCHAR(120)` is the store sized to hold it rather than a second
+     * statement of it (§ 6.3: the column is deliberately never the binding constraint).
+     *
+     * PUBLIC because `BOARD-TASK.md § 8.4` requires the tier-1 poller to truncate to this same
+     * bound — *"one bound, one place, so the input row and the projection can never disagree
+     * about what the title is"* — and the poller is a separate pull. A second literal there would
+     * be the disagreement that sentence forbids, available the day either number moves.
+     */
+    public const TASK_TITLE_MAX_BYTES = 120;
+
     /**
      * ⚠ THE ONE CALLER THAT PASSES `false` IS `mezzanine:rebuild`, AND THE REASON IS NOT
      * PERFORMANCE.
@@ -545,7 +558,21 @@ class StateRecompute
         }
 
         return [
-            'task_title' => mb_substr($title, 0, 120),
+            // ⛔ BYTES, BY D1 § 7.4's PROCEDURE — NOT `mb_substr`, WHICH COUNTS CHARACTERS
+            // (card#9282). D2 § 8.2.1 declares `task.title` as `≤ 120 B`, and the two branches
+            // above answer from values bounded in the same unit but at DIFFERENT numbers:
+            // `calls.title` arrives at D1's 120-byte title cap, `calls.descriptor` at its
+            // 200-byte one. A character count at 120 therefore does not cut the descriptor
+            // branch AT ALL on a multibyte value short in characters — an accented path, a
+            // non-Latin repo name, an em dash — and up to 200 bytes reached a 120-byte wire
+            // member. Nothing downstream caught it: `seat_state.task_title` is `VARCHAR(120)`
+            // and MariaDB counts VARCHAR in characters too (§ 6.3), so the store is by design
+            // never the binding constraint.
+            //
+            // The procedure is cited rather than re-implemented here: `BOARD-TASK.md § 8.4`
+            // holds the tier-1 poller to the same bound through the same primitive, which is
+            // what makes "one bound, one place" true of the input row and this projection.
+            'task_title' => ByteTruncation::toBytes($title, self::TASK_TITLE_MAX_BYTES),
             'task_source' => 'telemetry',
             'task_ref' => null,
             // NEVER null on this branch, and § 8.2.1 is why it has to be argued: `task.as_of` is
