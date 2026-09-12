@@ -2261,8 +2261,9 @@ all three tables, and one save is one transaction: validate the document — a r
 by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
 states — since card#9292 the floor plan's among them: a placed room's `at`; a planned floor's
 `hallway`, held to `App\Floor\FloorMap`'s rules with its `desks` layer refused rather than required;
-and **two rooms whose footprints would intersect**, computed from each room's current extent — the
-grid of its authored map, else of the default this store's read half answers for it. ⚠ **That last
+and **two rooms whose footprints would intersect** — share a pixel; a shared edge is not an
+intersection, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) — computed from each room's current
+extent: the grid of its authored map, else of the default this store's read half answers for it. ⚠ **That last
 refusal has a SECOND write site**: a room map's save, restore or removal changes the room's extent, so
 on a planned floor it is checked against the current layout in the same transaction and refused by
 name, naming both rooms, before any revision is written — the coupling

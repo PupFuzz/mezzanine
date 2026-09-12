@@ -20,8 +20,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 ## [Unreleased]
 
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
-  report that the configurable unit was the room: the floor is configurable too — *a hallway with
-  5 office rooms*, *a big room and a small room*. D3 § 14 item 19 had asked in what ORDER N rooms
+  report that the configurable unit was the room: the floor is configurable too — a hallway with
+  five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had asked in what ORDER N rooms
   sit and said *Blocks: nothing*; both answers it offered were too small, and it is closed as
   under-scoped from the one-room case. The plan is two members of the floor's layout entry
   (D3 § 4.6): a room's `at` — a position, never a size, because a room's extent is its map's grid
@@ -33,8 +33,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `building.layout` and `GET /api/building` (D2 § 8.7, § 13 row 45). D3 § 13 rows 31–33, row 27
   amended; card#9269 re-scoped to the office's interior, the hallway being the plan's. Both
   operator floors are worked in § 4.6. ⚠ Not built: a room's value in `rooms` becomes a record
-  there, and the shipped `BuildingLayout` refuses `at` and `hallway` by name until Appendix B
-  step 11 — which also owes the code comments and refusal messages the record shape makes stale,
+  there, and the shipped `BuildingLayout` refuses `hallway` by name and a room record as a
+  non-scalar form until Appendix B step 11 — which also owes the code comments and refusal messages the record shape makes stale,
   re-derived by `grep -rn -E "install(_id| id)? =>" server/config server/app server/tests` rather
   than listed here, and not edited here because this PR is design-only.
 - **card#9283** — **Per-field BYTE bounds are now ENFORCED at the ingest; an event carrying a field
