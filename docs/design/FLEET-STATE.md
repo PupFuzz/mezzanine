@@ -3086,6 +3086,8 @@ connect:
 ```
 GET /api/fleet/stream                       -- session + MFA middleware (§ 9); text/event-stream
   set_time_limit(0)
+  -- EVERY yield below is `new StreamedEvent('mezzanine', $json)` and never a bare value.
+  -- The message names are shorthand for that object; see the note under this block.
   yield fleet.health(read the store now)    -- FIRST, before the outbox is opened; db:"down" if the
                                             -- read fails (§ 2.2's stream-connect row)
   cursor    = SELECT COALESCE(MAX(id), 0) FROM feed_outbox   -- ON FAILURE: cursor = 0 is REFUSED
@@ -3119,6 +3121,21 @@ GET /api/fleet/stream                       -- session + MFA middleware (§ 9); 
              yield feed.close{reason:"session"}; return
          auth_done = now
 ```
+
+⛔ **Every `yield` above is `new StreamedEvent('mezzanine', $json)` — a bare value is a DIFFERENT
+wire.** The pseudocode names the message; it does not name the object that carries it, and the
+difference is the whole of the rule the framing paragraph above states. `eventStream()` sets
+`$event = 'update'` and reads an event name off the yielded value **only** when that value is
+`instanceof \Illuminate\Http\StreamedEvent`, whose constructor is `(string $event, mixed $data)`
+(`Illuminate\Routing\ResponseFactory::eventStream()` and `Illuminate\Http\StreamedEvent`,
+laravel/framework v13.26.1, read at source in this tree). So a builder who follows this block
+literally and yields the bare envelope ships `event: update` on **every** message, the client's one
+`addEventListener("mezzanine", …)` ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)) never
+fires, and the floor renders F19 against a stream that opened perfectly — the same failure the
+framing rule exists to prevent, reached by the one route that rule does not close. ⚠ **`$data` is the
+already-encoded JSON STRING**, not an array or an object: the primitive re-encodes only a value that
+is neither string nor numeric, so passing the string is what puts the bytes
+[§ 8.3.1](#831-worked-delta) shows on the wire rather than a re-encoding of them.
 
 ⛔ **`eventStream()`'s third argument is passed `null`.** Its default is the string `'</stream>'`, and
 on the generator's return the primitive writes one more frame — `event: update`, `data: </stream>`
