@@ -2943,8 +2943,8 @@ same-origin request (DOCS-CITED, WHATWG HTML § *Server-sent events*: the fetch 
 request's credentials mode set to `same-origin` unless `withCredentials` is set), so the stream is
 gated by the same session + MFA stack as the page
 ([§ 9](#9-read-side-authentication)); there is no `/broadcasting/auth` and no channel authorization
-callback. **Framing:** each message is one SSE event — `event:` carries `t` and `data:` carries the
-whole envelope, `t` included — but ⛔ **`t` is the SOLE discriminator a client may dispatch on, and an
+callback. **Framing:** each message is one SSE event and `data:` carries the whole envelope, `t`
+included — ⛔ **`t` is the SOLE discriminator a client may dispatch on, and an
 earlier revision of this section said a client "may dispatch on either", which is false against the
 primitive this design pins.** `ResponseFactory::eventStream()` writes an `event:` line for **every**
 message unconditionally, defaulting to the literal `update` when the yielded value is not a
@@ -3230,11 +3230,14 @@ running anything against a stream:**
     says, and reads the CLI's ini file. It could not fail for the setting it named, and it reports a
     pass for an FPM pool carrying the hazard. Measured, not recalled: on this box `php -i` prints
     `output_buffering => 0` while `/etc/php/8.5/cli/php.ini` *sets* `4096`.
-  - `grep -c feed.heartbeat` counts **lines**, and this section's own framing rule puts `t` on both a
-    message's `event:` line and its `data:` line — so a correct stream prints twice the asserted figure.
-    The figure was also phase-dependent: 125 s ÷ 15 s = 8.33, so a correct 125-second window holds
-    **8 or 9** heartbeats depending on the daemon's phase, and an equality against a constant is not
-    satisfiable.
+  - `grep -c feed.heartbeat` counts **lines**, and the figure it would be asserted against is not a
+    constant. Under this section's framing rule `t` is written **once** per message, inside the
+    `data:` envelope — `event:` carries the fixed literal `mezzanine` — so the line count IS the
+    message count; what defeats the leg is that the message count is **phase-dependent**: 125 s ÷
+    15 s = 8.33, so a correct 125-second window holds **8 or 9** heartbeats depending on the
+    daemon's phase, and an equality against a constant is not satisfiable. ⚠ An earlier revision of
+    this bullet deleted the leg for a DOUBLED count instead, reading a framing rule that put `t` on
+    the `event:` line as well; that rule is retired above and the arithmetic is the whole reason.
   - `head -c 400` is exhausted by the response headers before any body byte — the `web` group alone
     sets two encrypted `Set-Cookie`s — so the leg's stated pass criterion was unobservable.
 
