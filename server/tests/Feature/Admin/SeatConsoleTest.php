@@ -28,6 +28,21 @@ use Tests\Feature\Sweep\SweepTestCase;
  */
 class SeatConsoleTest extends SweepTestCase
 {
+    /**
+     * The competing retirement's `retired_at`, spelled as a `DATETIME(3)` — `Clock::FORMAT`,
+     * fractional part included.
+     *
+     * ⛔ THE `.000` IS LOAD-BEARING AND card#9250 MEASURED WHY. This read
+     * `'2026-01-01 00:00:00'`. SQLite hands back the literal it was given, so the round trip was
+     * exact there; MariaDB parses it into the `DATETIME(3)` that `§ 6.4` declares and hands back
+     * `2026-01-01 00:00:00.000`, and the assertion below failed on the first run of the
+     * `php-tests-mariadb` lane. Neither engine is wrong and neither is the application —
+     * `App\Fold\Clock::toMs()` already absorbs both spellings by name, and every wire value goes
+     * through `Clock::wire()`. What was wrong was a FIXTURE that was not a `DATETIME(3)` value,
+     * and writing one removes the engine from the assertion rather than weakening it.
+     */
+    private const COMPETING_AT = '2026-01-01 00:00:00.000';
+
     private function operator(string $email = 'ops@example.com'): User
     {
         return User::factory()->twoFactorConfirmed()->create(['email' => $email]);
@@ -292,7 +307,7 @@ class SeatConsoleTest extends SweepTestCase
             $injected = true;
 
             DB::table('seats')->where('id', $seatRef)->update([
-                'retired_at' => '2026-01-01 00:00:00',
+                'retired_at' => self::COMPETING_AT,
                 'retired_by' => 'first@example.com',
                 'retired_reason' => 'the first act',
             ]);
@@ -309,11 +324,11 @@ class SeatConsoleTest extends SweepTestCase
 
         $this->assertSame('first@example.com', $seat->retired_by, 'who retired a seat is written once');
         $this->assertSame('the first act', $seat->retired_reason);
-        $this->assertSame('2026-01-01 00:00:00', (string) $seat->retired_at);
+        $this->assertSame(self::COMPETING_AT, (string) $seat->retired_at);
 
         $this->assertSame(SeatRetirementOutcome::ALREADY_RETIRED, $outcome->outcome);
         $this->assertSame(
-            '2026-01-01 00:00:00',
+            self::COMPETING_AT,
             $outcome->at,
             'and the caller is told WHEN it was retired — both callers print this value',
         );

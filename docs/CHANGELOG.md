@@ -66,6 +66,14 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   decoration on that engine, green forever and proving the opposite of its claim. Both now ask
   the connected grammar through one shared `Tests\TestCase::wrapTable()` rather than spelling a
   quoting character, so a third site cannot mint it by copying a neighbour.
+  The second run found the second: a fixture wrote `'2026-01-01 00:00:00'` into a `DATETIME(3)`
+  column and asserted the literal back. SQLite returns the string it was handed; MariaDB returns
+  `…00:00:00.000`, which is what `§ 6.4` declares the column to be. **Neither engine nor the
+  application is wrong** — `App\Fold\Clock::toMs()` already absorbs both spellings by name and every
+  wire value goes through `Clock::wire()` — the FIXTURE was not a `DATETIME(3)` value, and now is.
+  Audited for siblings by the shape that produced it (a fraction-less datetime literal in a test):
+  `grep -rnE "'20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'" server/tests server/app`
+  returns that file alone.
 - **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
   ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
   derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
