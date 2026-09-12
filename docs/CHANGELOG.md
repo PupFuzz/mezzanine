@@ -19,6 +19,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9297** — **A heartbeat's `counters: {}` is stored and served as `{}` rather than as the
+  JSON array `[]`** — the READ half of card#9295, one plane downstream.
+  `docs/design/FLEET-STATE.md § 6.4` declares `seat_state.heartbeat_counters` and
+  `heartbeat_predicates` "last heartbeat's … object, verbatim", and **two** associative decodes
+  were erasing that, one per plane: `FoldEvent::fromRow` — so `Projector::heartbeat` re-encoded a
+  stored `{}` into the column as `[]` — and `FleetController::detail`, which decoded the column
+  associatively AGAIN and re-encoded it into § 8.2.3's response, so fixing the fold alone would
+  still have served an array to every consumer. An object went in and an array came out, on a
+  published surface.
+  ⛔ **Fixed at both DECODES and at neither encode site.** After an associative decode `{}` and
+  `[]` are one PHP value and no predicate downstream can recover the difference (`App\Ingest\Wire`
+  measures it), while an `(object)` cast at an encode site converts a genuine wire ARRAY with
+  equal enthusiasm — which is what the two controls in the new test pin: `reporter_degraded`,
+  § 6.4's "D1's 12-member array, verbatim", and a `counters` a seat really sent as `[]` both still
+  serve `[]`. `FoldEvent::$data` is now the `stdClass` tree the wire sent, and all twelve reads of
+  it go through `App\Ingest\Wire::field()` — the SAME primitive card#9295 put the ingest's twenty
+  § 12.1 field reads behind, rather than a second divergent one. Pre-card#9295 rows, which hold
+  `[]` where the wire sent `{}`, still fold: `field()` answers for both shapes.
+  ⭐ **This is also what makes card#9295's `events.data` guarantee observable at all** — until now
+  the column's only reader destroyed the distinction on read, so nothing in the repo could tell
+  whether the guarantee held.
+  ⚠ **One behaviour change beyond the spelling: a heartbeat carrying `"enabled": null` no longer
+  renders the seat *disabled*.** The old line tested `array_key_exists`, so an explicit `null`
+  took the `(bool)` cast to `false` while a missing key stored `null` — and D1 § 6.0 ("a missing
+  key and an explicit `null` are the same thing") was therefore false of this column in the one
+  direction that mints a state, since § 8.2.1 reads `null` as "null before the first heartbeat"
+  and § 4.5 rule 4 renders a stored `false` as *disabled*. Both spellings now store `null`.
+  `heartbeat.selftest` keeps today's behaviour exactly, by an `(array)` cast whose result is never
+  re-encoded — only the failing NAMES leave it, which is the list `selftest_failed` declares.
+
 - **card#9295** — **An event whose `data` is `{}` is now ACCEPTED, and the fix is at the DECODE
   rather than at the check.** D1 § 6.0 — "a missing key and an explicit `null` are the same thing"
   — makes `{}` the legal spelling of an event every one of whose `data` fields is null, and the

@@ -287,8 +287,15 @@ class FleetController extends Controller
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
 
         return [
-            'heartbeat_counters' => json_decode((string) ($state->heartbeat_counters ?? 'null'), true),
-            'heartbeat_predicates' => json_decode((string) ($state->heartbeat_predicates ?? 'null'), true),
+            // ⛔ ASSOCIATIVE DECODE IS OFF HERE FOR THE SAME REASON IT IS OFF IN `FoldEvent`
+            // (card#9297), and this site is the one a consumer actually sees. These two members are
+            // decoded out of the store and RE-ENCODED into the response, so `json_decode(…, true)`
+            // mapped a stored `{}` onto `[]` and served the JSON ARRAY `[]` — undoing the fold's
+            // fix one plane further downstream, and contradicting § 6.4's "verbatim" on the only
+            // surface that publishes these columns. They are the REPORTER's objects passed through;
+            // `stdClass` is what keeps the spelling the seat sent.
+            'heartbeat_counters' => json_decode((string) ($state->heartbeat_counters ?? 'null'), false),
+            'heartbeat_predicates' => json_decode((string) ($state->heartbeat_predicates ?? 'null'), false),
             'counters' => DB::table('seat_counters')->where('seat_ref', $seatRef)
                 ->orderBy('name')->pluck('value', 'name')->map(fn ($v) => (int) $v)->all(),
             'predicates' => DB::table('seat_predicates')
