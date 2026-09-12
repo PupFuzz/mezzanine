@@ -337,7 +337,12 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   would have got zero messages on a healthy stream — so `event:` is pinned to the literal `mezzanine`
   and FLOOR § 2.2 now names the single listener and the unknown-`t` branch. ⚠ **Left for the sweep after
   card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
-  prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; § 8.3's heading anchor keeps the word *WebSocket*
+  prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; **§ 13 decision row 42**,
+  whose *Alternatives* and *Cost if wrong* cells are written entirely in the retired channel model — a
+  `private-building` channel, both messages fanning out to every channel, N publishes per save — in a
+  table this amendment added rows to, and deferred with the § 8.7 prose it describes rather than
+  half-rewritten here, because the row's subject is that section's (added to this list in the card#9287
+  maintainer round, which found the list short by it); § 8.3's heading anchor keeps the word *WebSocket*
   until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
   `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed as **card#9300**
   (Backlog) together with the build of D2 Appendix B step 9 and the retirement of the broadcast

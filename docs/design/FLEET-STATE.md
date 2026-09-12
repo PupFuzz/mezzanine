@@ -2437,7 +2437,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
-| `feed_resync_required` | `global_counters` | fleet health | the handler ended a stream **on its own decision** — [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, or a version mismatch — never on a client that simply went away | rising ⇒ clients or the network cannot keep up |
+| `feed_resync_required` | `global_counters` | fleet health | the handler ended a stream on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s **stall bound** — that branch and no other, which is what [§ 8.3](#83-the-websocket-delta-feed)'s loop writes; never on a client that simply went away, and never on the other server-chosen ends. ⚠ **This cell read *or a version mismatch* until the card#9287 maintainer round**, naming a close reason [§ 8.3](#83-the-websocket-delta-feed)'s set did not carry and the loop never counted. ⛔ **A `feed.close{reason:"reload"}` in particular does NOT count it**: a deploy ends every open stream at once, so counting it would move this counter by the number of open browsers on every release and destroy the one reading it exists to support | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
 | `snapshot_served` / `snapshot_denied` | `global_counters` | fleet health | a REST snapshot was served / refused (`503`, `401`) | fleet health |
 | `token_wrong_surface` | `global_counters` | fleet health | an `mzn_` ingest token was presented to a read endpoint, or an `mzr_` read token to the ingest | **operator alert** — it is either a misconfiguration that will otherwise present as a mysterious dark seat, or a probe |
@@ -3403,9 +3403,17 @@ which is why the design relies on it in neither direction — live streams end t
 **What this transport costs, each stated.** (1) One FPM worker per open browser for the length of a
 session — R2, and a real number on a host sized for request-response traffic. (2) A write per message —
 the outbox rows priced under *Volume*, retained a minute. (3) Four index seeks per second per open
-stream. (4) Delivery latency of one visibility lag plus one tick — ≥ 2 s and ≤ 2.25 s after a message's
-commit, on top of the fold's own ≥ 2 s behind the wire ([§ 6.5](#65-the-fold)) — the price of an
-ordering guarantee this document already pays once, in a number it already owns. (5) A deploy must
+stream. (4) Delivery latency of one visibility lag plus one tick — **≥ 2 s and ≤ 2.25 s after the message's row
+is INSERTED into `feed_outbox`**, which is what the predicate actually measures: the tick's
+`created_at <= server_now - INTERVAL 2 SECOND` term reads a column stamped at `INSERT`. ⚠ **This read
+*after a message's commit* until the card#9287 maintainer round.** The figure does not move — every
+writer inserts its outbox row as the **last statement before its `COMMIT`** (the rule stated above and
+tested by [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor)),
+so the two instants are one round trip apart — but the basis a test asserts against does move: measured
+from the commit the bound is 2 s *minus* that round trip, and a test written to the old wording asserts
+a floor the design does not promise. On top of the fold's own ≥ 2 s behind the wire
+([§ 6.5](#65-the-fold)), which states its own basis correctly — the price of an ordering guarantee this
+document already pays once, in a number it already owns. (5) A deploy must
 publish `fleet.reload` before reloading FPM ([§ 2.1](#21-processes)), or wait on its own escalation.
 (6) The count-and-bytes backpressure bound of the earlier revision has no referent here and is replaced
 by a time bound — [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) says how, and what is
