@@ -4054,12 +4054,30 @@ connect: a re-check of an in-memory session is a check that cannot fail, which i
 [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) exists to forbid, re-minted inside the fix for
 it
 ([§ 8.3](#83-the-websocket-delta-feed)). The lag between an expiry and its enforcement is therefore at
-most **15 s + one 250 ms tick** (the re-check sits at the BOTTOM of the loop body, so it fires on the
-first 250 ms tick at or past the 15 s mark, after that tick's flush) — ⚠ **and "tick" carries two
+most **the auth interval plus one loop pass** — and a loop **pass** is bounded by
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s **45 s** stall bound and not by the
+250 ms sleep, because the pass CONTAINS the write loop and a slow consumer holds the handler inside it
+for as long as that bound allows. So the enforcement bound is **the auth interval + the stall bound,
+under 60 s**; on a draining client — which is every client not being ended for backpressure — it is
+**15 s + one 250 ms tick**, and that is the figure a test on a healthy consumer asserts.
+⚠ **An earlier revision of this sentence stated the 250 ms figure as THE bound**, reasoning only from
+the re-check's position at the bottom of the loop body. It was short by ~4×, and what the difference
+buys a revoked session that drains slowly is ~45 s of fleet data it is no longer entitled to — which
+is a security figure, so it is corrected here rather than softened (card#9287 maintainer round).
+⛔ **Hoisting the re-check ABOVE the write loop does not make 250 ms true, and is refused here rather
+than left as an open option.** The exposure is created by the write loop itself: for as long as it
+blocks it is delivering rows to that session, so moving the check to the top of the pass decides only
+whether the close is taken at the end of pass N or the start of pass N+1 — the same rows have already
+gone in both orderings. And at the top the **stall** check reaches the blocked pass first, so the one
+thing the hoist reliably changes is the reason the viewer is given: `stalled` where `session` is true.
+Closing the window rather than restating it means a check the blocked write cannot outrun — a
+per-message check, which the sentence below prices and refuses — and that is a different decision from
+where this check sits. — ⚠ **and "tick" carries two
 values in this document**: the stream's loop tick is 250 ms ([§ 8.3](#83-the-websocket-delta-feed)) and
 the heartbeat's is 15 s, so *the auth interval* is this section's name for the 15 s one and a bare
-"one tick" is never the bound. A test asserting a flat 15 s reds intermittently at ~15.25 s against a
-correct implementation. During that window the stream delivers messages the session was entitled to when the
+"one tick" is never the bound — nor, on a stream whose consumer is slow, is one 250 ms one. A test
+asserting a flat 15 s reds intermittently at ~15.25 s against a correct implementation on a draining
+client, and a test asserting 15.25 s reds outright against a correct one whose consumer is slow. During that window the stream delivers messages the session was entitled to when the
 tick before ran; that window is accepted on the record rather than closed with a per-message check,
 because a per-message check is a session read per delta at 5.2 msg/s for a property that changes far
 more rarely than that. The same clock answers
@@ -4684,7 +4702,7 @@ and the gate on trusting the derived signal at all.*
 - **GREEN — no revocation cache:** revoke a token mid-run and issue the next request immediately → it is
   refused on the first attempt, not after a TTL.
 - **GREEN — the stream re-checks:** open a stream under a valid MFA session, then expire the session (or
-  clear the user's enrolment) with the stream open → within **15 s + one 250 ms tick** (§ 9's auth interval plus the loop tick it is checked on — assert that bound, not a flat 15 s, which reds at ~15.25 s against a correct build) the stream's last message is
+  clear the user's enrolment) with the stream open → within **[§ 9](#9-read-side-authentication)'s enforcement bound — the auth interval plus one loop PASS**, which on this leg's draining consumer is 15 s + one 250 ms tick and in the worst case is the auth interval plus [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, under 60 s — the stream's last message is
   `feed.close{reason:"session"}` and it ends; the client's reconnect is refused as the browser-session
   case above is. Assert the **close reason** and the tick bound, not merely that the stream ended.
 - **GREEN — the store goes away under an OPEN stream, and the stream ENDS saying so:** open a stream
@@ -4694,10 +4712,10 @@ and the gate on trusting the derived signal at all.*
   [§ 9](#9-read-side-authentication)'s split case, where the outbox read keeps succeeding and only the
   re-check fails. **The assertion below holds in both runs and only the BOUND differs**, because the
   two runs fail different reads: in the first the tick read fails, so the close arrives within **one
-  250 ms tick**; in the second only the re-check does, so it arrives within **15 s + one 250 ms tick**
-  ([§ 9](#9-read-side-authentication)'s auth interval plus the loop tick it is checked on — assert that
-  bound, not a flat 15 s, which reds at ~15.25 s against a correct build). In both runs the stream's
-  **last message is `feed.close{reason:"unavailable"}`** and the stream **ends**. ⛔ Assert the reason,
+  250 ms tick**; in the second only the re-check does, so it arrives within **the auth interval plus
+  one loop pass** ([§ 9](#9-read-side-authentication)), which on a draining consumer is 15 s + one
+  250 ms tick. In both runs the stream's
+  **last message is `feed.close{reason:"unavailable"}`** and the stream **ends**. ⛔ Assert the bound [§ 9](#9-read-side-authentication) states and not a flat 15 s, which reds at ~15.25 s against a correct build; and drive both runs with a consumer that DRAINS, because on a slow one the bound is the auth interval plus the stall bound and this leg would red against a correct handler. ⛔ Assert the reason,
   and assert it is a member of [§ 8.3](#83-the-websocket-delta-feed)'s **declared** set — that row
   owns the members and their number and this leg does not restate either — so an implementation that
   invents a member for this posture reds here; and assert it is **not** `session`,
@@ -4988,7 +5006,7 @@ document.
 | Feed heartbeat | 15 s, dead at 45 s | **Derived** — the same assert-and-alarm shape as D1's 60 s/300 s heartbeat pair, scaled to a channel whose round trip is milliseconds; 3× is the same multiple D1's flusher-lock staleness uses against its own cadence | [§ 8.3](#83-the-websocket-delta-feed) |
 | Stream stall bound | 45 s | **Derived** — the feed's own dead-at-45 s figure applied server-side: the handler gives up on a client that has not drained a tick for as long as a client gives up on a server that has sent nothing (card#9287; the earlier 256-message / 512 KiB queue bound had no referent under SSE) | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
 | `feed_outbox` retention | 60 s | **Derived** — the stall bound plus one heartbeat interval, so a stream inside its bound finds every row it may still deliver | [§ 6.7](#67-retention-and-purge) |
-| Stream session re-check | 15 s | **Derived** — the heartbeat tick, reused so the stream has one clock; a per-message check would be a session read per delta for a property that moves once a day | [§ 9](#9-read-side-authentication) |
+| Stream session re-check | 15 s | **Derived** — the heartbeat tick, reused so the stream has one clock; a per-message check would be a session read per delta for a property that moves once a day. ⚠ **This is the INTERVAL and not the enforcement bound**, and reading it as one is how *"at most 15 s + one 250 ms tick"* stood on the record at ~4× short: the check fires on a loop pass, and a pass is bounded by the stall bound above rather than by the tick, so the bound is this interval plus that one — [§ 9](#9-read-side-authentication) states it and owns it | [§ 9](#9-read-side-authentication) |
 | `feed_outbox` row cost | **~400 B** | **Derived** — the measured 323 B typical delta ([§ 8.3.1](#831-worked-delta)) carried whole in `message`, plus the row's own `id`, `created_at`, `t` and `install_id` columns and InnoDB's per-row overhead | [§ 6.7](#67-retention-and-purge), [§ 6.8](#68-sizing) |
 | `feed_outbox` lingering size | **~7.5 MB** | **Derived** — one hour of ceiling traffic between hourly purge passes: 8,980 × 50 ÷ 24 = 18,708 rows (plus 240 heartbeat rows, immaterial) × ~400 B | [§ 6.8](#68-sizing) |
 | Outbox visibility lag | 2 s | **Derived** — equal to the fold visibility lag above: the same primitive for the same reason, a reader must not advance past an id whose transaction has not committed | [§ 8.3](#83-the-websocket-delta-feed) |
