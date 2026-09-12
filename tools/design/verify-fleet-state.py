@@ -100,6 +100,34 @@ def strip_code(s):
     return re.sub(r"`[^`\n]*`", lambda m: " " * len(m.group(0)), s)
 
 
+def fenced_lines(text):
+    """(1-based line numbers inside a ``` fenced block, whether a fence was left OPEN).
+
+    G7's discriminator.  § 8.3's and § 8.4's pseudocode and JSON fences are the surface an
+    implementer BUILDS from; the two sites G7's field-form skip exists for -- § 2.3's threshold
+    rows and § 8.2.4's rejected alternative -- are PROSE.  So fence-vs-prose is what tells a
+    forgivable `name = "scalar"` apart from a message name escaping through the same spelling,
+    without either site being enumerated.  The delimiter lines count as inside: a namespace token
+    on an info string is anomalous, and a loud gate should say so rather than admit one spelling.
+
+    The open-fence flag is returned rather than swallowed because an unclosed fence makes every
+    line after it read as fenced, which would make the split below measure the wrong thing while
+    still producing a number -- the false-clean shape this directory exists against.
+    """
+    out, opener, i = set(), None, 0
+    for i, line in enumerate(text.split("\n"), start=1):
+        m = re.match(r"^\s*(`{3,})(.*)$", line)
+        if m and opener is None:
+            opener = len(m.group(1))
+            out.add(i)
+        elif m and len(m.group(1)) >= opener and not m.group(2).strip():
+            out.add(i)
+            opener = None
+        elif opener is not None:
+            out.add(i)
+    return out, opener is not None
+
+
 def heading_index(text):
     """[(level, title, anchor, start_line, end_line)] for every heading, in order."""
     hs, seen = [], {}
@@ -1011,6 +1039,8 @@ else:
 #     being used as a field with a value, which is § 8.2.4's subject and not this one's.  A token
 #     carrying a payload OBJECT -- `fleet.health{db:"up"}`, the fence's own idiom -- is a message,
 #     and `{` is not a scalar, so the two spellings stay apart without either being enumerated.
+#     This classifier FORGIVES, so it is the one that can hide a defect, and it is therefore the
+#     one that is COUNTED and bounded -- see the declared hole below.
 #
 # The POLARITY is the point, and is why this is a population rather than a longer alternation:
 # every token in a namespace § 8.3 DECLARES is a message type UNLESS the document demonstrably uses
@@ -1019,9 +1049,44 @@ else:
 # not while the namespaces were six literals: the rule was "everything with one of six stored
 # prefixes", so a maintainer who added a namespace to § 8.3 and read the polarity claim on this
 # surface or in `tools/design/README.md` would believe G7 covered its uses, and it did not.
+#
+# ⚠ THE FIELD-FORM HOLE IS DECLARED, BOUNDED AND OBSERVABLE -- it is not closed, and it is not
+# claimed empty either.  A message name written `name: scalar` reads as a field and leaves the
+# population.  Closing that ON THE OPERATOR would red on § 8.2.4's rejected alternative and § 2.3's
+# threshold rows -- correct prose, the worse gate -- so the operator stays.  What changes is that
+# the skip stops being INVISIBLE.  It used to be a bare `continue`: the occurrence was not merely
+# forgiven, it was UNCOUNTED, so no figure this gate printed could ever move when a use fell into
+# it, and the comment closed on "no such site exists in this document" -- a claim nothing evaluated
+# and nothing printed.  A declaration with no check is a comment, and worse than silence, because a
+# reader sees the ⚠ and concludes the hole is watched.  Reproduced before this was fixed: writing
+# `2b. on seat.delta_renamed: apply the delta to the desk` INSIDE § 8.4's fence -- precisely the
+# defect this card exists to catch, on precisely the surface it names -- yielded ALL D2 CHECKS
+# PASS, rc=0, with the population unmoved.  So:
+#
+#   COUNTED   -- every skip increments `g7_field_form`, printed beside the population on every run.
+#                A use falling into the hole now moves a number a reader can see.
+#   BOUNDED   -- a skip INSIDE A FENCE is a FAILURE, not a skip.  The fence/prose split is the
+#                discriminator this block already argued for and did not use: the two sites the
+#                skip exists for are prose, and § 8.3's and § 8.4's fences are the buildable
+#                surface a rename escapes through.  Both halves of the widening now have a decay
+#                control; the asymmetry -- one for `g7_undelimited`, none for this -- WAS the bug.
+#
+# What stays open, stated rather than asserted away: a `name: scalar` escape in PROSE.  A run
+# reporting a field-form count larger than the sites § 2.3 and § 8.2.4 own is the signal, which is
+# why the count is printed rather than compared against a stored number here -- a stored expected
+# count would be a figure free to disagree with the document, which is this file's own § 1 rule.
 NS_PREFIXES = sorted({t.split(".")[0] for t in declared_types})
 FIELD_FORM = re.compile(r"""[ \t]*(?:==|=|:)[ \t]*(?:"[^"\n]*"|'[^'\n]*'|\d|[a-z_]+\b)""")
-g7_pop, g7_undelimited = 0, 0
+FENCED, FENCE_OPEN = fenced_lines(raw)
+g7_pop, g7_undelimited, g7_field_form = 0, 0, 0
+if FENCE_OPEN:
+    fail.append("G7 CONTROL: this document leaves a ``` fence unclosed, so every line after it "
+                "reads as fenced and the fence/prose split G7's field-form bound depends on is "
+                "measuring something other than what it says it measures")
+if not FENCED:
+    fail.append("G7 CONTROL: no fenced block was found in this document — § 8.3's and § 8.4's "
+                "pseudocode and JSON fences are the surface this gate widened to reach, so an "
+                "empty fence map means the field-form bound below forgives every skip in silence")
 if declared_types and fleet_fields:
     # Compiled INSIDE the guard: on an unparsed table `"|".join([])` is an empty alternation, which
     # matches the empty string and turns this into a scan for every `.word` in the document.
@@ -1030,6 +1095,17 @@ if declared_types and fleet_fields:
     for m in NS_TOKEN.finditer(raw):
         tok, line = m.group(1), raw[:m.start()].count("\n") + 1
         if FIELD_FORM.match(raw, m.end()):
+            g7_field_form += 1
+            if line in FENCED:
+                fail.append(
+                    f"L{line}: G7: `{tok}` is written in `name: scalar` FIELD FORM inside a "
+                    f"fenced block, so G7's declared field-form hole would swallow it. That hole "
+                    f"exists for § 2.3's threshold rows and § 8.2.4's rejected aggregate, which "
+                    f"are PROSE; § 8.3's and § 8.4's fences are what an implementer BUILDS from, "
+                    f"and a message name that escapes there ships at rc=0 — the defect card#9303 "
+                    f"exists against. Write the payload-object form the fences use "
+                    f"(`{tok}{{…}}`), or move the field-form statement into prose where it is "
+                    f"what it claims to be")
             continue
         g7_pop += 1
         # could the backtick-delimited regex this population replaces have seen this occurrence?
@@ -1357,7 +1433,9 @@ print(f"G7  feed message types declared: {len(declared_types)}, over the namespa
       f"residue, not a covered case); fleet-object fields exempted: {len(fleet_fields)}; "
       f"message-type USES held against that table: {g7_pop}, of which written without backtick "
       f"delimiters — inside a pseudocode or JSON fence, which is the buildable surface — "
-      f"{g7_undelimited}")
+      f"{g7_undelimited}; occurrences SKIPPED into the declared `name: scalar` field-form hole, "
+      f"counted so a use falling into it moves a figure rather than vanishing, and a FAILURE "
+      f"above for any that sat inside a fence: {g7_field_form}")
 print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
       f"checked for a rule that WRITES it — the document's counting-verb idiom, in either word "
       f"order — outside that table and outside section 11's tests); fleet-health counters "
