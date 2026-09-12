@@ -835,7 +835,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   pull (#107, 2026-09-12) vendored the tileset and **no map**. § 10.3 declares the ONE shipped default
   at `resources/floor/default.tmj` before any map exists at any path, so the map card#7341 goes on to
   author is written there from the start and nothing is renamed; `verify-floor.py` G8b reds a map
-  landing at the old per-room path as MISPLACED.
+  landing at the old per-room path by name (CONTRADICTED while § 10.3 declares the absence,
+  MISPLACED once it declares the default present).
   ⛔ **`room.map` rides EVERY install's channel, like the heartbeat** — a client's subscriptions are
   the snapshot's installs, and the room an operator has just drawn may have no seat reporting, so a
   per-room publish would reach nobody. And the design says plainly what card#9071's *no pinning*
@@ -848,16 +849,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   undeclared path; the map path dropped while the layout path stays; no path at all). G8b's existing
   CONTRADICTED branch was also seen red on a map planted in the tree. `verify-fleet-state.py` G7's
   prefix set gains `room` / `building`, seen red on a planted `building.reload`.
-  ⚠ **Code comments and docblocks now stale, owed by the build slices and named rather than silently
-  carried** — re-derived by `grep -rniE "build artifact|never served|no read path|with the page|not
-  from an endpoint|all four|the one endpoint|9208" server/`, a predicate the build re-runs rather
-  than a list it trusts: **slice 1** (the layout's home) `server/config/building.php`,
-  `server/routes/web.php` (*with the page and never from an endpoint*),
-  `server/resources/views/dashboard.blade.php`, `server/public/js/lobby/lobby-model.js`,
-  `server/public/js/lobby/building-model.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`
-  (§ 4.6 *deploy-time*), `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`
-  (quotes the replaced § 4.6 span); **slice 2** (the surface) `server/app/Http/Middleware/FleetReadGate.php`
-  (*all four endpoints*, *the one endpoint a token may not read*) and `server/routes/fleet.php`.
+  ⚠ **Code comments and docblocks now stale, owed by the build slices — the PREDICATE is the record,
+  and the list below is its full output on 2026-09-12, unrelated hits included and marked, so that
+  the build re-runs the predicate rather than trusting the list:**
+  `grep -rniE "build artifact|never served|no read path|with the page|not from an endpoint|all four|the one endpoint|deploy-time|9208" server/`.
+  **Slice 1** (the layout's home): `server/config/building.php`, `server/routes/web.php`,
+  `server/resources/views/dashboard.blade.php` (two hits), `server/resources/views/console/floors/index.blade.php`,
+  `server/public/js/lobby/lobby-model.js`, `server/public/js/lobby/building-model.js`,
+  `server/public/js/lobby/main.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`,
+  `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`. **Slice 2** (the surface):
+  `server/app/Http/Middleware/FleetReadGate.php` (three hits), `server/routes/fleet.php` (*all four*
+  routes are `GET` — still true of the fleet routes, false as a count of the gate's). **Slice 3 / the
+  floor route** (eight docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* —
+  the surface now exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
+  `server/public/js/drilldown/main.js`, `server/public/js/drilldown/drilldown-model.js`,
+  `server/tests/Feature/Coordination/CoordModuleWiringTest.php`,
+  `server/tests/Feature/Desk/DeskDrawsTheThoughtBubbleTest.php`,
+  `server/tests/Feature/DrillDown/DrillDownModuleWiringTest.php`,
+  `server/tests/Feature/DrillDown/DrillDownRendersTheInternsTest.php`. **Unrelated hits, not stale**
+  (the predicate's false positives, named so the next run can tell them apart): `server/app/Fold/Fold.php`
+  (*all four fold call sites*), `server/app/Http/Controllers/FleetController.php` (a pagination row
+  *never served*), `server/tests/Feature/Feed/At19ReadAuthTest.php` (*the one endpoint that carries
+  `counters`*), `server/tests/Feature/Fold/At10RebuildEqualsFoldTest.php` (*all fourteen*).
 
 - **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
   count.** The table is what an operator provisions a host from, and it listed every process except
