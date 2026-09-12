@@ -3,16 +3,54 @@
 # "released" stage, correlating by the `card#<id>` token in the RELEASED RANGE's
 # commit subjects.
 #
-# ⚑ VENDORED, NOT AUTHORED HERE. Everything BELOW THIS HEADER BLOCK is a BYTE-FOR-BYTE
-# copy of `bin/promote-cards-by-token` in PupFuzz/agent-board-framework at commit
-# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27). Only this header was rewritten, and
-# only to state MEZZANINE's facts instead of that repo's. Fix a defect UPSTREAM and re-vendor;
-# a local edit to the body forks a security-sensitive tool away from the copy that has the
-# review history, and nothing here would notice. The upstream repo is private, so the whole
-# tool ships here rather than being fetched at run time — a public CI job cannot clone it.
-#   RE-VENDOR = `sed -n '154,$p' <upstream>/bin/promote-cards-by-token > <this file's body>`,
-#   keeping this header. That the body is unmodified is therefore a one-diff check, which is
-#   the whole reason not one comment inside it was "tidied".
+# ⚑ VENDORED, NOT AUTHORED HERE — AND FORKED AT EXACTLY TWO DECLARED SITES. Everything BELOW
+# THIS HEADER BLOCK is `bin/promote-cards-by-token` from PupFuzz/agent-board-framework at commit
+# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27), byte for byte, EXCEPT the two sites
+# listed next. Both arrived in this repo's #51 (2026-08-31) and both exist for one reason:
+# upstream's "first-ever release" wording is FALSE here — mezzanine HAS released, so explaining
+# an empty range as a first-ever release misdirects the only person who will ever read it. Each
+# site is located by a distinctive unbroken fragment of its own text, NEVER by a line number:
+# line numbers rot, and this list has to survive the next re-vendor.
+#   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
+#     (1) the false-all-clear COMMENT on the `..HEAD` refusal — the three lines carrying
+#         `nothing to do" and exit 0 on a release whose cards`. Upstream's reads "…on a
+#         first-ever release whose cards…"; this one drops those words and reflows the three.
+#     (2) the `no range base` DIE STRING — the line carrying
+#         `Likeliest live causes: a shallow or tagless clone`. This one is longer than
+#         upstream's: it names the causes that are actually live here (a shallow or tagless
+#         clone; a deliberate re-promote of the EARLIEST release, which has no predecessor tag
+#         to derive from), says a force-pushed or rewritten `main` is NOT this error, and
+#         points at `docs/KANBAN.md § G-2`.
+# ⛔ THIS HEADER USED TO CLAIM THE WHOLE BODY WAS BYTE-FOR-BYTE and called that "a one-diff
+# check". Nobody ran the diff. #51's two edits had been sitting in the body for eleven days and
+# the claim went on reading as true — a declaration with NO CHECK, which is worse than silence:
+# it hands the next reader confidence where a question was owed. Found by
+# PupFuzz/agent-roundtable#463 (2026-09-11). The two edits are CORRECT and were KEPT; what was
+# wrong was the declaration, so the declaration was made true and given a check.
+# ⚑ THE CHECK: `bin/vendor-pin-check.sh` pins the sha256 of this file's BODY (the first line
+# after the shebang that is neither blank nor a comment, through EOF — so this header may grow
+# freely) and runs on EVERY PR, in the `card-token-lint` workflow, behind a `--selftest` that
+# first proves it reds on a mutated body. Any edit below this header reds CI until the pin AND
+# the list above are updated in the SAME commit. That list is ENFORCED, not a courtesy — in ONE
+# direction, stated exactly: the check carries (1) and (2)'s fragments itself and reds if
+# either is no longer in the body, so the pin cannot be bumped past a list that has gone stale.
+# It CANNOT tell you that a THIRD, undeclared edit has appeared — that comparison needs
+# upstream, which is private and unreachable from a public runner; what catches that is the sha
+# going red and a human reading the diff. A green means "the body is what this repo last
+# DECLARED", never "the body matches upstream".
+# The upstream repo is private, so the whole tool ships here rather than being fetched at run
+# time — a public CI job cannot clone it. A defect in the SHARED text still goes UPSTREAM first
+# and arrives here by re-vendoring; forking the body further is not the escape hatch.
+#   RE-VENDOR = replace everything below this header with upstream's BODY, where "body" is
+#   the same rule the pin uses — so DERIVE the start line, never write one down (upstream's
+#   header grows too, and a copied-out number is wrong the moment it does):
+#     U=<upstream>/bin/promote-cards-by-token
+#     sed -n "$(awk 'NR>1 && $0 ~ /[^[:space:]]/ && substr($0,1,1)!="#" {print NR; exit}' "$U"),\$p" "$U"
+#   Then re-apply (1) and (2), or drop either ON PURPOSE and delete it from the list above AND
+#   from the FRAGMENTS table; then re-pin the sha in `bin/vendor-pin-check.sh`. ⚠ UPSTREAM HAS
+#   MOVED ON: by
+#   v0.50.0 (d3fd558) the `api` helper lives in `bin/_api_seam.sh`, so a re-vendor from HEAD
+#   ships a SECOND file and this one-file recipe no longer describes it.
 #   ⚑ READING THE BODY'S COMMENTS: every relative path they cite (`.githooks/…`,
 #   `templates/…`, `plugins/…`) and every `card#NNNN` / `#NNN` they cite resolves in the
 #   UPSTREAM repo — NOT in this one. Do not go looking for those files here. What plays their
