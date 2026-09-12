@@ -82,6 +82,7 @@ reporting clean when its extractor finds nothing (canon: a check that cannot fai
 import ast
 import json
 import re
+import struct
 import sys
 import pathlib
 import xml.etree.ElementTree as ET
@@ -1570,6 +1571,48 @@ else:
         fail.append("G8 CONTROL: section 10.3 no longer restates the `aimla` map's slot count in the "
                     "form this leg closes against section 3.2, so the two homes are unguarded")
 
+# ---- G8c. the desk sprite's declared size, against the FILE -----------------------------------
+# Section 12's viewport row waited on "a desk's rendered width [being] a measured number rather than
+# a design intent" (section 14 item 7).  The tileset landed on 2026-09-12 and section 10.3 now states
+# that width -- which makes it a number with two homes, a document and a PNG, and the document is the
+# copy nothing re-derives.  G4 already binds section 12's row to section 10.3's sentence; this leg
+# binds that sentence to the bytes, so the pair cannot drift from the file together.
+#
+# BOTH POPULATIONS ARE READ OUT OF THE DOCUMENT: the dimensions AND the path come from section 10.3's
+# own sentence, so re-curating the tileset or renaming the file moves this check with it rather than
+# leaving a stored `116` behind.  The PNG header is the authority -- IHDR width/height at a fixed
+# offset, which is the format's own declaration about itself and needs no decoder.
+#
+# Two branches, and the summary prints which one ran.  DECLARED: the file must exist, be a PNG, and
+# agree.  UNDECLARED: section 10.3 states no sprite measurement, which is the correct state while no
+# tileset is vendored -- and it is not a silent skip, because section 12 cannot then carry the row
+# either: G4 reds any figure that is not a whole token at the section it cites.
+SPRITE_DECL = prose(r"A desk sprite is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
+m_sprite = re.search(SPRITE_DECL, sec103)
+g8c_branch = "UNDECLARED — section 10.3 measures no sprite, so section 12 may cite none (G4 holds that half)"
+if m_sprite:
+    _dw, _dh, _rel = int(m_sprite.group(1)), int(m_sprite.group(2)), m_sprite.group(3)
+    _sprite = ROOT / _rel
+    if not _sprite.is_file():
+        g8c_branch = f"MISSING — `{_rel}`"
+        fail.append(f"G8: section 10.3 states a desk sprite is {_dw}x{_dh} px and names "
+                    f"`{_rel}`, and no such file exists — a measurement of a file that is not "
+                    f"there is the defect card#9208 found in `S`, in a second number")
+    else:
+        _hdr = _sprite.read_bytes()[:24]
+        if _hdr[:8] != b"\x89PNG\r\n\x1a\n" or len(_hdr) < 24:
+            g8c_branch = f"UNREADABLE — `{_rel}`"
+            fail.append(f"G8: `{_rel}` is not a PNG this gate can read a size out of — clause 1 of "
+                        f"section 10.1 admits the suffix and nothing established the dimensions, "
+                        f"and a size this gate could not establish is a red rather than a skip")
+        else:
+            _aw, _ah = struct.unpack(">II", _hdr[16:24])
+            g8c_branch = f"MEASURED from {_rel}: {_aw}x{_ah} px"
+            if (_aw, _ah) != (_dw, _dh):
+                fail.append(f"G8: section 10.3 states the desk sprite is {_dw}x{_dh} px and "
+                            f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
+                            f"section 12's viewport row rests on the document's copy")
+
 # --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
 # G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
 # why G2 was clean over a receipt age that freezes on every live desk: a field-existence check cannot
@@ -2460,6 +2503,9 @@ print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's
       f"was held against nothing but this document's own declaration that there is no file, "
       f"which is the strongest true claim available and is NOT evidence about the number. The "
       f"tree sweep for a map skips {sorted(SWEEP_SKIP)}.")
+print(f"    G8 the desk sprite section 12's viewport row waited on: {g8c_branch}. MEASURED means "
+      f"the size was read out of the PNG's own IHDR header and held against section 10.3's "
+      f"sentence, both the dimensions and the path re-derived from that sentence.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "
