@@ -20,11 +20,12 @@ control failure that says nothing the author can act on.  The differential answe
 question this file is asking -- does the verdict RESPOND to this defect -- and keeps answering it
 while the document is broken.
 
-WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: the plants below -- their number, their
-verifiers and their guard classes are all derivable from PLANTS and are printed by the summary
-rather than written here -- prove that THOSE guards live, never that the fifty-odd others do.  Two
-plants can share one guard class (both G3 equalities do) without either being redundant: they
-discriminate opposite directions of the same check.  Nothing here is
+WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: the plants below prove the guards they target
+live -- never that the rest of the guard classes those verifiers carry do.  How many plants, over
+how many verifiers, in which kinds, is counted at run time and printed on the last line rather than
+written here, so the sentence cannot drift from the list.  Two plants can share one guard class
+(both G3 equalities do) without either being redundant: they discriminate opposite
+directions of the same check.  Nothing here is
 evidence about `verify-harness-facts.py` (see the workflow header for why it is unwired) or about
 `floor-preview.selftest.mjs` and `floor-preview.browser.mjs`, which carry their own planted
 controls internally and need no harness around them.
@@ -33,17 +34,29 @@ WHY A COPY OF THE TREE, AND WHY `git ls-files`.  Each verifier derives its root 
 `__file__`, so judging a mutated document means giving it a mutated TREE -- never editing the
 checkout, which on a developer's machine is live work.  The population is the tracked files as
 they exist in the WORKING TREE, so the harness judges the bytes CI actually checked out rather
-than a revision; 255 files / 4.4 MB makes a per-plant copy cheaper than being clever.  The whole
+than a revision; the tree is small enough (the file count is printed on the first line of every run,
+never written down here) that a per-plant copy is cheaper than being clever.  The whole
 tree is copied rather than the four documents, because `verify-event-schema.py` resolves path
 references out of `docs/VERSIONING.md` and reds on files a partial tree would be missing.
 
-THE PLANTS ARE ARITHMETIC, NOT PROSE.  Each perturbs by +1 a figure the verifier RE-DERIVES --
-a serialized size, a re-added sum, a cap subtraction -- so the plant is the exact defect class the
-guard exists for (a stated figure drifting from what re-derives it), and the expected red is a
-specific sentence rather than any nonzero exit.  No plant stores the figure's VALUE: each is
-re-read from the document and incremented, so a legitimate edit to any of the three numbers moves
-the plant with it instead of turning this file red.  An anchor matching NOTHING is a hard error,
-never a skip -- that is the false-clean shape this whole directory exists against.
+EVERY PLANT IS RE-READ, NEVER STORED.  A plant's anchor brackets the thing it perturbs and the
+perturbation is computed from what the document SAYS there -- so a legitimate edit to that figure or
+that name moves the plant with it instead of turning this file red.  There are two kinds, and the
+kind is named per plant because a gate can only be proven on a defect of its own class:
+
+  `bump`    -- +1 to a figure the verifier RE-DERIVES (a serialized size, a re-added sum, a cap
+               subtraction), which is the class "a stated figure drifted from what re-derives it".
+  `rename`  -- suffix a NAME the verifier holds against a declared table, which is the class "a
+               token was renamed on a surface outside the gate's population".  card#9303 is why
+               this kind exists: `verify-fleet-state.py`'s G7 collected its message names with a
+               backtick-delimited regex, so § 8.3's and § 8.4's pseudocode and JSON fences -- the
+               surface an implementer BUILDS from -- sat outside it, and a rename planted there ran
+               green through every verifier.  The plant below is placed inside a fence deliberately:
+               a `rename` plant in backticked prose would pass against the narrow population too and
+               would prove nothing about the surface the card is about.
+
+An anchor matching NOTHING is a hard error, never a skip -- that is the false-clean shape this whole
+directory exists against.  Neither kind writes the value it perturbs into this file.
 """
 
 import pathlib
@@ -55,16 +68,19 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
-# (verifier, document, anchor, what the plant is, a substring the RED must carry)
+# (verifier, document, anchor, kind, what the plant is, a substring the RED must carry)
 #
-# The anchor's group(1)/group(3) bracket the digits in group(2); only group(2) is rewritten, so
-# each regex has to pin enough context to be unique.  `serializes to **N B**. At` is pinned that
-# far because § 6.4 carries a second `serializes to **2,700 B ...` that this plant must not hit.
+# The anchor's group(1)/group(3) bracket the thing in group(2); only group(2) is rewritten, so each
+# regex has to pin enough context to be unique.  `serializes to **N B**. At` is pinned that far
+# because § 6.4 carries a second `serializes to **2,700 B ...` that this plant must not hit.  A
+# `rename` anchor pins the SURROUNDING WORDS and never the name: the name is read out of group(2),
+# so renaming the message legitimately moves the plant instead of stranding it.
 PLANTS = [
     (
         "verify-event-schema.py",
         "docs/design/EVENT-SCHEMA.md",
         r"(serializes to \*\*)([\d,]+)( B\*\*\. At)",
+        "bump",
         "§ 10.3's stated size of the § 6.14 heartbeat example, which check 10 re-measures by "
         "re-serializing that example",
         "disagrees with",
@@ -73,13 +89,27 @@ PLANTS = [
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(State-changing events per seat-day at the ceiling:.*?= \*\*)([\d,]+)(\*\*)",
+        "bump",
         "§ 8.3's stated per-seat-day event total, which G3 re-ADDS from its seven named components",
         "and states",
+    ),
+    (
+        # card#9303.  § 8.4's snapshot-then-deltas block is PSEUDOCODE -- a fence, bare names, the
+        # artifact an implementer copies -- and until this card G7's population could not see into
+        # it.  Renaming the message named there is the exact defect that ran green: the server then
+        # emits a type no client has a handler for, against a table that never declared it.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(BUFFERS every )([a-z]+\.[a-z_]+)( it receives)",
+        "rename",
+        "the message name in § 8.4's protocol FENCE, which G7 holds against § 8.3's declared table",
+        "is used as a feed message type and has no row in",
     ),
     (
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(a gap over \*\*)(\d+)( s\*\* ends the stream)",
+        "bump",
         "§ 8.5's stream stall bound, which G3 holds equal to § 8.3's dead-feed figure and one "
         "heartbeat below § 6.7's `feed_outbox` retention (card#9287)",
         "ends a stalled stream at",
@@ -88,6 +118,7 @@ PLANTS = [
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(\| `feed_outbox` \| \*\*)(\d+)( s\*\* after `created_at`)",
+        "bump",
         "\u00a7 6.7's `feed_outbox` retention, the OTHER side of the same G3 equality -- planted "
         "separately because one plant proves one direction of it discriminates, not both (card#9287)",
         "retains `feed_outbox` for",
@@ -96,10 +127,17 @@ PLANTS = [
         "verify-floor.py",
         "docs/design/FLOOR.md",
         r"(\| spare \| \*\*)([\d,]+)( B\*\*)",
+        "bump",
         "§ 8.1's stated spare bytes, which G3 re-derives as bound minus worst case",
         "re-derived from its own",
     ),
 ]
+
+# Both read group(2) out of the document and transform it; neither carries a value of its own.
+MUTATIONS = {
+    "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
+    "rename": lambda m: m.group(1) + m.group(2) + "_renamed" + m.group(3),
+}
 
 
 def tracked_files():
@@ -135,14 +173,10 @@ def run_verifier(tool, mutation=None):
             shutil.copy(src, dst)
 
         if mutation is not None:
-            rel, anchor = mutation
+            rel, anchor, kind = mutation
             doc = tmp / rel
             text = doc.read_text(encoding="utf-8")
-
-            def bump(m):
-                return m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3)
-
-            new, n = re.subn(anchor, bump, text, count=1, flags=re.S)
+            new, n = re.subn(anchor, MUTATIONS[kind], text, count=1, flags=re.S)
             if n != 1:
                 raise SystemExit(
                     f"CONTROL: the plant's anchor matched {n} times in {rel} — this harness would "
@@ -160,12 +194,12 @@ def run_verifier(tool, mutation=None):
 failures = []
 print(f"planting against {len(FILES)} tracked files, copied per run\n")
 
-for tool, rel, anchor, what, expect in PLANTS:
+for tool, rel, anchor, kind, what, expect in PLANTS:
     print(f"── {tool}")
-    print(f"   plant: +1 to {what}")
+    print(f"   plant [{kind}]: {what}")
 
     ctl_rc, ctl_out = run_verifier(tool)
-    mut_rc, mut_out = run_verifier(tool, (rel, anchor))
+    mut_rc, mut_out = run_verifier(tool, (rel, anchor, kind))
 
     # The RED must be attributable to the plant, not to whatever else the tree may be carrying:
     # a verifier that was already red would otherwise "prove" itself on somebody else's defect.
@@ -194,5 +228,6 @@ if failures:
         print(f"  - {f}")
     sys.exit(1)
 
-print(f"ALL PLANTS CAUGHT — {len(PLANTS)} plants over {len({p[0] for p in PLANTS})} verifiers, each plant seen to red on a defect of its verifier's own "
-       f"headline class, each red attributable to its plant")
+print(f"ALL PLANTS CAUGHT — {len(PLANTS)} plants over {len({p[0] for p in PLANTS})} verifiers, "
+       f"each seen to red on a defect of the class its guard exists for "
+       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant")
