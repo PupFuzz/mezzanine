@@ -78,18 +78,34 @@ final class Layouts
             return ['floors' => []];
         }
 
-        $decoded = json_decode($text, true);
+        try {
+            $decoded = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new InvalidBuildingLayout(self::storedDocumentIsNot('JSON at all ('.$e->getMessage().')'), previous: $e);
+        }
 
         if (! is_array($decoded)) {
-            throw new InvalidBuildingLayout(
-                'The stored building layout is not a JSON document ('.json_last_error_msg().'). '
-                .'Only the console writes this row (docs/design/FLEET-STATE.md § 6.11), so this '
-                .'is a store that was written to from somewhere else; the revision log still '
-                .'holds every document that was ever saved, and restoring one repairs it.'
-            );
+            // No JSON error to report — the decode succeeded and answered with a scalar. Saying
+            // so is the news; a `json_last_error_msg()` here would print *(No error)* beside a
+            // sentence that says something went wrong (card#9295's shape, one surface over).
+            throw new InvalidBuildingLayout(self::storedDocumentIsNot('a document at all, but a JSON '.get_debug_type($decoded)));
         }
 
         return $decoded;
+    }
+
+    /**
+     * What a stored row this reader cannot use says to an operator — one sentence, because the
+     * remedy is the same whatever the row holds: only the console writes it, so a row it would
+     * not have written came from somewhere else, and the revision log still holds every document
+     * that was ever saved.
+     */
+    private static function storedDocumentIsNot(string $what): string
+    {
+        return 'The stored building layout is not '.$what.'. Only the console writes this row '
+            .'(docs/design/FLEET-STATE.md § 6.11), so this is a store that was written to from '
+            .'somewhere else; the revision log still holds every document that was ever saved, '
+            .'and restoring one repairs it.';
     }
 
     /**

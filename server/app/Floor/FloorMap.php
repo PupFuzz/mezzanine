@@ -139,10 +139,31 @@ final class FloorMap
             ));
         }
 
-        $decoded = json_decode($document, true);
+        try {
+            $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new InvalidFloorMap(self::notJsonMessage($document, $e->getMessage()), previous: $e);
+        }
 
-        if (! is_array($decoded) || array_is_list($decoded)) {
-            throw new InvalidFloorMap(self::notJsonMessage($document));
+        // ⛔ `$decoded !== []` IS card#9295's DEFECT SHAPE, HERE — the same one PR #111 fixed at the
+        // ingest, recorded against this line on card#9208 (comment 4794) and left for this slice
+        // because it holds this file. `json_decode($document, true)` decodes `{}` and `[]` to the
+        // SAME PHP value, `[]`, for which `array_is_list()` is `true` — so a map pasted as `{}`
+        // was refused HERE, as *"This is not a JSON object (No error)"*: a false sentence (it IS a
+        // JSON object) with a parenthetical that says the decode succeeded.
+        //
+        // ⚠ `App\Ingest\Wire::isJsonObject`'s docblock calls this one-clause form "also wrong" and
+        // it is right about the INGEST, where `{}` must be ACCEPTED and `[]` REFUSED — two
+        // outcomes from a value that can no longer tell them apart, which is why that fix had to
+        // be at the decode. **Here both spellings are refused**, and only the WORDING differed:
+        // letting `{}` through lands it on the `type` check one line down, which answers *a floor
+        // map is a Tiled MAP and this document declares none* — true of `{}` and of `[]` alike,
+        // and the sentence an operator can act on. So this class keeps its associative decode
+        // (every check below reads arrays) and this clause is exact for what it is asked.
+        // ⇒ If this file ever needs the two spellings to end DIFFERENTLY, the one-clause form
+        // stops being enough and the answer is card#9299's hoisted predicate, not a wider clause.
+        if (! is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+            throw new InvalidFloorMap(self::notAnObjectMessage($decoded));
         }
 
         $grid = self::structure($decoded, 'This map');
@@ -228,7 +249,8 @@ final class FloorMap
         return self::grid($decoded, $what);
     }
 
-    private static function notJsonMessage(string $document): string
+    /** A document that did not PARSE — the JSON error is real here, and is the whole of the news. */
+    private static function notJsonMessage(string $document, string $error): string
     {
         if (str_starts_with(ltrim($document), '<')) {
             return 'This is the `.tmx` (XML) spelling of a Tiled map. The store holds the JSON '
@@ -237,8 +259,23 @@ final class FloorMap
                 .'that one rule lives in one parser.';
         }
 
-        return 'This is not a JSON object ('.json_last_error_msg().'). Export the floor from '
-            .'Tiled as a JSON map (`.tmj`) and paste the whole file.';
+        return 'This is not JSON ('.$error.'). Export the floor from Tiled as a JSON map '
+            .'(`.tmj`) and paste the whole file.';
+    }
+
+    /**
+     * A document that PARSED and is not an object. Separate from the message above because the
+     * two are different news: there is no JSON error to report here — the decode succeeded — and
+     * printing `json_last_error_msg()` in this branch is what produced *"(No error)"*, a
+     * parenthetical that says the opposite of the sentence it is attached to.
+     */
+    private static function notAnObjectMessage(mixed $decoded): string
+    {
+        return sprintf(
+            'This is %s, and a Tiled map is a JSON object. Export the floor from Tiled as a JSON '
+            .'map (`.tmj`) and paste the whole file.',
+            is_array($decoded) ? 'a JSON array' : 'a JSON '.get_debug_type($decoded),
+        );
     }
 
     /**

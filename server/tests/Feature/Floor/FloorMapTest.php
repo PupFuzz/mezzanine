@@ -54,6 +54,39 @@ class FloorMapTest extends TestCase
         $this->assertSame(256, $map->pixelHeight());
     }
 
+    // ── card#9295's defect shape, HERE (card#9208 comment 4794) ─────────────────────────────
+
+    public function test_an_empty_document_is_refused_as_a_map_and_never_as_not_being_an_object(): void
+    {
+        // ⛔ `json_decode('{}', true)` and `json_decode('[]', true)` are the SAME PHP value, and
+        // `array_is_list()` is true of it — so a map pasted as `{}` earned *"This is not a JSON
+        // object (No error)"*: a false sentence about a document that IS a JSON object, with a
+        // parenthetical saying the decode succeeded. Both spellings are still refused; what is
+        // asserted here is that the refusal is the one an operator can act on.
+        $this->refuses('{}', 'its `type` must be "map"');
+        $this->refuses('[]', 'its `type` must be "map"');
+    }
+
+    public function test_a_document_that_parsed_and_is_not_an_object_says_what_it_is_and_reports_no_json_error(): void
+    {
+        $this->refuses('[1, 2]', 'This is a JSON array');
+        $this->refuses('"a map"', 'This is a JSON string');
+
+        // ⛔ THE CONTROL FOR THE PARENTHETICAL: a document that really did not parse names the
+        // JSON error, and one that parsed names none. `(No error)` beside a refusal is the exact
+        // string this pair exists to keep off the page.
+        $this->refuses('{,}', 'This is not JSON (Syntax error)');
+
+        foreach (['{}', '[]', '[1, 2]', '"a map"', '17'] as $document) {
+            try {
+                FloorMap::parse($document);
+                $this->fail('a non-map was accepted: '.$document);
+            } catch (InvalidFloorMap $e) {
+                $this->assertStringNotContainsString('No error', $e->getMessage());
+            }
+        }
+    }
+
     // ── § 10.3's GRID row (card#9292 made it load-bearing twice) ─────────────────────────────
 
     public function test_a_map_with_no_tilewidth_is_refused_because_it_has_no_footprint(): void

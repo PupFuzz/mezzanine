@@ -164,24 +164,31 @@ final class BuildingLayout
             ));
         }
 
-        $decoded = json_decode($document, true);
-
-        if (! is_array($decoded) || array_is_list($decoded)) {
+        try {
+            $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
             throw new InvalidBuildingLayout(
-                'This is not a JSON object ('.json_last_error_msg().'). A layout is a document '
-                .'with a `floors` list in it: `{"floors": []}` is the empty building — one floor '
-                .'per install — and is what this deployment started from '
-                .'(docs/design/FLOOR.md § 4.6).'
+                'This is not JSON ('.$e->getMessage().'). A layout is a document with a `floors` '
+                .'list in it: `{"floors": []}` is the empty building — one floor per install — '
+                .'and is what this deployment started from (docs/design/FLOOR.md § 4.6).',
+                previous: $e,
             );
         }
 
-        if (! array_key_exists('floors', $decoded)) {
-            throw new InvalidBuildingLayout(
-                'This document declares no `floors` key. An EMPTY `floors` list is a legal layout '
-                .'and is the default building — one floor per install — but an absent one is a '
-                .'document this reader cannot tell apart from a typo '
-                .'(docs/design/FLOOR.md § 4.6).'
-            );
+        // ⛔ `$decoded !== []` IS card#9295's DEFECT SHAPE — `json_decode(…, true)` decodes `{}`
+        // and `[]` to the same PHP value, so `{}` was refused here as *"not a JSON object (No
+        // error)"*: a false sentence about a document that IS one. Both spellings are refused
+        // either way, and only the WORDING differed — `{}` now reaches the `floors` refusal in
+        // `parse()`, which names the member the author has to add. `App\Floor\FloorMap` carries
+        // the long form of why the ingest's decode-side fix does not transfer to a reader where
+        // the two spellings end the same way.
+        if (! is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+            throw new InvalidBuildingLayout(sprintf(
+                'This is %s, and a layout is a JSON object with a `floors` list in it: '
+                .'`{"floors": []}` is the empty building — one floor per install — and is what '
+                .'this deployment started from (docs/design/FLOOR.md § 4.6).',
+                is_array($decoded) ? 'a JSON array' : 'a JSON '.get_debug_type($decoded),
+            ));
         }
 
         return self::parse($decoded);
@@ -194,14 +201,27 @@ final class BuildingLayout
      */
     public static function parse(array $document): self
     {
-        // ⚠ `array_key_exists` RATHER THAN `??`, and the difference is a document that says
-        // `"floors": null`. Coalesced away, that reads as the EMPTY building — today's building,
-        // one floor per install — which is a deliberate authoring choice this reader would be
-        // inventing on the author's behalf. § 4.6 refuses an ABSENT `floors` for exactly that
-        // reason ("a document this reader cannot tell apart from a typo"), and an explicit null is
-        // the same typo one character further on. It is NOT the `label => null` case: there,
-        // absent is legal and null is how a JSON column spells it; here, absent is a refusal.
-        $floors = array_key_exists('floors', $document) ? $document['floors'] : [];
+        // ⛔ AN ABSENT `floors` IS REFUSED HERE, WHERE EVERY CALLER REACHES IT — the console's
+        // text intake, the store's per-request read, and the migration's seed. It was `fromJson()`'s
+        // own check until the store's read showed the hole: a row holding `{}` decodes to a
+        // document with no `floors` key, and a reader that defaulted it to `[]` would draw
+        // *today's building* on a store nobody authored that.
+        //
+        // ⚠ And the value is read with `array_key_exists` rather than `??`, because the difference
+        // is a document that says `"floors": null`: coalesced away, that reads as the EMPTY
+        // building — a deliberate authoring choice this reader would be inventing on the author's
+        // behalf. It is NOT the `label => null` case: there, absent is legal and null is how a
+        // JSON column spells it; here, absent is itself a refusal.
+        if (! array_key_exists('floors', $document)) {
+            throw new InvalidBuildingLayout(
+                'This document declares no `floors` key. An EMPTY `floors` list is a legal layout '
+                .'and is the default building — one floor per install — but an absent one is a '
+                .'document this reader cannot tell apart from a typo '
+                .'(docs/design/FLOOR.md § 4.6).'
+            );
+        }
+
+        $floors = $document['floors'];
 
         if (! is_array($floors) || ! array_is_list($floors)) {
             throw new InvalidBuildingLayout(

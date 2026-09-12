@@ -413,9 +413,45 @@ class BuildingLayoutTest extends TestCase
     public function test_text_that_is_not_a_json_object_is_refused_naming_the_shape_a_layout_has(): void
     {
         $this->expectException(InvalidBuildingLayout::class);
-        $this->expectExceptionMessage('not a JSON object');
+        $this->expectExceptionMessage('This is a JSON array, and a layout is a JSON object');
 
         BuildingLayout::fromJson('[{"rooms": {"sola": {"form": "office"}}}]');
+    }
+
+    public function test_an_empty_document_is_refused_for_the_member_it_lacks_and_never_as_not_being_an_object(): void
+    {
+        // ⛔ card#9295's defect shape, on this reader (card#9208 comment 4794 records it against
+        // `App\Floor\FloorMap`; the sibling audit found it here too). `json_decode('{}', true)`
+        // and `json_decode('[]', true)` are the same PHP value and `array_is_list()` is true of
+        // it, so `{}` — a JSON object — was refused as *"not a JSON object (No error)"*. Both
+        // spellings are still refused; the refusal now names the member the author has to add.
+        foreach (['{}', '[]'] as $document) {
+            try {
+                BuildingLayout::fromJson($document);
+                $this->fail('an empty document was accepted as a layout: '.$document);
+            } catch (InvalidBuildingLayout $e) {
+                $this->assertStringContainsString('declares no `floors` key', $e->getMessage());
+                $this->assertStringNotContainsString('No error', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_text_that_did_not_parse_names_the_json_error_and_text_that_parsed_names_none(): void
+    {
+        try {
+            BuildingLayout::fromJson('{,}');
+            $this->fail('malformed JSON was accepted');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString('This is not JSON (Syntax error)', $e->getMessage());
+        }
+
+        try {
+            BuildingLayout::fromJson('"a layout"');
+            $this->fail('a JSON string was accepted as a layout');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString('This is a JSON string', $e->getMessage());
+            $this->assertStringNotContainsString('No error', $e->getMessage());
+        }
     }
 
     public function test_a_document_over_the_console_write_bound_is_refused_by_its_measured_size(): void
