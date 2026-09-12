@@ -3242,10 +3242,10 @@ primitive sets both, with `Content-Type: text/event-stream`, in
 `Illuminate\Routing\ResponseFactory::eventStream()`'s header array) and flushes after every message.
 *What this repository cannot see:* whether the reverse proxy honours that header for a FastCGI
 upstream; whether a compression or output filter sits in the path — **in the proxy or in PHP itself**,
-since `zlib.output_compression` and a non-zero `output_buffering` are ini settings the handler does not
-control; and what the proxy's read timeout is — the heartbeat's 15 s is what keeps a 60 s default alive, and a timeout below it would end
-every stream on a schedule. ⛔ **THREE ini directives are named here, not two, and the third is the one this design leans on
-hardest while never naming it** (card#9287, maintainer round). `ignore_user_abort` governs whether a
+since `zlib.output_compression`, a non-zero `output_buffering` and `ignore_user_abort` are ini settings
+the handler does not control — all three are named below, with what each one governs; and what the proxy's read timeout is — the heartbeat's 15 s is what keeps a 60 s default alive, and a timeout below it would end
+every stream on a schedule. ⛔ **A THIRD ini directive belongs in this set, and it is the one this design leans on hardest while
+never naming it** (card#9287, maintainer round). `ignore_user_abort` governs whether a
 PHP script keeps running once the client has gone away, and **the frozen-consumer story at
 [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) and at R2's teardown clause rests on it
 being OFF** — those sections say *the primitive `break`s out of its loop and `break` abandons a
@@ -3375,8 +3375,8 @@ torn down, not because the handler noticed. *The requirement:* the proxy's
 client-send timeout is **finite** (nginx `send_timeout`, Apache `Timeout`) and its upstream teardown
 follows it. *What this repository cannot see:* both values. *The observable when THIS clause is false:* a worker
 pinned per frozen client for the kernel's retransmission budget — minutes — and, at enough of them, F20
-arriving from clients rather than from load. *The check:* read the serving pool's own configuration file for the four values above and confirm the
-stream route resolves to that pool; then open N streams with the R1 command in N shells and, with all
+arriving from clients rather than from load. *The check:* read the serving pool's own configuration file for every value the requirement above
+states and confirm the stream route resolves to that pool; then open N streams with the R1 command in N shells and, with all
 N open, `GET /api/fleet/health` — which is served by **the other** pool, and that is the point of the
 check — must answer at its ordinary latency, while the **stream pool's** `pm.status_path` shows
 `listen queue` at 0 and `max children reached` unmoved. ⛔ **NOT `php-fpm -tt`, which an earlier

@@ -185,9 +185,10 @@ is written here — outside the table — because the table is closed and this a
 `fleet.health` and `feed.heartbeat` alike. [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) owns
 the wire fact that makes it necessary: a heartbeat written up to one visibility lag before this stream
 connected is delivered **after** the handler's connect-time `fleet.health`, and it carries a whole
-`fleet{}` — `seats_total` and `seats_live` included — so the counts row 5 and
-[§ 4.1](#41-the-lobby--the-building-summary) read can be REGRESSED to a ≤ 2 s-old value, spending one
-spurious snapshot fetch on a discrepancy that is not real. Nothing is computed: two delivered
+`fleet{}` — `seats_total` and `seats_live` included — so the fleet-wide counts that
+[§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check holds row 5's per-floor counts against
+can be REGRESSED to a ≤ 2 s-old value, spending one spurious snapshot fetch on a disagreement that is
+not real. Nothing is computed: two delivered
 timestamps are compared and the older object is dropped, which is why it is not a row. It is a
 **discard**, not the last-known-good merge the list below forbids — that one holds a stale object and
 mixes it with a fresh one; this one keeps the fresh object and drops the stale one whole.
@@ -4598,7 +4599,7 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Feed presumed dead | 45 s | **Cited** — D2 § 8.3, three heartbeat intervals | [§ 9](#9-failure-paths-and-their-observables) |
 | REST poll while the feed is down | 10 s | **Cited** — [D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path); since card#9287 also the cadence the client re-opens the stream on, and the first interval the row below doubles from ([§ 2.2](#22-connect-snapshot-deltas)) | [§ 9](#9-failure-paths-and-their-observables) |
 | Stream retry ceiling after `feed.close{reason:"unavailable"}` | 80 s | **Derived** — the 10 s cadence doubled until a browser makes fewer than one request a minute against a store that is refusing every one of them, which the fourth interval is the first to satisfy. It mints no number of its own and moves with the cadence it doubles from | [§ 2.2](#22-connect-snapshot-deltas) |
-| Stream session re-check | 15 s | **Cited** — [D2 § 9](FLEET-STATE.md#9-read-side-authentication), the heartbeat tick; the ≤ 15 s window F7 accepts is this number | [§ 9](#9-failure-paths-and-their-observables) |
+| Stream session re-check | 15 s | **Cited** — [D2 § 9](FLEET-STATE.md#9-read-side-authentication), the heartbeat tick. ⚠ **This is the re-check INTERVAL and not the window F7 accepts**, and this cell said it was until the card#9287 maintainer round: the check fires on a loop pass, a pass contains the write loop, so D2 § 9's enforcement bound is this interval plus D2 § 8.5's stall bound — under 60 s, and 15 s + one 250 ms tick on a draining client. That section owns the bound and this table does not restate it | [§ 9](#9-failure-paths-and-their-observables) |
 | Stream tick | 250 ms | **Cited** — [D2 § 12](FLEET-STATE.md#12-every-number-and-where-it-comes-from)'s row of that name, below the ~300 ms at which a human notices latency. ⚠ It was *"the delta coalescing tick"* until card#9287, which withdrew coalescing as never legal under D2 § 8.5's plus-one rule; the **number** is unchanged and so is everything below derived from it, because what it bounds — the fastest rate at which the wire can inform this client — is the same either way | [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) |
 | **Loop frame rate** | **4 fps** | **Derived** — one frame per 250 ms stream tick, so no **claim-bearing** loop on the floor can appear more informative than the fastest rate at which the wire can inform it. It is fixed across every such loop and every seat, because a rate that varied would encode a quantity nothing sent. **Decorative motion is outside it** and is bounded by this table's *Decorative motion's minimum cycle* row instead | [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) |
 | **Gauge tween and glyph cross-fade** | **250 ms** | **Derived** — the stream tick again: a tween longer than the interval between two deltas would still be animating the previous value when the next arrives | [§ 6.2](#62-the-animation-table--the-closed-set) |

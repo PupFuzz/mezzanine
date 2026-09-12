@@ -482,6 +482,53 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   is false — the close is the messenger within one 250 ms tick. That one clause is corrected; the row's
   ruling (a daemon writing to the same store is not the messenger of that store's outage) is untouched,
   and silence keeps its one remaining meaning: a stream that ended without saying so.
+  ⭐ **ROUND 7 — the first INDEPENDENT review of this amendment (maintainer round, 2026-09-12), and the
+  yield is why five self-reviews are not one outside read.** Two blockers, and both were the same
+  shape: **a rule stated in prose and CONTRADICTED by the artifact that gates it.** *(1)* The two
+  acceptance tests that decide whether the store-down ruling shipped — AT-D3-8 and AT-D2-12 — both
+  certified the held-open stream the ruling withdrew, AT-D3-8 in the words *"while the connection
+  indicator stays connected"* on the line directly below one this diff edited, and FLOOR § 9 F5's
+  **Never** column forbids that render by name. Both fixed, `fx-refusals` carries the stream's end,
+  and each gained a RED for the held-open stream. **The root defect was G12's population, not the
+  tests:** the guard held the three PROSE sites and neither test, so it could only ever agree with the
+  prose it read — its population is now the RULING's sites, AT-D3-8 included, which is the one check
+  in this file that reads `docs/design/FLOOR.md`; both new legs seen red on a plant and reverted
+  byte-identically, with a CONTROL that reds by name on an anchor that stops resolving. *(2)* The
+  handler returned on `fleet.reload` writing no `feed.close`, which F3 reads as *"a reason the server
+  did not choose"* — so **every routine deploy rendered *feed down — polling* against a healthy
+  fleet**. `reload` is now the fourth member of the close set — which **supersedes the two *closed set
+  of three … UNCHANGED* sentences earlier in this bullet**, and supersedes only their arithmetic: what
+  those rounds ruled is that the *unverifiable* outcome mints no member, and that still stands, because
+  it sends `unavailable` and ends nothing new. ⛔ **What is NOT ruled here and went to
+  the operator: whether a viewer sees a banner on a deploy that does not change `feed_version`.** D2
+  says the wire did not move so nothing should interrupt; FLOOR § 2.5, F8 and AT-D3-8's reload leg say
+  banner, unconditionally. Both are written up with their costs and the sites each answer moves at
+  **FLOOR § 14 item 20**, and neither document was edited toward the other — picking whichever is
+  easier to edit IS the ruling. The stream's END was fixed without waiting on it, because under both
+  answers an unexplained end renders *feed down* first. **Security:** § 9's revocation bound was
+  ~4× short — the re-check fires on a loop PASS and a pass contains the write loop, which § 8.5 lets
+  block for 45 s, so the bound is the auth interval plus that, under 60 s rather than 15.25 s; a
+  revoked session that drains slowly buys the difference. FLOOR F7 and **decision 36 — an acceptance
+  taken on the record at a figure 4× short** — moved with it, and the hoist that would have made
+  250 ms true is refused on the record with its reason, so the next round does not re-propose it. Step
+  9's hand-listed `/broadcasting/auth` tests were short by one (`git grep -ln "broadcasting/auth" --
+  server/tests` returns four) and are now the grep. **And the derivation that replaced round 6's wrong
+  list was itself scoped past the files it commands** — `-- server` hides `bin/deploy.sh`, which step
+  9 requires editing — so all three sites drop the pathspec. **MAJOR-6/8/9/10 dissolve into one
+  edit rather than four debates, because R1 already takes the right position:** *what is true on a
+  real FPM host is UNMEASURED and this document does not assert it either way.* R2 and step 9 did not
+  honour it — R2 named `php-fpm -tt`, the instrument R1 disqualifies eight paragraphs above and which
+  measurably cannot run as the deploy user; step 9 ordered the ini gate R1 forbids building until
+  card#9300 measures it; `pm.status_path` sat as a caveat on a check while § 2.1's feed-reload wait
+  loop depends on it; and the frozen-consumer story cited a `break` the primitive contradicts, when
+  what governs it is **`ignore_user_abort`** — unnamed anywhere, and on this box present and
+  **commented** in the FPM ini with the distribution suggesting `On`, one character from making
+  AT-D2-15's GREEN (b) red against a correct handler. All four now honour R1: named, handed to
+  card#9300, and no instrument prescribed that has not been run. The three minors were each a live
+  inconsistency rather than a taste call and all three are fixed — `feed_resync_required`'s cell named
+  a close reason the loop never counts, § 8.3's latency bound was measured from the commit while its
+  predicate reads `created_at` at INSERT, and this list omitted § 13 row 42, now deferred with the
+  § 8.7 prose it is written in.
 - **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
   report that the configurable unit was the room: the floor is configurable too — a hallway with
   five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
