@@ -31,7 +31,9 @@ supervised start (§ 2.3).
 
 **On Linux, install by hand with [`INSTALL-LINUX.md`](INSTALL-LINUX.md).** It needs no root, and the
 user crontab supervises the flusher. That runbook was performed to connect the first reporting seat
-(card#9368), and it argues why cron and not a `systemd --user` unit. **No Windows procedure exists.**
+(card#9368), and it argues why cron and not a `systemd --user` unit. **No Windows procedure exists
+yet.** One is owed when the Windows agent seat onboards; until then, by operator ruling on 2026-09-13,
+D1 § 16 does not require Windows validation (D1 § 3.1 names the Windows route owed).
 
 ## Configuration
 

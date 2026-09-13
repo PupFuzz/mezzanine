@@ -29,7 +29,8 @@
  *   P-6 never print a token  — see `redactSecrets()`; the config token never reaches any stream.
  *   P-7 detached respawn     — `{detached, stdio:'ignore', windowsHide}` + `unref()`.
  *
- * WINDOWS IS A FIRST-CLASS TARGET (card #7336 validates it on a real seat). Consequences that
+ * WINDOWS IS A FIRST-CLASS TARGET, unvalidated on a real seat until the Windows agent seat onboards
+ * (D1 § 16, operator ruling 2026-09-13; installer card #7336 is won't-do). Consequences that
  * are easy to lose in review: LF is written explicitly and `os.EOL` is never used, so fixtures
  * are byte-identical on both platforms; no file is ever renamed over a path another process may
  * hold open; bucket filenames come from the clock so rotation needs no rename at all; every
@@ -1093,9 +1094,11 @@ function projectLabel(payload) {
 
 /* § 6.1's harness_label is `claude-code/<version>`, and D1 NAMES NO SOURCE FOR THE VERSION.
  * MEASURED on this fleet 2026-08-24: no hook payload carries one and no CLAUDE_CODE_VERSION
- * exists in a hook-visible environment. So it is read from an installer-supplied config key —
- * the installer (card #7336) can run `claude --version` once, where it costs nothing, while a
- * hook cannot inside the 250 ms budget — and is honestly `null` plus a counter until then.
+ * exists in a hook-visible environment. So it is read from a config key whoever installs the seat
+ * supplies — an install can run `claude --version` once, where it costs nothing, while a hook cannot
+ * inside the 250 ms budget — and is honestly `null` plus a counter until then. There is no installer
+ * (card #7336 is won't-do), and `INSTALL-LINUX.md` Step 3 leaves the key unset on purpose, because
+ * a version written once goes stale at Claude Code's next self-update.
  * Filed as a D1 amendment request rather than guessed at. */
 function harnessLabel(cfg) {
   const v = typeof cfg.harness_label === 'string' ? cfg.harness_label : null;
