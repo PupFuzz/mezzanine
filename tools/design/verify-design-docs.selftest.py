@@ -115,7 +115,7 @@ PLANTS = [
         # `rename` appends to a word and leaves the old one a substring.)
         "verify-event-schema.py",
         "docs/design/EVENT-SCHEMA.md",
-        r"(\n1\. \*\*Supervised )(start)(\*\* — the installer registers)",
+        r"(\n1\. \*\*Supervised )(start)(\*\* — the flusher is registered)",
         "rename",
         "the label of § 2.3's supervised start, which check 11 holds § 3.1's roster delivery "
         "contract and AT-27 to naming (card#9296 round 3)",

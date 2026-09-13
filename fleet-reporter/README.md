@@ -21,8 +21,17 @@ node fleet-reporter.js selftest          # the § 6.14 checks this build impleme
 ```
 
 The reporter's contract with the harness is narrow and stable: **it is invoked with the hook
-name as `argv[2]` and the hook's JSON payload on stdin.** Hook wiring, the per-OS install path,
-and the service registration for the flusher belong to the installer (card #7336).
+name as `argv[2]` and the hook's JSON payload on stdin.**
+
+## Installing it on a seat
+
+**There is no installer.** Card #7336 is won't-do. D1 states what an install must produce: the hook
+wiring (§ 2.1, § 6.0), the per-OS install path (§ 2.1), the config (§ 3.1), and the flusher's
+supervised start (§ 2.3).
+
+**On Linux, install by hand with [`INSTALL-LINUX.md`](INSTALL-LINUX.md).** It needs no root, and the
+user crontab supervises the flusher. That runbook was performed to connect the first reporting seat
+(card#9368), and it argues why cron and not a `systemd --user` unit. **No Windows procedure exists.**
 
 ## Configuration
 
@@ -77,7 +86,7 @@ unilateral divergences left standing, and each says what would have broken.
 | **Amendment — § 6.1's `project_label` said only "sanitized basename of cwd"**, which a reporter can implement literally and still violate § 1 | D1 § 6.1 now states the rule: `null` when the cwd is the home directory, whose basename is the OS username on all three platform shapes. See "Decisions", below |
 | **Amendment — § 9.3 gained `spool_append_failed.<tree>` and `spool_append_retried.<tree>`** | the append primitive counts its own failures, so § 0 item 9's "a counter for every discarded event" holds for the write path and not only the read path. `spool_append_failed` raises the existing `lossy` member; no new `degraded` member, so § 9.3's "twelve members, and the array's bound is twelve" is untouched |
 | **Amendment — § 9.3's `kill_close_same_session` counted only the SAME-session close** | the second leg of § 6.6's kill signature is equally unevaluable on a **synthesized** close — one whose open was never seen, so the call's session is unknowable — and that case was previously counted by nothing at all. The row now names both, so "the leg did not fire" has one observable rather than one observable and one silence. No new `degraded` member: the counter is informational either way |
-| `harness_label`'s source (§ 6.1 mandates `claude-code/<version>` but names no source; no hook payload carries one and no `CLAUDE_CODE_VERSION` exists in a hook-visible environment) | read from an installer-written `harness_label` config key; honestly `null` plus a counter until the installer writes it |
+| `harness_label`'s source (§ 6.1 mandates `claude-code/<version>` but names no source; no hook payload carries one and no `CLAUDE_CODE_VERSION` exists in a hook-visible environment) | read from a `harness_label` config key written at install time; honestly `null` plus a counter while none is written. [`INSTALL-LINUX.md`](INSTALL-LINUX.md) deliberately writes none, because a version written once goes stale at the harness's next self-update |
 | The index journal has no record for sessions, turns or compactions, but § 8.2's 16-session cap, § 8.4's superseded-session rule, § 6.2's `turns` and § 6.4's `duration_ms` all need them | four reporter-internal record kinds added (`session_open`/`session_close`, `turn_open`/`turn_close`, `compaction_open`/`compaction_close`), plus `prompt_id` on `open` and `outcome` on `close`. None reaches the wire, so none costs a schema version |
 | A hook with multiple captured payload shapes (§ 17 reproduces 3 for `PreToolUse`) cannot be "the payload verbatim" in one file | the fixture is `{"_source": …, "shapes": [ …verbatim payloads… ]}`, and the key check asserts against the union |
 | Which of the two `/clear` signals emits the boundary events when both fire | whichever reaps first emits them; the second finds the session tombstoned, counts `reap_noop_second_signal`, and emits nothing — so no call is closed twice |

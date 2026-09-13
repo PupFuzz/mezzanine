@@ -19,6 +19,19 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9368** — **A Linux agent seat can report without an installer and without root.** The new
+  `fleet-reporter/INSTALL-LINUX.md` is a by-hand runbook, performed on the sandbox host to connect
+  `mezzanine` / `mezzanine-solo` as the first reporting seat. Its steps: issue the seat token straight
+  into a `0600` config, wire the hooks, supervise the flusher, run selftest, verify, and roll back.
+  **The flusher's supervised start on Linux is now the user crontab**, an `@reboot` entry plus a
+  minutely `flock -n` entry that carries `COORD_CONFIG=` on its own command line. It is no longer a
+  `systemd --user` unit, which without lingering neither starts at boot nor outlives logout. D1 § 2.3,
+  § 3.1's `$COORD_CONFIG` delivery contract, AT-27 case F and § 18.13 row 6 now say so. The fleet-reporter
+  README and `docs/PLAN.md § 3` record the installer, card #7336, as won't-do. **Installer action:**
+  nothing on the server. To connect a Linux seat, follow the runbook. Its closing section names what
+  it does not give you: `selftest` exits 1 on every seat because this build never probes
+  `schema_version_accepted` there; a fresh seat starts badged `epoch_reset`; and the reporter does not
+  yet send `protocol_agent_name`.
 - **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
   as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
   prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: a host

@@ -268,7 +268,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | D2 fleet-state + feed (new card) | D1 | review; snapshot+delta contract explicit |
 | | D3 floor UI spec (card#7457) | D2 draft | review; identity mapping defined |
 | **P1 telemetry** | `fleet-reporter` core: spool + flusher (#7335) | D1 | hermetic selftest; **never blocks the agent**; survives server down; sanitizer has RED fixtures |
-| | installer, Linux + **Windows validated** (#7336) | #7335 | real install on a Windows seat before anything trusts the signal |
+| | installer, Linux + **Windows validated** (#7336) — **won't-do**; Linux seats install by hand with `fleet-reporter/INSTALL-LINUX.md` (card#9368), and no Windows procedure exists | #7335 | real install on a Windows seat before anything trusts the signal |
 | | kill-vs-idle proof (#7337) | #7335 | the D1-specified test, run for real against a `/clear` |
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
