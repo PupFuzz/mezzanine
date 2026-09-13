@@ -36,19 +36,22 @@
 #   PHP-FPM pool whose workers run as this user under a master that is root's. So:
 #     · SUPERVISION is this user's crontab — cron + `flock -n`, rendered and installed by
 #       bin/supervision.sh, which is also the one list of what is supervised. A13 refuses a crontab
-#       lacking any of its entries, as a missing systemd unit used to be refused.
-#     · A RESTART is SIGTERM to whatever holds each daemon's lock, then the command cron runs,
-#       started detached — PROVEN by the lock being held by processes that started after the restart
-#       and are still alive a settle later (restart_daemons).
+#       lacking any entry the SERVING release renders, as a missing systemd unit used to be refused,
+#       and one the DEPLOYED release's block could not be installed into; the window installs it.
+#     · A RESTART is SIGTERM to whatever holds a lock of either release's daemons, then the command
+#       cron runs, started detached — PROVEN by each of the deployed release's locks being held a
+#       settle later by processes that started after the restart, and by each lock only the previous
+#       release named being held by nothing (restart_daemons).
 #     · PHP-FPM IS NOT RELOADED; this user cannot. Its workers read the new code through opcache's
 #       timestamp validation, which A14 reads off the FPM SAPI and the pool — refusing a host where
-#       that would not happen — and phase B waits out `revalidate_freq` before `up`
-#       (fpm_code_reload_ready).
+#       that would not happen, a `.user.ini` over the app's scripts included — and phase B waits out
+#       `revalidate_freq` before `up` (fpm_code_reload_ready).
 #   There is no escalation knob and no second mode: a root path kept "optional" would be a second
 #   supported way to deploy, which is what the ruling ends.
 #
-# WHAT IT IS NOT. It does not provision the host (D-08 / D-15 own that), does not install the
-# crontab (`bin/supervision.sh install` does, as the application user), does not write `.env`,
+# WHAT IT IS NOT. It does not provision the host (D-08 / D-15 own that), does not stand the crontab
+# up (`bin/supervision.sh install` does, once, as the application user — each deploy then replaces
+# that managed block with its own release's), does not write `.env`,
 # does not create databases, does not mint an APP_KEY, and never rolls anything back. It refuses
 # to start when the host is not in the state those acts leave behind.
 #
@@ -70,6 +73,8 @@
 #                         php-fpm<this host's CLI PHP minor>, e.g. php-fpm8.5 — derived; see below]
 #   MEZZ_DAEMON_STOP_TIMEOUT_S  seconds the previous daemons get to exit after SIGTERM [default: 30]
 #   MEZZ_DAEMON_SETTLE_S  seconds a relaunched daemon must stay alive to count [default: 3]
+#   MEZZ_DOCROOT          the vhost's document root, whose `.user.ini` A14 reads [default:
+#                         $HOME/public_html, the Virtualmin layout; absent ⇒ a warning naming it]
 #   The supervised set is deliberately NOT configurable here: it is bin/supervision.sh's, the same
 #   list the crontab was installed from.
 #
@@ -105,7 +110,11 @@ usage() { sed -n '/^# USAGE/,/^# CARD/p' "$0" | grep -v '^# CARD' | sed 's/^# \{
 
 # ── configuration ─────────────────────────────────────────────────────────────────────────────
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
-DEPLOY_ROOT="${MEZZ_DEPLOY_ROOT:-$(cd "$(dirname "$SELF")/.." && pwd)}"
+# Canonical: the crontab entries A13 matches and the window installs carry this path and cron runs them
+# from HOME, and phase B `cd`s into server/ before it re-execs through it — a relative MEZZ_DEPLOY_ROOT
+# would be wrong in each. Phase B exports the canonical value, so the re-exec cannot re-resolve it.
+DEPLOY_ROOT="$(readlink -f -- "${MEZZ_DEPLOY_ROOT:-$(dirname "$SELF")/..}")" \
+  || refuse "MEZZ_DEPLOY_ROOT '${MEZZ_DEPLOY_ROOT:-}' does not resolve to a path"
 REMOTE="${MEZZ_REMOTE:-origin}"
 # The PHP-FPM binary A14 reads, DERIVED from the PHP this host actually runs. card#9203: the
 # literal `php8.3-fpm` unit name that used to sit here was one of three surfaces that drifted
@@ -117,8 +126,9 @@ HOST_PHP_VERSION="$(php -r 'echo PHP_VERSION;' 2>/dev/null || true)"
 FPM_BIN="${MEZZ_FPM_BIN:-php-fpm$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,2)}"
 
 # The supervised daemons, their locks and the exact command cron runs for each — stated ONCE, in
-# bin/supervision.sh, sourced from beside THIS file. After the re-exec below that is the DEPLOYED
-# release's copy, so a release that adds a daemon restarts it on the deploy that ships it.
+# bin/supervision.sh, sourced from beside THIS file. In phase A that is the SERVING release's copy, and
+# A13 reads the target's out of git beside it; after the re-exec it is the DEPLOYED release's, so a
+# release that adds a daemon installs its entries and starts it on the deploy that ships it.
 # `mezzanine:retire` is an operator command and runs nothing between deploys.
 # shellcheck source=bin/supervision.sh
 . "$(dirname "$SELF")/supervision.sh"
@@ -127,7 +137,7 @@ APP_DIR="$DEPLOY_ROOT/server"          # D-16: the Laravel app is not at the rep
 ENV_FILE="$APP_DIR/.env"
 MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
 
-REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""
+REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""; TARGET_DAEMONS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -229,9 +239,17 @@ ver_ge() {
 # Read from the FPM SAPI (`php-fpm -i`; the CLI reads a different php.ini) and then from every pool
 # that runs as THIS user, because a pool's php_value / php_admin_value beats the ini and Virtualmin
 # writes a domain's PHP options exactly there. The worst case across those pools wins.
-# ⚠ NOT READ: a `.user.ini` in the document root. validate_timestamps and revalidate_freq are both
-# changeable per directory (`ini_set` accepts them; it refuses opcache.preload), and the document
-# root is the vhost's, which this script does not know. docs/PLAN.md § 5 names that gap.
+# And then from every `.user.ini` that sits over the app's scripts — in the vhost's document root
+# (MEZZ_DOCROOT) and in the release's server/public/ — because opcache.enable, validate_timestamps and
+# revalidate_freq are all PHP_INI_ALL, so such a file beats the pool for every request under it
+# (opcache.preload is PHP_INI_SYSTEM, and no .user.ini can set it). MEASURED on the sandbox host,
+# 2026-09-13, with php-cgi8.5 (the CGI SAPI, not FPM itself): a .user.ini's validate_timestamps=0 and
+# revalidate_freq=9 both took effect, its opcache.enable=0 turned the cache off, and its
+# opcache.enable=1 over an ini with the cache off did NOT turn it on ("can't be temporarily enabled").
+# The judgement does not lean on that last result: each .user.ini is overlaid on each pool, enable
+# included, and judged exactly as a pool is — which can only refuse more. A document root that does not
+# exist is WARNED about, by name, not refused: the default is the Virtualmin layout, and a host laid out
+# otherwise names its own.
 #
 # Sets FPM_POSTURE and FPM_REVALIDATE_S on success; on failure FPM_NOT_READY — a refusal title, then
 # its lines. Phase A refuses on it; phase B, which re-reads it, fails the window on it.
@@ -239,6 +257,39 @@ phpinfo_value() { awk -F' => ' -v k="$2" '$1 == k { print $2; exit }' <<< "$1"; 
 pool_ini() { awk -F'\t' -v p="$2" -v k="$3" '$1 == p && $2 == k { v = $3 } END { printf "%s", v }' <<< "$1"; }
 ini_on() { case "${1,,}" in 1 | on | yes | true) return 0 ;; esac; return 1; }
 unquote() { local v="$1"; v="${v%\"}"; v="${v#\"}"; printf '%s' "$v"; }
+
+# ini_file_value <ini text> <key> — the value a php.ini-syntax file gives <key>, the last setting winning,
+# printed after a '=' so that an EMPTY value — which PHP reads as off — differs from no setting at all.
+ini_file_value() {
+  awk -v k="$2" '
+    { line = $0; sub(/^[[:space:]]+/, "", line) }
+    index(line, k) == 1 {
+      rest = substr(line, length(k) + 1)
+      if (rest !~ /^[[:space:]]*=/) next
+      sub(/^[[:space:]]*=[[:space:]]*/, "", rest)
+      if (rest ~ /^"/) { sub(/^"/, "", rest); sub(/".*$/, "", rest) }
+      else { sub(/[[:space:]]*;.*$/, "", rest); sub(/[[:space:]]+$/, "", rest) }
+      v = rest; found = 1
+    }
+    END { if (found) printf "=%s", v }' <<< "$1"
+}
+
+# fpm_judge <label> <enable> <validate_timestamps> <revalidate_freq> <preload> — one effective opcache
+# posture. Called by fpm_code_reload_ready only: it records into that function's locals (cached, stale,
+# preloaded, max_f), and fails with FPM_NOT_READY set on a revalidate_freq it cannot wait out.
+fpm_judge() {
+  # Off, or not loaded at all (no `opcache.enable` in the phpinfo): every request reads the disk.
+  if ! ini_on "${2:-0}"; then return 0; fi
+  cached=1
+  if ! ini_on "$3"; then stale+=("$1"); fi
+  if [ -n "$5" ]; then preloaded+=("$1"); fi
+  case "$4" in
+    '' | *[!0-9]*)
+      FPM_NOT_READY=("$1: opcache.revalidate_freq is '$4', not a whole number of seconds")
+      return 1 ;;
+  esac
+  if [ "$4" -gt "$max_f" ]; then max_f="$4"; fi
+}
 
 fpm_code_reload_ready() {
   FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0
@@ -296,6 +347,33 @@ fpm_code_reload_ready() {
     return 1
   fi
 
+  # The .user.ini files that can override a pool for the requests under them (see above).
+  local uif docroot f i x ue uv uf
+  local -a ui_src=() ui_text=()
+  uif="$(phpinfo_value "$info" user_ini.filename)"
+  if [ "$uif" != "no value" ]; then
+    uif="${uif:-.user.ini}"   # no such phpinfo line: PHP's own default name is read, not skipped
+    docroot="${MEZZ_DOCROOT:-$HOME/public_html}"
+    if [ ! -d "$docroot" ]; then
+      warn "no document root at $docroot, so a $uif there — which can turn opcache's timestamp validation off for every request under it — was NOT read. Name the vhost's document root with MEZZ_DOCROOT."
+    fi
+    for f in "$docroot/$uif" "$APP_DIR/public/$uif"; do
+      [ -e "$f" ] || continue
+      if [ ! -r "$f" ]; then
+        FPM_NOT_READY=("cannot read $f"
+          "A $uif can override opcache for every request under it, so it is read, never skipped.")
+        return 1
+      fi
+      ui_src+=("$f"); ui_text+=("$(cat "$f")")
+    done
+    # Phase A reads the RELEASE's copy as well, which the checkout has not written yet; phase B, run after
+    # the checkout, has already read it from disk above.
+    if [ -z "$POST_CHECKOUT_SHA" ] && git_at cat-file -e "$SHA:server/public/$uif" 2>/dev/null; then
+      ui_src+=("server/public/$uif at $(git_at rev-parse --short "$SHA")")
+      ui_text+=("$(git_at show "$SHA:server/public/$uif")")
+    fi
+  fi
+
   local p e v fq pl base_e base_v base_f base_p max_f=0 cached=0
   base_e="$(phpinfo_value "$info" opcache.enable)"
   base_v="$(phpinfo_value "$info" opcache.validate_timestamps)"
@@ -307,24 +385,21 @@ fpm_code_reload_ready() {
     v="$(pool_ini "$rows" "$p" opcache.validate_timestamps)"; v="$(unquote "${v:-$base_v}")"
     fq="$(pool_ini "$rows" "$p" opcache.revalidate_freq)";    fq="$(unquote "${fq:-$base_f}")"
     pl="$(pool_ini "$rows" "$p" opcache.preload)";            pl="$(unquote "${pl:-$base_p}")"
-    # Off, or not loaded at all (no `opcache.enable` in the phpinfo): every request reads the disk.
-    if ! ini_on "${e:-0}"; then continue; fi
-    cached=1
-    if ! ini_on "$v"; then stale+=("[$p]"); fi
-    if [ -n "$pl" ]; then preloaded+=("[$p]"); fi
-    case "$fq" in
-      '' | *[!0-9]*)
-        FPM_NOT_READY=("pool [$p]: opcache.revalidate_freq is '$fq', not a whole number of seconds")
-        return 1 ;;
-    esac
-    if [ "$fq" -gt "$max_f" ]; then max_f="$fq"; fi
+    fpm_judge "[$p]" "$e" "$v" "$fq" "$pl" || return 1
+    for i in "${!ui_src[@]}"; do
+      ue="$e"; uv="$v"; uf="$fq"
+      x="$(ini_file_value "${ui_text[i]}" opcache.enable)";              [ -z "$x" ] || ue="${x#=}"
+      x="$(ini_file_value "${ui_text[i]}" opcache.validate_timestamps)"; [ -z "$x" ] || uv="${x#=}"
+      x="$(ini_file_value "${ui_text[i]}" opcache.revalidate_freq)";     [ -z "$x" ] || uf="${x#=}"
+      fpm_judge "[$p] under ${ui_src[i]}" "$ue" "$uv" "$uf" "$pl" || return 1
+    done
   done
   if [ ${#stale[@]} -gt 0 ]; then
     FPM_NOT_READY=("PHP-FPM would go on serving the PREVIOUS release: opcache.validate_timestamps is off for ${stale[*]}"
       "With it off a cached script is never re-read from disk, and this user cannot reload the pool"
       "master, which is root's — measured on the sandbox host, a worker still served a replaced file"
       "8 s after the change. Turn it back on (PHP's default; revalidate_freq bounds what it costs)"
-      "in the FPM php.ini or the pool.")
+      "in the FPM php.ini, the pool, or the .user.ini named.")
     return 1
   fi
   if [ ${#preloaded[@]} -gt 0 ]; then
@@ -604,17 +679,29 @@ phase_a() {
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
 
-  # A13 — supervision. The long-lived daemons of FLEET-STATE.md § 2.1 have no systemd unit (the
-  # header's NO ROOT note): this user's crontab supervises them, and a host whose crontab lacks an
-  # entry is refused for the reason a missing unit was — that daemon runs only until it next exits,
-  # and nothing starts it again. The expected lines are not restated here: they are exactly what
-  # bin/supervision.sh renders for THIS checkout and THIS php, matched as whole lines, so a
-  # commented-out entry, another checkout's entry or another PHP's entry does not count.
+  # A13 — supervision, judged for BOTH releases. The long-lived daemons of FLEET-STATE.md § 2.1 have
+  # no systemd unit (the header's NO ROOT note): this user's crontab supervises them.
   #
-  # `crontab -l` failing is a refusal whatever it says — "no crontab for …" included — and an empty
-  # crontab fails the match on every line. Neither can read as "nothing missing".
+  # (1) THE SERVING RELEASE'S ENTRIES ARE INSTALLED. A host whose crontab lacks one is refused for the
+  # reason a missing unit was — that daemon runs only until it next exits, and nothing starts it again —
+  # and for one more: the restart stops the running daemons by the locks the serving release names
+  # (MEZZ_DEPLOY_PREVIOUS_LOCKS), which is a true statement about what is running only while cron runs
+  # exactly these lines. They are not restated here: they are what bin/supervision.sh renders for THIS
+  # checkout and THIS php, matched as whole lines, so a commented-out entry, another checkout's entry or
+  # another PHP's entry does not count. `crontab -l` failing is a refusal whatever it says — "no crontab
+  # for …" included — and an empty crontab fails the match on every line. Neither can read as "nothing
+  # missing".
+  #
+  # (2) THE DEPLOYED RELEASE'S BLOCK CAN BE INSTALLED. The window installs the target release's own block
+  # (restart_daemons). Judged by the serving copy alone, a release that adds a daemon deploys green with
+  # no entry to start it again after a crash or a reboot, and one that moves a lock leaves cron running
+  # the previous lines. So the target's bin/supervision.sh is read out of git, as A6 reads its
+  # composer.json, and its own install is run with nothing written: every refusal that install can make
+  # is made HERE, before anything is touched, and the write in the window can fail only on what changed
+  # in between.
   step "Checking cron supervision (bin/supervision.sh)"
-  local php_bin expected installed line cron_rc=0 missing_entries=()
+  local php_bin expected installed line cron_rc=0 missing_entries=() target_sup plan_file plan_err added removed short
+  short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
   expected="$(supervision_entries "$DEPLOY_ROOT" "$php_bin")" || refuse \
     "cron cannot carry this checkout's paths verbatim: '$DEPLOY_ROOT', '$php_bin'" \
@@ -634,7 +721,39 @@ phase_a() {
     "Without its entry a daemon runs only until it next exits, and nothing starts it again." \
     "Install or refresh the managed block (every other line of the crontab is kept):" \
     "  $DEPLOY_ROOT/bin/supervision.sh install"
-  say "  ok — the crontab carries every entry bin/supervision.sh renders for $DEPLOY_ROOT"
+  say "  ok — the crontab carries every entry bin/supervision.sh renders for $DEPLOY_ROOT (the serving release's copy)"
+
+  target_sup="$(git_at show "$SHA:bin/supervision.sh" 2>/dev/null || true)"
+  [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $short" \
+    "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
+    "A release without it cannot be supervised by this deploy."
+  plan_file="$(mktemp)"
+  plan_err="$( (
+      # shellcheck source=/dev/null
+      . <(printf '%s\n' "$target_sup")
+      declare -F supervision_install_plan >/dev/null \
+        || { echo "it defines no supervision_install_plan, which this deploy runs from it" >&2; exit 1; }
+      supervision_install_plan "$DEPLOY_ROOT" "$php_bin"
+    ) 2>&1 >"$plan_file" )" || {
+    rm -f "$plan_file"
+    refuse "the crontab block of bin/supervision.sh at $short could not be installed here" \
+      "$(printf '%s\n' "$plan_err" | sed 's/^/  | /')" \
+      "" \
+      "The maintenance window installs it; this is that install's refusal, made before anything is touched."
+  }
+  # shellcheck source=/dev/null
+  TARGET_DAEMONS="$( . <(printf '%s\n' "$target_sup"); printf '%s ' "${SUPERVISED_DAEMONS[@]}" )"
+  TARGET_DAEMONS="${TARGET_DAEMONS% }"
+  added="$(grep -Fxv -f <(printf '%s\n' "$installed") "$plan_file" || true)"
+  removed="$(printf '%s\n' "$installed" | grep -Fxv -f "$plan_file" || true)"
+  rm -f "$plan_file"
+  if [ -z "$added$removed" ]; then
+    say "  ok — $short's block (bin/supervision.sh) is what is installed; the window rewrites it unchanged"
+  else
+    say "  ok — the window installs $short's block (bin/supervision.sh), which changes the crontab:"
+    if [ -n "$added" ]; then printf '%s\n' "$added" | sed 's/^/    + /'; fi
+    if [ -n "$removed" ]; then printf '%s\n' "$removed" | sed 's/^/    - /'; fi
+  fi
 
   # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
   # fpm_code_reload_ready; phase B re-reads the same posture before it waits.
@@ -646,7 +765,7 @@ phase_a() {
   say "Ready:"
   say "  from     $(git_at rev-parse --short "$CURRENT_SHA")"
   say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
-  say "  daemons  ${SUPERVISED_DAEMONS[*]} (SIGTERM, then relaunched with cron's command)"
+  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, either release's lock holders sent SIGTERM, relaunched with cron's command"
   say "  php-fpm  not reloaded — $FPM_POSTURE"
 }
 
@@ -732,18 +851,30 @@ MARKER_END
   # currently-serving release, which is the one that knows how to check itself). Without this the
   # new code would always be deployed by the previous release's procedure, forever one behind.
   step "Re-exec: handing off to the deployed release's own bin/deploy.sh"
+  # HANDED OVER: the lock files of the SERVING release's daemons, named by its bin/supervision.sh — the
+  # copy sourced above, whose entries A13 (1) found in the crontab. The deployed release stops their
+  # holders beside its own. Without them a release that moves a lock stops nothing: the previous daemons
+  # keep their locks and run the previous code beside the new ones, and every new lock still proves held.
+  local c previous_locks=""
+  for c in "${SUPERVISED_DAEMONS[@]}"; do previous_locks+="$(supervision_lock "$DEPLOY_ROOT" "$c")"$'\n'; done
   trap - ERR
-  export MEZZ_DEPLOY_IN_WINDOW=1
+  export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="$DEPLOY_ROOT" MEZZ_DEPLOY_PREVIOUS_LOCKS="$previous_locks"
   exec "$DEPLOY_ROOT/bin/deploy.sh" --internal-post-checkout "$SHA"
 }
 
 # ── the daemons: a restart without systemd ─────────────────────────────────────────────────────
-# STOP. SIGTERM to every process holding a daemon's lock — flock and the php it runs, which inherits
-# the locked fd. None of the three commands traps a signal: measured, an artisan loop in this app
-# exits 8 ms after SIGTERM with status 143, the default action. So the daemon dies wherever the
-# signal lands, INSIDE a transaction included — which is exactly a crash, and a crash is already a
-# case § 2.1 requires every process to survive ("individually restartable without losing or
-# double-applying anything"):
+# INSTALL. First, the deployed release's crontab block — bin/supervision.sh install, from THIS copy —
+# whose every refusal A13 made before the window. First, so that from cron's next minute nothing starts
+# under the previous release's lines while the stop below clears them.
+#
+# STOP. SIGTERM to every process holding a lock of EITHER release — the deployed release's, and the
+# previous release's handed over by the re-exec (MEZZ_DEPLOY_PREVIOUS_LOCKS) — until none is held; flock
+# and the php it runs both hold one, through the inherited fd. Holders are read afresh every round, so a
+# copy cron started just before the install is stopped too. No supervised command registers a signal
+# handler: measured, an artisan loop in this app exits 8 ms after SIGTERM with status 143, the default
+# action. So the daemon dies wherever the signal lands, INSIDE a transaction included — which is exactly
+# a crash, and a crash is already a case § 2.1 requires every process to survive ("individually
+# restartable without losing or double-applying anything"):
 #   · fold — FLEET-STATE.md § 6.5, idempotency mechanism 1: the cursor advance is in the SAME
 #     transaction as the projections, so a kill mid-pass rolls back both; mechanism 2: every
 #     projection is an upsert on a natural key, so re-applying an event is a no-op anyway. AT-D2-9
@@ -753,6 +884,12 @@ MARKER_END
 #     2026-09-13): a row inserted inside an open transaction was gone after SIGTERM killed the client.
 #   · sweep — one transaction per seat, and every job guarded on the fact it closes still being open.
 #   · feed heartbeat — a kill loses at most the tick in flight; the relaunched loop ticks first.
+# ⚑ A DAEMON ADDED TO bin/supervision.sh MUST KEEP THAT PROPERTY: it registers no signal handler (no
+# pcntl_signal, no Laravel `trap()`, no SignalableCommandInterface), or else it survives SIGTERM mid-pass
+# exactly as it survives a crash — and either way its crash case is written beside the ones above.
+# Re-measure both halves when adding one, on a host where the command may run:
+#   grep -rnE 'pcntl_signal|->trap\(|SignalableCommandInterface' server/app       # prints nothing
+#   (cd server && exec php artisan mezzanine:<name>) & sleep 5; kill -TERM $!; wait $!; echo $?   # 143
 # A stop FLAG polled between passes was weighed and not taken: it buys no correctness the transaction
 # does not already give, it has to wait out a 15 s sleep, and a flag left behind by a deploy that died
 # would make every cron relaunch exit at once — every daemon down and the fold frozen, § 2.3's one
@@ -764,31 +901,62 @@ MARKER_END
 # DB_DATABASE exported in the operator's shell beats server/.env. If cron's own minute tick got there
 # first, this `flock -n` exits at once and changes nothing.
 #
-# PROVE. A start is not a survival. Each lock must be held by processes that STARTED AFTER this step
-# began — so they loaded the tree as it is now (the CLI runs without opcache) — and the same processes
-# must still hold it MEZZ_DAEMON_SETTLE_S later. A daemon that dies two seconds in (a bad config, a
-# class a package removal took away) would otherwise leave a fold frozen behind a green deploy.
+# PROVE. A start is not a survival. Each of the deployed release's locks must be held MEZZ_DAEMON_SETTLE_S
+# after the relaunch, and every process holding it THEN must have STARTED AFTER this step began — so it
+# loaded the tree as it is now (the CLI runs without opcache). Judged at the settle, not by following the
+# pids first seen holding the lock: cron's minute tick can land a losing `flock -n` that has the lock
+# file open for a moment, and a pid that was only ever that would read as a daemon that died. A daemon
+# that dies two seconds in (a bad config, a class a package removal took away) leaves its lock free at
+# the settle; unproven, it would leave a fold frozen behind a green deploy. What the settle cannot see is
+# a daemon that dies and is started again by cron inside it. And each lock only the PREVIOUS release
+# named must then be held by nothing at all.
+lock_holders() { # <file…> — the pids that have any of these files open; nothing for a file not there
+  local f
+  local -a present=()
+  for f in "$@"; do if [ -e "$f" ]; then present+=("$f"); fi; done
+  if [ ${#present[@]} -gt 0 ]; then fuser "${present[@]}" 2>/dev/null || true; fi
+}
+
+holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid started at or after <since>
+  local cmd="$1" lock="$2" since="$3" pid started now
+  shift 3
+  now="$(date +%s)"
+  for pid in "$@"; do
+    started=$((now - $(ps -o etimes= -p "$pid" 2>/dev/null || echo 0)))
+    [ "$started" -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started $((since - started)) s BEFORE this restart — it is running the previous release's code" >&2; false; }
+  done
+}
+
 restart_daemons() {
-  local php_bin cmd lock pid holders now started alive deadline i step_started
+  local php_bin cmd lock lk pid deadline step_started stopped=""
   local stop_timeout="${MEZZ_DAEMON_STOP_TIMEOUT_S:-30}" settle="${MEZZ_DAEMON_SETTLE_S:-3}"
-  local -a old=() held=() hs=()
+  local -a target_locks=() previous_locks=() previous_only=() stop_locks=() hs=()
   php_bin="$(supervision_default_php)"
   step_started="$(date +%s)"
-
-  for cmd in "${SUPERVISED_DAEMONS[@]}"; do
-    read -r -a hs <<< "$(fuser "$(supervision_lock "$DEPLOY_ROOT" "$cmd")" 2>/dev/null || true)"
-    old+=("${hs[@]}")
+  for cmd in "${SUPERVISED_DAEMONS[@]}"; do target_locks+=("$(supervision_lock "$DEPLOY_ROOT" "$cmd")"); done
+  mapfile -t previous_locks <<< "$MEZZ_DEPLOY_PREVIOUS_LOCKS"
+  for lk in "${previous_locks[@]}"; do
+    [ -n "$lk" ] || continue
+    case " ${target_locks[*]} " in *" $lk "*) continue ;; esac
+    previous_only+=("$lk")
   done
-  if [ ${#old[@]} -gt 0 ]; then kill -TERM "${old[@]}" 2>/dev/null || true; fi
-  deadline=$((step_started + stop_timeout))
+  stop_locks=("${target_locks[@]}" "${previous_only[@]}")
+
+  # A subshell, because install ends with `exit` on a refusal; the ERR trap is dropped inside it so the
+  # failure is reported once, here, and not a second time from within.
+  ( trap - ERR; supervision_install "$DEPLOY_ROOT" "$php_bin" >/dev/null )
+  say "  installed the deployed release's crontab block (bin/supervision.sh)"
+
+  deadline=$(($(date +%s) + stop_timeout))
   while :; do
-    alive=""
-    for pid in "${old[@]}"; do if kill -0 "$pid" 2>/dev/null; then alive+=" $pid"; fi; done
-    [ -n "$alive" ] || break
-    [ "$(date +%s)" -lt "$deadline" ] || { echo "the previous daemons did not exit within ${stop_timeout} s of SIGTERM — pid(s)$alive" >&2; false; }
+    read -r -a hs <<< "$(lock_holders "${stop_locks[@]}")"
+    [ ${#hs[@]} -gt 0 ] || break
+    for pid in "${hs[@]}"; do case " $stopped " in *" $pid "*) ;; *) stopped+=" $pid" ;; esac; done
+    [ "$(date +%s)" -lt "$deadline" ] || { echo "the previous daemons did not exit within ${stop_timeout} s of SIGTERM — pid(s) ${hs[*]}" >&2; false; }
+    kill -TERM "${hs[@]}" 2>/dev/null || true
     sleep 0.2
   done
-  say "  stopped — pid(s) ${old[*]:-none were running}"
+  say "  stopped — pid(s)${stopped:- none were running}"
 
   for cmd in "${SUPERVISED_DAEMONS[@]}"; do
     env -i HOME="$HOME" LOGNAME="$(id -un)" USER="$(id -un)" SHELL=/bin/sh PATH=/usr/bin:/bin \
@@ -796,35 +964,29 @@ restart_daemons() {
     say "  relaunched $cmd"
   done
 
-  for i in "${!SUPERVISED_DAEMONS[@]}"; do
-    cmd="${SUPERVISED_DAEMONS[$i]}"; lock="$(supervision_lock "$DEPLOY_ROOT" "$cmd")"
-    deadline=$(($(date +%s) + 10))
-    holders="$(fuser "$lock" 2>/dev/null || true)"
-    while [ -z "${holders// /}" ]; do
+  for cmd in "${SUPERVISED_DAEMONS[@]}"; do
+    lock="$(supervision_lock "$DEPLOY_ROOT" "$cmd")"; deadline=$(($(date +%s) + 10))
+    read -r -a hs <<< "$(lock_holders "$lock")"
+    while [ ${#hs[@]} -eq 0 ]; do
       [ "$(date +%s)" -lt "$deadline" ] || { echo "$cmd: nothing holds $lock after the relaunch — see $APP_DIR/storage/logs/daemon-$(supervision_daemon_name "$cmd").log" >&2; false; }
       sleep 0.2
-      holders="$(fuser "$lock" 2>/dev/null || true)"
+      read -r -a hs <<< "$(lock_holders "$lock")"
     done
-    read -r -a hs <<< "$holders"
-    now="$(date +%s)"
-    for pid in "${hs[@]}"; do
-      started=$((now - $(ps -o etimes= -p "$pid" 2>/dev/null || echo 0)))
-      [ "$started" -ge "$step_started" ] || { echo "$cmd: $lock is held by pid $pid, which started $((step_started - started)) s BEFORE this restart — it is running the previous release's code" >&2; false; }
-    done
-    held[i]="${hs[*]}"
+    holders_started_after "$cmd" "$lock" "$step_started" "${hs[@]}"
   done
 
   sleep "$settle"
-  for i in "${!SUPERVISED_DAEMONS[@]}"; do
-    cmd="${SUPERVISED_DAEMONS[$i]}"; lock="$(supervision_lock "$DEPLOY_ROOT" "$cmd")"
-    read -r -a hs <<< "$(fuser "$lock" 2>/dev/null || true)"
-    for pid in ${held[i]}; do
-      case " ${hs[*]} " in
-        *" $pid "*) ;;
-        *) echo "$cmd: pid $pid held $lock after the relaunch and is gone ${settle} s later — the daemon died on start; see $APP_DIR/storage/logs/daemon-$(supervision_daemon_name "$cmd").log" >&2; false ;;
-      esac
-    done
-    say "  ok — $cmd: pid(s) ${held[i]} started after the restart and still hold its lock ${settle} s later"
+  for cmd in "${SUPERVISED_DAEMONS[@]}"; do
+    lock="$(supervision_lock "$DEPLOY_ROOT" "$cmd")"
+    read -r -a hs <<< "$(lock_holders "$lock")"
+    [ ${#hs[@]} -gt 0 ] || { echo "$cmd: nothing holds $lock ${settle} s after the relaunch — the daemon died on start; see $APP_DIR/storage/logs/daemon-$(supervision_daemon_name "$cmd").log" >&2; false; }
+    holders_started_after "$cmd" "$lock" "$step_started" "${hs[@]}"
+    say "  ok — $cmd: pid(s) ${hs[*]} started after the restart and still hold its lock ${settle} s later"
+  done
+  for lk in "${previous_only[@]}"; do
+    read -r -a hs <<< "$(lock_holders "$lk")"
+    [ ${#hs[@]} -eq 0 ] || { echo "pid(s) ${hs[*]} still hold $lk, a lock the previous release's bin/supervision.sh named and the deployed release's does not — they run the previous release's code beside the new daemons" >&2; false; }
+    say "  ok — nothing holds $lk, a lock only the previous release named"
   done
 }
 
@@ -845,8 +1007,13 @@ phase_b_post_checkout() {
   [ "$head" = "$SHA" ] || { echo "HEAD is $head, expected $SHA" >&2; false; }
   say "  ok — HEAD is $(git_at rev-parse --short "$SHA")"
 
-  # The supervised set restarted below is the DEPLOYED release's: this file and the
-  # bin/supervision.sh it sourced are both the checked-out copies — that is what the re-exec bought.
+  # The supervised set installed and restarted below is the DEPLOYED release's: this file and the
+  # bin/supervision.sh it sourced are both the checked-out copies — that is what the re-exec bought. The
+  # PREVIOUS release's locks come from the copy that ran phase A (phase_b_open_window), and are checked
+  # here, before anything is built: without them the restart cannot stop a daemon whose lock this release
+  # moved, and after the migration is the worse place to find that out.
+  FAILED_STEP="reading the previous release's daemon locks"
+  [ -n "${MEZZ_DEPLOY_PREVIOUS_LOCKS:-}" ] || { echo "the serving release's bin/deploy.sh handed over no daemon lock files (MEZZ_DEPLOY_PREVIOUS_LOCKS)" >&2; false; }
 
   # ── dependencies ────────────────────────────────────────────────────────────────────────────
   # Every artisan/composer/npm call below runs from the app directory (D-16) rather than in a
@@ -1000,7 +1167,7 @@ main() {
   3  re-exec the deployed release's own bin/deploy.sh
   4  composer install --no-dev · npm ci · npm run build
   5  optimize:clear → migrate --force → config/route/view/event:cache
-  6  queue:restart · SIGTERM + relaunch ${SUPERVISED_DAEMONS[*]} (cron's command) · wait out opcache revalidation (no FPM reload)
+  6  queue:restart · install the release's crontab block · SIGTERM either release's lock holders · relaunch $TARGET_DAEMONS (cron's command) · wait out opcache revalidation (no FPM reload)
   7  php artisan up · GET \$APP_URL/up
 PLAN
     return

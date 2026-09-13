@@ -8,11 +8,22 @@
 # daemon that died is started again within 60 s. `@reboot` starts them at boot.
 #
 # ONE SOURCE. SUPERVISED_DAEMONS below is the only list of supervised commands a program reads.
-# `bin/deploy.sh` sources this file: it refuses a host whose installed crontab lacks any entry
-# `render` prints (A13), and it restarts each daemon with exactly the command cron runs.
+# `bin/deploy.sh` sources this file: it refuses a host whose installed crontab lacks any entry the
+# SERVING release's copy renders (A13), installs the DEPLOYED release's block inside the maintenance
+# window, and restarts each daemon with exactly the command cron runs.
 # `bin/deploy.selftest.sh` checks the list against § 2.1's `long-lived daemon` rows, so the two cannot
 # drift apart silently — the drift card#9181 found, when § 2.1 lacked the heartbeat this set carried.
 # `mezzanine:purge` is NOT in the set: it is a scheduled command, run by the `schedule:run` entry.
+#
+# ⚑ READ ACROSS TWO RELEASES. bin/deploy.sh runs from the release that is SERVING and deploys another
+# one, so these names are a contract between two versions of this file, not one:
+#   · the serving deploy.sh sources the TARGET release's copy out of git and runs its
+#     `supervision_install_plan <root> <php>` (A13) — a target whose copy lacks it is refused before
+#     anything is touched;
+#   · the target's deploy.sh receives, in MEZZ_DEPLOY_PREVIOUS_LOCKS, the files the SERVING copy's
+#     `supervision_lock` names, and stops whatever holds them.
+# Change either signature and the deploy that ships the change is the one that meets it.
+# bin/deploy.selftest.sh deploys a target whose copy adds a daemon, and one whose copy moves the locks.
 #
 # USAGE
 #   bin/supervision.sh render  [--root <checkout>] [--php <binary>]   print the managed crontab block
@@ -20,21 +31,27 @@
 #   bin/supervision.sh daemons                                        print the supervised commands
 #
 #   --root  the checkout — the directory holding server/   [default: the repo this script lives in]
-#   --php   the PHP CLI the daemons run under              [default: `php` on PATH, symlinks resolved]
+#   --php   the PHP CLI the daemons run under              [default: `php` on PATH]
+#   Both are canonicalised (`readlink -f`): relative paths and symlinks are resolved before rendering.
 #
-# INSTALL is the documented way (docs/PLAN.md § 5), run once as the application user when a host is
-# stood up, and again after a release changes what this file renders — A13 refuses the deploy until
-# then, naming the missing lines. It replaces only the block between THIS checkout's BEGIN/END
-# markers and keeps every other line of the crontab. It REFUSES, changing nothing, when:
+# INSTALL by hand stands a host up (docs/PLAN.md § 5), and it is how the sandbox — which bin/deploy.sh
+# does not deploy — picks up a change to this file. On a deployed host each deploy installs its own
+# release's block, inside the window, having made every refusal below before the window opened. Install
+# replaces only the block between THIS checkout's BEGIN/END markers and keeps every other line of the
+# crontab. It REFUSES, changing nothing, when:
 #   · `crontab -l` fails for any reason other than "no crontab for <user>" — writing over a crontab
 #     this script could not read would destroy it;
 #   · a line OUTSIDE every managed block already runs a supervised command — a hand-staged crontab is
 #     that case, and installing beside it would run every daemon twice, under two different locks.
-#     Remove those lines (`crontab -e`) and install again.
-#     ⚠ THEN STOP THE DAEMONS THOSE LINES STARTED. They hold the OLD lock files, so cron's new entries
-#     start a second copy of each beside them, and no deploy will ever restart them: bin/deploy.sh
-#     restarts whatever holds THIS script's locks and nothing else. Stop them by their old lock files,
-#     which reaches nothing else: `fuser -k -TERM <old lock file>…`.
+#
+# MOVING A HAND-STAGED CRONTAB ONTO THIS ONE — in THIS order, which never runs two copies of a daemon:
+#   1. remove the hand-staged lines (`crontab -e`), so nothing starts the old copies again;
+#   2. stop the daemons those lines started, by THEIR lock files, which reaches nothing else — for the
+#      sandbox's hand-staged crontab (locks under ~/.cache/mezzanine): `fuser -k -TERM ~/.cache/mezzanine/*.lock`;
+#   3. `bin/supervision.sh install` — cron starts each daemon on its new lock at its next minute.
+#   The daemons are down from step 2 until that minute. Installing BEFORE step 2 runs a second copy of
+#   each beside the old one from cron's next minute; forgetting step 2 runs it forever, because no
+#   deploy stops them — bin/deploy.sh stops what holds the locks this file names, and nothing else.
 #
 # LOCKS are per checkout — server/storage/framework/daemon-<name>.lock, git-ignored there — so two
 # checkouts under one account never share one, and a deploy's proof that a lock is held is a proof
@@ -98,7 +115,10 @@ supervision_die() {
   exit 1
 }
 
-supervision_install() { # <root> <php>
+# supervision_install_plan — the crontab an install would write, printed; every refusal made and nothing
+# written. bin/deploy.sh runs it from the TARGET release's copy before the maintenance window, so the
+# install it makes inside the window can fail only on what changed in between.
+supervision_install_plan() { # <root> <php>
   local root="$1" php="$2" block current err rc=0 stripped outside dupes c line
   block="$(supervision_render "$root" "$php")" \
     || supervision_die "cron cannot carry '$root' / '$php' verbatim" \
@@ -134,27 +154,41 @@ supervision_install() { # <root> <php>
   [ -z "$dupes" ] || supervision_die "the crontab already runs a supervised command outside the managed block:" \
     "$(printf '%s' "$dupes" | sed 's/^/| /')" \
     "Nothing was written. Installing beside these would run each daemon twice, under two locks." \
-    "Remove them with \`crontab -e\`, then install again."
+    "In this order — bin/supervision.sh § MOVING A HAND-STAGED CRONTAB: remove them with \`crontab -e\`;" \
+    "stop the daemons they started, by their lock files (\`fuser -k -TERM <lock file>…\`); install again."
 
-  { if [ -n "$stripped" ]; then printf '%s\n' "$stripped"; fi; printf '%s\n' "$block"; } | crontab -
+  if [ -n "$stripped" ]; then printf '%s\n' "$stripped"; fi
+  printf '%s\n' "$block"
+}
+
+supervision_install() { # <root> <php>
+  local root="$1" php="$2" next current line
+  next="$(supervision_install_plan "$root" "$php")" || exit 1
+  printf '%s\n' "$next" | crontab -
 
   # Read back, not assumed: every entry must now be in the installed crontab, whole-line.
   current="$(crontab -l 2>/dev/null)" || supervision_die "\`crontab -l\` failed right after installing"
   while IFS= read -r line; do
     grep -Fxq -- "$line" <<< "$current" || supervision_die "installed, but the read-back lacks: $line"
   done < <(supervision_entries "$root" "$php")
-  printf 'installed into the crontab of %s:\n%s\n' "$(id -un)" "$block"
+  printf 'installed into the crontab of %s:\n%s\n' "$(id -un)" "$(supervision_render "$root" "$php")"
 }
 
 supervision_main() {
-  local cmd="${1:-}" root php
+  local cmd="${1:-}" root php p
   [ $# -eq 0 ] || shift
   root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
   php="$(supervision_default_php || true)"
   while [ $# -gt 0 ]; do
     case "$1" in
-      --root) root="${2:?--root needs a value}"; shift 2 ;;
-      --php) php="${2:?--php needs a value}"; shift 2 ;;
+      --root | --php)
+        { [ $# -ge 2 ] && [ -n "$2" ]; } || supervision_die "$1 needs a value"
+        # Canonical, because cron runs every entry from the account's HOME: a relative path installs and
+        # reads back clean, then fails at every run — and a later absolute install sits beside it as a
+        # second managed block.
+        p="$(readlink -f -- "$2")" || supervision_die "$1 '$2' does not resolve to a path"
+        if [ "$1" = --root ]; then root="$p"; else php="$p"; fi
+        shift 2 ;;
       *) supervision_die "unknown argument: $1" ;;
     esac
   done
