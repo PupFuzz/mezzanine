@@ -138,6 +138,20 @@ state with no account that can sign in, there is no
 password reset and no registration page: shell access on the host
 and this command are the recovery.
 
+### The authenticator entry's name
+
+Your authenticator app names this site's entry after the **site's own hostname**: the first label of
+`APP_URL`'s host, so `https://sandboxmezzanine.neeba.com` enrols as `sandboxmezzanine`, and each host
+gets an entry you can tell apart from the others. It deliberately does not read `APP_NAME`, which is
+`Mezzanine` everywhere and also names the session cookie and the cache prefix. A host that wants a
+different name sets `TWO_FACTOR_ISSUER` in `.env`. `App\Auth\TwoFactorIssuer` owns the derivation
+and its fallbacks: a whole IPv4 address, and `APP_NAME` when the URL gives nothing usable.
+
+⚠ **The name is fixed when you enrol, not when you sign in.** An account enrolled before this
+change keeps its old `Mezzanine` label, and so does one enrolled before a host changes
+`TWO_FACTOR_ISSUER`. The secret is the same, so its codes keep working. To change the label,
+rename the entry in the authenticator app or enrol again.
+
 ### Losing your authenticator
 
 **Two ways back, and the first needs nothing from the host.**
