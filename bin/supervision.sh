@@ -8,22 +8,24 @@
 # daemon that died is started again within 60 s. `@reboot` starts them at boot.
 #
 # ONE SOURCE. SUPERVISED_DAEMONS below is the only list of supervised commands a program reads.
-# `bin/deploy.sh` sources this file: it refuses a host whose installed crontab lacks any entry the
-# SERVING release's copy renders (A13), installs the DEPLOYED release's block inside the maintenance
-# window, and restarts each daemon with exactly the command cron runs.
+# `bin/deploy.sh` sources this file: it installs the DEPLOYED release's block inside the maintenance window,
+# having run that release's install with nothing written before the window opened (A13), and restarts each
+# daemon with exactly the command cron runs.
 # `bin/deploy.selftest.sh` checks the list against § 2.1's `long-lived daemon` rows, so the two cannot
 # drift apart silently — the drift card#9181 found, when § 2.1 lacked the heartbeat this set carried.
 # `mezzanine:purge` is NOT in the set: it is a scheduled command, run by the `schedule:run` entry.
 #
 # ⚑ READ ACROSS TWO RELEASES. bin/deploy.sh runs from the release that is SERVING and deploys another
-# one, so these names are a contract between two versions of this file, not one:
-#   · the serving deploy.sh sources the TARGET release's copy out of git and runs its
-#     `supervision_install_plan <root> <php>` (A13) — a target whose copy lacks it is refused before
-#     anything is touched;
-#   · the target's deploy.sh receives, in MEZZ_DEPLOY_PREVIOUS_LOCKS, the files the SERVING copy's
-#     `supervision_lock` names, and stops whatever holds them.
-# Change either signature and the deploy that ships the change is the one that meets it.
-# bin/deploy.selftest.sh deploys a target whose copy adds a daemon, and one whose copy moves the locks.
+# one, so these are a contract between two versions of this file, not one:
+#   · the serving deploy.sh reads the TARGET release's copy out of git and, in a bash process of its own,
+#     runs its `supervision_install_plan <root> <php>` and `supervision_lock <root> 'mezzanine:*'` and reads
+#     its SUPERVISED_DAEMONS (A13) — a target whose copy lacks either function is refused before anything is
+#     touched;
+#   · the lock files do not move: A13 refuses a target whose `supervision_lock <root> 'mezzanine:*'` differs
+#     from the serving copy's, because the window finds the running daemons by that pattern (LOCKS, below).
+# Change either signature, or the lock path, and the deploy that ships the change is the one that meets it.
+# bin/deploy.selftest.sh deploys a target whose copy adds a daemon, one that drops one, one that renames the
+# install plan, and one whose copy moves the locks.
 #
 # USAGE
 #   bin/supervision.sh render  [--root <checkout>] [--php <binary>]   print the managed crontab block
@@ -51,11 +53,17 @@
 #   3. `bin/supervision.sh install` — cron starts each daemon on its new lock at its next minute.
 #   The daemons are down from step 2 until that minute. Installing BEFORE step 2 runs a second copy of
 #   each beside the old one from cron's next minute; forgetting step 2 runs it forever, because no
-#   deploy stops them — bin/deploy.sh stops what holds the locks this file names, and nothing else.
+#   deploy stops them — bin/deploy.sh stops what holds THIS checkout's lock files (LOCKS, below), and nothing
+#   else.
 #
 # LOCKS are per checkout — server/storage/framework/daemon-<name>.lock, git-ignored there — so two
 # checkouts under one account never share one, and a deploy's proof that a lock is held is a proof
-# about THIS checkout's daemon. Output goes to server/storage/logs/daemon-<name>.log.
+# about THIS checkout's daemon. ⚑ The path is FIXED ACROSS RELEASES. bin/deploy.sh stops every process
+# holding a file matching `supervision_lock <root> 'mezzanine:*'` — whichever release's crontab started it,
+# so a daemon a release drops is stopped too, and so is every daemon the previous release still has up when a
+# deploy is re-run after failing in its window — and it refuses a release whose pattern differs, because
+# that release's window would stop nothing the previous one started. Output goes to
+# server/storage/logs/daemon-<name>.log.
 
 # The supervised set. Add a long-lived daemon to § 2.1, add it here; the selftest reds until both agree.
 SUPERVISED_DAEMONS=(mezzanine:fold mezzanine:sweep mezzanine:feed-heartbeat)

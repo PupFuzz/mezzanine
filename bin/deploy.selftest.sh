@@ -10,9 +10,9 @@
 # WHAT IS REAL AND WHAT IS STUBBED.
 #   REAL: bash, git (throwaway fixture repositories in a temp dir), the whole of bin/deploy.sh —
 #         including the re-exec, which really does hand off to the checked-out copy — and
-#         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid and kill run for real (fuser
-#         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled)
-#         against stub daemons holding locks inside the temp dir, so "the old process is gone and a
+#         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid, ps and kill run for real (fuser
+#         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled, and ps
+#         behind one that one case blinds) against stub daemons holding locks inside the temp dir, so "the old process is gone and a
 #         new one holds the lock" is observed, not merely recorded.
 #   STUB: php (and the daemons it runs), php-fpm<minor>, composer, npm, crontab, curl, id — on PATH,
 #         recording every call to $CALL_LOG. The crontab stub reads and writes one file per fixture;
@@ -27,14 +27,18 @@
 #   - the migration gate (§ 6.9): the same fixture, with and without the `ALGORITHM=` comment;
 #   - the in-window failure: the same fixture, with and without a failing `migrate`, asserting
 #     that `artisan up` IS called in one and is NEVER called in the other;
-#   - the crontab (A13): the same host, with one entry removed, then reinstalled;
+#   - the crontab (A13): the same host with its block intact, with one entry removed, and the deploy
+#     installing it again;
 #   - the opcache posture (A14): the same host, timestamps off then on — and a pool that is NOT the
 #     deploy user's, carrying timestamps off, that must never be read;
 #   - the restart proof and the opcache wait: each seen to fail against a copy of the release's own
 #     deploy.sh with the step it guards cut out;
-#   - ACROSS RELEASES: a target release whose bin/supervision.sh adds a daemon, and one whose copy moves
-#     the locks — the serving release's copy is not the one that may judge either — and the stop of the
-#     previous release's locks seen to fail with that stop cut out;
+#   - ACROSS RELEASES: a target release whose bin/supervision.sh adds a daemon, drops one, no longer defines a
+#     function the deploy runs from it, or would move the lock files (refused) — the serving release's copy is
+#     not the one that may judge any of them — the stop of every lock file of the checkout seen to fail with it
+#     cut out, and the re-run after a window that failed with the previous release's daemons still up;
+#   - the opcache wait after a release that LOWERS revalidate_freq in its .user.ini, seen to fail with the
+#     floor phase A hands over cut out;
 #   - a `.user.ini` over the app's scripts (A14): absent, turning timestamps off, removed again.
 #
 # RUN: bin/deploy.selftest.sh          (exit 0 = every case passed)
@@ -90,6 +94,7 @@ section() { printf '\n── %s\n' "$1"; }
 
 # ── stubs on PATH ─────────────────────────────────────────────────────────────────────────────
 REAL_FUSER="$(command -v fuser)" || { echo "selftest: fuser not found" >&2; exit 1; }
+REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
@@ -172,6 +177,14 @@ if [ -e "$KNOBS/slow_fuser" ]; then sleep 0.3; fi
 exec "$REAL_FUSER" "$@"
 STUB
 } > "$T/bin/fuser"
+# ps: the REAL one — blinded, by a knob, to print no process age at all, as a ps that cannot read a pid does.
+{
+  printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_PS=%q\n' "$T/knobs" "$REAL_PS"
+  cat <<'STUB'
+if [ -e "$KNOBS/blind_ps" ]; then exit 0; fi
+exec "$REAL_PS" "$@"
+STUB
+} > "$T/bin/ps"
 cat > "$T/bin/id" <<'STUB'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -205,9 +218,9 @@ reset_stubs() {
   export STUB_PHP_VERSION="8.4.7"
   export STUB_OPCACHE_ENABLE=On STUB_OPCACHE_VALIDATE=On STUB_OPCACHE_FREQ=0 STUB_OPCACHE_PRELOAD="no value"
   export MEZZ_DAEMON_SETTLE_S=2 MEZZ_DAEMON_STOP_TIMEOUT_S=3
-  unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_FPM_BIN
+  unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
-  rm -f "$T/knobs/slow_fuser"
+  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps"
   # The document root A14 reads a .user.ini from. Never the default ($HOME/public_html): on the host
   # this runs on that is a REAL vhost's, and a selftest that read it would not be hermetic.
   export MEZZ_DOCROOT="$T/docroot"; rm -rf "$MEZZ_DOCROOT"; mkdir -p "$MEZZ_DOCROOT"
@@ -268,10 +281,11 @@ ENV
 
 install_crontab() { "$ROOT/bin/supervision.sh" install --root "$ROOT" --php "$T/bin/php" >/dev/null 2>&1; }
 
-# mkfix <case> [mutator]  — mutator runs in the source tree before the SECOND commit, so a case
-# can put whatever it needs into the commit the deploy is asked to move TO.
+# mkfix <case> [mutator] [v1-mutator]  — mutator runs in the source tree before the SECOND commit, so a
+# case can put whatever it needs into the commit the deploy is asked to move TO; v1-mutator runs before the
+# FIRST, the release the host is serving.
 mkfix() {
-  local case="$1" mutator="${2:-}" cd="$T/$1"
+  local case="$1" mutator="${2:-}" v1_mutator="${3:-}" cd="$T/$1"
   [ -z "${ROOT:-}" ] || kill_daemons "$ROOT"
   reset_stubs
   ROOT="$cd/root"; ORIGIN="$cd/origin.git"; SRC="$cd/src"
@@ -300,6 +314,7 @@ mkfix() {
 // migrations that ALTER a live `events` table, and this fixture asserts the gate knows that.
 return new class { public function up(): void { Schema::create('events', fn ($t) => $t->id()); } };
 MIG
+  [ -z "$v1_mutator" ] || "$v1_mutator" "$SRC"
   gitc "$SRC" add -A >/dev/null
   gitc "$SRC" commit -qm 'fixture v1'
   gitc "$SRC" remote add origin "$ORIGIN"
@@ -350,7 +365,8 @@ eq  "control: exit 0"                       0 "$RC"
 has "control: the § 6.9 migration gate ran and passed" "no undeclared ALTER" "$OUT"
 has "control: prints the plan"              "DRY RUN" "$OUT"
 hasnt "control: no config drift on a host whose .env covers .env.example" "does not set:" "$OUT"
-has "control: the installed crontab carries every rendered entry" "the crontab carries every entry bin/supervision.sh renders" "$OUT"
+has "control: the release's crontab block is what is installed" "is what is installed; the window rewrites it unchanged" "$OUT"
+has "control: the release keeps the daemons' lock files where the serving release's are" "keeps the daemons' lock files at $ROOT/server/" "$OUT"
 has "control: PHP-FPM is not reloaded, and the posture that makes that safe was read" "php-fpm  not reloaded — opcache revalidates a changed file within 0 s" "$OUT"
 logged "control: A14 read the FPM SAPI (php-fpm -i), not the CLI's ini" "php-fpm8.4 -i"
 hasnt "control: another user's pool (the www trap, timestamps off) was not read" "validate_timestamps is off" "$OUT"
@@ -417,67 +433,79 @@ path_without() { # path_without <dir> [command-to-hide]
 mkfix tool_control; path_without "$T/path-control"
 : > "$CALL_LOG"; OUT="$(PATH="$T/path-control" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
 eq "control: the rebuilt PATH, hiding nothing, deploys" 0 "$RC"
-for hide in crontab flock fuser setsid; do
+for hide in crontab flock fuser setsid ps; do
   mkfix "tool_$hide"; path_without "$T/path-$hide" "$hide"
   : > "$CALL_LOG"; OUT="$(PATH="$T/path-$hide" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
   eq  "no $hide: exit 1" 1 "$RC"
   has "no $hide: names it" "missing required command(s): $hide" "$OUT"
 done
 
-section "REFUSAL — cron supervision (A13): the crontab must carry every entry bin/supervision.sh renders"
+section "CRON SUPERVISION (A13) — the deployed release's block, judged by that release's own install"
 drop_lines() { grep -v -E -- "$1" "$STUB_CRONTAB_FILE" > "$STUB_CRONTAB_FILE.new"; mv "$STUB_CRONTAB_FILE.new" "$STUB_CRONTAB_FILE"; }
-
+# A crontab that lacks this checkout's entries, or carries another release's, is NOT refused: the window installs the
+# deployed release's block, and the dry run names every line it will add or remove. Control, mutant and full run on
+# ONE host: the block intact, one entry dropped, and the deploy putting it back.
 mkfix cron_sweep_missing
+run --dry-run
+has "control: an intact crontab — the window rewrites the block unchanged" "is what is installed; the window rewrites it unchanged" "$OUT"
+SWEEP_LINE="* * * * * $(supervision_command "$ROOT" "$T/bin/php" mezzanine:sweep)"
 drop_lines '^\* \* \* \* \* .* artisan mezzanine:sweep '
-run_refusal "no every-minute entry for the sweep" "the installed crontab does not supervise every daemon" --dry-run
-has   "sweep missing: names the exact line it expected" "artisan mezzanine:sweep >> storage/logs/daemon-sweep.log 2>&1" "$OUT"
-hasnt "sweep missing: does not name an entry that IS installed" "artisan mezzanine:fold >> storage" "$OUT"
-has   "sweep missing: says how to install it" "bin/supervision.sh install" "$OUT"
-install_crontab; run --dry-run
-eq "control: reinstalled with bin/supervision.sh, the same host deploys" 0 "$RC"
+run --dry-run
+eq    "no every-minute entry for the sweep, dry run: exit 0 — the window installs it" 0 "$RC"
+has   "sweep missing: names the exact line the window adds" "+ $SWEEP_LINE" "$OUT"
+hasnt "sweep missing: adds no line that IS installed" "+ * * * * * $(supervision_command "$ROOT" "$T/bin/php" mezzanine:fold)" "$OUT"
+unlogged "sweep missing, dry run: the crontab was not written" "crontab -$"
+run
+eq  "sweep missing, full run: exit 0" 0 "$RC"
+has "sweep missing, full run: the crontab carries the sweep's entry again" "$SWEEP_LINE" "$(cat "$STUB_CRONTAB_FILE")"
 
-mkfix cron_reboot_missing
-drop_lines '^@reboot .* artisan mezzanine:fold '
-run_refusal "no @reboot entry for the fold (its every-minute entry is there)" "does not supervise every daemon" --dry-run
-has "@reboot missing: names it" "@reboot cd $ROOT/server && flock -n" "$OUT"
+mkfix cron_reboot_missing; drop_lines '^@reboot .* artisan mezzanine:fold '; run --dry-run
+eq  "no @reboot entry for the fold: exit 0" 0 "$RC"
+has "@reboot missing: names it as added" "+ @reboot $(supervision_command "$ROOT" "$T/bin/php" mezzanine:fold)" "$OUT"
 
-mkfix cron_scheduler_missing
-drop_lines 'artisan schedule:run'
-run_refusal "no schedule:run entry (mezzanine:purge would never run)" "does not supervise every daemon" --dry-run
+mkfix cron_scheduler_missing; drop_lines 'artisan schedule:run'; run --dry-run
+eq  "no schedule:run entry: exit 0" 0 "$RC"
+has "schedule:run missing: names it as added (mezzanine:purge runs from it)" "+ * * * * * cd $ROOT/server && $T/bin/php artisan schedule:run" "$OUT"
 
 mkfix cron_commented
-sed -i 's|^\(\* \* \* \* \* .* artisan mezzanine:fold \)|# \1|' "$STUB_CRONTAB_FILE"
-run_refusal "the fold's entry commented out" "does not supervise every daemon" --dry-run
+sed -i 's|^\(\* \* \* \* \* .* artisan mezzanine:fold \)|# \1|' "$STUB_CRONTAB_FILE"; run --dry-run
+eq  "the fold's entry commented out: exit 0" 0 "$RC"
+has "commented out: the commented line is named as removed" "- # * * * * * $(supervision_command "$ROOT" "$T/bin/php" mezzanine:fold)" "$OUT"
 
-mkfix cron_none; rm -f "$STUB_CRONTAB_FILE"
-run_refusal "no crontab at all ('no crontab for …', exit 1)" "\`crontab -l\` failed (exit 1)" --dry-run
-has "no crontab: says how to install it" "bin/supervision.sh install" "$OUT"
+mkfix cron_none; rm -f "$STUB_CRONTAB_FILE"; run --dry-run
+eq  "no crontab at all ('no crontab for …', exit 1): exit 0" 0 "$RC"
+has "no crontab: the whole block is named as added" "+ $(supervision_begin "$ROOT")" "$OUT"
 
+mkfix cron_empty; : > "$STUB_CRONTAB_FILE"; run --dry-run
+eq  "an EMPTY crontab (crontab -l exits 0, prints nothing): exit 0" 0 "$RC"
+has "empty crontab: the whole block is named as added" "+ $(supervision_begin "$ROOT")" "$OUT"
+
+mkfix cron_other_checkout; supervision_render "/srv/elsewhere" "$T/bin/php" > "$STUB_CRONTAB_FILE"; run --dry-run
+eq    "only ANOTHER checkout's block: exit 0" 0 "$RC"
+has   "another checkout: this checkout's block is named as added" "+ $(supervision_begin "$ROOT")" "$OUT"
+hasnt "another checkout: its block is kept, not removed" "- $(supervision_begin /srv/elsewhere)" "$OUT"
+
+mkfix cron_other_php; supervision_render "$ROOT" "/usr/bin/php8.1" > "$STUB_CRONTAB_FILE"; run --dry-run
+eq  "this checkout's block rendered for ANOTHER php binary: exit 0" 0 "$RC"
+has "another php: its lines are named as removed" "- * * * * * cd $ROOT/server && /usr/bin/php8.1 artisan schedule:run" "$OUT"
+
+# What the release's install would refuse, the deploy refuses — before anything is touched.
 mkfix cron_unreadable; export STUB_CRONTAB_BROKEN="cannot open crontab: Permission denied"
-run_refusal "crontab -l fails for another reason (exit 2)" "\`crontab -l\` failed (exit 2)" --dry-run
+run_refusal "crontab -l fails for another reason than 'no crontab' (exit 2)" "could not be installed here" --dry-run
+has "unreadable: carries install's own reason" "not because the crontab is empty" "$OUT"
 
-mkfix cron_empty; : > "$STUB_CRONTAB_FILE"
-run_refusal "an EMPTY crontab (crontab -l exits 0, prints nothing)" "does not supervise every daemon" --dry-run
-
-mkfix cron_other_checkout; supervision_render "/srv/elsewhere" "$T/bin/php" > "$STUB_CRONTAB_FILE"
-run_refusal "entries for ANOTHER checkout" "does not supervise every daemon" --dry-run
-
-mkfix cron_other_php; supervision_render "$ROOT" "/usr/bin/php8.1" > "$STUB_CRONTAB_FILE"
-run_refusal "entries for ANOTHER php binary" "does not supervise every daemon" --dry-run
-
-# The sandbox's hand-staged shape: the same commands, written through cron variables. cron expands
-# them; a whole-line match does not, and neither does install, which refuses beside them (below).
+# The sandbox's hand-staged shape: the same commands, written through cron variables.
 mkfix cron_handstaged
 { printf 'MZ=%s/server\n' "$ROOT"
   for c in schedule:run "${SUPERVISED_DAEMONS[@]}"; do printf '* * * * * cd $MZ && %s artisan %s >> /dev/null 2>&1\n' "$T/bin/php" "$c"; done
 } > "$STUB_CRONTAB_FILE"
-run_refusal "a hand-staged crontab written with variables" "does not supervise every daemon" --dry-run
+run_refusal "a hand-staged crontab written with variables" "could not be installed here" --dry-run
+has "hand-staged with variables: carries install's own reason" "already runs a supervised command outside the managed block" "$OUT"
 
 mkfix "space root"
-run_refusal "a checkout path cron cannot carry (a space)" "cron cannot carry this checkout's paths verbatim" --dry-run
+run_refusal "a checkout path cron cannot carry (a space)" "cron cannot carry" --dry-run
 
-# A13 (2): the TARGET release's block must be installable, judged by the target's own install. The
-# serving release's entries are all there, so only that half can refuse this host.
+# A hand-staged line BESIDE an intact managed block: only the release's install can refuse this host.
 mkfix cron_handstaged_beside_block
 printf '* * * * * cd /home/x/server && flock -n /tmp/fold.lock /usr/bin/php8.5 artisan mezzanine:fold >> x 2>&1\n' >> "$STUB_CRONTAB_FILE"
 cp "$STUB_CRONTAB_FILE" "$T/crontab.before"
@@ -490,6 +518,15 @@ eq  "control: with that line removed, the same host deploys" 0 "$RC"
 drop_supervision() { rm -f "$1/bin/supervision.sh"; }
 mkfix target_no_supervision drop_supervision
 run_refusal "a release with no bin/supervision.sh" "bin/supervision.sh is missing or empty at" --dry-run
+
+# The target's copy is evaluated in a FRESH bash process. Sourced into this one, which already holds the serving
+# copy's supervision_* functions, a release that renamed one would silently run the serving copy's here — a green
+# dry run — and meet its own only in the window, with the app down. The single-variable control is the CONTROL
+# fixture at the top of this file: the same tree with the function not renamed.
+rename_plan() { sed -i 's/^supervision_install_plan() {/supervision_install_plan_renamed() {/' "$1/bin/supervision.sh"; }
+mkfix target_renames_plan rename_plan
+eq "renamed plan: the mutator really renamed it" 0 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c '^supervision_install_plan() {')"
+run_refusal "a release whose bin/supervision.sh no longer defines supervision_install_plan" "defines no supervision_install_plan" --dry-run
 
 section "REFUSAL — PHP-FPM must pick up new code without a reload (A14)"
 mkfix fpm_timestamps_off; export STUB_OPCACHE_VALIDATE=Off
@@ -856,6 +893,28 @@ run
 eq  "wait mutant: the mutator really cut the wait"        1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'wait cut out by the selftest mutant')"
 eq  "wait mutant: less than revalidate_freq + 1 s passed" "yes" "$([ "$(waited)" -lt 4 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 
+section "THE OPCACHE WAIT — after a release that LOWERS revalidate_freq in its .user.ini"
+# The serving release's server/public/.user.ini says 4 s; the release lowers it to 1 s. FPM keeps a directory's
+# .user.ini values for user_ini.cache_ttl, so a worker can go on revalidating at the previous release's 4 s after the
+# checkout — the wait must be the longer of the two. Phase B reads only the new file on disk; the previous one's
+# value comes from phase A, handed over as a floor. The mutant is the release's own deploy.sh with that floor cut.
+uini_freq() { mkdir -p "$1/server/public"; printf 'opcache.revalidate_freq = %s\n' "$2" > "$1/server/public/.user.ini"; }
+uini_freq_4() { uini_freq "$1" 4; }
+uini_freq_1() { uini_freq "$1" 1; }
+mkfix fpm_floor uini_freq_1 uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0
+run
+eq  "floor: exit 0"                                                    0 "$RC"
+has "floor: phase A read the previous release's 4 s"                  "revalidates a changed file within 4 s" "$OUT"
+eq  "floor: ≥ the PREVIOUS release's revalidate_freq + 1 s passed before up" "yes" "$([ "$(waited)" -ge 5 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
+cut_floor() {
+  uini_freq_1 "$1"
+  sed -i 's/^  if \[ "\$floor" -gt "\$wait_for" \]; then wait_for="\$floor"; fi$/  : floor cut out by the selftest mutant/' "$1/bin/deploy.sh"
+}
+mkfix fpm_floor_cut cut_floor uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0
+run
+eq  "floor mutant: the mutator really cut the floor"                   1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'floor cut out by the selftest mutant')"
+eq  "floor mutant: less than the previous release's revalidate_freq + 1 s passed" "yes" "$([ "$(waited)" -lt 5 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
+
 section "IN-WINDOW FAILURE — down and stay down, and a bare re-run refuses"
 mkfix migrate_fails
 STUB_FAIL_RE='artisan migrate'; run
@@ -893,7 +952,7 @@ unlogged "ignores SIGTERM: the app is NEVER brought up"  "artisan up"
 # cron's command exits at once beside them, and only the proof that each holder STARTED AFTER the
 # restart can tell that nothing restarted. They are given 2 s of age first, because a real previous
 # daemon has been running since the last deploy, not since this second.
-cut_snapshot() { sed -i 's/^    read -r -a hs <<< "\$(lock_holders "\${stop_locks\[@\]}")"$/    hs=() # snapshot cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+cut_snapshot() { sed -i 's/^    read -r -a hs <<< "\$(checkout_lock_holders)"$/    hs=() # snapshot cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
 mkfix daemon_snapshot_cut cut_snapshot
 eq "snapshot mutant: the mutator really cut the snapshot" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'snapshot cut out by the selftest mutant')"
 start_old_daemons; sleep 2
@@ -901,6 +960,15 @@ run
 eq  "snapshot mutant: exit 2"                                2 "$RC"
 has "snapshot mutant: the lock holder predates the restart"  "BEFORE this restart — it is running the previous release's code" "$OUT"
 unlogged "snapshot mutant: the app is NEVER brought up"      "artisan up"
+# …and the same mutant under a ps that prints no age. A holder whose start cannot be read cannot be proven fresh: read
+# as started this very second, this mutant deployed green naming a previous pid as a new one.
+mkfix daemon_snapshot_cut_blind_ps cut_snapshot
+start_old_daemons; sleep 2; : > "$T/knobs/blind_ps"
+run
+eq  "blind ps mutant: exit 2"                                  2 "$RC"
+has "blind ps mutant: says the holder's start cannot be read"  "cannot read when pid" "$OUT"
+hasnt "blind ps mutant: no success line"                       "✔ DEPLOYED" "$OUT"
+unlogged "blind ps mutant: the app is NEVER brought up"        "artisan up"
 
 section "IN-WINDOW — cron's losing flock, sampled beside a live daemon, is not a daemon that died"
 # cron's minute tick runs `flock -n` against the lock the running daemon holds, and the loser has the
@@ -915,9 +983,11 @@ hasnt "transient loser: not reported as died on start"     "died on start" "$OUT
 rm -f "$T/knobs/slow_fuser"; : > "$T/knobs/transient_loser"
 
 section "ACROSS RELEASES — the deployed release's supervision, not the serving release's"
-# The serving release runs phase A; the deployed release's bin/supervision.sh is the one that knows what
-# it supervises. (a) a release that ADDS a daemon must leave cron an entry for it; (b) a release that
-# MOVES a lock must still stop the daemons holding the previous one.
+# The serving release runs phase A; the deployed release's bin/supervision.sh is the one that knows what it supervises,
+# and the lock files — which no release may move — say what is RUNNING. (a) a release that ADDS a daemon must leave
+# cron an entry for it; (b) one that DROPS a daemon must still stop it; (c) one that would MOVE the locks is refused
+# before anything is touched; (d) a re-run after a window that failed with the previous daemons still up must stop
+# them — and, after a stop that timed out, must not go green while one still runs.
 add_daemon() { sed -i 's/^SUPERVISED_DAEMONS=(\(.*\))$/SUPERVISED_DAEMONS=(\1 mezzanine:extra)/' "$1/bin/supervision.sh"; }
 mkfix release_adds_daemon add_daemon
 eq  "adds a daemon: the mutator really added it to the release's list" 1 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c '^SUPERVISED_DAEMONS=(.* mezzanine:extra)$')"
@@ -936,45 +1006,100 @@ for pid in $OLD_PIDS; do
   eq "adds a daemon: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done
 
+# (b) The release drops the LAST daemon of the list. Nothing in the deployed release names it; only its lock file says
+# it is running.
+DROPPED="${SUPERVISED_DAEMONS[${#SUPERVISED_DAEMONS[@]}-1]}"
+drop_daemon() { sed -i "s/^\(SUPERVISED_DAEMONS=(.*\) $DROPPED)\$/\1)/" "$1/bin/supervision.sh"; }
+dropped_lock() { supervision_lock "$ROOT" "$DROPPED"; }
+mkfix release_drops_daemon drop_daemon
+eq "drops a daemon: the mutator really dropped $DROPPED from the release's list" 0 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c "^SUPERVISED_DAEMONS=(.*$DROPPED")"
+start_old_daemons
+run
+eq  "drops a daemon: exit 0"                                       0 "$RC"
+for pid in $OLD_PIDS; do
+  eq "drops a daemon: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
+done
+eq    "drops a daemon: nothing holds its lock"                     "" "$(fuser "$(dropped_lock)" 2>/dev/null | tr -d ' ')"
+has   "drops a daemon: the proof names its lock, held by nothing"  "nothing holds $(dropped_lock)" "$OUT"
+hasnt "drops a daemon: the crontab no longer runs it"              "artisan $DROPPED " "$(cat "$STUB_CRONTAB_FILE")"
+
+# The checkout-wide stop, seen to fail: the same release, with its own deploy.sh stopping only the locks IT names. The
+# dropped daemon survives beside the new ones, every lock the release names is held by a fresh process — and only the
+# proof that every other lock file is held by nothing can tell.
+cut_checkout_stop() {
+  drop_daemon "$1"
+  sed -i 's/^    read -r -a hs <<< "\$(checkout_lock_holders)"$/    read -r -a hs <<< "$(lock_holders "${target_locks[@]}")" # checkout-wide stop cut out by the selftest mutant/' "$1/bin/deploy.sh"
+}
+mkfix checkout_stop_cut cut_checkout_stop
+eq  "checkout-stop mutant: the mutator really cut it" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'checkout-wide stop cut out by the selftest mutant')"
+start_old_daemons
+run
+eq  "checkout-stop mutant: exit 2"                              2 "$RC"
+has "checkout-stop mutant: names the lock still held"           "still hold $(dropped_lock)" "$OUT"
+unlogged "checkout-stop mutant: the app is NEVER brought up"   "artisan up"
+
+# (c) The second review's reproduction: a release that moves the lock files, and whose migrate then fails. Deployed, its
+# window stopped nothing the previous release started; the re-run, told to install, went green with every previous
+# daemon alive and holding both locks. The move is refused before the window opens, so nothing of that follows.
 move_locks() { sed -i "s|daemon-%s\\.lock'|daemon-%s.v2.lock'|" "$1/bin/supervision.sh"; }
-v2_lock() { printf '%s/server/storage/framework/daemon-%s.v2.lock' "$ROOT" "${1#mezzanine:}"; }
 mkfix release_moves_locks move_locks
 eq "moves the locks: the mutator really moved them" 1 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c "daemon-%s.v2.lock'")"
 start_old_daemons
-run
-eq "moves the locks: exit 0" 0 "$RC"
-neq "control: old daemons were running before the deploy" "" "${OLD_PIDS// /}"
+STUB_FAIL_RE='artisan migrate'; run
+eq  "moves the locks: exit 1 — refused, nothing touched"          1 "$RC"
+has "moves the locks: says the release would move them"           "would move the daemons' lock files" "$OUT"
+has "moves the locks: names where the release would put them"     "$ROOT/server/storage/framework/daemon-*.v2.lock" "$OUT"
+unlogged "moves the locks: never opened the window"               "artisan down"
+eq  "moves the locks: HEAD did not move"                          "$V1" "$(git -C "$ROOT" rev-parse HEAD)"
+neq "control: old daemons were running before the deploy"         "" "${OLD_PIDS// /}"
 for pid in $OLD_PIDS; do
-  eq "moves the locks: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
+  eq "moves the locks: the serving daemon pid $pid is untouched" "alive" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done
-for c in "${SUPERVISED_DAEMONS[@]}"; do
-  eq  "moves the locks: nothing holds $c's PREVIOUS lock" "" "$(fuser "$(supervision_lock "$ROOT" "$c")" 2>/dev/null | tr -d ' ')"
-  neq "moves the locks: a process holds $c's NEW lock"    "" "$(fuser "$(v2_lock "$c")" 2>/dev/null | tr -d ' ')"
-done
-has   "moves the locks: the crontab names the new lock"   "daemon-fold.v2.lock" "$(cat "$STUB_CRONTAB_FILE")"
-hasnt "moves the locks: …and no longer the previous one"  "daemon-fold.lock " "$(cat "$STUB_CRONTAB_FILE")"
 
-# The stop of the previous release's locks, seen to fail: the same moved-lock release, with its own
-# deploy.sh stopping only the locks IT names. The previous daemons survive beside the new ones, every new
-# lock is held by a fresh process — and only the proof that the previous locks are held by nothing can
-# tell.
-cut_previous_stop() {
-  move_locks "$1"
-  sed -i 's/^  stop_locks=("\${target_locks\[@\]}" "\${previous_only\[@\]}")$/  stop_locks=("${target_locks[@]}") # previous locks cut out by the selftest mutant/' "$1/bin/deploy.sh"
-}
-mkfix previous_stop_cut cut_previous_stop
-eq  "previous-stop mutant: the mutator really cut it" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'previous locks cut out by the selftest mutant')"
+section "RECOVERY — a re-run after a window that failed stops what is RUNNING, not what HEAD names"
+# (d) The window failed at migrate, before the restart: HEAD is the new release, the previous release's crontab block
+# is still installed and its daemons are still up. The operator reviews and clears the marker, and re-runs. That
+# re-run's serving copy is HEAD's, whose list does not name the daemon the release dropped — only its lock file does.
+mkfix recover_after_failure drop_daemon
 start_old_daemons
+STUB_FAIL_RE='artisan migrate'; run
+eq "recovery: the first run fails in the window (exit 2)" 2 "$RC"
+for pid in $OLD_PIDS; do
+  eq "recovery: the previous daemon pid $pid still runs after the failed window" "alive" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
+done
+rm -f "$ROOT/.deploy-failed"; STUB_FAIL_RE=''
+run --redeploy
+eq  "recovery: the re-run deploys (exit 0)"                   0 "$RC"
+for pid in $OLD_PIDS; do
+  eq "recovery: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
+done
+eq  "recovery: nothing holds the dropped daemon's lock"       "" "$(fuser "$(dropped_lock)" 2>/dev/null | tr -d ' ')"
+
+# (d') A previous daemon that ignores SIGTERM — the one the release dropped. The window times out; the re-run must time
+# out on it again rather than go green beside it; once the operator has killed it, the re-run deploys.
+mkfix stop_timeout_rerun drop_daemon
+printf '%s\n' "$DROPPED" > "$T/knobs/ignores_term"; start_old_daemons; : > "$T/knobs/ignores_term"
 run
-eq  "previous-stop mutant: exit 2"                              2 "$RC"
-has "previous-stop mutant: names the lock still held"           "still hold $(supervision_lock "$ROOT" mezzanine:fold)" "$OUT"
-unlogged "previous-stop mutant: the app is NEVER brought up"   "artisan up"
+eq  "stop timeout: exit 2"                                      2 "$RC"
+has "stop timeout: says so"                                     "did not exit within 3 s of SIGTERM" "$OUT"
+rm -f "$ROOT/.deploy-failed"
+run --redeploy
+eq    "stop timeout, re-run: exit 2 again — the stubborn daemon still holds its lock" 2 "$RC"
+has   "stop timeout, re-run: says so"                           "did not exit within 3 s of SIGTERM" "$OUT"
+hasnt "stop timeout, re-run: no success line beside it"         "✔ DEPLOYED" "$OUT"
+fuser -k -KILL "$(dropped_lock)" >/dev/null 2>&1
+rm -f "$ROOT/.deploy-failed"
+run --redeploy
+eq  "stop timeout, after the operator killed it: exit 0"        0 "$RC"
+for pid in $OLD_PIDS; do
+  eq "stop timeout: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
+done
 
 section "A RELATIVE MEZZ_DEPLOY_ROOT — canonical before anything renders it or re-execs through it"
 mkfix relative_root
 : > "$CALL_LOG"; OUT="$(cd "$T/relative_root" && MEZZ_DEPLOY_ROOT=root root/bin/deploy.sh --dry-run 2>&1)"; RC=$?
 eq  "relative root, dry run: exit 0"                          0 "$RC"
-has "relative root: the crontab is judged for the canonical path" "renders for $ROOT" "$OUT"
+has "relative root: the lock files are judged for the canonical path" "lock files at $ROOT/server/" "$OUT"
 : > "$CALL_LOG"; OUT="$(cd "$T/relative_root" && MEZZ_DEPLOY_ROOT=root root/bin/deploy.sh 2>&1)"; RC=$?
 eq  "relative root, full run: exit 0 (the re-exec, run from server/, found the checkout)" 0 "$RC"
 eq  "relative root, full run: HEAD moved"                     "$V2" "$(git -C "$ROOT" rev-parse HEAD)"

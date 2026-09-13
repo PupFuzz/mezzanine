@@ -35,23 +35,26 @@
 #   Virtualmin sub-server account: no sudo, no lingering systemd user manager, and a per-domain
 #   PHP-FPM pool whose workers run as this user under a master that is root's. So:
 #     · SUPERVISION is this user's crontab — cron + `flock -n`, rendered and installed by
-#       bin/supervision.sh, which is also the one list of what is supervised. A13 refuses a crontab
-#       lacking any entry the SERVING release renders, as a missing systemd unit used to be refused,
-#       and one the DEPLOYED release's block could not be installed into; the window installs it.
-#     · A RESTART is SIGTERM to whatever holds a lock of either release's daemons, then the command
-#       cron runs, started detached — PROVEN by each of the deployed release's locks being held a
-#       settle later by processes that started after the restart, and by each lock only the previous
-#       release named being held by nothing (restart_daemons).
+#       bin/supervision.sh, which is also the one list of what is supervised. The window installs the
+#       DEPLOYED release's block; A13 refuses, before anything is touched, a crontab that block could not
+#       be installed into, and a release that would move the daemons' lock files.
+#     · A RESTART is SIGTERM to whatever holds ANY of this checkout's daemon lock files — a path no
+#       release may move, so what holds one is what is running, whichever release's crontab started it —
+#       then the command cron runs, started detached. PROVEN by each of the deployed release's locks
+#       being held a settle later only by processes that started after the restart, and by every other
+#       lock file of the checkout being held by nothing (restart_daemons). A re-run after a deploy that
+#       failed in the window, with the previous release's daemons still up, is that same restart.
 #     · PHP-FPM IS NOT RELOADED; this user cannot. Its workers read the new code through opcache's
 #       timestamp validation, which A14 reads off the FPM SAPI and the pool — refusing a host where
 #       that would not happen, a `.user.ini` over the app's scripts included — and phase B waits out
-#       `revalidate_freq` before `up` (fpm_code_reload_ready).
+#       the longest `revalidate_freq`, the previous release's `.user.ini` counted, before `up`
+#       (fpm_code_reload_ready, phase_b_open_window).
 #   There is no escalation knob and no second mode: a root path kept "optional" would be a second
 #   supported way to deploy, which is what the ruling ends.
 #
-# WHAT IT IS NOT. It does not provision the host (D-08 / D-15 own that), does not stand the crontab
-# up (`bin/supervision.sh install` does, once, as the application user — each deploy then replaces
-# that managed block with its own release's), does not write `.env`,
+# WHAT IT IS NOT. It does not provision the host (D-08 / D-15 own that), writes no crontab outside its
+# window (`bin/supervision.sh install` supervises a host before its first deploy, as the application
+# user; each deploy then replaces that managed block with its own release's), does not write `.env`,
 # does not create databases, does not mint an APP_KEY, and never rolls anything back. It refuses
 # to start when the host is not in the state those acts leave behind.
 #
@@ -127,8 +130,9 @@ FPM_BIN="${MEZZ_FPM_BIN:-php-fpm$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,
 
 # The supervised daemons, their locks and the exact command cron runs for each — stated ONCE, in
 # bin/supervision.sh, sourced from beside THIS file. In phase A that is the SERVING release's copy, and
-# A13 reads the target's out of git beside it; after the re-exec it is the DEPLOYED release's, so a
-# release that adds a daemon installs its entries and starts it on the deploy that ships it.
+# A13 evaluates the target's, read out of git, in a bash process of its own; after the re-exec it is the
+# DEPLOYED release's, so a release that adds a daemon installs its entries and starts it on the deploy
+# that ships it.
 # `mezzanine:retire` is an operator command and runs nothing between deploys.
 # shellcheck source=bin/supervision.sh
 . "$(dirname "$SELF")/supervision.sh"
@@ -433,10 +437,11 @@ phase_a() {
     "PHP-FPM pool serves the app. Nothing this script does needs root (docs/PLAN.md § 5)."
 
   # A1 — the tools this script shells out to. A missing binary discovered mid-window is an
-  # outage; discovered here it is a refusal. crontab, flock, fuser and setsid are the supervision's:
-  # A13 reads the crontab, and restart_daemons finds, stops and relaunches the daemons with them.
+  # outage; discovered here it is a refusal. crontab, flock, fuser, setsid and ps are the supervision's:
+  # A13 reads the crontab, and restart_daemons finds, stops, relaunches and ages the daemons with them —
+  # without ps no holder of a lock can be proven to have started after the restart.
   local missing=()
-  for c in git php composer npm curl crontab flock fuser setsid; do
+  for c in git php composer npm curl crontab flock fuser setsid ps; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
@@ -452,8 +457,10 @@ phase_a() {
       "" \
       "Review the failure, then clear the marker to allow another deploy:" \
       "  rm $MARKER" \
-      "The app is (or should be) DOWN. \`cd $APP_DIR && php artisan up\` brings it back on the" \
-      "code that is currently checked out — check \`git -C $DEPLOY_ROOT rev-parse HEAD\` first."
+      "The app is (or should be) DOWN. Once the marker is cleared, re-running this script with --redeploy" \
+      "and the --ref that is checked out brings it back on that code AND restarts every daemon on it. A bare" \
+      "\`cd $APP_DIR && php artisan up\` leaves the daemons as they are, which may be the previous release's." \
+      "Check \`git -C $DEPLOY_ROOT rev-parse HEAD\` first."
   fi
 
   # A3 — this really is a Mezzanine checkout, and a git one.
@@ -679,74 +686,71 @@ phase_a() {
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
 
-  # A13 — supervision, judged for BOTH releases. The long-lived daemons of FLEET-STATE.md § 2.1 have
-  # no systemd unit (the header's NO ROOT note): this user's crontab supervises them.
+  # A13 — supervision: the DEPLOYED release's crontab block, judged by that release's own bin/supervision.sh.
+  # The long-lived daemons of FLEET-STATE.md § 2.1 have no systemd unit (the header's NO ROOT note): this
+  # user's crontab supervises them, and the window installs the deployed release's block (restart_daemons).
+  # So the target's bin/supervision.sh is read out of git, as A6 reads its composer.json, and its own install
+  # is run with nothing written: every refusal that install makes — a crontab it cannot read, a supervised
+  # command already run outside the managed block, a path cron cannot carry — is made HERE, before anything
+  # is touched, and the write in the window can fail only on what changed in between. A crontab that merely
+  # lacks this checkout's entries, or carries another release's, is NOT refused: the window replaces the
+  # block, and the lines it adds and removes are printed. That is also the crontab a deploy that failed in
+  # the window leaves behind — the previous release's block over HEAD's code — and the re-run repairs it.
   #
-  # (1) THE SERVING RELEASE'S ENTRIES ARE INSTALLED. A host whose crontab lacks one is refused for the
-  # reason a missing unit was — that daemon runs only until it next exits, and nothing starts it again —
-  # and for one more: the restart stops the running daemons by the locks the serving release names
-  # (MEZZ_DEPLOY_PREVIOUS_LOCKS), which is a true statement about what is running only while cron runs
-  # exactly these lines. They are not restated here: they are what bin/supervision.sh renders for THIS
-  # checkout and THIS php, matched as whole lines, so a commented-out entry, another checkout's entry or
-  # another PHP's entry does not count. `crontab -l` failing is a refusal whatever it says — "no crontab
-  # for …" included — and an empty crontab fails the match on every line. Neither can read as "nothing
-  # missing".
+  # IN A BASH PROCESS OF ITS OWN, not sourced into this one: this shell already holds the SERVING copy's
+  # supervision_* functions (sourced at the top), so a target that renamed or dropped one would silently run
+  # the serving copy's here, pass, and meet its own only in the window, with the app down.
   #
-  # (2) THE DEPLOYED RELEASE'S BLOCK CAN BE INSTALLED. The window installs the target release's own block
-  # (restart_daemons). Judged by the serving copy alone, a release that adds a daemon deploys green with
-  # no entry to start it again after a crash or a reboot, and one that moves a lock leaves cron running
-  # the previous lines. So the target's bin/supervision.sh is read out of git, as A6 reads its
-  # composer.json, and its own install is run with nothing written: every refusal that install can make
-  # is made HERE, before anything is touched, and the write in the window can fail only on what changed
-  # in between.
+  # THE LOCK FILES DO NOT MOVE. They are how the window finds the daemons that are RUNNING — whichever
+  # release's crontab started them, whether or not any crontab or list still names them: it stops every
+  # process holding one of this checkout's (restart_daemons). That is a true statement about what is running
+  # only while no release moves them, so a target whose `supervision_lock <root> 'mezzanine:*'` differs from
+  # the serving copy's is refused: its window would stop nothing the serving release started, and those
+  # daemons would run the previous code beside the new ones for as long as they lived.
   step "Checking cron supervision (bin/supervision.sh)"
-  local php_bin expected installed line cron_rc=0 missing_entries=() target_sup plan_file plan_err added removed short
+  local php_bin short target_sup work eval_err installed added removed serving_locks target_locks
   short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
-  expected="$(supervision_entries "$DEPLOY_ROOT" "$php_bin")" || refuse \
-    "cron cannot carry this checkout's paths verbatim: '$DEPLOY_ROOT', '$php_bin'" \
-    "bin/supervision.sh accepts only [A-Za-z0-9/._+-] in both: cron ends a command at an unescaped" \
-    "'%', and a space would split the words the shell runs."
-  installed="$(crontab -l 2>/dev/null)" || cron_rc=$?
-  [ "$cron_rc" -eq 0 ] || refuse "\`crontab -l\` failed (exit $cron_rc): $(id -un) has no readable crontab" \
-    "The daemons of FLEET-STATE.md § 2.1 are supervised by this user's crontab. Install it with:" \
-    "  $DEPLOY_ROOT/bin/supervision.sh install"
-  while IFS= read -r line; do
-    grep -Fxq -- "$line" <<< "$installed" || missing_entries+=("$line")
-  done <<< "$expected"
-  [ ${#missing_entries[@]} -eq 0 ] || refuse "the installed crontab does not supervise every daemon" \
-    "Missing — each expected exactly, as a whole line:" \
-    "$(printf '  | %s\n' "${missing_entries[@]}")" \
-    "" \
-    "Without its entry a daemon runs only until it next exits, and nothing starts it again." \
-    "Install or refresh the managed block (every other line of the crontab is kept):" \
-    "  $DEPLOY_ROOT/bin/supervision.sh install"
-  say "  ok — the crontab carries every entry bin/supervision.sh renders for $DEPLOY_ROOT (the serving release's copy)"
-
   target_sup="$(git_at show "$SHA:bin/supervision.sh" 2>/dev/null || true)"
   [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $short" \
     "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
     "A release without it cannot be supervised by this deploy."
-  plan_file="$(mktemp)"
-  plan_err="$( (
-      # shellcheck source=/dev/null
-      . <(printf '%s\n' "$target_sup")
-      declare -F supervision_install_plan >/dev/null \
-        || { echo "it defines no supervision_install_plan, which this deploy runs from it" >&2; exit 1; }
-      supervision_install_plan "$DEPLOY_ROOT" "$php_bin"
-    ) 2>&1 >"$plan_file" )" || {
-    rm -f "$plan_file"
+  work="$(mktemp -d)"
+  printf '%s\n' "$target_sup" > "$work/supervision.sh"
+  # shellcheck disable=SC2016 # expanded by the bash it is handed to, not by this one
+  eval_err="$(env -u BASH_ENV bash -c '
+      set -Eeuo pipefail
+      . "$1/supervision.sh"
+      for f in supervision_install_plan supervision_lock; do
+        declare -F "$f" >/dev/null || { echo "it defines no $f, which this deploy runs from it" >&2; exit 1; }
+      done
+      supervision_install_plan "$2" "$3" > "$1/plan"
+      supervision_lock "$2" "mezzanine:*" > "$1/locks"
+      printf "%s " "${SUPERVISED_DAEMONS[@]}" > "$1/daemons"
+    ' a13 "$work" "$DEPLOY_ROOT" "$php_bin" 2>&1)" || {
+    rm -rf "$work"
     refuse "the crontab block of bin/supervision.sh at $short could not be installed here" \
-      "$(printf '%s\n' "$plan_err" | sed 's/^/  | /')" \
+      "$(printf '%s\n' "$eval_err" | sed 's/^/  | /')" \
       "" \
       "The maintenance window installs it; this is that install's refusal, made before anything is touched."
   }
-  # shellcheck source=/dev/null
-  TARGET_DAEMONS="$( . <(printf '%s\n' "$target_sup"); printf '%s ' "${SUPERVISED_DAEMONS[@]}" )"
-  TARGET_DAEMONS="${TARGET_DAEMONS% }"
-  added="$(grep -Fxv -f <(printf '%s\n' "$installed") "$plan_file" || true)"
-  removed="$(printf '%s\n' "$installed" | grep -Fxv -f "$plan_file" || true)"
-  rm -f "$plan_file"
+  TARGET_DAEMONS="$(cat "$work/daemons")"; TARGET_DAEMONS="${TARGET_DAEMONS% }"
+  target_locks="$(cat "$work/locks")"
+  installed="$(crontab -l 2>/dev/null || true)"
+  added="$(grep -Fxv -f <(printf '%s\n' "$installed") "$work/plan" || true)"
+  removed="$(printf '%s\n' "$installed" | grep -Fxv -f "$work/plan" || true)"
+  rm -rf "$work"
+
+  serving_locks="$(supervision_lock "$DEPLOY_ROOT" 'mezzanine:*')"
+  [ "$target_locks" = "$serving_locks" ] || refuse "$short would move the daemons' lock files" \
+    "  serving release: $serving_locks" \
+    "  $short: $target_locks" \
+    "" \
+    "The window finds the running daemons by the lock files they hold, and the deployed release's deploy.sh" \
+    "knows only its own. Moved, the window would stop nothing the serving release started, and those daemons" \
+    "would go on running its code beside the new ones. The path is a contract across releases" \
+    "(bin/supervision.sh § LOCKS): keep supervision_lock where it is."
+  say "  ok — $short keeps the daemons' lock files at $serving_locks"
   if [ -z "$added$removed" ]; then
     say "  ok — $short's block (bin/supervision.sh) is what is installed; the window rewrites it unchanged"
   else
@@ -765,7 +769,7 @@ phase_a() {
   say "Ready:"
   say "  from     $(git_at rev-parse --short "$CURRENT_SHA")"
   say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
-  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, either release's lock holders sent SIGTERM, relaunched with cron's command"
+  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
   say "  php-fpm  not reloaded — $FPM_POSTURE"
 }
 
@@ -803,8 +807,11 @@ MARKER_END
     cd $APP_DIR
     php artisan migrate:status        # what actually landed
     tail -n 200 storage/logs/laravel.log
-    ...then either finish forward and \`php artisan up\`, or deploy the previous
-    commit deliberately with --ref <sha> --allow-unreleased.
+    ...then either finish forward — bring the schema to where this release expects
+    it, then re-run this script with the same --ref and --redeploy, which restarts
+    every daemon — or deploy the previous commit deliberately with --ref <sha>
+    --allow-unreleased. A bare \`php artisan up\` serves the new code beside daemons
+    that may still be running the previous release's.
   Clear $MARKER when the failure has been reviewed. Until it is cleared, another
   run of this script REFUSES — a bare re-run must not be able to erase this.
 ═══════════════════════════════════════════════════════════════════════════════
@@ -851,14 +858,14 @@ MARKER_END
   # currently-serving release, which is the one that knows how to check itself). Without this the
   # new code would always be deployed by the previous release's procedure, forever one behind.
   step "Re-exec: handing off to the deployed release's own bin/deploy.sh"
-  # HANDED OVER: the lock files of the SERVING release's daemons, named by its bin/supervision.sh — the
-  # copy sourced above, whose entries A13 (1) found in the crontab. The deployed release stops their
-  # holders beside its own. Without them a release that moves a lock stops nothing: the previous daemons
-  # keep their locks and run the previous code beside the new ones, and every new lock still proves held.
-  local c previous_locks=""
-  for c in "${SUPERVISED_DAEMONS[@]}"; do previous_locks+="$(supervision_lock "$DEPLOY_ROOT" "$c")"$'\n'; done
+  # HANDED OVER, AS A FLOOR ONLY: the longest opcache.revalidate_freq A14 read. It counts the SERVING
+  # release's server/public/.user.ini, which the checkout above has just replaced — and FPM keeps a
+  # directory's .user.ini values for user_ini.cache_ttl, so a worker can go on revalidating at the previous
+  # release's interval after the file is gone. Phase B can no longer read that file; it waits the larger of
+  # this and what it reads itself, so a wrong value here can lengthen the wait and never shorten it.
+  # NOT handed over: which daemons to stop. The lock files say that (restart_daemons).
   trap - ERR
-  export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="$DEPLOY_ROOT" MEZZ_DEPLOY_PREVIOUS_LOCKS="$previous_locks"
+  export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="$DEPLOY_ROOT" MEZZ_DEPLOY_REVALIDATE_FLOOR_S="$FPM_REVALIDATE_S"
   exec "$DEPLOY_ROOT/bin/deploy.sh" --internal-post-checkout "$SHA"
 }
 
@@ -867,10 +874,13 @@ MARKER_END
 # whose every refusal A13 made before the window. First, so that from cron's next minute nothing starts
 # under the previous release's lines while the stop below clears them.
 #
-# STOP. SIGTERM to every process holding a lock of EITHER release — the deployed release's, and the
-# previous release's handed over by the re-exec (MEZZ_DEPLOY_PREVIOUS_LOCKS) — until none is held; flock
-# and the php it runs both hold one, through the inherited fd. Holders are read afresh every round, so a
-# copy cron started just before the install is stopped too. No supervised command registers a signal
+# STOP. SIGTERM to every process holding ANY of this checkout's daemon lock files — every file matching
+# supervision_lock <root> 'mezzanine:*' — until none is held; flock and the php it runs both hold one,
+# through the inherited fd. Not the locks some release's list names: the files say what is RUNNING, whichever
+# release's crontab started it — a daemon the deployed release dropped, and, on a re-run after a window that
+# failed before this step, every daemon the previous release still has up. That holds because no release
+# moves the files (A13). Files and holders are read afresh every round, so a copy cron started just before
+# the install is stopped too. No supervised command registers a signal
 # handler: measured, an artisan loop in this app exits 8 ms after SIGTERM with status 143, the default
 # action. So the daemon dies wherever the signal lands, INSIDE a transaction included — which is exactly
 # a crash, and a crash is already a case § 2.1 requires every process to survive ("individually
@@ -908,8 +918,9 @@ MARKER_END
 # file open for a moment, and a pid that was only ever that would read as a daemon that died. A daemon
 # that dies two seconds in (a bad config, a class a package removal took away) leaves its lock free at
 # the settle; unproven, it would leave a fold frozen behind a green deploy. What the settle cannot see is
-# a daemon that dies and is started again by cron inside it. And each lock only the PREVIOUS release
-# named must then be held by nothing at all.
+# a daemon that dies and is started again by cron inside it. A holder's start is read with `ps -o etimes=`,
+# and one still running whose start cannot be read fails the proof: it is never taken for a fresh process.
+# And every OTHER lock file of the checkout must then be held by nothing at all.
 lock_holders() { # <file…> — the pids that have any of these files open; nothing for a file not there
   local f
   local -a present=()
@@ -917,30 +928,40 @@ lock_holders() { # <file…> — the pids that have any of these files open; not
   if [ ${#present[@]} -gt 0 ]; then fuser "${present[@]}" 2>/dev/null || true; fi
 }
 
-holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid started at or after <since>
-  local cmd="$1" lock="$2" since="$3" pid started now
+checkout_lock_files() { # every daemon lock file of this checkout that exists, whichever release named it
+  compgen -G "$(supervision_lock "$DEPLOY_ROOT" 'mezzanine:*')" || true
+}
+
+checkout_lock_holders() { # the pids holding any of them
+  local -a files=()
+  mapfile -t files < <(checkout_lock_files)
+  lock_holders "${files[@]}"
+}
+
+holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid still running started at or after <since>
+  local cmd="$1" lock="$2" since="$3" pid age now
   shift 3
   now="$(date +%s)"
   for pid in "$@"; do
-    started=$((now - $(ps -o etimes= -p "$pid" 2>/dev/null || echo 0)))
-    [ "$started" -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started $((since - started)) s BEFORE this restart — it is running the previous release's code" >&2; false; }
+    age="$(ps -o etimes= -p "$pid" 2>/dev/null || true)"; age="${age//[[:space:]]/}"
+    case "$age" in
+      '' | *[!0-9]*)
+        # Gone since fuser listed it — cron's losing `flock -n` — it holds nothing now and is not judged.
+        if ! kill -0 "$pid" 2>/dev/null; then continue; fi
+        echo "$cmd: cannot read when pid $pid, which holds $lock, started (\`ps -o etimes=\` printed '$age') — it cannot be proven to run the deployed release's code" >&2
+        false ;;
+    esac
+    [ $((now - age)) -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started $((since - now + age)) s BEFORE this restart — it is running the previous release's code" >&2; false; }
   done
 }
 
 restart_daemons() {
   local php_bin cmd lock lk pid deadline step_started stopped=""
   local stop_timeout="${MEZZ_DAEMON_STOP_TIMEOUT_S:-30}" settle="${MEZZ_DAEMON_SETTLE_S:-3}"
-  local -a target_locks=() previous_locks=() previous_only=() stop_locks=() hs=()
+  local -a target_locks=() files=() hs=()
   php_bin="$(supervision_default_php)"
   step_started="$(date +%s)"
   for cmd in "${SUPERVISED_DAEMONS[@]}"; do target_locks+=("$(supervision_lock "$DEPLOY_ROOT" "$cmd")"); done
-  mapfile -t previous_locks <<< "$MEZZ_DEPLOY_PREVIOUS_LOCKS"
-  for lk in "${previous_locks[@]}"; do
-    [ -n "$lk" ] || continue
-    case " ${target_locks[*]} " in *" $lk "*) continue ;; esac
-    previous_only+=("$lk")
-  done
-  stop_locks=("${target_locks[@]}" "${previous_only[@]}")
 
   # A subshell, because install ends with `exit` on a refusal; the ERR trap is dropped inside it so the
   # failure is reported once, here, and not a second time from within.
@@ -949,7 +970,7 @@ restart_daemons() {
 
   deadline=$(($(date +%s) + stop_timeout))
   while :; do
-    read -r -a hs <<< "$(lock_holders "${stop_locks[@]}")"
+    read -r -a hs <<< "$(checkout_lock_holders)"
     [ ${#hs[@]} -gt 0 ] || break
     for pid in "${hs[@]}"; do case " $stopped " in *" $pid "*) ;; *) stopped+=" $pid" ;; esac; done
     [ "$(date +%s)" -lt "$deadline" ] || { echo "the previous daemons did not exit within ${stop_timeout} s of SIGTERM — pid(s) ${hs[*]}" >&2; false; }
@@ -983,10 +1004,12 @@ restart_daemons() {
     holders_started_after "$cmd" "$lock" "$step_started" "${hs[@]}"
     say "  ok — $cmd: pid(s) ${hs[*]} started after the restart and still hold its lock ${settle} s later"
   done
-  for lk in "${previous_only[@]}"; do
+  mapfile -t files < <(checkout_lock_files)
+  for lk in "${files[@]}"; do
+    case " ${target_locks[*]} " in *" $lk "*) continue ;; esac
     read -r -a hs <<< "$(lock_holders "$lk")"
-    [ ${#hs[@]} -eq 0 ] || { echo "pid(s) ${hs[*]} still hold $lk, a lock the previous release's bin/supervision.sh named and the deployed release's does not — they run the previous release's code beside the new daemons" >&2; false; }
-    say "  ok — nothing holds $lk, a lock only the previous release named"
+    [ ${#hs[@]} -eq 0 ] || { echo "pid(s) ${hs[*]} still hold $lk, the lock file of a daemon the deployed release's bin/supervision.sh does not supervise — they run a previous release's code beside the new daemons" >&2; false; }
+    say "  ok — nothing holds $lk, which no daemon of the deployed release uses"
   done
 }
 
@@ -1008,12 +1031,15 @@ phase_b_post_checkout() {
   say "  ok — HEAD is $(git_at rev-parse --short "$SHA")"
 
   # The supervised set installed and restarted below is the DEPLOYED release's: this file and the
-  # bin/supervision.sh it sourced are both the checked-out copies — that is what the re-exec bought. The
-  # PREVIOUS release's locks come from the copy that ran phase A (phase_b_open_window), and are checked
-  # here, before anything is built: without them the restart cannot stop a daemon whose lock this release
-  # moved, and after the migration is the worse place to find that out.
-  FAILED_STEP="reading the previous release's daemon locks"
-  [ -n "${MEZZ_DEPLOY_PREVIOUS_LOCKS:-}" ] || { echo "the serving release's bin/deploy.sh handed over no daemon lock files (MEZZ_DEPLOY_PREVIOUS_LOCKS)" >&2; false; }
+  # bin/supervision.sh it sourced are both the checked-out copies — that is what the re-exec bought. Phase A's
+  # opcache floor (phase_b_open_window) is checked here, before anything is built, rather than at the wait,
+  # after the migration.
+  FAILED_STEP="reading the opcache floor phase A handed over"
+  case "${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}" in
+    '' | *[!0-9]*)
+      echo "MEZZ_DEPLOY_REVALIDATE_FLOOR_S is '${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}', not the whole number of seconds phase A hands over" >&2
+      false ;;
+  esac
 
   # ── dependencies ────────────────────────────────────────────────────────────────────────────
   # Every artisan/composer/npm call below runs from the app directory (D-16) rather than in a
@@ -1094,9 +1120,13 @@ phase_b_post_checkout() {
   FAILED_STEP="waiting for PHP-FPM's opcache to revalidate"
   step "PHP-FPM: letting opcache revalidate the new code (no reload)"
   fpm_code_reload_ready || { printf '%s\n' "${FPM_NOT_READY[@]}" >&2; false; }
-  local wait_s=$((last_code_write + FPM_REVALIDATE_S + 1 - $(date +%s)))
+  # The previous release's .user.ini can hold a longer revalidate_freq than anything readable now: phase A's
+  # reading of it is the floor (phase_b_open_window).
+  local floor="$MEZZ_DEPLOY_REVALIDATE_FLOOR_S" wait_for="$FPM_REVALIDATE_S"
+  if [ "$floor" -gt "$wait_for" ]; then wait_for="$floor"; fi
+  local wait_s=$((last_code_write + wait_for + 1 - $(date +%s)))
   if [ "$wait_s" -gt 0 ]; then sleep "$wait_s"; fi
-  say "  ok — $FPM_POSTURE, and $(($(date +%s) - last_code_write)) s have passed since the last code write"
+  say "  ok — $FPM_POSTURE (before the checkout: within ${floor} s), and $(($(date +%s) - last_code_write)) s have passed since the last code write"
 
   # ── close the window ────────────────────────────────────────────────────────────────────────
   FAILED_STEP="php artisan up"
@@ -1167,7 +1197,7 @@ main() {
   3  re-exec the deployed release's own bin/deploy.sh
   4  composer install --no-dev · npm ci · npm run build
   5  optimize:clear → migrate --force → config/route/view/event:cache
-  6  queue:restart · install the release's crontab block · SIGTERM either release's lock holders · relaunch $TARGET_DAEMONS (cron's command) · wait out opcache revalidation (no FPM reload)
+  6  queue:restart · install the release's crontab block · SIGTERM every holder of the checkout's daemon lock files · relaunch $TARGET_DAEMONS (cron's command) · wait out opcache revalidation (no FPM reload)
   7  php artisan up · GET \$APP_URL/up
 PLAN
     return

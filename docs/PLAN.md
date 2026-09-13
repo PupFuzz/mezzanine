@@ -400,10 +400,12 @@ rule violations anyone could have committed at the time.
     `schedule:run` entry that drives `mezzanine:purge` — and renders their entries: every minute
     under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
     `@reboot`. **Install it as the application user when the host is stood up: `bin/supervision.sh
-    install`** — and again whenever the deploy refuses naming a missing entry. From then on each
-    deploy installs its own release's block inside the window, so a release that adds a daemon or
-    moves a lock brings its crontab with it; a crontab that install would refuse is refused by the
-    deploy before anything is touched. Install replaces only its own marked block, and refuses —
+    install`.** Each deploy then installs its own release's block inside the window — a crontab missing
+    an entry or carrying another release's lines included, which the dry run names line by line — so a
+    release that adds or drops a daemon brings its crontab with it; a crontab that install would refuse
+    is refused by the deploy before anything is touched. **The lock files do not move between
+    releases:** they are how the deploy finds the daemons that are running, and it refuses a release
+    that would change their path. Install replaces only its own marked block, and refuses —
     writing nothing — a crontab it cannot read, or one that already runs a supervised command outside
     that block. **Moving a hand-staged crontab onto it** (the sandbox's case) has an order that never
     runs two copies of a daemon — remove the hand-staged lines, stop the daemons they started by their
@@ -411,10 +413,12 @@ rule violations anyone could have committed at the time.
     owns it, with the sandbox's command.
     `bin/deploy.selftest.sh` reds when the list and § 2.1's long-lived daemon rows disagree.
   - **A restart is a signal, and it is proven.** Inside the window the deploy sends SIGTERM to
-    whatever holds a lock of either release — its own, and the ones the previous release's
-    `bin/supervision.sh` named — relaunches the command cron runs, and fails the window unless each of
-    its locks is held, a settle later, only by processes that started after the restart, and each lock
-    only the previous release named is held by nothing. No daemon registers a signal handler, so a kill
+    whatever holds any of the checkout's daemon lock files — whichever release's crontab started it: a
+    daemon the new release dropped, and, on a re-run after a deploy that failed in the window, every
+    daemon the previous release still has up — relaunches the command cron runs, and fails the window
+    unless each of its locks is held, a settle later, only by processes that started after the restart
+    (their start read with `ps`; a holder whose start cannot be read fails it), and every other lock
+    file is held by nothing. No daemon registers a signal handler, so a kill
     mid-pass is a crash — which § 2.1 already requires every process to survive; a daemon added later
     must keep that property, and `bin/deploy.sh § restart_daemons` says how to re-measure it. The fold's guarantee is § 6.5's (the cursor advance is in the
     projections' transaction; every projection is an idempotent upsert), and a SIGTERM'd client's
@@ -428,7 +432,9 @@ rule violations anyone could have committed at the time.
     the deploy user, and every `.user.ini` over the app's scripts — in the vhost's document root
     (`MEZZ_DOCROOT`, default `$HOME/public_html`, warned about by name when it does not exist) and in
     the release's `server/public/` — refuses timestamps off or `opcache.preload` set, and waits out the
-    longest `revalidate_freq` after the last code write before `php artisan up`. A long-lived request
+    longest `revalidate_freq` after the last code write before `php artisan up` — the previous
+    release's `server/public/.user.ini` counted, because FPM keeps a directory's `.user.ini` values for
+    `user_ini.cache_ttl` after the file changes. A long-lived request
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and still owed (above).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
@@ -437,10 +443,10 @@ rule violations anyone could have committed at the time.
   non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
-  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser` or
-  `setsid`, a crontab that lacks any entry the serving release's `bin/supervision.sh` renders (an
-  unreadable or empty one included) or that the deployed release's own install would refuse, a release
-  with no `bin/supervision.sh`, and a PHP-FPM whose opcache would not re-read changed files (timestamps
+  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
+  or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
+  release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
+  release that would move the daemons' lock files, and a PHP-FPM whose opcache would not re-read changed files (timestamps
   off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM
   binary). It warns, rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the

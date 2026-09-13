@@ -21,24 +21,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 - **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
   as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
-  prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: run
-  `bin/supervision.sh install` as the application user.** The deploy now refuses a host whose
-  crontab lacks any entry that script renders, as it used to refuse a missing systemd unit, and from
-  then on installs each deployed release's own block inside the maintenance window — so a release
-  that adds a daemon or moves a lock brings its crontab with it. A hand-staged crontab running the
-  same commands is refused by install; move off it in the order `bin/supervision.sh`'s header gives
-  (remove those lines, stop the daemons they started by their own lock files, then install), which
-  never runs two copies of a daemon. `MEZZ_SYSTEMCTL`,
+  prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: a host
+  whose crontab runs the daemons outside `bin/supervision.sh`'s managed block must move off it** — the
+  deploy refuses that crontab — in the order that script's header gives (remove those lines, stop the
+  daemons they started by their own lock files, then `bin/supervision.sh install` as the application
+  user), which never runs two copies of a daemon. Otherwise nothing: each deploy installs its own
+  release's crontab block inside the maintenance window — a missing entry included, named by the dry
+  run — so a release that adds or drops a daemon brings its crontab with it. `MEZZ_SYSTEMCTL`,
   `MEZZ_DAEMON_SERVICES`, `MEZZ_REVERB_SERVICE` and `MEZZ_FPM_SERVICE` are gone; `MEZZ_FPM_BIN`,
   `MEZZ_DAEMON_STOP_TIMEOUT_S`, `MEZZ_DAEMON_SETTLE_S` and `MEZZ_DOCROOT` (the vhost's document root,
   default `$HOME/public_html`) replace them. Supervision is cron +
   `flock -n` (new `bin/supervision.sh`, the one list of supervised daemons, held equal to
-  `FLEET-STATE.md § 2.1` by the selftest). A restart is SIGTERM to the holders of either release's
-  locks plus cron's own command, proven by each lock being held by new processes after a settle and
-  each lock only the previous release named being held by nothing. PHP-FPM is not reloaded: the
+  `FLEET-STATE.md § 2.1` by the selftest). A restart is SIGTERM to the holders of any of the
+  checkout's daemon lock files — a path the deploy refuses to let a release move, so a re-run after a
+  deploy that failed in the window stops the previous release's daemons too — plus cron's own command,
+  proven by each lock being held by new processes after a settle (`ps` is now required) and every
+  other lock file being held by nothing. PHP-FPM is not reloaded: the
   deploy refuses an FPM whose opcache would not revalidate changed files — a `.user.ini` in the
-  document root or in the release's `server/public/` included — and waits out
-  `revalidate_freq` before `up` — measured on the sandbox host, new code was served 3.1 s after an
+  document root or in the release's `server/public/` included — and waits out the longer of the
+  previous and the deployed release's `revalidate_freq` before `up` — measured on the sandbox host, new code was served 3.1 s after an
   in-place checkout at PHP's defaults, and stale code 8 s after it with `validate_timestamps=0`.
   The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description. ⚠ Not run
   against any real host; `mezzanine:feed-reload` stays a named gap there.
