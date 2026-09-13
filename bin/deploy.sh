@@ -96,6 +96,10 @@
 #                         guessed pool would be read, judged and drained as if it were the stream's]
 #   MEZZ_FEED_DRAIN_CEILING_S  seconds phase B waits for the previous release's streams to end on
 #                         `fleet.reload` before it SIGTERMs the rest [default: 30, § 2.1's ceiling]
+#                         ⚠ The BROWSER consumes this default: FLOOR.md § 12 derives the client's
+#                         silent reload grace from it, so raising the ceiling pushes the drain — and
+#                         the maintenance window with it — past that grace, which no client can read.
+#                         FLOOR.md § 2.2 owns what the viewer sees then.
 #   The supervised set is deliberately NOT configurable here: it is bin/supervision.sh's, the same
 #   list the crontab was installed from.
 #

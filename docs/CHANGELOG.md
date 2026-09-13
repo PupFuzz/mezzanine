@@ -49,7 +49,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   by the proxy and its RSS leg need a real deployment and say so.
 
 - **card#9300** — **D3 follows operator ruling A4: a deploy that does not change `feed_version` shows
-  the floor's viewer nothing.** Docs only; no code changes.
+  the floor's viewer nothing.** Docs, plus one COMMENT in `bin/deploy.sh`; no behaviour changes.
   - **D3 § 14 item 20, closed.** § 2.5's `fleet.reload` row and § 9 F8 raise the reload banner only on
     a `feed_version` the client does not know. F3's `reload` cells render nothing. A stream the
     deploy's drain ends with SIGTERM carries no `feed.close`, so it takes F1's path.
@@ -63,7 +63,14 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   - **D2, corrected:** § 8.3 no longer says a per-install ACL attaches "when item 7 is ruled", because
     item 7 was ruled and recorded. § 8.7 and § 13 row 42 no longer describe per-install channels or say
     every `fleet.reload` demands a reload.
-  **Installer action:** none.
+  - **Review round 2.** § 2.2's protocol block, step 8, now carries the exception the prose, F3 and F8
+    already carried: after F8's banner nothing is re-opened. § 2.2's grace paragraph gains a fourth
+    clause — the grace also suppresses F6, because an `EventSource` open failure carries no status code
+    and no poll is issued inside it, so a session that expires there waits for the grace's end; F6's
+    **Detected by** column and AT-D3-8 point at it. And **the drain ceiling's consumer is now named at
+    both ends**: `bin/deploy.sh`'s env-var block and D2 § 2.1's feed-reload row say that raising
+    `MEZZ_FEED_DRAIN_CEILING_S` pushes the window past the client's grace, which no client can read.
+  **Installer action:** none — the `bin/deploy.sh` change is a comment.
 
 - **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
   questions, and two false claims are corrected.** Docs only; no code changes.
