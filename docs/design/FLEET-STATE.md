@@ -1205,9 +1205,13 @@ that thread that this section acts on, each one someone else's measurement:
    database, so a correctly pinned `DB_DATABASE` can still be ignored. Both must be pinned to the empty
    string.
 4. **Do not force a variable a CI matrix exports to select a backend** — a bridge repo's MariaDB matrix
-   would have silently re-run both legs on SQLite: green, testing nothing.
+   would have silently re-run both legs on SQLite: green, testing nothing. *(This repo no longer
+   selects a backend at all: MariaDB is the only engine and SQLite is not a supported configuration —
+   `docs/PLAN.md` D-15's 2026-09-13 amendment, card#9328. The finding still decides how
+   `DB_CONNECTION` is declared; see the guard bullets below.)*
 5. The guard must assert the **resolved** value (`config()`), not the declared one, because all three
-   mechanisms above leave the declaration looking correct.
+   mechanisms above leave the declaration looking correct. ⚠ **For mechanism 3, `config()` is not the
+   whole resolved value** — measured here on card#9328; the guard below also reads the connection.
 
 **Mezzanine's values, claimed and published here.** Mezzanine's production store is on a dedicated host,
 but its **sandbox** instance (D-13) runs wherever its agent runs, and that may be a shared box — so the
@@ -1243,29 +1247,51 @@ believed they had already done:
 
 **And the pin is guarded, not trusted** ([AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)):
 
-- A test-suite bootstrap assertion reads **`config('database.connections.mysql.database')`** — the
-  resolved value — and **aborts the run** before the first migration if it is not exactly
-  `mezzanine_test`. Same for the two Redis databases. Aborting, not skipping: a suite that cannot prove
-  its isolation must not run at all.
+- A test-suite bootstrap guard (`Tests\TestCase::createApplication()`) **aborts the run** before the
+  first migration unless the resolved store is the pinned one. Aborting, not skipping: a suite that
+  cannot prove its isolation must not run at all. It resolves the store by **two reads, and neither is
+  redundant**:
+  - **`config()` for each pinned key** — `database.default` must be `mysql`,
+    `database.connections.mysql.database` must be `mezzanine_test`, and the two Redis databases must be
+    11 and 10. This read catches findings 1 and 2 (an export beating an unforced `<env>`, a `force`
+    that never reaches `$_SERVER`) and an exported `DB_CONNECTION` naming any other connection.
+    `database.default` is pinned because the suite writes through it: every migration and query goes
+    through the DEFAULT connection, so the database pin alone proves only that the `mysql` connection
+    points at `mezzanine_test`, not that the suite uses that connection.
+  - **The database name the default connection itself resolves**, `DB::connection()->getDatabaseName()`
+    — this catches finding 3, which the `config()` read cannot. Laravel applies a `DB_URL`'s path only
+    when it BUILDS the connection, so `config('database.connections.mysql.database')` keeps reporting
+    `mezzanine_test` while the connection points elsewhere. Measured on card#9328: with the `DB_URL`
+    pin removed from `phpunit.xml` and a `DB_URL` exported, the `config()` read passed. The connection's
+    PDO is lazy, so this read opens no connection.
+  - ⚠ **`REDIS_URL` has no connection-level read.** Laravel's `RedisManager` also applies the URL only
+    when it resolves a connection, so a `REDIS_URL` path is invisible to the `config()` read, just as
+    `DB_URL`'s was. Nothing refuses it, and today nothing reaches it: the suite runs cache, session and
+    queue on `array` / `array` / `sync` (`server/phpunit.xml`), and no test uses Redis. The first test
+    that opens a Redis connection owes the Redis form of the connection read.
 - A second test asserts the `phpunit.xml` file itself: every pinned key has both an `<env force="true">`
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
-- `DB_CONNECTION` is **not** forced, deliberately, and the omission is commented as load-bearing:
-  forcing it is exactly the shape that turned another repo's MariaDB matrix into a SQLite run
-  reporting green. ⭐ **Since card#9250 this repo's CI does select a backend by exporting it**, and
-  the omission is what makes that work: `.github/workflows/php-tests.yml`'s `php-tests-mariadb` job
-  exports `DB_CONNECTION=mysql` and runs every migration and the whole suite against a pinned
-  MariaDB service container, alongside — never instead of — the SQLite lane. The two jobs are
-  separate environments, so the SQLite lane's `DB_CONNECTION=sqlite` assertion is untouched by it.
-  Every other pin in the table above is forced + paired and therefore **defeats** that job's
-  exports, which is the designed split: CI chooses the store, CI does not get to choose the
-  isolation.
+- `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
+  comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
+  configuration anywhere this application runs, so nothing selects a backend any more
+  (`docs/PLAN.md` D-15's 2026-09-13 amendment, card#9328; it retired the SQLite suite and CI lane this
+  bullet used to describe). The omission survives for finding 4's reason, pointed the other way:
+  forcing `mysql` would silently turn an exported `DB_CONNECTION=<anything else>` into a green run on
+  `mysql`, a run that reports something other than what its caller asked for. Unforced, the export
+  wins and the guard's `database.default` read aborts the run by name. `DatabasePinTest` also asserts
+  the **declared** value is `mysql` and unforced, because an environment that exports
+  `DB_CONNECTION=mysql` beats the declaration, so a flip of the declaration would be invisible to the
+  resolved guard there. Every other pin in the table above is forced + paired and therefore
+  **defeats** an export: an environment may name the connection, the guard refuses any but `mysql`,
+  and nothing exported gets to choose the isolation.
 - The proof is **deleting one half of a pair**, not a hostile export and not a clean run (corrected
   2026-08-25, card#7334 — this bullet said the opposite). Under an intact pin
   `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test` **passes, and must**: the `<server>` twin beats
   the export, so the resolved value never moves and the guard has nothing to refuse. To watch the guard
   refuse, delete the `<server>` half of one pin under an export of that key — that is the only lever
-  that moves the resolved value. A guard watched failing under a lever that cannot move it is not
+  that moves the resolved value. For the `DB_URL` pin, the connection read refuses that lever, and the
+  `config()` read does not. A guard watched failing under a lever that cannot move it is not
   watched failing at all. See [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites).
 
 **Production migrations** additionally require `--force` (Laravel's own production confirmation) and
@@ -4789,10 +4815,12 @@ and the gate on trusting the derived signal at all.*
 
 - **Build:** the bootstrap guard and the `phpunit.xml` pin-shape test of
   [§ 6.2](#62-database-names-pinned-and-published).
-- **GREEN:** the suite runs against `mezzanine_test`, and asserts `config('database.connections.mysql.database')`,
-  `config('database.redis.default.database')` and `config('database.redis.cache.database')` resolve to
-  the pinned values; the connection's resolved `time_zone` is `+00:00`; every isolation-critical key has
-  both an `<env force="true">` and a matching `<server>` entry with equal values.
+- **GREEN:** the suite runs against `mezzanine_test`, and asserts `config('database.default')`,
+  `config('database.connections.mysql.database')`, `config('database.redis.default.database')` and
+  `config('database.redis.cache.database')` resolve to the pinned values and
+  `DB::connection()->getDatabaseName()` resolves to `mezzanine_test`; the connection's resolved
+  `time_zone` is `+00:00`; every isolation-critical key has both an `<env force="true">` and a matching
+  `<server>` entry with equal values; `DB_CONNECTION` is declared `mysql` and not forced.
 - **The hostile export is a GREEN, not a RED — corrected 2026-08-25 (card#7334; this row previously
   said the opposite).** `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **passes, and passing is
   the correct outcome**: with BOTH halves of each pin present the export is *defeated*, so the resolved
@@ -4805,14 +4833,27 @@ and the gate on trusting the derived signal at all.*
   makes a pin bite, and the export losing IS the pin working. ⇒ **Assert the green here** (resolved
   value unchanged under a hostile export), and read the guard's refusal from the two REDs below, which
   move the resolved value for real.
-- **Second RED — the `_URL` mechanism:** with the pins intact, set `DB_URL` to a URL naming
-  `mezzanine` → the guard must still abort, because it reads the resolved value and not the declared
-  one. Repeat with `REDIS_URL`.
+- **Second RED — the `_URL` mechanism, corrected 2026-09-13 (card#9328; this row previously said
+  that with the pins intact a `DB_URL` naming `mezzanine` makes the guard abort).** ⛔ **That lever
+  could not fire.** With the pins intact, the `DB_URL` pair defeats the export exactly as the
+  hostile-export GREEN above describes, so the run stays green. And before card#9328 the guard read
+  only `config()`, which a URL's path never reaches, so even with the pin removed it did not abort.
+  **The RED:** delete the `DB_URL` pin (both entries) and export a `DB_URL` whose path names another
+  database, one that **does not exist**, so that a guard which fails to fire cannot write anywhere →
+  the `config()` read passes (it still reports `mezzanine_test`), and the connection read in
+  `Tests\TestCase::createApplication()`, `DB::connection()->getDatabaseName()`, aborts the run:
+  *"the default connection resolves to database '…', expected 'mezzanine_test'"*. There is no dedicated
+  test for this: every test in the run errors on that abort, `DatabasePinTest` included, because it
+  boots through the same `TestCase`. **Not repeated for `REDIS_URL`:** no Redis connection read exists
+  to refuse it; see [§ 6.2](#62-database-names-pinned-and-published)'s guard bullets.
 - **Third RED — the pair, and it is the PRIMARY refusal proof now that the export is a green:** delete
-  the `<server>` half of one pin under an export of that key → the export wins, the resolved value moves,
-  and the shape test fails naming the key. That is both the silent-divergence mode (one line of a
-  two-line pin edited, everything still reading correctly) **and the only lever that demonstrates the
-  guard refusing** — deleting a half is what lets an export reach the resolved value at all.
+  the `<server>` half of one pin under an export of that key → the export wins, the resolved value
+  moves, and the guard aborts the run naming the `config()` key. Every test errors, the shape test
+  included, since it boots through the same `TestCase`. With nothing exported, the same deletion
+  boots cleanly and `DatabasePinTest`'s pairing test fails naming the key. That is both the
+  silent-divergence mode (one line of a two-line pin edited, everything still reading correctly)
+  **and the only lever that demonstrates the guard refusing** — deleting a half is what lets an export
+  reach the resolved value at all.
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 

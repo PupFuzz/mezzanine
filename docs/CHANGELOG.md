@@ -248,6 +248,12 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   Present-tense claims that the suite runs on SQLite are corrected in comments under `server/app`,
   `server/tests`, `server/database/migrations` and in `tools/ci-store-probe.php`; statements that are
   history — what card#9250's first MariaDB run measured — stay as history.
+  **D2 doc-sync:** `docs/design/FLEET-STATE.md § 6.2` now describes one engine, pointing at D-15's
+  amendment, and names the guard's two reads and what each catches, including that `REDIS_URL` has
+  no connection-level read and is refused by nothing (unreached today). AT-D2-14's Second RED was
+  false: an intact `DB_URL` pin defeats the export, so it cannot abort. It is rewritten to delete
+  the `DB_URL` pin and export a URL naming a nonexistent database, which the connection read aborts.
+  The Third RED no longer claims the shape test runs under an export.
   ⚠ **Not done here, by name:** application code still branches for stores other than
   MySQL/MariaDB — `App\Support\Ddl::ascii()` and `::index()`, `App\Fold\Fold::claim()`,
   `App\Ingest\Counters::upsert()` and the building-store migration's CHECK constraint. Those arms
