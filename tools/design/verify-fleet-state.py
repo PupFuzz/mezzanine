@@ -18,6 +18,9 @@ checking, and it survives exactly the pass that falsifies it.
   G1  DDL ENUM members vs prose reachability      (R1-10: `server_purge`, a member no path emits)
   G2  field table <-> worked examples, both ways  (R1-22: four container objects with no row)
   G3  byte figures re-derived by serialization    (R1-16: "Measured" figures nothing could measure)
+      -- and the stream's stall bound, held to the  (card#9287: the dead-feed figure and the outbox
+      figures it is defined against and to the two   retention it equals; card#9326: the handler
+      copies of it that cannot point at its owner    fence and section 12's row, which stay inline)
   G4  cross-document enum containment + counts    (R1-19: a comment saying "four" over six members)
   G5  section 12 <-> definition-site agreement    (R1-18, R1-33: a number table that drifted;
                                                    R2-8: and the substring search that could not
@@ -53,6 +56,10 @@ checking, and it survives exactly the pass that falsifies it.
                                                      cannot hold; the second leg is the REFUSAL
                                                      the join had to survive, checked on the field
                                                      tables rather than on the prose about them)
+  G14 the enforcement bound's owner figures,       (card#9287 R7: the bound stood ~4x short on the
+      re-derived from the handler they bound and     record, a security figure; card#9326: its copies
+      from section 8.5's stall bound                 were DELETED to pointers, so the owner is what
+                                                     is left to hold)
 
 Three things are NOT fully mechanizable and say so in the output rather than reporting a clean
 over a population they never measured (canon: a clean result over an unnamed population reports
@@ -190,11 +197,19 @@ def heading_index(text):
 HEADS = heading_index(raw)
 BY_ANCHOR = {h[2]: h for h in HEADS}
 D3_BY_ANCHOR = {h[2]: h for h in heading_index(d3_raw)}
+FENCED, FENCE_OPEN = fenced_lines(raw)      # G7 carries the CONTROLs on both
 
 
 def section_text(anchor):
     h = BY_ANCHOR.get(anchor)
     return None if h is None else "\n".join(lines[h[3]:h[4]])
+
+
+def section_fenced_lines(anchor):
+    """The 1-based line numbers of FENCED that fall inside one section of this document -- the
+    pseudocode an implementer builds that section from.  Empty for an unresolved anchor."""
+    h = BY_ANCHOR.get(anchor)
+    return set() if h is None else {i for i in FENCED if h[3] < i <= h[4]}
 
 
 def d3_section_text(anchor):
@@ -561,6 +576,43 @@ else:
         fail.append(f"G3: section 6.7 retains `feed_outbox` for {kp} s; section 8.5's stall bound plus "
                     f"section 8.3's heartbeat interval is {st} + {bt} = {st + bt} s, and a stream "
                     f"inside its bound must find every row it may still deliver")
+
+# The stall bound's two INLINE copies (card#9326).  Every other site that needs the bound points at
+# section 8.5 and carries no figure -- that DELETE is what keeps copies from existing, and nothing here
+# scans for them.  Two copies cannot point: section 8.3's handler fence, which is what an implementer
+# builds, and section 12's number-table row.  Each is read exactly where it lives and held to the
+# owner; a copy this gate cannot READ is a CONTROL failure, never a skip -- the review of this card
+# reproduced a bolded row figure dropping out of a looser match with rc 0.
+STALL_FENCE = re.compile(r"\btick_started > (\d+) s\b")               # the handler's stall comparison
+STALL_ROW = re.compile(r"^\|\s*Stream stall bound\s*\|([^|]*)\|")     # section 12's row; group 1 = figure
+STALL_FIGURE = re.compile(r"\**(\d+) s\**")                             # that figure cell, bolded or not
+g3_copies = {"section 8.3's handler fence": [
+    int(m.group(1)) for i in sorted(section_fenced_lines("83-the-websocket-delta-feed"))
+    for m in STALL_FENCE.finditer(lines[i - 1])]}
+if not g3_copies["section 8.3's handler fence"]:
+    fail.append("G3 CONTROL: section 8.3's handler fence carries no `tick_started > N s` comparison this "
+                "gate can read, and that fence is the copy of the stall bound an implementer builds from "
+                "— it would then be held to nothing while this gate reported clean")
+_sec12_lines = (section_text("12-every-number-and-where-it-comes-from") or "").split("\n")
+_rows12 = [m for m in map(STALL_ROW.match, _sec12_lines) if m]
+if not _rows12:
+    fail.append("G3 CONTROL: section 12 has no `Stream stall bound` row this gate can find, so the "
+                "number table's copy of the stall bound would be held to nothing while it reported clean")
+for _row in _rows12:
+    _fig = STALL_FIGURE.fullmatch(_row.group(1).strip())
+    if _fig:
+        g3_copies.setdefault("section 12's `Stream stall bound` row", []).append(int(_fig.group(1)))
+    else:
+        fail.append(f"G3 CONTROL: section 12's `Stream stall bound` row carries `{_row.group(1).strip()}` "
+                    f"in its figure cell, which this gate cannot read as `N s` (bolded or not) — the "
+                    f"row's copy of the stall bound would be held to nothing while it reported clean")
+if g3_stall:
+    for _where, _figs in g3_copies.items():
+        for _n in _figs:
+            if _n != int(g3_stall.group(1)):
+                fail.append(f"G3: {_where} states the stall bound as {_n} s and its owner, section 8.5, "
+                            f"states {g3_stall.group(1)} s — this copy cannot point at the owner, so it "
+                            f"moves with it (card#9326)")
 
 # ------------------- G4. cross-document enum containment, with prose counts ----
 def d1_enum_set(field):
@@ -1135,7 +1187,6 @@ else:
 # count would be a figure free to disagree with the document, which is this file's own § 1 rule.
 NS_PREFIXES = sorted({t.split(".")[0] for t in declared_types})
 FIELD_FORM = re.compile(r"""[ \t]*(?:==|=|:)[ \t]*(?:"[^"\n]*"|'[^'\n]*'|\d|[a-z_]+\b)""")
-FENCED, FENCE_OPEN = fenced_lines(raw)
 g7_pop, g7_undelimited, g7_field_form = 0, 0, 0
 if FENCE_OPEN:
     fail.append("G7 CONTROL: this document leaves a ``` fence unclosed, so every line after it "
@@ -1468,7 +1519,16 @@ else:
 
 # the ruling's statement sites, each held to naming the close POSITIVELY -- a site that reverts
 # to a surviving stream stops naming it, which is what makes this check able to fail
-CLOSE_UNAVAIL = 'feed.close{reason:"unavailable"}'
+# card#9326: the ruling's token is READ OFF the declaring row rather than written here.  The member this
+# ruling is about is the one the row describes as *a read of the store did not answer*, so a rename of
+# that member moves the token with it; a literal would leave every site below held to a member the row
+# no longer declares, and the failure would read as "the site dropped the close" -- the wrong defect.
+_ruling = re.search(r"`([a-z_]+)` — \*\*a read of the store did not answer\*\*", _close_row or "")
+CLOSE_UNAVAIL = f'feed.close{{reason:"{_ruling.group(1)}"}}' if _ruling else None
+if _close_row and not _ruling:
+    fail.append("G12 CONTROL: section 8.3's `feed.close` row no longer describes any member as *a read "
+                "of the store did not answer*, so the ruling's sites below have no declared member to "
+                "be held to and are not checked")
 sec22_txt = section_text("22-fail-posture-per-path") or ""
 _prows = table_rows(sec22_txt, r"^\| Path \| Store/dependency unavailable \| Posture \|") or []
 _stream_rows = [c for c in (cells(r) for r in _prows)
@@ -1480,7 +1540,7 @@ if len(_stream_rows) < 2:
                 f"the fail-posture table has lost a path this ruling is stated on")
 else:
     for c in _stream_rows:
-        if CLOSE_UNAVAIL not in c[2]:
+        if CLOSE_UNAVAIL and CLOSE_UNAVAIL not in c[2]:
             fail.append(f"G12: section 2.2's `{c[0]}` row meets an unreadable store and its posture "
                         f"does not end the stream with {CLOSE_UNAVAIL} — card#9287's ruling is that "
                         f"the stream ENDS and the client is told which condition ended it, and a "
@@ -1513,36 +1573,50 @@ for _get, _anchor, _doc, _what in G12_SITES:
                     f"holds the ruling at has been renamed or removed, and an unresolved anchor "
                     f"would otherwise be checked as empty text and reported below as a missing "
                     f"close, which names the wrong defect")
-    elif CLOSE_UNAVAIL not in _txt:
+    elif CLOSE_UNAVAIL and CLOSE_UNAVAIL not in _txt:
         fail.append(f"G12: {CLOSE_UNAVAIL} appears nowhere in {_doc} #{_anchor} — {_what}. A rule "
                     f"stated at some of its sites and not the others is the drift this gate exists "
                     f"for")
 
-# ⭐ G12b -- THE `reload` HALF OF THE SAME RULING, WHICH G12_SITES ABOVE CANNOT SEE.
-# card#9287's round minted `reload` and guarded only `unavailable`: every tuple above holds a site
-# to CLOSE_UNAVAIL and nothing holds any site to the close the round ADDED.  It is not enough to
-# hold it at section 8.3 either -- `_used` is derived over the WHOLE document (the findall on `raw`
-# above), and the `fleet.reload` row's own prose carries the literal, so the "exactly four" cardinal
-# keeps matching after the HANDLER stops writing it.  Measured, not reasoned: deleting the handler's
-# `yield feed.close{reason:"reload"}` left this verifier at rc 0 and every other gate green.
-# So the site this holds is the FENCE -- section 8.3's pseudocode is what an implementer BUILDS
-# from, and a close that survives only in prose is a close no build emits.
-CLOSE_RELOAD = 'feed.close{reason:"reload"}'
-_reload_fenced = [_i for _i, _line in enumerate(raw.splitlines(), 1)
-                  if CLOSE_RELOAD in _line and _i in FENCED]
-_reload_anywhere = [_i for _i, _line in enumerate(raw.splitlines(), 1) if CLOSE_RELOAD in _line]
-if not _reload_anywhere:
-    fail.append(f"G12b CONTROL: {CLOSE_RELOAD} appears nowhere in this document at all, so the "
-                f"member section 8.3's close table declares is used by nothing — the check below "
-                f"would pass vacuously and name the wrong defect")
-elif not _reload_fenced:
-    fail.append(f"G12b: {CLOSE_RELOAD} appears in this document only in PROSE "
-                f"(line(s) {', '.join(str(_i) for _i in _reload_anywhere)}) and in no pseudocode "
-                f"fence — so section 8.3's handler does not write it. The terminal `fleet.reload` "
-                f"then ends every stream with no server-chosen reason, which FLOOR.md section 9 F3 "
-                f"renders as *feed down — polling* in front of every viewer on every deploy against "
-                f"a healthy fleet. That is the exact defect this member was minted to close, and "
-                f"the declaring prose keeps the close table's cardinal matching while it regresses")
+# ⭐ G12b -- EVERY MEMBER THE ROW DECLARES IS WRITTEN BY THE HANDLER AN IMPLEMENTER BUILDS FROM.
+# card#9287's round minted `reload` and guarded only `unavailable`, and `_used` above is derived over
+# the WHOLE document, so a declared member whose remaining occurrences are prose keeps the "exactly
+# four" cardinal matching after the HANDLER stops writing it.  Measured, not reasoned: deleting the
+# handler's `yield feed.close{reason:"reload"}` left this verifier at rc 0 and every other gate green.
+# The site this holds is therefore section 8.3's FENCE -- that pseudocode is what an implementer
+# BUILDS from, and a close that survives only in prose is a close no build emits.
+# card#9326: this leg used to hold ONE member, by name.  The member set is now read off the declaring
+# row itself -- each member is written `name` — its meaning -- and held to the size the row states, so
+# a member added to the row arrives already guarded instead of waiting for its name to be typed here.
+# The fence is also section 8.3's own now: any fence anywhere in the document used to satisfy it.
+_decl_size = re.search(r"the set is \*\*exactly (\w+)\*\*", _close_row or "")
+_declared = re.findall(r"`([a-z_]+)` — ", _close_row or "")
+_fence83 = section_fenced_lines("83-the-websocket-delta-feed")
+g12b_members = ()
+if _close_row:   # a missing row is G12's CONTROL above, which already names it
+    if not _declared or (_decl_size and WORD.get(_decl_size.group(1).lower()) != len(_declared)):
+        fail.append(f"G12b CONTROL: section 8.3's `feed.close` row parsed as declaring {_declared} "
+                    f"against the size it states ({_decl_size.group(1) if _decl_size else 'none'}) — "
+                    f"each member is written `name` — meaning, and a partial read would leave a "
+                    f"declared member outside the handler check below while it reported clean")
+    elif not _fence83:
+        fail.append("G12b CONTROL: section 8.3 carries no pseudocode fence, so there is no handler to "
+                    "hold the declared members to")
+    else:
+        g12b_members = tuple(_declared)
+        for _r in _declared:
+            _tok = f'feed.close{{reason:"{_r}"}}'
+            _at = [_i for _i, _line in enumerate(lines, 1) if _tok in _line]
+            if not any(_i in _fence83 for _i in _at):
+                fail.append(
+                    f"G12b: section 8.3's `feed.close` row declares `{_r}` and no pseudocode fence "
+                    f"inside section 8.3 writes {_tok}"
+                    + (f" — it occurs only at line(s) {', '.join(map(str, _at))}, outside that handler"
+                       if _at else " — it occurs nowhere in this document")
+                    + ". The handler is what an implementer builds, so a declared close it does not "
+                      "write is an end the server chose and never says it chose: FLOOR.md section 9 F3 "
+                      "renders that as *feed down — polling* against a healthy fleet, while the "
+                      "declaring prose keeps the close table's cardinal matching")
 
 # ------------- G13. the declared agent-name join, across the two identity surfaces ----
 # card#9296 built card#7957's ruling (d): a seat DECLARES its own protocol agent name, D1 carries it
@@ -1649,6 +1723,46 @@ else:
                         f"it already holds, and a member under a new name is the same invented join "
                         f"AT-D2-24's first RED exists for, which a name-equality check would miss")
 
+# ---- G14. the enforcement bound's owner figures, re-derived from the handler they bound ----
+# card#9287's maintainer round found section 9's enforcement bound stated ~4x short -- the re-check
+# interval plus one tick, read as the bound -- and card#9326 then DELETED every copy of it to a pointer,
+# so section 9 case (a) is the one statement left to hold.  Its two figures are not free numbers: the
+# *under* figure is the auth interval plus a pass inside section 8.5's stall bound, and the draining
+# figure is the auth interval plus one stream tick.  The interval and the tick are read from section
+# 8.3's handler, the stall bound from section 8.5 (G3 reads it, and its CONTROL names it missing), so
+# an owner figure moved without the handler -- or the handler without the owner -- reds by name.
+sec9_txt = section_text("9-read-side-authentication") or ""
+_g14_in = {
+    "section 9 case (a)'s *under* figure":
+        re.search(r"enforcement lag is\s+\*\*under (\d+) s\*\*", sec9_txt),
+    "section 9 case (a)'s draining figure":
+        re.search(r"drains promptly it is \*\*(\d+) s \+ one (\d+) ms tick\*\*", sec9_txt),
+    "section 8.3's handler re-check interval": re.search(r"if now - auth_done >= (\d+) s:", sec83_txt),
+    "section 8.3's handler tick": re.search(r"sleep until (\d+) ms after tick_started", sec83_txt),
+}
+g14_report = "not derived — see the CONTROL failure"
+if not all(_g14_in.values()):
+    fail.append(f"G14 CONTROL: {', '.join(k for k, v in _g14_in.items() if not v)} did not parse, so the "
+                f"enforcement bound's owner figures would be held to nothing while this gate reported clean")
+elif g3_stall:     # a missing stall bound is G3's CONTROL, which already names it
+    _u, _d, _a, _t = _g14_in.values()
+    g14_stall, g14_under = int(g3_stall.group(1)), int(_u.group(1))
+    g14_drain = (int(_d.group(1)), int(_d.group(2)))
+    g14_auth, g14_tick = int(_a.group(1)), int(_t.group(1))
+    if g14_under != g14_auth + g14_stall:
+        fail.append(f"G14: section 9 states the enforcement bound as under {g14_under} s; it is the "
+                    f"auth interval plus a pass inside section 8.5's stall bound, which section 8.3's "
+                    f"handler and section 8.5 re-derive as {g14_auth} + {g14_stall} = "
+                    f"{g14_auth + g14_stall} s")
+    if g14_drain != (g14_auth, g14_tick):
+        fail.append(f"G14: section 9 states the enforcement bound on a draining client as "
+                    f"{g14_drain[0]} s + one {g14_drain[1]} ms tick; section 8.3's handler re-checks "
+                    f"every {g14_auth} s on a {g14_tick} ms tick, which re-derive as {g14_auth} s + one "
+                    f"{g14_tick} ms tick")
+    g14_report = (f"enforcement bound under {g14_under} s, and {g14_drain[0]} s + one {g14_drain[1]} ms "
+                  f"tick on a draining client (owner section 9 case (a)), re-derived from section 8.3's "
+                  f"{g14_auth} s re-check and {g14_tick} ms tick and section 8.5's {g14_stall} s stall bound")
+
 # ---------------- the count of guard classes, which is itself a prose count ----
 # Section 14 item 8 and section 12's status table state how much of this document is tool-checked.
 # They said "ten" against eleven for a whole revision.  A gate that checks every other count in
@@ -1677,7 +1791,8 @@ print(f"G1  ENUM members re-derived: {len(g1_members)} "
 print(f"G2  wire fields: {len(g2_table)} declared, {len(g2_seen)} in {len(seat_objs)} worked "
       f"seat objects, {len(g2_table ^ g2_seen)} in symmetric difference")
 print(f"G3  byte figures re-serialized: {figs}")
-print(f"G3  stream stall bound / dead-feed / heartbeat / outbox retention (s): {g3_stream}")
+print(f"G3  stream stall bound / dead-feed / heartbeat / outbox retention (s): {g3_stream}; inline "
+      f"copies of the stall bound held to section 8.5: {g3_copies}")
 print(f"    inputs re-derived from the document (none written into this checker): "
       f"delta volume {delta_day}/seat-day re-added from {len(parts) if m83 else 0} components, "
       f"message bound {msg_bound} B, snapshot seat counts {seat_counts}, "
@@ -1726,7 +1841,8 @@ print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
 print(f"G12 `feed.close` reasons re-derived from this document's own uses: {g12_reasons}; section 2.2 "
       f"stream rows holding the close: {len(_stream_rows)}; ruling-statement sites held to naming it: "
-      f"{[f'{d}#{a}' for _, a, d, _w in G12_SITES]}")
+      f"{[f'{d}#{a}' for _, a, d, _w in G12_SITES]}; members section 8.3's handler fence is held to, "
+      f"re-derived from the declaring row: {g12b_members}")
 print(f"G11 section 10's trace: {n_ev} events, {n_delta} deltas, {n_trans} transition rows")
 print(f"G13 `{DECL_ENUM_COL}` re-derived per home: "
       f"{ {k.split(' (')[0]: sorted(v) for k, v in g13_sets.items()} }; coordination fields read: "
@@ -1735,6 +1851,7 @@ print(f"G13 `{DECL_ENUM_COL}` re-derived per home: "
       f"held against the {len(g13_forbidden)} seat members they may not name "
       f"{sorted(g13_forbidden)} AND against the shape /{G13_SHAPE.pattern}/ over every segment of "
       f"every field name, which is what a member under a NEW name is caught by")
+print(f"G14 {g14_report}")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's manual residue, printed "
       "above — a row whose D1-source column names no section number cannot be reached by any "
       "marker convention, so it stays a human read; D1 § 1's `D2:` convention (§ 14 item 13) "
