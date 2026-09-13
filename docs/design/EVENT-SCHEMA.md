@@ -1057,8 +1057,11 @@ fed reads zero forever, and nothing reds. The obligations, both binding:
    >
    > **Every capture records the harness version it was taken from, read from the running binary and
    > not from configuration.** Three sources disagree in practice and only one of them is the fact:
-   > `harness_label` in the reporter's config is **written by the installer** and cannot see an
-   > upgrade; a `claude --version` taken before a run can be stale by the time it matters — an
+   > `harness_label` in the reporter's config is a value **written once, by hand, if at all**, and
+   > cannot see an upgrade — there is no installer (card #7336 is won't-do), and
+   > `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key unset on purpose for exactly that
+   > reason, so on a seat installed that way the field is `null`; a `claude --version` taken before
+   > a run can be stale by the time it matters — an
    > auto-update landed **mid-experiment** during card #7337's own runs, so events labelled
    > `claude-code/2.1.243` were produced by 2.1.245, and only the session's own start-up banner said
    > so. **A version pinned here that nothing re-derives is the same defect class this section
@@ -1382,7 +1385,10 @@ the harness.
 capture was taken from, so the fleet needs to be able to *see* when a seat has moved off it. This
 field carries `claude-code/<version>` from the harness the reporter is running under, which lets an
 operator answer "which seats are on a build this document has never been measured against" from the
-stream instead of from a survey.
+stream instead of from a survey. ⚠ **No hook payload carries the version, so the reporter reads it from
+a `harness_label` config key**, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves that key unset on
+purpose: a version written once goes stale at the harness's next self-update. On a seat installed that
+way the field is `null`, and `payload_key_missing.harness_label` counts the gap.
 
 **`previous_session_id` names the session this reporter just reaped — it is not a payload field.**
 The `SessionStart` payload carries **no** predecessor-session key of any kind: the captured
