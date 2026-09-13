@@ -17,10 +17,15 @@ abstract class TestCase extends BaseTestCase
      * skips: a suite that cannot prove which database it is about to write to must not run
      * at all, and skipping would report that decision as a pass.
      *
-     * The values asserted are RESOLVED values from config(), never the declarations in
-     * phpunit.xml — all three mechanisms § 6.2 records (an exported variable beating an
-     * unforced <env>, force="true" missing $_SERVER, a URL's path replacing the database)
-     * leave the declaration looking correct while the resolved value is something else.
+     * The values asserted are RESOLVED values, never the declarations in phpunit.xml — all three
+     * mechanisms § 6.2 records (an exported variable beating an unforced <env>, force="true"
+     * missing $_SERVER, a URL's path replacing the database) leave the declaration looking
+     * correct while the resolved value is something else. They are resolved by TWO reads, and
+     * neither is redundant:
+     *   1. config() for every PINS key — catches the first two mechanisms;
+     *   2. the database name the default CONNECTION itself resolves — catches the third, which
+     *      config() cannot see (a DB_URL is applied only when the connection is built; see the
+     *      comment on that check below).
      * DatabasePinTest covers the declarations separately.
      *
      * `database.default` IS PINNED BECAUSE THE SUITE WRITES THROUGH IT (card#9328). The database

@@ -129,7 +129,9 @@ its date, its decider and the scope of what it moved. The original row above sta
   a changed one. **What does NOT move:** the *dedicated DB host* clause, § 6.1's floor and § 6.2's
   pinned database names and isolation posture. ⚠ **Still not settled, and still the operator's:**
   the `mysql`-versus-`mariadb` Laravel connection question the 2026-09-09 amendment records. Its
-  blast radius grew by one site — the guard's `database.default` pin keys on `mysql` too.
+  blast radius grew with this change — the guards, the CI template check and the round-trip harness
+  now key on the connection name `mysql` too. Re-derive the sites rather than trusting a list:
+  `git grep -nE "'mysql'|mysql\\||DB_CONNECTION=mysql" -- server .github bin`.
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
