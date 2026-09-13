@@ -31,13 +31,10 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::group([], __DIR__.'/../routes/fleet.php');
         },
     )
-    // The websocket gate. Broadcast::routes() would otherwise register /broadcasting/auth
-    // with ['web'] alone, which authenticates nobody. `auth` resolves the user so that
-    // EnsureTwoFactorSatisfied has one to read; `mfa` is what makes it a second-factor gate.
-    ->withBroadcasting(
-        __DIR__.'/../routes/channels.php',
-        ['middleware' => ['web', 'auth', 'mfa']],
-    )
+    // ⛔ NO `->withBroadcasting(...)` (card#9300). It registered `/broadcasting/auth` and
+    // `routes/channels.php` for the websocket transport D2 § 8.3 retired; the feed is
+    // `GET /api/fleet/stream`, and the session + MFA stack that gated the handshake is that
+    // route's own middleware now (`routes/fleet.php`), re-checked every 15 s on the open stream.
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'mfa' => EnsureTwoFactorSatisfied::class,

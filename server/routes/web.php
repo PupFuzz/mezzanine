@@ -72,8 +72,8 @@ Route::middleware('guest')->group(function () {
 
 /*
  * GATE 1 — the browser page. The other two surfaces card #7334 gated are elsewhere and neither
- * is a `web` route: /broadcasting/auth is registered by Broadcast::routes() and gated in
- * bootstrap/app.php, and the REST read plane is routes/fleet.php.
+ * is a `web` route: both the REST read plane and the feed's stream (which replaced the retired
+ * /broadcasting/auth handshake on card#9300) are routes/fleet.php.
  *
  * ⚠ THE `/api/fleet/snapshot` 501 STUB THAT USED TO SIT HERE IS GONE, NOT MOVED. #7334 wrote it
  * to hold the gate while the body was another card's: "the BODY belongs to card #7339 and is

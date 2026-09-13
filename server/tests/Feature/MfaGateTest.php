@@ -8,7 +8,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The three surfaces card #7334 gates, each observed REFUSING before it is observed allowing.
+ * The three surfaces card #7334 gates, each observed REFUSING before it is observed allowing — the second of
+ * them the feed's stream since card#9300 retired the websocket handshake it used to be.
  *
  * There are three states a request can be in, and only the third may pass:
  *
@@ -57,35 +58,32 @@ class MfaGateTest extends TestCase
             ->assertSee('confirmed second factor');
     }
 
-    // ── GATE 2 — the websocket handshake (private-channel authorization) ─────────────────
+    // ── GATE 2 — the feed's stream (it replaced the websocket handshake on card#9300) ─────
 
-    public function test_gate2_websocket_handshake_refuses_a_session_with_no_login(): void
+    public function test_gate2_feed_stream_refuses_a_session_with_no_login(): void
     {
-        $this->postJson('/broadcasting/auth', [
-            'channel_name' => 'private-fleet',
-            'socket_id' => '1234.5678',
-        ])->assertUnauthorized();
+        $response = $this->getJson('/api/fleet/stream');
+
+        $response->assertUnauthorized();
+        $this->assertFalse($response->isRedirect(), 'The stream must never refuse by redirect.');
     }
 
-    public function test_gate2_websocket_handshake_refuses_a_password_only_session(): void
+    public function test_gate2_feed_stream_refuses_a_password_only_session(): void
     {
         $this->actingAs($this->unenrolled())
-            ->postJson('/broadcasting/auth', [
-                'channel_name' => 'private-fleet',
-                'socket_id' => '1234.5678',
-            ])
+            ->getJson('/api/fleet/stream')
             ->assertForbidden()
             ->assertJsonPath('error', 'two_factor_required');
     }
 
-    public function test_gate2_websocket_handshake_allows_a_second_factor_session(): void
+    public function test_gate2_feed_stream_allows_a_second_factor_session(): void
     {
-        $this->actingAs($this->enrolled())
-            ->postJson('/broadcasting/auth', [
-                'channel_name' => 'private-fleet',
-                'socket_id' => '1234.5678',
-            ])
-            ->assertOk();
+        // The request REACHED THE ACTION: a refusal would be 401 or 403. The body is not consumed —
+        // what the stream writes is `Tests\Feature\Feed\StreamHandlerTest`'s.
+        $response = $this->actingAs($this->enrolled())->get('/api/fleet/stream');
+
+        $response->assertOk();
+        $this->assertStringStartsWith('text/event-stream', (string) $response->headers->get('Content-Type'));
     }
 
     // ── GATE 3 — the REST snapshot ───────────────────────────────────────────────────────
