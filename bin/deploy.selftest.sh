@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.selftest.sh — hermetic, network-free acceptance for bin/deploy.sh. card#7459
+# deploy.selftest.sh — hermetic, network-free acceptance for bin/deploy.sh and bin/supervision.sh. card#7459
 #
 # WHY IT EXISTS. card#7459's acceptance is one sentence: the deploy is "seen to fail on a broken
 # precondition before trusted". A check that has never been watched refuse is a decoration, and a
@@ -9,16 +9,28 @@
 #
 # WHAT IS REAL AND WHAT IS STUBBED.
 #   REAL: bash, git (throwaway fixture repositories in a temp dir), the whole of bin/deploy.sh —
-#         including the re-exec, which really does hand off to the checked-out copy.
-#   STUB: php, composer, npm, systemctl, curl, id — on PATH, recording every call to $CALL_LOG.
-#   NOTHING here touches a live host, needs a credential, or opens a socket.
+#         including the re-exec, which really does hand off to the checked-out copy — and
+#         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid and kill run for real
+#         against stub daemons holding locks inside the temp dir, so "the old process is gone and a
+#         new one holds the lock" is observed, not merely recorded.
+#   STUB: php (and the daemons it runs), php-fpm<minor>, composer, npm, crontab, curl, id — on PATH,
+#         recording every call to $CALL_LOG. The crontab stub reads and writes one file per fixture;
+#         the php-fpm stub prints a phpinfo whose opcache values each case sets, beside a fixture
+#         php-fpm.conf and pool directory shaped like the Virtualmin sandbox's.
+#   NOTHING here touches a live host, the real crontab, a real FPM pool, a credential or a socket,
+#   and nothing outside the temp dir is signalled: every kill targets a lock under $T.
 #
 # RED-FIRST, WITH CONTROLS. Every refusal case is paired with a control that differs by ONE
 # variable and passes, so a green is evidence that the check DISCRIMINATES rather than evidence
-# that it always fires. The two that matter most:
+# that it always fires. The ones that matter most:
 #   - the migration gate (§ 6.9): the same fixture, with and without the `ALGORITHM=` comment;
 #   - the in-window failure: the same fixture, with and without a failing `migrate`, asserting
-#     that `artisan up` IS called in one and is NEVER called in the other.
+#     that `artisan up` IS called in one and is NEVER called in the other;
+#   - the crontab (A13): the same host, with one entry removed, then reinstalled;
+#   - the opcache posture (A14): the same host, timestamps off then on — and a pool that is NOT the
+#     deploy user's, carrying timestamps off, that must never be read;
+#   - the restart proof and the opcache wait: each seen to fail against a copy of the release's own
+#     deploy.sh with the step it guards cut out.
 #
 # RUN: bin/deploy.selftest.sh          (exit 0 = every case passed)
 
@@ -26,15 +38,35 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 DEPLOY="$HERE/deploy.sh"
+REPO="$(cd "$HERE/.." && pwd)"
 [ -x "$DEPLOY" ] || { echo "selftest: $DEPLOY not found or not executable" >&2; exit 1; }
+# shellcheck source=bin/supervision.sh
+. "$HERE/supervision.sh"
 
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+# Resolved, because deploy.sh resolves the php it writes into crontab entries (readlink -f): a T
+# under a symlinked /tmp would make every fixture's installed entries differ from what it expects.
+T="$(readlink -f "$(mktemp -d)")"
+kill_daemons() { # kill_daemons <root> — SIGKILL whatever holds a fixture's daemon locks
+  local l
+  for l in "$1"/server/storage/framework/daemon-*.lock; do
+    if [ -e "$l" ]; then fuser -k -KILL "$l" >/dev/null 2>&1; fi
+  done
+  return 0
+}
+cleanup() {
+  local r
+  for r in "$T"/*/root; do kill_daemons "$r"; done
+  rm -rf "$T"
+}
+trap cleanup EXIT
 export CALL_LOG="$T/calls.log"; : > "$CALL_LOG"
+ME="$(/usr/bin/id -un)"
 
 fails=0; cases=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
 eq()  { cases=$((cases+1)); [ "$2" = "$3" ] && ok "$1" || bad "$1 — expected '$2', got '$3'"; }
+neq() { cases=$((cases+1)); [ "$2" != "$3" ] && ok "$1" || bad "$1 — expected anything but '$2'"; }
 has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
 hasnt() { cases=$((cases+1)); case "$3" in *"$2"*) bad "$1 — output unexpectedly contained '$2'" ;; *) ok "$1" ;; esac; }
 logged()   { cases=$((cases+1)); grep -q -- "$2" "$CALL_LOG" && ok "$1" || bad "$1 — '$2' was never called"; }
@@ -52,17 +84,28 @@ before() {
 section() { printf '\n── %s\n' "$1"; }
 
 # ── stubs on PATH ─────────────────────────────────────────────────────────────────────────────
-mkdir -p "$T/bin"; export PATH="$T/bin:$PATH"
+mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
+printf '%s\n' "${SUPERVISED_DAEMONS[@]}" > "$T/knobs/daemons"
 
-cat > "$T/bin/php" <<'STUB'
-#!/usr/bin/env bash
+# php. A supervised daemon is started under `env -i` (by the fixture, and by deploy.sh exactly as
+# cron would), so the paths it needs are baked in and its knobs are FILES, not environment.
+{
+  printf '#!/usr/bin/env bash\nCALL_LOG=%q\nKNOBS=%q\n' "$CALL_LOG" "$T/knobs"
+  cat <<'STUB'
 printf 'php %s\n' "$*" >> "$CALL_LOG"
 [ "${1:-}" = "-r" ] && { printf '%s' "${STUB_PHP_VERSION:-8.3.14}"; exit 0; }
+# A supervised daemon holds flock's lock — the inherited fd — until it is signalled, or dies.
+if [ "${1:-}" = artisan ] && grep -qxF -- "${2:-}" "$KNOBS/daemons"; then
+  if grep -qxF -- "$2" "$KNOBS/dies_after_start" 2>/dev/null; then sleep 1; exit 1; fi
+  if grep -qxF -- "$2" "$KNOBS/ignores_term" 2>/dev/null; then trap '' TERM; fi
+  exec sleep 600
+fi
 if [ -n "${STUB_FAIL_RE:-}" ] && printf 'php %s' "$*" | grep -Eq "$STUB_FAIL_RE"; then
   echo "stub php: forced failure on: $*" >&2; exit 1
 fi
 exit 0
 STUB
+} > "$T/bin/php"
 for c in composer npm; do
 cat > "$T/bin/$c" <<STUB
 #!/usr/bin/env bash
@@ -73,18 +116,34 @@ fi
 exit 0
 STUB
 done
-cat > "$T/bin/systemctl" <<'STUB'
+# php-fpm<minor>: its phpinfo, the FPM SAPI's view of opcache (A14). One script, one name per minor
+# the cases below run, so the binary deploy.sh derives from the host's PHP is always resolvable.
+cat > "$T/bin/php-fpm-stub" <<'STUB'
 #!/usr/bin/env bash
-printf 'systemctl %s\n' "$*" >> "$CALL_LOG"
-verb="${1:-}"; unit="${@: -1}"
-case "$verb" in
-  cat)
-    case " ${STUB_UNITS:-} " in *" $unit "*) exit 0 ;; *) echo "No files found for $unit." >&2; exit 1 ;; esac ;;
-  is-enabled)
-    case " ${STUB_DISABLED:-} " in *" $unit "*) echo disabled; exit 1 ;; esac; echo enabled ;;
-  is-active)
-    case " ${STUB_INACTIVE:-} " in *" $unit "*) echo failed; exit 3 ;; esac; echo active ;;
-  *) exit 0 ;;
+printf '%s %s\n' "$(basename "$0")" "$*" >> "$CALL_LOG"
+[ "${1:-}" = "-i" ] || { echo "stub php-fpm: only -i is stubbed" >&2; exit 1; }
+cat <<INFO
+phpinfo()
+Server API => FPM/FastCGI
+Loaded Configuration File => $STUB_FPM_ETC/php.ini
+opcache.enable => $STUB_OPCACHE_ENABLE => $STUB_OPCACHE_ENABLE
+opcache.preload => $STUB_OPCACHE_PRELOAD => $STUB_OPCACHE_PRELOAD
+opcache.revalidate_freq => $STUB_OPCACHE_FREQ => $STUB_OPCACHE_FREQ
+opcache.validate_timestamps => $STUB_OPCACHE_VALIDATE => $STUB_OPCACHE_VALIDATE
+INFO
+STUB
+for v in 8.3 8.4 8.5 9.0; do ln -s php-fpm-stub "$T/bin/php-fpm$v"; done
+# crontab: `-l` and `-` over one file per fixture. No file is "no crontab for <user>" (exit 1, as
+# cron says it); an empty file is an empty crontab (exit 0, nothing printed).
+cat > "$T/bin/crontab" <<'STUB'
+#!/usr/bin/env bash
+printf 'crontab %s\n' "$*" >> "$CALL_LOG"
+if [ -n "${STUB_CRONTAB_BROKEN:-}" ]; then echo "crontab: $STUB_CRONTAB_BROKEN" >&2; exit 2; fi
+case "${1:-}" in
+  -l) [ -e "$STUB_CRONTAB_FILE" ] || { echo "no crontab for $(/usr/bin/id -un)" >&2; exit 1; }
+      cat "$STUB_CRONTAB_FILE" ;;
+  -)  cat > "$STUB_CRONTAB_FILE" ;;
+  *)  echo "stub crontab: unsupported: $*" >&2; exit 2 ;;
 esac
 STUB
 cat > "$T/bin/curl" <<'STUB'
@@ -101,21 +160,39 @@ esac
 STUB
 chmod +x "$T/bin/"*
 
+# The host's FPM configuration, shaped like the Virtualmin sandbox's: php-fpm.conf beside php.ini,
+# including pool.d/*.conf, and a per-domain pool running as the deploy user.
+export STUB_FPM_ETC="$T/etc-fpm"
+POOL="$STUB_FPM_ETC/pool.d/178815168175465.conf"
+write_fpm_etc() {
+  rm -rf "$STUB_FPM_ETC"; mkdir -p "$STUB_FPM_ETC/pool.d"
+  : > "$STUB_FPM_ETC/php.ini"
+  printf '[global]\npid = /run/php/php-fpm.pid\ninclude=%s/pool.d/*.conf\n' "$STUB_FPM_ETC" > "$STUB_FPM_ETC/php-fpm.conf"
+  printf '[178815168175465]\nuser = %s\ngroup = %s\nlisten = /run/php/178815168175465.sock\nphp_value[log_errors] = On\n' \
+    "$ME" "$ME" > "$POOL"
+  # ⛔ A TRAP, not filler: a pool that is NOT the deploy user's, with timestamps off. A reader that
+  # took every pool rather than this user's would refuse every control in this file.
+  printf '[www]\nuser = www-data\nphp_admin_flag[opcache.validate_timestamps] = off\n' > "$STUB_FPM_ETC/pool.d/www.conf"
+}
+
 # reset_stubs — bash persists `VAR=x func` assignments after the call, so a knob set for one case
 # would silently leak into every later one. Each fixture starts from a known set instead.
 reset_stubs() {
-  export STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.4-fpm"
-  export STUB_DISABLED="" STUB_INACTIVE="" STUB_FAIL_RE="" STUB_HTTP_CODE=200
+  export STUB_FAIL_RE="" STUB_HTTP_CODE=200
   # 8.4.7 SATISFIES $FIXTURE_PHP_FLOOR without BEING it, so a case that passes here is not
-  # passing on an accidental exact match; `php8.4-fpm` above is the unit deploy.sh derives
-  # from it (card#9203), so the two move together or every fixture refuses at A13.
-  export STUB_PHP_VERSION="8.4.7" MEZZ_DAEMON_SETTLE_S=0
-  unset STUB_UID MEZZ_REVERB_SERVICE MEZZ_DEPLOY_IN_WINDOW
+  # passing on an accidental exact match.
+  export STUB_PHP_VERSION="8.4.7"
+  export STUB_OPCACHE_ENABLE=On STUB_OPCACHE_VALIDATE=On STUB_OPCACHE_FREQ=0 STUB_OPCACHE_PRELOAD="no value"
+  export MEZZ_DAEMON_SETTLE_S=2 MEZZ_DAEMON_STOP_TIMEOUT_S=3
+  unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_FPM_BIN
+  : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"
+  write_fpm_etc
 }
 
 # ── fixture ───────────────────────────────────────────────────────────────────────────────────
 # A throwaway repo pair: `origin.git` (bare) with `main` at two commits, and `root` — the "prod
-# checkout" — parked one commit behind, which is the state a real deploy starts from.
+# checkout" — parked one commit behind, which is the state a real deploy starts from. Its crontab
+# is installed with the REAL bin/supervision.sh, so every control is also a test of the install.
 FAKE_KEY='base64:SELFTESTFAKEKEYAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 FAKE_PW='SELFTESTFAKEDBPASSWORD'
 
@@ -164,17 +241,25 @@ ENV
   chmod 640 "$root/server/.env"
 }
 
+install_crontab() { "$ROOT/bin/supervision.sh" install --root "$ROOT" --php "$T/bin/php" >/dev/null 2>&1; }
+
 # mkfix <case> [mutator]  — mutator runs in the source tree before the SECOND commit, so a case
 # can put whatever it needs into the commit the deploy is asked to move TO.
 mkfix() {
   local case="$1" mutator="${2:-}" cd="$T/$1"
+  [ -z "${ROOT:-}" ] || kill_daemons "$ROOT"
   reset_stubs
   ROOT="$cd/root"; ORIGIN="$cd/origin.git"; SRC="$cd/src"
   mkdir -p "$cd"
   git init -q --bare -b main "$ORIGIN"
   git init -q -b main "$SRC"
-  mkdir -p "$SRC/bin" "$SRC/server/bootstrap" "$SRC/server/database/migrations"
+  mkdir -p "$SRC/bin" "$SRC/server/bootstrap" "$SRC/server/database/migrations" \
+    "$SRC/server/storage/framework" "$SRC/server/storage/logs"
   cp "$DEPLOY" "$SRC/bin/deploy.sh"; chmod +x "$SRC/bin/deploy.sh"
+  cp "$HERE/supervision.sh" "$SRC/bin/supervision.sh"; chmod +x "$SRC/bin/supervision.sh"
+  # The REAL ignore files, so a full run's lock and log files are judged against what ships.
+  cp "$REPO/server/storage/framework/.gitignore" "$SRC/server/storage/framework/.gitignore"
+  cp "$REPO/server/storage/logs/.gitignore" "$SRC/server/storage/logs/.gitignore"
   printf '0.0.1\n' > "$SRC/VERSION"
   printf '.deploy-failed\nserver/.env\n' > "$SRC/.gitignore"
   printf '#!/usr/bin/env php\n' > "$SRC/server/artisan"
@@ -206,6 +291,23 @@ MIG
   git clone -q "$ORIGIN" "$ROOT"
   gitc "$ROOT" checkout -q --detach "$V1"
   write_env "$ROOT"
+  export STUB_CRONTAB_FILE="$cd/crontab"
+  install_crontab
+}
+
+# start_old_daemons — the daemons cron is already running on the host, the way cron runs them.
+start_old_daemons() {
+  local c l deadline
+  OLD_PIDS=""
+  for c in "${SUPERVISED_DAEMONS[@]}"; do
+    env -i HOME="$HOME" PATH=/usr/bin:/bin \
+      setsid -f /bin/sh -c "$(supervision_command "$ROOT" "$T/bin/php" "$c")" </dev/null >/dev/null 2>&1
+  done
+  for c in "${SUPERVISED_DAEMONS[@]}"; do
+    l="$(supervision_lock "$ROOT" "$c")"; deadline=$(($(date +%s) + 5))
+    until [ -n "$(fuser "$l" 2>/dev/null)" ] || [ "$(date +%s)" -ge "$deadline" ]; do sleep 0.1; done
+    OLD_PIDS+=" $(fuser "$l" 2>/dev/null)"
+  done
 }
 
 # run <args…> — invoke the deploy script under the fixture, capturing everything.
@@ -223,7 +325,10 @@ eq  "control: exit 0"                       0 "$RC"
 has "control: the § 6.9 migration gate ran and passed" "no undeclared ALTER" "$OUT"
 has "control: prints the plan"              "DRY RUN" "$OUT"
 hasnt "control: no config drift on a host whose .env covers .env.example" "does not set:" "$OUT"
-has "control: names the Reverb state"       "no Reverb daemon to restart yet (card#7339" "$OUT"
+has "control: the installed crontab carries every rendered entry" "the crontab carries every entry bin/supervision.sh renders" "$OUT"
+has "control: PHP-FPM is not reloaded, and the posture that makes that safe was read" "php-fpm  not reloaded — opcache revalidates a changed file within 0 s" "$OUT"
+logged "control: A14 read the FPM SAPI (php-fpm -i), not the CLI's ini" "php-fpm8.4 -i"
+hasnt "control: another user's pool (the www trap, timestamps off) was not read" "validate_timestamps is off" "$OUT"
 unlogged "control: --dry-run mutates nothing (no artisan down)" "artisan down"
 eq  "control: --dry-run left HEAD where it was" "$V1" "$(git -C "$ROOT" rev-parse HEAD)"
 
@@ -238,6 +343,7 @@ run_refusal() { # run_refusal <label> <needle> <args…>
 
 mkfix as_root; export STUB_UID=0; run --dry-run
 eq "root: exit 1" 1 "$RC"; has "root: says why" "running as root" "$OUT"
+hasnt "root: offers no escalation route" "sudo" "$OUT"
 
 mkfix stale_marker
 printf 'started_at: 2026-09-08T00:00:00Z\nto_commit: deadbeef\n' > "$ROOT/.deploy-failed"
@@ -271,6 +377,111 @@ run_refusal "non-persistent cache store" "CACHE_STORE is 'array'" --dry-run
 
 mkfix no_tls; sed -i '/^MYSQL_ATTR_SSL_CA=/d' "$ROOT/server/.env"
 run_refusal "no TLS to the store" "MYSQL_ATTR_SSL_CA is unset" --dry-run
+
+section "REFUSAL — a tool the supervision needs is missing (A1)"
+# PATH is rebuilt from every stub and every host binary, minus ONE command. The control is the same
+# rebuilt PATH minus nothing, so a refusal is the missing command and never the rebuilt PATH.
+path_without() { # path_without <dir> [command-to-hide]
+  mkdir -p "$1"
+  ln -s -t "$1" "$T/bin"/* 2>/dev/null
+  ln -s -t "$1" /usr/local/bin/* /usr/bin/* /bin/* 2>/dev/null
+  [ -z "${2:-}" ] || rm -f "$1/$2"
+}
+mkfix tool_control; path_without "$T/path-control"
+: > "$CALL_LOG"; OUT="$(PATH="$T/path-control" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+eq "control: the rebuilt PATH, hiding nothing, deploys" 0 "$RC"
+for hide in crontab flock fuser setsid; do
+  mkfix "tool_$hide"; path_without "$T/path-$hide" "$hide"
+  : > "$CALL_LOG"; OUT="$(PATH="$T/path-$hide" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+  eq  "no $hide: exit 1" 1 "$RC"
+  has "no $hide: names it" "missing required command(s): $hide" "$OUT"
+done
+
+section "REFUSAL — cron supervision (A13): the crontab must carry every entry bin/supervision.sh renders"
+drop_lines() { grep -v -E -- "$1" "$STUB_CRONTAB_FILE" > "$STUB_CRONTAB_FILE.new"; mv "$STUB_CRONTAB_FILE.new" "$STUB_CRONTAB_FILE"; }
+
+mkfix cron_sweep_missing
+drop_lines '^\* \* \* \* \* .* artisan mezzanine:sweep '
+run_refusal "no every-minute entry for the sweep" "the installed crontab does not supervise every daemon" --dry-run
+has   "sweep missing: names the exact line it expected" "artisan mezzanine:sweep >> storage/logs/daemon-sweep.log 2>&1" "$OUT"
+hasnt "sweep missing: does not name an entry that IS installed" "artisan mezzanine:fold >> storage" "$OUT"
+has   "sweep missing: says how to install it" "bin/supervision.sh install" "$OUT"
+install_crontab; run --dry-run
+eq "control: reinstalled with bin/supervision.sh, the same host deploys" 0 "$RC"
+
+mkfix cron_reboot_missing
+drop_lines '^@reboot .* artisan mezzanine:fold '
+run_refusal "no @reboot entry for the fold (its every-minute entry is there)" "does not supervise every daemon" --dry-run
+has "@reboot missing: names it" "@reboot cd $ROOT/server && flock -n" "$OUT"
+
+mkfix cron_scheduler_missing
+drop_lines 'artisan schedule:run'
+run_refusal "no schedule:run entry (mezzanine:purge would never run)" "does not supervise every daemon" --dry-run
+
+mkfix cron_commented
+sed -i 's|^\(\* \* \* \* \* .* artisan mezzanine:fold \)|# \1|' "$STUB_CRONTAB_FILE"
+run_refusal "the fold's entry commented out" "does not supervise every daemon" --dry-run
+
+mkfix cron_none; rm -f "$STUB_CRONTAB_FILE"
+run_refusal "no crontab at all ('no crontab for …', exit 1)" "\`crontab -l\` failed (exit 1)" --dry-run
+has "no crontab: says how to install it" "bin/supervision.sh install" "$OUT"
+
+mkfix cron_unreadable; export STUB_CRONTAB_BROKEN="cannot open crontab: Permission denied"
+run_refusal "crontab -l fails for another reason (exit 2)" "\`crontab -l\` failed (exit 2)" --dry-run
+
+mkfix cron_empty; : > "$STUB_CRONTAB_FILE"
+run_refusal "an EMPTY crontab (crontab -l exits 0, prints nothing)" "does not supervise every daemon" --dry-run
+
+mkfix cron_other_checkout; supervision_render "/srv/elsewhere" "$T/bin/php" > "$STUB_CRONTAB_FILE"
+run_refusal "entries for ANOTHER checkout" "does not supervise every daemon" --dry-run
+
+mkfix cron_other_php; supervision_render "$ROOT" "/usr/bin/php8.1" > "$STUB_CRONTAB_FILE"
+run_refusal "entries for ANOTHER php binary" "does not supervise every daemon" --dry-run
+
+# The sandbox's hand-staged shape: the same commands, written through cron variables. cron expands
+# them; a whole-line match does not, and neither does install, which refuses beside them (below).
+mkfix cron_handstaged
+{ printf 'MZ=%s/server\n' "$ROOT"
+  for c in schedule:run "${SUPERVISED_DAEMONS[@]}"; do printf '* * * * * cd $MZ && %s artisan %s >> /dev/null 2>&1\n' "$T/bin/php" "$c"; done
+} > "$STUB_CRONTAB_FILE"
+run_refusal "a hand-staged crontab written with variables" "does not supervise every daemon" --dry-run
+
+mkfix "space root"
+run_refusal "a checkout path cron cannot carry (a space)" "cron cannot carry this checkout's paths verbatim" --dry-run
+
+section "REFUSAL — PHP-FPM must pick up new code without a reload (A14)"
+mkfix fpm_timestamps_off; export STUB_OPCACHE_VALIDATE=Off
+run_refusal "opcache.validate_timestamps=Off in the FPM ini" "opcache.validate_timestamps is off for [178815168175465]" --dry-run
+has "timestamps off: says the previous release would keep serving" "would go on serving the PREVIOUS release" "$OUT"
+export STUB_OPCACHE_VALIDATE=On; run --dry-run
+eq "control: the same host with validate_timestamps=On deploys" 0 "$RC"
+
+mkfix fpm_pool_override
+printf 'php_admin_flag[opcache.validate_timestamps] = off\n' >> "$POOL"
+run_refusal "the deploy user's POOL turns timestamps off (the ini says On)" "opcache.validate_timestamps is off for [178815168175465]" --dry-run
+
+mkfix fpm_opcache_off; export STUB_OPCACHE_ENABLE=Off STUB_OPCACHE_VALIDATE=Off
+run --dry-run
+eq  "control: opcache OFF, timestamps off, deploys — nothing is cached" 0 "$RC"
+has "control: and says why that is safe" "opcache is off, so every request reads the disk" "$OUT"
+
+mkfix fpm_freq_override
+printf 'php_value[opcache.revalidate_freq] = "7"\n' >> "$POOL"
+run --dry-run
+eq  "control: a pool's revalidate_freq override deploys" 0 "$RC"
+has "control: and the wait follows the POOL's 7 s, not the ini's 0 s" "revalidates a changed file within 7 s" "$OUT"
+
+mkfix fpm_preload; export STUB_OPCACHE_PRELOAD=/srv/preload.php
+run_refusal "opcache.preload set" "opcache.preload is set for [178815168175465]" --dry-run
+
+mkfix fpm_no_pool; sed -i 's/^user = .*/user = somebody-else/' "$POOL"
+run_refusal "no FPM pool runs as the deploy user" "no PHP-FPM pool runs as $ME" --dry-run
+
+mkfix fpm_bin_missing; export MEZZ_FPM_BIN=php-fpm-not-installed
+run_refusal "the PHP-FPM binary is not there" "PHP-FPM binary 'php-fpm-not-installed' was not found" --dry-run
+
+mkfix fpm_not_fpm; export MEZZ_FPM_BIN=php
+run_refusal "a binary whose phpinfo is not the FPM SAPI's (the CLI)" "did not print an FPM phpinfo" --dry-run
 
 section "REFUSAL — what is being deployed"
 mkfix unreleased
@@ -339,15 +550,12 @@ section "REFUSAL — the PHP floor (A6), DERIVED from the release being deployed
 # so a green is evidence that the refusal follows the declaration and not a literal.
 #
 # It also sits here, after A8/A9, rather than up with the .env checks: A6 needs the resolved $SHA,
-# because the floor that matters is the TARGET release's.
+# because the floor that matters is the TARGET release's. And it runs BEFORE A13/A14, whose stubs
+# (a php-fpm for every minor used here, an installed crontab) are in place anyway — so on these
+# cases A6 is the only thing that can refuse, and the exit code cannot read 1 with it gutted.
 
-# THE CARD'S OWN SCENARIO: one minor below the floor the release declares. The 8.3 host is given
-# its OWN php8.3-fpm unit on purpose, so that A6 is the ONLY thing left that can refuse: without
-# it, A13 refuses the missing unit instead and the exit code alone would go on reading 1 with the
-# floor check gutted. Verified by gutting it (canon #9).
-mkfix php_below_floor
-STUB_PHP_VERSION=8.3.33
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.3-fpm"
+# THE CARD'S OWN SCENARIO: one minor below the floor the release declares.
+mkfix php_below_floor; STUB_PHP_VERSION=8.3.33
 run_refusal "PHP 8.3.33 under a ^8.4.1 floor" "does not satisfy server/composer.json's ^8.4.1" --dry-run
 unlogged "PHP below the floor: composer install never ran"             "composer install"
 has "PHP below the floor: says the failure was moved out of the window" "with the app already down" "$OUT"
@@ -363,20 +571,17 @@ eq  "control: PHP 8.4.1 is exactly the floor, and deploys" 0 "$RC"
 has "control: names the constraint it read and where from" "PHP 8.4.1 satisfies ^8.4.1, declared by server/composer.json" "$OUT"
 
 # CONTROL — above the floor on a LATER minor. The old case list allowed that by ENUMERATING
-# `8.5*`; this allows it by EVALUATING `^8.4.1`, and the FPM unit follows the host with it.
-mkfix php_above_floor
-STUB_PHP_VERSION=8.5.4
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.5-fpm"
+# `8.5*`; this allows it by EVALUATING `^8.4.1`, and the FPM binary A14 reads follows the host.
+mkfix php_above_floor; STUB_PHP_VERSION=8.5.4
 run --dry-run
-eq  "control: PHP 8.5.4 satisfies ^8.4.1"                  0 "$RC"
-has "control: the FPM unit is derived from the host's PHP" "+ php8.5-fpm (reload)" "$OUT"
+eq     "control: PHP 8.5.4 satisfies ^8.4.1"                         0 "$RC"
+logged "control: the FPM binary is derived from the host's PHP"      "php-fpm8.5 -i"
+unlogged "control: and not from a literal minor"                     "php-fpm8.4 -i"
 
 # ⛔ THE CEILING, which the old case list got wrong in the OTHER direction: it listed `9.*`, and
 # `^8.4.1` has never allowed 9. A restated constraint drifts both ways at once, and nothing in
 # the tree read both copies.
-mkfix php_above_ceiling
-STUB_PHP_VERSION=9.0.0
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php9.0-fpm"
+mkfix php_above_ceiling; STUB_PHP_VERSION=9.0.0
 run_refusal "PHP 9.0.0 is above a ^8.4.1 ceiling" "does not satisfy server/composer.json's ^8.4.1" --dry-run
 
 # ⛔ READ FROM THE TARGET TREE, NOT THE HOST'S CHECKOUT. The mutator runs before the SECOND
@@ -392,9 +597,7 @@ run_refusal "a release that RAISES the floor, on a host below the NEW one" \
 hasnt "raised floor: it did NOT read the checkout's own ^8.4.1" "composer.json's ^8.4.1" "$OUT"
 
 # CONTROL — the same release, on a host that meets the raised floor.
-mkfix floor_raised_ok raise_floor
-STUB_PHP_VERSION=8.5.4
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php8.5-fpm"
+mkfix floor_raised_ok raise_floor; STUB_PHP_VERSION=8.5.4
 run --dry-run
 eq "control: the same raised floor deploys on 8.5.4" 0 "$RC"
 
@@ -408,9 +611,7 @@ run_refusal "a PHP constraint A6 cannot evaluate" "cannot evaluate" --dry-run
 # recognises, and taking the `^8.4.1` while dropping the `|| ^9.0` would silently narrow a
 # constraint the project deliberately widened — a misread floor is this card's defect, not its fix.
 alternation_floor() { write_composer_json "$1" '^8.4.1 || ^9.0'; }
-mkfix floor_alternation alternation_floor
-STUB_PHP_VERSION=9.0.0
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat php9.0-fpm"
+mkfix floor_alternation alternation_floor; STUB_PHP_VERSION=9.0.0
 run_refusal "an alternation A6 will not half-read" "cannot evaluate" --dry-run
 hasnt "alternation: it did NOT quietly read it as ^8.4.1" "satisfies ^8.4.1" "$OUT"
 
@@ -432,38 +633,78 @@ drop_composer_json() { rm -f "$1/server/composer.json"; }
 mkfix floor_file_absent drop_composer_json
 run_refusal "no server/composer.json in the release at all" "server/composer.json is missing or empty at" --dry-run
 
-section "REFUSAL — the daemons (handover item 1)"
-mkfix unit_missing
-STUB_UNITS="mezzanine-fold mezzanine-feed-heartbeat php8.4-fpm"; run --dry-run
-eq "missing unit: exit 1" 1 "$RC"
-has "missing unit: names it" "systemd unit 'mezzanine-sweep' does not exist" "$OUT"
-
-mkfix unit_disabled
-STUB_DISABLED="mezzanine-fold"; run --dry-run
-eq "disabled unit: exit 1" 1 "$RC"
-has "disabled unit: says why" "is 'disabled', not enabled" "$OUT"
-
-mkfix reverb_no_unit; sed -i 's/^BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=reverb/' "$ROOT/server/.env"
-run --dry-run
-eq "BROADCAST=reverb without a unit: exit 1" 1 "$RC"
-has "BROADCAST=reverb without a unit: names it" "systemd unit 'mezzanine-reverb' does not exist" "$OUT"
-STUB_UNITS="mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat mezzanine-reverb php8.4-fpm"; run --dry-run
-eq  "control: with the unit present, reverb deploys"    0 "$RC"
-has "control: and Reverb is IN the restart set"         "systemctl restart mezzanine-fold mezzanine-sweep mezzanine-feed-heartbeat mezzanine-reverb" "$OUT"
-
-mkfix reverb_orphan
-export MEZZ_REVERB_SERVICE=mezzanine-reverb; run --dry-run
-eq "named Reverb unit that nothing would restart: exit 1" 1 "$RC"
-has "named Reverb unit: says why" "MEZZ_REVERB_SERVICE is set but BROADCAST_CONNECTION is 'log'" "$OUT"
-
 mkfix internal_flag
 export MEZZ_DEPLOY_IN_WINDOW=0; run --internal-post-checkout "$V2"
 eq "post-checkout entry point by hand: exit 1" 1 "$RC"
 has "post-checkout entry point: says why" "not an operator entry point" "$OUT"
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
+section "NO ROOT — nothing in the deploy path escalates or reaches systemd"
+# Every non-comment line of both scripts. The mutant is deploy.sh with one real line replaced by an
+# escalation, so a clean result is a check that CAN see one.
+escalations() { grep -nE '(^|[^[:alnum:]_.-])(sudo|systemctl|pkexec|doas|su)([[:space:]]|$)' "$1" | grep -vE '^[0-9]+:[[:space:]]*#'; }
+eq "deploy.sh: no non-comment line runs sudo, su, doas, pkexec or systemctl" "" "$(escalations "$DEPLOY")"
+eq "supervision.sh: likewise"                                              "" "$(escalations "$HERE/supervision.sh")"
+sed 's/^  php artisan queue:restart .*/  sudo -n systemctl restart php8.5-fpm/' "$DEPLOY" > "$T/deploy.mutant.sh"
+neq "mutant: the same check sees an injected sudo/systemctl line" "" "$(escalations "$T/deploy.mutant.sh")"
+
+section "THE SUPERVISED SET — bin/supervision.sh against FLEET-STATE.md § 2.1"
+# § 2.1 is what a host is provisioned from, and bin/supervision.sh is what one is supervised from.
+# The rows keyed on here are § 2.1's `long-lived daemon (`mezzanine:…`)` Kind cells.
+DOC="$REPO/docs/design/FLEET-STATE.md"
+doc_daemons() { awk '/^### 2\.1 /{ s = 1; next } /^### /{ s = 0 } s' "$1" | grep -oE 'long-lived daemon \(`mezzanine:[a-z-]+`\)' | grep -oE 'mezzanine:[a-z-]+' | sort; }
+SET="$(printf '%s\n' "${SUPERVISED_DAEMONS[@]}" | sort)"
+neq "control: § 2.1 names at least one long-lived daemon (the comparison is not vacuous)" "" "$(doc_daemons "$DOC")"
+eq  "§ 2.1's long-lived daemon rows ARE bin/supervision.sh's set" "$SET" "$(doc_daemons "$DOC")"
+sed 's/| \*\*purge\*\* | scheduled command (`mezzanine:purge`)/| **purge** | long-lived daemon (`mezzanine:purge`)/' "$DOC" > "$T/fleet-state.mutant.md"
+neq "mutant: a § 2.1 that gains a daemon row no longer matches" "$SET" "$(doc_daemons "$T/fleet-state.mutant.md")"
+
+section "bin/supervision.sh install — the one documented way to install the crontab"
+mkfix install_cases
+F="$STUB_CRONTAB_FILE"; BLOCK="$(supervision_render "$ROOT" "$T/bin/php")"
+inst() { : > "$CALL_LOG"; INS="$("$ROOT/bin/supervision.sh" install --root "$ROOT" --php "$T/bin/php" 2>&1)"; IRC=$?; }
+
+rm -f "$F"; inst
+eq "install into NO crontab at all: exit 0"          0 "$IRC"
+eq "install: the crontab is exactly the rendered block" "$BLOCK" "$(cat "$F")"
+
+printf 'MAILTO=ops@example.invalid\n0 3 * * * /usr/local/bin/backup\n' > "$F"
+inst; FIRST="$(cat "$F")"; inst; SECOND="$(cat "$F")"
+eq  "install beside other lines: exit 0"              0 "$IRC"
+has "install: keeps a line it does not manage"        "0 3 * * * /usr/local/bin/backup" "$SECOND"
+has "install: keeps MAILTO"                           "MAILTO=ops@example.invalid" "$SECOND"
+eq  "install: a second install changes nothing"       "$FIRST" "$SECOND"
+eq  "install: one managed block, not two"             1 "$(grep -c '^# BEGIN mezzanine-supervision ' "$F")"
+
+supervision_render "/srv/other-checkout" "$T/bin/php" >> "$F"; inst
+eq  "install beside ANOTHER checkout's block: exit 0 (it is not a duplicate)" 0 "$IRC"
+has "install: keeps the other checkout's block" "# BEGIN mezzanine-supervision /srv/other-checkout" "$(cat "$F")"
+
+printf '* * * * * cd /home/x/server && flock -n /tmp/fold.lock /usr/bin/php8.5 artisan mezzanine:fold >> x 2>&1\n' >> "$F"
+cp "$F" "$T/crontab.before"; inst
+eq  "install beside a HAND-STAGED fold line: exit 1"   1 "$IRC"
+has "hand-staged: names the line"                      "artisan mezzanine:fold >> x" "$INS"
+eq  "hand-staged: the crontab is unchanged"            "$(cat "$T/crontab.before")" "$(cat "$F")"
+unlogged "hand-staged: nothing was written"            "crontab -$"
+grep -v 'flock -n /tmp/fold.lock' "$F" > "$F.new"; mv "$F.new" "$F"; inst
+eq "control: with that line removed, install succeeds" 0 "$IRC"
+
+export STUB_CRONTAB_BROKEN="cannot open crontab: Permission denied"; cp "$F" "$T/crontab.before"; inst
+eq  "install when crontab -l fails (not 'no crontab'): exit 1" 1 "$IRC"
+has "unreadable: says it would not write over it"      "not because the crontab is empty" "$INS"
+unlogged "unreadable: nothing was written"             "crontab -$"
+eq  "unreadable: the crontab is unchanged"             "$(cat "$T/crontab.before")" "$(cat "$F")"
+unset STUB_CRONTAB_BROKEN
+
+mkdir -p "$T/pct%root/server"; : > "$T/pct%root/server/artisan"
+INS="$("$HERE/supervision.sh" install --root "$T/pct%root" --php "$T/bin/php" 2>&1)"; IRC=$?
+eq  "install for a root cron cannot carry ('%'): exit 1" 1 "$IRC"
+has "'%' root: says why"                               "cron cannot carry" "$INS"
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
 section "THE FULL RUN — the window, the order, the daemons, the close"
 mkfix full_run
+start_old_daemons
 run
 eq "full run: exit 0"                                   0 "$RC"
 eq "full run: HEAD moved to the target commit"          "$V2" "$(git -C "$ROOT" rev-parse HEAD)"
@@ -472,25 +713,54 @@ eq "full run: the failure marker is gone"               "absent" "$([ -e "$ROOT/
 logged   "full run: opened the window"                  "artisan down"
 logged   "full run: closed the window"                  "artisan up"
 logged   "full run: restarted queue workers"            "artisan queue:restart"
-logged   "full run: reloaded PHP-FPM (opcache)"         "reload-or-restart -- php8.4-fpm"
-logged   "full run: restarted the fold"                 "restart -- mezzanine-fold"
-logged   "full run: restarted the sweep"                "restart -- mezzanine-sweep"
-logged   "full run: restarted the feed heartbeat"       "restart -- mezzanine-feed-heartbeat"
-logged   "full run: re-checked each unit is ACTIVE"     "is-active -- mezzanine-sweep"
-logged   "full run: smoke-checked /up"                  "curl "
-unlogged "full run: forward-only — never rolls back"    "migrate:rollback"
+eq       "full run: read the FPM posture in phase A AND again in the window" 2 "$(grep -c 'php-fpm8.4 -i' "$CALL_LOG")"
+logged   "full run: forward-only — never rolls back"    "artisan migrate --force"
+unlogged "full run: forward-only — no rollback"         "migrate:rollback"
+neq "control: old daemons were running before the deploy" "" "${OLD_PIDS// /}"
+for pid in $OLD_PIDS; do
+  eq "full run: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
+done
+for c in "${SUPERVISED_DAEMONS[@]}"; do
+  logged "full run: relaunched $c with cron's command" "php artisan $c"
+  NEW="$(fuser "$(supervision_lock "$ROOT" "$c")" 2>/dev/null)"
+  neq "full run: a process holds $c's lock after the deploy" "" "${NEW// /}"
+  for pid in $NEW; do
+    hasnt "full run: $c's lock holder $pid is not a previous pid" " $pid " "$OLD_PIDS "
+  done
+done
+has "full run: the proof names the new pids alive a settle later" "started after the restart and still hold its lock 2 s later" "$OUT"
+has "full run: PHP-FPM was not reloaded, and says what replaced it" "since the last code write" "$OUT"
+eq  "full run: lock and log files leave the checkout clean (git-ignored)" "" "$(git -C "$ROOT" status --porcelain)"
 before "order: down before anything is built"           "artisan down" "composer install"
 before "order: composer before npm"                     "composer install" "npm ci"
 before "order: npm ci before the asset build"           "npm ci" "npm run build"
 before "order: caches CLEARED before migrate"           "optimize:clear" "artisan migrate"
 before "order: migrate before the caches are rebuilt"   "artisan migrate" "config:cache"
 before "order: config:cache first of the four"          "config:cache" "route:cache"
-before "order: caches rebuilt before the daemons"       "event:cache" "restart -- mezzanine-fold"
-before "order: daemons restarted before the app is up"  "restart -- mezzanine-fold" "artisan up"
-before "order: FPM reloaded before the app is up"       "reload-or-restart" "artisan up"
+before "order: caches rebuilt before the daemons"       "event:cache" "php artisan mezzanine:fold"
+before "order: daemons relaunched before the app is up" "php artisan mezzanine:fold" "artisan up"
 before "order: smoke check after the app is up"         "artisan up" "curl "
+OUTL="$(printf '%s\n' "$OUT" | grep -n -e 'since the last code write' -e 'Maintenance window: CLOSING' | cut -d: -f1 | tr '\n' ' ')"
+eq  "order: the opcache wait ends before the window closes" "ascending" "$(set -- $OUTL; [ $# -eq 2 ] && [ "$1" -lt "$2" ] && echo ascending || echo "lines: $OUTL")"
 hasnt "full run leaks no APP_KEY"                       "$FAKE_KEY" "$OUT"
 hasnt "full run leaks no DB password"                   "$FAKE_PW"  "$OUT"
+hasnt "full run never mentions systemctl"               "systemctl" "$OUT"
+
+section "THE OPCACHE WAIT — seen to fail against a release that skips it"
+# revalidate_freq=3 and no daemon settle, so the only thing that can make ≥ 4 s pass between the
+# last code write and `up` is the wait. The mutant is the RELEASE's own deploy.sh with the sleep cut
+# out — the re-exec runs it — and a clean result from it would be a check that cannot fail.
+waited() { printf '%s\n' "$OUT" | sed -n 's/.*and \([0-9]*\) s have passed since the last code write.*/\1/p'; }
+mkfix fpm_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0
+run
+eq  "wait control: exit 0"                               0 "$RC"
+has "wait control: a host whose daemons were already dead still gets them relaunched" "stopped — pid(s) none were running" "$OUT"
+eq  "wait control: ≥ revalidate_freq + 1 s passed before up" "yes" "$([ "$(waited)" -ge 4 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
+cut_wait() { sed -i 's/^  if \[ "\$wait_s" -gt 0 \]; then sleep "\$wait_s"; fi$/  : wait cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+mkfix fpm_wait_cut cut_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0
+run
+eq  "wait mutant: the mutator really cut the wait"        1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'wait cut out by the selftest mutant')"
+eq  "wait mutant: less than revalidate_freq + 1 s passed" "yes" "$([ "$(waited)" -lt 4 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 
 section "IN-WINDOW FAILURE — down and stay down, and a bare re-run refuses"
 mkfix migrate_fails
@@ -508,12 +778,35 @@ eq  "bare re-run after a failure: exit 1 (refused)"     1 "$RC"
 has "bare re-run: names the unreviewed failure"         "a previous deploy failed and has not been reviewed" "$OUT"
 unlogged "bare re-run: did not reopen the window"       "artisan down"
 
-section "IN-WINDOW FAILURE — a daemon that restarts and then dies"
-mkfix daemon_dies
-STUB_INACTIVE="mezzanine-fold"; run
+section "IN-WINDOW FAILURE — the daemon restart, each way it can go wrong"
+mkfix daemon_dies; printf 'mezzanine:fold\n' > "$T/knobs/dies_after_start"
+run
 eq  "dead daemon: exit 2"                               2 "$RC"
-has "dead daemon: names the unit and the state"         "unit mezzanine-fold is 'failed'" "$OUT"
+has "dead daemon: names it, and says it died on start"  "mezzanine:fold: pid" "$OUT"
+has "dead daemon: …the daemon died on start"            "the daemon died on start" "$OUT"
 unlogged "dead daemon: the app is NEVER brought up"     "artisan up"
+
+mkfix daemon_ignores_term; printf 'mezzanine:sweep\n' > "$T/knobs/ignores_term"
+start_old_daemons; : > "$T/knobs/ignores_term"
+run
+eq  "a previous daemon that ignores SIGTERM: exit 2"     2 "$RC"
+has "ignores SIGTERM: says so, within the stop timeout"  "did not exit within 3 s of SIGTERM" "$OUT"
+unlogged "ignores SIGTERM: the app is NEVER brought up"  "artisan up"
+
+# The age proof, seen to fail: a release whose own deploy.sh finds NO previous holders — the bug
+# class of a snapshot reading the wrong lock. Nothing is signalled and nothing is waited for (cutting
+# only the kill is caught earlier, by the stop timeout above), the previous daemons keep their locks,
+# cron's command exits at once beside them, and only the proof that each holder STARTED AFTER the
+# restart can tell that nothing restarted. They are given 2 s of age first, because a real previous
+# daemon has been running since the last deploy, not since this second.
+cut_snapshot() { sed -i 's/^    old+=("\${hs\[@\]}")$/    : snapshot cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+mkfix daemon_snapshot_cut cut_snapshot
+eq "snapshot mutant: the mutator really cut the snapshot" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'snapshot cut out by the selftest mutant')"
+start_old_daemons; sleep 2
+run
+eq  "snapshot mutant: exit 2"                                2 "$RC"
+has "snapshot mutant: the lock holder predates the restart"  "BEFORE this restart — it is running the previous release's code" "$OUT"
+unlogged "snapshot mutant: the app is NEVER brought up"      "artisan up"
 
 section "POST-WINDOW — the smoke check is not the same failure"
 mkfix smoke_fails

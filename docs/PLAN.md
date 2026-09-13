@@ -370,8 +370,8 @@ rule violations anyone could have committed at the time.
   re-exec-after-checkout, and every "fails once then silently succeeds on a bare re-run" state made
   loud. **Two things are outstanding**: rt#347 item 5 — take the adapted script to kanban-solo on a
   fresh thread once the P2 host exists — and the first real run, which is the only place the
-  live-host leg (systemd units, sudo posture, MariaDB, PHP-FPM, `/up` through the real proxy) is
-  exercised at all.
+  live-host leg (the installed crontab and a real daemon restart, the FPM pool's opcache posture,
+  MariaDB, `/up` through the real proxy) is exercised at all.
 - **One divergence from the sample's topology, ruled binding by rt#347 item 1:** the deploy
   restarts the long-lived daemons *inside* the window — `mezzanine:fold`, `mezzanine:sweep`,
   `mezzanine:feed-heartbeat` — and no feed daemon: card#9287 re-pinned the feed to Server-Sent
@@ -380,20 +380,61 @@ rule violations anyone could have committed at the time.
   host runs a host-scoped shared daemon serving several tenants and is silent about restarting it;
   this host is single-tenant, so every long-lived PHP process on it holds *this* app's code, and
   copying that silence would leave every deploy serving stale code invisibly — daemons up, floor
-  rendering, payloads one release old. ⚠ `bin/deploy.sh` still models a Reverb unit derived from
-  `BROADCAST_CONNECTION`; retiring that, adding the feed-reload step before the FPM reload, and
-  running § 8.3's host checks (R1, R2) is deploy-script work the amendment files rather than
-  does, this being design-only — and ⚠ **neither ini check becomes a gate that refuses a deploy until
+  rendering, payloads one release old. The Reverb unit `bin/deploy.sh` used to derive from
+  `BROADCAST_CONNECTION` is retired, with systemd (next bullet). ⚠ **Still owed:** the
+  `mezzanine:feed-reload` step — neither that command nor the stream route it ends exists in this
+  tree yet, so the script marks where it goes (immediately before the opcache wait that replaced the
+  FPM reload) rather than calling a command that would fail every window — and running § 8.3's host
+  checks (R1, R2) — and ⚠ **neither ini check becomes a gate that refuses a deploy until
   card#9300 has run its commands on a host where they can be run and seen to fail once**, which is
   § 8.3 R1's own rule and what D2 Appendix B step 9 now defers to it rather than ordering.
+- **No root, no sudo, no systemd — on prod as on the sandbox (operator ruling 2026-09-13).** *"The
+  web app should not need root access"*; asked whether that binds prod: *"yes. prod is set up the
+  same way as sandbox"* — a Virtualmin sub-server account with no sudo, no lingering systemd user
+  manager, and a per-domain PHP-FPM pool whose workers run as that account under a master that is
+  root's. `bin/deploy.sh` refuses to run as root and has no escalation mode. Three things follow,
+  each argued at its step in the script:
+  - **Supervision is the application user's crontab.** `bin/supervision.sh` is the one statement of
+    what is supervised — the long-lived daemons of `docs/design/FLEET-STATE.md § 2.1`, plus the
+    `schedule:run` entry that drives `mezzanine:purge` — and renders their entries: every minute
+    under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
+    `@reboot`. **Install it as the application user when the host is stood up, and again whenever
+    the deploy refuses naming a missing entry: `bin/supervision.sh install`.** It replaces only its
+    own marked block, and refuses — writing nothing — a crontab it cannot read, or one that already
+    runs a supervised command outside that block (a hand-staged crontab: remove those lines first,
+    and after installing stop the daemons they started, by their old lock files — `fuser -k -TERM
+    <old lock file>…` — because those hold other locks, so cron starts a second copy beside each and
+    no deploy would ever restart them).
+    `bin/deploy.selftest.sh` reds when the list and § 2.1's long-lived daemon rows disagree.
+  - **A restart is a signal, and it is proven.** Inside the window the deploy sends SIGTERM to
+    whatever holds each daemon's lock, relaunches the command cron runs, and fails the window unless
+    each lock is then held by processes that started after the restart and are still alive a settle
+    later. None of the daemons traps a signal, so a kill mid-pass is a crash — which § 2.1 already
+    requires every process to survive. The fold's guarantee is § 6.5's (the cursor advance is in the
+    projections' transaction; every projection is an idempotent upsert), and a SIGTERM'd client's
+    open transaction was measured rolled back on MariaDB. ⚠ AT-D2-9's real `SIGKILL`-the-fold build
+    is still not driven; its test says why.
+  - **PHP-FPM is not reloaded — the account cannot reload it.** Workers read the new code through
+    opcache's timestamp validation. Measured on the sandbox host with its own FPM binary and php.ini,
+    across an in-place `git checkout`: the old code 0.1 s later, the new code 3.1 s later at PHP's
+    defaults (`validate_timestamps=1`, `revalidate_freq=2`); with `validate_timestamps=0`, still the
+    old code 8 s later. So the deploy reads the FPM SAPI's opcache settings and every pool running as
+    the deploy user, refuses timestamps off or `opcache.preload` set, and waits out
+    `revalidate_freq` after the last code write before `php artisan up`. ⚠ **Not checked:** a
+    `.user.ini` in the vhost's document root, which can change both settings per directory — the
+    document root is the vhost's and the script does not know it. And a long-lived request already
+    open when the code moves keeps the old code until it ends, which is `mezzanine:feed-reload`'s
+    job and still owed (above).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
   non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
-  *"the deploy checks it"*, and this is that check), and a systemd unit that is missing or
-  disabled. It warns, rather than refusing, where the doc's own reading is that the state is
+  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser` or
+  `setsid`, a crontab that lacks any entry `bin/supervision.sh` renders (an unreadable or empty one
+  included), and a PHP-FPM whose opcache would not re-read changed files (timestamps off, preload
+  set, no pool running as the deploy user, no FPM binary). It warns, rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set.
 - **The handoff milestone:** when D1–D3 are merged, the project moves to its own agent seat

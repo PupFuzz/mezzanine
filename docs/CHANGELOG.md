@@ -19,6 +19,26 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
+  as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
+  prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: run
+  `bin/supervision.sh install` as the application user.** The deploy now refuses a host whose
+  crontab lacks any entry that script renders, as it used to refuse a missing systemd unit; a
+  hand-staged crontab running the same commands has to be removed first, because install refuses
+  to write beside it — and after installing, stop the daemons those lines started (`fuser -k -TERM`
+  on their old lock files): they hold other locks, and no deploy restarts them. `MEZZ_SYSTEMCTL`,
+  `MEZZ_DAEMON_SERVICES`, `MEZZ_REVERB_SERVICE` and `MEZZ_FPM_SERVICE` are gone; `MEZZ_FPM_BIN`,
+  `MEZZ_DAEMON_STOP_TIMEOUT_S` and `MEZZ_DAEMON_SETTLE_S` replace them. Supervision is cron +
+  `flock -n` (new `bin/supervision.sh`, the one list of supervised daemons, held equal to
+  `FLEET-STATE.md § 2.1` by the selftest). A restart is SIGTERM plus cron's own command, proven by
+  each lock being held by new processes still alive after a settle. PHP-FPM is not reloaded: the
+  deploy refuses an FPM whose opcache would not revalidate changed files, and waits out
+  `revalidate_freq` before `up` — measured on the sandbox host, new code was served 3.1 s after an
+  in-place checkout at PHP's defaults, and stale code 8 s after it with `validate_timestamps=0`.
+  The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description. ⚠ Not run
+  against any real host; `mezzanine:feed-reload` and a `.user.ini` in the document root stay named
+  gaps there.
+
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
   development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded
   as `docs/PLAN.md` D-15's new amendment, and it **reverses card#9250's** "an additional lane, not a
