@@ -7,14 +7,18 @@
  * FACT in `coord-model.js` is what keeps the unverifiable part free of decisions. If a rule
  * appears below that is not in that module, it is in the wrong file.
  *
- * ⛔ NO JOIN IS CONSTRUCTED HERE. `coordModel` takes an `options.join` and this file passes
- * NONE, because nothing in this deployment produces one: no wire event and no config carries a
- * protocol-agent-name → `seat_id` mapping (D2 § 8.3.3; card#7957's ruling (d) is still
- * unlanded). Synthesising one — from `seat_id` equality, from the roster's order, from a prefix
- * — is precisely the unvalidated-join-becoming-a-ratified-one that card#7957 was filed to
- * prevent, and it would be invisible on screen because a wrong line looks exactly like a right
- * one. So every participant renders `unresolved` today and no thread line is drawn.
- * `CoordDrawsNoLineWithoutAJoinTest` holds this file to that.
+ * ⛔ NO JOIN IS CONSTRUCTED HERE, AND THIS FILE IS NOT WHERE ONE EVER WILL BE. `coordModel`
+ * takes an `options.join` and this file passes NONE. ⚠ The reason is no longer that no mapping
+ * exists: card#9296 built card#7957's ruling (d), so a seat DECLARES its own protocol agent
+ * name and D2 § 8.2.1 publishes it on the seat object with its check state. What has not been
+ * built is the code that reads the seat population and hands `coordModel` a map — that is a
+ * follow-up build slice, and until it lands every participant renders `unresolved` and no
+ * thread line is drawn, which is D3 § 5.7 clause 1's permanent arm rather than a stub.
+ * Synthesising a join HERE — from `seat_id` equality, from the roster's order, from a prefix —
+ * would still be precisely the unvalidated-join-becoming-a-ratified-one that card#7957 was
+ * filed to prevent, and it would be invisible on screen because a wrong line looks exactly like
+ * a right one. `CoordDrawsNoLineWithoutAJoinTest` holds this file to that, and holds it to the
+ * behaviour of the code rather than to the state of the design.
  */
 
 import { UNRESOLVED, coordModel } from './coord-model.js';

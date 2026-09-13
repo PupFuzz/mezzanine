@@ -195,6 +195,8 @@ class RebuildCommand extends Command
             'spool_lag_events' => null,
             'oldest_unsent_age_s' => null,
             'enabled' => null,
+            'protocol_agent_name' => null,
+            'protocol_agent_name_check' => null,
             'reporter_uptime_s' => null,
             'reporter_version' => null,
             'reporter_platform' => null,

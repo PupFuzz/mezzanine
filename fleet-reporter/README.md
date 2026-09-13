@@ -17,7 +17,7 @@ restates none of it.** Where a rule is cited below it is cited by section, never
 node fleet-reporter.js hook <HookName>   # one process per hook fire: read stdin, append, exit 0
 node fleet-reporter.js statusline        # sample context, pass the seat's status line through
 node fleet-reporter.js flusher           # one long-lived process per seat: POST batches, heartbeat
-node fleet-reporter.js selftest          # the six checks § 6.14 declares; exits non-zero on any fail
+node fleet-reporter.js selftest          # the § 6.14 checks this build implements; exits non-zero on any fail
 ```
 
 The reporter's contract with the harness is narrow and stable: **it is invoked with the hook

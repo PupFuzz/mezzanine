@@ -926,8 +926,10 @@ design**, and `coord_thread` is no longer a member of `task.source`. **Why:** th
 that a board card's assignee names the agent working on it makes **tier 1** the answer to *what is
 this agent working on*, and **tier 3** is always available underneath — so tier 2 was a narrow
 fallback wedged between two sources that already work, firing only on a seat holding no assigned
-card, and it cost a join (a protocol agent name → `seat_id`) that no document in this repo owns
-(`card#7957`). Nothing was ever built against it: no route, no controller, no test, and no row in any
+card, and it cost a join (a protocol agent name → `seat_id`) that no document in this repo owned
+when the tier was retired (`card#7957`; one exists since `card#9296`, and it is a seat's own
+declaration — [§ 8.3.3](#833-the-coordination-objects) — which arrived after this ruling and does not
+reverse it: the title it would have joined is gone either way). Nothing was ever built against it: no route, no controller, no test, and no row in any
 store has ever carried the value.
 ⛔ **The rows above are NOT renumbered and the number 2 is not reused.** Tier 3 stays tier 3, so
 `StateRecompute::taskTier3()` and every *tier 3* reference in this repository's documents, tests and
@@ -1595,6 +1597,26 @@ CREATE TABLE seat_state (
   spool_lag_events          INT UNSIGNED NULL,
   oldest_unsent_age_s       INT UNSIGNED NULL,
   enabled                   TINYINT(1) NULL,
+  protocol_agent_name       VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL,
+                                         -- D1 § 3.1's DECLARED protocol agent name, last
+                                         -- heartbeat's value, verbatim. NULL = no heartbeat yet; a
+                                         -- last heartbeat that carried neither member (e.g. from a
+                                         -- reporter that predates D1 § 6.14's fields); or the seat
+                                         -- declares none (only that one has a non-NULL check, and
+                                         -- last_heartbeat_received_at tells no heartbeat from a
+                                         -- heartbeat without the pair).
+                                         -- ⛔ It is a REPORTED label, never an identity: the seat
+                                         -- row this one hangs off is keyed by (install_ref,
+                                         -- seat_id) and nothing here is ever read to find a seat.
+                                         -- ascii_bin, like seat_id, so a case difference is a
+                                         -- different name rather than a silent match
+  protocol_agent_name_check ENUM('checked','unchecked','disagreed','undeclared') NULL,
+                                         -- D1 § 3.1's four states, verbatim; this plane adds none
+                                         -- and re-derives none. NULL before the first heartbeat,
+                                         -- exactly as `enabled` above, AND after a heartbeat that
+                                         -- carried neither member (e.g. from a reporter that
+                                         -- predates D1 § 6.14's fields). ⛔ Only `checked` and
+                                         -- `unchecked` resolve a name to this desk (§ 8.3.3)
   reporter_version          VARCHAR(24) CHARACTER SET ascii NULL,
   reporter_platform         ENUM('linux','win32','darwin','other') NULL,
   reporter_uptime_s         BIGINT UNSIGNED NULL,
@@ -1949,6 +1971,7 @@ of facts outside the ten, and the closed list means each of them is version-bear
 | `enabled` | the flag is *only ever* learned from a heartbeat ([§ 4.5](#45-link-states) rule 4), so no other event can move it |
 | `badges` · `badges_since` | D1's twelve `degraded` members ride the heartbeat ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)); a badge onset or clear is a rendered change |
 | `reporter.selftest_failed` | the `selftest` object is a member of the heartbeat's own `data` ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) and of no other event's; a failing self-test is exactly what a consumer must be told |
+| `protocol_agent_name` · `protocol_agent_name_check` | both are config-derived and ride the heartbeat alone ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)), so no other event can move them. The edge is a seat editing its declaration, or a roster appearing or vanishing under it — single digits per seat-*lifetime*, not per day — and it changes which desk a thread line reaches, which is as rendered as a change gets |
 | `delivery.seq_epoch` | changes on an epoch reset ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), which a heartbeat can be the first event to carry |
 | `link_state` · `render_state` · `delivery.no_data_since` | derived, not carried: a receipt is what ends `stale`/`offline` and clears `no_data_since`, and `oldest_unsent_age_s` past 300 s is what enters and leaves `catching_up` ([§ 4.5](#45-link-states), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale)) — the excluded members are the *inputs*, and a derived value computed from an excluded input is not itself excluded |
 
@@ -2650,11 +2673,13 @@ snapshot repeats per seat and the delta patches.
 | `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
+| `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds and held to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat, after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields), **and** on a seat that declares none — `protocol_agent_name_check` is `undeclared` only on the seat that declares none, and `delivery.last_heartbeat_at` is null only before the first heartbeat | `"pm"` |
+| `protocol_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` before the first heartbeat, exactly as `enabled`, **and** after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields) — `delivery.last_heartbeat_at` is null only before the first heartbeat | `"checked"` |
 | `reporter` | object | no | **never null**, as `activity` above; `uptime_s` and `selftest_failed` are null before the first heartbeat, `version` and `platform` before the seat's first **batch** — they ride the batch envelope, not any event ([§ 6.5](#65-the-fold)) | see below |
 | `reporter.version` | semver | **yes** | ≤ 24 B | `"0.1.0"` |
 | `reporter.platform` | enum | **yes** | D1's 4 members | `"linux"` |
 | `reporter.uptime_s` | int | **yes** | ≥ 0 — the flusher-restart discriminator | `401150` |
-| `reporter.selftest_failed` | array\<string\> | no | **0…8**, the failing check names. Not 0…6: [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat) declares that key set **open at the ingest** — *"a reporter shipping a seventh check ahead of an edit to this table costs one key a consumer does not yet render, and no `422` … the headroom above holds two further members … A ninth does not fit at that bound"* — so a conforming reporter may send 7 or 8 and a consumer validating against 6 would reject valid data. The names total ≤ 175 B across 8, which is what D1's 256 B serialized cap on `selftest` leaves | `[]` |
+| `reporter.selftest_failed` | array\<string\> | no | **0…8**, the failing check names — bounded by [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s arithmetic and **not** by its member table: D1 declares that key set **open at the ingest**, so a conforming reporter may ship a check the table does not yet name and take no `422`, and a consumer validating against the table's current membership would reject valid data. 8 is D1's derived ceiling, not a count of its table. The names total ≤ 175 B across 8, which is what D1's 256 B serialized cap on `selftest` leaves | `[]` |
 | `retired` | object | **yes** | `null` unless `seats.retired_at` is set — which, since card#9078, no seat the read surfaces select ever is: the only object carrying a non-null `retired` is the announcement's own delta ([§ 4.10](#410-retirement-is-a-rendered-state)), which is what tells a client what left and why | `null` |
 | `retired.at` | rfc3339_ms | no | server clock | `"2026-08-20T09:11:04.000Z"` |
 | `retired.by` | string | no | ≤ 64 B, the operator | `"aimla-pm"` |
@@ -2689,6 +2714,45 @@ that neither end has to guess:
   ([§ 6.4](#64-ddl)). A consumer ordering seats within a floor may rely on `seat_id` being total there
   and nowhere else.
 
+**`protocol_agent_name` is the seat→agent DECLARATION, and publishing it here is the whole of what
+this plane does with it.** ⭐ **`card#7957`'s ruling *(d)*, built on `card#9296`.** The seat declares
+its own protocol agent name in its own config and emits it on every heartbeat
+([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file), [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat));
+the fold stores it against `(install_id, seat_id)` like every other heartbeat-carried fact and this
+object carries it. Four consequences, stated so neither end has to infer them:
+
+- **It is a label, not a member of the binding — and it carries a uniqueness INVARIANT no schema
+  enforces.** [§ 8.2.1](#821-the-seat-state-object)'s *"`install_id` and `seat_id` are the seat→desk
+  binding, and they are the whole of it"* is unchanged: nothing resolves a seat by this member.
+  ⭐ **But a protocol agent name is UNIQUE among the seats of one
+  `install_id`** — operator ruling, `card#9296`
+  ([§ 13](#13-decisions-taken-revisable-at-review) row 50). Two seats of one install declaring the
+  same name — whatever either one's check state; [§ 8.3.3](#833-the-coordination-objects) rule 1 is
+  the one statement of which seats count — is an **install misconfiguration**, not one agent at two
+  desks: they remain two desks
+  with two distinct bindings, and what has failed is the **name**, which has stopped identifying
+  either of them. ⛔ **No `UNIQUE KEY` enforces it, deliberately**: the store would have to refuse the
+  second seat's heartbeat or fail its fold — a typed label taking down the liveness backstop of a seat
+  that is otherwise healthy — and whichever seat heartbeated first would keep the name, which is a
+  pick by arrival order. ⛔ **No seat can detect it either, which is why the invariant is stated
+  here and enforced at the consumer.** A seat's own check asks *is my declared name in the roster*
+  ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), so two seats declaring `"pm"` both find
+  `"pm"` there and **both** emit `checked`; only a party holding the whole install sees both seats.
+  [§ 8.3.3](#833-the-coordination-objects) rule 1 states what that party does with it, and this
+  plane still mints no state from the violation. Changing the name re-identifies no desk and moves no
+  character, which is D1's rule and D1's cost, cited rather than re-decided here.
+- **This plane performs no check of its own and mints no state from it.** The check ran on the
+  declaring box, where the roster was; `protocol_agent_name_check` is its outcome carried verbatim. A
+  server-side re-check would be a second identity surface with no better information, which is the
+  shape `card#7957` rejected in option (b).
+- ⛔ **A `disagreed` or `undeclared` name resolves to nothing, and neither does a name equal to some
+  `seat_id`.** Only a declaration joins ([§ 8.3.3](#833-the-coordination-objects)).
+- **Both members are version-bearing** by [§ 6.5](#65-the-fold)'s subtraction — neither is one of the
+  ten — so a seat that edits its declaration emits one delta on the heartbeat that carries the
+  change, and none on the 1,439 that do not. They cost the store two nullable columns at the end of
+  an existing projection, which is [§ 6.9](#69-migrations-on-a-live-events-table) rule 2's path and
+  needs no `ALTER` on `events` at all.
+
 **`blocked_since` is a PROMOTION out of [§ 8.2.3](#823-the-seat-detail-response), not a new fact to
 source.** The value has always existed server-side: `detail` carries *"the open attention request if
 any"*, and that request's `opened_at` is a stored column ([§ 6.4](#64-ddl)) the seat row already points
@@ -2720,13 +2784,13 @@ insignificant whitespace). Every row below names the block it is measured from, 
 
 | Object | Bytes | How |
 |---|---|---|
-| seat state, typical | **1,828 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,570 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, typical | **1,893 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
+| seat state, worst case | **5,684 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
-| snapshot, 4 seats | **~7.6 KB** typical, **~23 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~92 KB** typical, **~279 KB** worst | — |
+| snapshot, 4 seats | **~7.9 KB** typical, **~23 KB** worst | 302 + n × the above |
+| snapshot, 50 seats | **~95 KB** typical, **~285 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,169 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,333 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -2768,11 +2832,11 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,169 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.33×**, with **2,023 B** spare.
+The worst-case delta at 6,333 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.29×**, with **1,859 B** spare.
 
-**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~92 KB, which
-is one response. Past **200 seats** (~366 KB typical) the snapshot should page by install — stated now
+**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~95 KB, which
+is one response. Past **200 seats** (~379 KB typical) the snapshot should page by install — stated now
 as the trigger, and deliberately not built, because building pagination for a four-seat fleet is
 mechanism for a case that does not exist and the trigger is one number away from being noticed.
 
@@ -2832,6 +2896,7 @@ mechanism for a case that does not exist and the trigger is one number away from
                         "spool_lag_events": 0, "oldest_unsent_age_s": null,
                         "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH", "last_seq": 48211 },
           "badges": ["lossy"], "badges_since": "2026-08-23T09:14:02.118Z", "enabled": true,
+          "protocol_agent_name": "pm", "protocol_agent_name_check": "checked",
           "reporter": { "version": "0.1.0", "platform": "linux", "uptime_s": 401150,
                         "selftest_failed": [] },
           "retired": null,
@@ -3060,7 +3125,7 @@ index seek over a table whose rows past the cursor are, at the 50-seat ceiling, 
 on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
 number this amendment mints.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,169 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,333 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
 line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
@@ -3182,7 +3247,7 @@ looks below the cursor again. The connect read therefore carries the same
 `created_at <= server_now - INTERVAL 2 SECOND` term as the tick's, which costs a connecting stream at
 most one lag-window of rows it may also see in its snapshot — harmless, because
 [§ 8.4](#84-snapshot-then-deltas)'s per-seat watermark is what discards those, and the classes with no
-watermark ([§ 8.3.3](#833-the-coordination-objects)) had nothing before connect to duplicate. ⚠ **The fleet-wide classes are the exception that enumeration missed, and they are not covered by a watermark.** A `feed.heartbeat` written up to one lag-window before connect is delivered AFTER the handler's connect-time `fleet.health`, and it carries a whole `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) — including `seats_total`/`seats_live`, which move without a `fleet.health` change-row behind them. So a client's fleet counts can be REGRESSED to a ≤2 s-old value until the next heartbeat, and [FLOOR.md § 2.3](FLOOR.md#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s lobby discrepancy check runs off exactly those counts, spending one spurious snapshot fetch. **D3 therefore ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a monotonicity rule that costs one comparison, owed because the symptom is a periodic unexplained fetch rather than a visible error. ⛔ **The wire fact is this document's and the filter is the render layer's, and saying it only here is what card#9287's maintainer round found**: the rule existed at exactly one site in the repository, in the document a client builder does not build from, while [FLOOR.md § 2.1](FLOOR.md#21-the-seven-client-computed-values-closed) — the **closed** statement of what that client does for itself — never carried it, so a builder working from D3 neither had the rule nor was permitted to invent it. It is now carried there and tracked as an obligation in [FLOOR.md Appendix A](FLOOR.md#appendix-a--every-obligation-addressed-to-this-document), which is the mechanism this repository has for a rule that crosses the boundary; this paragraph states the condition and cites the discharge rather than being the only home of both.
+watermark ([§ 8.3.3](#833-the-coordination-objects)) had nothing before connect to duplicate. ⚠ **The fleet-wide classes are the exception that enumeration missed, and they are not covered by a watermark.** A `feed.heartbeat` written up to one lag-window before connect is delivered AFTER the handler's connect-time `fleet.health`, and it carries a whole `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) — including `seats_total`/`seats_live`, which move without a `fleet.health` change-row behind them. So a client's fleet counts can be REGRESSED to a ≤2 s-old value until the next heartbeat, and [FLOOR.md § 2.3](FLOOR.md#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s lobby discrepancy check runs off exactly those counts, spending one spurious snapshot fetch. **D3 therefore ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a monotonicity rule that costs one comparison, owed because the symptom is a periodic unexplained fetch rather than a visible error. ⛔ **The wire fact is this document's and the filter is the render layer's, and saying it only here is what card#9287's maintainer round found**: the rule existed at exactly one site in the repository, in the document a client builder does not build from, while [FLOOR.md § 2.1](FLOOR.md#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) — the **closed** statement of what that client does for itself — never carried it, so a builder working from D3 neither had the rule nor was permitted to invent it. It is now carried there and tracked as an obligation in [FLOOR.md Appendix A](FLOOR.md#appendix-a--every-obligation-addressed-to-this-document), which is the mechanism this repository has for a rule that crosses the boundary; this paragraph states the condition and cites the discharge rather than being the only home of both.
 [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) tests both
 reads, because a test of the tick alone passes over a defect in the connect.
 
@@ -3464,7 +3529,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
   "seat_id": "012345678901234567890123456789012345678901234567",
   "state_version": 9007199254740991,
   "at": "2026-08-23T14:23:09.882Z",
-  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
+  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
   "patch": {
     "install_id": "01234567890123456789012345678901",
     "seat_id": "012345678901234567890123456789012345678901234567",
@@ -3498,6 +3563,8 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
     "badges": ["lossy", "batches_rejected", "harness_contract_moved", "reporter_behind", "value_clamped", "counters_omitted", "index_overflow", "invalid_tool_name", "bad_session_id", "config_invalid", "statusline_degraded", "epoch_reset", "seq_gap", "seq_collision", "clock_skew", "reporter_ahead", "fold_lag", "derivation_error"],
     "badges_since": "2026-08-23T14:23:09.882Z",
     "enabled": true,
+    "protocol_agent_name": "012345678901234567890123456789012345678901234567",
+    "protocol_agent_name_check": "undeclared",
     "reporter": {
       "version": "012345678901234567890123",
       "platform": "darwin",
@@ -3582,19 +3649,82 @@ none is read by [§ 4](#4-the-seat-state-model)'s derivation** — that rule is 
 its kind live, as a row of [§ 4.8](#48-what-may-never-mint-a-state)'s table, and is pointed at rather
 than restated here. Neither object carries `state_version`, and neither emits a `seat.delta`.
 
-**Names on these objects are PROTOCOL AGENT NAMES, and this plane publishes no mapping from one to a
-desk.** ⛔ **That an agent name identifies the same thing a `seat_id` does is UNVERIFIED** — no artifact
-in this repo, the coordination config or the reporter config owns the mapping, and the two are
-configured by different acts that do not validate against each other
-([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6). It is **ruled on
-card#7957** in two halves, and only the second is live today: *(d)* the seat declares its own protocol
-agent name in its reporter config — a field no wire event carries yet, so nothing on
-[§ 8.2.1](#821-the-seat-state-object)'s object answers it; and *(2)* **an unresolved participant is a
-first-class rendering** — no line to a guessed desk, no line to nothing, reported as unresolved, and it
-does not suppress the rest of the object. So a consumer joins where a name resolves and renders
-*unresolved* where it does not. **This document mints no fallback join**, and equality between an agent
-name and a `seat_id` is a coincidence this plane cannot check: a renderer that reads one as the other
-is drawing a line to a desk no fact names, which is the whole of what D1 § 18.13 row 6 prices.
+**Names on these objects are PROTOCOL AGENT NAMES, and the mapping from one to a desk now EXISTS —
+on the SEAT object, as a DECLARATION, and nowhere else.** ⭐ **`card#7957`'s ruling *(d)*, built on
+`card#9296`.** The seat declares its own protocol agent name in its own config and emits it on every
+heartbeat ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file),
+[D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)); this plane stores it against
+`(install_id, seat_id)` and publishes it, with its check state beside it, on
+[§ 8.2.1](#821-the-seat-state-object)'s object — the surface a consumer already reads to learn a desk
+exists. **It is DECLARED, never inferred**: one party knows both facts, and it is the one that says
+so.
+
+⛔ **The coordination objects themselves gain NO desk reference, and that refusal is what makes the
+join safe to land.** Both objects still carry agent names and no `seat_id`, no seat reference and no
+desk of any kind — [§ 13](#13-decisions-taken-revisable-at-review) row 39's *"a thread spans desks"*
+argument is untouched by a join existing. A consumer resolves against the seat population it already
+holds; this plane asserts no endpoint for it. Three rules, and the third is the one an implementer
+gets wrong:
+
+1. **The join is `(install_id, protocol_agent_name)` → the ONE seat of that install declaring that
+   name, and it resolves to 0 or 1 desks — never to a set.** Scoped to the install because every
+   object here carries the `install_id` of its hook binding and *"a broadcast's reach equals the
+   install's"*; a name declared in another install is another install's fact.
+   ⭐ **A protocol agent name is unique per install** — operator ruling, `card#9296`
+   ([§ 8.2.1](#821-the-seat-state-object), [§ 13](#13-decisions-taken-revisable-at-review) row 50).
+   So the rule has **two** unresolved arms and not one, and ⛔ **they are decided in this order —
+   the one statement of which seats count; every other surface points here.** **First the
+   duplicate arm, over every seat of this install that DECLARES the name**: a seat counts whatever
+   its `protocol_agent_name_check` — `checked`, `unchecked` or `disagreed` — and only an
+   `undeclared` seat, which declares nothing, does not. **Only then** does rule 2 decide whether the
+   one declaring seat left may resolve.
+   - ⛔ **More than one seat declared it** — two or more seats of this install carry the name, in any
+     of the three declaring states. The invariant is **violated**, and the name resolves to
+     **NOTHING**. The consumer does **not** pick. Every candidate claims the name, so any pick is
+     the guessed desk [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 forbids,
+     and building a `name → seat_id` map by assignment over an unordered seat population is
+     last-writer-wins — a pick wearing a map's clothes, whose answer changes with the order the
+     seats happened to arrive in. ⭐ **A `checked` seat and a `disagreed` seat declaring one name ARE
+     this arm** — operator ruling, `card#9296` round 3, reading the uniqueness ruling literally. The
+     disagreeing seat still sends that name, so resolving to the other would be choosing between two
+     seats that both claim it, however much likelier the checked one looks. A consumer that applies
+     rule 2's filter **before** counting sees one resolving seat and draws to it — the pick arriving
+     through the order of two correct rules — and the order above is what forbids it.
+   - **No seat may resolve it** — no seat of this install carries the name with a check state that
+     rule 2 lets resolve: none declares it, or the one seat that does is `disagreed` — which DOES
+     declare it, so the arm is named for its outcome rather than for a declaration. That is the
+     empty case, it is `card#7957` ruling *(2)*'s permanent first-class render, and it is what a
+     fleet whose seats declare nothing produces everywhere.
+
+   ⛔ **The violation is REPORTED, not silently folded into the empty case.** A duplicated name that
+   rendered as an ordinary unresolved name would be invisible — an install misconfiguration
+   presenting as *no seat may resolve it*, which is the opposite diagnosis. The two arms therefore carry
+   **distinguishable reasons**, named here so every consumer uses the same two:
+   `no_declaring_seat` (the *no seat may resolve it* arm, a lone `disagreed` declarer included — the
+   token keeps its name) and `duplicate_declaration`. That is a **consumer-side** observable, in the
+   same spirit as D1's `protocol_agent_name_unchecked` / `_disagreed` counters and on the only
+   surface that can see it; this plane mints no counter and no state for it, which
+   [§ 8.2.1](#821-the-seat-state-object)'s *"this plane performs no check of its own"* is unchanged
+   by. [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 owns the render.
+2. **Only `checked` and `unchecked` resolve.** `disagreed` is a seat whose own check failed against
+   the roster on its box; `undeclared` is a seat that said nothing. Neither is a declaration anything
+   may rest on, and the check state travels with the name so a consumer can always say which of the
+   two a resolved endpoint rests on.
+3. ⛔ **This plane still mints NO fallback join.** Equality between an agent name and a `seat_id`
+   remains **a coincidence this plane cannot check** and is not a join: on an undeclared seat a
+   byte-identical `seat_id` resolves exactly as an unrelated name does
+   ([AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s discriminating
+   control, unchanged). No prefix match, no install match, no *the only seat in the room*. A
+   participant that does not resolve **draws no line, is reported as unresolved, and does not
+   suppress the rest of the object** — `card#7957` ruling *(2)*, which is the permanent answer for a
+   seat that declares nothing and not a degraded mode awaiting a fix.
+
+**What the declaration does not establish is named where it is owned rather than re-argued here:**
+[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6 carries the list and is
+its one home. ⚠ **A copy of it stood here and is deleted rather than extended** — it had already
+gone stale by one member when D1 added the roster-path residual, which is what a second copy of a
+list costs. This plane publishes the check state that says which of them a given seat's name rests
+on, and adds nothing to them.
 
 **Ordering, duplication, and what a consumer may count.** These objects carry neither `state_version`
 nor D1's `(seq_epoch, seq)`, so [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s gap rule
@@ -3796,7 +3926,7 @@ A consumer that wants to correlate a rendered state with the wire has both: the 
 newest `(seq_epoch, seq)` the fold has applied.
 
 **Reconnect.** On reconnect the client re-runs [§ 8.4](#84-snapshot-then-deltas) from step 1. A full
-re-snapshot is ~92 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
+re-snapshot is ~95 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
 memory. ⛔ **`feed_outbox` is not that buffer, and [§ 8.3](#83-the-websocket-delta-feed) states the two
@@ -5005,14 +5135,47 @@ receipt route with signed deliveries and reads what reaches a connected client
   which is what [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6 prices as
   *derived correctly and joined to nothing*. **Its control is the byte-identical name:** the one that
   DOES equal a `seat_id` must be published exactly as unresolved as the one that does not, because the
-  equality is a coincidence this plane cannot check.
-- **⛔ Second RED — the coordination fact that mints a state:** let `declares_close`, a carrier or a
+  equality is a coincidence this plane cannot check. ⚠ **This RED and this control SURVIVE the join
+  landing on `card#9296` unchanged, and that is the point of keeping them here**: a declaration
+  resolving is not this plane publishing a desk, and the byte-identical seat is still undeclared.
+- **GREEN — the DECLARED seat resolves, and the resolution is the consumer's.** Add a third seat to
+  the fleet whose heartbeat declares `protocol_agent_name` equal to the round's `from`, with
+  `protocol_agent_name_check: "checked"`. The snapshot and that seat's delta carry both members
+  ([§ 8.2.1](#821-the-seat-state-object)); the `coord.round` that reaches the client is **byte-identical
+  to the one it carried before that seat existed** — same members, still no desk reference — so
+  everything needed to reach the desk is on the client and nothing was pre-joined for it.
+- **⛔ Second RED — the state that must not resolve:** leave that seat's `protocol_agent_name`
+  byte-identical and flip `protocol_agent_name_check` to `disagreed`, then to `undeclared`, and let a
+  consumer's join reach the desk anyway → a name whose own check FAILED has been ratified by the
+  consumer of the check, which is `card#7957`'s finding arriving through the mechanism built to close
+  it. The two members are read together or not at all
+  ([§ 8.3.3](#833-the-coordination-objects) rule 2).
+- **⛔ Third RED — the roster the server does not have:** re-check the declared name server-side
+  against anything — a list, a config, the other seats — and publish the result → a second identity
+  surface with no better information than the one on the declaring box, which is option (b) of
+  `card#7957` re-minted inside option (d).
+- **⛔ Fourth RED — the coordination fact that mints a state:** let `declares_close`, a carrier or a
   participant raise a badge, a `blocked`, or any `render_state` → a second source for a rendered state
   whose one source is `attention.request` ([§ 4.4](#44-activity-states-every-entry-and-exit-edge),
   [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C).
-- **Third RED — the field that is not there:** publish the delivery digest, a `converged` flag or a
+- **Fifth RED — the field that is not there:** publish the delivery digest, a `converged` flag or a
   round number on either object → each is a row of § 8.3.3's not-published table, with the finding that
   killed it.
+- **⛔ Sixth RED — the duplicate a consumer picks between:** add a fourth seat to the same install
+  whose heartbeat declares the same `protocol_agent_name` as the declared seat above, also `checked`,
+  and let a consumer's join reach either desk → the name resolves to whichever seat the map was built
+  from last, which is a pick by arrival order and the guessed desk
+  [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 forbids. The round that reaches
+  the client is still byte-identical; the name resolves to **nothing** and is reported with the reason
+  `duplicate_declaration`, never `no_declaring_seat` ([§ 8.3.3](#833-the-coordination-objects)
+  rule 1).
+- **⛔ Seventh RED — the duplicate the filter hides:** flip that fourth seat's
+  `protocol_agent_name_check` to `disagreed`, its `protocol_agent_name` byte-identical and the
+  declared seat above still `checked`, and let a consumer's join reach the `checked` seat's desk → a
+  consumer that applied rule 2's filter before counting saw one resolving seat and picked it while a
+  second seat of the install still sends that name. The name resolves to **nothing** and is reported
+  `duplicate_declaration` — never `no_declaring_seat`, and never the `checked` seat's desk
+  ([§ 8.3.3](#833-the-coordination-objects) rule 1 counts every declaring seat before rule 2 runs).
 - **Discriminating control:** re-deliver both bodies with the signature broken. Nothing reaches the
   feed at all (D1 § 18.8 step 3), which is what makes a GREEN above evidence that the receipt path ran
   rather than that the test published its own objects.
@@ -5082,13 +5245,13 @@ document.
 | Store per seat-day | **~9.7 MB** | **Derived** — 7.6 MB of `events` (10,420 × 732 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~136 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.54 / 1.6 / 6.8 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **1,828 B** typical, **5,570 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
-| Fleet snapshot | **7.6 KB** (4 seats) … **92 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
-| Snapshot pagination trigger | 200 seats (~366 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,169 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Seat-state object | **1,893 B** typical, **5,684 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Fleet snapshot | **7.9 KB** (4 seats) … **95 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
+| Snapshot pagination trigger | 200 seats (~379 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
+| Delta message | **323 B** typical, **6,333 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.33× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.29× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Stream tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds a stream's delivery at 4 batches/s, and merges nothing (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -5129,7 +5292,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | Check | What the tool re-derives | Status |
 |---|---|---|
 | **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be | **tool-checked** |
-| **Field table ↔ worked examples, both directions** | the **74** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
+| **Field table ↔ worked examples, both directions** | the **76** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
 | **DDL `ENUM` member reachability** | every member of every `ENUM` in [§ 6.4](#64-ddl), counted across the rest of the file; a member occurring only in its own declaration is a member no path can produce | **tool-checked** |
 | **Cross-document enum containment** | D2's `abort_reason` / `close_source` / `resolution` / `resolution_source` extension sets against D1's declared sets, with the counts stated in the DDL comments | **tool-checked** |
 | **Feed message-type closure** | every use of a message type in a namespace [§ 8.3](#83-the-websocket-delta-feed)'s own table declares — the namespaces are the ROOTS of that table's types, re-derived per run rather than listed in the tool, and whether an occurrence is a *use* is decided by what this document DOES with the token (a whole token, so a path or a host name is not one; carrying a payload object rather than a scalar value) instead of by whether it is written in backticks, so § 8.3's and § 8.4's fences are inside the population | **tool-checked**, with **two holes declared rather than closed**, both reported on every run: a namespace with **no row in that table at all** is invisible, because the table it would be held against never names it; and a message name written in the `name: scalar` field form reads as a field and is skipped — that skip is **counted** beside the population, and one occurring **inside a fenced block is a failure**, which bounds the hole to prose |
@@ -5139,6 +5302,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | **Fixture arity** | a fixture described as "§ N's *k* events" against § N's own row count | **tool-checked** |
 | **Retention chain** `8 < 10 < 14` | the three numbers extracted from their one home each, as an inequality | **tool-checked** |
 | **§ 10's trace** | delta count and transition count re-derived from the table's own columns | **tool-checked** |
+| **The declared agent-name join, across the two identity surfaces** | the `protocol_agent_name_check` value set, re-derived from [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s field-table row and set-differenced against [§ 6.4](#64-ddl)'s `ENUM` and [§ 8.2.1](#821-the-seat-state-object)'s row — three homes for one set, two documents, and a rename on any of them reds; **and** that neither coordination object in [§ 8.3.3](#833-the-coordination-objects) declares a field naming a desk, which is the refusal the join had to survive — as a **shape** match — the segment says *seat* or *desk* — over every dot- and bracket-separated segment of every field row those two tables declare, beside name-equality against the three members [§ 8.2.1](#821-the-seat-state-object) declares today, so a `coord_thread.desk` or a nested `…[].seat_ref` reds rather than passing under a name the tool was never told; and with the control's own denominator re-derived from the two tables' row counts rather than written in the tool | **tool-checked** |
 | **`feed.close` reason closure, and the ruling the reasons carry** | the reason set re-derived from every `feed.close{reason:"…"}` this document writes, held against [§ 8.3](#83-the-websocket-delta-feed)'s declaring row **and against the size that row states**; then the three sites that state card#9287's close rule — [§ 2.2](#22-fail-posture-per-path)'s two stream rows, [§ 9](#9-read-side-authentication)'s re-check and [§ 8.3](#83-the-websocket-delta-feed)'s handler loop — each required to name `feed.close{reason:"unavailable"}`, so a site that reverts to a stream surviving the outage stops naming it and reds | **tool-checked** |
 | The store sizing model (row costs, index entry sizes) | — | **hand-verified**: it needs a provisioned host to measure, and [§ 6.8](#68-sizing) says so |
 | Every **Cited** row's agreement with D1 | — | **hand-verified**: the tool checks the number's presence at its D2 home, not its truth at D1's |
@@ -5197,7 +5361,7 @@ review can reverse it deliberately rather than discover it later.
 | 36 | **A server counter never writes a member of D1's `degraded` array** | follow D1 § 12.7's `seq_gap` row literally and raise `lossy` | D1 contradicts itself here — § 9.3 declares `seq_gap` a server badge and *not* a member, § 12.7 and § 10.2 say the server renders the seat `lossy` — and § 9.3's reading is the one with a mechanism: `lossy` means the reporter discarded events *and counted them*, so a server-raised `lossy` with a zero counter beside it is a badge contradicting its own number | D2 carries its own `seq_gap` badge, so a consumer sees two members where D1's text implies one; filed as an amendment need ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
 | 38 | **The floor map is SERVED AT RUNTIME from the admin console's store, on a surface of its own ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)); the fleet plane still publishes no map member, and the seat→desk binding is still the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⚠ **REVERSED by operator ruling, card#9208 (2026-09-12)**; this row previously decided the opposite — *a build artifact of the client, never served at runtime* — and the alternative column is where that reading now lives, beside the two shapes the first ruling also declined | **the first ruling's shape (2026-09-09)**: the map is a build artifact shipped with the client, never served, and a floor edit is a redeploy; **(c)** the map riding the snapshot as an additive member; **(a′)** a map endpoint under `/api/fleet/` rather than under a prefix of its own | The reason the first ruling was taken — a map that changes is a design act, not a runtime event — was answered by the operator at the product level: floors ARE to be configured at runtime, separately, and the scope widened from a map of desk slots to **room design** — walls, furniture, the layout itself — which is authoring, and authoring wants a save to take effect without a deploy. That is a reason that was not on the table on 2026-09-09, which is the bar [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 set for a reversal. (c) is still refused for the reason it was refused then — bytes that change on a designer's schedule on every snapshot of every seat, and a watchdog paying for furniture; (a′) is refused because an authored document on the fleet plane looks like something the fleet reported ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) | **Floor layout leaves version control** — no diff, no review, no revert and no blame for free — and the answer to that is designed rather than defaulted: [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s append-only revisions give back three of the four and say which one they do not. A second irreplaceable population joins `events` in the store ([§ 6.10](#610-durability-posture)). And the read plane gains a surface, a compatibility posture ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) and two feed messages, each priced in § 8.7 |
-| 39 | **The coordination objects are first-class objects on the existing feed, not members of the seat object** ([§ 8.3.3](#833-the-coordination-objects)) | a `coord` member on [§ 8.2.1](#821-the-seat-state-object)'s seat object, replicated onto each participant's desk | A thread spans desks and its participants may name agents no desk holds, so a per-seat copy is one fact with N homes, free to disagree with itself and free to make a seat object's size a function of another plane's traffic. The ruling's own words are that **the thread is the object on the wire**, and [§ 4.8](#48-what-may-never-mint-a-state) is where the corollary is written — a coordination fact touches no seat state — added there in this same change rather than asserted here, so the rule sits with the rules of its kind | a consumer wanting *this desk's threads* filters `participants` itself, over whatever the feed has delivered since it connected — and, until `card#7957`'s (d) lands, over names that may resolve to no desk at all |
+| 39 | **The coordination objects are first-class objects on the existing feed, not members of the seat object** ([§ 8.3.3](#833-the-coordination-objects)) | a `coord` member on [§ 8.2.1](#821-the-seat-state-object)'s seat object, replicated onto each participant's desk | A thread spans desks and its participants may name agents no desk holds, so a per-seat copy is one fact with N homes, free to disagree with itself and free to make a seat object's size a function of another plane's traffic. The ruling's own words are that **the thread is the object on the wire**, and [§ 4.8](#48-what-may-never-mint-a-state) is where the corollary is written — a coordination fact touches no seat state — added there in this same change rather than asserted here, so the rule sits with the rules of its kind | a consumer wanting *this desk's threads* filters `participants` itself, over whatever the feed has delivered since it connected — over names that resolve to a desk only where that desk's seat **declared** the name (`card#7957`'s (d), built on `card#9296`; [§ 8.3.3](#833-the-coordination-objects)), and to no desk at all where none did |
 | 40 | **The coordination objects ride the delta feed only — no snapshot member, no fifth endpoint** ([§ 8.3.3](#833-the-coordination-objects)) | a `threads[]` member on `GET /api/fleet/snapshot`, or a coordination endpoint beside [§ 8.2](#82-rest)'s four | A snapshot is a read of stored state, and the coordination store is explicitly a later slice: [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) hands both of its open decisions — the receipt route's counters, and the idempotency digest's retention — to *"the slice that designs the coordination store"*. Specifying a read over a store nobody has designed is how a guessed rule enters a contract | a client that has just connected draws no thread line until the next post on that thread. Priced at § 8.3.3 and carried as [§ 14](#14-open-questions-for-the-review-loop) item 14, rather than discovered when the floor is built |
 | 41 | **The building surface is its own REST prefix, `/api/building/*`, browser-only — not a fleet endpoint and not a snapshot member** ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | a fifth row in [§ 8.2](#82-rest)'s table; `installs[].map_version` and the layout as additive snapshot members; the layout inlined with the page and only the map fetched | An authored document is not a fact the fleet reported, and putting it on the fleet plane would make it look like one ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — and the fleet plane has a machine consumer with a support window that furniture must not be billed to. A snapshot member would put a designer's bytes on every seat of every snapshot, which is (c)'s cost under another name. Inlining the layout with the page while fetching the map from an endpoint gives one building two delivery paths, which is the *which of the two am I looking at* question that section refuses | two more routes behind one gate, and a client that fetches three things on connect instead of one. If a machine consumer ever wants the map, [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s third row says which row it moves to and what that costs |
 | 42 | **A client learns that a map or the layout changed from a feed notification carrying the new version, and then fetches — never by polling, never by `fleet.reload`, and the message never carries the document** ([§ 8.3](#83-the-websocket-delta-feed), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | poll `/api/building` on a cadence; publish `fleet.reload` on every save; carry the document on the message; a `private-building` channel of its own | Polling is N seconds of a wrong building per save and a request per client per N seconds for a document that changes on a designer's schedule. `fleet.reload` stops delta application and demands a reload, which is the right response to a deploy and the wrong one to furniture. The document cannot ride the message: 512 KiB against an 8 KiB bound. A channel of its own is one more subscription and one more authorization for two messages that already have a home — both ride every channel, as the heartbeat does — `room.map` too, because the client's subscriptions are the snapshot's installs and the room just drawn may have no seat reporting, so its own channel may have no listener | a client in polling mode (F1) sees neither message and holds the old building until it reconnects, stated in § 8.7 rather than met on a floor; and both messages fan out to every channel, which at 50 installs is 50 publishes per save — an operator act, so bounded by a person — and a client holding N installs receives N copies and fetches once, by version. **And `room.map` spends a property**: it is the one message carrying another install's `install_id` onto a channel, so a future per-install ACL ([§ 14](#14-open-questions-for-the-review-loop) item 7) must filter it per subscriber or move it to the channel this row declined — and the fleet-wide `fleet{}` on every channel is that ACL's other unanswered question, recorded on that item beside it |
@@ -5207,6 +5371,8 @@ review can reverse it deliberately rather than discover it later.
 | 46 | **The feed's transport is native Server-Sent Events served by PHP-FPM — no daemon, no broadcasting package, no protocol library, no websocket-capable proxy** ([§ 8.3](#83-the-websocket-delta-feed)). ⭐ **Operator ruling, 2026-09-12, card#9287**, reversing the Reverb pin on the fact that the feed is one-way | **(1)** install Reverb by downgrading guzzle 8.1 / psr7 3.1 / promises 3.0 to their previous majors — a configuration the framework declares supported, inert for this app's code, reversible the day Reverb moves; **(2)** wait for Reverb to widen its pin — issues disabled, no branch, no timeline; **(3)** a hosted broadcaster — a data-governance decision made by default, the fleet's activity picture transiting a third party; **(4)** a fork of Reverb with the pin widened — verified to resolve and pass its own suite, costing a fork to rebase forever; **(5)** the runner-up, Centrifugo — Apache-2.0, current, a unidirectional SSE transport of its own, the one candidate with a verified byte bound on a slow consumer, costing a daemon | Every option on the card that priced the four was an answer to *how do we keep a Reverb-shaped thing*; the question was *what does the feed require*. It requires server→client only, a session-gated read, and per-message publish. SSE from the framework's own `eventStream()` is those three with nothing to install, nothing to supervise, nothing to proxy, an on-connect `fleet.health` that was previously *not built and cannot be*, and a revocation re-check that was previously the reason the feed was browser-only. What it costs is priced under § 8.3 — a worker per browser, an outbox write per message, ≥ 2 s of delivery latency, two host conditions that are requirements and not assumptions — and the two things on the card's F1 that this transport does **not** provide: a count-or-bytes backpressure bound and a `resync_required` close frame, replaced by a time bound and a last message ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). ⚠ **And a correction to that F1, recorded where the ruling is:** it said the bound was *provided by no candidate transport* — true of the four it priced, false of the field. Centrifugo bounds it (`centrifuge/writer.go:299-301`, `client.queue_max_size`, disconnect 3008) and Mercure bounds it (`localsubscriber.go`, `outBufferLength = 1000`), both read at source on the card's 2026-09-12 comment. The claim that survives is that no candidate provides exactly *256 messages or 512 KiB closed with `resync_required`* — and under SSE that exact shape has no referent anyway. The sentence lives on the card and nowhere in this repository (audited by grep for its shape across every design document); it is corrected here because this row is where the ruling it misled is recorded | **switch to the runner-up if** the host cannot stream from FPM — R1 or R2 unmeetable — or one worker per browser is judged unacceptable at the fleet's real browser count, or the design grows a client→server need on the feed. **Reversing to Reverb** re-imports the pin, the daemon, the proxy module, the on-connect hook that does not exist, and the § 2.1 gap; the message table, the envelope and the snapshot protocol are unchanged by this row and survive either way, which is what bounds the reversal at the transport section rather than the document |
 | 47 | **Fan-in is a `feed_outbox` table polled at the stream's own 250 ms tick — transient, retained 60 s, never resumed from** ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge), [§ 8.3](#83-the-websocket-delta-feed)) | Redis pub/sub between the daemons and the handlers; an in-process channel in a daemon of the feed's own; no fan-in — each handler recomputes from `seat_state` on a timer | Redis is not in this tree — no `predis`, no `ext-redis` — and the host's Redis is unknown, so a design resting on it would rest on an assumption this document refuses to make. A daemon of the feed's own is the thing this ruling removed. Recomputing from `seat_state` per stream loses the messages that are not state — `seat.retired`, the coordination objects, the building notifications. A table is the one primitive every writer here already has a transaction open on, and it makes [§ 6.5](#65-the-fold)'s *enqueues a delta in the same transaction* literally true | a write per message, retained a minute; four index seeks per second per open stream; and one visibility lag of delivery latency, all priced in § 8.3. If Redis is ever provisioned and read into this tree, the outbox becomes the durable half of a pub/sub and the tick becomes a subscription — a migration of one read loop, not of the contract |
 | 48 | **Two host conditions — R1, the proxy must not buffer the stream; R2, the FPM pool must hold a worker per browser and release a dead one — are declared as checked deploy requirements with named observables, never assumed** ([§ 8.3](#83-the-websocket-delta-feed)) | assume them and let the first deploy find out; design around them silently — a short stream lifetime the handler ends on a timer, or a chunked-polling fallback | Neither condition can be established from this repository, and a design that assumed either would be reporting a clean that nobody measured. Designing around them silently would cost every browser a reconnect-and-snapshot on the handler's timer, to hedge a host fact an operator can check in one command. Declaring them with a check and an observable is what lets a false one be found on the day it is false, by name | a deploy that skips the checks and meets neither: R1 false renders every floor *feed down* against a healthy fleet with REST green; R2 false takes the console down with the fleet healthy. Both are named in [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19/F20 so the symptom is recognisable |
+| 49 | **The declared agent-name join is resolved by the CONSUMER against the seat population; this plane publishes the DECLARATION and never a desk reference** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)) | resolve it server-side and publish `seat_id` on `coord_thread` / `coord_round`, which is where a reader first looks for it | `card#7957`'s (d) rests on **one party knowing both facts**, and that party is the SEAT. This plane knows only what the seat said, so resolving here would move a join whose weaker end is a human-typed string onto objects whose every other field is token-bound or hook-bound — and a consumer could no longer tell which kind it was reading. It would also give one fact N homes: a thread spans desks, so a desk reference per participant per message is a copy free to disagree with the seat object it was copied from, which is [§ 13](#13-decisions-taken-revisable-at-review) row 39's argument one field along | every consumer implements the same three join rules instead of reading one member. [§ 8.3.3](#833-the-coordination-objects) states them once so the implementations are the same, and a consumer that gets them wrong is wrong in its own client rather than in the store |
+| 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
 
 ---
 
@@ -5252,9 +5418,10 @@ D1's: they need an operator answer, a proposal document, or D3.
    surface at [§ 8.3.3](#833-the-coordination-objects). *(b)* ⭐ **Tier 2 was then RETIRED outright by
    operator ruling, card#9234 (2026-09-10)**, which took the tier-2 join with it: the join was needed
    because a GitHub-sourced *title* had to reach a desk, and there is no longer such a title. The
-   agent-name→`seat_id` declaration `card#7957` ruled is still wanted — for the **thread line**, which
-   is [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line)'s and not this merge's — so it is not
-   closed, it has moved off this item. *(c)* ⭐ **The LAST third closed on `card#7582`: the board
+   agent-name→`seat_id` declaration `card#7957` ruled was still wanted — for the **thread line**, which
+   is [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line)'s and not this merge's — so it was not
+   closed here, it moved off this item, and it was **built on `card#9296`**
+   ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)). *(c)* ⭐ **The LAST third closed on `card#7582`: the board
    producer is designed**, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md), and the ruling this item
    asked for is that it is a **document of its own** — which is where
    [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) had already put
@@ -5324,7 +5491,7 @@ D1's: they need an operator answer, a proposal document, or D3.
    *a channel per install* to *a predicate in one place*.
 
 8. **✅ CLOSED — a D2 verifier exists and ships with this document.**
-   `tools/design/verify-fleet-state.py` mechanises **twelve** guard classes (G1–G12), listed with their
+   `tools/design/verify-fleet-state.py` mechanises **thirteen** guard classes (G1–G13), listed with their
    status in [§ 12](#12-every-number-and-where-it-comes-from); it is a separate script and D1's two
    verifiers are unmodified. It runs green on this document, and every check in it has been watched
    failing against a planted defect.
@@ -5357,9 +5524,9 @@ D1's: they need an operator answer, a proposal document, or D3.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **2,023 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **1,859 B** of
    spare under the 8 KiB bound. Seven more therefore fit and an eighth does not: **the cap could
-   reach 15**, where the worst-case delta is 8,010 B, and at 16 it is 8,273 B, which **breaches**
+   reach 15**, where the worst-case delta is 8,174 B, and at 16 it is 8,437 B, which **breaches**
    the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 
