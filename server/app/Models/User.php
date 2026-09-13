@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Auth\TwoFactorIssuer;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
+use Laravel\Fortify\Fortify;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -72,5 +75,22 @@ class User extends Authenticatable
     public function hasCompletedTwoFactorEnrolment(): bool
     {
         return $this->two_factor_confirmed_at !== null;
+    }
+
+    /**
+     * The otpauth URL the enrolment QR code encodes (`twoFactorQrCodeSvg()` calls this).
+     *
+     * Overrides Fortify's `TwoFactorAuthenticatable::twoFactorQrCodeUrl()` for ONE argument: the
+     * issuer comes from `App\Auth\TwoFactorIssuer` (the site's hostname label) instead of
+     * `config('app.name')`. ⚠ The rest restates Fortify 1.x's body, so a Fortify upgrade that
+     * changes that method must be re-read against this one.
+     */
+    public function twoFactorQrCodeUrl(): string
+    {
+        return app(TwoFactorAuthenticationProvider::class)->qrCodeUrl(
+            TwoFactorIssuer::resolve(),
+            $this->{Fortify::username()},
+            Fortify::currentEncrypter()->decrypt($this->two_factor_secret)
+        );
     }
 }
