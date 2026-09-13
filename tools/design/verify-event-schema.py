@@ -453,13 +453,48 @@ else:
 # ---- 12. the protocol agent name's byte bound: one figure, held at every home that states it ------
 # § 12.1 step 10 refuses only a `≤ N B` figure a § 6 field row states (card#9283), so § 6.14's
 # `protocol_agent_name` row carries one rather than a pointer (card#9296 round 3).  That figure is a
-# restatement of the bound § 18.6 gives a protocol agent name on the wire, and D2 restates it twice
-# more -- § 6.4's column and § 8.2.1's row -- and the store's migration sizes the column a further
-# time (card#9296 round 4).  Every home is read on every run and each must equal § 18.6's: a D2
-# column narrower than the ingest's figure is a name the ingest accepts and the fold then cannot
-# store, with every gate green.  `opened_by` is the subject § 18.6 bounds a single agent name on,
-# named like any subject -- not a population.  The migration home is the LAST migration that sizes
-# the column, because that is the store's effective width; a later widening is read, not the original.
+# restatement of the bound § 18.6 gives a protocol agent name on the wire; D2's § 6.4 column and
+# § 8.2.1 row restate it, and the store's migrations size the column (card#9296 round 4).  Every home
+# `name_bounds` lists is read on every run and each must equal § 18.6's: a D2 column narrower than
+# the ingest's figure is a name the ingest accepts and the fold then cannot store, with every gate
+# green.  `opened_by` is the subject § 18.6 bounds a single agent name on, named like any subject --
+# not a population.
+#
+# The migration home is the width the LAST migration's `up()` gives the column, because that is the
+# store's effective width: a later widening or narrowing is read, not the original, and `down()` is
+# never read, because it describes a store being rolled back, not the one migrated forward.  Inside
+# `up()` the check reads the column's name in `string('protocol_agent_name', N)`, which sizes it, and
+# in `after('protocol_agent_name')`, which places another column and sizes nothing.
+# Any other mention in an `up()` -- raw SQL, a rename, a drop, a `string()` without a width, a comment
+# -- REFUSES, naming the file, and so does a migration mentioning the column whose `up()` cannot be
+# read: a width the check cannot read is one it would otherwise pass unheld.
+def php_method_body(src, name):
+    """The body of `function name(...) { ... }` in PHP source, braces matched outside string
+    literals and comments; None when the method is absent or its braces never balance."""
+    head = re.search(rf"\bfunction\s+{name}\s*\([^)]*\)[^{{;]*\{{", src)
+    if not head:
+        return None
+    depth, i, n = 1, head.end(), len(src)
+    while i < n:
+        c = src[i]
+        if c in "'\"":
+            i += 1
+            while i < n and src[i] != c:
+                i += 2 if src[i] == "\\" else 1
+        elif src.startswith("//", i) or c == "#":
+            i = src.find("\n", i)
+            i = n if i < 0 else i
+        elif src.startswith("/*", i):
+            i = src.find("*/", i + 2)
+            i = n if i < 0 else i + 1
+        elif c in "{}":
+            depth += 1 if c == "{" else -1
+            if depth == 0:
+                return src[head.end():i]
+        i += 1
+    return None
+
+
 def first_byte_bound(row):
     m = re.search(r"≤\s*([\d,]+)\s*B\b", row or "")
     return int(m.group(1).replace(",", "")) if m else None
@@ -476,9 +511,29 @@ d2_ddl = re.search(r"^\s*protocol_agent_name\s+VARCHAR\((\d+)\)",
                    d2_sec64.group(0) if d2_sec64 else "", re.M)
 d2_name_row = next((l for l in (d2_sec821.group(0) if d2_sec821 else "").splitlines()
                     if l.startswith("| `protocol_agent_name` |")), None)
-mig_widths = [(m.name, int(w))
-              for m in sorted((ROOT / "server" / "database" / "migrations").glob("*.php"))
-              for w in re.findall(r"string\(\s*'protocol_agent_name'\s*,\s*(\d+)\s*\)", m.read_text())]
+name_column = r"(?<!\w)protocol_agent_name(?!\w)"
+sizes_column = re.compile(r"string\(\s*'protocol_agent_name'\s*,\s*(\d+)\s*\)")
+places_after_column = re.compile(r"after\(\s*'protocol_agent_name'\s*\)")
+mig_widths, mig_unreadable = [], []
+for m in sorted((ROOT / "server" / "database" / "migrations").glob("*.php")):
+    src = m.read_text()
+    if not re.search(name_column, src):
+        continue
+    up = php_method_body(src, "up")
+    if up is None:
+        mig_unreadable.append(f"{m.name} (its `up()` body could not be read)")
+        continue
+    if re.search(name_column, places_after_column.sub("", sizes_column.sub("", up))):
+        mig_unreadable.append(m.name)
+        continue
+    widths = sizes_column.findall(up)
+    if widths:
+        mig_widths.append((m.name, int(widths[-1])))
+for name in mig_unreadable:
+    fail.append(f"check 12 CONTROL: migration {name} touches `protocol_agent_name` in its `up()` in a "
+                f"form this check cannot read -- only `string('protocol_agent_name', N)` and "
+                f"`after('protocol_agent_name')` are read, so a width set any other way would pass "
+                f"unheld against § 18.6's bound")
 name_bounds = {
     "D1 § 18.6 `opened_by`": first_byte_bound(wire_name_row),
     "D1 § 6.14 `protocol_agent_name`": first_byte_bound(hb_name_row),

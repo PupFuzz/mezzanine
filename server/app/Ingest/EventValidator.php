@@ -207,9 +207,13 @@ final class EventValidator
             $value = Wire::field($data, $field);
 
             if ($value === null) {
-                // Every enum field on this wire is either nullable by its own row or absent when
-                // its kind does not carry it. § 6.0: "A missing key and an explicit `null` are
-                // the same thing." Nothing in § 12.1 makes an absent enum a refusal.
+                // A null or absent enum is skipped for EVERY enum field, whatever its row's `Null?`
+                // column says: this loop checks membership only. § 6.0: "A missing key and an
+                // explicit `null` are the same thing." Nothing in § 12.1 makes an absent enum a
+                // refusal. Most enum fields are nullable by their own row or absent when their kind
+                // does not carry them; `reporter.heartbeat.protocol_agent_name_check` is neither —
+                // D1 § 6.14 marks it `Null? no` — and its absence is accepted here all the same, so
+                // a heartbeat from a reporter that predates that field is ingested, not refused.
                 continue;
             }
 

@@ -41,8 +41,8 @@ references out of `docs/VERSIONING.md` and reds on files a partial tree would be
 
 EVERY PLANT IS RE-READ, NEVER STORED.  A plant's anchor brackets the thing it perturbs and the
 perturbation is computed from what the document SAYS there -- so a legitimate edit to that figure or
-that name moves the plant with it instead of turning this file red.  There are two kinds, and the
-kind is named per plant because a gate can only be proven on a defect of its own class:
+that name moves the plant with it instead of turning this file red.  The kind is named per plant,
+because a gate can only be proven on a defect of its own class:
 
   `bump`    -- +1 to a figure the verifier RE-DERIVES (a serialized size, a re-added sum, a cap
                subtraction), which is the class "a stated figure drifted from what re-derives it".
@@ -54,9 +54,17 @@ kind is named per plant because a gate can only be proven on a defect of its own
                green through every verifier.  The plant below is placed inside a fence deliberately:
                a `rename` plant in backticked prose would pass against the narrow population too and
                would prove nothing about the surface the card is about.
+  `narrow-up`, `narrow-sql`
+            -- leave the anchored migration UNTOUCHED and add a later migration beside it that
+               narrows the column the anchor sizes by one, which is the class "the store's
+               effective width moved in a file the check did not read correctly".  `narrow-up`
+               narrows in `up()` through the schema builder and restores the width in `down()`;
+               `narrow-sql` narrows through a raw `ALTER TABLE ... MODIFY`.  card#9296 round 4's
+               review is why these exist: check 12 read the last width in the last file, `down()`
+               included, and passed both.
 
 An anchor matching NOTHING is a hard error, never a skip -- that is the false-clean shape this whole
-directory exists against.  Neither kind writes the value it perturbs into this file.
+directory exists against.  No kind writes the value it perturbs into this file.
 """
 
 import pathlib
@@ -154,6 +162,29 @@ PLANTS = [
         "the store migration's `protocol_agent_name` width, the check-12 equality's code home "
         "(card#9296 round 4)",
         "bounds a protocol agent name at",
+    ),
+    (
+        # card#9296 round 4 review.  The store's width is what the LAST migration's `up()` leaves, so
+        # a later narrowing whose `down()` restores the old width must red -- it passed while the
+        # check read the last match in the file, which was `down()`'s.
+        "verify-event-schema.py",
+        "server/database/migrations/2026_09_13_000000_add_protocol_agent_name_columns_to_seat_state.php",
+        r"(string\('protocol_agent_name', )(\d+)(\))",
+        "narrow-up",
+        "a later migration narrowing `protocol_agent_name` in `up()` and restoring it in `down()`, "
+        "which check 12 must read from `up()` alone (card#9296 round 4 review)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        # The same narrowing in raw SQL, a form check 12 does not parse.  It must refuse the file,
+        # never pass it on the width an earlier migration gave.
+        "verify-event-schema.py",
+        "server/database/migrations/2026_09_13_000000_add_protocol_agent_name_columns_to_seat_state.php",
+        r"(string\('protocol_agent_name', )(\d+)(\))",
+        "narrow-sql",
+        "a later migration narrowing `protocol_agent_name` through a raw `ALTER TABLE ... MODIFY`, "
+        "which check 12 must refuse as a form it cannot read (card#9296 round 4 review)",
+        "in a form this check cannot read",
     ),
     (
         "verify-fleet-state.py",
@@ -257,6 +288,58 @@ MUTATIONS = {
     "rename": lambda m: m.group(1) + m.group(2) + "_renamed" + m.group(3),
 }
 
+# The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
+# and returns the (up, down) statements of a LATER migration that narrows the column by one byte.
+# The table is the anchored file's `Schema::table(...)`, and the column is the quoted name in the
+# anchor's group(1).  Neither is written here.
+SPAWN_NAME = "9999_12_31_235959_selftest_plant_narrows_a_column.php"
+
+
+def _spawned(m):
+    column = re.search(r"'(\w+)'", m.group(1)).group(1)
+    table = re.search(r"Schema::table\(\s*'(\w+)'", m.string).group(1)
+    return column, table, int(m.group(2))
+
+
+def _builder(table, stmt):
+    return f"Schema::table('{table}', function (Blueprint $table) {{\n            $table->{stmt};\n        }});"
+
+
+def _narrow_up(m):
+    _, table, width = _spawned(m)
+    return (_builder(table, m.group(1) + str(width - 1) + m.group(3) + "->nullable()->change()"),
+            _builder(table, m.group(1) + str(width) + m.group(3) + "->nullable()->change()"))
+
+
+def _narrow_sql(m):
+    column, table, width = _spawned(m)
+    sql = "DB::statement(\"ALTER TABLE {} MODIFY {} VARCHAR({}) CHARACTER SET ascii COLLATE ascii_bin NULL\");"
+    return sql.format(table, column, width - 1), sql.format(table, column, width)
+
+
+SPAWNS = {"narrow-up": _narrow_up, "narrow-sql": _narrow_sql}
+
+MIGRATION_TEMPLATE = """<?php
+
+use Illuminate\\Database\\Migrations\\Migration;
+use Illuminate\\Database\\Schema\\Blueprint;
+use Illuminate\\Support\\Facades\\DB;
+use Illuminate\\Support\\Facades\\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        %s
+    }
+
+    public function down(): void
+    {
+        %s
+    }
+};
+"""
+
 
 def tracked_files():
     """The tracked population, read from git rather than walked: a walk would sweep in
@@ -294,13 +377,24 @@ def run_verifier(tool, mutation=None):
             rel, anchor, kind = mutation
             doc = tmp / rel
             text = doc.read_text(encoding="utf-8")
-            new, n = re.subn(anchor, MUTATIONS[kind], text, count=1, flags=re.S)
+            if kind in SPAWNS:
+                m = re.search(anchor, text, flags=re.S)
+                n = 1 if m else 0
+            else:
+                new, n = re.subn(anchor, MUTATIONS[kind], text, count=1, flags=re.S)
             if n != 1:
                 raise SystemExit(
                     f"CONTROL: the plant's anchor matched {n} times in {rel} — this harness would "
                     f"then report a verifier as PROVEN on a defect it was never shown.  The "
                     f"document moved under the anchor; re-pin it.\n  anchor: {anchor}")
-            doc.write_text(new, encoding="utf-8")
+            if kind in SPAWNS:
+                spawned = doc.with_name(SPAWN_NAME)
+                if spawned.exists():
+                    raise SystemExit(f"CONTROL: {spawned.name} already exists beside {rel}, so the "
+                                     f"plant would overwrite a tracked file rather than add one")
+                spawned.write_text(MIGRATION_TEMPLATE % SPAWNS[kind](m), encoding="utf-8")
+            else:
+                doc.write_text(new, encoding="utf-8")
 
         proc = subprocess.run(
             [sys.executable, str(tmp / "tools" / "design" / tool)],

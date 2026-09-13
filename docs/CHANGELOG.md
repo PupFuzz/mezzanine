@@ -122,7 +122,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `mezzanine:rebuild` resets them with the rest of the heartbeat group. The consumer join is still
   not built. **Also, from round 3's independent review:** the protocol agent name's byte bound is
   one guarded population — `verify-event-schema.py` check 12 holds D2 § 6.4's column, D2 § 8.2.1's
-  row and the store migration to § 18.6's figure beside § 6.14's, with a plant per new home, and the
+  row and the width the last migration's `up()` gives the column to § 18.6's figure beside § 6.14's,
+  with a plant per new home, and refuses any migration whose `up()` touches the column in a form it
+  cannot read (raw SQL, a rename, a drop, a width-less `string()`) rather than passing it, and the
   fold reads the bound from `KindRegistry` instead of restating it; D1 § 3.1's contract sentence and
   § 18.13 row 6 scope the home path to Linux; the supervised start's contract says its LAUNCH
   delivers the value, with the route left to `card#7336`, rather than promising a per-start
@@ -130,6 +132,16 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   the contract, the residual on row 6, a moved variant of AT-27 case F); and D2 § 8.3.3's empty arm
   is renamed *no seat may resolve it*, because a lone `disagreed` seat does declare the name — the
   `no_declaring_seat` token is unchanged, and D3 § 5.7 and `coord-model.js` follow.
+  ⭐ **Round 4 review's minors.** *(1)* **A `null` declaration pair has a third reading**: the fold
+  writes `null` for a heartbeat that carries neither member, and the shipped reporter sends neither,
+  so D2 § 6.4's column comments, D2 § 8.2.1's rows and D3 § 5.6's and § 5.7's rows now name it
+  beside *no heartbeat yet* and *declares none*; `EventValidator`'s comment states that an absent
+  enum is skipped whatever its row's `Null?` says, `protocol_agent_name_check` included. *(2)*
+  **Check 12 read `down()`'s width**: it took the last width match in the last file, so a later
+  narrowing that restored the width in `down()`, and a raw-SQL narrowing, both passed. It now reads
+  `up()` alone and refuses a form it cannot read, and the plant harness gains a `narrow-up` and a
+  `narrow-sql` plant that add such a migration. *(3)* D3 § 5.7's last copy of *an absent
+  declaration* reads *no seat may resolve it*, as the rest of round 4 does.
 
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
   development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded

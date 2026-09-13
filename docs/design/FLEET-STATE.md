@@ -1599,8 +1599,12 @@ CREATE TABLE seat_state (
   enabled                   TINYINT(1) NULL,
   protocol_agent_name       VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL,
                                          -- D1 § 3.1's DECLARED protocol agent name, last
-                                         -- heartbeat's value, verbatim. NULL = no heartbeat yet, or
-                                         -- the seat declares none (the check column says which).
+                                         -- heartbeat's value, verbatim. NULL = no heartbeat yet; a
+                                         -- last heartbeat that carried neither member (e.g. from a
+                                         -- reporter that predates D1 § 6.14's fields); or the seat
+                                         -- declares none (only that one has a non-NULL check, and
+                                         -- last_heartbeat_received_at tells no heartbeat from a
+                                         -- heartbeat without the pair).
                                          -- ⛔ It is a REPORTED label, never an identity: the seat
                                          -- row this one hangs off is keyed by (install_ref,
                                          -- seat_id) and nothing here is ever read to find a seat.
@@ -1609,7 +1613,9 @@ CREATE TABLE seat_state (
   protocol_agent_name_check ENUM('checked','unchecked','disagreed','undeclared') NULL,
                                          -- D1 § 3.1's four states, verbatim; this plane adds none
                                          -- and re-derives none. NULL before the first heartbeat,
-                                         -- exactly as `enabled` above. ⛔ Only `checked` and
+                                         -- exactly as `enabled` above, AND after a heartbeat that
+                                         -- carried neither member (e.g. from a reporter that
+                                         -- predates D1 § 6.14's fields). ⛔ Only `checked` and
                                          -- `unchecked` resolve a name to this desk (§ 8.3.3)
   reporter_version          VARCHAR(24) CHARACTER SET ascii NULL,
   reporter_platform         ENUM('linux','win32','darwin','other') NULL,
@@ -2667,8 +2673,8 @@ snapshot repeats per seat and the delta patches.
 | `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
-| `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds and held to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat **and** on a seat that declares none — `protocol_agent_name_check` is what tells those two apart | `"pm"` |
-| `protocol_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` before the first heartbeat, exactly as `enabled` | `"checked"` |
+| `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds and held to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat, after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields), **and** on a seat that declares none — `protocol_agent_name_check` is `undeclared` only on the seat that declares none, and `delivery.last_heartbeat_at` is null only before the first heartbeat | `"pm"` |
+| `protocol_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` before the first heartbeat, exactly as `enabled`, **and** after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields) — `delivery.last_heartbeat_at` is null only before the first heartbeat | `"checked"` |
 | `reporter` | object | no | **never null**, as `activity` above; `uptime_s` and `selftest_failed` are null before the first heartbeat, `version` and `platform` before the seat's first **batch** — they ride the batch envelope, not any event ([§ 6.5](#65-the-fold)) | see below |
 | `reporter.version` | semver | **yes** | ≤ 24 B | `"0.1.0"` |
 | `reporter.platform` | enum | **yes** | D1's 4 members | `"linux"` |

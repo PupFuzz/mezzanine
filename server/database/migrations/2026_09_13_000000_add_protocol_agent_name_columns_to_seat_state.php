@@ -15,8 +15,9 @@ use Illuminate\Support\Facades\Schema;
  * `2026_09_11_000000_narrow_seat_state_task_source_enum.php` argues the same in full.
  *
  * § 6.9, rule by rule. Rule 3: both columns are nullable and additive, and NO BACKFILL is owed —
- * `NULL` is § 8.2.1's own "before the first heartbeat", which is true of every existing row until
- * its seat's next heartbeat writes it, and rule 2's `mezzanine:rebuild` re-projects the log.
+ * `NULL` is what § 8.2.1 publishes for a seat no heartbeat carrying the pair has reached, which is
+ * true of every existing row until its seat's next heartbeat writes it, and rule 2's
+ * `mezzanine:rebuild` re-projects the log.
  * Rule 1 governs a migration on `events`, and `bin/deploy.sh` A10 checks only a migration that
  * names that table; this one touches no `events` column, so it states no algorithm, as
  * `2026_09_11_000000_narrow_seat_state_task_source_enum.php` on the same table states none.
