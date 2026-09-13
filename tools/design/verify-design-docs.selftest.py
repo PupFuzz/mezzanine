@@ -145,8 +145,11 @@ PLANTS = [
         # This plant is therefore aimed at the CONTROL rather than at the forbidden-field check: a
         # `rename` there must make the gate SAY it can no longer read its population, never pass.
         # Adding a desk field to § 8.3.3 -- the defect the leg exists for -- is not expressible as a
-        # `bump` or a `rename` and is proven by hand; that limit is stated here rather than left to
-        # be inferred from a plant list.
+        # `bump` or a `rename` (neither mutation can write the word `desk` into a field name), so it
+        # stays a HAND proof; round 2 of card#9296 ran it, on four rows -- `coord_thread.desk`,
+        # `coord_round.from_seat`, a nested `…[].seat_ref` and an unparseable row -- each red under
+        # the widened leg and each GREEN under the name-equality check it replaced.  The limit is
+        # stated here rather than left to be inferred from a plant list.
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(\*\*`install_id` and `seat_id` are the seat→)(desk)( binding)",
@@ -154,6 +157,21 @@ PLANTS = [
         "§ 8.2.1's declaration of WHICH members are the seat→desk binding, which G13 re-derives the "
         "set no coordination object may name from (card#9296)",
         "no longer declares which members ARE the seat",
+    ),
+    (
+        # card#9296 round 2.  G13 leg 2's under-read CONTROL used to be a literal `< 20` -- slack by
+        # two rows the day it was written, and blind to a table that shrank.  Its denominator is now
+        # DERIVED from the two § 8.3.3 field tables' own row counts, and this plant is what proves
+        # that: renaming the `coord.round` table's header column takes that table out of the
+        # denominator, so 22 parsed rows are held against 11 declared ones and the control fires.
+        # Under the old literal the same mutation changed nothing at all and the gate stayed green.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(`coord\.round` — the post\.\*\*.*?\| )(Field)( \| Type \| Null\? \| Bounds \| Example \|)",
+        "rename",
+        "the header of § 8.3.3's second field table, which G13's under-read control re-derives its "
+        "own denominator from rather than carrying a written count (card#9296)",
+        "coordination field rows were read from section 8.3.3's",
     ),
     (
         "verify-floor.py",

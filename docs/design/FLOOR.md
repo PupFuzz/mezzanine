@@ -25,7 +25,7 @@ it, and what it must never draw.
    JSON object reaches a browser. Where a fact belongs to D2 it is **cited by section**, never copied.
 2. **The client derives no state.** Every rendered fact is a field of a D2 object, named in
    [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field). The seven things the client computes
-   for itself are enumerated as a **closed list** in [§ 2.1](#21-the-seven-client-computed-values-closed),
+   for itself are enumerated as a **closed list** in [§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed),
    and every one of them is presentation — a clock offset, an age, a desk position, an animation
    selection, a per-floor count over the objects it already holds, a sort order, and the client's own
    narration of what it did, what it saw, and what it reads on its own clock
@@ -161,10 +161,17 @@ does not paraphrase it.** Three corollaries bind an implementer:
 
 ## 2. The client, end to end
 
-### 2.1 The seven client-computed values, closed
+### 2.1 The seven values the client computes about a seat or about itself, closed
 
-Everything the client computes for itself, and nothing else. The list is closed so that a reviewer can
-check a candidate computation against it rather than against a feeling. **Rows 1–6 are computations
+Everything the client computes **about a seat or about itself**, and nothing else — which is the two
+kinds rows 1–6 and row 7 divide between, and it is what this list is closed over. The list is closed
+so that a reviewer can check a candidate computation against it rather than against a feeling.
+⚠ **It is not closed over everything this client computes, and saying so is the point of the
+qualifier**: two paragraphs below name what else there is and where each one's rule lives — the
+delivered-object filter, which computes nothing, and the coordination layer's three computations,
+which are about a coordination object and are governed by
+[§ 5.7](#57-the-coordination-thread-line). An earlier heading and lede claimed the closure over
+*everything the client computes*, which those paragraphs falsify one screen down. **Rows 1–6 are computations
 about a seat; row 7 is the client narrating itself**, and it is on the list because a list that
 enumerated only the seat-facing six left the whole status strip — the feed verdict, the *live* claim,
 the resync counter, the event log — outside the rule that exists to catch exactly that class.
@@ -472,7 +479,7 @@ omission.
 - A **duration** is rendered from the field D2 assigns to it and no other, **and each has exactly one
   rendered wording, stated here so that no second surface mints a second string for one fact**.
   **Three of the four below the client computes** — the corrected clock minus a timestamp the wire
-  carries, which is [§ 2.1](#21-the-seven-client-computed-values-closed) row 2's **kind** of
+  carries, which is [§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) row 2's **kind** of
   computation rather than a closed list of instances of it. **The fourth it does not:**
   `derivation.fold_lag_ms` is a duration D2 computes at read time and sends, so this document only
   formats it, and it is on this table because the table's job is to fix **one rendered wording per
@@ -863,7 +870,7 @@ route of its own, because closing it must not cost a reconnect.
 | Element | Source | Rendered as |
 |---|---|---|
 | floor list | the **building layout** ([§ 4.6](#46-the-building-layout)) composed against `installs[].install_id` from the snapshot: every floor the layout declares, plus one floor per install the layout does not place, floor ids ascending | one row per floor, the row being the link to the floor, **headed by the floor's name: its label when the layout gives it one, else its key** ([§ 4.6](#46-the-building-layout), card#9273 — the key is honest and no placeholder is invented; the link is the key either way). A floor of more than one room names its rooms on the row, so a viewer can see which installs a plate holds without riding to it |
-| per-floor state summary | the seat objects the client holds for **every install the floor's rooms name** ([§ 2.1](#21-the-seven-client-computed-values-closed) row 5); a room the fleet reports no seat for contributes none and is named as such ([§ 4.6](#46-the-building-layout)) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
+| per-floor state summary | the seat objects the client holds for **every install the floor's rooms name** ([§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) row 5); a room the fleet reports no seat for contributes none and is named as such ([§ 4.6](#46-the-building-layout)) | a count per `render_state` member present, e.g. *2 working · 1 idle · 1 stale*, in [§ 7.1](#71-the-render-per-state)'s fixed member order |
 | fleet totals | `fleet.seats_total`, `fleet.seats_live` | *4 seats · 4 live*, read from the wire and **never recounted** |
 | the discrepancy check | the two above | when `Σ floors ≠ fleet.seats_total` the lobby renders the disagreement — *the client holds N of M seats — refreshing* when N < M, and *the client holds N seats; the fleet reports M — refreshing* when N > M, which is reachable: a client that **missed the `seat.retired` announcement** — it was disconnected when the act ran, or the message was lost — still holds a desk that [§ 3.5](#35-retirement-and-the-only-removal) has already taken off every connected floor and that `seats_total` has already stopped counting. It triggers **one snapshot fetch per distinct (N, M) observation**: a disagreement still standing after that fetch is rendered and **not** re-fetched, so a discrepancy the snapshot cannot resolve costs one request rather than one every 15 s. It never silently picks a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)), and it is how a new install is **discovered** — every install that fetch discovers is then **admitted** by [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`, whose own fetch is **not** counted against the per-`(N, M)` budget above, because that budget exists to bound a *disagreement* and ADMIT is bounded by the install set instead ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [decision 9](#13-decisions-taken-revisable-at-review)) |
 | membership age | the time of the last full snapshot | *membership as of 14:23:14* ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
@@ -932,7 +939,7 @@ implementer reading it would have built a floor screen that takes an `install_id
 **How N rooms sit on the one screen — the floor PLAN ([§ 4.6](#46-the-building-layout), card#9292).** A
 planned floor draws its `hallway`'s tile layers first, at the floor's origin; then each room's grid
 at its `origin`, opaque over whatever hallway tiles lie under it; then every desk. A floor with no plan
-draws its rooms side by side, left to right in `install_id` order ([§ 2.1](#21-the-seven-client-computed-values-closed) row 6), top
+draws its rooms side by side, left to right in `install_id` order ([§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) row 6), top
 edges aligned, [§ 12](#12-every-number-and-where-it-comes-from)'s gap apart, and no hallway. The floor's extent is the
 union of all of it — computed from documents the client holds, stored nowhere — and
 [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera pans and zooms over it as over any floor wider than the viewport.
@@ -1165,7 +1172,7 @@ neither an authored order nor a derived one has a member for. Four rules, each w
    by inheritance rather than by a second mechanism.
 3. **A floor with no plan is arranged by a rule that needs no author — the rule item 19 held in the
    meantime, now the default:** its rooms side by side, left to right in `install_id` ascending
-   ([§ 2.1](#21-the-seven-client-computed-values-closed) row 6), top edges aligned, each at its own map's size, **64 px** apart
+   ([§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) row 6), top edges aligned, each at its own map's size, **64 px** apart
    ([§ 12](#12-every-number-and-where-it-comes-from)) — wide enough that two rooms' own perimeter walls read as two rooms and
    not as one double wall — and no hallway. The one-room floor, which is every floor today, is that
    rule with nothing to arrange: which is why item 19 could be opened from it, and why it was
@@ -1180,7 +1187,7 @@ neither an authored order nor a derived one has a member for. Four rules, each w
    and windows are the floor screen's, drawn once across the floor's whole extent ([§ 4.2](#42-the-floor)),
    never inside a hallway or a room map.
 
-**What the plan is not.** It is not an eighth entry for [§ 2.1](#21-the-seven-client-computed-values-closed)'s closed list, for the
+**What the plan is not.** It is not an eighth entry for [§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed)'s closed list, for the
 reason the implicit-floor rule below is not: placing a delivered document at a delivered origin is
 a rendering of the wire, and the floor's extent — the bounding box of the hallway and every room's
 footprint — is geometry of documents the client holds, computed the way a desk's `x`, `y` is and
@@ -1262,7 +1269,7 @@ The ruling above left a floor with no authored name, and the operator wants one:
 `label` on the floor's entry, in the table above. What the member is **for** is the plate, the
 elevator's stop and the floor screen's own name ([§ 4.1](#41-the-lobby--the-building-summary),
 [§ 4.2](#42-the-floor)); what it is **not** is anything the building is keyed, sorted, routed or
-matched on. The stack is still floor **keys** ascending ([§ 2.1](#21-the-seven-client-computed-values-closed)
+matched on. The stack is still floor **keys** ascending ([§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed)
 row 6) — a stack sorted by label would move every plate and every elevator level on a rename, which
 is the label doing a key's work — and [§ 4.4](#44-routes-and-what-each-one-fetches)'s segment is
 the key, so a label is edited freely and no published link, bookmark or cab position moves. The
@@ -1416,7 +1423,7 @@ for the console. It has to live in the client, and an earlier draft of this para
 say the client *composes nothing*: [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check
 discovers an install **after** the layout was fetched, and a client that composed nothing would draw
 that install nowhere — the hole this section exists to refuse. It is not an eighth entry for
-[§ 2.1](#21-the-seven-client-computed-values-closed)'s closed list: it is the membership of row 5's
+[§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed)'s closed list: it is the membership of row 5's
 population — *every install the floor's rooms name* — stated for the floor no layout authored, and
 the client derives no key (the delivered ones are the server's; an implicit floor's key is the
 `install_id` the wire already carries) — **and it derives no label**: `name` is the `label ?? key`
@@ -1702,7 +1709,7 @@ seat did and when, and nothing is guessed onto it.
 
 ### 5.5 The client's own narration
 
-[§ 2.1](#21-the-seven-client-computed-values-closed) row 7 is the one rendered surface whose facts are
+[§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) row 7 is the one rendered surface whose facts are
 not D2's, so [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field)'s rule — *every rendered
 fact names the D2 field it comes from* — cannot be the one that holds it. It gets its own, and the rule
 is stricter rather than looser: **a narration line states what the client did or saw, is labelled as
@@ -1724,7 +1731,7 @@ the client's own, and never becomes a fact about a seat.**
 pose, a currency label, a badge or an animation — the only effect the client's own connection state has
 on a desk is [§ 9](#9-failure-paths-and-their-observables) F1's, which is *none*, beyond the ages
 continuing to tick from the timestamps the client already holds. That is the same boundary
-[§ 2.1](#21-the-seven-client-computed-values-closed) draws between presentation and state, applied to
+[§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) draws between presentation and state, applied to
 the one surface where the client is allowed to talk about itself.
 **The wall clock row is inside that rule, not an exception to it, and the difference is causal
 direction.** A narration may not *drive* an animation, because motion on this page is a claim that the
@@ -1844,11 +1851,27 @@ declares nothing draws nothing different at its own desk and still takes no part
    ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)). So the resolve arm resolves, by the
    rule D2 states and this document does not re-derive: **a name resolves to the seats of this room's
    `install_id` whose `protocol_agent_name` equals it and whose `protocol_agent_name_check` is
-   `checked` or `unchecked`** — a **set**, which may hold two desks (one agent at two seats) or none.
+   `checked` or `unchecked`** — **the ONE such seat, and never a set**: a protocol agent name is
+   unique per install, so a name resolves to **0 or 1** desks and there is never a candidate to
+   choose between (operator ruling, card#9296;
+   [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1).
    card#7957's ruling *(2)* governs the empty case and is permanent: a name that does not resolve
    **draws no line** — never to a guessed desk, never to nothing — **is reported as unresolved**, and
    **does not suppress the rest of the object**, so a round with one resolved and one unresolved
    participant renders what it can.
+   ⛔ **A name TWO seats of this room declare takes that same arm for a different reason, and the
+   reason is rendered.** The uniqueness invariant is violated, which is an **install
+   misconfiguration** rather than one agent at two desks; the client **never picks** — both
+   candidates are equally good, so any pick is precisely the guessed desk this clause forbids — so
+   the name resolves to nothing and draws no line. ⚠ **What it renders is not the same word.** D2
+   names the two unresolved reasons `no_declaring_seat` and `duplicate_declaration`, and this
+   surface renders the second in words beside the name — *declared by more than one seat* — for the
+   same reason an `unchecked` endpoint carries a word rather than a second line treatment. Rendering
+   it as a plain *unresolved* would show a misconfiguration as *nobody declared it*, which is the
+   opposite diagnosis and the one an operator would act on wrongly. ⛔ **This client is the only
+   party that can report it**: a seat's own check asks whether its name is in the roster and two
+   seats declaring one name both pass ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), and
+   D2 mints no state from it, so the report is made here or nowhere.
    ⚠ **Until card#9296 there was no join at all, and this clause read that every name renders
    unresolved and no line is drawn on any floor. That sentence is now false as a statement about the
    DESIGN and may still be true of a FLEET** — a fleet whose seats declare nothing resolves nothing
@@ -1895,7 +1918,7 @@ declares nothing draws nothing different at its own desk and still takes no part
 | the line's label | `coord_thread.subject`, `coord_thread.subject_truncated` | `"the coordination-event producer"` | a null `subject` draws **no label** — never a placeholder, never the last subject the client held. A true `subject_truncated` draws the truncation **mark**, because *"a silently clipped string is read as the whole string"*; the flag is the wire's and the mark is not a re-measurement of the text |
 | the carrier tag, on the line and on each bead | `coord_thread.carrier`, `coord_round.carrier` | `"announce"` | null ⇒ **no tag**, never a default carrier. D2 validates it *"with no set consulted"*, so this renders it raw for the same reason the lifecycle cell does |
 | who opened the thread | `coord_thread.opened_by`, `coord_thread.attribution` | `null`, `"unattributable"` | the two are read **together, always**: D2 states that *"a consumer reading `opened_by` without reading this renders **nobody** where the honest render is **not recoverable**"*. So a null `opened_by` renders the state its attribution names — raw — and never an empty opener |
-| whether a participant resolves to a desk, and to which | `coord_thread.participants`, `coord_round.from`, `coord_round.targets` joined against `protocol_agent_name` and `protocol_agent_name_check` on the **seat** objects this client already holds ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | `"pm"` → the desk of the seat declaring `"pm"` in this room | **unresolved**, by property 1, in every case but a live declaration: a name no seat of this room declares; a name a seat declares with `protocol_agent_name_check` of `disagreed` or `undeclared`; a name that merely **equals a `seat_id`**; and a name declared only by a seat of some **other** install. A seat whose `protocol_agent_name` is null is in no join at all and is never a default endpoint |
+| whether a participant resolves to a desk, and to which | `coord_thread.participants`, `coord_round.from`, `coord_round.targets` joined against `protocol_agent_name` and `protocol_agent_name_check` on the **seat** objects this client already holds ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | `"pm"` → the desk of the seat declaring `"pm"` in this room | **unresolved**, by property 1, in every case but a live declaration: a name no seat of this room declares; a name a seat declares with `protocol_agent_name_check` of `disagreed` or `undeclared`; a name that merely **equals a `seat_id`**; and a name declared only by a seat of some **other** install. A seat whose `protocol_agent_name` is null is in no join at all and is never a default endpoint. ⛔ A name **two** seats of this room declare also resolves to nothing — but renders *declared by more than one seat* and never a plain **unresolved**, because the two carry different reasons and an install misconfiguration must not read as an absent declaration (clause 1) |
 | that a resolved endpoint rests on an UNCHECKED declaration | `protocol_agent_name_check` | `"unchecked"` | `checked` draws nothing extra — the ordinary case carries no marker, or every line would carry one. A `null` check is a seat that has not heartbeated: it resolves nothing, so there is no endpoint to mark. The marker is property 1's, and it is words beside the participant rather than a second line treatment |
 | the thread's named participants | `coord_thread.participants` | `["pm","all"]` | an empty array draws **no participant list** — never *nobody*. `all` is a literal member and is **never expanded here**; each member is bound by clause 1 and the unresolved ones are named as unresolved |
 | a bead per post | `coord_round.post_ref` | `"AIMLA-org/aimla-coordination#742"` | never null. **The bead count is a count of distinct `post_ref`** and a repeat draws nothing new — D2's own words, and the whole of what a consumer may count, because these messages carry no `seq` and *"a lost coordination message is not detectable"* |
@@ -4739,7 +4762,7 @@ review can reverse it deliberately rather than discover it later.
 
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
-| 1 | **The client derives no state; the seven things it computes are enumerated as a closed list** ([§ 2.1](#21-the-seven-client-computed-values-closed)) | let the client compute what it needs and rely on review to catch the rest | A closed list is checkable against a candidate computation; "only presentation" is not. D2 already refuses a re-derived `render_state` for the same reason — a second copy of a precedence is free to drift, and the first thing it drifts on is `stale`-vs-`idle` | a genuinely-presentational computation someone wants is a review conversation instead of a commit. That is the cost, and it is the point |
+| 1 | **The client derives no state; the seven things it computes are enumerated as a closed list** ([§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed)) | let the client compute what it needs and rely on review to catch the rest | A closed list is checkable against a candidate computation; "only presentation" is not. D2 already refuses a re-derived `render_state` for the same reason — a second copy of a precedence is free to drift, and the first thing it drifts on is `stale`-vs-`idle` | a genuinely-presentational computation someone wants is a review conversation instead of a commit. That is the cost, and it is the point |
 | 2 | **The animation table is closed, and a CLAIM-BEARING animation without a row is a defect** ([§ 6.2](#62-the-animation-table--the-closed-set)). **Scoped 2026-08-30** by row 3's amendment: the table's closure is untouched, but the population it is closed over is motion that makes a claim rather than every motion on the floor — decorative motion has no row, may not be given one, and is admitted by [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) instead | state the honesty principle as a principle and trust it | A principle nobody can fail is a principle nobody keeps. A closed table plus the animation log makes the rule a test ([AT-D3-1](#at-d3-1-no-animation-without-its-event)) rather than an intention | every new effect costs a table row and a driving field. A flourish with no field is exactly what is being refused |
 | 3 | **No motion that CLAIMS something and is neither held by a delivered field nor caused by a delivered message. Decorative motion — motion with no fact it could be wrong about — is permitted**, under [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s three tests and its slow / low-amplitude / outside-the-vocabulary bound. **Amended twice, and the second amendment reversed the first's scope rather than sharpening it. 2026-08-27:** the row read *no ambient life at all*, which forbade the operator-ratified blink-while-busy and sleeping-idle renders by naming two motions rather than the property that made them wrong. ⭐ **2026-08-30 (operator ruling, card#7953; applied by card#8161):** the property was still stated as an absolute over **all** motion, and **the operator disclaimed it** — *"I never forbade motion that is neither held by a delivered field nor caused by a delivered motion … blinking LEDs on a server rack is ok as long as it is not distracting."* [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) records the false attribution this row's rule was carried under until then | **permit decorative motion that carries no state** — *taken at the 2026-08-30 amendment, and it was on the table from the beginning*; or carve the ratified motions out as named exceptions | Motion is the floor's vocabulary, and the argument that a viewer cannot tell decoration from a signal at a glance is **true under stated conditions rather than universally** — [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s three tests are those conditions, and outside them the old rule was refusing motion nothing could have confused with a claim. **The property is still what does the work**, and a name never did: a blink in every state is indistinguishable from a signal, a blink held by `render_state == "working"` **is** a signal, and a rack LED in the corner of the room is neither. **Decision 21's constraint is the first of the three tests and survives unamended**: the wall clock was refused because [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) reads it, and a named test's instrument is never spent on decoration. An exception list would have said which motions were allowed rather than why, and the next one would have had to be argued from precedent | a floor whose **claims** have stopped looks stopped, and that is the reading we want. **The 2026-08-27 cost stands:** the rule is a property a reviewer applies rather than a list they check, and the door for claim-bearing motion is [§ 6.2](#62-the-animation-table--the-closed-set)'s closed table and nothing else. ⭐ **The 2026-08-30 amendment's own cost, which is larger:** there are now **three** properties to apply rather than one; the floor is no longer *entirely* still on a dead feed, so the human reading beneath [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) rests on the amplitude bound ([§ 6.2](#62-the-animation-table--the-closed-set)'s note re-derives what the test itself does and does not lose); and **decorative motion is reachable by no mechanised check at all** — it writes no animation-log row, so [AT-D3-1](#at-d3-1-no-animation-without-its-event) cannot see it, and `verify-floor.py` reads this document rather than the shipped artifact. Review is what stands there, and saying so is the condition of taking the option |
 | 4 | **A state-held loop is permitted, at a fixed rate that encodes nothing** | fire an animation only on edges, never hold one | A `working` desk must look different from an `idle` one at a glance and across a room, and a pose alone is weaker at distance than a pose that moves. The rate is pinned to the stream tick so the loop cannot claim more than the feed can carry | a loop is running while the underlying claim is bounded only by D2's ceilings. That is why every loop stops the moment its state's currency is in doubt ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
@@ -5266,7 +5289,7 @@ over it.
 | T1 | § 1.2 | Everything rendered is D3's — desks, floors, sprites, animation, the identity→desk mapping; where D1 or D2 says "renders" it is naming an obligation, not a pixel | [§ 1.1](#11-what-this-document-owns), [§ 3](#3-identity-seat--desk-install--room-rooms--floor), [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field), [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
 | T2 | § 2.3 | A seat badged `fold_lag`: **D3 must not present the seat's activity state as current** | [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim), [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
 | T3 | § 2.3 | `fleet.fold = "stalled"`: **D3 shows a fleet banner** | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy), [§ 5.3](#53-the-fleet-on-both-screens) |
-| T4 | § 4.1 | D3 renders `render_state` and may use the components for the drill-down; it **never re-derives the collapse** | [§ 2.1](#21-the-seven-client-computed-values-closed), [§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
+| T4 | § 4.1 | D3 renders `render_state` and may use the components for the drill-down; it **never re-derives the collapse** | [§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed), [§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) |
 | T5 | § 4.3 | `unknown` is one glyph with seven reasons; the diagnosis belongs in the drill-down, not in six more top-level states | [§ 7.1](#71-the-render-per-state) |
 | T6 | § 8.2 | The timeline endpoint is D3's recent-activity window: newest first, `limit` ≤ 200, default 50 | [§ 4.3](#43-the-desk-drill-down-panel), [§ 5.2](#52-the-drill-down) |
 | T7 | § 8.2.4 | D3 may compose a banner from `db`, `fold` and `sweep`; the wire keeps them apart and no aggregate rolls them into one | [§ 5.3](#53-the-fleet-on-both-screens), [§ 4.1](#41-the-lobby--the-building-summary) |
@@ -5302,7 +5325,7 @@ over it.
 | T37 | § 6.7 | A provisioned seat that has never reported "**must render, not vanish**"; a retired seat drops out of the read surfaces **at `retired_at`** by a query filter and not a deletion, so its row and its reason stay answerable after its desk is gone | [§ 3.4](#34-a-new-seats-first-appearance), [§ 3.5](#35-retirement-and-the-only-removal), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) |
 | T38 | § 10 | `close_source: reap_session_boundary` exists "so the drill-down can say *the clear killed these*, not *these ended*" | [§ 14](#14-open-questions-for-the-review-loop) item 9 |
 | T39 | § 8.7 | The building surface: fetch a room's map by `map_version` and re-render that room on `room.map` **without animation**; fetch the layout again on `building.layout`; on a map or layout request that fails, draw the failure by name and never the shipped default — or the empty layout's building — in its place | [§ 2.5](#25-what-re-renders-and-when), [§ 9](#9-failure-paths-and-their-observables) F16 and F17, [§ 10.3](#103-the-floor-map), [§ 13](#13-decisions-taken-revisable-at-review) rows 29 and 30 |
-| T40 | § 8.3 | **D3 ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a heartbeat written up to one visibility lag before this stream connected is delivered after the connect-time `fleet.health` and carries a whole `fleet{}`, so the fleet counts can be regressed to a ≤ 2 s-old value and [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check spends a spurious snapshot fetch on it | [§ 2.1](#21-the-seven-client-computed-values-closed)'s delivered-object filter, stated outside the closed table because it computes nothing |
+| T40 | § 8.3 | **D3 ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a heartbeat written up to one visibility lag before this stream connected is delivered after the connect-time `fleet.health` and carries a whole `fleet{}`, so the fleet counts can be regressed to a ≤ 2 s-old value and [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check spends a spurious snapshot fetch on it | [§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed)'s delivered-object filter, stated outside the closed table because it computes nothing |
 
 ### The obligations D1 addresses to the render layer
 

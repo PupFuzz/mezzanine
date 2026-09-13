@@ -217,9 +217,13 @@ class At18UnknownEnumTest extends IngestTestCase
     public function test_the_heartbeats_open_keyed_objects_are_not_treated_as_unknown_fields(): void
     {
         // § 6.14: `counters`, `predicates` and `selftest` have key sets "declared, not closed at
-        // the ingest, and the difference is deliberate" — a reporter shipping a seventh selftest
-        // check "costs one key a consumer does not yet render, and no `422`". So nothing descends
-        // into them, and their contents raise no `ignored_unknown_fields` either.
+        // the ingest, and the difference is deliberate" — a reporter shipping a selftest check
+        // that table does not yet name "costs one key a consumer does not yet render, and no
+        // `422`". So nothing descends into them, and their contents raise no
+        // `ignored_unknown_fields` either. (⚠ This comment named that check by ORDINAL and the
+        // ordinal went stale on card#9296, which added one. The fixture keys below said it twice
+        // more. Nothing guards D1 prose quoted in code — `EventSchemaDriftTest` re-derives names,
+        // members and bounds, never sentences — so the ordinal is gone rather than re-synced.)
         $this->postBatch($this->validBatch([
             $this->event([
                 'kind' => 'reporter.heartbeat',
@@ -230,7 +234,8 @@ class At18UnknownEnumTest extends IngestTestCase
                     'degraded' => [],
                     'counters' => ['a_counter_invented_next_year' => 3],
                     'predicates' => ['a_predicate_invented_next_year' => ['true' => 1, 'false' => 2]],
-                    'selftest' => ['a_seventh_check' => 'pass', 'an_eighth_check' => 'fail'],
+                    'selftest' => ['a_check_invented_next_year' => 'pass',
+                                   'another_check_invented_next_year' => 'fail'],
                 ],
             ]),
         ]))->assertStatus(202)->assertJson(['accepted' => 1]);

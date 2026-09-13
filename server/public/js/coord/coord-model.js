@@ -28,6 +28,22 @@
  *      `protocol_agent_name_check` IS `checked` OR `unchecked`, and from nothing else
  *      (D2 § 8.3.3's three rules) — a `disagreed` or `undeclared` seat is a seat whose own
  *      check failed or which said nothing, and neither resolves.
+ *      ⛔ AND WHEN THAT YIELDS TWO SEATS FOR ONE NAME, THE NAME MAPS TO NOTHING. A protocol
+ *      agent name is UNIQUE per install (operator ruling, card#9296; D2 § 8.2.1 and § 8.3.3
+ *      rule 1), so two seats of one install declaring one name is an install MISCONFIGURATION
+ *      and not one agent at two desks. The builder must not assign into the map twice and let
+ *      the last writer win: the seat population has no order, so last-writer-wins IS a pick,
+ *      and a picked desk is exactly what § 5.7 clause 1 forbids — the same refusal as the
+ *      `name === seat_id` fallback above, arrived at by obeying a loop instead of a fallback.
+ *      ⛔ AND IT IS REPORTED, NOT SILENTLY DROPPED. The two unresolved reasons are named and
+ *      distinct — `no_declaring_seat` (nothing declared it) and `duplicate_declaration` (the
+ *      invariant is violated) — and § 5.7 clause 1 renders the second in words beside the
+ *      name, because a misconfiguration rendered as an absent declaration is the opposite
+ *      diagnosis. `resolve()` below cannot tell an excluded name from an undeclared one and
+ *      must not be asked to: the reason travels BESIDE the map, not inside it.
+ *      ⚠ ONLY THIS CLIENT CAN SEE THE VIOLATION. A seat's own check asks whether its declared
+ *      name is in the roster, so both duplicates pass and both emit `checked`; D2 mints no
+ *      state from it. The report is made here or it is not made.
  *
  *   2. NULL AND EMPTY ARE DIFFERENT ANSWERS, on `coord_round.targets` above all: `[]` is "this
  *      post reached nobody", `null` is "the fan-out is not resolvable here". Collapsing them is

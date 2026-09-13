@@ -308,7 +308,14 @@ token-issue time, not a silent merge of two desks.
 derived correctly and reaching no desk. It is **ruled on `card#7957`, option (d)**: the *seat*
 declares its own protocol agent name, because the machine that is seat X is the only party that also
 knows it is agent Y — every other shape asks somebody to hold a mapping for entities it cannot
-observe. This row is that declaration, and one optional row is the whole of the config change.
+observe. ⚠ **That is a claim about the shapes `card#7957` weighed, not a universal one, and one
+join in this repository is the counter-example.** `D2-CITED:` [D2 § 6.4](FLEET-STATE.md#64-ddl)'s
+`seats.board_user_id` is a seat→board-user mapping an **operator** holds, and the operator observes
+both ends. It does not transfer, and the reason is a property of *this* fact rather than of that one:
+which agent a seat is, is **already stated in the seat's own config**, so an operator-held copy would
+be a second home for a fact one party already has — while a board username and a `seat_id` are two
+systems' identifiers and neither system holds the other's. This row is that declaration, and one
+optional row is the whole of the config change.
 
 ⛔ **It declares; it does not identify, and four things turn on that.**
 
@@ -333,13 +340,75 @@ observe. This row is that declaration, and one optional row is the whole of the 
 
 **The CHECK, and the three declaration states it distinguishes.** A declaration nobody checks is a
 comment. Where the coordination roster is on the same box, the reporter validates the declared name
-against it: `~/.config/coord/coordination.config.json` (Linux/macOS) or
-`%APPDATA%\coord\coordination.config.json` (Windows) — a published path, resolved the way this
-section resolves its own config path and **from no environment variable**
-([§ 3.4](#34-why-identity-never-comes-from-the-environment) rule 1). It is read at flusher start and
-on every `selftest` run, never per flush; the outcome rides **every** heartbeat as
-`protocol_agent_name_check` ([§ 6.14](#614-reporterheartbeat)), beside `uptime_s`, so a reader can
-always date it.
+against it. It is read at flusher start and on every `selftest` run, never per flush; the outcome
+rides **every** heartbeat as `protocol_agent_name_check` ([§ 6.14](#614-reporterheartbeat)), beside
+`uptime_s`, so a reader can always date it.
+
+**Where the roster is, in resolution order — `$COORD_CONFIG` FIRST, the home path only as a
+fallback.**
+
+1. **`$COORD_CONFIG`**, whenever it is set in the reporter's environment: the absolute path to the
+   `coordination.config.json` this machine's coordination framework actually uses.
+2. **`~/.config/coord/coordination.config.json`**, when it is not.
+
+⛔ **Reading the home path alone makes `disagreed` unreachable on the install shape this ruling
+exists for, and an earlier draft of this section did exactly that.** The coordination framework
+resolves its own config from `$COORD_CONFIG` and from nothing else — an absent one is a hard exit
+rather than a fallback — and on a **multi-agent** install (a pm seat and several impl seats, which
+is the fleet a roster exists to describe at all) that variable points into the **coordination
+repository's** working tree. `~/.config/coord/` is the **solo** install's shape. So a reporter that
+stats only the home path finds no roster on a pm/impl box, emits `unchecked`, **passes**
+`protocol_agent_name_in_roster`, exits `selftest` zero — and a seat that declared `"magenta"` for
+`"magento"` has its thread line drawn to the wrong desk with the word *unchecked* beside it. **The
+roster was readable on that box and no act failed**, which is `card#7957`'s original finding
+re-minted inside its own fix.
+
+⚠ **[§ 3.4](#34-why-identity-never-comes-from-the-environment) rule 1 does not forbid this, and
+citing it to refuse the variable — which this paragraph used to do — is a misapplication of the
+rule cited.** Rule 1 forbids gating **emission** on an **undocumented harness** marker, and expressly
+permits reading the environment for a label. `$COORD_CONFIG` is neither undocumented nor a harness
+marker: it is a documented framework variable, written per machine by that framework's own installer
+and named in its published orientation templates. And reading it **gates no emission** — the name
+and its check state ride every heartbeat whichever branch is taken, so the variable decides only
+*which of two honest answers* is reported, which is the label case rule 1 allows. What rule 1
+protects is identity, and identity is untouched: `install_id`, `seat_id` and the declared name
+itself still come from this file and from no environment variable at all.
+
+⚠ **No Windows path is published here.** An earlier draft named
+`%APPDATA%\coord\coordination.config.json` as the Windows home path. **Nothing sources it** — the
+string occurs nowhere in the coordination framework — so it is **withdrawn rather than relayed**,
+because an unsourced path published as a contract is a claim the other end would be right to build
+against. ⚠ **`%APPDATA%` on the seat-config row above is a different fact and stays**: that path is
+where *this* reporter keeps *its own* config, which this document decides and the installer creates,
+while where a **coordination** config lives is the framework's decision in another repository — and
+what is unsourced is that framework's Windows behaviour, not the variable. On a platform whose home path this document has not sourced, `$COORD_CONFIG` is the whole of
+the resolution, and its absence is an `unchecked` seat — a supported state.
+
+**This resolution is a CROSS-REPOSITORY guarantee, so it is declared, checked and bounded rather
+than assumed.** The condition — *the roster is at a path this reporter reads* — is one no reviewer
+of this repository can falsify alone: the code deciding where a coordination config lives is the
+framework's, in another repository, and it can move without a single check here going red.
+
+- **DECLARED, to the party who can falsify it.** The contract, stated for whoever provisions a seat
+  and for the coordination framework's own owner: *the reporter reads the roster from
+  `$COORD_CONFIG`, else from `~/.config/coord/coordination.config.json`, and from nowhere else. An
+  install that keeps its coordination config elsewhere, or that does not export `$COORD_CONFIG` into
+  the reporter's process, turns every `checked` on that box into `unchecked` — silently, with no act
+  failing.* ⚠ **Carrying that contract to the framework's owner is an act this repository has not
+  performed**, and it is recorded as owed at
+  [§ 18.13](#1813-what-this-section-does-not-establish) row 6 rather than implied here.
+- **CHECKED, on the half this end owns.** `protocol_agent_name_in_roster`
+  ([§ 6.14](#614-reporterheartbeat)) is the check that owns it, and
+  [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) is where it is
+  made to discriminate rather than merely to pass: **case A** places the roster at the home path
+  with `$COORD_CONFIG` unset, **case E** places it where `$COORD_CONFIG` points with no home file at
+  all, and the ⛔ RED beneath them is a reporter that stats only the home path — which finds
+  nothing on case E, reports `unchecked`, and passes. ⚠ **It is specified and not discharged**: no
+  reporter in this repository reads a roster at all yet, so nothing has been seen to fail.
+- **NAMED where it cannot be established.** That the roster is at a path this design reads is not
+  checkable from this repository in either direction, so it is on
+  [§ 18.13](#1813-what-this-section-does-not-establish) row 6's not-established list **by name**,
+  rather than left to be inferred from a gate that is green because nothing measured it.
 
 | `protocol_agent_name_check` | The state it names | What the reporter emits | Counter |
 |---|---|---|---|
@@ -368,8 +437,16 @@ verification nobody performed.
 
 **What this does NOT establish, so it is not read as more than it is.** It establishes that **this
 seat says it is that agent**, checked against a roster where one is present. It does not establish
-that the roster is right, that an agent runs on exactly one seat, or that two seats declaring one
-name are one agent — two are two desks the name resolves to, which is a set and renders as one.
+that the roster is right, nor that the seat declaring a name is the only seat of its install that
+does. ⭐ **What the operator RULED on `card#9296` is that it must be.** A protocol agent name is
+**unique per install**, so two seats of one install declaring one name is an install
+**misconfiguration** and that name resolves to **nothing** — not to a set of two desks, and not to
+whichever of the two a consumer happened to fold last. ⛔ **No seat can detect that state, and this
+section does not imply one can**: both duplicates find the name in the roster and both emit
+`checked`, so the invariant is declared for the party that sees every seat of an install and
+enforced there.
+`D2-CITED:` [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1 states that rule, and
+the reason it reports for a name it declines to resolve.
 And ⛔ **equality between a declared name and any `seat_id` remains a coincidence**: only a
 declaration joins, here and at every consumer downstream.
 
@@ -2240,9 +2317,10 @@ floor must not.
 anyone holding the event stream confirm a guessed token by comparing hashes. It exists so an operator
 can tell "this seat was reconfigured" from "this seat is a different seat".
 
-**The declared protocol agent name rides THIS event, and the choice is forced rather than
-preferred.** [§ 3.1](#31-the-seat-config-file) owns the field, its four states and its check; what
-this section owes is the wire. Three facts pick the carrier and no fourth is needed. It is a
+**The declared protocol agent name rides THIS event, and what forces the choice is the PAIR rather
+than the name alone.** [§ 3.1](#31-the-seat-config-file) owns the field, its four states and its
+check; what this section owes is the wire. Three facts pick the carrier, and the **three**
+alternatives they foreclose are named below so they are not re-opened. It is a
 **config-derived** fact, and this event is already where config-derived facts ride — `enabled` and
 `config_fingerprint` are both here and on no other kind. It is the **only** event a seat is
 guaranteed to emit: the flusher sends it every 60 s whether or not anything else is queued, so a
@@ -2250,13 +2328,36 @@ seat that is idle, disabled or between sessions still declares, and a coordinati
 quiet agent still reaches a desk. And it **recurs**, so a declaration edited in the config reaches a
 consumer within one interval without an event class of its own.
 
-⛔ **No new kind is minted for it, and the two alternatives are named so they are not re-opened.**
+⛔ **No new kind is minted for it, and the three alternatives are named so they are not re-opened.**
 A dedicated `seat.identity` kind would be a second event whose only content is config a heartbeat
 already carries — [§ 6](#6-event-kinds)'s table would gain a kind that fires once per flusher start,
 which is the one cadence [§ 9.2](#92-why-this-is-the-structural-backstop) says a liveness fact may
 not have. Riding `session.start` was the other candidate and it fails on the second fact above: a
 seat with no session since its last restart would declare nothing, and *idle* is exactly when a
 coordination thread is most likely to name it.
+
+**The third candidate is the strongest and an earlier draft did not name it: the BATCH ENVELOPE.**
+[§ 4.2](#42-batch-envelope-fields) already carries five config- and process-derived per-seat facts
+— `install_id`, `seat_id`, `reporter_version`, `reporter_platform`, `runtime_version` — on **no
+event at all**, and it rides every batch, so *config-derived* and *guaranteed* are both true of it
+and neither of the first two facts above rejects it. It is rejected on the **pair**, and on one
+further ground:
+
+- ⛔ **The envelope has nowhere to put a per-read OUTCOME.** Every member it carries is a static
+  fact of the process or the config file; `protocol_agent_name_check` is the result of a read that
+  can fail, and the state table above exists precisely so the name never travels without it. Putting
+  the name on the envelope and the outcome on the heartbeat splits a pair whose whole point is that
+  neither half is readable alone — a consumer would see a name on the transport record and have to
+  wait for an event to learn whether anybody checked it.
+- ⛔ **It would sit beside the two members [§ 3.3](#33-authentication-and-the-identity-binding-rule)
+  validates against the token binding.** The envelope's `install_id` and `seat_id` are checked for
+  equality with the binding and are the one place on the wire where a claimed identity is adjudicated;
+  a **declaration** laid alongside them is the single most likely place for it to be read as part of
+  that binding, which is exactly what ⛔ point 1 above refuses.
+
+So the paragraph's stated purpose is now met: three carriers were available, all three are named, and
+what picks the heartbeat is that it is the only one of the three that can carry the name **and** the
+outcome of the read, on a cadence a reader can date.
 
 **D2:** store both members against `(install_id, seat_id)` and publish them on the seat object — the
 surface a consumer already reads to learn a desk exists. `protocol_agent_name_check` is what a
@@ -2320,7 +2421,7 @@ written here.
 says what the `selftest` subcommand asserts; this is the wire object it reports through, one member
 per check, and until this table existed a builder had the four names of the example below and no
 statement of whether the names an example happened to carry were the set — and they were not: the
-example below carried four of these six. That is the defect [§ 9.3](#93-degradation-counters) records
+example below carried a strict subset of them. That is the defect [§ 9.3](#93-degradation-counters) records
 against `degraded` — a member set stated nowhere is not implementable — one field over.
 
 | Member | Asserts | Stated at |
@@ -2357,10 +2458,20 @@ enclosing one:** every heartbeat field at its worst at once — `counters` at it
 members, and every integer at **its own** stated bound — 16 digits for the four whose rows state no
 ceiling, and the row's own maximum for the five [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
 rule 5 clamps, which therefore cannot reach 16 digits. Composing as if they could overstates the total
-by 63 B, which is the drift a maintainer re-deriving from a looser sentence would file as a bug. The
-composition serializes to **2,852 B of the 3 KiB `data` cap**
+by 63 B, which is the drift a maintainer re-deriving from a looser sentence would file as a bug. The composition serializes to **2,852 B of the 3 KiB `data` cap**
 ([§ 4.3](#43-common-per-event-fields)), 220 B spare, so the counters rule reducing to 1.5 KiB is what
-keeps the event valid and nothing else has to. Unlike the two worst cases it composes, this total is
+keeps the event valid and nothing else has to. ⚠ **One pair is composed at its REACHABLE joint
+maximum rather than at each member's own, and the 1 B difference is stated because this total is
+delegated to a hand re-derivation.** The field table above says `protocol_agent_name` is `null`
+**exactly when** `protocol_agent_name_check` is `undeclared`, so a 48 B name and the 10-character
+`"undeclared"` **cannot co-occur**: the pair's largest reachable serialization is the 48 B name
+beside the 9-character `"disagreed"`, and taking each member's own maximum independently instead
+yields **2,853 B**. No cap and no threshold moves either way — what moves is whether an editor
+following this section's stated method arrives at the figure written here or "corrects" a correct
+one. ⚠ [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta)'s worked block populates that same
+pair as a 48 B name **with** `"undeclared"` and is right to: that block is an explicitly
+**unreachable** size bound for a delta, where independent maxima are the conservative answer, while
+this total is a bound on an event a seat can actually emit. Unlike the two worst cases it composes, this total is
 **not** re-derived by `tools/design/verify-event-schema.py`: it is hand-verified, so an editor who
 moves a bound in the field table above owes it a re-derivation by hand. The residual is an editor who
 adds a row to [§ 9.4](#94-the-predicate-constant-alarm)'s table or the one
@@ -4820,10 +4931,11 @@ finding was that **no act would fail** if they did. This is that act, and the th
 asserted as three distinct objects on the wire because two of them are one byte apart from being
 indistinguishable.*
 
-- **Build:** four reporters, each with a seat config and a published-path coordination config
-  ([§ 3.1](#31-the-seat-config-file)) arranged per case. Drive `selftest` and one flush on each.
-- **Case A — declared and checked.** The config declares a name; a roster is readable at the
-  published path and contains it. **GREEN:** `selftest` exits 0 with
+- **Build:** five reporters, each with a seat config and a coordination config placed per case at
+  **one of [§ 3.1](#31-the-seat-config-file)'s two resolution sites** — `$COORD_CONFIG`, or the
+  home path with `$COORD_CONFIG` unset. Drive `selftest` and one flush on each.
+- **Case A — declared and checked, at the HOME path.** `$COORD_CONFIG` is unset; the config
+  declares a name and a roster at `~/.config/coord/coordination.config.json` contains it. **GREEN:** `selftest` exits 0 with
   `protocol_agent_name_in_roster: "pass"`; the heartbeat carries the name and
   `protocol_agent_name_check: "checked"`; both [§ 9.3](#93-degradation-counters) counters are 0.
 - **Case B — declared, and NOT checkable.** Same seat config; **no** roster at the published path.
@@ -4837,6 +4949,12 @@ indistinguishable.*
   `protocol_agent_name_check: "disagreed"`, `protocol_agent_name_disagreed` = 1, and the name
   **exactly as declared** — assert the string, because a reporter that blanks it is hiding the
   defect it is reporting.
+- **Case E — declared and checked, where `$COORD_CONFIG` points.** The variable names a roster
+  containing the declared name and **no** file exists at `~/.config/coord/coordination.config.json`.
+  **GREEN: identical to case A on every member** — `checked`, `pass`, both counters 0. ⛔ **This
+  case is not a variant of A, it is the MAJORITY shape**: on a multi-agent install the coordination
+  config lives in the coordination repository and `$COORD_CONFIG` is the only thing that points at
+  it, so a fleet with a pm and three impl seats is four case-E boxes and no case-A box.
 - **Case D — undeclared.** No key in the config. **GREEN:** `protocol_agent_name` is `null`,
   `protocol_agent_name_check` is `undeclared`, `selftest` passes, both counters 0, and the seat is
   **not** degraded: `degraded` is empty and no badge is raised.
@@ -4851,6 +4969,13 @@ indistinguishable.*
 - **⛔ RED — the disagreement that fails nothing.** Make case C's `selftest` pass, or emit
   `checked` → the two identity surfaces disagree and no act fails, which is `card#7957`'s finding
   restored in the implementation that was supposed to close it.
+- **⛔ RED — the same failure arriving through the PATH instead of through the check.** Make case
+  E's reporter stat only `~/.config/coord/coordination.config.json` → it finds no roster, emits
+  `unchecked`, `protocol_agent_name_in_roster` **passes**, `selftest` exits 0 — and the roster that
+  would have caught a typo'd name was readable on that box the whole time. Assert case E's `checked`
+  against a reporter that resolves `$COORD_CONFIG` **first**: without this RED, cases A–D can all be
+  arranged at the home path and a build that never reads the variable passes every one of them,
+  which is the disagreement above wearing a different cause.
 - **RED — the name in the identity.** Add `protocol_agent_name` to `config_fingerprint`'s input, or
   to anything seeding a character → editing a label re-identifies a desk, which
   [§ 3.1](#31-the-seat-config-file) forbids in as many words.
@@ -4899,7 +5024,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.predicates` cap | 512 B; worst case **396 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 5×(21 + 32) + 125 + 4`, both branch counts at the 16-digit JS-safe-integer ceiling. 116 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.selftest` cap | 256 B; worst case **210 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 7×9 + 139 + 6`. 46 B spare, same exemption, re-derived by the same tool | [§ 6.14](#614-reporterheartbeat) |
-| Worst-case heartbeat `data` | 2,852 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 220 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
+| Worst-case heartbeat `data` | 2,852 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound and the declared-name pair at its **reachable joint** maximum; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 220 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
 | Wire enum fields, and how many are classified | **23**, all of them | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session. Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
 | Compaction close timeout | 10 min | Derived — ~10× a typical one-minute compaction | [§ 6.10](#610-compactionend) |
@@ -6424,7 +6549,7 @@ read it is a row somebody can close.
 | **What GitHub does with a 4xx or a 5xx from this endpoint** — UNVERIFIED, and it is why [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) mints no rate limit **on the deliveries that pass step 3**. It says nothing about the step-3 refusal path, whose caller is by construction not GitHub — which is the scope the round that added that limit had to correct, and this cell carried the unqualified claim across it | if refusals are never redelivered, every refused delivery is permanent loss of a fact with no other source | read GitHub's documented redelivery behaviour, then decide whether a limit is affordable; until then the design assumes the worst and refuses almost nothing |
 | **GitHub's maximum delivery size** — still UNVERIFIED, and **half of the closing act is now done**: the largest bodies a live coordination repository actually produces are **21,963 B** for a comment and **31,087 B** for an issue, measured over its whole population 2026-08-28, so the 1 MiB cap has ~30× headroom against real traffic even before the rest of the payload is counted. What stays open is the **sender's** documented maximum, which is a vendor fact no read on this box reaches ⚠ a figure for it was offered in review and is deliberately **not** recorded here, because relaying an unsourced number is the defect this table exists to prevent | a real delivery over the cap takes a `413` and is lost — now bounded by the measurement, not eliminated by it | read GitHub's own published maximum and cite it, or capture a delivery and measure the envelope overhead the body figures above exclude |
 | **Whether a `[CLOSE]` token is added to a body this producer will not see** — a post edited to add it fires `issue_comment.edited`, which [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 does not derive from | a close act declared by an edit is missed, and its thread draws `lifecycle: closed` with no spark and no closer — the same render an undeclared close produces, so the two are indistinguishable. **The deferral IS backfillable, and that is a consequence of two things [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) now states rather than a hope**: the hook subscribes the whole `issue_comment` event, so those deliveries **were** sent and are in GitHub's delivery list; and step 8 commits **no digest** for a delivery it ignored, so a Redeliver after step 8 widens is derived rather than absorbed as a duplicate. ⚠ **What bounds the backfill is not this design**: GitHub's retention of redeliverable deliveries is a vendor fact no read on this box reaches, and anything older than it — or older than the hook registration itself — stays missed | add `issue_comment.edited` to step 8's derive set. That is **one action in the derive set and no re-registration**, which is what the subscription above was written wide to buy; the earlier draft of this row priced it as a subscription change and then, in the same cell, as a step-8 edit — the two were incompatible and the subscription set is what had gone unstated |
-| **That a protocol agent name identifies the same thing a `seat_id` does** — **ESTABLISHED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat.** The artifact that owns the mapping now exists and it is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, emitted on [§ 6.14](#614-reporterheartbeat)'s heartbeat with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; and, on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran. ⚠ Unchanged: the two **still** cannot be compared on the seat this was written on — **no reporter config exists there, so no live `seat_id` does either, and `"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value** | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)* is now BUILT on `card#9296`:** the config row, the two heartbeat members, the `protocol_agent_name_in_roster` self-test that **fails the act** on a disagreement, and the consumer-side rule that only a declaration joins ([§ 3.1](#31-the-seat-config-file)). What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — and a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
+| **That a protocol agent name identifies the same thing a `seat_id` does** — **ESTABLISHED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat.** The artifact that owns the mapping now exists and it is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, emitted on [§ 6.14](#614-reporterheartbeat)'s heartbeat with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. ⚠ Unchanged: the two **still** cannot be compared on the seat this was written on — **no reporter config exists there, so no live `seat_id` does either, and `"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value** | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)* is now BUILT on `card#9296`:** the config row, the two heartbeat members, the `protocol_agent_name_in_roster` self-test that **fails the act** on a disagreement, and the consumer-side rule that only a declaration joins ([§ 3.1](#31-the-seat-config-file)). What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives — so that the two ends read one published statement instead of each holding its own. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
 | **That a thread CONVERGED, as the protocol defines convergence** — the protocol's convergence is a **quorum**: *"An issue closes when every required participant has posted `zero open questions`. Required participants are those on `to:` labels who are not observer-CC'd"*. Neither object carries an observer-CC flag, a required-participant set, or a per-participant ACK ledger, and `participants` includes observers with nothing to exclude them by. **The quorum is not computable from anything emitted here** | a consumer that reads `lifecycle: closed` or `declares_close: true` as *"the thread converged"* is making a claim the wire does not carry — and it would be right about many threads and wrong about every stale-close, with no way to tell which. What this design offers instead is two weaker facts that are true: the thread ended, and somebody declared the close act | the protocol names required participants **on the wire** — an observer-CC marker in the body or a distinct label — at which point the quorum is a count. Until then this row is the answer, and [§ 18.5](#185-the-three-findings-the-audit-turns-on) states in terms that `declares_close` is not it |
 | **That the coordination route's counters have anywhere to live** — [§ 18.8.1](#1881-the-counters-this-route-mints) declares eleven, and [§ 12.7](#127-server-side-counters)'s table is the surface that would give them storage and a badge. Membership there is an **obligation on the store's counter plane**, so this section declares the counters and does not enrol them | an implementer builds the receipt path, increments ten counters, and no operator can read any of them — the alarms `coord_targets_unresolved` and `coord_roster_unknown_name` exist for are the two that matter most, and both would be write-only | the slice that designs the coordination store adopts the ten into [§ 12.7](#127-server-side-counters) and gives each a row on the counter plane, in one change with the plane's own document. **The evidence that this is a real obligation and not bookkeeping is mechanical**: enrolling them early makes `tools/design/verify-fleet-state.py` red with one failure per counter, which is how this row was found |
 | **That the idempotency key cannot expire into a double-derivation** — a uniqueness constraint has no window, but the store that holds it has a retention, and **nothing bounds how old a redelivered coordination delivery can be**. The reporter's equivalent is bounded by [§ 11.3](#113-rotation-and-the-overflow-policy)'s 8-day spool residency; GitHub's Redeliver button has no such floor | an operator redelivering a delivery older than the store's retention re-derives it: one thread line or round bead drawn twice, from one real post. Bounded and recoverable, and invisible while it happens | either state the digest store's retention as unbounded and price it — the key is 64 B and this repository's whole history is under 12,000 deliveries — or bound the redelivery age at receipt by refusing a payload timestamp older than the retention. Both are decisions for the slice that builds the store, and each is cheap; what is not affordable is the sentence an earlier draft carried, which asserted the problem away |
