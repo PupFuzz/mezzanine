@@ -75,7 +75,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   *(2)* ⭐ **OPERATOR RULING: a protocol agent name is UNIQUE per install.** Surfaces that legalised a
   set-valued resolution while A18 and `resolve()` are singular made the map a builder was told to
   build last-writer-wins over an unordered seat population. A duplicate is now a misconfiguration:
-  resolution is 0 or 1 desks, a name more than one resolving seat carries resolves to nothing, the
+  resolution is 0 or 1 desks, a name more than one resolving seat carries resolves to nothing *(that
+  scope is superseded in round 3 (3): every DECLARING seat counts, `disagreed` included)*, the
   consumer never picks, and the name is reported with its own reason (`duplicate_declaration`, beside
   `no_declaring_seat`). No seat can detect it — both duplicates pass their own check — so D2 declares
   the invariant, says why no `UNIQUE KEY` enforces it, and the consumer enforces it; AT-D2-24 gains
@@ -119,7 +120,16 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   publishes both. Both are VERSION-BEARING (§ 6.5's heartbeat-exceptions table), so
   `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` take them together, and
   `mezzanine:rebuild` resets them with the rest of the heartbeat group. The consumer join is still
-  not built.
+  not built. **Also, from round 3's independent review:** the protocol agent name's byte bound is
+  one guarded population — `verify-event-schema.py` check 12 holds D2 § 6.4's column, D2 § 8.2.1's
+  row and the store migration to § 18.6's figure beside § 6.14's, with a plant per new home, and the
+  fold reads the bound from `KindRegistry` instead of restating it; D1 § 3.1's contract sentence and
+  § 18.13 row 6 scope the home path to Linux; the supervised start's contract says its LAUNCH
+  delivers the value, with the route left to `card#7336`, rather than promising a per-start
+  environment, and it names the staleness when the coordination config moves (rewrite-on-change in
+  the contract, the residual on row 6, a moved variant of AT-27 case F); and D2 § 8.3.3's empty arm
+  is renamed *no seat may resolve it*, because a lone `disagreed` seat does declare the name — the
+  `no_declaring_seat` token is unchanged, and D3 § 5.7 and `coord-model.js` follow.
 
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
   development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded

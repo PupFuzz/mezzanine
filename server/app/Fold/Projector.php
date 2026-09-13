@@ -919,9 +919,12 @@ class Projector
             //
             // Through `str()` / `enum()` rather than raw: the ingest bounds the name and refuses an
             // out-of-set check, but type-checks neither, so a non-string reaches the column as
-            // `null`. The check's member set is READ from the ingest's registry, not restated here —
-            // it is the one set the ingest already refused everything else against.
-            'protocol_agent_name' => $e->str('protocol_agent_name', 48),
+            // `null`. The name's bound and the check's member set are READ from the ingest's
+            // registry, not restated here — `EventSchemaDriftTest` holds that registry to D1 § 6.14.
+            'protocol_agent_name' => $e->str(
+                'protocol_agent_name',
+                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_name'],
+            ),
             'protocol_agent_name_check' => $e->enum(
                 'protocol_agent_name_check',
                 KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],

@@ -2667,7 +2667,7 @@ snapshot repeats per seat and the delta patches.
 | `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
-| `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat **and** on a seat that declares none — `protocol_agent_name_check` is what tells those two apart | `"pm"` |
+| `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds and held to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat **and** on a seat that declares none — `protocol_agent_name_check` is what tells those two apart | `"pm"` |
 | `protocol_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` before the first heartbeat, exactly as `enabled` | `"checked"` |
 | `reporter` | object | no | **never null**, as `activity` above; `uptime_s` and `selftest_failed` are null before the first heartbeat, `version` and `platform` before the seat's first **batch** — they ride the batch envelope, not any event ([§ 6.5](#65-the-fold)) | see below |
 | `reporter.version` | semver | **yes** | ≤ 24 B | `"0.1.0"` |
@@ -3684,16 +3684,18 @@ gets wrong:
      seats that both claim it, however much likelier the checked one looks. A consumer that applies
      rule 2's filter **before** counting sees one resolving seat and draws to it — the pick arriving
      through the order of two correct rules — and the order above is what forbids it.
-   - **Nothing declared it** — no seat of this install carries the name with a check state that
-     rule 2 lets resolve: none declares it, or the one seat that does is `disagreed`. That is the
+   - **No seat may resolve it** — no seat of this install carries the name with a check state that
+     rule 2 lets resolve: none declares it, or the one seat that does is `disagreed` — which DOES
+     declare it, so the arm is named for its outcome rather than for a declaration. That is the
      empty case, it is `card#7957` ruling *(2)*'s permanent first-class render, and it is what a
      fleet whose seats declare nothing produces everywhere.
 
    ⛔ **The violation is REPORTED, not silently folded into the empty case.** A duplicated name that
    rendered as an ordinary unresolved name would be invisible — an install misconfiguration
-   presenting as *nobody declared it*, which is the opposite diagnosis. The two arms therefore carry
+   presenting as *no seat may resolve it*, which is the opposite diagnosis. The two arms therefore carry
    **distinguishable reasons**, named here so every consumer uses the same two:
-   `no_declaring_seat` and `duplicate_declaration`. That is a **consumer-side** observable, in the
+   `no_declaring_seat` (the *no seat may resolve it* arm, a lone `disagreed` declarer included — the
+   token keeps its name) and `duplicate_declaration`. That is a **consumer-side** observable, in the
    same spirit as D1's `protocol_agent_name_unchecked` / `_disagreed` counters and on the only
    surface that can see it; this plane mints no counter and no state for it, which
    [§ 8.2.1](#821-the-seat-state-object)'s *"this plane performs no check of its own"* is unchanged

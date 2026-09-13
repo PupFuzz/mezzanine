@@ -125,6 +125,37 @@ PLANTS = [
         "bounds a protocol agent name at",
     ),
     (
+        # card#9296 round 4.  Check 12's population grew to every home of that bound.  D2's column is
+        # the review's own mutant: narrowed, every gate stayed green while the ingest went on
+        # accepting names the store could not hold.  One plant per new home, because each home is
+        # read by its own parser and one plant proves one parser.
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\n  protocol_agent_name +VARCHAR\()(\d+)(\))",
+        "bump",
+        "D2 § 6.4's `protocol_agent_name` column width, which check 12 holds equal to § 18.6's bound "
+        "(card#9296 round 4)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `protocol_agent_name` \| slug \| \*\*yes\*\* \| ≤ )(\d+)( B)",
+        "bump",
+        "D2 § 8.2.1's `protocol_agent_name` byte bound, the same check-12 equality on the read surface "
+        "(card#9296 round 4)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/database/migrations/2026_09_13_000000_add_protocol_agent_name_columns_to_seat_state.php",
+        r"(string\('protocol_agent_name', )(\d+)(\))",
+        "bump",
+        "the store migration's `protocol_agent_name` width, the check-12 equality's code home "
+        "(card#9296 round 4)",
+        "bounds a protocol agent name at",
+    ),
+    (
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(State-changing events per seat-day at the ceiling:.*?= \*\*)([\d,]+)(\*\*)",

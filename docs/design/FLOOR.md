@@ -1866,7 +1866,7 @@ declares nothing draws nothing different at its own desk and still takes no part
    names the two unresolved reasons `no_declaring_seat` and `duplicate_declaration`, and this
    surface renders the second in words beside the name — *declared by more than one seat* — for the
    same reason an `unchecked` endpoint carries a word rather than a second line treatment. Rendering
-   it as a plain *unresolved* would show a misconfiguration as *nobody declared it*, which is the
+   it as a plain *unresolved* would show a misconfiguration as *no seat may resolve it*, which is the
    opposite diagnosis and the one an operator would act on wrongly. ⛔ **This client is the only
    party that can report it**: a seat's own check asks whether its name is in the roster and two
    seats declaring one name both pass ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), and

@@ -41,9 +41,10 @@
  *      and a picked desk is exactly what § 5.7 clause 1 forbids — the same refusal as the
  *      `name === seat_id` fallback above, arrived at by obeying a loop instead of a fallback.
  *      ⛔ AND IT IS REPORTED, NOT SILENTLY DROPPED. The two unresolved reasons are named and
- *      distinct — `no_declaring_seat` (nothing declared it) and `duplicate_declaration` (the
+ *      distinct — `no_declaring_seat` (no seat may resolve it, a lone `disagreed` declarer
+ *      included) and `duplicate_declaration` (the
  *      invariant is violated) — and § 5.7 clause 1 renders the second in words beside the
- *      name, because a misconfiguration rendered as an absent declaration is the opposite
+ *      name, because a misconfiguration rendered as a name no seat may resolve is the opposite
  *      diagnosis. `resolve()` below cannot tell an excluded name from an undeclared one and
  *      must not be asked to: the builder hands the render the duplicated names BESIDE the map,
  *      and `resolve()` stays one name to one `seat_id` or to none.
