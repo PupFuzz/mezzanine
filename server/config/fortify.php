@@ -64,6 +64,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Two-Factor Issuer
+    |--------------------------------------------------------------------------
+    |
+    | The name an authenticator app files this site's entry under. Leave it
+    | unset and the issuer is the first label of APP_URL's host (for example
+    | https://sandboxmezzanine.neeba.com gives "sandboxmezzanine").
+    | App\Auth\TwoFactorIssuer owns that derivation and its fallbacks.
+    |
+    */
+
+    'two_factor_issuer' => env('TWO_FACTOR_ISSUER'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Home Path
     |--------------------------------------------------------------------------
     |

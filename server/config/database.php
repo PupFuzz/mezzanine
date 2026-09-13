@@ -17,7 +17,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'mysql'),
 
     /*
     |--------------------------------------------------------------------------
@@ -32,25 +32,14 @@ return [
 
     'connections' => [
 
-        'sqlite' => [
-            'driver' => 'sqlite',
-            'url' => env('DB_URL'),
-            // Reads DB_SQLITE_DATABASE, not DB_DATABASE, and that is load-bearing rather
-            // than a preference. docs/design/FLEET-STATE.md § 6.2 pins DB_DATABASE to a
-            // MySQL schema name for the test run; stock Laravel hands that same variable to
-            // this connection as a FILE PATH, so honouring the pin would make SQLite try to
-            // open a file named after a MySQL database and take the suite down. One
-            // variable was serving two connections whose value spaces do not overlap.
-            // Default is unchanged from stock, so a checkout that sets neither behaves the
-            // same as stock Laravel.
-            'database' => env('DB_SQLITE_DATABASE', database_path('database.sqlite')),
-            'prefix' => '',
-            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
-        ],
+        // ⛔ NO `sqlite` CONNECTION IS DECLARED HERE — AND THAT DOES NOT MEAN NONE RESOLVES.
+        // MariaDB, through `mysql` below, is the only supported engine (docs/PLAN.md D-15; SQLite
+        // is not a supported configuration, card#9328). Laravel MERGES this array over the
+        // framework's own config/database.php (`LoadConfiguration::mergeableOptions()` lists
+        // `database.connections`), so the framework's stock `sqlite` block is still resolvable
+        // at runtime. Nothing here relies on its absence: bin/deploy.sh refuses any
+        // DB_CONNECTION but `mysql`, and Tests\TestCase aborts a suite whose `database.default`
+        // resolves to anything else.
 
         'mysql' => [
             'driver' => 'mysql',

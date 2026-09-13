@@ -35,9 +35,9 @@ use Tests\TestCase;
  * the schema back down, puts the *before* state in place, and brings it up again.
  *
  * ⚠ AND WHY IT CLEANS UP EXPLICITLY. DDL implicitly commits on MySQL/MariaDB, so the transaction
- * `RefreshDatabase` wraps a test in cannot roll these arms back on the store production runs (the
- * `php-tests-mariadb` lane). The rows are therefore removed here rather than left to a rollback
- * that only happens on SQLite.
+ * `RefreshDatabase` wraps a test in cannot roll these arms back — and MariaDB, the store production
+ * runs, is the only store this suite runs on (card#9328). The rows are therefore removed here
+ * rather than left to a rollback that does not happen.
  */
 class TheMigrationKeepsWhatWasAlreadyAuthoredTest extends TestCase
 {

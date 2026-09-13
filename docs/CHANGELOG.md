@@ -112,6 +112,62 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   in the reporter's self-test, comments and README and in the plant harness are removed, the
   remaining members recorded on `card#9326`; and D1 § 3.1's home-path site is scoped to Linux.
 
+- **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
+  development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded
+  as `docs/PLAN.md` D-15's new amendment, and it **reverses card#9250's** "an additional lane, not a
+  changed one". `server/phpunit.xml` now declares `DB_CONNECTION=mysql` — still unforced, and its
+  comment re-argues why for one engine — and drops `DB_SQLITE_DATABASE`; `config/database.php` and
+  `config/queue.php` default to `mysql`, and the app's customised `sqlite` connection block is gone.
+  ⚠ **Laravel still merges the framework's stock `sqlite` connection back in** (measured on this
+  tree), so nothing relies on its absence and the comment left in its place says so.
+  `server/.env.example` selects `mysql` with placeholder `DB_HOST`/`DB_PORT`/`DB_DATABASE`/
+  `DB_USERNAME` values and an empty `DB_PASSWORD`; `README.md` § Running the server locally now
+  creates the MariaDB databases and account and says outright that SQLite is unsupported.
+  `server/tests/roundtrip/ingest-roundtrip.py` runs on `mezzanine_test` and refuses to rebuild it
+  unless the RESOLVED connection is `mysql` → `mezzanine_test` on a server naming MariaDB, and
+  `server/composer.json`'s create-project hook no longer creates a `database.sqlite`.
+  ⭐ **`php-tests` IS NOW THE MARIADB LANE** — the same pinned service container, exports,
+  store-probe control pairs and `pdo_mysql`-only PHP that `php-tests-mariadb` runs. The step that
+  asserted `.env.example` sets `DB_CONNECTION=sqlite` is **moved, not deleted**: it now asserts
+  `mysql`, because the lane's own export hides a template flip from everything the lane runs.
+  ⚠ **`php-tests-mariadb` stays for now, as a temporary duplicate.** Its context is required, and
+  removing the job before the ruleset stops requiring it would block every PR on a check that never
+  reports; the job and that requirement go together in this card's next step. Its body is
+  untouched, and a header above it marks its inline two-engine comments as superseded.
+  ⭐ **The store guard got stronger, not weaker.** `Tests\TestCase` now also pins
+  `database.default` to `mysql`: the database pin alone proved only that the `mysql` connection
+  pointed at `mezzanine_test`, while the suite writes through the DEFAULT connection — which could
+  not be pinned while that was SQLite. ⛔ **Re-deriving the guard also found its resolved-value
+  premise false for `DB_URL`:** `config()` keeps reporting the pinned database because Laravel
+  applies a URL's path only when it builds the connection, so with both `DB_URL` pin entries removed
+  and a `DB_URL` exported the guard stayed GREEN while the connection pointed at another database —
+  the pin was the only thing standing there. The guard now also asks the connection itself which
+  database it resolves to (lazily, opening nothing). `Tests\Feature\DatabasePinTest` asserts the DECLARED value
+  as well, because CI's export would hide a flip of it from the resolved guard, and its SQLite-only
+  test goes with the connection it guarded. Each changed guard was seen red under the defect it
+  exists to catch before being trusted green.
+  Present-tense claims that the suite runs on SQLite are corrected in comments under `server/app`,
+  `server/tests`, `server/database/migrations` and in `tools/ci-store-probe.php`; statements that are
+  history — what card#9250's first MariaDB run measured — stay as history.
+  ⚠ **Not done here, by name:** application code still branches for stores other than
+  MySQL/MariaDB — `App\Support\Ddl::ascii()` and `::index()`, `App\Fold\Fold::claim()`,
+  `App\Ingest\Counters::upsert()` and the building-store migration's CHECK constraint. Those arms
+  are unreachable in any supported configuration and are left in place.
+
+- **2FA issuer (no card)** — **an authenticator app now names this site's entry after the
+  site's own hostname instead of `Mezzanine` on every host.** The operator asked for the sandbox's
+  entry to read `sandboxmezzanine` rather than the hardcoded name. Fortify's stock
+  `twoFactorQrCodeUrl()` passes `config('app.name')` as the otpauth issuer.
+  `App\Models\User` now overrides it to call `App\Auth\TwoFactorIssuer::resolve()`, the one
+  derivation. It returns `TWO_FACTOR_ISSUER` (new, optional, `config/fortify.php`) if set;
+  otherwise the first DNS label of `APP_URL`'s host, lowercased, with an IPv4 address kept whole;
+  otherwise `APP_NAME`. `:` is removed from the free-form values, because it is the otpauth label
+  separator. ⛔ `APP_NAME` itself was left alone: it derives the session cookie name and the cache
+  prefix, so renaming it per host would sign everybody out. ⚠ Existing enrolments keep their old
+  label (the secret is unchanged, so codes still work). README § The authenticator entry's name
+  says how to relabel. Tests: `tests/Feature/TwoFactorIssuerTest.php`.
+
+
 - **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
   are asked two different questions, and the comments that promised to fold them into one are
   removed.** The card proposed hoisting a shared predicate out of `App\Ingest\Wire` so `App\Floor`

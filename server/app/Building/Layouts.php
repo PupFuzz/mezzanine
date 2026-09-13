@@ -32,10 +32,9 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠ WHAT THE LOCK DOES WHEN THERE IS NO ROW, since that is the state this deployment starts in:
  * on InnoDB, `SELECT … WHERE id = 1 FOR UPDATE` over a missing primary-key row takes a gap lock,
- * so a concurrent INSERT of that row blocks — the two writers still serialise. On SQLite (the
- * suite's default store) a write transaction is exclusive for the whole database, so the question
- * does not arise. Neither is a claim this suite proves: § 6.1's concurrency cases need two
- * connections at once and are card#7523's, which `php-tests.yml` states in its own header.
+ * so a concurrent INSERT of that row blocks — the two writers still serialise. That is not a claim
+ * this suite proves: § 6.1's concurrency cases need two connections at once and are card#7523's,
+ * which `php-tests.yml` states in its own header.
  */
 final class Layouts
 {

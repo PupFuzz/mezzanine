@@ -7,10 +7,10 @@
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHY IT EXISTS. Until card#9250 no migration in this repository had ever been executed against
- * MariaDB: the suite and `php-tests` are SQLite, production is MariaDB (`docs/PLAN.md` D-15 as
- * amended 2026-09-09), and Laravel compiles the two through DIFFERENT schema grammars. The
- * `php-tests-mariadb` lane closes that. But a lane that *says* MariaDB and silently runs on
- * something else is worse than no lane at all — it is the exact shape
+ * MariaDB: the suite and `php-tests` ran on SQLite, production is MariaDB (`docs/PLAN.md` D-15 as
+ * amended 2026-09-09), and Laravel compiles the two through DIFFERENT schema grammars. card#9250
+ * added a MariaDB lane, and since card#9328 MariaDB is the only engine `php-tests` runs. But a lane
+ * that *says* MariaDB and silently runs on something else is worse than no lane at all — it is the exact shape
  * `docs/design/FLEET-STATE.md § 6.2` finding 4 records: a bridge repo's MariaDB matrix that
  * re-ran both legs on SQLite, green, testing nothing. So the lane does not assert its backend
  * from a declaration. It asks the server.
@@ -32,7 +32,7 @@
  *      Run in that order they prove the migration reached THIS database on THIS server. The lane
  *      uses the same pair a second time around `composer test`, which is the only way to show the
  *      SUITE — which selects its backend through `phpunit.xml` plus an exported variable, not
- *      through anything this script can see — ran on MariaDB rather than on SQLite.
+ *      through anything this script can see — ran on MariaDB rather than on some other backend.
  *
  * ⛔ WHAT IT IS NOT. It is not a schema check: it counts tables, it does not compare them to
  * `§ 6.4`. `Tests\Feature\MySqlColumnTypeTest` owns the emitted DDL, and the migrations

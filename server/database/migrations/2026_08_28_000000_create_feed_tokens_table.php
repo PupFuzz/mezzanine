@@ -61,7 +61,8 @@ return new class extends Migration
             // `VARBINARY(16)`, on both engines, with nothing failing. 16 is `inet_pton()`'s
             // widest output (an IPv6 address; IPv4 is 4), which is what `ReadTokens` writes here.
             // `Tests\Feature\MySqlColumnTypeTest` is the guard, and it compiles the real MySQL
-            // grammar because the suite's own store (SQLite, § 6.2) cannot tell the two apart.
+            // grammar — written while the suite's store was SQLite, which could not tell the two
+            // apart.
             $table->binary('last_used_ip', 16)->nullable();
 
             $table->unique('token_hash', Ddl::index('feed_tokens', 'uq_hash'));

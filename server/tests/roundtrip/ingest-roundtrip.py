@@ -25,17 +25,23 @@ RUNNING IT
 ──────────
     python3 server/tests/roundtrip/ingest-roundtrip.py [--keep]
 
-Needs `php`, `node` and `openssl` on PATH, and three free localhost ports. It is deliberately NOT
+Needs `php`, `node` and `openssl` on PATH, a reachable MariaDB server (below), and three free
+localhost ports. It is deliberately NOT
 part of `composer test`: it binds sockets, spawns processes and mints a throwaway CA, none of which
 belongs in a unit-test lane. It is a gate to run before trusting the endpoint against a real seat.
 
-THE DATABASE IS SQLITE, AND THAT IS STATED RATHER THAN HIDDEN. `docs/design/FLEET-STATE.md § 6.1`
-pins production to MySQL ≥ 8.0.12 on a dedicated host; that host does not exist yet (card #7523)
-and this seat holds no MySQL credential. So this harness runs on a temporary SQLite file, exactly
-as `phpunit.xml` does, and the two things that buys are stated plainly at the end of the run: the
-wire contract and the ingest's logic are exercised for real, and the MySQL-specific parts of the
-DDL — `ascii_bin` collation behaviour, `ON DUPLICATE KEY`, the `ENUM` columns' storage-layer
-refusal — are NOT.
+THE DATABASE IS MARIADB — § 6.2'S TEST DATABASE, REBUILT ON EVERY RUN. SQLite is not a supported
+configuration (`docs/PLAN.md` D-15; card#9328), so this harness runs on the store the PHPUnit suite
+runs on: Laravel's `mysql` connection, pointed at `mezzanine_test` (`docs/design/FLEET-STATE.md
+§ 6.2`). Host, port, user and password are NOT chosen here — they come from the caller's
+environment or from `server/.env`, exactly as they do for `php artisan test`, so the account needs
+the rights on `mezzanine_test` the suite already needs.
+⛔ `migrate:fresh` DROPS EVERY TABLE in that database at the start of each run, so never run this
+while `composer test` is running against the same server. Before that step the harness reads the
+RESOLVED connection back and refuses unless it is `mysql` → `mezzanine_test` on a server whose
+`VERSION()` names MariaDB — the resolved-value rule `Tests\\TestCase` enforces for the suite, for
+the same reason: an exported `DB_DATABASE` can still lose to a `DB_URL` whose path names another
+database (§ 6.2 finding 3), and a declaration that looks right proves nothing.
 """
 
 import argparse
@@ -61,6 +67,10 @@ FIXTURES = ROOT / "fleet-reporter" / "fixtures" / "hooks"
 
 INSTALL_ID = "aimla"
 SEAT_ID = "aimla-pm"
+
+# § 6.2's test database — the same pin `server/phpunit.xml` carries. Never a database that holds
+# anything: the harness rebuilds it.
+TEST_DATABASE = "mezzanine_test"
 
 GREEN, RED, DIM, BOLD, OFF = "\033[32m", "\033[31m", "\033[2m", "\033[1m", "\033[0m"
 
@@ -98,7 +108,7 @@ class Harness:
         self.work = workdir
         self.spool = workdir / "spool"
         self.config_path = workdir / "config.json"
-        self.db = workdir / "mezzanine.sqlite"
+        self.store_version = None
         self.procs = []
         self.token = None
         self.tls_port = None
@@ -145,9 +155,10 @@ class Harness:
         e = dict(os.environ)
         e.update({
             "APP_ENV": "local",
-            "DB_CONNECTION": "sqlite",
-            "DB_SQLITE_DATABASE": str(self.db),
-            "DB_DATABASE": str(self.db),
+            "DB_CONNECTION": "mysql",
+            "DB_DATABASE": TEST_DATABASE,
+            # Empty, never inherited: a URL's path REPLACES DB_DATABASE (§ 6.2 finding 3).
+            "DB_URL": "",
             "CACHE_STORE": "file",
             "SESSION_DRIVER": "file",
             "QUEUE_CONNECTION": "sync",
@@ -161,10 +172,46 @@ class Harness:
             cwd=SERVER, env=self.env(), check=check, capture_output=True, text=True,
         )
 
+    def _tinker_line(self, php):
+        """The last line `php artisan tinker` printed. Its output is NOT echoed on failure — a
+        connection error names the account — so a failure is reported by exit status alone."""
+        out = self.artisan("tinker", "--execute", php, check=False)
+        lines = out.stdout.strip().splitlines()
+        return lines[-1] if out.returncode == 0 and lines else f"<artisan tinker exited {out.returncode}>"
+
+    def assert_store(self):
+        """Refuse unless the store the CONNECTION uses is `mysql` → TEST_DATABASE on MariaDB.
+
+        ⛔ NOT `config('database.connections.mysql.database')`. That reports the declared name even
+        when a `DB_URL` names another database, because Laravel parses the URL only when it BUILDS
+        the connection (§ 6.2 finding 3) — measured: under an exported `DB_URL` the config value
+        stayed `mezzanine_test` while the connection went elsewhere. So both reads below are of what
+        the connection resolved. (1) Without connecting — Laravel's PDO is lazy — the connection's
+        own name and database, so a wrong database is refused before anything touches it. (2)
+        Connected, the SERVER's `DATABASE()` and `VERSION()`. Both run before anything destructive,
+        and nothing read back is a credential.
+        """
+        want = f"mysql|{TEST_DATABASE}"
+        resolved = self._tinker_line(
+            "$c = \\DB::connection(); echo $c->getName(), '|', $c->getDatabaseName();")
+        if resolved != want:
+            raise RuntimeError(
+                f"refusing to rebuild the schema: the connection resolved to {resolved!r}, not "
+                f"{want!r} (docs/design/FLEET-STATE.md § 6.2)")
+
+        server = self._tinker_line(
+            "echo \\DB::scalar('select database()'), '|', \\DB::scalar('select version()');")
+        database, _, self.store_version = server.partition("|")
+        if database != TEST_DATABASE or "mariadb" not in self.store_version.lower():
+            raise RuntimeError(
+                f"refusing to rebuild the schema: the server reports {server!r} — it must be "
+                f"{TEST_DATABASE} on a VERSION() naming MariaDB, the only supported engine "
+                "(docs/PLAN.md D-15)")
+
     def start(self):
-        self.db.touch()
         self.artisan("config:clear")
-        self.artisan("migrate", "--force")
+        self.assert_store()
+        self.artisan("migrate:fresh", "--force")
 
         # The token, from the real command. Its plaintext is printed once and stored nowhere, so
         # this is the only place it can be read — which is the property D1 § 3.3 asks for.
@@ -619,8 +666,7 @@ def main():
     failed = [n for n, ok, _ in results if not ok]
 
     print(f"\n{BOLD}{len(results) - len(failed)}/{len(results)} checks passed{OFF}")
-    print(f"{DIM}Store: SQLite. NOT exercised: MySQL's ascii_bin collation, ON DUPLICATE KEY, and{OFF}")
-    print(f"{DIM}the ENUM columns' storage-layer refusal — the MySQL host does not exist yet (#7523).{OFF}")
+    print(f"{DIM}Store: {h.store_version}, database {TEST_DATABASE}, through Laravel's mysql connection.{OFF}")
 
     if failed:
         print(f"\n{RED}failed:{OFF}")

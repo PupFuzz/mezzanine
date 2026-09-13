@@ -115,31 +115,14 @@ cut, loudly, with a `sed` range that recovers the rest. An index that points at 
 this doc costs a session almost nothing; the section itself, in here, costs it every turn.
 
 <!-- BEGIN coord:install-rules -->
-**Merge authority (operator, 2026-09-09).** All work targets `dev`. Three rungs, tightest first:
-- **Merging to `main` — OPERATOR ONLY.** Never this seat, whatever `permissions.admin` the shared
-  `PupFuzz` identity reports.
-- **CREATING a PR to `main` — ASK FIRST.** The gate is on opening it, not only on merging it.
-- **Merge to `dev` — this seat's own call, NO ask**, once the PR passes quality check
-  (`solo-self-merge <N>`). Stalling on a green, reviewed, integration-targeted PR is the defect.
+Operator 2026-09-09. Roles + burn-down: § Read at session start.
 
-**Work autonomously (operator, 2026-09-09).** Do NOT ask permission to start the next queued item,
-and do NOT announce a next action instead of doing it — both are idling. Finish, report, continue in
-the same turn. Ask ONLY what needs an operator decision (a product/priority call, an authority
-boundary, an irreversible or outward-facing act). Anything readable from code, docs, the board or a
-thread is not a question.
+**Autonomy.** Never ask permission to start the next queued item; never announce one instead of
+doing it. Finish, report, continue in one turn. Ask ONLY operator decisions (product/priority,
+authority, irreversible or outward-facing acts).
 
-**Roles (operator, 2026-09-09).** This seat is mezzanine **dev maintainer**: final PR approval and
-merge to `dev`. `aimla-pm` works cards and submits PRs here to rule on. Upstream owners for bug
-reports: `sola-pm` = agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge +
-agent-board-toolkit.
-
-**Burn-down (operator, 2026-09-09).** ONE lane, keyed `A`, holding exactly the cards tagged
-`lane:A` — its title and members live in `sprint.lanes[]` / `lanes.definitions`, never here. A
-request for the page always means REGENERATE, never `cat`. Full rule: § Burn-down below the
-PROJECT ADDENDUM divider.
-
-⚠ This block is injected verbatim every session and is cut at ~1900 B, gates first so a cut can only
-remove elaboration. Keep it under that: `awk '/BEGIN coord:install-rules/,/END coord:install-rules/' CLAUDE.md | wc -c`
+**Merge.** Work targets `dev`. Merging `main` is OPERATOR ONLY; OPENING a PR to it is ask-first.
+`dev` is this seat's call — `solo-self-merge <N>` once green.
 <!-- END coord:install-rules -->
 
 ## Your work loop
@@ -720,6 +703,24 @@ setup and must not be applied here:
 
 # PROJECT ADDENDUM — mezzanine
 
+## Install-rules budget — the number in the hook's notice is NOT the slot
+
+⛔ **Do not size the `coord:install-rules` block against 1900 B.** That is the ritual hook's whole
+SessionStart share; the ritual pointer and the section-headings list are reserved out of it first,
+and what is left for the block on this install is **~545 B**. Measured 2026-09-12: a 1817 B block
+emitted 545 B and silently dropped three of four operator standing rules, the cut landing at byte
+544 — inside `**Work autonomously`. A `wc -c` against 1900 was green the whole time.
+
+**Never measure this block with `wc -c`. Run the emit and read what the session receives:**
+
+```
+bash <coord-plugin>/hooks/bin/coordination-ritual-load.sh | grep -o 'coord-digest-truncated[^]]*'
+```
+
+No output = nothing was cut. Any output names `bytes=<kept>/<payload>`. Rules that do not fit go to
+`§ Read at session start` with a pointer from the block — which is where Roles and burn-down live,
+and where they were already stated verbatim while the block duplicated them.
+
 > Below the managed block. This survives `orientation-sync` and **never auto-loads** — a session
 > must open this file to read it. Reference and rationale only; standing rules that must reach a
 > session belong between the `coord:install-rules` markers above.
@@ -757,7 +758,7 @@ select into a lane — the tool matches `lane:now`, never `now` (`sprint-burndow
 "the race-to-release HTML file" are the SAME ask and both mean run it fresh:
 
 ```
-sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html --write-config
+sprint-burndown.py --html ~/mezzanine/docs/sprint-burndown.html --write-config
 ```
 
 The page is a render of one live board read, so a stale copy is the exact drift adopting the tool

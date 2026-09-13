@@ -17,15 +17,29 @@ abstract class TestCase extends BaseTestCase
      * skips: a suite that cannot prove which database it is about to write to must not run
      * at all, and skipping would report that decision as a pass.
      *
-     * The values asserted are RESOLVED values from config(), never the declarations in
-     * phpunit.xml — all three mechanisms § 6.2 records (an exported variable beating an
-     * unforced <env>, force="true" missing $_SERVER, a URL's path replacing the database)
-     * leave the declaration looking correct while the resolved value is something else.
+     * The values asserted are RESOLVED values, never the declarations in phpunit.xml — all three
+     * mechanisms § 6.2 records (an exported variable beating an unforced <env>, force="true"
+     * missing $_SERVER, a URL's path replacing the database) leave the declaration looking
+     * correct while the resolved value is something else. They are resolved by TWO reads, and
+     * neither is redundant:
+     *   1. config() for every PINS key — catches the first two mechanisms;
+     *   2. the database name the default CONNECTION itself resolves — catches the third, which
+     *      config() cannot see (a DB_URL is applied only when the connection is built; see the
+     *      comment on that check below).
      * DatabasePinTest covers the declarations separately.
+     *
+     * `database.default` IS PINNED BECAUSE THE SUITE WRITES THROUGH IT (card#9328). The database
+     * pin alone proves only that the `mysql` connection points at `mezzanine_test`; every
+     * migration and query in the suite goes through the DEFAULT connection, so without this the
+     * guard said nothing about the store the suite actually writes to. It could not be pinned
+     * while the suite defaulted to SQLite, and SQLite is no longer a supported configuration.
+     * phpunit.xml leaves DB_CONNECTION unforced on purpose, so an export of any other connection
+     * reaches this check and aborts here rather than being silently overridden.
      *
      * @var array<string, string>
      */
     private const PINS = [
+        'database.default' => 'mysql',
         'database.connections.mysql.database' => 'mezzanine_test',
         'database.redis.default.database' => '11',
         'database.redis.cache.database' => '10',
@@ -48,6 +62,25 @@ abstract class TestCase extends BaseTestCase
                     var_export($expected, true),
                 ));
             }
+        }
+
+        // ⛔ config() IS NOT THE WHOLE RESOLVED VALUE. A DB_URL's path replaces the database
+        // (§ 6.2 finding 3), and Laravel applies it only when it BUILDS the connection, so
+        // config('database.connections.mysql.database') keeps reporting the pinned name while the
+        // connection points elsewhere — measured on card#9328: with both DB_URL pin entries
+        // removed from phpunit.xml and a DB_URL exported, the loop above passed. So the connection
+        // the suite writes through is asked directly. Its PDO is lazy: this opens no connection.
+        $expected = self::PINS['database.connections.mysql.database'];
+        $resolved = DB::connection()->getDatabaseName();
+
+        if ($resolved !== $expected) {
+            throw new RuntimeException(sprintf(
+                'Store isolation guard: the default connection resolves to database %s, expected %s. '.
+                'Aborting before any migration — see docs/design/FLEET-STATE.md § 6.2. '.
+                'The usual cause is a DB_URL whose path names another database.',
+                var_export($resolved, true),
+                var_export($expected, true),
+            ));
         }
 
         return $app;
