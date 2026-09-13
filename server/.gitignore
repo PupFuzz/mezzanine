@@ -25,3 +25,6 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Editor backups (e.g. .env~) can hold a real APP_KEY/DB password; never stage them.
+*~
