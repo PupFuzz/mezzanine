@@ -3,6 +3,7 @@
 namespace Tests\Feature\Feed;
 
 use App\Feed\SeatDelta;
+use App\Fold\Fold;
 use App\Read\SeatObject;
 
 /**
@@ -25,6 +26,10 @@ use App\Read\SeatObject;
  * into one message" and § 8.5's `== local + 1` cannot both hold, because a merged message at v6
  * is byte-indistinguishable, to a client holding v4, from a lost delta at v5. AT-D2-8 is the
  * document's own strongest statement of which of the two it means.
+ *
+ * ⭐ RE-POINTED AT THE SSE TRANSPORT (card#9300): the GREEN and its zero-drop control consume the
+ * deltas off `GET /api/fleet/stream`; the premise and the RED read the `feed_outbox` rows the fold
+ * committed, which are the bytes every stream writes (`OutboxWire`).
  *
  * See `ClientHarness` for what a test built on it is and is not evidence of.
  */
@@ -66,6 +71,10 @@ class At8DeltaGapTest extends FeedTestCase
      * server's state, and **the server** increments `feed_gap_detected` — assert the counter ON
      * THE SERVER after the request, because the counter has exactly one write path and it is that
      * query parameter."
+     *
+     * ⭐ IN FLIGHT, OFF THE REAL STREAM (card#9300): the deltas are the frames `GET /api/fleet/stream`
+     * wrote, the drop happens between the wire and the client, and the resync is fired from inside the
+     * still-open stream as a real client's would be.
      */
     public function test_one_dropped_delta_is_detected_resynced_and_counted(): void
     {
@@ -79,25 +88,40 @@ class At8DeltaGapTest extends FeedTestCase
         $client = new ClientHarness;
         $client->subscribe();
         $client->applySnapshot($this->snapshot());
+        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);   // the setup's rows are behind the stream's cursor
 
         $otherVersionBefore = (int) $this->state($otherRef)->state_version;
-        $mark = count($this->wire->sent);
+        $dropped = null;
+        $received = 0;
+        $resync = $this->resyncUsing();
 
-        // Two further changes on THIS seat, so there is a delta to drop and one to notice it with.
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
+        $stream = $this->openStream($this->enrolled(), [
+            // Two further changes on THIS seat, so there is a delta to drop and one to notice it with.
+            fn () => $this->deliver($this->blockedPair(requestOnly: true)),
+            fn () => $this->fold(),
+            ...$this->idle(12),
+            $this->reloadStep(),
+            ...$this->idle(10),
+        ], function (array $envelope) use ($client, $resync, &$dropped, &$received) {
+            if ($envelope['t'] !== 'seat.delta') {
+                return;
+            }
 
-        $deltas = array_map(fn ($m) => $m['payload'], $this->wire->ofTypeFrom('seat.delta', $mark));
-        $this->assertGreaterThanOrEqual(2, count($deltas), 'the fixture produced too few deltas to drop one');
+            $received++;
 
-        // ⛔ DROP EXACTLY ONE, IN FLIGHT — the first of the run, so every later one is above the
-        // hole and the FIRST of them is the one that reveals it.
-        $dropped = array_shift($deltas);
-        $this->assertNotNull($dropped);
+            // ⛔ DROP EXACTLY ONE, IN FLIGHT — the first of the run, so every later one is above the
+            // hole and the FIRST of them is the one that reveals it.
+            if ($dropped === null) {
+                $dropped = $envelope;
 
-        foreach ($deltas as $delta) {
-            $client->apply($delta, $this->resyncUsing());
-        }
+                return;
+            }
+
+            $client->apply($envelope, $resync);
+        });
+
+        $this->assertGreaterThanOrEqual(2, $received, 'the fixture produced too few deltas to drop one');
+        $this->assertSame('reload', $stream->last()['reason']);
 
         // 1 — THE CLIENT SAW A JUMP AND RESYNCED THAT ONE SEAT.
         $this->assertSame([self::INSTALL.'/'.self::SEAT], $client->resynced);
@@ -129,16 +153,23 @@ class At8DeltaGapTest extends FeedTestCase
         $client = new ClientHarness;
         $client->subscribe();
         $client->applySnapshot($this->snapshot());
+        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
 
-        $mark = count($this->wire->sent);
+        $resync = $this->resyncUsing();
 
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
+        $stream = $this->openStream($this->enrolled(), [
+            fn () => $this->deliver($this->blockedPair(requestOnly: true)),
+            fn () => $this->fold(),
+            ...$this->idle(12),
+            $this->reloadStep(),
+            ...$this->idle(10),
+        ], function (array $envelope) use ($client, $resync) {
+            if ($envelope['t'] === 'seat.delta') {
+                $client->apply($envelope, $resync);
+            }
+        });
 
-        foreach ($this->wire->ofTypeFrom('seat.delta', $mark) as $m) {
-            $client->apply($m['payload'], $this->resyncUsing());
-        }
-
+        $this->assertNotEmpty($stream->ofType('seat.delta'), 'the control delivered no delta, so it controls nothing');
         $this->assertSame([], $client->resynced, 'a client with no gap resynced anyway');
         $this->assertSame(0, $this->globalCounter('feed_gap_detected'));
 
@@ -219,7 +250,7 @@ class At8DeltaGapTest extends FeedTestCase
         $client->subscribe();
         $client->applySnapshot($this->snapshot());
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
@@ -264,7 +295,7 @@ class At8DeltaGapTest extends FeedTestCase
         // minutes and the client's object has not moved.
         $frozen = $client->seat(self::INSTALL, self::SEAT);
 
-        $quietFrom = count($this->wire->sent);
+        $quietFrom = $this->wire->mark();
 
         for ($i = 0; $i < 10; $i++) {
             $this->stayAlive();

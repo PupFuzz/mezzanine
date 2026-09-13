@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Building;
 
-use App\Building\BuildingChanged;
 use App\Building\InvalidBuildingLayout;
 use App\Building\Layouts;
 use App\Building\Revisions;
@@ -10,10 +9,12 @@ use App\Floor\FloorMap;
 use App\Floor\Floors;
 use App\Floor\InvalidFloorMap;
 use App\Floor\ShippedDefaultMap;
+use App\Fold\Clock;
 use App\Sweep\Purge;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Admin\FloorMapFixture;
+use Tests\Feature\Feed\OutboxWire;
 use Tests\TestCase;
 
 /**
@@ -39,13 +40,14 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
     private const OPERATOR = 'ops@example.com';
 
+    /** What a committed write put on the feed — § 8.7's `room.map` / `building.layout` rows (card#9300). */
+    private OutboxWire $wire;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        // The publish seam records what a committed write announced (card#9287 owns the transport
-        // that will consume it). It is process-wide, so each test starts with nothing announced.
-        BuildingChanged::forget();
+        $this->wire = new OutboxWire;
     }
 
     /** @param list<array<string, mixed>> $floors */
@@ -160,7 +162,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
     {
         $this->assertFalse(Floors::remove('aimla', self::OPERATOR));
         $this->assertSame(0, Revisions::history(Revisions::ROOM_MAP, 'aimla')->count());
-        $this->assertSame([], BuildingChanged::announced());
+        $this->assertSame([], $this->wire->all());
     }
 
     // ── the LAYOUT: the same rules, the other kind ───────────────────────────────────────────
@@ -419,19 +421,19 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $this->assertSame(3, Floors::restore('aimla', 1, self::OPERATOR));
     }
 
-    // ── the publish seam (card#9287 fills it; § 6.11 says WHEN it fires) ─────────────────────
+    // ── the publish (§ 6.11 says WHEN it fires; card#9300 put it on `feed_outbox`) ──────────────
 
     public function test_a_committed_write_announces_once_and_a_refused_one_announces_nothing(): void
     {
         // § 6.11: "on commit … publish", and "a save that fails validation writes nothing and
-        // publishes nothing". The transport is card#9287's open ruling, so what is asserted is the
-        // seam's timing — the property slice 2 will hang a real message on.
+        // publishes nothing". Under § 8.3's outbox the message IS a row committed with the revision.
         $this->save('aimla', FloorMapFixture::valid(12));
 
-        $announced = BuildingChanged::announced();
+        $announced = $this->wire->all();
 
         $this->assertCount(1, $announced);
-        $this->assertSame(BuildingChanged::ROOM_MAP, $announced[0]['message']);
+        $this->assertSame('room.map', $announced[0]['t']);
+        $this->assertSame('aimla', $announced[0]['install_id'], '§ 9\'s filter key is the room\'s install');
         $this->assertSame(['install_id' => 'aimla', 'map_version' => 1], [
             'install_id' => $announced[0]['payload']['install_id'],
             'map_version' => $announced[0]['payload']['map_version'],
@@ -441,11 +443,11 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // the message was built — a notification that timestamped itself would disagree with the
         // row it announces.
         $this->assertSame(
-            \App\Fold\Clock::wire(Revisions::get(Revisions::ROOM_MAP, 'aimla', 1)->authored_at),
+            Clock::wire(Revisions::get(Revisions::ROOM_MAP, 'aimla', 1)->authored_at),
             $announced[0]['payload']['at'],
         );
 
-        BuildingChanged::forget();
+        $this->wire->forget();
 
         try {
             $this->save('aimla', FloorMapFixture::valid(12));
@@ -453,22 +455,30 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
             // the no-op refusal
         }
 
-        $this->assertSame([], BuildingChanged::announced(), 'a refused save announced a change');
+        $this->assertSame([], $this->wire->all(), 'a refused save announced a change');
 
         // A removal announces `map_version: null` — § 8.7: the room is back on the shipped default.
-        BuildingChanged::forget();
+        $this->wire->forget();
         Floors::remove('aimla', self::OPERATOR);
 
-        $this->assertNull(BuildingChanged::announced()[0]['payload']['map_version']);
+        $this->assertNull($this->wire->all()[0]['payload']['map_version']);
     }
 
     public function test_a_layout_save_announces_its_new_version(): void
     {
         $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
 
+        $announced = $this->wire->all();
+
+        $this->assertCount(1, $announced);
+        $this->assertSame('building.layout', $announced[0]['t']);
+        $this->assertNull($announced[0]['install_id'], 'a layout change concerns every floor');
+        $this->assertSame(1, $announced[0]['payload']['layout_version']);
+        // § 8.3's payload for this row is `layout_version` AND `at` — the seam this replaced carried
+        // only the first.
         $this->assertSame(
-            [['message' => BuildingChanged::LAYOUT, 'payload' => ['layout_version' => 1]]],
-            BuildingChanged::announced(),
+            Clock::wire(Revisions::get(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, 1)->authored_at),
+            $announced[0]['payload']['at'],
         );
     }
 }

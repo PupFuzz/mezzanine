@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * `docs/design/FLEET-STATE.md § 8.3`'s **`feed.heartbeat`**, "every **15 s**, per channel,
+ * `docs/design/FLEET-STATE.md § 8.3`'s **`feed.heartbeat`**, "every **15 s**, one row fleet-wide,
  * **unconditionally**" — and § 8.3's `fleet.health` on the change half of its trigger.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -20,17 +20,16 @@ use Illuminate\Support\Facades\Log;
  * sweep row makes the sweeper's death a REPORTABLE CONDITION — `fleet.sweep` goes `stalled` past
  * 60 s since `sweep_last_run_at`, and a client learns that from the heartbeat. A heartbeat riding
  * the sweeper's pass would stop at exactly the moment it has news: the fleet would go silent, and
- * § 8.3's whole argument is that "a socket that has silently died is indistinguishable from a
+ * § 8.3's whole argument is that "a stream that has silently died is indistinguishable from a
  * fleet where nothing is happening". The instrument cannot share a process with the thing it
  * reports on — the same argument § 2.3 makes for `fold_lag_ms`'s basis, one layer out.
  *
  * ⛔ AND WHY IT SWALLOWS ITS OWN ERRORS RATHER THAN EXITING.
  *
- * With the store unreachable, § 8.2.4's object is `db: "down"` — which is the ONE message a
- * client in that posture is waiting for (§ 2.2's WebSocket-connect row: the socket "stays up
- * deliberately, because it is the channel that tells the browser *why* there is nothing"). A
- * heartbeat daemon that exited on a `QueryException` would take the messenger down with the
- * message. So a failed read publishes `FleetHealth::down()` and the loop continues.
+ * A read of the store that fails builds `FleetHealth::down()` rather than exiting: where the store
+ * still takes writes, that `db: "down"` reaches every open stream, and a daemon that exited on a
+ * `QueryException` would be a crash loop under cron's supervision. Where the store takes no writes
+ * this daemon can say nothing — see the note in `tick()` — and it keeps looping until it can.
  */
 class FeedHeartbeatCommand extends Command
 {
@@ -65,24 +64,19 @@ class FeedHeartbeatCommand extends Command
         }
 
         // ⛔ ORDER: `fleet.health` BEFORE `feed.heartbeat`, and only on the tick where the triple
-        // moved. § 8.3 keeps them apart precisely so a client "would [not] learn about a store
-        // outage up to 15 s late" — publishing the change first means the news leads the routine
-        // message rather than trailing it by one whole interval on the tick they coincide.
+        // moved — `Publisher::heartbeatTick()` writes both rows in one transaction, the change
+        // first, so the news leads the routine message rather than trailing it by one interval.
         //
-        // On a store failure `Publisher::healthChanged()` is reached with `FleetHealth::down()`,
-        // whose `db` is `down` — so the transition INTO the outage publishes, which is the case
-        // § 2.2 built the message for. `installs()` reads the store too, so this is best-effort
-        // in that posture and the heartbeat below is the one that is not.
+        // ⚠ ON A STORE FAILURE THIS WRITES NOTHING, and that is stated rather than hidden:
+        // `feed_outbox` is in the store that failed (docs/design/FLEET-STATE.md § 2.1's heartbeat
+        // row). A connected browser learns of a full outage from its own stream's
+        // `feed.close{reason:"unavailable"}` and a connecting one from the handler's on-connect
+        // `fleet.health` — never from this daemon. Where the store is readable-but-degraded the
+        // insert succeeds and `db: "down"` does reach every open stream. The loop survives either way.
         try {
-            Publisher::healthChanged($fleet);
+            Publisher::heartbeatTick($fleet);
         } catch (\Throwable $e) {
-            Log::warning('mezzanine.feed: could not publish fleet.health', ['error' => $e->getMessage()]);
-        }
-
-        try {
-            Publisher::heartbeat($fleet);
-        } catch (\Throwable $e) {
-            Log::error('mezzanine.feed: could not publish feed.heartbeat', ['error' => $e->getMessage()]);
+            Log::error('mezzanine.feed: could not write feed.heartbeat', ['error' => $e->getMessage()]);
         }
     }
 }

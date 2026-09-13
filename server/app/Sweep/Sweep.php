@@ -2,6 +2,7 @@
 
 namespace App\Sweep;
 
+use App\Feed\Outbox;
 use App\Fold\Badges;
 use App\Fold\Clock;
 use App\Fold\Derivation;
@@ -106,7 +107,7 @@ final class Sweep
                 // reason: a crash between closing a call and recording the state that closure
                 // implies would leave a ledger and a render disagreeing, with nothing to say which
                 // is right.
-                DB::transaction(fn () => $this->seat((int) $seatRef, $nowMs, $nowSql));
+                Outbox::transaction(fn () => $this->seat((int) $seatRef, $nowMs, $nowSql));
             } catch (\Throwable $e) {
                 // ⛔ THE ERROR BOUNDARY IS THE POINT, AND THE TRANSACTION IS NOT IT. An earlier
                 // revision of this comment claimed the per-seat TRANSACTION was what made "one

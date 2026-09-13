@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\FleetController;
+use App\Http\Controllers\FleetStreamController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -73,4 +74,27 @@ Route::middleware(['web', 'fleet.read'])->group(function () {
 
     Route::get('/api/fleet/seats/{install_id}/{seat_id}', [FleetController::class, 'seat'])
         ->name('fleet.seat');
+});
+
+/*
+|--------------------------------------------------------------------------
+| The STREAM — `docs/design/FLEET-STATE.md § 8.3`'s SSE feed (card#9300)
+|--------------------------------------------------------------------------
+|
+| NOT in the group above, and the difference is § 9's surface table: the
+| stream is BROWSER-ONLY — "the stream, from a machine consumer | not
+| supported" — so it takes the page's stack, `web` + `auth` + `mfa`, and never
+| `fleet.read`, whose token branch would admit an `mzr_` credential to a surface
+| § 9 refuses it. `auth` is right here for the reason it is wrong above: there
+| is no token branch for it to pre-empt. On `api/*` a guest is a `401`, never a
+| redirect (`bootstrap/app.php`'s `redirectGuestsTo`), and a password-only
+| session is `mfa`'s `403 two_factor_required`.
+|
+| ⛔ THIS STACK IS THE CONNECT-TIME GATE ONLY. § 9 re-applies it every 15 s on
+| the open stream (`App\Feed\SessionRecheck`); an authorisation checked once at
+| connect is the revocation-that-did-not-happen AT-D2-19's fourth RED names.
+*/
+
+Route::middleware(['web', 'auth', 'mfa'])->group(function () {
+    Route::get('/api/fleet/stream', FleetStreamController::class)->name('fleet.stream');
 });

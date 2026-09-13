@@ -2,61 +2,36 @@
 
 namespace App\Feed;
 
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
-use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
-use Illuminate\Foundation\Events\Dispatchable;
-
 /**
  * `docs/design/FLEET-STATE.md § 8.3`'s **`seat.delta`** — "a seat's `state_version` advanced".
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ `ShouldDispatchAfterCommit` IS § 6.5's PSEUDOCODE, NOT A PRECAUTION.
+ * ⛔ ENQUEUED INSIDE THE TRANSACTION THAT BUMPED THE VERSION, AND WRITTEN AS ITS LAST STATEMENT.
  *
- * § 6.5's fold loop ends `COMMIT` / `if state_version changed: enqueue a delta (§ 8.3)` — the
- * publish is OUTSIDE the transaction and after it. `App\Fold\StateRecompute` dispatches this
- * event from inside the transaction so the publish is ORDERED BY the act that bumped the
- * version, and the contract defers delivery until that act commits. A delta published from a
- * transaction that then rolls back is a client told a seat changed when it did not, with nothing
- * to recall it; `App\Events\SeatRetired` (card #7712) took the same shape for the same reason and
- * this is not a second decision.
+ * § 6.5's per-writer rule: "any process that changes a version-bearing field bumps `state_version`
+ * and enqueues a delta in the same transaction". `App\Fold\StateRecompute` hands this message to
+ * `App\Feed\Outbox::enqueue()` from inside the writer's transaction, and `Outbox::transaction()`
+ * inserts the row immediately before the COMMIT (card#9300) — so a delta and the state it announces
+ * commit together or not at all, and a rolled-back pass tells no client anything. The previous
+ * transport's `ShouldDispatchAfterCommit` + `ShouldBroadcastNow` pair is retired with it.
  *
- * ⛔ `ShouldBroadcastNow`, NOT `ShouldBroadcast`: ORDER IS THE CONTRACT.
- *
- * § 8.5's whole gap-detection rule is `delta.state_version == local.state_version + 1`. A queued
- * broadcast with more than one worker can deliver v48220 after v48221, and every reordering costs
- * that client a resync of the seat — so the publish is synchronous in the writer, which is the
- * process that already serialises a seat's passes (§ 6.5's `FOR UPDATE SKIP LOCKED` claim gives
- * one seat to one worker). The cost, stated: the broadcaster's round trip sits inside the fold
- * pass. At § 8.3's own volume figure — 0.104 msg/s/seat before coalescing — that is not a
- * throughput question.
+ * ORDER IS STILL THE CONTRACT (§ 8.5's `== local + 1`), and it is now the outbox's `id` order: one
+ * seat is folded by one worker at a time (§ 6.5's `FOR UPDATE SKIP LOCKED` claim), each pass's row is
+ * inserted in its own COMMIT's last statement, and every stream delivers rows in `id` order behind
+ * the visibility lag that makes an id below its cursor impossible (AT-D2-25).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ NO COALESCING, AND THIS IS A REPORTED D2 INCOHERENCE RATHER THAN AN OMISSION.
+ * ⚠ NO COALESCING — ONE DELTA PER `state_version` INCREMENT.
  *
- * § 8.3 says "**Coalescing: one delta per seat per 250 ms.** A seat's changes inside a tick are
- * merged into one message." § 8.5 says a client "applies a delta iff `delta.state_version ==
- * local.state_version + 1`. If it is greater, DELTAS WERE LOST". Those two cannot both hold:
- * merging two version-bearing changes (v5 and v6) into one message at v6 is, at a client holding
- * v4, byte-indistinguishable from a delta at v5 having been dropped. AT-D2-8 makes the
- * incompatibility explicit from the other side — "the client sees `state_version` JUMP BY 2" is
- * its evidence that exactly one delta was lost, which is only evidence if one delta is always
- * exactly one version.
- *
- * Coalescing is a RATE optimisation; the `+ 1` rule is the correctness property the whole
- * resync machinery rests on, and AT-D2-8 asserts it directly. Worse, under the `+ 1` rule
- * coalescing is self-defeating: every merged burst costs the client a full seat resync, so the
- * optimisation ADDS traffic. So this card ships one delta per version increment and does not
- * coalesce. Closing it properly needs a wire member (`from_version`, so a client can tell a
- * merge from a loss) or a rule that `state_version` counts DELTAS rather than changes — both
- * D2 changes, and D2 is not edited here. Card #7827's PR body carries it.
- *
- * THE COST OF NOT COALESCING, NAMED: a seat's outbound message rate is no longer bounded at
- * § 8.3's 4 msg/s "regardless of what the seat does" — it is bounded by the seat's own
- * version-bearing event rate, which D1 caps at ~8,980/seat-day but does not cap instantaneously.
+ * A merged message at v6 is, to a client holding v4, byte-indistinguishable from a lost delta at
+ * v5 under § 8.5's `== local + 1` rule, so every merged burst would cost that client a full seat
+ * resync and the optimisation would ADD traffic. This class shipped that way on card #7827 against
+ * a D2 that still promised coalescing; D2 § 8.3 withdrew the promise on card#9287 and reconciled to
+ * this code, so the incoherence card #7827 reported is closed. The cost, named: a seat's outbound
+ * message rate is bounded by its own version-bearing event rate, not by the 250 ms tick.
  */
-final class SeatDelta implements ShouldBroadcastNow, ShouldDispatchAfterCommit
+final class SeatDelta implements FeedMessage
 {
-    use Dispatchable;
     use FeedEnvelope;
 
     /**

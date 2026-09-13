@@ -2,10 +2,9 @@
 
 namespace Tests\Feature\Feed;
 
-use App\Events\SeatRetired;
+use App\Fold\Fold;
 use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 
 /**
  * **AT-D2-23 — a retired seat's desk goes IMMEDIATELY, and only ever because it was ANNOUNCED.**
@@ -51,7 +50,8 @@ use Illuminate\Support\Facades\Event;
 class At23WireSurfaceTest extends FeedTestCase
 {
     /**
-     * GREEN — "connected clients receive `seat.retired`", on § 8.3's channel with § 8.3's payload.
+     * GREEN — "connected clients receive `seat.retired`", with § 8.3's payload — the row every open
+     * stream delivers (card#9300; the test after this one consumes it off the route).
      *
      * UNCHANGED BY card#9078, and that is the point rather than an accident: the ruling made the
      * announcement the ONLY removal path, so the announcement itself had to stay exactly as it
@@ -68,8 +68,8 @@ class At23WireSurfaceTest extends FeedTestCase
         $retired = $this->wire->ofType('seat.retired');
         $this->assertCount(1, $retired, 'no seat.retired reached the wire');
 
-        // § 8.3's channel: `private-fleet.{install_id}`, one per install.
-        $this->assertSame(['private-fleet.'.self::INSTALL], $retired[0]['channels']);
+        // § 8.3's one fleet-wide stream carries it; the row's `install_id` is § 9's filter key.
+        $this->assertSame(self::INSTALL, $retired[0]['install_id']);
 
         // § 8.3's envelope, on every message.
         $this->assertSame(1, $retired[0]['payload']['feed_version']);
@@ -92,13 +92,42 @@ class At23WireSurfaceTest extends FeedTestCase
         // message that says one went.
         $deltas = $this->wire->deltasFor(self::INSTALL, self::SEAT);
         $this->assertCount(1, $deltas, 'retirement published no delta');
-        $this->assertSame('retired', $deltas[0]['payload']['patch']->render_state);
+        $this->assertSame('retired', $deltas[0]['payload']['patch']['render_state']);
         $this->assertContains('render_state', $deltas[0]['payload']['changed']);
         $this->assertSame(
             $retired[0]['payload']['state_version'],
             $deltas[0]['payload']['state_version'],
             '§ 8.5: the two announcements of one transaction sit at different versions',
         );
+    }
+
+    /**
+     * GREEN, ON THE WIRE — "connected clients receive `seat.retired` AND the delta carrying `render_state:
+     * "retired"`, at one `state_version`": a client connected to `GET /api/fleet/stream` when the act
+     * runs receives both, and the stream keeps going (a retirement is not a close).
+     */
+    public function test_a_connected_client_receives_seat_retired_and_its_delta_off_the_stream(): void
+    {
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+
+        $stream = $this->openStream($this->enrolled(), [
+            fn () => $this->retire(),
+            ...$this->idle(12),
+            $this->reloadStep(),
+            ...$this->idle(10),
+        ]);
+
+        $retired = $stream->ofType('seat.retired');
+        $this->assertCount(1, $retired, 'no seat.retired reached a connected client');
+        $this->assertSame(self::SEAT, $retired[0]['seat_id']);
+
+        $deltas = array_values(array_filter($stream->ofType('seat.delta'), fn ($d) => $d['seat_id'] === self::SEAT));
+        $this->assertCount(1, $deltas);
+        $this->assertSame('retired', $deltas[0]['patch']['render_state']);
+        $this->assertSame($retired[0]['state_version'], $deltas[0]['state_version']);
+        $this->assertSame('reload', $stream->last()['reason']);
     }
 
     /**
@@ -172,10 +201,9 @@ class At23WireSurfaceTest extends FeedTestCase
      */
     public function test_a_seat_that_merely_went_quiet_keeps_its_desk(): void
     {
-        Event::fake([SeatRetired::class]);
-
         $this->deliver($this->cleanTurn());
         $this->fold();
+        $this->wire->forget();
 
         foreach ([
             [400, 'stale'],
@@ -197,9 +225,12 @@ class At23WireSurfaceTest extends FeedTestCase
             $this->assertSame(1, $body['fleet']['seats_total'], 'the quiet seat left the population');
         }
 
-        // …and nothing announced anything. § 4.10: "no timeout, no purge, no silence."
+        // …and nothing announced anything. § 4.10: "no timeout, no purge, no silence." Asserted on the
+        // outbox BEFORE the purge as well as after it: the purge deletes outbox rows past § 6.7's 60 s,
+        // so an after-only check would pass over a `seat.retired` the purge itself had just removed.
+        $this->assertSame([], $this->wire->ofType('seat.retired'), 'silence announced a retirement');
         $this->artisan('mezzanine:purge')->assertSuccessful();
-        Event::assertNotDispatched(SeatRetired::class);
+        $this->assertSame([], $this->wire->ofType('seat.retired'));
         $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
         $this->assertArrayHasKey(self::SEAT, $this->snapshotSeats(),
             'the purge removed a desk — the purge deletes EVENTS, never seats');

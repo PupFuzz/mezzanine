@@ -3,6 +3,7 @@
 namespace Tests\Feature\Feed;
 
 use App\Feed\SeatDelta;
+use App\Fold\Fold;
 use App\Read\SeatObject;
 
 /**
@@ -13,15 +14,21 @@ use App\Read\SeatObject;
  * CLIENT THAT IS PERMANENTLY AND INVISIBLY WRONG ABOUT ONE DESK."
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⭐ RE-POINTED AT THE SSE TRANSPORT (card#9300). The client harness now OPENS `GET /api/fleet/stream`
+ * and consumes the `text/event-stream` the route writes, frame by frame as it arrives
+ * (`FeedTestCase::openStream()`), and the snapshot is fetched from INSIDE that open stream, between two
+ * of the handler's ticks. What it replaced captured a broadcast the transport no longer makes; keeping
+ * it green would have tested retired code.
+ *
  * ⚠ THE "FORCED 500 ms DELAY" § 11's BUILD ASKS FOR IS DRIVEN AS AN ORDERING, NOT AS A SLEEP.
  *
- * § 11: "with a **forced 500 ms delay** injected between the subscribe and the snapshot query,
- * and a state change driven inside that window." What the delay exists to create is one
- * condition: A STATE CHANGE THAT HAPPENS AFTER THE SUBSCRIBE AND BEFORE THE SNAPSHOT'S READ.
- * This suite drives the server and the client in one process on a pinned clock, so that condition
- * is produced by ORDER — subscribe, fold, GET — which is the same condition exactly and is
- * deterministic rather than a race the suite hopes to win. A real 500 ms sleep would make the
- * window PROBABLE; ordering makes it CERTAIN, which is the stronger of the two.
+ * What the delay exists to create is one condition: A STATE CHANGE THAT HAPPENS AFTER THE STREAM
+ * OPENS AND BEFORE THE SNAPSHOT'S READ. The handler's clock is stepped one tick at a time
+ * (`ScriptedStreamClock`), so that condition is produced by ORDER — open, change, GET — which is the
+ * same condition exactly and is deterministic rather than a race the suite hopes to win. The
+ * transport adds the ordering § 8.4 is really about: the delta is written behind a 2 s visibility
+ * lag, so a change made in the window is ordinarily delivered AFTER the snapshot came back — both
+ * arrival orders are driven below.
  *
  * See `ClientHarness` for what a test built on it is and is not evidence of.
  */
@@ -29,40 +36,64 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 {
     /**
      * GREEN — "the client's final state equals the server's `seat_state` exactly, WHETHER THE
-     * CHANGE LANDED BEFORE OR AFTER THE SNAPSHOT'S READ."
-     *
-     * Both orders are driven, because a protocol that only works when the change lands on one
-     * side of the read is the defect rather than the fix.
+     * CHANGE LANDED BEFORE OR AFTER THE SNAPSHOT'S READ" — here, the change lands BEFORE the read,
+     * and its delta reaches the client in both of the orders the lag allows: after the snapshot came
+     * back (the ordinary case — discarded at the watermark), and before it (buffered, then drained).
      */
     public function test_a_change_inside_the_window_reaches_the_client(): void
     {
-        $this->deliver($this->cleanTurn());
-        $this->fold();
+        foreach (['the delta arrives after the snapshot' => false, 'the delta arrives before the snapshot' => true] as $leg => $arrivesFirst) {
+            $this->deliver($this->cleanTurn());
+            $this->fold();
 
-        $client = new ClientHarness;
+            $client = new ClientHarness;
+            $client->subscribe();            // 1 + 2 — the stream opens and buffering begins
+            $snapshotted = false;
+            $arrivedBeforeSnapshot = 0;
 
-        // 1 + 2 — connect and subscribe. From here on every delta is buffered.
-        $client->subscribe();
-        $mark = count($this->wire->sent);
+            $snapshot = function () use ($client, &$snapshotted) {
+                $client->applySnapshot($this->snapshot());   // 3 + 4
+                $client->drain();                             // 5
+                $snapshotted = true;
+            };
 
-        // ⛔ THE WINDOW. A state change lands while the snapshot query is "in flight".
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
-        $this->deliverBufferedDeltas($client, $mark);
+            $this->quietPastTheLag();
 
-        // 3 + 4 — the snapshot, read AFTER that change.
-        $client->applySnapshot($this->snapshot());
+            $stream = $this->openStream($this->enrolled(), [
+                // ⛔ THE WINDOW. A state change lands after the stream opened and before the read.
+                fn () => $this->deliver($this->blockedPair(requestOnly: true)),
+                fn () => $this->fold(),
+                ...($arrivesFirst ? [...$this->idle(12), $snapshot] : [$snapshot, ...$this->idle(12)]),
+                $this->reloadStep(),
+                ...$this->idle(10),
+            ], function (array $envelope) use ($client, &$snapshotted, &$arrivedBeforeSnapshot) {
+                if ($envelope['t'] !== 'seat.delta') {
+                    return;
+                }
 
-        // 5 — drain, discarding at or below the per-seat watermark.
-        $client->drain();
+                if ($snapshotted) {
+                    $client->apply($envelope);      // 6 — steady state
+                } else {
+                    $arrivedBeforeSnapshot++;
+                    $client->buffer($envelope);     // 2 — buffered
+                }
+            });
 
-        $this->assertClientMatchesServer($client);
-        $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state']);
+            $this->assertNotEmpty($stream->ofType('seat.delta'), $leg.': the change never reached the stream');
+            $this->assertSame($arrivesFirst, $arrivedBeforeSnapshot > 0, $leg.': the fixture did not produce this arrival order');
+            $this->assertSame('reload', $stream->last()['reason']);
+
+            $this->assertClientMatchesServer($client);
+            $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state'], $leg);
+            $this->assertSame([], $client->resynced, $leg.': a window delta was mistaken for a gap');
+
+            $this->refreshSeat();
+        }
     }
 
     /**
-     * The other half of the same GREEN: the change lands AFTER the snapshot's read. The buffered
-     * delta is then strictly above the watermark and must be APPLIED, not discarded.
+     * The other half of the same GREEN: the change lands AFTER the snapshot's read. Its delta is then
+     * strictly above the watermark and must be APPLIED, not discarded.
      */
     public function test_a_change_after_the_snapshots_read_reaches_the_client(): void
     {
@@ -71,31 +102,42 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 
         $client = new ClientHarness;
         $client->subscribe();
-        $mark = count($this->wire->sent);
+        $snapshotted = false;
+        $this->quietPastTheLag();
 
-        $client->applySnapshot($this->snapshot());
+        $stream = $this->openStream($this->enrolled(), [
+            function () use ($client, &$snapshotted) {
+                $client->applySnapshot($this->snapshot());
+                $client->drain();
+                $snapshotted = true;
+            },
+            fn () => $this->deliver($this->blockedPair(requestOnly: true)),
+            fn () => $this->fold(),
+            ...$this->idle(12),
+            $this->reloadStep(),
+            ...$this->idle(10),
+        ], function (array $envelope) use ($client, &$snapshotted) {
+            if ($envelope['t'] === 'seat.delta') {
+                $snapshotted ? $client->apply($envelope) : $client->buffer($envelope);
+            }
+        });
 
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
-        $this->deliverBufferedDeltas($client, $mark);
-
-        $client->drain();
-
+        $this->assertNotEmpty($stream->ofType('seat.delta'));
         $this->assertClientMatchesServer($client);
         $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state']);
     }
 
     /**
-     * ⛔ RED — ORDER. "snapshot first, subscribe after → the change made in the window is IN
-     * NEITHER, and the desk stays wrong until something unrelated changes it. ASSERT THE
-     * DIVERGENCE EXPLICITLY; ON A QUIET DESK IT IS PERMANENT."
+     * ⛔ RED — ORDER. "snapshot first, stream after → the change made in the window is IN NEITHER, and
+     * the desk stays wrong until something unrelated changes it. ASSERT THE DIVERGENCE EXPLICITLY; ON
+     * A QUIET DESK IT IS PERMANENT."
      *
-     * This is the one RED that cannot be driven by mutating production code, because the mistake
-     * IS the client's ordering. It is driven here by performing the wrong order and asserting the
-     * damage — and then by asserting the damage is PERMANENT, which is the half that makes it a
-     * defect rather than a delay.
+     * This is the one RED that cannot be driven by mutating production code, because the mistake IS
+     * the client's ordering. It is driven by performing the wrong order against the real stream and
+     * asserting the damage — and then that the damage is PERMANENT: the stream stays open across a
+     * quiet stretch and delivers nothing that could heal it.
      */
-    public function test_red_fetching_before_subscribing_leaves_the_desk_permanently_wrong(): void
+    public function test_red_fetching_before_opening_the_stream_leaves_the_desk_permanently_wrong(): void
     {
         // The seat is settled AND heartbeating before the join, so the quiet stretch below is
         // genuinely quiet: `enabled` and the reporter fields are version-bearing and their FIRST
@@ -108,56 +150,46 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
         // WRONG ORDER — the snapshot is read first.
         $body = $this->snapshot();
 
-        // ⛔ THE CHANGE THAT LANDS IN THE WINDOW LEAVES NO CALL OPEN, and that is a property of
-        // the fixture rather than a coincidence — see the quiet-desk note below. § 10's
-        // `clear_kill` ends `unknown` with zero open calls, which is the state change this test
-        // needs and the quiet stretch needs.
+        // ⛔ THE CHANGE THAT LANDS IN THE WINDOW LEAVES NO CALL OPEN (§ 10's `clear_kill` ends
+        // `unknown` with zero open calls), which is the state change this test needs and the quiet
+        // stretch needs.
         $this->deliver($this->clearKill());
         $this->fold();
 
         $client->applySnapshot($body);
 
-        // …and only NOW does the client subscribe. Deltas emitted in the window are not replayed:
-        // § 8.5 is explicit that "there is no per-seat delta-replay buffer on the server and
-        // deliberately so".
+        // …and only NOW does the client open the stream. Nothing written before it is replayed: § 8.5
+        // "there is no per-seat delta-replay buffer on the server and deliberately so", and the
+        // handler's cursor starts at the head behind the lag.
         $client->subscribe();
-        $client->drain();
+        $this->quietPastTheLag();
 
-        $this->assertSame('idle', $client->seat(self::INSTALL, self::SEAT)['render_state'],
-            'the client still holds the pre-change state');
-        $this->assertSame('unknown', $this->state()->render_state);
-
-        // ⛔ AND IT IS PERMANENT ON A QUIET DESK — the half that makes this a defect rather than a
-        // delay, and § 11 says so in terms: "on a quiet desk it is permanent".
-        //
-        // The argument has to be made ON THE WIRE: what makes the divergence permanent is that NO
-        // FURTHER DELTA IS EVER EMITTED for this seat, so nothing exists that could correct it.
-        //
-        // A "quiet desk" here is NOT a silent one. A silent seat goes `stale` at 300 s and that
-        // transition IS a delta, which would heal the client through § 8.5's gap path. It is a
-        // seat that keeps heartbeating and does nothing else — § 6.5's own case: "the heartbeat
-        // that moves nothing but bookkeeping emits no delta".
-        //
-        // ⚠ AND IT HAS NO OPEN CALL, which WAS a CARD #7339 DEFECT this test found rather than a
-        // fixture nicety: `StateRecompute::taskTier3()` re-stamped `task_as_of` to `now()` on
-        // EVERY recompute while a title existed, `task` is version-bearing, so a seat with an open
-        // call emitted a delta on every fold pass — 1,440 a seat-day from heartbeats alone, which
-        // is precisely the noise § 8.3 refuses ("a 16 % increase in feed traffic carrying no
-        // information"). FIXED ON CARD #7837, and made STRUCTURAL on card #9214: `as_of` is READ
-        // OFF the answering call's own `opened_received_at` rather than stamped from a clock, so
-        // a pass that re-reads the same answer cannot move it. `FeedSurfaceTest::
-        // test_a_seat_with_an_open_call_is_as_quiet_as_one_without` drives the open-call fixture
-        // directly. The fixture here stays open-call-free anyway, because THIS test's subject is
-        // § 8.4's window and it should not go red for a § 4.9 regression that has its own case.
-        $quietFrom = count($this->wire->sent);
+        // ⛔ AND IT IS PERMANENT ON A QUIET DESK. A "quiet desk" is NOT a silent one — a silent seat
+        // goes `stale` at 300 s and that transition IS a delta. It is a seat that keeps heartbeating
+        // and does nothing else: § 6.5's "the heartbeat that moves nothing but bookkeeping emits no
+        // delta". Ten of them, with a sweep after each, while the stream is open.
+        $quiet = [];
 
         for ($i = 0; $i < 10; $i++) {
-            $this->stayAlive();
-            $this->sweep();
+            $quiet[] = fn () => $this->stayAlive();
+            $quiet[] = fn () => $this->sweep();
         }
 
-        $this->assertSame([], $this->wire->ofTypeFrom('seat.delta', $quietFrom),
-            'the desk was not quiet — something emitted a delta that would have healed the client');
+        $stream = $this->openStream($this->enrolled(), [
+            ...$this->idle(12),       // anything the window wrote would be visible by now
+            ...$quiet,
+            ...$this->idle(12),
+            $this->reloadStep(),
+            ...$this->idle(10),
+        ], function (array $envelope) use ($client) {
+            if ($envelope['t'] === 'seat.delta') {
+                $client->apply($envelope);
+            }
+        });
+
+        $this->assertSame('reload', $stream->last()['reason'], 'the stream did not stay open across the quiet stretch');
+        $this->assertSame([], $stream->ofType('seat.delta'),
+            'the desk was not quiet — the stream delivered a delta that would have healed the client');
 
         $this->assertSame('idle', $client->seat(self::INSTALL, self::SEAT)['render_state'],
             'the divergence healed by itself, so this fixture is not the permanent case § 11 names');
@@ -170,18 +202,13 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
      * clears `action` followed by a snapshot that already has it cleared, then a NEWER delta that
      * sets it) — a re-application that happens to be idempotent PROVES NOTHING."
      *
-     * The fixture is built to § 11's letter, because § 11 is right that any other one is vacuous:
-     *
-     *   d1        CLEARS `action` (a call closes)        ← buffered; at or below the watermark
-     *   snapshot  `action` is already null               ← step 4
+     *   d1        CLEARS `action` (a call closes)        ← arrives before the snapshot: buffered
+     *   snapshot  `action` is already null               ← step 4, buffer NOT yet drained
      *   d2        SETS `action` (a new call opens)       ← arrives in STEADY STATE and is applied
      *   drain     replays the buffer                     ← d1 lands ON TOP of d2
      *
-     * ⚠ THE LAZY DRAIN IS WHAT MAKES IT VISIBLE, and it is not a contrivance: § 8.4's step 5 and
-     * step 6 are separate steps, so a client that has begun applying live deltas while its buffer
-     * is still un-drained is inside the protocol as written. Draining the buffer FIRST would hide
-     * the defect behind arrival order rather than fixing it — which is the "re-application that
-     * happens to be idempotent" § 11 says proves nothing.
+     * ⚠ THE LAZY DRAIN IS WHAT MAKES IT VISIBLE, and it is inside the protocol as written: § 8.4's step
+     * 5 and step 6 are separate steps. Every delta here arrives off the real stream.
      */
     public function test_second_red_replaying_a_delta_below_the_watermark_undoes_a_newer_one(): void
     {
@@ -191,47 +218,70 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
         $client = new ClientHarness;
         $client->useWatermark = false;             // ← the mutation, in the client, per § 11
         $client->subscribe();
-        $mark = count($this->wire->sent);
 
-        // d1 — the call closes. This delta CLEARS `action`, and it is at or below the version the
-        // snapshot below will carry.
-        $this->deliver($this->closeOpenCall());
-        $this->fold();
-        $this->deliverBufferedDeltas($client, $mark);
+        $snapshotted = false;
+        $body = null;
+        $buffered = [];
+        $applied = [];
+        $this->quietPastTheLag();
 
-        $body = $this->snapshot();
-        $this->assertNull($body['installs'][0]['seats'][0]['action'], 'the fixture must snapshot a cleared action');
-        $client->applySnapshot($body);
+        $stream = $this->openStream($this->enrolled(), [
+            // d1 — the call closes; its delta CLEARS `action`.
+            fn () => $this->deliver($this->closeOpenCall()),
+            fn () => $this->fold(),
+            ...$this->idle(12),
+            function () use ($client, &$snapshotted, &$body) {
+                $body = $this->snapshot();
+                $this->assertNull($body['installs'][0]['seats'][0]['action'], 'the fixture must snapshot a cleared action');
+                $client->applySnapshot($body);
+                $snapshotted = true;
+            },
+            // d2 — strictly ABOVE the snapshot's version: a new call opens and `action` is set.
+            fn () => $this->deliver($this->openCall()),
+            fn () => $this->fold(),
+            ...$this->idle(12),
+            function () use ($client) {
+                $this->assertNotNull($client->seat(self::INSTALL, self::SEAT)['action'],
+                    'the fixture did not put an action on the client before the drain');
+                $client->drain();                  // …and only NOW is the stale buffer drained. Unconditionally.
+            },
+            $this->reloadStep(),
+            ...$this->idle(10),
+        ], function (array $envelope) use ($client, &$snapshotted, &$buffered, &$applied) {
+            if ($envelope['t'] !== 'seat.delta') {
+                return;
+            }
 
-        // d2 — strictly ABOVE the snapshot's version: a new call opens and `action` is set. It
-        // arrives in steady state and is applied immediately, correctly.
-        $mark2 = count($this->wire->sent);
-        $this->deliver($this->openCall());
-        $this->fold();
+            if ($snapshotted) {
+                $applied[] = $envelope;
+                $client->apply($envelope);
+            } else {
+                $buffered[] = $envelope;
+                $client->buffer($envelope);
+            }
+        });
 
-        foreach ($this->wire->ofTypeFrom('seat.delta', $mark2) as $m) {
-            $client->apply($m['payload']);
-        }
-
-        $this->assertNotNull($client->seat(self::INSTALL, self::SEAT)['action'],
-            'the fixture did not put an action on the client before the drain');
-
-        // …and only NOW is the stale buffer drained. Unconditionally.
-        $client->drain();
+        $this->assertNotEmpty($buffered, 'd1 did not arrive before the snapshot');
+        $this->assertNotEmpty($applied, 'd2 did not arrive in steady state');
+        $this->assertSame('reload', $stream->last()['reason']);
 
         $this->assertNotNull($this->serverSeat()['action'], 'the fixture did not leave a call open');
         $this->assertNull($client->seat(self::INSTALL, self::SEAT)['action'],
             'the RED did not bite — the replayed delta was idempotent and § 11 says that proves nothing');
 
-        // ⛔ THE SAME RUN WITH THE WATERMARK CONVERGES, which is what makes the line above a
-        // finding about the watermark rather than about the fixture.
+        // ⛔ THE SAME FRAMES WITH THE WATERMARK CONVERGE, which is what makes the line above a finding
+        // about the watermark rather than about the fixture.
         $correct = new ClientHarness;
         $correct->subscribe();
-        $this->deliverBufferedDeltas($correct, $mark);
+
+        foreach ($buffered as $d) {
+            $correct->buffer($d);
+        }
+
         $correct->applySnapshot($body);
 
-        foreach ($this->wire->ofTypeFrom('seat.delta', $mark2) as $m) {
-            $correct->apply($m['payload']);
+        foreach ($applied as $d) {
+            $correct->apply($d);
         }
 
         $correct->drain();
@@ -245,24 +295,21 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
      *
      * The property under test is DETERMINISM of step 5, so the 100 runs vary the one thing the
      * protocol is allowed to see vary — the order deltas arrive in the buffer — and require the
-     * drained result to be identical every time. A hundred identical runs of an identical input
-     * would measure nothing.
+     * drained result to be identical every time. The deltas are the `feed_outbox` rows the fold
+     * committed, which are the bytes every stream writes.
      */
     public function test_the_drain_is_deterministic_over_a_hundred_arrival_orders(): void
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
 
         $body = $this->snapshot();
-        $deltas = array_map(
-            fn ($m) => $m['payload'],
-            array_slice($this->wire->ofTypeFrom('seat.delta', $mark), 0),
-        );
+        $deltas = array_map(fn ($m) => $m['payload'], $this->wire->ofTypeFrom('seat.delta', $mark));
 
         $this->assertGreaterThanOrEqual(2, count($deltas), 'the fixture produced too few deltas to shuffle');
 
@@ -290,12 +337,25 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
 
-    /** Hand the client every `seat.delta` the wire has carried since `$mark` (step 2). */
-    private function deliverBufferedDeltas(ClientHarness $client, int $mark): void
+    /**
+     * Let every row written so far age past § 6.5's visibility lag before the stream opens.
+     *
+     * ⚠ NOT A CONVENIENCE: the handler's connect read is the head BEHIND the lag (§ 8.3), so a stream
+     * opened within 2 s of a write also delivers that write — "at most one lag-window of rows it may
+     * also see in its snapshot — harmless, because § 8.4's per-seat watermark is what discards
+     * those". These tests measure the window § 8.4 closes, so the fixture's own setup writes must be
+     * behind the stream's starting cursor, or every arrival-order assertion counts them too.
+     */
+    private function quietPastTheLag(): void
     {
-        foreach ($this->wire->ofTypeFrom('seat.delta', $mark) as $message) {
-            $client->buffer($message['payload']);
-        }
+        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+    }
+
+    /** A fresh seat state for the next leg of a two-leg test: retire nothing, just move the desk on. */
+    private function refreshSeat(): void
+    {
+        $this->deliver($this->cleanTurn('leg-'.$this->ulid()));
+        $this->fold();
     }
 
     /** @return array<string, mixed> */

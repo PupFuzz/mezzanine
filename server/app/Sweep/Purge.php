@@ -2,6 +2,8 @@
 
 namespace App\Sweep;
 
+use App\Feed\FeedHeartbeat;
+use App\Feed\FeedStream;
 use App\Fold\Clock;
 use App\Ingest\Counters;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +54,14 @@ final class Purge
     public const BUDGET_S = 60;
 
     /**
+     * § 6.7: `feed_outbox` is retained **60 s** after `created_at` — "the stall bound (45 s) plus one
+     * heartbeat interval (15 s): a stream that resumes at the edge of its bound finds every row it may
+     * still deliver". DERIVED from the two constants rather than typed, because it is a sum of two
+     * numbers that live elsewhere and a literal here would not move when either did (card#9300).
+     */
+    public const FEED_OUTBOX_RETENTION_S = FeedStream::STALL_BOUND_S + FeedHeartbeat::INTERVAL_S;
+
+    /**
      * The purge plan, one row per purgeable table, in § 6.7's own order and with its own predicate.
      *
      * `sessions`, `calls` and `attention_requests` are retained "**14 days** AFTER THE ROW CLOSED;
@@ -84,6 +94,10 @@ final class Purge
         'attention_requests' => 'resolved_at',
         // The drill-down's history horizon; same number, one home.
         'seat_state_transitions' => 'at',
+        // § 6.7's one transient table, on its own boundary — `boundaryFor()` (card#9300). Nothing
+        // reads a row behind a stream's cursor, so a row that lingers until the next hourly pass
+        // costs disk and nothing else (§ 6.7: ~7.5 MB at the 50-seat ceiling).
+        'feed_outbox' => 'created_at',
     ];
 
     /**
@@ -106,12 +120,11 @@ final class Purge
         $this->guard($retentionDays);
 
         $nowSql = Clock::sql(now());
-        $boundary = Clock::sql(now()->subDays($retentionDays));
         $deadlineMs = Clock::toMs($nowSql) + $budgetSeconds * 1000;
         $deleted = [];
 
         foreach (self::PLAN as $table => $column) {
-            $deleted[$table] = $this->drain($table, $column, $boundary, $deadlineMs);
+            $deleted[$table] = $this->drain($table, $column, $this->boundaryFor($table, $retentionDays), $deadlineMs);
         }
 
         // § 6.7's visible-fall-behind instrument. Counted AFTER every table has had its turn, over
@@ -120,7 +133,7 @@ final class Purge
         $backlog = 0;
 
         foreach (self::PLAN as $table => $column) {
-            $backlog += DB::table($table)->where($column, '<', $boundary)->count();
+            $backlog += DB::table($table)->where($column, '<', $this->boundaryFor($table, $retentionDays))->count();
         }
 
         if ($backlog > 0) {
@@ -133,6 +146,19 @@ final class Purge
         PlaneClock::stamp(PlaneClock::PURGE, $nowSql);
 
         return $deleted;
+    }
+
+    /**
+     * The retention boundary for one plan table. Every table is on the event retention (and on the
+     * `--retention-days` diagnostic override, which the dedup guard polices) EXCEPT `feed_outbox`,
+     * whose 60 s is not a retention of history at all but the longest a stream may lag (§ 6.7) — so
+     * the override does not reach it.
+     */
+    private function boundaryFor(string $table, int $retentionDays): string
+    {
+        return $table === 'feed_outbox'
+            ? Clock::sql(now()->subSeconds(self::FEED_OUTBOX_RETENTION_S))
+            : Clock::sql(now()->subDays($retentionDays));
     }
 
     /**
@@ -199,7 +225,7 @@ final class Purge
     private function orderColumn(string $table): string
     {
         return match ($table) {
-            'events', 'batches', 'sessions', 'calls', 'attention_requests', 'seat_state_transitions' => 'id',
+            'events', 'batches', 'sessions', 'calls', 'attention_requests', 'seat_state_transitions', 'feed_outbox' => 'id',
             default => throw new \LogicException('no purge order column declared for '.$table),
         };
     }
