@@ -17,13 +17,10 @@ use Illuminate\Support\Facades\DB;
  * (§ 6.1 named `utf8mb4_0900_ai_ci` until the 2026-09-09 MariaDB repin, card#7523; that collation
  * is not native to MariaDB and is no longer named anywhere.)
  *
- * SQLite — the store `phpunit.xml` DEFAULTS the suite to, and the one the `php-tests` CI lane
- * runs; since card#9250 the `php-tests-mariadb` lane runs this same suite against MariaDB, where
- * the branch below is taken rather than skipped — has no `ascii_bin`, and emitting it is a
- * hard error. It also does not need it: SQLite's default `BINARY` collation is already exact, so
- * omitting the clause there preserves the comparison semantics § 6.1 is actually buying rather
- * than dropping them. What is lost on SQLite is the byte-per-character storage win, which is a
- * store-side sizing argument (§ 6.8) and not a correctness one.
+ * The skip exists for SQLite — the suite's store until card#9328 — which has no `ascii_bin`
+ * (emitting it is a hard error) and whose default `BINARY` collation is already exact. SQLite is no
+ * longer a supported configuration (`docs/PLAN.md` D-15), so every supported store takes the
+ * branch below; the skip arm is retained code, not a supported path.
  *
  * This exists as one helper rather than a driver check repeated at each of the ~25 identifier
  * columns, because the version of this that gets it wrong is the one where a column is added
@@ -53,8 +50,9 @@ final class Ddl
      * two tables: `ix_open` is declared on both `calls` ("WHERE seat_ref=? AND closed_at IS NULL")
      * and `attention_requests`. That is legal MySQL and a hard error on SQLite — so the engine
      * family production runs gets the document's names verbatim, and SQLite gets them qualified.
-     * Both arms are now executed by CI: `php-tests` takes the qualified one, `php-tests-mariadb`
-     * (card#9250) takes the verbatim one. Qualifying everywhere instead would have been simpler
+     * Since card#9328 only the verbatim arm runs anywhere supported: SQLite is not a supported
+     * configuration, so the qualified arm is retained code, not a supported path. Qualifying
+     * everywhere instead would have been simpler
      * and would have shipped MySQL a set of index names § 6.4 does not contain, which is the one
      * thing that section says a builder may not do.
      *

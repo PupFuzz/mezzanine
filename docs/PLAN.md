@@ -115,6 +115,22 @@ its date, its decider and the scope of what it moved. The original row above sta
   `database.connections.mysql.database` — so that is a separate decision with its own blast radius,
   and it is the operator's to take.
 
+- **D-15 · SQLite is not a supported configuration — operator, 2026-09-13 (card#9328).**
+  In the operator's words: *"website should use mysql, not sqlite. In fact, CI should be testing
+  mysql and not sqlite"*, *"We will always use mariadb for the DB."* and *"sqllite will not be a
+  supported configuration for website."* D-15 and its 2026-09-09 amendment pinned the PRODUCTION
+  store; the test suite, CI's `php-tests` lane and a fresh local checkout still defaulted to
+  SQLite. **What moves:** MariaDB is the only engine anywhere this application runs —
+  production, sandbox, CI and local development — and SQLite is unsupported in all of them.
+  `server/phpunit.xml`, `server/.env.example`, `server/config/database.php` and
+  `.github/workflows/php-tests.yml` default to and run on it, and `Tests\TestCase`'s store guard
+  now also aborts a suite whose default connection is anything but `mysql`. **This reverses
+  card#9250's ruling** that MariaDB coverage in CI be an additional lane beside SQLite rather than
+  a changed one. **What does NOT move:** the *dedicated DB host* clause, § 6.1's floor and § 6.2's
+  pinned database names and isolation posture. ⚠ **Still not settled, and still the operator's:**
+  the `mysql`-versus-`mariadb` Laravel connection question the 2026-09-09 amendment records. Its
+  blast radius grew by one site — the guard's `database.default` pin keys on `mysql` too.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —

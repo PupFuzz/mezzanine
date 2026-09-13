@@ -80,11 +80,11 @@ final class Fold
      * column is never NULL for a seat this WHERE clause can select: it is NULL only for a seat
      * that has never received an event, and such a seat has `head_event_id = 0`.
      *
-     * ⚠ `FOR UPDATE SKIP LOCKED` IS MySQL-ONLY AND SQLITE EXERCISES NONE OF IT. It is what makes
-     * two fold workers partition themselves — another worker's seats are skipped rather than
-     * waited on — and it is the fold's concurrency correctness. SQLite has no row locks and no
-     * such syntax, so on the test store this claim is an ordinary read and the property is
-     * UNTESTED, not merely untested-here. See the PR body.
+     * ⚠ `FOR UPDATE SKIP LOCKED` IS THE FOLD'S CONCURRENCY CORRECTNESS, AND THE SUITE EXERCISES
+     * NONE OF IT. It is what makes two fold workers partition themselves — another worker's seats
+     * are skipped rather than waited on. The suite runs it on MariaDB but over ONE connection, so
+     * no row is ever locked by anyone else and nothing is ever skipped: the property is UNTESTED,
+     * not merely untested-here (card#7523 owns the two-connection case).
      *
      * @return Collection<int, object>
      */

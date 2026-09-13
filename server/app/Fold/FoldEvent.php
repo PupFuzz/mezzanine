@@ -23,10 +23,10 @@ use App\Ingest\Wire;
  * card decoded associatively hold `[]` where the wire sent `{}`, and those rows still fold —
  * `field()` answers for both shapes, which is the whole reason it is the accessor here.
  *
- * What is NOT tolerated is a value outside a column's declared ENUM, because that is a write the
- * store would refuse on MySQL and silently accept on SQLite — the worst possible asymmetry between
- * the engine the suite runs on and the engine production uses. `enum()` maps anything unrecognised
- * to `null`, which every one of those columns is declared to hold.
+ * What is NOT tolerated is a value outside a column's declared ENUM, because that is a write
+ * MariaDB refuses. While the suite ran on SQLite (until card#9328) it was also a write the test
+ * store silently accepted, which is how such a value could pass every run. `enum()` maps anything
+ * unrecognised to `null`, which every one of those columns is declared to hold.
  */
 final class FoldEvent
 {
@@ -117,9 +117,9 @@ final class FoldEvent
      *
      * ⛔ THE RANGE IS `>= 0`, AND IT BELONGS HERE RATHER THAN AT THE COLUMN. Every column this
      * method feeds is `UNSIGNED` in § 6.4 — durations, counts, ages, token totals, none of which has
-     * a negative reading — so a negative is a value the store would refuse on MySQL and silently
-     * accept on SQLite, which is the engine asymmetry `enum()` is guarded against for the same
-     * reason. Widening the column instead would delete a constraint that is doing its job.
+     * a negative reading — so a negative is a value MariaDB would refuse, which is what `enum()` is
+     * guarded against for the same reason. Widening the column instead would delete a constraint
+     * that is doing its job.
      *
      * A refusal is `null` AND NOT A RAISE, which is the class contract above: every one of those
      * columns is nullable, the ingest does not type-check per-kind `data` fields, and raising here

@@ -1,18 +1,27 @@
-# php-tests.yml — actually run `server/`'s PHPUnit suite, on every PR and on every push to a
-# long-lived branch. card#7344's PHP half.
+# php-tests.yml — actually run `server/`'s PHPUnit suite, against MariaDB, on every PR and on every
+# push to a long-lived branch. card#7344's PHP half; card#9250 brought MariaDB into CI; card#9328
+# made it the only engine the suite runs on.
 #
-# ⭐ TWO JOBS, TWO ENGINES, ONE SUITE — read both headers. `php-tests` (below) is the SQLite lane
-# this file was created as and describes itself in the paragraphs that follow. `php-tests-mariadb`
-# (at the foot of the file) runs the same `composer test` against the store production actually
-# runs, and carries its own header. Everything between here and that job is about the SQLite lane
-# unless it says otherwise.
+# ⭐ ONE ENGINE. MariaDB is the only store this application supports — production, sandbox, CI and
+# local development alike. **SQLite is not a supported configuration** (`docs/PLAN.md` D-15 and its
+# card#9328 amendment, the operator's ruling). `php-tests` runs every migration and the whole
+# suite against a pinned MariaDB service container.
 #
-# WHAT IT DOES. Installs PHP with `pdo_sqlite`/`sqlite3`, restores composer's download cache,
-# installs `server/`'s dependencies from `composer.lock`, makes a `.env` from the committed
-# template, mints an `APP_KEY`, and runs **the repo's own `composer test` script** —
-# `artisan config:clear` then `artisan test`. It does not spell out a phpunit command line:
-# `server/composer.json` already owns what "run the tests" means here, and a second spelling in
-# CI is a second thing to keep in step with it.
+# ⚠ `php-tests-mariadb`, AT THE FOOT OF THIS FILE, IS A TEMPORARY DUPLICATE OF `php-tests` — not a
+# second engine and not extra coverage. It survives only because its job id is a required
+# status-check context, and deleting a job whose context is still required leaves every PR waiting
+# on a check that never reports. It is removed together with the ruleset change that stops
+# requiring it. Its own header says so; its body predates card#9328 and describes the retired
+# two-engine design, so read the steps below, not those.
+#
+# WHAT IT DOES. Installs PHP with `pdo_mysql` (and no SQLite driver), restores composer's download
+# cache, installs `server/`'s dependencies from `composer.lock`, makes a `.env` from the committed
+# template and asserts the template still selects the only supported engine, mints an `APP_KEY`,
+# proves the server is MariaDB at § 6.1's floor and the schema empty, runs every migration and
+# proves they landed there, empties the schema again, and runs **the repo's own `composer test`
+# script** — `artisan config:clear` then `artisan test` — then proves the SUITE landed there too.
+# It does not spell out a phpunit command line: `server/composer.json` already owns what "run the
+# tests" means here, and a second spelling in CI is a second thing to keep in step with it.
 #
 # WHY IT EXISTS. Until this landed, **nothing in CI executed a single line of PHP.** The suite
 # under `server/tests/` was run only by whoever remembered to run it, which means every
@@ -25,6 +34,16 @@
 # been merged, and was failing the whole time; it was found because one agent happened to run
 # the suite by hand. A guard nothing runs is not a guard, and this file is the thing that runs
 # it.
+#
+# WHY THE ENGINE PRODUCTION RUNS, AND NOTHING ELSE. Laravel compiles a migration through a
+# per-engine schema grammar — SQLite has no native `ENUM` and REBUILDS a table where MariaDB emits
+# `ALTER … MODIFY` — so a suite that is green on another engine executed different framework code
+# from the code production runs. A migration that fails only on MariaDB is then discovered AT
+# DEPLOY, and MariaDB has no transactional DDL: a multi-statement migration halts PART-APPLIED with
+# no automatic rollback, and `bin/deploy.sh` is forward-only by design. The first MariaDB run
+# (card#9250) measured what the other engine had been hiding: two tests matched SQLite's `"`
+# identifier quoting, and one of them PASSED vacuously on MariaDB — `docs/CHANGELOG.md`'s card#9250
+# entry has the detail.
 #
 # NO `paths:` FILTER, AND HERE THAT IS MEASURED RATHER THAN INHERITED. The house argument
 # applies (`asset-provenance.yml`: a path-filtered workflow produces NO RUN, which as a required
@@ -71,15 +90,16 @@
 #     (`php-tests (8.4)`, `php-tests (8.5)`, …) — a required-check-list question, not a free
 #     change. One version, one context, on purpose.
 #
-#   * **TLS, the session time zone, and concurrency on the store.** ⚠ This bullet USED to say the
-#     store itself was uncovered; since card#9250 it is not. A second job, `php-tests-mariadb`,
-#     runs every migration and the whole suite against a pinned MariaDB service container — see
-#     its own header, which owns that argument. What is still uncovered is the rest of § 6.1's
-#     posture: the container is plaintext on loopback, so the TLS requirement is not exercised;
-#     `server/config/database.php` sets no session `timezone`; and `FOR UPDATE SKIP LOCKED` and
-#     the lost-update / ABBA orderings card#7523 lists need two connections working at once,
-#     which a single-threaded suite does not produce. Those stay card#7523's, verified at
-#     provisioning.
+#   * **TLS, the session time zone, `down()`, and concurrency on the store.** The engine itself IS
+#     covered; the rest of § 6.1's posture is not. The service container is plaintext on loopback,
+#     so § 6.1's verified-TLS requirement is not exercised, and `server/config/database.php` sets no
+#     session `timezone`, so `SET time_zone = '+00:00'` is not either — both stay card#7523's,
+#     verified at provisioning. Only `up()` runs: `bin/deploy.sh` is forward-only ON PURPOSE (a
+#     failed MariaDB migration is half-applied and a rollback is a second guess at an unknown
+#     state), so a `down()` defect is on no production path. And `FOR UPDATE SKIP LOCKED`, the
+#     `Predicates::record()` lost update and the ABBA ordering card#7523 names all need two
+#     connections doing real work at once; this is a single-threaded suite, so a real engine is a
+#     precondition for testing them, not the test.
 #
 #   * **The front-end build.** The suite passes with no `node_modules` and no `public/build`
 #     (measured on this tree), so there is no `npm` step here. If a test ever renders a `@vite`
@@ -107,6 +127,54 @@ jobs:
   php-tests:
     runs-on: ubuntu-latest
 
+    # ⛔ THE TAG IS A LITERAL BECAUSE IT CANNOT BE ANYTHING ELSE — `services:` is resolved before
+    # the first step runs, so no step output can reach it and `docs/design/FLEET-STATE.md § 6.1`'s
+    # floor cannot be interpolated here. The copy is therefore GUARDED rather than deleted:
+    # `tools/ci-store-probe.php` parses § 6.1's engine row and reds when the live server is below
+    # it, so raising the floor without raising this tag fails by name instead of quietly
+    # certifying migrations on an engine below what production is promised.
+    #
+    # Pinned to the floor EXACTLY (not `11.8`, not `lts`): the point of this lane is to execute
+    # the minimum the document promises, and a floating tag tests whatever happened to be newest
+    # on the day. Contrast the PHP pin below, which is the floor's MINOR by design — there the
+    # exact-minimum gap is closed statically by `tools/verify-php-floor.py`, and no such static
+    # check exists for a database server.
+    #
+    # No root password at all rather than a fake one: an ephemeral loopback container on a
+    # single-use runner has nothing to protect, and a literal credential in a public workflow
+    # file is a thing every future reader has to keep deciding is not real.
+    services:
+      mariadb:
+        image: mariadb:11.8.6
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 'yes'
+          MARIADB_DATABASE: mezzanine_test
+        ports:
+          - 3306:3306
+        # `healthcheck.sh` ships inside the official image. `--innodb_initialized` rather than a
+        # bare ping: the server accepts connections before InnoDB has finished coming up, and a
+        # migration fired into that window fails in a way that reads like a migration defect.
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=24
+
+    # Read by BOTH the application (Laravel's `env()`) and `tools/ci-store-probe.php`, on purpose:
+    # one source for the address means the probe cannot certify a server the suite never used.
+    # `DB_DATABASE` is § 6.2's pinned test database and matches `MARIADB_DATABASE` above — the
+    # suite's own copy of it is the forced pin in `phpunit.xml`, which this export does not and
+    # must not move. `DB_CONNECTION` agrees with `phpunit.xml`'s unforced declaration; were the two
+    # ever to differ, the export would win and `Tests\TestCase`'s guard would abort the run on a
+    # `database.default` other than `mysql`, rather than let it run somewhere else.
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_DATABASE: mezzanine_test
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -127,13 +195,17 @@ jobs:
         id: php-floor
         run: python3 tools/verify-php-floor.py --github-output
 
-      # `pdo_sqlite` AND `sqlite3` are both load-bearing and neither is optional: the suite's
-      # connection is SQLite (phpunit.xml) and it does not start without them.
+      # ⛔ `pdo_mysql` AND NO SQLITE DRIVER, and the omission is load-bearing. SQLite is not a
+      # supported configuration; if anything in this lane ever resolves to the framework's stock
+      # `sqlite` connection — which Laravel merges in whether or not `config/database.php` declares
+      # one — it must fail loudly on a missing driver rather than quietly run the suite on an engine
+      # production never uses. § 6.2 finding 4 is what that silence costs: green, and testing
+      # nothing.
       - name: Set up PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
         with:
           php-version: ${{ steps.php-floor.outputs.minor }}
-          extensions: pdo_sqlite, sqlite3
+          extensions: pdo_mysql
           coverage: none
           tools: composer:v2
 
@@ -181,35 +253,59 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       # `.env.example` is the committed template and is the only one of the pair in git; nothing
-      # in `composer install` creates `.env` for an existing checkout.
+      # in `composer install` creates `.env` for an existing checkout. It is COPIED UNCHANGED: the
+      # `env:` block above is what points this lane at its store, and exported values beat `.env`.
       - name: Create .env
         working-directory: server
         run: cp .env.example .env
 
-      # ⛔ ASSERTED, NOT EXPORTED — the difference is the whole point.
+      # ⛔ THE TEMPLATE IS ASSERTED, AND THIS LANE'S OWN EXPORT IS WHY IT HAS TO BE (card#9328).
       #
-      # `server/phpunit.xml` leaves `DB_CONNECTION` deliberately UNFORCED (its own comment says
-      # why: forcing it is the shape that turned another repo's MariaDB matrix into a SQLite run
-      # reporting green). ⚠ Since card#9250 one lane in this file DOES export it — the
-      # `php-tests-mariadb` job — and that is the point of the omission, not a violation of it:
-      # an unforced declaration is what lets an export win. This lane must still ASSERT rather
-      # than export, and now for a sharper reason than before. `.env.example` is the only thing
-      # that selects SQLite here, so an `export DB_CONNECTION=sqlite` would pin this lane to
-      # SQLite no matter what the template said — and the template moving is exactly the change
-      # this step exists to catch.
-      #
-      # So this lane reads the backend it is about to run on and REDS if it is not what this
-      # header claims. Flip `.env.example` to mysql and this step fails by name, instead of the
-      # suite silently running somewhere else — or, worse, appearing to.
-      - name: Assert the backend this lane claims to run on
+      # The `env:` block exports `DB_CONNECTION=mysql`, which beats both `.env` and `phpunit.xml`'s
+      # unforced declaration — so nothing this lane RUNS would notice `server/.env.example` moving
+      # back to another engine. That move would still ship: every local checkout and every host
+      # starts from the template (`README.md`, `docs/PLAN.md` § 5). This step makes it red here, by
+      # name. It replaces card#9250's `DB_CONNECTION=sqlite` assertion — the same guard on the same
+      # file, moved to the new truth rather than removed, because the silent flip it catches is
+      # still possible and now points the other way. Its sibling for `phpunit.xml`'s declaration is
+      # `Tests\Feature\DatabasePinTest`, which the export hides in the same way.
+      - name: The committed template selects the only supported engine
         working-directory: server
-        run: grep -qx 'DB_CONNECTION=sqlite' .env || { echo "::error::server/.env.example no longer sets DB_CONNECTION=sqlite — this lane, and this workflow's header, describe a SQLite run. Fix one or the other."; grep -n '^DB_CONNECTION=' .env; exit 1; }
+        run: grep -qx 'DB_CONNECTION=mysql' .env || { echo "::error::server/.env.example no longer sets DB_CONNECTION=mysql. MariaDB, through Laravel's mysql connection, is the only supported engine (docs/PLAN.md D-15; SQLite is not a supported configuration, card#9328)."; grep -n '^DB_CONNECTION=' .env; exit 1; }
 
       # `.env.example` ships `APP_KEY=` empty on purpose (it is a template and may never carry a
       # real value), and the encrypter throws without one.
       - name: Generate an application key
         working-directory: server
         run: php artisan key:generate
+
+      # ⭐ THE CONTROL HALF. A measured-empty schema is what makes the measured-non-empty one
+      # after the migration mean anything; without it "there are tables" is satisfied by tables
+      # that were already there. It also gates on the engine and on § 6.1's version floor, so a
+      # wrong server fails here rather than three steps later inside a migration error.
+      - name: The store is MariaDB at the pinned floor, and it is empty
+        run: php tools/ci-store-probe.php --expect-tables=none
+
+      # Every migration in `server/database/migrations/`, run against the engine it will actually
+      # run on. `--force` because artisan's destructive-command guard prompts without it on a
+      # non-interactive runner.
+      - name: Run every migration against MariaDB
+        working-directory: server
+        run: php artisan migrate --force
+
+      - name: The migrations landed on MariaDB
+        run: php tools/ci-store-probe.php --expect-tables=some
+
+      # The control half again, for the suite this time. `db:wipe` empties the schema so that the
+      # check AFTER `composer test` can only pass if the suite itself migrated into MariaDB —
+      # which is the only proof available from outside the PHP process that the suite resolved to
+      # this store; `Tests\TestCase`'s guard is the proof from inside it.
+      - name: Empty the schema so the suite's own migration is the thing measured
+        working-directory: server
+        run: php artisan db:wipe --force
+
+      - name: The schema is empty again before the suite runs
+        run: php tools/ci-store-probe.php --expect-tables=none
 
       # The repo's own entry point, not a hand-rolled phpunit invocation. `config:clear` is the
       # first half of that script and it is not ceremony: a stale `bootstrap/cache/config.php`
@@ -219,48 +315,23 @@ jobs:
         working-directory: server
         run: composer test
 
+      - name: The suite ran against MariaDB
+        run: php tools/ci-store-probe.php --expect-tables=some
+
   # ═════════════════════════════════════════════════════════════════════════════════════════
-  # THE SECOND ENGINE. card#9250.
+  # ⚠ A TEMPORARY DUPLICATE OF `php-tests` ABOVE — card#9328's first step.
   #
-  # Same suite, same lock, same PHP — a DIFFERENT STORE. Until this landed, **no migration in
-  # this repository had ever been executed against the engine it runs on.** The suite is SQLite
-  # (`server/phpunit.xml`), the job above asserts SQLite by name, and production is MariaDB
-  # (`docs/PLAN.md` D-15 as amended 2026-09-09). Laravel does not paper over that: SQLite has no
-  # native `ENUM` and its grammar REBUILDS a table where MySQL/MariaDB emits `ALTER … MODIFY`,
-  # so the two are different framework code and only one of them was ever executed here. A
-  # migration that passes the lane above and fails on MariaDB is discovered AT DEPLOY, and
-  # MariaDB has no transactional DDL — a multi-statement migration halts PART-APPLIED with no
-  # automatic rollback, and `bin/deploy.sh` is forward-only by design.
+  # Until card#9328 this was the MariaDB lane beside a SQLite one (card#9250). SQLite is no longer
+  # a supported configuration and `php-tests` now runs exactly this lane, so this job adds no
+  # coverage. It is NOT deleted yet because its job id is a required status-check context
+  # (`docs/VERSIONING.md § Branch model` owns that list): removing a job whose context is still
+  # required blocks every PR on a check that never reports. The job and that requirement are
+  # removed together, in card#9328's next step.
   #
-  # ⛔ THIS IS AN ADDITIONAL LANE, NOT A CHANGED ONE, and that is card#9250's ruling rather than
-  # a preference. The job above keeps its `DB_CONNECTION=sqlite` assertion untouched: that step
-  # is not a configuration step, it is the guard that reds when `.env.example` moves under it,
-  # and weakening it to make room here would remove the only thing standing between that lane
-  # and a silent backend change. The two jobs share nothing but the checkout.
-  #
-  # HOW THE BACKEND IS SELECTED, and why it is an EXPORT. `server/phpunit.xml` declares
-  # `DB_CONNECTION` **unforced**, deliberately, and `docs/design/FLEET-STATE.md § 6.2` finding 1
-  # is why that works: an unforced `<env>` beats `.env`, and what beats the unforced `<env>` is a
-  # variable already exported into the environment. So the `env:` block below is the mechanism,
-  # not a convenience — it is the one lever that moves the suite's store, and `phpunit.xml`'s own
-  # comment ("when something does, it must win") is now describing this job. Every other § 6.2
-  # pin — `DB_DATABASE`, `DB_URL`, the two Redis databases — is `force="true"` + `<server>` and
-  # therefore DEFEATS this export, which is the designed behaviour and is asserted by
-  # `Tests\Feature\DatabasePinTest` and by `Tests\TestCase`'s resolved-value guard.
-  #
-  # ⚠ WHAT THIS LANE STILL DOES NOT COVER, stated rather than left to be inferred:
-  #   * **TLS and the session time zone.** § 6.1 requires a verified-certificate connection and
-  #     `SET time_zone = '+00:00'` on every connection. This service container is plaintext on
-  #     loopback and `server/config/database.php` sets no `timezone`, so neither is exercised
-  #     here; both remain card#7523's, verified at provisioning.
-  #   * **`down()`.** Only `up()` runs. That is not an oversight: `bin/deploy.sh` is forward-only
-  #     ON PURPOSE (a failed MariaDB migration is half-applied and a rollback is a second guess
-  #     at an unknown state), so a `down()` defect is not on any production path. It stays
-  #     unexercised, and card#9250 records that it does.
-  #   * **Concurrency.** `FOR UPDATE SKIP LOCKED`, the `Predicates::record()` lost update and the
-  #     ABBA ordering card#7523 names all need two connections doing real work at once. This lane
-  #     runs the same single-threaded suite; a real engine is a precondition for testing them,
-  #     not the test.
+  # ⛔ ITS BODY IS DELIBERATELY LEFT UNEDITED until then, so its inline comments still describe the
+  # retired two-engine design — a SQLite lane "above", a template that "still says
+  # `DB_CONNECTION=sqlite`". Those statements are FALSE. `php-tests` carries the current argument
+  # for every step; do not copy from here.
   # ═════════════════════════════════════════════════════════════════════════════════════════
   php-tests-mariadb:
     runs-on: ubuntu-latest

@@ -64,13 +64,40 @@ not an asset tree and owes no provenance rows.
 
 ### Running the server locally
 
+**MariaDB is the only supported store. SQLite is not a supported configuration** — not for a local
+checkout, not in CI, not on a host (`docs/PLAN.md` D-15). A local checkout needs a MariaDB server at
+or above the floor `docs/design/FLEET-STATE.md § 6.1` pins, with two databases on it: the one the
+application uses, and **`mezzanine_test`**, which the test suite is pinned to (§ 6.2) and in which
+`php artisan test` **drops every table on every run** — never give that name to a database you want
+to keep.
+
+Create both, and one account for them, once — at the `mariadb` client's prompt as an administrative
+user (`sudo mariadb`). Type it at the prompt rather than passing it with `-e`, so the password never
+lands in argv or shell history:
+
+```sql
+CREATE DATABASE mezzanine;
+CREATE DATABASE mezzanine_test;
+CREATE USER 'mezzanine'@'127.0.0.1' IDENTIFIED BY '<choose a password>';
+GRANT ALL PRIVILEGES ON mezzanine.*      TO 'mezzanine'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON mezzanine_test.* TO 'mezzanine'@'127.0.0.1';
+```
+
+No character set is given there on purpose: `server/config/database.php` is the one home of the
+charset and collation, and every table is created with them explicitly. `server/.env.example`
+already carries the `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE` and `DB_USERNAME` values
+that match the statements above (`DB_CONNECTION=mysql` is Laravel's connection name, and it is how
+the app reaches MariaDB); the one key left to you is **`DB_PASSWORD`**. The suite uses the same
+account and swaps only the database, to `mezzanine_test` — and `Tests\TestCase` aborts the run
+before it touches anything if the connection resolves to any other connection or database.
+
 ```
 cd server
 composer install                                    # ← local only; a HOST installs --no-dev (below)
-cp .env.example .env && php artisan key:generate    # .env is never committed
+cp .env.example .env && php artisan key:generate    # .env is never committed; then set DB_PASSWORD in it
 php artisan migrate
 php artisan mezzanine:user:create                   # ← the first account; nothing else creates one
-php artisan test
+php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment

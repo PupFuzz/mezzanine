@@ -16,16 +16,16 @@ use Tests\TestCase;
  * `$table->binary('last_used_ip')` — which `Illuminate\…\Grammars\MySqlGrammar::typeBinary()`
  * compiles to **`blob`**, because it emits `varbinary({$length})` only `if ($column->length)` and
  * otherwise falls through. Two copies of one line, a document saying something else, and NOTHING
- * that could notice: the suite is pinned to SQLite (§ 6.2), where `binary()` is `blob` either way,
- * so the divergence was invisible to every green run this card ever produced.
+ * that could notice: the suite then ran on SQLite, where `binary()` is `blob` either way, so the
+ * divergence was invisible to every green run this card ever produced.
  *
  * ⚠ WHAT THIS IS AND IS NOT EVIDENCE OF, stated because a green here is easy to over-read.
  * It proves the SQL TEXT this application would send to MySQL. It proves nothing about what MySQL
  * then DOES with it — that a `VARBINARY(16)` rejects a 17th byte, that an `ENUM` refuses an
  * unlisted value, that `ascii_bin` compares case-exactly. ⚠ **Since card#9250 the blocker on those
  * three has MOVED, and this file's old claim that they "need the engine … they are card #7523's"
- * is no longer why they are unexercised.** The `php-tests-mariadb` lane runs the whole suite
- * against a real MariaDB, so the engine is now reachable from CI on every PR — what is missing is
+ * is no longer why they are unexercised.** CI's `php-tests` lane runs the whole suite against a
+ * real MariaDB — the only engine since card#9328 — so the engine is reachable from CI on every PR — what is missing is
  * a TEST that inserts a 17th byte, an unlisted ENUM member, or two ULIDs differing only in case
  * and asserts the refusal. Nothing here does; they remain unexercised for want of a test, not for
  * want of a store. The gap this file closes is still the narrow one that actually bit: a column

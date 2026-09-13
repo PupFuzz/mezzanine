@@ -216,7 +216,7 @@ final class Predicates
      *
      * ⛔ THIS IS A READ-MODIFY-WRITE AND IT IS NOT SAFE ON MariaDB. THE EARLIER JUSTIFICATION HERE
      * WAS FALSE AND IS CORRECTED RATHER THAN SOFTENED — the fix is card #7523's (the store host),
-     * because the race is not reachable on the SQLite the suite runs against. ⚠ Card #7833's
+     * because the race is not reachable from the single-connection suite. ⚠ Card #7833's
      * columns were chosen PARTLY so that this posture stays UNTOUCHED: they add state to a row this
      * method already read and already rewrote whole — no new statement, no new writer, no new
      * lock-order edge.
@@ -237,9 +237,9 @@ final class Predicates
      *
      * A fold transaction and a sweep transaction can therefore interleave on ONE row of
      * `seat_predicates`: both read the same prior counts and the second write silently discards the
-     * first's increment. On MariaDB that is an ordinary lost update. It is unreachable on SQLite,
-     * whose connection-level write serialization means the suite cannot exercise it — so this is
-     * REPORTED, not "tested and fine".
+     * first's increment. On MariaDB that is an ordinary lost update. The suite runs on MariaDB over
+     * ONE connection, so it cannot produce the interleaving — so this is REPORTED, not "tested and
+     * fine".
      *
      * ⚠ AND THE SAME TWO WRITERS TAKE THE TWO TABLES IN OPPOSITE ORDERS, which is a deadlock cycle
      * and not merely a lost update. A sweep transaction writes `seat_predicates` (the orphan close)

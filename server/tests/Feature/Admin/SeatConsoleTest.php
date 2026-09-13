@@ -278,10 +278,8 @@ class SeatConsoleTest extends SweepTestCase
      * committed on the connection immediately before the UPDATE is executed, so the UPDATE's
      * predicate is the only thing that can still see it — the old code passes its guard here and
      * writes, this one matches zero rows. It does NOT drive concurrency: the suite runs on ONE
-     * connection on either store — `lockForUpdate()` is a no-op on SQLite and SQLite serialises
-     * writers anyway, and on the MariaDB of the `php-tests-mariadb` lane (card#9250) the lock is
-     * real but has no second session to exclude — so two genuinely interleaved transactions are
-     * not producible here on any store the suite has. That leg is reasoned in
+     * connection to MariaDB, the only store it runs on — the lock is real but has no second
+     * session to exclude — so two genuinely interleaved transactions are not producible here. That leg is reasoned in
      * `App\Fleet\SeatRetirement`, not executed.
      */
     public function test_a_retirement_that_lands_after_another_one_writes_nothing(): void
