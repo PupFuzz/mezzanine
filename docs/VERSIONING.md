@@ -60,9 +60,10 @@ specific to Mezzanine and has no counterpart there.
    branch, merged with a **merge commit — never squashed**. Squashing a back-merge copies
    the content without the ancestry, so `main`'s tip never becomes an ancestor of `dev` and
    the *next* release PR's three-dot diff re-shows the previous release's `VERSION` bump as
-   an incoming change. `dev` was briefly squash-only, which made this rule unsatisfiable; that
-   was resolved on 2026-08-23 and `dev` allowed `merge` too — ⚠ but `dev` measured squash-only
-   again on 2026-09-13; see the ⚠ above the ✅ under [§ Branch model](#branch-model).
+   an incoming change. `dev` is squash-only for everyone, and its merge-method ruleset carries an
+   **admin bypass that exists solely so this merge commit can land**: the admin identity merges
+   the back-merge with `gh pr merge <N> --merge`, never with `solo-self-merge`, which always
+   squashes. [§ Branch model](#branch-model) carries the measured ruleset.
 
 ---
 
@@ -83,7 +84,9 @@ right button on a control that remembers the *last* choice. Measured on the live
 | `dev` | `squash` only | PR required, no deletion, no force-push |
 
 So a release PR into `main` *cannot* be squashed and a feature PR into `dev` *cannot* be
-merge-committed: the buttons for the wrong method are not offered. That matters beyond
+merge-committed: the buttons for the wrong method are not offered — except to the admin
+role on `dev`, whose bypass exists for core rule 5's back-merge alone (the ✅ block at the end of
+this section). That matters beyond
 tidiness — `docs/KANBAN.md § Release PRs into main must land as MERGE COMMITS` explains what
 a squashed release would cost the card mover (it collapses the per-PR subjects the mover
 correlates on).
@@ -203,20 +206,38 @@ the agent. What the ruleset buys is a **deliberate act** — approve, or knowing
 admin — rather than a silent merge. That is friction on the path PR #38 took, not a wall across
 it, and it is why the release gate asks *what* is merged rather than *who* merges it.
 
-> ⚠ **FALSE AS MEASURED 2026-09-13 — read this block as history.** Ruleset `21953633`
-> "dev — merge method (squash only)" allows only `squash` on `dev`, which is the state this block
-> says made core rule 5 unsatisfiable. Whether that is intended, and what it means for rule 5's
-> back-merge, is not settled here (card#9328 step 2 found it and reported it).
+> ✅ **THE MERGE-METHOD STATE ON `dev`: squash-only for everyone, plus an admin bypass for the
+> back-merge.** Read on 2026-09-13 from `GET /repos/PupFuzz/mezzanine/rulesets/21953633`: ruleset
+> `21953633` "dev — merge method (squash only)" (created 2026-08-31, `enforcement: active`,
+> `refs/heads/dev`) allows only `squash`. Its one bypass actor is `RepositoryRole` `actor_id` 5, the
+> admin role, in mode `always`, and the shared identity reads `current_user_can_bypass: always`.
+> **The bypass exists solely so core rule 5's `main` → `dev` back-merge lands as a merge commit.**
+> This is deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
 >
-> ✅ **Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`.** It was briefly
+> - **How the back-merge lands:** the admin identity merges the `sync/main-to-dev-post-v<version>`
+>   PR with `gh pr merge <N> --merge`. **Not `solo-self-merge`**: it always squashes, which is what
+>   rule 5 forbids. The post-`v0.3.0` back-merge (PR #76, merge commit `834a638`, 2026-09-09) landed
+>   as a merge commit after the ruleset existed, which only the bypass admits.
+> - **What the bypass does not skip:** it bypasses this ruleset only. The required status checks
+>   live in ruleset `21222661`, which has no bypass actor (`current_user_can_bypass: never`), and in
+>   classic protection with `enforce_admins` on, so a back-merge still waits for every required
+>   check. Classic protection on `dev` does not require linear history, which would refuse a merge
+>   commit from anyone.
+> - **The cost, stated:** one identity is shared by the agent and the operator (above), so that
+>   identity *can* merge-commit any PR into `dev`, not only a back-merge. For it, squash on a feature
+>   PR is convention, and `solo-self-merge` is the path that keeps it.
+> - **Re-derive it, never relay it:**
+>   `gh api repos/PupFuzz/mezzanine/rulesets/21953633 --jq '{bypass_actors,current_user_can_bypass,rules}'`.
+>
+> ⛔ **SUPERSEDED on 2026-08-31 by that ruleset — read as history.** The 2026-08-23 block read:
+> *"✅ Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`."* It was briefly
 > squash-only, which made core rule 5 unsatisfiable: a `sync/main-to-dev-post-v<version>` PR
 > could not land as a merge commit, so `main`'s tip would never have become an ancestor of
 > `dev` and every subsequent release PR's three-dot diff would have re-shown the previous
 > `VERSION` bump. A ruleset cannot scope allowed methods by *head* branch, so the choice was
-> "allow both on `dev`" or "a bypass actor for the sync branch"; allowing both is simpler and
-> its failure mode is cosmetic (a feature PR merged with the wrong button), whereas a bypass
-> actor is a standing hole. **Squash for feature PRs is therefore convention here, not
-> enforcement — the enforced half is that `main` takes merge commits only.**
+> "allow both on `dev`" or "a bypass actor for the sync branch"; that block chose allowing both and
+> called a bypass actor a standing hole. Ruleset `21953633` took the other branch, with the bypass
+> on the admin role rather than on a head branch, and the cost bullet above is that hole, named.
 
 ---
 
@@ -301,8 +322,9 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
     `--base` is the escape; `docs/KANBAN.md § G-2` owns the three cases where that happens.
     **Do not restate them here** — a second copy of that rule is what went stale last time.
 11. **Open the back-merge `sync/main-to-dev-post-v<version>` → `dev`** and merge it with a
-    merge commit — never a squash (core rule 5). `dev` allows `merge` since 2026-08-23, so
-    nothing blocks this; the post-`v0.2.0` back-merge landed this way.
+    merge commit — never a squash (core rule 5). `dev` is squash-only, so the admin identity
+    lands it through the ruleset's admin bypass with `gh pr merge <N> --merge`
+    ([§ Branch model](#branch-model)); not with `solo-self-merge`, which always squashes.
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
 
