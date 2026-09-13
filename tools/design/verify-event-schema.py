@@ -381,6 +381,48 @@ else:
             fail.append(f"§ 10.3: stated {what} {m.group(1)} disagrees with {want:,.2f} measured "
                         f"from § 6.14's worked example ({hb_bytes} B serialized)")
 
+# ---- 11. the coordination roster's resolution sites: one contract, held at every site stating it --
+# § 3.1 resolves the coordination roster from an ORDERED list of sites, and the order is a
+# cross-repository contract (card#9296): a reporter reading only the home path finds no roster on a
+# multi-agent install, whose framework points `$COORD_CONFIG` into the coordination repository, and
+# `disagreed` becomes unreachable with the roster readable on the box.  The contract is stated at
+# that list, exercised at AT-27 and named as unestablished at § 18.13 row 6.  No site is written
+# here: the list is re-derived from § 3.1 on every run and every other surface is held against it.
+# What this cannot check is the reporter half -- that a build reads the sites in this order --
+# which is AT-27's.
+sec31 = re.search(r"^### 3\.1 .*?(?=^### 3\.2 )", raw, re.S | re.M)
+m_sites = re.search(r"^\*\*Where the roster is, in resolution order(?:[^\n]*\n)+?\n"
+                    r"((?:\d+\. [^\n]*\n(?:   [^\n]*\n)*)+)", sec31.group(0) if sec31 else "", re.M)
+sites = []
+if m_sites:
+    for item in re.split(r"^\d+\. ", m_sites.group(1), flags=re.M):
+        tok = re.search(r"`([^`\n]+)`", item)
+        if tok:
+            sites.append(tok.group(1))
+at27 = re.search(r"^### AT-27 .*?(?=^### |^## )", raw, re.S | re.M)
+row6 = next((l for l in raw.splitlines() if l.startswith("| **That a protocol agent name identifies")), None)
+if not sites or not at27 or row6 is None:
+    fail.append(f"check 11 CONTROL: § 3.1's roster resolution order parsed as {sites}; AT-27 "
+                f"{'found' if at27 else 'NOT found'}; § 18.13 row 6 {'found' if row6 else 'NOT found'} "
+                f"— a contract the check cannot read, or a surface it cannot find, is one nothing holds "
+                f"to the other")
+else:
+    for i, line in enumerate(raw.splitlines(), 1):
+        for tok in re.findall(r"`(\$COORD_[A-Za-z_]+|[^`\s]*[/\\]coordination\.config\.json)`", line):
+            if tok not in sites:
+                fail.append(f"L{i}: `{tok}` names a location for the coordination config that is not a "
+                            f"site of § 3.1's resolution order {sites} — a second place a builder can "
+                            f"read the roster from, which the contract does not declare")
+    for s in sites:
+        if f"`{s}`" not in at27.group(0):
+            fail.append(f"AT-27 never names `{s}`, a site of § 3.1's roster resolution order — a "
+                        f"build that never reads it passes every case, which is how reading one site "
+                        f"made `disagreed` unreachable")
+    pos = [row6.find(f"`{s}`") for s in sites]
+    if -1 in pos or pos != sorted(pos):
+        fail.append(f"§ 18.13 row 6 does not name § 3.1's roster resolution sites {sites} in their "
+                    f"order — the residual it names is stated against a contract it no longer matches")
+
 print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"enum fields re-derived: {n_enum}, {n_enum - n_unclassified} classified; "
       f"counter-name mentions checked: {n_counter} against {len(wire_fields)} wire fields; "
@@ -388,7 +430,8 @@ print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"capped objects dispositioned: {len(capped)}; "
       f"heartbeat example re-serialized: {hb_bytes} B; "
       f"exempt-object bounds re-derived: predicates {worst_pred} B from {n_pred} members, "
-      f"selftest {worst_self} B from {n_self} members")
+      f"selftest {worst_self} B from {n_self} members; "
+      f"roster resolution sites re-derived from § 3.1, in order: {sites}")
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
     for f in fail:

@@ -218,12 +218,8 @@ class At18UnknownEnumTest extends IngestTestCase
     {
         // § 6.14: `counters`, `predicates` and `selftest` have key sets "declared, not closed at
         // the ingest, and the difference is deliberate" — a reporter shipping a selftest check
-        // that table does not yet name "costs one key a consumer does not yet render, and no
-        // `422`". So nothing descends into them, and their contents raise no
-        // `ignored_unknown_fields` either. (⚠ This comment named that check by ORDINAL and the
-        // ordinal went stale on card#9296, which added one. The fixture keys below said it twice
-        // more. Nothing guards D1 prose quoted in code — `EventSchemaDriftTest` re-derives names,
-        // members and bounds, never sentences — so the ordinal is gone rather than re-synced.)
+        // that table does not yet name takes no `422`. So nothing descends into them, and their
+        // contents raise no `ignored_unknown_fields` either.
         $this->postBatch($this->validBatch([
             $this->event([
                 'kind' => 'reporter.heartbeat',

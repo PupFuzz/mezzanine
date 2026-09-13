@@ -86,6 +86,19 @@ PLANTS = [
         "disagrees with",
     ),
     (
+        # card#9296.  § 3.1's roster resolution order is a cross-repository contract, and reading
+        # only the home path is what made `disagreed` unreachable on a multi-agent install.  Check
+        # 11 re-derives the sites from § 3.1's list; renaming the first leaves every other mention
+        # of it naming a location the list no longer declares, and the check must say so.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(1\. \*\*`)(\$COORD_CONFIG)(`\*\*, whenever it is set)",
+        "rename",
+        "the first site of § 3.1's roster resolution order, which check 11 holds AT-27, § 18.13 "
+        "row 6 and every roster-location mention in D1 against (card#9296)",
+        "is not a site of",
+    ),
+    (
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(State-changing events per seat-day at the ceiling:.*?= \*\*)([\d,]+)(\*\*)",
@@ -146,9 +159,9 @@ PLANTS = [
         # `rename` there must make the gate SAY it can no longer read its population, never pass.
         # Adding a desk field to § 8.3.3 -- the defect the leg exists for -- is not expressible as a
         # `bump` or a `rename` (neither mutation can write the word `desk` into a field name), so it
-        # stays a HAND proof; round 2 of card#9296 ran it, on four rows -- `coord_thread.desk`,
-        # `coord_round.from_seat`, a nested `…[].seat_ref` and an unparseable row -- each red under
-        # the widened leg and each GREEN under the name-equality check it replaced.  The limit is
+        # stays a HAND proof (card#9296: a `coord_thread.desk`, a `coord_round.from_seat`, a nested
+        # `…[].seat_ref` and an unparseable row, each red under the shape leg or the control and
+        # each green under the name-equality check it replaced).  The limit is
         # stated here rather than left to be inferred from a plant list.
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
@@ -159,12 +172,10 @@ PLANTS = [
         "no longer declares which members ARE the seat",
     ),
     (
-        # card#9296 round 2.  G13 leg 2's under-read CONTROL used to be a literal `< 20` -- slack by
-        # two rows the day it was written, and blind to a table that shrank.  Its denominator is now
-        # DERIVED from the two § 8.3.3 field tables' own row counts, and this plant is what proves
-        # that: renaming the `coord.round` table's header column takes that table out of the
-        # denominator, so 22 parsed rows are held against 11 declared ones and the control fires.
-        # Under the old literal the same mutation changed nothing at all and the gate stayed green.
+        # card#9296.  G13 leg 2's under-read CONTROL takes its denominator from the § 8.3.3 field
+        # tables' own row counts rather than from a written figure, and this plant is what proves
+        # it: renaming the `coord.round` table's header column takes that table out of the
+        # denominator, so the parsed rows outnumber the declared ones and the control fires.
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(`coord\.round` — the post\.\*\*.*?\| )(Field)( \| Type \| Null\? \| Bounds \| Example \|)",

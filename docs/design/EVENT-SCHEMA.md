@@ -307,15 +307,13 @@ token-issue time, not a silent merge of two desks.
 [§ 18.13](#1813-what-this-section-does-not-establish) row 6 priced the gap: every coordination fact
 derived correctly and reaching no desk. It is **ruled on `card#7957`, option (d)**: the *seat*
 declares its own protocol agent name, because the machine that is seat X is the only party that also
-knows it is agent Y — every other shape asks somebody to hold a mapping for entities it cannot
-observe. ⚠ **That is a claim about the shapes `card#7957` weighed, not a universal one, and one
-join in this repository is the counter-example.** `D2-CITED:` [D2 § 6.4](FLEET-STATE.md#64-ddl)'s
-`seats.board_user_id` is a seat→board-user mapping an **operator** holds, and the operator observes
-both ends. It does not transfer, and the reason is a property of *this* fact rather than of that one:
-which agent a seat is, is **already stated in the seat's own config**, so an operator-held copy would
-be a second home for a fact one party already has — while a board username and a `seat_id` are two
-systems' identifiers and neither system holds the other's. This row is that declaration, and one
-optional row is the whole of the config change.
+knows it is agent Y — every other shape **that card weighed** (the producer emitting a `seat_id`, a
+mapping table beside the roster, the two names ruled equal) asks somebody to hold a mapping for
+entities it cannot observe. ⚠ **That is a claim about those shapes, not about every shape**:
+`D2-CITED:` [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `seats.board_user_id` is a seat→board-user mapping an
+**operator** holds while observing both ends, under a uniqueness key. The ruling is `card#7957`'s and
+is not re-argued here; the sentence is narrowed so it is not read as a universal. This row is that
+declaration, and one optional row is the whole of the config change.
 
 ⛔ **It declares; it does not identify, and four things turn on that.**
 
@@ -348,8 +346,12 @@ rides **every** heartbeat as `protocol_agent_name_check` ([§ 6.14](#614-reporte
 fallback.**
 
 1. **`$COORD_CONFIG`**, whenever it is set in the reporter's environment: the absolute path to the
-   `coordination.config.json` this machine's coordination framework actually uses.
-2. **`~/.config/coord/coordination.config.json`**, when it is not.
+   `coordination.config.json` this machine's coordination framework actually uses. **Set, it is the
+   whole answer**: a file absent or unreadable there is `unchecked`, and the home path is not
+   consulted — a home file on a box whose framework points elsewhere is not the roster that
+   framework uses, and checking against it would mint a `checked` or a `disagreed` against a list
+   nothing else on the box reads.
+2. **`~/.config/coord/coordination.config.json`**, when it is not set.
 
 ⛔ **Reading the home path alone makes `disagreed` unreachable on the install shape this ruling
 exists for, and an earlier draft of this section did exactly that.** The coordination framework
@@ -374,15 +376,15 @@ and its check state ride every heartbeat whichever branch is taken, so the varia
 protects is identity, and identity is untouched: `install_id`, `seat_id` and the declared name
 itself still come from this file and from no environment variable at all.
 
-⚠ **No Windows path is published here.** An earlier draft named
-`%APPDATA%\coord\coordination.config.json` as the Windows home path. **Nothing sources it** — the
-string occurs nowhere in the coordination framework — so it is **withdrawn rather than relayed**,
-because an unsourced path published as a contract is a claim the other end would be right to build
-against. ⚠ **`%APPDATA%` on the seat-config row above is a different fact and stays**: that path is
-where *this* reporter keeps *its own* config, which this document decides and the installer creates,
-while where a **coordination** config lives is the framework's decision in another repository — and
-what is unsourced is that framework's Windows behaviour, not the variable. On a platform whose home path this document has not sourced, `$COORD_CONFIG` is the whole of
-the resolution, and its absence is an `unchecked` seat — a supported state.
+⚠ **No Windows path is published here.** An earlier draft named an `%APPDATA%` location as the
+Windows home of the coordination config. **Nothing sources it** — `%APPDATA%` occurs nowhere in the
+coordination framework — so it is **withdrawn rather than relayed**, because an unsourced path
+published as a contract is a claim the other end would be right to build against. ⚠ **`%APPDATA%` on
+the seat-config row above is a different fact and stays**: that path is where *this* reporter keeps
+*its own* config, which this document decides and the installer creates, while where a
+**coordination** config lives is the framework's decision in another repository. On a platform whose
+home path this document has not sourced, `$COORD_CONFIG` is the whole of the resolution, and its
+absence is an `unchecked` seat — a supported state.
 
 **This resolution is a CROSS-REPOSITORY guarantee, so it is declared, checked and bounded rather
 than assumed.** The condition — *the roster is at a path this reporter reads* — is one no reviewer
@@ -394,7 +396,12 @@ framework's, in another repository, and it can move without a single check here 
   `$COORD_CONFIG`, else from `~/.config/coord/coordination.config.json`, and from nowhere else. An
   install that keeps its coordination config elsewhere, or that does not export `$COORD_CONFIG` into
   the reporter's process, turns every `checked` on that box into `unchecked` — silently, with no act
-  failing.* ⚠ **Carrying that contract to the framework's owner is an act this repository has not
+  failing.* The variable reaches the reporter the way the framework delivers it: written into the
+  harness's per-machine settings, so a hook inherits it, and so does the flusher a hook spawns —
+  `fleet-reporter/fleet-reporter.js` spawns it with a copy of the hook's own environment. A `selftest`
+  run from a shell that has not exported it reads the home path instead, and may report `unchecked`
+  on a box whose heartbeat says `checked`; each is honest about the read it made.
+  ⚠ **Carrying that contract to the framework's owner is an act this repository has not
   performed**, and it is recorded as owed at
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6 rather than implied here.
 - **CHECKED, on the half this end owns.** `protocol_agent_name_in_roster`
@@ -403,8 +410,12 @@ framework's, in another repository, and it can move without a single check here 
   made to discriminate rather than merely to pass: **case A** places the roster at the home path
   with `$COORD_CONFIG` unset, **case E** places it where `$COORD_CONFIG` points with no home file at
   all, and the ⛔ RED beneath them is a reporter that stats only the home path — which finds
-  nothing on case E, reports `unchecked`, and passes. ⚠ **It is specified and not discharged**: no
-  reporter in this repository reads a roster at all yet, so nothing has been seen to fail.
+  nothing on case E, reports `unchecked`, and passes. ⚠ **That half is specified and not
+  discharged**: `fleet-reporter/fleet-reporter.js` reads no roster yet, so nothing has been seen to
+  fail. **The half this repository can check today, it does:** `tools/design/verify-event-schema.py`
+  re-derives the resolution order from the list above on every run, and reds when AT-27 stops naming
+  a site, when [§ 18.13](#1813-what-this-section-does-not-establish) row 6 stops naming them in order,
+  or when this document names any other location for a coordination config.
 - **NAMED where it cannot be established.** That the roster is at a path this design reads is not
   checkable from this repository in either direction, so it is on
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6's not-established list **by name**,
@@ -2317,47 +2328,40 @@ floor must not.
 anyone holding the event stream confirm a guessed token by comparing hashes. It exists so an operator
 can tell "this seat was reconfigured" from "this seat is a different seat".
 
-**The declared protocol agent name rides THIS event, and what forces the choice is the PAIR rather
-than the name alone.** [§ 3.1](#31-the-seat-config-file) owns the field, its four states and its
-check; what this section owes is the wire. Three facts pick the carrier, and the **three**
-alternatives they foreclose are named below so they are not re-opened. It is a
-**config-derived** fact, and this event is already where config-derived facts ride — `enabled` and
-`config_fingerprint` are both here and on no other kind. It is the **only** event a seat is
-guaranteed to emit: the flusher sends it every 60 s whether or not anything else is queued, so a
-seat that is idle, disabled or between sessions still declares, and a coordination fact naming a
-quiet agent still reaches a desk. And it **recurs**, so a declaration edited in the config reaches a
-consumer within one interval without an event class of its own.
+**The declared protocol agent name rides THIS event. The carrier is CHOSEN, not forced, and each
+alternative is named below with what it would cost, so a later change re-opens it on those costs.**
+[§ 3.1](#31-the-seat-config-file) owns the field, its four states and its check; what this section
+owes is the wire. Three facts favour this event. It is a **config-derived** fact, and this event is
+already where config-derived facts ride — `enabled` and `config_fingerprint` are both here and on no
+other kind. It is the **only** event a seat is guaranteed to emit: the flusher sends it every 60 s
+whether or not anything else is queued, so a seat that is idle, disabled or between sessions still
+declares, and a coordination fact naming a quiet agent still reaches a desk. And it **recurs**, so a
+declaration edited in the config reaches a consumer within one interval without an event class of its
+own.
 
-⛔ **No new kind is minted for it, and the three alternatives are named so they are not re-opened.**
-A dedicated `seat.identity` kind would be a second event whose only content is config a heartbeat
-already carries — [§ 6](#6-event-kinds)'s table would gain a kind that fires once per flusher start,
-which is the one cadence [§ 9.2](#92-why-this-is-the-structural-backstop) says a liveness fact may
-not have. Riding `session.start` was the other candidate and it fails on the second fact above: a
-seat with no session since its last restart would declare nothing, and *idle* is exactly when a
-coordination thread is most likely to name it.
+⛔ **No new kind is minted for it.** A dedicated `seat.identity` kind would be a second event whose
+only content is config a heartbeat already carries — [§ 6](#6-event-kinds)'s table would gain a kind
+that fires once per flusher start, which is the one cadence
+[§ 9.2](#92-why-this-is-the-structural-backstop) says a liveness fact may not have. Riding
+`session.start` fails on the second fact above: a seat with no session since its last restart would
+declare nothing, and *idle* is exactly when a coordination thread is most likely to name it.
 
-**The third candidate is the strongest and an earlier draft did not name it: the BATCH ENVELOPE.**
-[§ 4.2](#42-batch-envelope-fields) already carries five config- and process-derived per-seat facts
-— `install_id`, `seat_id`, `reporter_version`, `reporter_platform`, `runtime_version` — on **no
-event at all**, and it rides every batch, so *config-derived* and *guaranteed* are both true of it
-and neither of the first two facts above rejects it. It is rejected on the **pair**, and on one
-further ground:
+⚠ **The strongest alternative is not an event, and the three facts above do not rule it out: the
+BATCH ENVELOPE.** [§ 4.2](#42-batch-envelope-fields) already carries config- and process-derived
+per-seat facts on every batch, the heartbeat's own included, and
+`D2-CITED:` [D2 § 6.5](FLEET-STATE.md#65-the-fold) already folds two of them onto the seat object
+from the batch they arrived in. So the envelope is config-derived, guaranteed and recurring, and both members could
+ride it. It is rejected on two costs, and they are costs rather than impossibilities:
 
-- ⛔ **The envelope has nowhere to put a per-read OUTCOME.** Every member it carries is a static
-  fact of the process or the config file; `protocol_agent_name_check` is the result of a read that
-  can fail, and the state table above exists precisely so the name never travels without it. Putting
-  the name on the envelope and the outcome on the heartbeat splits a pair whose whole point is that
-  neither half is readable alone — a consumer would see a name on the transport record and have to
-  wait for an event to learn whether anybody checked it.
-- ⛔ **It would sit beside the two members [§ 3.3](#33-authentication-and-the-identity-binding-rule)
-  validates against the token binding.** The envelope's `install_id` and `seat_id` are checked for
-  equality with the binding and are the one place on the wire where a claimed identity is adjudicated;
-  a **declaration** laid alongside them is the single most likely place for it to be read as part of
-  that binding, which is exactly what ⛔ point 1 above refuses.
-
-So the paragraph's stated purpose is now met: three carriers were available, all three are named, and
-what picks the heartbeat is that it is the only one of the three that can carry the name **and** the
-outcome of the read, on a cadence a reader can date.
+- ⛔ **It lays a declaration beside the claimed identity
+  [§ 3.3](#33-authentication-and-the-identity-binding-rule) adjudicates.** The envelope's
+  `install_id` and `seat_id` are the members the ingest holds equal to the token binding; a
+  human-typed name on the same record is the likeliest place for it to be read as part of that
+  binding, which [§ 3.1](#31-the-seat-config-file)'s ⛔ point 1 refuses.
+- **It puts seat state on a transport record.** The envelope's per-seat members say which seat and
+  which build sent the batch; `protocol_agent_name_check` is the outcome of a read that can fail —
+  seat state of the same kind as `enabled` — and on the envelope it would ride every hook batch
+  rather than one event per interval that `uptime_s` dates.
 
 **D2:** store both members against `(install_id, seat_id)` and publish them on the seat object — the
 surface a consumer already reads to learn a desk exists. `protocol_agent_name_check` is what a
@@ -2458,20 +2462,18 @@ enclosing one:** every heartbeat field at its worst at once — `counters` at it
 members, and every integer at **its own** stated bound — 16 digits for the four whose rows state no
 ceiling, and the row's own maximum for the five [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
 rule 5 clamps, which therefore cannot reach 16 digits. Composing as if they could overstates the total
-by 63 B, which is the drift a maintainer re-deriving from a looser sentence would file as a bug. The composition serializes to **2,852 B of the 3 KiB `data` cap**
+by 63 B, which is the drift a maintainer re-deriving from a looser sentence would file as a bug. The
+composition serializes to **2,852 B of the 3 KiB `data` cap**
 ([§ 4.3](#43-common-per-event-fields)), 220 B spare, so the counters rule reducing to 1.5 KiB is what
-keeps the event valid and nothing else has to. ⚠ **One pair is composed at its REACHABLE joint
-maximum rather than at each member's own, and the 1 B difference is stated because this total is
-delegated to a hand re-derivation.** The field table above says `protocol_agent_name` is `null`
-**exactly when** `protocol_agent_name_check` is `undeclared`, so a 48 B name and the 10-character
-`"undeclared"` **cannot co-occur**: the pair's largest reachable serialization is the 48 B name
-beside the 9-character `"disagreed"`, and taking each member's own maximum independently instead
-yields **2,853 B**. No cap and no threshold moves either way — what moves is whether an editor
-following this section's stated method arrives at the figure written here or "corrects" a correct
-one. ⚠ [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta)'s worked block populates that same
-pair as a 48 B name **with** `"undeclared"` and is right to: that block is an explicitly
-**unreachable** size bound for a delta, where independent maxima are the conservative answer, while
-this total is a bound on an event a seat can actually emit. Unlike the two worst cases it composes, this total is
+keeps the event valid and nothing else has to. ⚠ **One pair is taken at its REACHABLE JOINT maximum,
+not at each member's own:** the field table above makes `protocol_agent_name` `null` exactly when
+`protocol_agent_name_check` is `undeclared`, so the 48 B name never sits beside the longest check
+value, and the pair's worst case is that name beside `"disagreed"`. Taking the two maxima
+independently gives **2,853 B** — the figure a hand re-derivation reaches if this sentence is missed,
+and not a correction to the one above; no cap or threshold moves either way.
+`D2-CITED:` [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta) composes the same pair
+independently, and rightly: its block is declared an unreachable size bound, while this total bounds
+an event a seat can emit. Unlike the two worst cases it composes, this total is
 **not** re-derived by `tools/design/verify-event-schema.py`: it is hand-verified, so an editor who
 moves a bound in the field table above owes it a re-derivation by hand. The residual is an editor who
 adds a row to [§ 9.4](#94-the-predicate-constant-alarm)'s table or the one
@@ -4931,14 +4933,18 @@ finding was that **no act would fail** if they did. This is that act, and the th
 asserted as three distinct objects on the wire because two of them are one byte apart from being
 indistinguishable.*
 
-- **Build:** five reporters, each with a seat config and a coordination config placed per case at
-  **one of [§ 3.1](#31-the-seat-config-file)'s two resolution sites** — `$COORD_CONFIG`, or the
+- **Build:** one reporter per case below, each with a seat config and a coordination config placed
+  at **[§ 3.1](#31-the-seat-config-file)'s resolution sites** as the case states — `$COORD_CONFIG`, or the
   home path with `$COORD_CONFIG` unset. Drive `selftest` and one flush on each.
 - **Case A — declared and checked, at the HOME path.** `$COORD_CONFIG` is unset; the config
-  declares a name and a roster at `~/.config/coord/coordination.config.json` contains it. **GREEN:** `selftest` exits 0 with
-  `protocol_agent_name_in_roster: "pass"`; the heartbeat carries the name and
+  declares a name and a roster at `~/.config/coord/coordination.config.json` contains it.
+  **GREEN:** `selftest` exits 0 with `protocol_agent_name_in_roster: "pass"`; the heartbeat carries
+  the name and
   `protocol_agent_name_check: "checked"`; both [§ 9.3](#93-degradation-counters) counters are 0.
-- **Case B — declared, and NOT checkable.** Same seat config; **no** roster at the published path.
+- **Case B — declared, and NOT checkable.** Same seat config; `$COORD_CONFIG` unset and **no** roster
+  at the home path — then again with `$COORD_CONFIG` naming a file that does not exist **and** a
+  roster containing the name at the home path, which must give the same result, because a set
+  variable is the whole answer ([§ 3.1](#31-the-seat-config-file)).
   **GREEN:** the heartbeat carries the name **and** `unchecked`, `protocol_agent_name_unchecked` is
   1, and `selftest` passes. ⛔ **Assert the name member is PRESENT**, not merely that the state is
   right: an omitted field and an undeclared seat are the same bytes, and this case exists to keep
@@ -4949,15 +4955,15 @@ indistinguishable.*
   `protocol_agent_name_check: "disagreed"`, `protocol_agent_name_disagreed` = 1, and the name
   **exactly as declared** — assert the string, because a reporter that blanks it is hiding the
   defect it is reporting.
+- **Case D — undeclared.** No key in the config. **GREEN:** `protocol_agent_name` is `null`,
+  `protocol_agent_name_check` is `undeclared`, `selftest` passes, both counters 0, and the seat is
+  **not** degraded: `degraded` is empty and no badge is raised.
 - **Case E — declared and checked, where `$COORD_CONFIG` points.** The variable names a roster
   containing the declared name and **no** file exists at `~/.config/coord/coordination.config.json`.
   **GREEN: identical to case A on every member** — `checked`, `pass`, both counters 0. ⛔ **This
   case is not a variant of A, it is the MAJORITY shape**: on a multi-agent install the coordination
   config lives in the coordination repository and `$COORD_CONFIG` is the only thing that points at
   it, so a fleet with a pm and three impl seats is four case-E boxes and no case-A box.
-- **Case D — undeclared.** No key in the config. **GREEN:** `protocol_agent_name` is `null`,
-  `protocol_agent_name_check` is `undeclared`, `selftest` passes, both counters 0, and the seat is
-  **not** degraded: `degraded` is empty and no badge is raised.
 - **⛔ RED — the silent omission.** Make case B's reporter drop the member rather than emit
   `unchecked` → its heartbeat becomes byte-identical to case D's on both members, and no consumer can
   tell a seat that declares nothing from one nobody could check. This is
@@ -5024,7 +5030,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.predicates` cap | 512 B; worst case **396 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 5×(21 + 32) + 125 + 4`, both branch counts at the 16-digit JS-safe-integer ceiling. 116 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.selftest` cap | 256 B; worst case **210 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 7×9 + 139 + 6`. 46 B spare, same exemption, re-derived by the same tool | [§ 6.14](#614-reporterheartbeat) |
-| Worst-case heartbeat `data` | 2,852 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound and the declared-name pair at its **reachable joint** maximum; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 220 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
+| Worst-case heartbeat `data` | 2,852 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 220 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
 | Wire enum fields, and how many are classified | **23**, all of them | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session. Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
 | Compaction close timeout | 10 min | Derived — ~10× a typical one-minute compaction | [§ 6.10](#610-compactionend) |

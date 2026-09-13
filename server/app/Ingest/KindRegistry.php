@@ -61,10 +61,8 @@ namespace App\Ingest;
  * SERIALIZED object ("≤ 1.5 KiB serialized"), so the measurement is of the whole value and says
  * nothing about which keys are in it — which is what lets § 6.14's declared-but-not-closed key
  * set stay true while the cap is enforced: a reporter shipping a check that table does not yet
- * name takes no `422`. (⚠ That sentence used to quote § 6.14's ORDINAL for such a check. The
- * ordinal moved the moment D1 declared another member, on card#9296, and nothing here guarded
- * it: `EventSchemaDriftTest` re-derives names, members and bounds from the document and does
- * NOT re-derive its prose. So the quotation is gone rather than re-synced by hand.)
+ * name takes no `422`. (Stated without quoting § 6.14: `EventSchemaDriftTest` guards names,
+ * members and bounds, not prose, so a quotation here would be a copy nothing guards.)
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * THIS TABLE IS A RESTATEMENT, SO IT IS GUARDED. Every value below is transcribed from

@@ -1612,24 +1612,17 @@ else:
         stem = DECL_ENUM_COL.rsplit("_", 1)[0]
         g13_forbidden = ({m_bind.group(1), m_bind.group(2)} |
                          {f for f in g2_table if f.startswith(stem)}) - {"install_id"}
-        # NAME EQUALITY against those three can only see the desk references this document has
-        # ALREADY named.  `coord_thread.desk`, `coord_round.from_seat` and a nested
-        # `participants_resolved[].seat_ref` are each exactly the defect this leg exists to catch,
-        # and each one passes an `in {...}` test -- so section 12's row was claiming a guard the
-        # tool did not implement.  The SHAPE is therefore checked beside the three names: any
-        # segment of a coordination field name that mentions a seat or a desk at all.  The three
-        # names stay, because they are the exact members section 8.2.1 declares and a RENAME there
-        # has to red even if the new name says neither word (`G13_SHAPE`, above).
-        # The row reader takes the whole dotted/bracketed tail rather than one `[a-z_]+` segment:
-        # a nested row is exactly where a desk reference would first appear, and a pattern that
-        # cannot PARSE it reports clean over the half it never read.
+        # Name equality against those members sees only the desk references this document has
+        # already named, so the SHAPE is checked beside it: any segment of a coordination field
+        # name that says seat or desk (`G13_SHAPE`).  The names stay, because a rename of a binding
+        # member in section 8.2.1 must red even if the new name says neither word.  The row reader
+        # takes the whole dotted/bracketed tail: a nested row is where a desk reference would first
+        # appear, and a pattern that cannot parse it reports clean over it.
         g13_rows = re.findall(r"^\|\s*`(coord_(?:thread|round)\.([a-z_.\[\]]+))`\s*\|", sec833, re.M)
         g13_coord = {leaf for _, leaf in g13_rows}
-        # ...and the control's denominator is DERIVED from the two field tables it is a control ON.
-        # It was a literal `20` in the file whose own section 12 says every population is re-derived
-        # per run -- a written count is a restatement of whatever it counted, and this one was
-        # already slack by two rows.  Equality, not a floor: a row the reader cannot parse now reds.
-        g13_declared = 0
+        # The control's denominator is the row count of the field tables themselves, re-derived
+        # per run like every other population here.  Equality, not a floor: a row the reader
+        # cannot parse reds.
         for _h in re.finditer(r"^\| Field \| Type \| Null\? \| Bounds \| Example \|$", sec833, re.M):
             g13_declared += len(table_rows(sec833[_h.start():], r"^\| Field \|") or [])
         if not g13_declared:

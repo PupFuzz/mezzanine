@@ -58,49 +58,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   re-derives the check's value set from all three of its homes across two documents and reds when
   they disagree, and holds the coordination objects to declaring no seat→desk member; the plant
   harness gains a rename plant against it, watched red before it was trusted.
-  ⭐ **Round 2 — independent review found the fix had re-minted `card#7957`'s own finding twice,
-  and both are closed here.** *(1)* **The roster path made `disagreed` unreachable on the install
-  shape (d) exists for.** § 3.1 resolved the roster from `~/.config/coord/coordination.config.json`
-  and *"no environment variable"* — but the coordination framework resolves its config from
-  `$COORD_CONFIG` and nothing else, and on a **multi-agent** install that points into the
-  coordination REPOSITORY; the home path is the **solo** shape. A pm/impl fleet would therefore
-  find no roster, emit `unchecked`, **pass** `protocol_agent_name_in_roster` and exit `selftest`
-  zero, with the roster readable on the box the whole time. § 3.1 now resolves `$COORD_CONFIG`
-  first and the home path as a fallback, says why § 3.4 rule 1 does not forbid it (that rule
-  forbids gating EMISSION on an UNDOCUMENTED HARNESS marker; this variable is documented, and
-  reading it gates no emission), and **withdraws the `%APPDATA%\coord\` Windows path as
-  unsourced** — the string occurs nowhere in the framework. AT-27 gains **case E** and a ⛔ RED
-  that fails a reporter reading only the home path, because without it cases A–D can all be
-  arranged at the home path and the defect passes. Canon #7's three legs are discharged in the
-  open: the contract is DECLARED for whoever provisions a seat, CHECKED as far as this repository
-  can (specified at AT-27; nothing runs it — no reporter reads a roster yet), and NAMED as a
-  fourth residual on § 18.13 row 6, whose closing act is carrying the contract to the framework's
-  owner. *(2)* ⭐ **OPERATOR RULING: a protocol agent name is UNIQUE per install.** Three surfaces
-  (and a fourth in D1 § 3.1) legalised a **set**-valued resolution while A18 and `resolve()` are
-  singular — so the map a builder was told to construct was last-writer-wins over an unordered
-  seat population, drawing to the guessed desk § 5.7 clause 1 forbids. Two seats declaring one
-  name is now an install **misconfiguration**: resolution is **0 or 1**, a duplicate resolves to
-  **nothing**, the consumer never picks, and it is **reported** — two named unresolved reasons,
-  `no_declaring_seat` and `duplicate_declaration`, the second rendered in words beside the name so
-  a misconfiguration cannot read as *nobody declared it*. ⚠ **No seat can detect it** (both
-  duplicates find the name in the roster and both emit `checked`), so the invariant is declared on
-  D2 and enforced at the consumer, which is the only party that sees both seats. A18/A19 needed no
-  change and are unchanged. **Also:** the batch envelope is named and rejected as the third
-  carrier candidate (D1 § 6.14 claimed *"no fourth is needed"* while § 4.2 already carries five
-  config-derived per-seat facts on no event); the 2,852 B composition states that one pair is
-  taken at its **reachable joint** maximum, which is why D2's worked block's 2,853 is also right;
-  three verbatim quotations of D1 prose the card had falsified are **deleted** rather than
-  re-synced — D2 § 8.2.1, `KindRegistry.php` and `At18UnknownEnumTest.php`, the last two being a
-  class member `EventSchemaDriftTest` does not guard and now recorded on `card#9326`; D3 § 2.1's
-  heading and lede say what the closed list is closed OVER; and D1 § 3.1's *"every other shape"*
-  is narrowed to the shapes `card#7957` weighed, `seats.board_user_id` being the counter-example.
-  **Gates:** G13's no-desk-reference leg was a name-equality test against three literals — a
-  `coord_thread.desk`, a `coord_round.from_seat` or a nested `…[].seat_ref` all passed it, proven
-  by running the old logic against each. It is now a **shape** match over every segment of every
-  field name, its row reader parses nested names, and its under-read control's denominator is
-  **re-derived from the two tables' own row counts** instead of the written `< 20` it carried. All
-  four hand mutants red, control clean either side; the plant harness gains a ninth plant for the
-  derived denominator.
+  ⭐ **Round 2 — an independent review found the fix had re-minted `card#7957`'s own finding, twice.**
+  *(1)* **The roster path made `disagreed` unreachable on the install shape (d) exists for.** § 3.1
+  read the roster from `~/.config/coord/coordination.config.json` and *"no environment variable"*,
+  but the coordination framework resolves its config from `$COORD_CONFIG` alone, and on a
+  multi-agent install that points into the coordination repository; the home path is the solo
+  shape. A pm/impl fleet would find no roster, emit `unchecked`, pass `protocol_agent_name_in_roster`
+  and exit `selftest` zero with the roster readable on the box. § 3.1 now resolves `$COORD_CONFIG`
+  first — set, it is the whole answer — and the home path only when it is unset, says why § 3.4
+  rule 1 does not forbid that, and withdraws the unsourced `%APPDATA%` Windows location. AT-27 gains
+  case E (the roster only where `$COORD_CONFIG` points) with a ⛔ RED for a home-path-only reporter,
+  and case B a set-but-missing variant. Canon #7's legs: DECLARED at § 3.1; CHECKED by a new
+  `verify-event-schema.py` check that re-derives the resolution order from § 3.1 and holds AT-27,
+  § 18.13 row 6 and every roster-location mention in D1 to it; NAMED on § 18.13 row 6, whose
+  closing act — carrying the contract to the framework's owner — is recorded as not yet performed.
+  *(2)* ⭐ **OPERATOR RULING: a protocol agent name is UNIQUE per install.** Surfaces that legalised a
+  set-valued resolution while A18 and `resolve()` are singular made the map a builder was told to
+  build last-writer-wins over an unordered seat population. A duplicate is now a misconfiguration:
+  resolution is 0 or 1 desks, a name more than one resolving seat carries resolves to nothing, the
+  consumer never picks, and the name is reported with its own reason (`duplicate_declaration`, beside
+  `no_declaring_seat`). No seat can detect it — both duplicates pass their own check — so D2 declares
+  the invariant, says why no `UNIQUE KEY` enforces it, and the consumer enforces it; AT-D2-24 gains
+  a RED for the pick. A18 and A19 needed no change. **Also:** D1 § 6.14 now says the heartbeat
+  carrier is CHOSEN, and names and prices the batch envelope, which its three facts do not rule out;
+  the 2,852 B composition states that the declared-name pair is taken at its reachable joint maximum
+  and why D2's independently composed worked block is also right; D1 prose quoted with a stale
+  ordinal is deleted from D2 § 8.2.1, `KindRegistry.php` and `At18UnknownEnumTest.php`, the class
+  member being recorded on `card#9326`; D3 § 2.1's heading and lede say what the closed list is closed
+  over; and D1 § 3.1's *"every other shape"* is narrowed to the shapes `card#7957` weighed.
+  **Gates:** G13's no-desk-reference leg was a name-equality test that a `coord_thread.desk`, a
+  `coord_round.from_seat` or a nested `…[].seat_ref` each passed; it now also matches the seat/desk
+  shape over every segment of every field name, reads nested rows, and takes its under-read
+  control's denominator from the tables' own row counts instead of a written figure. Every new or
+  changed leg was watched red on a hand mutant, with the control clean.
 
 - **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
   are asked two different questions, and the comments that promised to fold them into one are

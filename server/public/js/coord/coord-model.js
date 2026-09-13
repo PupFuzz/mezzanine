@@ -28,9 +28,9 @@
  *      `protocol_agent_name_check` IS `checked` OR `unchecked`, and from nothing else
  *      (D2 § 8.3.3's three rules) — a `disagreed` or `undeclared` seat is a seat whose own
  *      check failed or which said nothing, and neither resolves.
- *      ⛔ AND WHEN THAT YIELDS TWO SEATS FOR ONE NAME, THE NAME MAPS TO NOTHING. A protocol
- *      agent name is UNIQUE per install (operator ruling, card#9296; D2 § 8.2.1 and § 8.3.3
- *      rule 1), so two seats of one install declaring one name is an install MISCONFIGURATION
+ *      ⛔ AND WHEN THAT YIELDS MORE THAN ONE SEAT FOR A NAME, THE NAME MAPS TO NOTHING.
+ *      A protocol agent name is UNIQUE per install (operator ruling, card#9296; D2 § 8.2.1
+ *      and § 8.3.3 rule 1), so two seats of one install declaring one name is an install MISCONFIGURATION
  *      and not one agent at two desks. The builder must not assign into the map twice and let
  *      the last writer win: the seat population has no order, so last-writer-wins IS a pick,
  *      and a picked desk is exactly what § 5.7 clause 1 forbids — the same refusal as the
@@ -40,7 +40,8 @@
  *      invariant is violated) — and § 5.7 clause 1 renders the second in words beside the
  *      name, because a misconfiguration rendered as an absent declaration is the opposite
  *      diagnosis. `resolve()` below cannot tell an excluded name from an undeclared one and
- *      must not be asked to: the reason travels BESIDE the map, not inside it.
+ *      must not be asked to: the builder hands the render the duplicated names BESIDE the map,
+ *      and `resolve()` stays one name to one `seat_id` or to none.
  *      ⚠ ONLY THIS CLIENT CAN SEE THE VIOLATION. A seat's own check asks whether its declared
  *      name is in the roster, so both duplicates pass and both emit `checked`; D2 mints no
  *      state from it. The report is made here or it is not made.
