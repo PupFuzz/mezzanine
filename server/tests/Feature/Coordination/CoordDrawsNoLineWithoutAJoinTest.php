@@ -31,8 +31,9 @@ use Tests\TestCase;
  * no-join case stays exactly as it is (a fleet whose seats declare nothing is the permanent
  * unresolved arm, D3 § 5.7 clause 1), and a new case covers a supplied join — including the two
  * states that must NOT resolve, `disagreed` and `undeclared`, a name more than one seat of the
- * install declares (D2 § 8.3.3 rule 1: it resolves to nothing and is reported as
- * `duplicate_declaration`), and the `seat_id`-equality control below, which must go on failing
+ * install declares in ANY check state — a `checked` seat beside a `disagreed` one included, because
+ * D2 § 8.3.3 rule 1 counts every declaring seat before its filter runs (it resolves to nothing and
+ * is reported as `duplicate_declaration`), and the `seat_id`-equality control below, which must go on failing
  * to resolve after the join exists.
  */
 class CoordDrawsNoLineWithoutAJoinTest extends TestCase

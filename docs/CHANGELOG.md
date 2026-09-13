@@ -91,6 +91,26 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   shape over every segment of every field name, reads nested rows, and takes its under-read
   control's denominator from the tables' own row counts instead of a written figure. Every new or
   changed leg was watched red on a hand mutant, with the control clean.
+  ⭐ **Round 3 — a second independent review.** *(1)* **`KindRegistry.php` had not taken the two new
+  heartbeat fields**, so `EventSchemaDriftTest` was red and a D1-conformant reporter would have had
+  both counted as `ignored_unknown_fields` on every heartbeat. The registry now carries both and the
+  reporter-minted `protocol_agent_name_check` enum; and D1 § 6.14's name row states its bound as a
+  `≤ 48 B` figure rather than a pointer, because the ingest refuses only a stated figure and an
+  over-long name would otherwise have passed it and failed at the fold — `verify-event-schema.py`
+  check 12 holds that figure equal to § 18.6's. *(2)* **The OS-supervised flusher never received
+  `$COORD_CONFIG`**, and it is the flusher that heartbeats on a healthy seat, so `disagreed` was still
+  unreachable on a multi-agent install through the start path. § 3.1's delivery contract now reaches
+  the supervised start (the installer writes the variable into the unit's or task's environment,
+  mechanics on `card#7336`), the flusher is barred from gating emission on its absence, AT-27 gains
+  case F and its RED, § 18.13 row 6 names the installer half as not established, and check 11 reds
+  when the contract or AT-27 stops naming one of § 2.3's start paths. *(3)* ⭐ **OPERATOR RULING:
+  every seat that declares a name counts toward a duplicate, whatever its check state** — a `checked`
+  and a `disagreed` seat declaring one name resolve to nothing as `duplicate_declaration`. D2 § 8.3.3
+  rule 1 states that scope once and decides the duplicate before rule 2's filter; the other surfaces
+  point at it, and AT-D2-24 gains a seventh RED for the pair. **Also:** two hand-written counts in D1
+  are replaced by the command that prints them or dropped; stale D1 figures and check counts quoted
+  in the reporter's self-test, comments and README and in the plant harness are removed, the
+  remaining members recorded on `card#9326`; and D1 § 3.1's home-path site is scoped to Linux.
 
 - **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
   are asked two different questions, and the comments that promised to fold them into one are

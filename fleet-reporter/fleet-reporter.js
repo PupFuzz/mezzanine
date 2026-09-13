@@ -13,7 +13,7 @@
  *   node fleet-reporter.js hook <HookName>   one-shot: read stdin, append, exit 0
  *   node fleet-reporter.js statusline        one-shot: sample context, pass the status line through
  *   node fleet-reporter.js flusher           long-lived: own the cursor, POST batches, heartbeat
- *   node fleet-reporter.js selftest          one-shot: the six checks § 6.14 declares
+ *   node fleet-reporter.js selftest          one-shot: the § 6.14 checks this build implements
  *
  * THE SIX RULES THAT PROTECT THE SEAT (§ 2.2) ARE THE POINT OF THIS FILE, not a feature of it.
  * A hook that blocks, prints, or exits non-zero damages the agent it is watching:
@@ -2657,7 +2657,7 @@ function refreshHealth(config, selftest) {
 /* ════════════════════════════════════════════════════════════════════════════════════════════
  * SELFTEST (§ 2.1, § 6.14, and § 6.0's SELFTEST-MUST)
  *
- * The six checks § 6.14's member table declares — the SAME set the heartbeat reports pass/fail
+ * The checks of § 6.14's member table this build implements — the SAME set the heartbeat reports pass/fail
  * for, so the subcommand and the wire object cannot drift apart. Two of them are the guards
  * this design's own history argues for: `sanitizer_fixtures`, because a fixture set that only
  * ever passes proves the harness runs and nothing else; and `harness_payload_keys`, because a

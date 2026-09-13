@@ -72,7 +72,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 #
 # The anchor's group(1)/group(3) bracket the thing in group(2); only group(2) is rewritten, so each
 # regex has to pin enough context to be unique.  `serializes to **N B**. At` is pinned that far
-# because § 6.4 carries a second `serializes to **2,700 B ...` that this plant must not hit.  A
+# because § 6.14 carries a second `serializes to **N B ...` figure that this plant must not hit.  A
 # `rename` anchor pins the SURROUNDING WORDS and never the name: the name is read out of group(2),
 # so renaming the message legitimately moves the plant instead of stranding it.
 PLANTS = [
@@ -97,6 +97,32 @@ PLANTS = [
         "the first site of § 3.1's roster resolution order, which check 11 holds AT-27, § 18.13 "
         "row 6 and every roster-location mention in D1 against (card#9296)",
         "is not a site of",
+    ),
+    (
+        # card#9296 round 3.  Check 11's DELIVERY leg re-derives the flusher's start paths from
+        # § 2.3's list labels and holds § 3.1's DECLARED leg and AT-27 to naming each one; the
+        # supervised start was the path the contract had left out.  Renaming the label moves the
+        # population, so the two surfaces no longer name a start path § 2.3 declares, and the
+        # check must say so.  (Deleting the name from the DECLARED leg itself is a hand proof: a
+        # `rename` appends to a word and leaves the old one a substring.)
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(\n1\. \*\*Supervised )(start)(\*\* — the installer registers)",
+        "rename",
+        "the label of § 2.3's supervised start, which check 11 holds § 3.1's roster delivery "
+        "contract and AT-27 to naming (card#9296 round 3)",
+        "never names § 2.3's flusher start path",
+    ),
+    (
+        # card#9296 round 3.  § 6.14 states the protocol agent name's bound as a figure so the
+        # ingest can refuse by it, which makes it a restatement of § 18.6's; check 12 guards it.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(verbatim; ≤ )(48)( B — the bound \[§ 18\.6\])",
+        "bump",
+        "§ 6.14's `protocol_agent_name` byte bound, which check 12 holds equal to the bound § 18.6 "
+        "gives a protocol agent name (card#9296 round 3)",
+        "bounds a protocol agent name at",
     ),
     (
         "verify-fleet-state.py",

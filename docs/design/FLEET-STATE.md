@@ -2721,7 +2721,9 @@ object carries it. Four consequences, stated so neither end has to infer them:
   ⭐ **But a protocol agent name is UNIQUE among the seats of one
   `install_id`** — operator ruling, `card#9296`
   ([§ 13](#13-decisions-taken-revisable-at-review) row 50). Two seats of one install declaring the
-  same name is an **install misconfiguration**, not one agent at two desks: they remain two desks
+  same name — whatever either one's check state; [§ 8.3.3](#833-the-coordination-objects) rule 1 is
+  the one statement of which seats count — is an **install misconfiguration**, not one agent at two
+  desks: they remain two desks
   with two distinct bindings, and what has failed is the **name**, which has stopped identifying
   either of them. ⛔ **No `UNIQUE KEY` enforces it, deliberately**: the store would have to refuse the
   second seat's heartbeat or fail its fold — a typed label taking down the liveness backstop of a seat
@@ -3664,19 +3666,28 @@ gets wrong:
    install's"*; a name declared in another install is another install's fact.
    ⭐ **A protocol agent name is unique per install** — operator ruling, `card#9296`
    ([§ 8.2.1](#821-the-seat-state-object), [§ 13](#13-decisions-taken-revisable-at-review) row 50).
-   So the rule has **two** unresolved arms and not one:
-   - **Nothing declared it** — no seat of this install carries the name with a check state that
-     rule 2 lets resolve. That is the empty case, it is `card#7957` ruling *(2)*'s permanent
-     first-class render, and it is what a fleet whose seats declare nothing produces everywhere.
-   - ⛔ **More than one seat declared it** — more than one seat of this install carries the name with
-     a check state rule 2 lets resolve. The invariant is **violated**, and the name resolves to
-     **NOTHING**. The consumer does **not** pick. Both candidates are equally good, so any pick is
+   So the rule has **two** unresolved arms and not one, and ⛔ **they are decided in this order —
+   the one statement of which seats count; every other surface points here.** **First the
+   duplicate arm, over every seat of this install that DECLARES the name**: a seat counts whatever
+   its `protocol_agent_name_check` — `checked`, `unchecked` or `disagreed` — and only an
+   `undeclared` seat, which declares nothing, does not. **Only then** does rule 2 decide whether the
+   one declaring seat left may resolve.
+   - ⛔ **More than one seat declared it** — two or more seats of this install carry the name, in any
+     of the three declaring states. The invariant is **violated**, and the name resolves to
+     **NOTHING**. The consumer does **not** pick. Every candidate claims the name, so any pick is
      the guessed desk [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 forbids,
      and building a `name → seat_id` map by assignment over an unordered seat population is
      last-writer-wins — a pick wearing a map's clothes, whose answer changes with the order the
-     seats happened to arrive in. Two seats of which one is `disagreed` are not this arm: that seat
-     resolves nothing by rule 2, the other resolves, and the disagreeing seat's own `selftest` has
-     already failed ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)).
+     seats happened to arrive in. ⭐ **A `checked` seat and a `disagreed` seat declaring one name ARE
+     this arm** — operator ruling, `card#9296` round 3, reading the uniqueness ruling literally. The
+     disagreeing seat still sends that name, so resolving to the other would be choosing between two
+     seats that both claim it, however much likelier the checked one looks. A consumer that applies
+     rule 2's filter **before** counting sees one resolving seat and draws to it — the pick arriving
+     through the order of two correct rules — and the order above is what forbids it.
+   - **Nothing declared it** — no seat of this install carries the name with a check state that
+     rule 2 lets resolve: none declares it, or the one seat that does is `disagreed`. That is the
+     empty case, it is `card#7957` ruling *(2)*'s permanent first-class render, and it is what a
+     fleet whose seats declare nothing produces everywhere.
 
    ⛔ **The violation is REPORTED, not silently folded into the empty case.** A duplicated name that
    rendered as an ordinary unresolved name would be invisible — an install misconfiguration
@@ -5150,6 +5161,13 @@ receipt route with signed deliveries and reads what reaches a connected client
   the client is still byte-identical; the name resolves to **nothing** and is reported with the reason
   `duplicate_declaration`, never `no_declaring_seat` ([§ 8.3.3](#833-the-coordination-objects)
   rule 1).
+- **⛔ Seventh RED — the duplicate the filter hides:** flip that fourth seat's
+  `protocol_agent_name_check` to `disagreed`, its `protocol_agent_name` byte-identical and the
+  declared seat above still `checked`, and let a consumer's join reach the `checked` seat's desk → a
+  consumer that applied rule 2's filter before counting saw one resolving seat and picked it while a
+  second seat of the install still sends that name. The name resolves to **nothing** and is reported
+  `duplicate_declaration` — never `no_declaring_seat`, and never the `checked` seat's desk
+  ([§ 8.3.3](#833-the-coordination-objects) rule 1 counts every declaring seat before rule 2 runs).
 - **Discriminating control:** re-deliver both bodies with the signature broken. Nothing reaches the
   feed at all (D1 § 18.8 step 3), which is what makes a GREEN above evidence that the receipt path ran
   rather than that the test published its own objects.
@@ -5346,7 +5364,7 @@ review can reverse it deliberately rather than discover it later.
 | 47 | **Fan-in is a `feed_outbox` table polled at the stream's own 250 ms tick — transient, retained 60 s, never resumed from** ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge), [§ 8.3](#83-the-websocket-delta-feed)) | Redis pub/sub between the daemons and the handlers; an in-process channel in a daemon of the feed's own; no fan-in — each handler recomputes from `seat_state` on a timer | Redis is not in this tree — no `predis`, no `ext-redis` — and the host's Redis is unknown, so a design resting on it would rest on an assumption this document refuses to make. A daemon of the feed's own is the thing this ruling removed. Recomputing from `seat_state` per stream loses the messages that are not state — `seat.retired`, the coordination objects, the building notifications. A table is the one primitive every writer here already has a transaction open on, and it makes [§ 6.5](#65-the-fold)'s *enqueues a delta in the same transaction* literally true | a write per message, retained a minute; four index seeks per second per open stream; and one visibility lag of delivery latency, all priced in § 8.3. If Redis is ever provisioned and read into this tree, the outbox becomes the durable half of a pub/sub and the tick becomes a subscription — a migration of one read loop, not of the contract |
 | 48 | **Two host conditions — R1, the proxy must not buffer the stream; R2, the FPM pool must hold a worker per browser and release a dead one — are declared as checked deploy requirements with named observables, never assumed** ([§ 8.3](#83-the-websocket-delta-feed)) | assume them and let the first deploy find out; design around them silently — a short stream lifetime the handler ends on a timer, or a chunked-polling fallback | Neither condition can be established from this repository, and a design that assumed either would be reporting a clean that nobody measured. Designing around them silently would cost every browser a reconnect-and-snapshot on the handler's timer, to hedge a host fact an operator can check in one command. Declaring them with a check and an observable is what lets a false one be found on the day it is false, by name | a deploy that skips the checks and meets neither: R1 false renders every floor *feed down* against a healthy fleet with REST green; R2 false takes the console down with the fleet healthy. Both are named in [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19/F20 so the symptom is recognisable |
 | 49 | **The declared agent-name join is resolved by the CONSUMER against the seat population; this plane publishes the DECLARATION and never a desk reference** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)) | resolve it server-side and publish `seat_id` on `coord_thread` / `coord_round`, which is where a reader first looks for it | `card#7957`'s (d) rests on **one party knowing both facts**, and that party is the SEAT. This plane knows only what the seat said, so resolving here would move a join whose weaker end is a human-typed string onto objects whose every other field is token-bound or hook-bound — and a consumer could no longer tell which kind it was reading. It would also give one fact N homes: a thread spans desks, so a desk reference per participant per message is a copy free to disagree with the seat object it was copied from, which is [§ 13](#13-decisions-taken-revisable-at-review) row 39's argument one field along | every consumer implements the same three join rules instead of reading one member. [§ 8.3.3](#833-the-coordination-objects) states them once so the implementations are the same, and a consumer that gets them wrong is wrong in its own client rather than in the store |
-| 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth RED specifies the refusal, and nothing runs it until the consumer's join is built |
+| 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
 
 ---
 

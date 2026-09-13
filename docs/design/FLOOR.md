@@ -1848,17 +1848,20 @@ declares nothing draws nothing different at its own desk and still takes no part
    ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)). So the resolve arm resolves, by the
    rule D2 states and this document does not re-derive: **a name resolves to the one seat of this
    room's `install_id` whose `protocol_agent_name` equals it and whose `protocol_agent_name_check` is
-   `checked` or `unchecked`** — **0 or 1 desks, never a set**, because a protocol agent name is
+   `checked` or `unchecked`, provided no other seat of the room declares it at all** — **0 or 1
+   desks, never a set**, because a protocol agent name is
    unique per install (operator ruling, card#9296;
    [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1).
    card#7957's ruling *(2)* governs the empty case and is permanent: a name that does not resolve
    **draws no line** — never to a guessed desk, never to nothing — **is reported as unresolved**, and
    **does not suppress the rest of the object**, so a round with one resolved and one unresolved
    participant renders what it can.
-   ⛔ **A name MORE THAN ONE such seat of this room carries takes that same arm for a different
-   reason, and the reason is rendered.** The uniqueness invariant is violated, which is an **install
-   misconfiguration** rather than one agent at two desks; the client **never picks** — both
-   candidates are equally good, so any pick is precisely the guessed desk this clause forbids — so
+   ⛔ **A name MORE THAN ONE seat of this room declares takes that same arm for a different
+   reason, and the reason is rendered** — whatever each seat's check state, `disagreed` included:
+   which seats count is [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1's, and it is
+   not restated here. The uniqueness invariant is violated, which is an **install
+   misconfiguration** rather than one agent at two desks; the client **never picks** — every
+   candidate claims the name, so any pick is precisely the guessed desk this clause forbids — so
    the name resolves to nothing and draws no line. ⚠ **What it renders is not the same word.** D2
    names the two unresolved reasons `no_declaring_seat` and `duplicate_declaration`, and this
    surface renders the second in words beside the name — *declared by more than one seat* — for the
@@ -1914,7 +1917,7 @@ declares nothing draws nothing different at its own desk and still takes no part
 | the line's label | `coord_thread.subject`, `coord_thread.subject_truncated` | `"the coordination-event producer"` | a null `subject` draws **no label** — never a placeholder, never the last subject the client held. A true `subject_truncated` draws the truncation **mark**, because *"a silently clipped string is read as the whole string"*; the flag is the wire's and the mark is not a re-measurement of the text |
 | the carrier tag, on the line and on each bead | `coord_thread.carrier`, `coord_round.carrier` | `"announce"` | null ⇒ **no tag**, never a default carrier. D2 validates it *"with no set consulted"*, so this renders it raw for the same reason the lifecycle cell does |
 | who opened the thread | `coord_thread.opened_by`, `coord_thread.attribution` | `null`, `"unattributable"` | the two are read **together, always**: D2 states that *"a consumer reading `opened_by` without reading this renders **nobody** where the honest render is **not recoverable**"*. So a null `opened_by` renders the state its attribution names — raw — and never an empty opener |
-| whether a participant resolves to a desk, and to which | `coord_thread.participants`, `coord_round.from`, `coord_round.targets` joined against `protocol_agent_name` and `protocol_agent_name_check` on the **seat** objects this client already holds ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | `"pm"` → the desk of the seat declaring `"pm"` in this room | **unresolved**, by property 1, in every case but a live declaration: a name no seat of this room declares; a name a seat declares with `protocol_agent_name_check` of `disagreed` or `undeclared`; a name that merely **equals a `seat_id`**; and a name declared only by a seat of some **other** install. A seat whose `protocol_agent_name` is null is in no join at all and is never a default endpoint. ⛔ A name **more than one** such seat of this room carries also resolves to nothing — but renders *declared by more than one seat* and never a plain **unresolved**, because the two carry different reasons and an install misconfiguration must not read as an absent declaration (clause 1) |
+| whether a participant resolves to a desk, and to which | `coord_thread.participants`, `coord_round.from`, `coord_round.targets` joined against `protocol_agent_name` and `protocol_agent_name_check` on the **seat** objects this client already holds ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | `"pm"` → the desk of the seat declaring `"pm"` in this room | **unresolved**, by property 1, in every case but a live declaration: a name no seat of this room declares; a name a seat declares with `protocol_agent_name_check` of `disagreed` or `undeclared`; a name that merely **equals a `seat_id`**; and a name declared only by a seat of some **other** install. A seat whose `protocol_agent_name` is null is in no join at all and is never a default endpoint. ⛔ A name **more than one** seat of this room declares — in any check state, `disagreed` included ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1) — also resolves to nothing — but renders *declared by more than one seat* and never a plain **unresolved**, because the two carry different reasons and an install misconfiguration must not read as an absent declaration (clause 1) |
 | that a resolved endpoint rests on an UNCHECKED declaration | `protocol_agent_name_check` | `"unchecked"` | `checked` draws nothing extra — the ordinary case carries no marker, or every line would carry one. A `null` check is a seat that has not heartbeated: it resolves nothing, so there is no endpoint to mark. The marker is property 1's, and it is words beside the participant rather than a second line treatment |
 | the thread's named participants | `coord_thread.participants` | `["pm","all"]` | an empty array draws **no participant list** — never *nobody*. `all` is a literal member and is **never expanded here**; each member is bound by clause 1 and the unresolved ones are named as unresolved |
 | a bead per post | `coord_round.post_ref` | `"AIMLA-org/aimla-coordination#742"` | never null. **The bead count is a count of distinct `post_ref`** and a repeat draws nothing new — D2's own words, and the whole of what a consumer may count, because these messages carry no `seq` and *"a lost coordination message is not detectable"* |

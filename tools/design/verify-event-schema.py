@@ -423,6 +423,58 @@ else:
         fail.append(f"§ 18.13 row 6 does not name § 3.1's roster resolution sites {sites} in their "
                     f"order — the residual it names is stated against a contract it no longer matches")
 
+    # The DELIVERY half (card#9296 round 3).  The sites are only reached if the variable reaches the
+    # flusher, and § 2.3 declares more than one way a flusher starts: the OS-supervised one inherits
+    # nothing from the harness, holds the exclusive lock and heartbeats in steady state, and a
+    # contract that named only the hook-spawned start left it on the home path.  So every start path
+    # § 2.3's first numbered list declares must be named by § 3.1's DECLARED leg and by AT-27.  The
+    # paths are re-derived from § 2.3's list labels on every run; none is written here.  What this
+    # cannot check is that an installer writes the variable into a unit or task -- that is
+    # installer card#7336's, and § 18.13 row 6 names it as not established.
+    sec23 = re.search(r"^### 2\.3 .*?(?=^### )", raw, re.S | re.M)
+    m_starts = re.search(r"((?:^\d+\. \*\*[^*\n]+\*\*[^\n]*\n(?:   [^\n]*\n)*)+)",
+                         sec23.group(0) if sec23 else "", re.M)
+    starts = re.findall(r"^\d+\. \*\*([^*\n]+)\*\*", m_starts.group(1), re.M) if m_starts else []
+    declared = re.search(r"^- \*\*DECLARED\b.*?(?=^- \*\*)", sec31.group(0), re.S | re.M)
+    if not starts or not declared:
+        fail.append(f"check 11 CONTROL: § 2.3's flusher start paths parsed as {starts}; § 3.1's "
+                    f"DECLARED leg {'found' if declared else 'NOT found'} — the delivery half of the "
+                    f"roster contract cannot be held to a start-path list the check cannot read")
+    else:
+        flat = lambda s: " ".join(s.replace("*", "").split()).lower()
+        for label in starts:
+            for where, body in (("§ 3.1's DECLARED leg", declared.group(0)), ("AT-27", at27.group(0))):
+                if flat(label) not in flat(body):
+                    fail.append(f"{where} never names § 2.3's flusher start path \"{label}\" — a start "
+                                f"the roster contract does not reach is one whose heartbeat reads the "
+                                f"home path, which is how the supervised start was left `unchecked`")
+
+# ---- 12. the heartbeat's protocol agent name states § 18.6's bound as a figure the ingest enforces --
+# § 12.1 step 10 refuses only a `≤ N B` figure a § 6 field row states (card#9283), so § 6.14's
+# `protocol_agent_name` row carries one rather than a pointer (card#9296 round 3).  That figure is a
+# restatement of the bound § 18.6 gives a protocol agent name on the wire, so it is GUARDED here:
+# the first `≤ N B` of each row is read on every run and the two must agree.  `opened_by` is the
+# subject § 18.6 bounds a single agent name on, named like any subject -- not a population.
+def first_byte_bound(row):
+    m = re.search(r"≤\s*([\d,]+)\s*B\b", row or "")
+    return int(m.group(1).replace(",", "")) if m else None
+sec614 = re.search(r"^### 6\.14 .*?(?=^### |^## )", raw, re.S | re.M)
+sec186 = re.search(r"^#### 18\.6 .*?(?=^#### |^### |^## )", raw, re.S | re.M)
+hb_name_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
+                    if l.startswith("| `protocol_agent_name` |")), None)
+wire_name_row = next((l for l in (sec186.group(0) if sec186 else "").splitlines()
+                      if l.startswith("| `opened_by` |")), None)
+name_bounds = (first_byte_bound(hb_name_row), first_byte_bound(wire_name_row))
+if None in name_bounds:
+    fail.append(f"check 12 CONTROL: byte bounds parsed as § 6.14 `protocol_agent_name` "
+                f"{name_bounds[0]}, § 18.6 `opened_by` {name_bounds[1]} — a row the check cannot "
+                f"read, or one stating no figure, is a bound the ingest does not enforce")
+elif name_bounds[0] != name_bounds[1]:
+    fail.append(f"§ 6.14's `protocol_agent_name` bound is {name_bounds[0]} B and § 18.6 bounds a "
+                f"protocol agent name at {name_bounds[1]} B — the ingest refuses by the first, the "
+                f"coordination wire and D2's column are sized by the second, and a name between them "
+                f"is accepted by one and fails at the other")
+
 print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"enum fields re-derived: {n_enum}, {n_enum - n_unclassified} classified; "
       f"counter-name mentions checked: {n_counter} against {len(wire_fields)} wire fields; "
@@ -431,7 +483,9 @@ print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"heartbeat example re-serialized: {hb_bytes} B; "
       f"exempt-object bounds re-derived: predicates {worst_pred} B from {n_pred} members, "
       f"selftest {worst_self} B from {n_self} members; "
-      f"roster resolution sites re-derived from § 3.1, in order: {sites}")
+      f"roster resolution sites re-derived from § 3.1, in order: {sites}; "
+      f"flusher start paths re-derived from § 2.3: {starts if sites and at27 and row6 is not None else 'not read'}; "
+      f"protocol agent name bound, § 6.14 vs § 18.6: {name_bounds}")
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
     for f in fail:

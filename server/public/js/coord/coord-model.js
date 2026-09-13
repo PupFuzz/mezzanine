@@ -28,7 +28,12 @@
  *      `protocol_agent_name_check` IS `checked` OR `unchecked`, and from nothing else
  *      (D2 § 8.3.3's three rules) — a `disagreed` or `undeclared` seat is a seat whose own
  *      check failed or which said nothing, and neither resolves.
- *      ⛔ AND WHEN THAT YIELDS MORE THAN ONE SEAT FOR A NAME, THE NAME MAPS TO NOTHING.
+ *      ⛔ BUT COUNT DUPLICATES FIRST, OVER EVERY SEAT OF THE INSTALL THAT DECLARES THE NAME —
+ *      `checked`, `unchecked` AND `disagreed` ALIKE, ONLY `undeclared` LEFT OUT — AND APPLY THE
+ *      FILTER ABOVE ONLY TO A NAME EXACTLY ONE SEAT DECLARES. A NAME TWO OR MORE SEATS DECLARE
+ *      MAPS TO NOTHING, A `checked` SEAT BESIDE A `disagreed` ONE INCLUDED: the disagreeing seat
+ *      still sends the name, and filtering first would hand the map the other seat, which is a
+ *      pick. D2 § 8.3.3 rule 1 owns that scope and that order.
  *      A protocol agent name is UNIQUE per install (operator ruling, card#9296; D2 § 8.2.1
  *      and § 8.3.3 rule 1), so two seats of one install declaring one name is an install MISCONFIGURATION
  *      and not one agent at two desks. The builder must not assign into the map twice and let

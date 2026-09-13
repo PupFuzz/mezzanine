@@ -546,10 +546,10 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
     return p
 
 
-print("== 1. The `selftest` subcommand — the six checks § 6.14 declares, and each one's RED ==")
+print("== 1. The `selftest` subcommand — the checks of § 6.14's member table this build implements, and each one's RED ==")
 s1 = seat("selftest-seat")
 r, rep = selftest(s1)
-eq("the six declared checks are exactly the reported set",
+eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
     "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
    sorted(rep.get("checks", {}).keys()))
@@ -1551,7 +1551,8 @@ worst = subprocess.run(
 w = json.loads(worst.stdout)
 eq(f"`predicates` at its worst case is D1's derived 396 B, under the 512 B cap ({w['p']} B)",
    (396, True), (w["p"], w["p"] <= 512))
-eq(f"`selftest` at its worst case is D1's derived 171 B, under the 256 B cap ({w['s']} B)",
+eq(f"`selftest` at its worst case over the check names listed above, under D1's 256 B cap ({w['s']} B) "
+   f"— D1 § 6.14 owns the derived worst case over its own member table, which this build does not fully implement",
    (171, True), (w["s"], w["s"] <= 256))
 
 # RED — remove the reduction rule and the heartbeat's data blows the 3 KiB cap, which is the
