@@ -382,13 +382,11 @@ rule violations anyone could have committed at the time.
   this host is single-tenant, so every long-lived PHP process on it holds *this* app's code, and
   copying that silence would leave every deploy serving stale code invisibly — daemons up, floor
   rendering, payloads one release old. The Reverb unit `bin/deploy.sh` used to derive from
-  `BROADCAST_CONNECTION` is retired, with systemd (next bullet). ⚠ **Still owed:** the
-  `mezzanine:feed-reload` step — neither that command nor the stream route it ends exists in this
-  tree yet, so the script marks where it goes (immediately before the opcache wait that replaced the
-  FPM reload) rather than calling a command that would fail every window — and running § 8.3's host
-  checks (R1, R2) — and ⚠ **neither ini check becomes a gate that refuses a deploy until
-  card#9300 has run its commands on a host where they can be run and seen to fail once**, which is
-  § 8.3 R1's own rule and what D2 Appendix B step 9 now defers to it rather than ordering.
+  `BROADCAST_CONNECTION` is retired, with systemd (next bullet), and the key itself went on
+  card#9300. **The stream is built (card#9300)**: the window runs `mezzanine:feed-reload`
+  immediately before the opcache wait and then ends the streams that missed it (the stream bullet
+  below), and § 8.3's host checks that need no credential — R1's ini half and R2's pool half — are
+  deploy refusals, each written only after its value was measured on this host.
 - **No root, no sudo, no systemd — on prod as on the sandbox (operator ruling 2026-09-13).** *"The
   web app should not need root access"*; asked whether that binds prod: *"yes. prod is set up the
   same way as sandbox"* — a Virtualmin sub-server account with no sudo, no lingering systemd user
@@ -436,7 +434,7 @@ rule violations anyone could have committed at the time.
     release's `server/public/.user.ini` counted, because FPM keeps a directory's `.user.ini` values for
     `user_ini.cache_ttl` after the file changes. A long-lived request
     already open when the code moves keeps the old code until it ends, which is
-    `mezzanine:feed-reload`'s job and still owed (above).
+    `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
@@ -446,12 +444,59 @@ rule violations anyone could have committed at the time.
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
   or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
   release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
-  release that would move the daemons' lock files, and a PHP-FPM whose opcache would not re-read changed files (timestamps
+  release that would move the daemons' lock files, a PHP-FPM whose opcache would not re-read changed files (timestamps
   off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM
-  binary). It warns, rather than refusing, where the doc's own reading is that the state is
+  binary), a missing `cgi-fcgi` or `timeout`, a malformed `MEZZ_FEED_DRAIN_CEILING_S`, and a host
+  that cannot serve or drain the feed's stream (card#9300): no `MEZZ_STREAM_POOL`, or one naming no
+  pool, another user's pool, a `request_terminate_timeout` other than 0, no `pm.status_path` or
+  `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
+  pool `zlib.output_compression`, `output_handler` or `ignore_user_abort` set in the ini, the pool
+  or a `.user.ini`. `output_buffering` is reported and **not** refused — measured, the handler's
+  flush defeats this host's 4096. It warns, rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
   from does not exist — a gap it says out loud rather than a state it calls safe.
+- **The feed's stream needs three things from the host, and one check after a deploy that only an
+  operator can run** (card#9300; `docs/design/FLEET-STATE.md § 8.3` R1 and R2 own the requirements
+  and their measurements — this bullet is the runbook, not a second copy of them).
+  - **A dedicated PHP-FPM pool for `GET /api/fleet/stream`**, running as the application user (so the
+    deploy can end a stream without root), with `request_terminate_timeout = 0`, a `pm.status_path`,
+    a `pm.status_listen` (a status listener the pool's pinned workers cannot block — measured: without
+    it the deploy's status read queued behind the streams until it timed out), and a `pm.max_children`
+    sized in open browser tabs, not browsers. The vhost routes `/api/fleet/stream` — and nothing else —
+    to it; every other request stays on the application's pool. Name the pool to the deploy with
+    `MEZZ_STREAM_POOL=<pool name>`. Both are root acts (Virtualmin); the deploy refuses a host without
+    them, and says which part is missing.
+  - **`flushpackets=on` for that pool's socket in the vhost**, e.g. `<Proxy
+    "unix:/run/php/<stream pool>.sock|fcgi://127.0.0.1"> ProxySet flushpackets=on </Proxy>`, and no
+    compression filter on `text/event-stream`. ⛔ **Without it every browser renders *feed down — polling*
+    against a healthy fleet** (FLOOR.md § 9 F19): measured on a throwaway Apache with this host's vhost
+    shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response, headers included, until the
+    request ended. The deploy cannot see the vhost; the check below can.
+  - **A finite client-send timeout on the proxy** (Apache `Timeout`), so a frozen client's worker comes
+    back (R2's teardown clause). The heartbeat keeps a healthy stream writing every 15 s.
+  - **After any deploy that changed the stream path, the proxy or the stream pool — and once when the host
+    is stood up — run the R1 wire check as an operator.** Sign in to the site in a browser (MFA
+    included), copy the session cookie's `name=value` from the browser's developer tools into a file
+    holding the single line `Cookie: <name>=<value>`, `chmod 600` it — it is a live session: never paste
+    it on a command line, where it lands in `ps` and in shell history — and run from a checkout:
+
+    ```
+    bin/feed-stream-check.sh https://<origin> <cookie-header-file>
+    ```
+
+    It listens 50 s and asserts on timing — the on-connect `fleet.health` within 2 s, no heartbeat gap over
+    20 s, no `Content-Encoding` — and exits 0 on PASS, 1 naming each failure. A FAIL that says *not even the
+    response headers arrived* is the missing `flushpackets`; *Content-Encoding* is a compression filter; a
+    `401`/`403` is the cookie. Delete the cookie file afterwards. The script's header records the
+    PASS/FAIL/FAIL/PASS run it was seen to give against a deliberately broken proxy before it was
+    trusted. It needs `mezzanine:feed-heartbeat` running on the host, as every deploy leaves it.
+  - **What a deploy does to open streams, for the operator reading its log**: `mezzanine:feed-reload`
+    writes `fleet.reload`; every stream that is draining delivers it and ends with
+    `feed.close{reason:"reload"}`, and its browser reconnects on its own once the window closes. The
+    deploy then waits up to `MEZZ_FEED_DRAIN_CEILING_S` (30 s) for the streams the previous release opened
+    to finish, and SIGTERMs the rest — the log names their pids and the closing banner's `streams :` line
+    says what happened. A stream it could not end is a warning, never a failed deploy.
 - **The handoff milestone:** when D1–D3 are merged, the project moves to its own agent seat
   (sandbox owner + implementer); aimla-pm drops to coordinator (reviews, cross-project routing,
   this plan's upkeep). The new seat inherits this plan as its orientation — which is a reason
