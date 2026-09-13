@@ -27,6 +27,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   vhost with `ProxySet flushpackets=on` on its socket (without it this host's Virtualmin vhost shape was
   measured holding the whole stream, and every browser renders *feed down*); and export
   `MEZZ_STREAM_POOL=<pool name>` to `bin/deploy.sh`. `cgi-fcgi` and `timeout` are now required on the host.
+  (The deploy that first ships this runs its preconditions in the previous release's script, so it only
+  warns about a missing pool, in the window, and skips the drain; the one after it refuses.)
   After a deploy that changed the stream path, the proxy or the pool, run `bin/feed-stream-check.sh
   https://<origin> <cookie file>` as an operator (`docs/PLAN.md § 5` has the steps). What ships:
   `App\Feed\Outbox` writes every feed message as its writer's LAST statement before COMMIT (the fold, the

@@ -753,6 +753,28 @@ run
 eq  "control: no stream left open — exit 0" 0 "$RC"
 has "control: says every stream ended on fleet.reload" "every stream the previous release served had ended on fleet.reload" "$OUT"
 
+# The deploy that FIRST ships the stream-pool check: phase A runs the serving release's copy, which has none, so a
+# host with no stream pool passes it — and the window must not then take the app down over a pool nobody was asked
+# to provision. The serving copy is the release's own deploy.sh with the check reduced to a pass.
+serving_without_stream_check() { sed -i 's/^stream_pool_ready() {$/stream_pool_ready() { return 0;/' "$1/bin/deploy.sh"; }
+# mkfix's v1 mutator edits the source tree the release commit is also made from, so the release restores its own copy.
+release_with_the_check() { cp "$DEPLOY" "$1/bin/deploy.sh"; }
+mkfix first_ship release_with_the_check serving_without_stream_check; unset MEZZ_STREAM_POOL
+eq  "first ship: the release really carries the check" 0 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c '^stream_pool_ready() { return 0;')"
+eq  "first ship: the serving release really lacks the check" 1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c '^stream_pool_ready() { return 0;')"
+run
+eq  "first ship: exit 0 — the app comes back up" 0 "$RC"
+logged "first ship: fleet.reload is still written" "php artisan mezzanine:feed-reload"
+has "first ship: says the stream pool is not ready, and that the next deploy will refuse" "the next deploy will refuse this host until it is" "$OUT"
+has "first ship: and names what is missing" "MEZZ_STREAM_POOL is unset" "$OUT"
+has "first ship: the drain is skipped by name" "streams   : NOT DRAINED — the stream pool is not one this deploy can read" "$OUT"
+strict_phase_b() { release_with_the_check "$1"; sed -i 's/^    \[ -n "\$POST_CHECKOUT_SHA" \] || return 1$/    return 1 # phase-B leniency cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+mkfix first_ship_strict strict_phase_b serving_without_stream_check; unset MEZZ_STREAM_POOL
+eq  "first ship mutant: the release really fails phase B on it" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'phase-B leniency cut out by the selftest mutant')"
+run
+eq  "first ship mutant: exit 2 — the window stays down over the stream pool" 2 "$RC"
+unlogged "first ship mutant: the app is NEVER brought up" "artisan up"
+
 section "REFUSAL — what is being deployed"
 mkfix unreleased
 gitc "$SRC" checkout -q -b hotfix "$V1"

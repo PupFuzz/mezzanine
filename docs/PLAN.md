@@ -466,7 +466,10 @@ rule violations anyone could have committed at the time.
     sized in open browser tabs, not browsers. The vhost routes `/api/fleet/stream` — and nothing else —
     to it; every other request stays on the application's pool. Name the pool to the deploy with
     `MEZZ_STREAM_POOL=<pool name>`. Both are root acts (Virtualmin); the deploy refuses a host without
-    them, and says which part is missing.
+    them, and says which part is missing. ⚠ **The first deploy of the release that introduced this check
+    does not refuse — it warns, in the window**: its preconditions ran in the previous release's copy of the
+    script, which never asked, and staying down over a pool nobody was asked for would be the worse outcome.
+    Its streams are then not drained, and the deploy after it refuses until the pool exists.
   - **`flushpackets=on` for that pool's socket in the vhost**, e.g. `<Proxy
     "unix:/run/php/<stream pool>.sock|fcgi://127.0.0.1"> ProxySet flushpackets=on </Proxy>`, and no
     compression filter on `text/event-stream`. ⛔ **Without it every browser renders *feed down — polling*

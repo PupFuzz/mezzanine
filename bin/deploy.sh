@@ -56,7 +56,8 @@
 #   PHP-FPM request that does not end, so opcache revalidation never reaches it. Phase A reads the two
 #   host conditions the stream depends on that need no credential — R1's ini half and R2's pool half —
 #   off the FPM SAPI and the dedicated stream pool, and refuses a host where either is false
-#   (fpm_code_reload_ready). Phase B writes `fleet.reload` (`mezzanine:feed-reload`) immediately before
+#   (fpm_code_reload_ready) — in phase A; phase B, whose phase A may have been a release without the check,
+#   warns rather than keeping the app down over it. Phase B writes `fleet.reload` (`mezzanine:feed-reload`) immediately before
 #   the opcache wait, watches the stream pool until every stream the previous release served has gone,
 #   and at a ceiling SIGTERMs the ones that missed the message (drain_previous_streams) — D2 § 14 item
 #   17's decision, measured on a throwaway non-root master before it was written here. R1's WIRE half —
@@ -380,7 +381,7 @@ fpm_judge() {
 R1_KEYS='output_buffering|output_handler|zlib\\.output_compression|ignore_user_abort'
 
 fpm_code_reload_ready() {
-  FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0; STREAM_POSTURE=""; STREAM_STATUS_LISTEN=
+  FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0; STREAM_POSTURE=""; STREAM_STATUS_LISTEN=""; STREAM_NOT_READY=()
   local me info ini_file fpm_conf inc f rows
   me="$(id -un)"
   if ! command -v "$FPM_BIN" >/dev/null 2>&1; then
@@ -504,7 +505,16 @@ fpm_code_reload_ready() {
       "this user cannot restart the master.")
     return 1
   fi
-  stream_pool_ready "$info" "$rows" "$me" || return 1
+  # ⚑ THE STREAM POOL IS A REFUSAL IN PHASE A AND A WARNING IN PHASE B, and only this half of the reader is split
+  # that way. Phase A runs the SERVING release's copy of this function, so the deploy that first ships this check is
+  # judged in phase A by a copy that has none — and a phase B that failed on it would take the app down for a pool
+  # nobody was ever asked to provision, over a condition that degrades the feed (F19/F20) rather than the pages. Every
+  # later deploy refuses it before anything is touched. opcache, above, stays a failure in both phases: without it the
+  # new code is not served at all.
+  if ! stream_pool_ready "$info" "$rows" "$me"; then
+    [ -n "$POST_CHECKOUT_SHA" ] || return 1
+    STREAM_NOT_READY=("${FPM_NOT_READY[@]}"); FPM_NOT_READY=(); STREAM_STATUS_LISTEN=""
+  fi
   FPM_REVALIDATE_S="$max_f"
   if [ "$cached" -eq 1 ]; then
     FPM_POSTURE="opcache revalidates a changed file within ${max_f} s"
@@ -965,7 +975,7 @@ phase_a() {
   say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
   say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
   say "  php-fpm  not reloaded — $FPM_POSTURE"
-  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL}])"
+  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL:-}])"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1241,6 +1251,11 @@ previous_stream_pids() { # <since epoch> — the Running requests in the stream 
 
 drain_previous_streams() {
   local since="$1" deadline pids
+  if [ -z "$STREAM_STATUS_LISTEN" ]; then
+    DRAIN_RESULT="NOT DRAINED — the stream pool is not one this deploy can read (see the warning above)"
+    warn "streams the previous release served were not drained: $DRAIN_RESULT"
+    return 0
+  fi
   deadline=$(($(date +%s) + FEED_DRAIN_CEILING_S))
   while :; do
     if ! pids="$(previous_stream_pids "$since")"; then
@@ -1375,6 +1390,10 @@ phase_b_post_checkout() {
   FAILED_STEP="re-reading PHP-FPM's posture"
   step "PHP-FPM: re-reading the opcache posture and the stream pool"
   fpm_code_reload_ready || { printf '%s\n' "${FPM_NOT_READY[@]}" >&2; false; }
+  if [ ${#STREAM_NOT_READY[@]} -gt 0 ]; then
+    warn "the feed's stream pool is NOT ready — the next deploy will refuse this host until it is (FLEET-STATE.md § 8.3 R1/R2):"
+    printf '    %s\n' "${STREAM_NOT_READY[@]}" >&2
+  fi
 
   # ── the feed's open streams (card#9300) ─────────────────────────────────────────────────────
   # Revalidation reaches every NEW request; a stream already open holds the previous release in memory
@@ -1470,7 +1489,7 @@ main() {
   4  composer install --no-dev · npm ci · npm run build
   5  optimize:clear → migrate --force → config/route/view/event:cache
   6  queue:restart · install the release's crontab block · SIGTERM every holder of the checkout's daemon lock files · relaunch $TARGET_DAEMONS (cron's command)
-  6b mezzanine:feed-reload · SIGTERM the [${MEZZ_STREAM_POOL}] streams still open after ${FEED_DRAIN_CEILING_S} s · wait out opcache revalidation (no FPM reload)
+  6b mezzanine:feed-reload · SIGTERM the [${MEZZ_STREAM_POOL:-}] streams still open after ${FEED_DRAIN_CEILING_S} s · wait out opcache revalidation (no FPM reload)
   7  php artisan up · GET \$APP_URL/up
 PLAN
     return
