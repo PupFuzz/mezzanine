@@ -19,6 +19,19 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **2FA issuer (no card)** — **an authenticator app now names this site's entry after the
+  site's own hostname instead of `Mezzanine` on every host.** The operator asked for the sandbox's
+  entry to read `sandboxmezzanine` rather than the hardcoded name. Fortify's stock
+  `twoFactorQrCodeUrl()` passes `config('app.name')` as the otpauth issuer.
+  `App\Models\User` now overrides it to call `App\Auth\TwoFactorIssuer::resolve()`, the one
+  derivation. It returns `TWO_FACTOR_ISSUER` (new, optional, `config/fortify.php`) if set;
+  otherwise the first DNS label of `APP_URL`'s host, lowercased, with an IPv4 address kept whole;
+  otherwise `APP_NAME`. `:` is removed from the free-form values, because it is the otpauth label
+  separator. ⛔ `APP_NAME` itself was left alone: it derives the session cookie name and the cache
+  prefix, so renaming it per host would sign everybody out. ⚠ Existing enrolments keep their old
+  label (the secret is unchanged, so codes still work). README § The authenticator entry's name
+  says how to relabel. Tests: `tests/Feature/TwoFactorIssuerTest.php`.
+
 - **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
   are asked two different questions, and the comments that promised to fold them into one are
   removed.** The card proposed hoisting a shared predicate out of `App\Ingest\Wire` so `App\Floor`
