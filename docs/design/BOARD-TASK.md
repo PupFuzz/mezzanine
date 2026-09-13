@@ -210,7 +210,7 @@ A **scheduled command**, on the model of `mezzanine:purge` and not of the fold o
 loops with their own poll intervals"* and get a supervisor; a bounded, idempotent job gets a schedule
 entry. A board poll is bounded — one paged HTTPS read per configured board, then one transaction — and
 holds no state between runs beyond the rows it writes, so a supervised daemon would buy nothing and
-cost a unit file. `->withoutOverlapping()` for the same reason `purge` carries it: a slow board must
+cost a member of `bin/supervision.sh`'s supervised set, with the crontab entries it renders. `->withoutOverlapping()` for the same reason `purge` carries it: a slow board must
 not start a second poll beside the first.
 
 ⛔ **Two bounds are part of that choice rather than deployment detail, because without them

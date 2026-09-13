@@ -2,8 +2,10 @@
 #
 # WHAT IT DOES. Runs `bin/deploy.selftest.sh` over this checkout: every precondition refusal, the
 # down-and-stay-down path, the anti-"bare re-run" guard, the daemon restarts and the load-bearing
-# cache order, each against a throwaway git fixture with php/composer/npm/systemctl/curl stubbed
-# on PATH. It deploys nothing and reaches no host — there is no host (docs/PLAN.md D-08).
+# cache order, each against a throwaway git fixture with php/php-fpm/composer/npm/crontab/curl
+# stubbed on PATH — and the daemon restart itself run for real (flock, fuser, setsid, kill) against
+# stub daemons inside the temp dir. It deploys nothing and reaches no host — there is no host
+# (docs/PLAN.md D-08).
 #
 # WHY IT EXISTS. card#7459's acceptance is that the script is "seen to fail on a broken
 # precondition before trusted", and that property decays silently: a refusal that stops firing
@@ -31,7 +33,8 @@
 # stays: requiring a check is a repository-settings act, so a workflow added later is not
 # automatically required — which is exactly why a copy here rots.
 #
-# NEEDS NO CREDENTIAL AND NO NETWORK. bash + git + the checkout, nothing else.
+# NEEDS NO CREDENTIAL AND NO NETWORK. bash + git + util-linux (flock, setsid) + psmisc (fuser) +
+# the checkout, nothing else.
 
 name: Deploy selftest
 
