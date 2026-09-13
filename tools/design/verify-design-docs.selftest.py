@@ -225,6 +225,52 @@ PLANTS = [
         "retains `feed_outbox` for",
     ),
     (
+        # card#9326.  § 8.5's stall bound has ONE statement, and the copy that must stay inline because
+        # an implementer builds from it is § 8.3's handler fence.  G14 holds every copy of the bound's
+        # shape to the owner; a fence copy that drifts is the exact defect two review rounds found in
+        # prose, arriving on the surface that ships.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(if now - tick_started > )(\d+)( s:)",
+        "bump",
+        "§ 8.3's handler-fence copy of § 8.5's stall bound, which G14 holds to its owner (card#9326)",
+        "states the stall bound as",
+    ),
+    (
+        # card#9326.  An acceptance test's threshold is the other copy that stays inline: AT-D2-19's
+        # draining-consumer figure is what a test asserts, held by G14 to § 9 case (a).
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(which on this leg's draining consumer is )(\d+)( s \+ one)",
+        "bump",
+        "AT-D2-19's copy of § 9's enforcement bound on a draining consumer, which G14 holds to its "
+        "owner (card#9326)",
+        "draining figure as",
+    ),
+    (
+        # card#9326.  The OWNER is checked too: § 9's *under* figure is the auth interval plus § 8.5's
+        # stall bound, both re-read from the handler and § 8.5, so an owner moved alone reds by name.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(enforcement lag is\s+\*\*under )(\d+)( s\*\*)",
+        "bump",
+        "§ 9 case (a)'s enforcement bound, which G14 re-derives from § 8.3's re-check interval plus "
+        "§ 8.5's stall bound (card#9326)",
+        "re-derive as",
+    ),
+    (
+        # card#9326.  G12b's population is the `feed.close` row's DECLARED member set, read off the
+        # row.  Renaming a member there is a member the handler fence does not write, and G12b must
+        # say so -- it used to hold one member by name and would have waited for this one to be typed.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `feed\.close` \| server → client \|.*?; `)(reload)(` — )",
+        "rename",
+        "a member of § 8.3's declared `feed.close` set, which G12b now re-derives from that row and "
+        "holds § 8.3's handler fence to (card#9326)",
+        "G12b: section 8.3's `feed.close` row declares",
+    ),
+    (
         # card#9296.  The declared protocol agent name is ONE value set with THREE homes across TWO
         # documents -- D1's field table, D2's `ENUM`, D2's read surface -- and card#7957's finding
         # was that NO ACT FAILED when the two identity surfaces disagreed.  The plant renames a

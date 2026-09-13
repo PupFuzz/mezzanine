@@ -19,6 +19,33 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9326** — **The feed stream's two bounds each have ONE statement, and the copies that must
+  stay inline are guarded — design documents and their verifiers only; nothing an installer runs
+  changes.** card#9287's § 8.5 stall bound and § 9 enforcement bound were stated in full at six or more
+  sites across `docs/design/FLEET-STATE.md` (D2) and `docs/design/FLOOR.md` (D3) with nothing checking
+  that the copies agreed, and the duplication minted the same ~4×-short figure in two consecutive
+  review rounds. **DELETE — the default:** every D3 site now points at D2 § 9 and carries no figure
+  (§ 9 F7's observable and *Never* cells, § 12's session re-check row, § 13 decision 36's header and
+  cost), and the retired figure is no longer quoted as prose a reader takes for current; inside D2 each
+  bound is stated once — § 8.5's *a gap over 45 s*, § 9 case (a) — and § 2.2's backpressure row, § 6.7's
+  `feed_outbox` row, § 8.3's `feed.close` row, § 9's case (b) and tick note, § 12's two basis cells and
+  AT-D2-19's negative example point at it. D3 § 9's note and § 14 item 5 already pointed; D3 § 2.5 and
+  `docs/PLAN.md` state neither bound on this base. **GUARD — what stays inline:** § 8.3's handler fence,
+  § 12's stall-bound row, and AT-D2-15's and AT-D2-19's thresholds, held by the new
+  `verify-fleet-state.py` **G14**: each owner is read from its own section, § 9's figures are re-derived
+  from § 8.3's re-check interval and tick plus § 8.5's bound, and every statement of either bound's
+  shape in D2, D3 and `docs/PLAN.md`, found on each run, must agree with its owner; a flat figure stated
+  as the enforcement bound — the retired shape — is refused outright. ⚠ A copy phrased outside those
+  shapes is not seen, which is why a consumer points rather than copies; this file is outside the
+  population because it is the record of retired figures. **G12b** no longer holds one close reason by
+  name: every member § 8.3's `feed.close` row declares must be written by a pseudocode fence *inside
+  § 8.3* (any fence in the document used to satisfy it), the member set re-derived from the row and held
+  to the size the row states, and G12's ruling token is read off that row by its member's description
+  instead of being a literal. New selftest plants cover the fence copy, AT-D2-19's copy, § 9's owner and
+  G12b's declared set; D2 § 12's status table gains G14's row and § 14 item 8 moves to G1–G14, which the
+  verifier's own count guard holds. **Not built here:** a quoted-sentence drift guard over `server/**` and
+  `tools/**` comments (the card's comments 4852 and 4876), whose instances were already fixed on card#9296.
+
 - **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
   as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
   prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: a host
