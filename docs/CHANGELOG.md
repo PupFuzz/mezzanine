@@ -48,6 +48,34 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   connect leg and AT-D2-25 (a real race on four MariaDB connections) are new — AT-D2-15's worker return
   by the proxy and its RSS leg need a real deployment and say so.
 
+- **card#9368** — **A Linux agent seat can report without an installer and without root.** The new
+  `fleet-reporter/INSTALL-LINUX.md` is a by-hand runbook, performed on the sandbox host to connect
+  `mezzanine` / `mezzanine-solo` as the first reporting seat. Its steps: issue the seat token straight
+  into a `0600` config, wire the hooks, supervise the flusher, run selftest, verify, and roll back.
+  **The flusher's supervised start on Linux is now the user crontab**, an `@reboot` entry plus a
+  minutely `flock -n` entry that carries `COORD_CONFIG=` on its own command line. It is no longer a
+  `systemd --user` unit, which without lingering neither starts at boot nor outlives logout. D1 § 2.3,
+  § 3.1's `$COORD_CONFIG` delivery contract, AT-27 case F and § 18.13 row 6 now say so. The fleet-reporter
+  README and `docs/PLAN.md § 3` record the installer, card #7336, as won't-do. **Installer action:**
+  nothing on the server. To connect a Linux seat, follow the runbook. Its closing section names what
+  it does not give you: `selftest` exits 1 on every seat because this build never probes
+  `schema_version_accepted` there; a fresh seat starts badged `epoch_reset`; and the reporter does not
+  yet send `protocol_agent_name`.
+  **Review round 2.** The runbook stages every file in its own `0700` attempt directory, never the
+  shared `/tmp`, and runs each stage-then-use pair under `set -euo pipefail`. Before this, another
+  account on the host could have pre-created the script that receives the token, or the crontab that
+  gets installed. Step 5 now replaces its crontab block instead of appending a second one, and a second
+  identical run changes nothing. On a changed value it stops the running flusher, and it checks that
+  cron, and not a hook, started the flusher. `node` and `$COORD_CONFIG` are resolved when the step
+  runs, with `settings.local.json` over `settings.json`. Step 4 derives the hook set from the vendored
+  fixtures, and it gives two procedures: (a) hooks only, which is what is live on the sandbox seat, and
+  (b) with the statusLine wrap, which is optional and deferred. D1 § 2.3 scopes the crontab to seats
+  without root or lingering, and it corrects the lock's touch cadence to every flush pass. § 3.1 now
+  requires a rewrite *and restart*. By operator ruling, § 16's Windows validation is owed when the
+  Windows agent seat onboards and is not required now. § 18.13 row 6 separates the built server half
+  from the unbuilt reporter half, card#9375. **Installer action:** none on a seat that is already
+  running. To change a value in the start line, re-run Step 5.
+
 - **card#9326** — **The feed stream's two bounds each have ONE statement, every other site points
   at it, and the copies that cannot point are held to it by `verify-fleet-state.py` — design documents
   and their verifiers only; nothing an installer runs changes.** card#9287's stall bound
