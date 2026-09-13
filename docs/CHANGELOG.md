@@ -231,6 +231,22 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   MySQL/MariaDB — `App\Support\Ddl::ascii()` and `::index()`, `App\Fold\Fold::claim()`,
   `App\Ingest\Counters::upsert()` and the building-store migration's CHECK constraint. Those arms
   are unreachable in any supported configuration and are left in place.
+  ⭐ **Step 2: `php-tests-mariadb` is gone; `php-tests` is the one PHP lane.** The duplicate job, its
+  temporary-duplicate header and every comment that existed only because there were two jobs are
+  removed from `.github/workflows/php-tests.yml`. The context was taken out of both rulesets'
+  required checks first (2026-09-13), and the job was removed only after reading both rulesets and
+  classic protection on `dev` and `main` and finding it required nowhere.
+  `docs/VERSIONING.md § Branch model` claimed the rulesets required *"the SAME FIVE contexts"*;
+  that count had gone false, and the section's only word on classic branch protection was a
+  superseded 2026-08-23 reading that there was none. It now states no count: it names both layers,
+  says both apply and that their lists differ (`php-tests` is required by the rulesets and not by
+  classic protection), and gives one command that prints both layers for both branches. The
+  contexts it lists are marked as measured on 2026-09-13. Two historical mentions of the old job in
+  `Tests\TestCase` and `SeatConsoleTest` stay as they are: they record card#9250's first MariaDB
+  run. ⚠ **Found while re-measuring, marked and not decided:** `dev` measured squash-only
+  (ruleset `21953633`). That falsifies § Branch model's *"`dev` now allows `squash` AND `merge`"*
+  and core rule 5's matching sentence, both now marked in place. Whether it is intended, and what
+  it means for rule 5's merge-commit back-merge, is an open question for the release flow.
 
 - **2FA issuer (no card)** — **an authenticator app now names this site's entry after the
   site's own hostname instead of `Mezzanine` on every host.** The operator asked for the sandbox's
