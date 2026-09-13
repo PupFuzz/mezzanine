@@ -52,7 +52,7 @@ class ProtocolAgentNameDeclarationTest extends FeedTestCase
         $this->assertNull($seat['protocol_agent_name_check'], '§ 8.2.1: `null` before the first heartbeat');
 
         // ── THE FIRST DECLARING HEARTBEAT ──────────────────────────────────────────────────────
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver($this->heartbeats(1));
         $this->fold();
@@ -67,11 +67,11 @@ class ProtocolAgentNameDeclarationTest extends FeedTestCase
         foreach (['protocol_agent_name' => 'pm', 'protocol_agent_name_check' => 'checked'] as $member => $value) {
             $up = $this->deltasCarrying($member, $mark);
             $this->assertCount(1, $up, "the declaring heartbeat emitted no delta carrying `{$member}` (§ 6.5)");
-            $this->assertSame($value, $up[0]['payload']['patch']->{$member});
+            $this->assertSame($value, $up[0]['payload']['patch'][$member]);
         }
 
         // ── ONE MEMBER MOVES ALONE: a roster disagreeing under an unchanged name ──────────────
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $beat = $this->heartbeats(1, 90_000)[0];
         $beat['data']['protocol_agent_name_check'] = 'disagreed';
@@ -80,7 +80,7 @@ class ProtocolAgentNameDeclarationTest extends FeedTestCase
 
         $flip = $this->deltasCarrying('protocol_agent_name_check', $mark);
         $this->assertCount(1, $flip, 'a check-state edge emitted no delta carrying it');
-        $this->assertSame('disagreed', $flip[0]['payload']['patch']->protocol_agent_name_check);
+        $this->assertSame('disagreed', $flip[0]['payload']['patch']['protocol_agent_name_check']);
         $this->assertSame([], $this->deltasCarrying('protocol_agent_name', $mark),
             'the delta named an unchanged `protocol_agent_name` as changed');
         $this->assertSame('pm', $this->served()['protocol_agent_name'],
@@ -120,7 +120,7 @@ class ProtocolAgentNameDeclarationTest extends FeedTestCase
         // the omission and not about columns nothing ever wrote.
         $this->assertSame('pm', $this->state()->protocol_agent_name, 'the declaration never reached the column');
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $beat = $this->heartbeats(1, 90_000)[0];
         unset($beat['data']['protocol_agent_name'], $beat['data']['protocol_agent_name_check']);
@@ -137,7 +137,7 @@ class ProtocolAgentNameDeclarationTest extends FeedTestCase
         foreach (['protocol_agent_name', 'protocol_agent_name_check'] as $member) {
             $down = $this->deltasCarrying($member, $mark);
             $this->assertCount(1, $down, "clearing `{$member}` emitted no delta carrying it");
-            $this->assertNull($down[0]['payload']['patch']->{$member});
+            $this->assertNull($down[0]['payload']['patch'][$member]);
         }
     }
 }

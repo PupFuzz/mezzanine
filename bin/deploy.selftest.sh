@@ -14,7 +14,7 @@
 #         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled, and ps
 #         behind one that one case blinds) against stub daemons holding locks inside the temp dir, so "the old process is gone and a
 #         new one holds the lock" is observed, not merely recorded.
-#   STUB: php (and the daemons it runs), php-fpm<minor>, composer, npm, crontab, curl, id — on PATH,
+#   STUB: php (and the daemons it runs), php-fpm<minor>, composer, npm, crontab, curl, id, cgi-fcgi — on PATH,
 #         recording every call to $CALL_LOG. The crontab stub reads and writes one file per fixture;
 #         the php-fpm stub prints a phpinfo whose opcache values each case sets, beside a fixture
 #         php-fpm.conf and pool directory shaped like the Virtualmin sandbox's.
@@ -39,7 +39,11 @@
 #     cut out, and the re-run after a window that failed with the previous release's daemons still up;
 #   - the opcache wait after a release that LOWERS revalidate_freq in its .user.ini, seen to fail with the
 #     floor phase A hands over cut out;
-#   - a `.user.ini` over the app's scripts (A14): absent, turning timestamps off, removed again.
+#   - a `.user.ini` over the app's scripts (A14): absent, turning timestamps off, removed again;
+#   - the feed stream's host conditions (A14, card#9300): each R1 ini hazard and each R2 pool defect
+#     refused, each beside the same host without it;
+#   - the stream drain (phase B): a stream the previous release opened ended by SIGTERM, one opened after
+#     fleet.reload left alone — and the same run with the release's kill cut out, where it survives.
 #
 # RUN: bin/deploy.selftest.sh          (exit 0 = every case passed)
 
@@ -62,8 +66,14 @@ kill_daemons() { # kill_daemons <root> — SIGKILL whatever holds a fixture's da
   done
   return 0
 }
+kill_streams() { # SIGKILL the stand-in stream workers a case started — they are listed in one knob file
+  local pid started
+  while read -r pid started; do [ -n "$pid" ] && kill -KILL "$pid" 2>/dev/null; done < "$T/knobs/streams" 2>/dev/null
+  return 0
+}
 cleanup() {
   local r
+  kill_streams
   for r in "$T"/*/root; do kill_daemons "$r"; done
   rm -rf "$T"
 }
@@ -94,6 +104,7 @@ section() { printf '\n── %s\n' "$1"; }
 
 # ── stubs on PATH ─────────────────────────────────────────────────────────────────────────────
 REAL_FUSER="$(command -v fuser)" || { echo "selftest: fuser not found" >&2; exit 1; }
+REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parses the stream pool's JSON status with php -r)" >&2; exit 1; }
 REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
@@ -103,10 +114,15 @@ printf '%s\n' "${SUPERVISED_DAEMONS[@]}" mezzanine:extra > "$T/knobs/daemons"
 # php. A supervised daemon is started under `env -i` (by the fixture, and by deploy.sh exactly as
 # cron would), so the paths it needs are baked in and its knobs are FILES, not environment.
 {
-  printf '#!/usr/bin/env bash\nCALL_LOG=%q\nKNOBS=%q\n' "$CALL_LOG" "$T/knobs"
+  printf '#!/usr/bin/env bash\nCALL_LOG=%q\nKNOBS=%q\nREAL_PHP=%q\n' "$CALL_LOG" "$T/knobs" "$REAL_PHP"
   cat <<'STUB'
+# `php -r 'echo PHP_VERSION;'` is the host-PHP probe and answers the stub's version; any other `php -r` is
+# deploy.sh parsing a PHP-FPM JSON status (fpm_code_reload_ready, previous_stream_pids), run for real.
+if [ "${1:-}" = "-r" ]; then
+  if [ "${2:-}" = 'echo PHP_VERSION;' ]; then printf '%s' "${STUB_PHP_VERSION:-8.3.14}"; exit 0; fi
+  exec "$REAL_PHP" "$@"
+fi
 printf 'php %s\n' "$*" >> "$CALL_LOG"
-[ "${1:-}" = "-r" ] && { printf '%s' "${STUB_PHP_VERSION:-8.3.14}"; exit 0; }
 # A supervised daemon holds flock's lock — the inherited fd — until it is signalled, or dies.
 if [ "${1:-}" = artisan ] && grep -qxF -- "${2:-}" "$KNOBS/daemons"; then
   if grep -qxF -- "$2" "$KNOBS/dies_after_start" 2>/dev/null; then sleep 1; exit 1; fi
@@ -148,6 +164,10 @@ opcache.enable => $STUB_OPCACHE_ENABLE => $STUB_OPCACHE_ENABLE
 opcache.preload => $STUB_OPCACHE_PRELOAD => $STUB_OPCACHE_PRELOAD
 opcache.revalidate_freq => $STUB_OPCACHE_FREQ => $STUB_OPCACHE_FREQ
 opcache.validate_timestamps => $STUB_OPCACHE_VALIDATE => $STUB_OPCACHE_VALIDATE
+output_buffering => $STUB_OB => $STUB_OB
+output_handler => $STUB_OH => $STUB_OH
+zlib.output_compression => $STUB_ZLIB => $STUB_ZLIB
+ignore_user_abort => $STUB_IUA => $STUB_IUA
 INFO
 STUB
 for v in 8.3 8.4 8.5 9.0; do ln -s php-fpm-stub "$T/bin/php-fpm$v"; done
@@ -164,6 +184,25 @@ case "${1:-}" in
   *)  echo "stub crontab: unsupported: $*" >&2; exit 2 ;;
 esac
 STUB
+# cgi-fcgi: the stream pool's pm.status_listen. Its JSON is built from knob files — the pool name it answers
+# for, whether it answers at all, and the requests it lists: one "<pid> <start epoch>" line each, Running,
+# `request uri` /index.php as behind the front controller, and ONLY while that pid is alive — so a worker the
+# deploy's SIGTERM ended leaves the listing as it leaves a real one.
+{
+  printf '#!/usr/bin/env bash\nCALL_LOG=%q\nKNOBS=%q\n' "$CALL_LOG" "$T/knobs"
+  cat <<'STUB'
+printf 'cgi-fcgi %s SCRIPT_NAME=%s QUERY_STRING=%s\n' "$*" "${SCRIPT_NAME:-}" "${QUERY_STRING:-}" >> "$CALL_LOG"
+[ -e "$KNOBS/status_down" ] && exit 1
+pool="$(cat "$KNOBS/status_pool" 2>/dev/null || echo mezz-stream)"
+now="$(date +%s)"; procs=""
+while read -r pid started; do
+  [ -n "$pid" ] || continue
+  kill -0 "$pid" 2>/dev/null || continue
+  procs+="${procs:+,}{\"pid\":$pid,\"state\":\"Running\",\"request uri\":\"/index.php\",\"request duration\":$(( (now - started) * 1000000 ))}"
+done < "$KNOBS/streams"
+printf 'Content-type: application/json\r\n\r\n{"pool":"%s","processes":[%s]}' "$pool" "$procs"
+STUB
+} > "$T/bin/cgi-fcgi"
 cat > "$T/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$CALL_LOG"
@@ -198,6 +237,7 @@ chmod +x "$T/bin/"*
 # including pool.d/*.conf, and a per-domain pool running as the deploy user.
 export STUB_FPM_ETC="$T/etc-fpm"
 POOL="$STUB_FPM_ETC/pool.d/178815168175465.conf"
+STREAM_POOL="$STUB_FPM_ETC/pool.d/mezz-stream.conf"
 write_fpm_etc() {
   rm -rf "$STUB_FPM_ETC"; mkdir -p "$STUB_FPM_ETC/pool.d"
   : > "$STUB_FPM_ETC/php.ini"
@@ -207,6 +247,9 @@ write_fpm_etc() {
   # ⛔ A TRAP, not filler: a pool that is NOT the deploy user's, with timestamps off. A reader that
   # took every pool rather than this user's would refuse every control in this file.
   printf '[www]\nuser = www-data\nphp_admin_flag[opcache.validate_timestamps] = off\n' > "$STUB_FPM_ETC/pool.d/www.conf"
+  # The DEDICATED stream pool FLEET-STATE.md § 8.3 R2 requires (card#9300), as the host would define it.
+  printf '[mezz-stream]\nuser = %s\ngroup = %s\nlisten = /run/php/mezz-stream.sock\npm.status_path = /stream-status\npm.status_listen = /run/php/mezz-stream-status.sock\nrequest_terminate_timeout = 0\n' \
+    "$ME" "$ME" > "$STREAM_POOL"
 }
 
 # reset_stubs — bash persists `VAR=x func` assignments after the call, so a knob set for one case
@@ -217,8 +260,13 @@ reset_stubs() {
   # passing on an accidental exact match.
   export STUB_PHP_VERSION="8.4.7"
   export STUB_OPCACHE_ENABLE=On STUB_OPCACHE_VALIDATE=On STUB_OPCACHE_FREQ=0 STUB_OPCACHE_PRELOAD="no value"
+  # R1's ini directives as this host's FPM php.ini sets them (measured): output_buffering 4096, the rest off.
+  export STUB_OB=4096 STUB_OH="no value" STUB_ZLIB=Off STUB_IUA=Off
+  export MEZZ_STREAM_POOL=mezz-stream MEZZ_FEED_DRAIN_CEILING_S=2
+  : > "$T/knobs/streams"; rm -f "$T/knobs/status_down" "$T/knobs/status_pool"
   export MEZZ_DAEMON_SETTLE_S=2 MEZZ_DAEMON_STOP_TIMEOUT_S=3
   unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN
+  kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
   rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps"
   # The document root A14 reads a .user.ini from. Never the default ($HOME/public_html): on the host
@@ -273,7 +321,6 @@ APP_URL=https://mezzanine.example
 DB_CONNECTION=mysql
 DB_PASSWORD=$FAKE_PW
 MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt
-BROADCAST_CONNECTION=log
 CACHE_STORE=database
 ENV
   chmod 640 "$root/server/.env"
@@ -306,7 +353,7 @@ mkfix() {
     > "$SRC/server/bootstrap/app.php"
   printf '{"lockfileVersion":3}\n' > "$SRC/server/package-lock.json"
   write_composer_json "$SRC" "$FIXTURE_PHP_FLOOR"
-  printf 'APP_ENV=\nAPP_DEBUG=\nAPP_KEY=\nAPP_URL=\nDB_CONNECTION=\nDB_PASSWORD=\nMYSQL_ATTR_SSL_CA=\nBROADCAST_CONNECTION=\nCACHE_STORE=\n# COMMENTED_OPTIONAL=\n' \
+  printf 'APP_ENV=\nAPP_DEBUG=\nAPP_KEY=\nAPP_URL=\nDB_CONNECTION=\nDB_PASSWORD=\nMYSQL_ATTR_SSL_CA=\nCACHE_STORE=\n# COMMENTED_OPTIONAL=\n' \
     > "$SRC/server/.env.example"
   cat > "$SRC/server/database/migrations/2026_01_01_000000_create_fleet_store_tables.php" <<'MIG'
 <?php
@@ -368,6 +415,9 @@ hasnt "control: no config drift on a host whose .env covers .env.example" "does 
 has "control: the release's crontab block is what is installed" "is what is installed; the window rewrites it unchanged" "$OUT"
 has "control: the release keeps the daemons' lock files where the serving release's are" "keeps the daemons' lock files at $ROOT/server/" "$OUT"
 has "control: PHP-FPM is not reloaded, and the posture that makes that safe was read" "php-fpm  not reloaded — opcache revalidates a changed file within 0 s" "$OUT"
+has "control: the stream pool's status answered over pm.status_listen" "stream pool [mezz-stream]: its status answers over /run/php/mezz-stream-status.sock" "$OUT"
+has "control: output_buffering 4096 is reported and NOT refused (measured: the handler's flush defeats it)" "output_buffering 4096 (defeated by the handler's flush" "$OUT"
+logged "control: A14 read the status over the listener, at its path" "cgi-fcgi -bind -connect /run/php/mezz-stream-status.sock SCRIPT_NAME=/stream-status"
 logged "control: A14 read the FPM SAPI (php-fpm -i), not the CLI's ini" "php-fpm8.4 -i"
 hasnt "control: another user's pool (the www trap, timestamps off) was not read" "validate_timestamps is off" "$OUT"
 unlogged "control: --dry-run mutates nothing (no artisan down)" "artisan down"
@@ -433,7 +483,7 @@ path_without() { # path_without <dir> [command-to-hide]
 mkfix tool_control; path_without "$T/path-control"
 : > "$CALL_LOG"; OUT="$(PATH="$T/path-control" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
 eq "control: the rebuilt PATH, hiding nothing, deploys" 0 "$RC"
-for hide in crontab flock fuser setsid ps; do
+for hide in crontab flock fuser setsid ps cgi-fcgi; do
   mkfix "tool_$hide"; path_without "$T/path-$hide" "$hide"
   : > "$CALL_LOG"; OUT="$(PATH="$T/path-$hide" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
   eq  "no $hide: exit 1" 1 "$RC"
@@ -530,7 +580,9 @@ run_refusal "a release whose bin/supervision.sh no longer defines supervision_in
 
 section "REFUSAL — PHP-FPM must pick up new code without a reload (A14)"
 mkfix fpm_timestamps_off; export STUB_OPCACHE_VALIDATE=Off
-run_refusal "opcache.validate_timestamps=Off in the FPM ini" "opcache.validate_timestamps is off for [178815168175465]" --dry-run
+run_refusal "opcache.validate_timestamps=Off in the FPM ini" "opcache.validate_timestamps is off for" --dry-run
+has "timestamps off: names the deploy user's app pool" "[178815168175465]" "$OUT"
+has "timestamps off: names the stream pool too — it serves the app's code as well" "[mezz-stream]" "$OUT"
 has "timestamps off: says the previous release would keep serving" "would go on serving the PREVIOUS release" "$OUT"
 export STUB_OPCACHE_VALIDATE=On; run --dry-run
 eq "control: the same host with validate_timestamps=On deploys" 0 "$RC"
@@ -551,9 +603,10 @@ eq  "control: a pool's revalidate_freq override deploys" 0 "$RC"
 has "control: and the wait follows the POOL's 7 s, not the ini's 0 s" "revalidates a changed file within 7 s" "$OUT"
 
 mkfix fpm_preload; export STUB_OPCACHE_PRELOAD=/srv/preload.php
-run_refusal "opcache.preload set" "opcache.preload is set for [178815168175465]" --dry-run
+run_refusal "opcache.preload set" "opcache.preload is set for" --dry-run
+has "preload: names the app pool" "[178815168175465]" "$OUT"
 
-mkfix fpm_no_pool; sed -i 's/^user = .*/user = somebody-else/' "$POOL"
+mkfix fpm_no_pool; sed -i 's/^user = .*/user = somebody-else/' "$POOL" "$STREAM_POOL"
 run_refusal "no FPM pool runs as the deploy user" "no PHP-FPM pool runs as $ME" --dry-run
 
 mkfix fpm_bin_missing; export MEZZ_FPM_BIN=php-fpm-not-installed
@@ -570,11 +623,11 @@ run --dry-run
 eq  "control: a document root with no .user.ini deploys" 0 "$RC"
 printf '; per-directory tuning\nopcache.validate_timestamps = Off ; saves a stat\n' > "$MEZZ_DOCROOT/.user.ini"
 run_refusal "the document root's .user.ini turns timestamps off" \
-  "opcache.validate_timestamps is off for [178815168175465] under $MEZZ_DOCROOT/.user.ini" --dry-run
+  "[178815168175465] under $MEZZ_DOCROOT/.user.ini" --dry-run
 rm -f "$MEZZ_DOCROOT/.user.ini"; run --dry-run
 eq  "control: the same host with that .user.ini removed deploys" 0 "$RC"
 printf 'opcache.validate_timestamps=\n' > "$MEZZ_DOCROOT/.user.ini"
-run_refusal "an EMPTY validate_timestamps in a .user.ini (PHP reads it as off)" "is off for [178815168175465] under" --dry-run
+run_refusal "an EMPTY validate_timestamps in a .user.ini (PHP reads it as off)" "[178815168175465] under $MEZZ_DOCROOT/.user.ini" --dry-run
 
 uini_release_off() { mkdir -p "$1/server/public"; printf 'opcache.validate_timestamps=0\n' > "$1/server/public/.user.ini"; }
 mkfix uini_release_off uini_release_off
@@ -591,6 +644,136 @@ run --dry-run
 eq  "a document root that does not exist: still deploys (a warning, not a refusal)" 0 "$RC"
 has "no document root: names it, and how to name the right one" "no document root at $T/no-such-docroot" "$OUT"
 has "no document root: says MEZZ_DOCROOT"                     "MEZZ_DOCROOT" "$OUT"
+
+section "REFUSAL — the feed stream's host conditions (A14: § 8.3 R1's ini half, R2's pool half)"
+# Control, mutant, control on ONE host wherever the variable can be put back.
+mkfix r1_zlib
+run --dry-run
+eq  "control: the host's ini (zlib off) deploys" 0 "$RC"
+export STUB_ZLIB=On
+run_refusal "zlib.output_compression on in the FPM ini" "zlib.output_compression is on for [mezz-stream]" --dry-run
+has "zlib on: names what it does to the stream (measured)" "measured to hold the stream until the request ends" "$OUT"
+export STUB_ZLIB=Off; run --dry-run
+eq  "control: the same host with zlib off again deploys" 0 "$RC"
+
+mkfix r1_pool_override
+printf 'php_admin_flag[zlib.output_compression] = on\n' >> "$POOL"
+run --dry-run
+eq  "control: zlib on for ANOTHER pool of this user (not the stream's) is not the stream's hazard" 0 "$RC"
+printf 'php_admin_flag[zlib.output_compression] = on\n' >> "$STREAM_POOL"
+run_refusal "zlib.output_compression on in the STREAM pool's override" "zlib.output_compression is on for [mezz-stream]" --dry-run
+
+mkfix r1_uini_abort
+printf 'ignore_user_abort = On\n' > "$MEZZ_DOCROOT/.user.ini"
+run_refusal "ignore_user_abort on in a .user.ini over the app" "ignore_user_abort is on for [mezz-stream] under $MEZZ_DOCROOT/.user.ini" --dry-run
+rm -f "$MEZZ_DOCROOT/.user.ini"; run --dry-run
+eq  "control: the same host with that .user.ini removed deploys" 0 "$RC"
+
+mkfix r1_ini_abort; export STUB_IUA=On
+run_refusal "ignore_user_abort on in the FPM ini" "ignore_user_abort is on for [mezz-stream]" --dry-run
+
+mkfix r1_handler; export STUB_OH=ob_gzhandler
+run_refusal "output_handler = ob_gzhandler" "output_handler is 'ob_gzhandler' for [mezz-stream]" --dry-run
+export STUB_OH="no value"; run --dry-run
+eq  "control: no output_handler deploys" 0 "$RC"
+
+mkfix r2_unset; unset MEZZ_STREAM_POOL
+run_refusal "MEZZ_STREAM_POOL unset" "MEZZ_STREAM_POOL is unset" --dry-run
+export MEZZ_STREAM_POOL=mezz-stream; run --dry-run
+eq  "control: the same host with the stream pool named deploys" 0 "$RC"
+
+mkfix r2_missing; export MEZZ_STREAM_POOL=no-such-pool
+run_refusal "MEZZ_STREAM_POOL names a pool that is not defined" "MEZZ_STREAM_POOL names [no-such-pool], and no pool of that name is defined" --dry-run
+
+mkfix r2_other_user; sed -i 's/^user = .*/user = www-data/' "$STREAM_POOL"
+run_refusal "the stream pool runs as another user (SIGTERM would need root)" "the stream pool [mezz-stream] runs as 'www-data'" --dry-run
+
+mkfix r2_terminate; sed -i 's/^request_terminate_timeout = .*/request_terminate_timeout = 30s/' "$STREAM_POOL"
+run_refusal "request_terminate_timeout 30s on the stream pool" "request_terminate_timeout is '30s'" --dry-run
+sed -i 's/^request_terminate_timeout = .*/request_terminate_timeout = 0/' "$STREAM_POOL"; run --dry-run
+eq  "control: request_terminate_timeout 0 again deploys" 0 "$RC"
+
+mkfix r2_no_status_path; sed -i '/^pm.status_path/d' "$STREAM_POOL"
+run_refusal "no pm.status_path on the stream pool" "pm.status_path is not set" --dry-run
+
+mkfix r2_no_status_listen; sed -i '/^pm.status_listen/d' "$STREAM_POOL"
+run_refusal "no pm.status_listen on the stream pool" "pm.status_listen is not set" --dry-run
+has "no status_listen: says why it is not optional (measured)" "queues behind the very streams it must list" "$OUT"
+
+mkfix r2_status_down; : > "$T/knobs/status_down"
+run_refusal "the stream pool's status does not answer" "status did not answer over pm.status_listen" --dry-run
+rm -f "$T/knobs/status_down"; run --dry-run
+eq  "control: the same host with the status answering deploys" 0 "$RC"
+
+mkfix r2_status_other_pool; printf '178815168175465' > "$T/knobs/status_pool"
+run_refusal "the listener answers for ANOTHER pool" "answers for pool '178815168175465', not [mezz-stream]" --dry-run
+
+mkfix drain_timing; export MEZZ_FEED_DRAIN_CEILING_S=3s
+run_refusal "MEZZ_FEED_DRAIN_CEILING_S 3s (A1b)" "MEZZ_FEED_DRAIN_CEILING_S is '3s', not a whole number of seconds" --dry-run
+
+section "THE STREAM DRAIN (phase B) — D2 § 14 item 17's decision"
+# A stand-in stream worker is a real process the stub listing reports as a Running request; the deploy may
+# signal it because it is this user's, which is the whole premise the decision rests on.
+start_stream_worker() { # <start epoch> — prints the pid
+  local pid
+  sleep 600 </dev/null >/dev/null 2>&1 &
+  pid=$!; disown "$pid"
+  printf '%s %s\n' "$pid" "$1" >> "$T/knobs/streams"
+  printf '%s' "$pid"
+}
+alive() { kill -0 "$1" 2>/dev/null && echo alive || echo gone; }
+
+mkfix drain_residual
+OLD_STREAM="$(start_stream_worker "$(( $(date +%s) - 3600 ))")"   # opened an hour before the deploy
+NEW_STREAM="$(start_stream_worker "$(( $(date +%s) + 3600 ))")"   # a request younger than fleet.reload
+eq  "control: the stand-in workers are running before the deploy" "alive alive" "$(alive "$OLD_STREAM") $(alive "$NEW_STREAM")"
+run
+eq  "residual stream: exit 0 (a stale stream is never a reason to stay down)" 0 "$RC"
+logged "residual stream: wrote fleet.reload" "php artisan mezzanine:feed-reload"
+has "residual stream: names the stream still open at the ceiling" "still open after a 2 s drain that began once fleet.reload had been read: pid(s) $OLD_STREAM" "$OUT"
+eq  "residual stream: the previous release's stream worker was ended by SIGTERM" "gone" "$(alive "$OLD_STREAM")"
+eq  "residual stream: a request younger than fleet.reload was left alone" "alive" "$(alive "$NEW_STREAM")"
+has "residual stream: the result is in the closing banner" "streams   : ended the stream(s) that missed fleet.reload with SIGTERM (pid(s) $OLD_STREAM)" "$OUT"
+before "order: fleet.reload is written after the daemons are relaunched" "php artisan mezzanine:fold" "artisan mezzanine:feed-reload"
+before "order: fleet.reload is written before the app is up"             "artisan mezzanine:feed-reload" "artisan up"
+OUTL="$(printf '%s\n' "$OUT" | grep -n -e 'Ending the previous release' -e 'letting opcache revalidate' | cut -d: -f1 | tr '\n' ' ')"
+eq  "order: the feed reload and its drain come immediately before the opcache wait" "ascending" "$(set -- $OUTL; [ $# -eq 2 ] && [ "$1" -lt "$2" ] && echo ascending || echo "lines: $OUTL")"
+
+cut_stream_kill() { sed -i 's/^  kill -TERM \$pids 2>\/dev\/null || true$/  : stream kill cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+mkfix drain_kill_cut cut_stream_kill
+eq  "drain mutant: the mutator really cut the kill" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'stream kill cut out by the selftest mutant')"
+OLD_STREAM="$(start_stream_worker "$(( $(date +%s) - 3600 ))")"
+run
+eq  "drain mutant: still exit 0" 0 "$RC"
+eq  "drain mutant: the stream worker SURVIVES — the assertion above can fail" "alive" "$(alive "$OLD_STREAM")"
+has "drain mutant: and the deploy says so, by pid" "SIGTERM did not end pid(s) $OLD_STREAM" "$OUT"
+
+mkfix drain_none
+run
+eq  "control: no stream left open — exit 0" 0 "$RC"
+has "control: says every stream ended on fleet.reload" "every stream the previous release served had ended on fleet.reload" "$OUT"
+
+# The deploy that FIRST ships the stream-pool check: phase A runs the serving release's copy, which has none, so a
+# host with no stream pool passes it — and the window must not then take the app down over a pool nobody was asked
+# to provision. The serving copy is the release's own deploy.sh with the check reduced to a pass.
+serving_without_stream_check() { sed -i 's/^stream_pool_ready() {$/stream_pool_ready() { return 0;/' "$1/bin/deploy.sh"; }
+# mkfix's v1 mutator edits the source tree the release commit is also made from, so the release restores its own copy.
+release_with_the_check() { cp "$DEPLOY" "$1/bin/deploy.sh"; }
+mkfix first_ship release_with_the_check serving_without_stream_check; unset MEZZ_STREAM_POOL
+eq  "first ship: the release really carries the check" 0 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c '^stream_pool_ready() { return 0;')"
+eq  "first ship: the serving release really lacks the check" 1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c '^stream_pool_ready() { return 0;')"
+run
+eq  "first ship: exit 0 — the app comes back up" 0 "$RC"
+logged "first ship: fleet.reload is still written" "php artisan mezzanine:feed-reload"
+has "first ship: says the stream pool is not ready, and that the next deploy will refuse" "the next deploy will refuse this host until it is" "$OUT"
+has "first ship: and names what is missing" "MEZZ_STREAM_POOL is unset" "$OUT"
+has "first ship: the drain is skipped by name" "streams   : NOT DRAINED — the stream pool is not one this deploy can read" "$OUT"
+strict_phase_b() { release_with_the_check "$1"; sed -i 's/^    \[ -n "\$POST_CHECKOUT_SHA" \] || return 1$/    return 1 # phase-B leniency cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+mkfix first_ship_strict strict_phase_b serving_without_stream_check; unset MEZZ_STREAM_POOL
+eq  "first ship mutant: the release really fails phase B on it" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'phase-B leniency cut out by the selftest mutant')"
+run
+eq  "first ship mutant: exit 2 — the window stays down over the stream pool" 2 "$RC"
+unlogged "first ship mutant: the app is NEVER brought up" "artisan up"
 
 section "REFUSAL — what is being deployed"
 mkfix unreleased

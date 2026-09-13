@@ -2,7 +2,8 @@
 
 namespace App\Fleet;
 
-use App\Events\SeatRetired;
+use App\Feed\Outbox;
+use App\Feed\SeatRetired;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
@@ -41,9 +42,10 @@ use Illuminate\Support\Facades\DB;
  * of the last three. "The sweeper's own recompute then AGREES with it on every later pass rather
  * than racing it, because § 4.2 makes `retired` a function of `retired_at`, which by then is set."
  *
- * The publish is `ShouldDispatchAfterCommit`, so "in the transaction" is literal — it is ordered by
- * the transaction — while a rollback still reaches no client. `App\Events\SeatRetired`'s docblock
- * owns that argument; it is not restated here.
+ * The publish is an outbox row enqueued inside `App\Feed\Outbox::transaction()`, which inserts it
+ * as the transaction's LAST statement (card#9300) — so "in the transaction" is literal, and a
+ * rollback leaves no row for any client to read. `App\Feed\SeatRetired`'s docblock owns that
+ * argument; it is not restated here.
  *
  * ⛔ AND WHAT IS NOT A DELETION. "Is it purged? **No.** `seats` is retained forever (§ 6.7); the
  * disappearance is a READ FILTER, not a deletion, so an operator query can still find the row and
@@ -121,7 +123,7 @@ final class SeatRetirement
         $seatRef = (int) $row->id;
         $at = Clock::sql(now());
 
-        return DB::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason): SeatRetirementOutcome {
+        return Outbox::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason): SeatRetirementOutcome {
             // ⛔ SAMPLED BEFORE THE `seats` WRITE BELOW — card #7837, and this is a SIBLING of that
             // card's fold defect rather than a precaution.
             //
@@ -239,18 +241,10 @@ final class SeatRetirement
 
             $version = (int) DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version');
 
-            // IN THE TRANSACTION, WHICH IS WHERE § 4.10 PUTS IT — and delivered only if that
-            // transaction commits, because `SeatRetired` is `ShouldDispatchAfterCommit`. That
-            // contract is the whole resolution: the publish is ordered by the same act that sets
-            // the columns, so no crash can land one without the other, and a rollback invokes no
-            // listener, so no client is ever told a seat retired when it did not. `SeatRetired`'s
-            // own docblock carries the argument; a rollback arm in the suite drives it.
-            //
-            // ⚠ AN EARLIER REVISION PUBLISHED HERE FROM OUTSIDE THE TRANSACTION AND ITS COMMENT
-            // SAID THE DEPARTURE WAS "FLAGGED IN THE PR BODY". IT WAS NOT FLAGGED ANYWHERE. The
-            // departure is now gone rather than better-disclosed, but the false pointer is recorded
-            // because it is the more dangerous half: a reviewer who reads "flagged" stops looking.
-            SeatRetired::dispatch($seatRef, $installId, $seatId, $at, $by, $reason, $version);
+            // IN THE TRANSACTION, WHICH IS WHERE § 4.10 PUTS IT — enqueued here and inserted as the
+            // transaction's LAST statement by `Outbox::transaction()` (card#9300), after the delta
+            // `forSeat()` above enqueued, at the one version both carry. A rollback leaves neither row.
+            Outbox::enqueue(new SeatRetired($seatRef, $installId, $seatId, $at, $by, $reason, $version));
 
             return SeatRetirementOutcome::retired($at, $version);
         });

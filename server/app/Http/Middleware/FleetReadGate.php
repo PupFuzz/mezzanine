@@ -23,8 +23,10 @@ use Symfony\Component\HttpFoundation\Response;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * TWO CREDENTIALS, AND WHICH ENDPOINTS ACCEPT WHICH (§ 8.2's table, § 9's table):
  *
- *   session + MFA           the floor, the drill-down, the websocket handshake, and REST from a
- *                           browser — i.e. ALL FOUR endpoints
+ *   session + MFA           the floor, the drill-down, and REST from a browser — i.e. ALL FOUR
+ *                           endpoints. (The feed's stream is session + MFA too, but not through this
+ *                           gate: § 9 refuses it to machines, so `routes/fleet.php` gives it `auth` +
+ *                           `mfa` and no token branch — card#9300.)
  *   `mzr_` fleet_read       `/snapshot`, `/seats/{i}/{s}` and `/health` only.
  *                           `/timeline` is session+MFA ONLY in § 8.2's table, and that asymmetry
  *                           is preserved rather than smoothed: the timeline is D3's drill-down
@@ -132,7 +134,7 @@ class FleetReadGate
             return ReadRefusal::unauthenticated();
         }
 
-        // `docs/PLAN.md § 3`: MFA gates the page, the websocket handshake AND the REST snapshot.
+        // `docs/PLAN.md § 3`: MFA gates the page, the feed AND the REST snapshot.
         // The redirect is `EnsureTwoFactorSatisfied`'s own — reused rather than re-derived, so
         // "what an unsatisfied browser sees" has one home and one enrolment-vs-challenge rule.
         $mfa = app(Mfa::class)->refusalFor($request);

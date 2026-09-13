@@ -5,31 +5,26 @@ namespace App\Feed;
 use App\Fold\Clock;
 use App\Read\SeatObject;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 /**
- * The one place that turns a **state change** into a **wire message** — the seam between the two
- * halves of `docs/design/FLEET-STATE.md` § 6.5's last line: `COMMIT` / *"if `state_version`
- * changed: enqueue a delta (§ 8.3)"*.
+ * The one place that turns a **state change** into a **feed message** — the seam between the two
+ * halves of `docs/design/FLEET-STATE.md § 6.5`'s per-writer rule: bump `state_version`, and enqueue a
+ * delta (§ 8.3) in the same transaction.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS CLASS DERIVES NOTHING AND DECIDES NOTHING ABOUT WHETHER A CHANGE HAPPENED.
  *
- * `App\Fold\StateRecompute::settle()` already owns § 6.5's per-writer rule — it holds the two
- * `SeatFacts::versionBearing()` fingerprints, compares them, and bumps `state_version`. This
- * class is called only when that comparison has already said yes. A second "did anything change"
- * test here would be a second copy of § 6.5's subtraction, and the first thing the two copies
- * would disagree about is whether an ordinary heartbeat mints a delta — which is exactly the
- * question § 6.5 wrote the subtraction to settle once.
+ * `App\Fold\StateRecompute::settle()` owns § 6.5's per-writer rule — it holds the two
+ * `SeatFacts::versionBearing()` fingerprints, compares them, and bumps `state_version`. This class
+ * is called only when that comparison has already said yes.
  *
- * The three writers § 6.5 names all reach the wire through here, and none of them knows how:
- * the fold (per applied event), the sweeper (per time-derived transition) and the retirement act
- * (§ 4.10).
+ * ⭐ WHERE A MESSAGE GOES (card#9300): `App\Feed\Outbox::enqueue()`, never a broadcaster. Every call
+ * here happens inside the writer's `Outbox::transaction()`, whose last statement inserts the row.
  */
 final class Publisher
 {
     /**
-     * Publish § 8.3's `seat.delta` for a seat whose `state_version` has just advanced.
+     * § 8.3's `seat.delta` for a seat whose `state_version` has just advanced.
      *
      * @param  array<string, mixed>  $before  `SeatFacts::versionBearing()` before the pass's writes
      * @param  array<string, mixed>  $after  the same, after
@@ -45,26 +40,23 @@ final class Publisher
             return;
         }
 
-        // `event()` and not `SeatDelta::dispatch(...)`: the message is BUILT by
-        // `SeatDelta::between()` from the two fingerprints, so what has to be dispatched is that
-        // instance and not a fresh one from its constructor arguments.
-        event(SeatDelta::between($before, $after, $object));
+        Outbox::enqueue(SeatDelta::between($before, $after, $object));
     }
 
     /**
-     * § 8.3's `fleet.health`, on the **change** half of its trigger: "whenever `db`, `fold` or
-     * `sweep` changes value".
+     * One tick of `mezzanine:feed-heartbeat`: § 8.3's `fleet.health` when `db`, `fold` or `sweep`
+     * changed value since the last tick, then the unconditional `feed.heartbeat` — one fleet-wide row
+     * each, in one transaction, the change first so the news leads the routine message.
      *
-     * ⚠ THE PREVIOUS TRIPLE LIVES IN THE CACHE, NOT IN THE STORE, and that is a decision with a
-     * stated consequence rather than a shortcut. It is not state anything derives from — a lost
-     * entry costs one redundant `fleet.health` message, which is idempotent at the client, and
-     * a client's health picture is refreshed unconditionally every 15 s by `feed.heartbeat`
-     * anyway. Putting it in `plane_state` would make the READ plane a writer of the store the
-     * sweeper owns, for a value whose worst-case loss is one duplicate message.
+     * ⚠ THE PREVIOUS TRIPLE LIVES IN THE CACHE, NOT IN THE STORE: a lost entry costs one redundant
+     * `fleet.health`, which is idempotent at the client, and putting it in `plane_state` would make the
+     * read plane a writer of the store the sweeper owns. It is recorded only AFTER the rows commit,
+     * so a tick whose insert failed announces the same change again on the next one rather than
+     * losing it.
      *
      * @param  array<string, mixed>  $fleet  § 8.2.4's object (eight fields, no `counters`)
      */
-    public static function healthChanged(array $fleet): void
+    public static function heartbeatTick(array $fleet): void
     {
         $watched = [];
 
@@ -72,39 +64,20 @@ final class Publisher
             $watched[$field] = $fleet[$field] ?? null;
         }
 
-        if (Cache::get(self::HEALTH_KEY) === $watched) {
-            return;
-        }
+        $changed = Cache::get(self::HEALTH_KEY) !== $watched;
 
-        Cache::put(self::HEALTH_KEY, $watched);
+        Outbox::transaction(function () use ($changed, $fleet) {
+            if ($changed) {
+                Outbox::enqueue(new FleetHealthMessage($fleet));
+            }
 
-        foreach (self::installs() as $installId) {
-            FleetHealthMessage::dispatch($installId, $fleet);
-        }
-    }
+            Outbox::enqueue(new FeedHeartbeat($fleet));
+        });
 
-    /** § 8.3's `feed.heartbeat` — one per channel, i.e. one per install, unconditionally. */
-    public static function heartbeat(array $fleet): void
-    {
-        foreach (self::installs() as $installId) {
-            FeedHeartbeat::dispatch($installId, $fleet);
+        if ($changed) {
+            Cache::put(self::HEALTH_KEY, $watched);
         }
     }
 
     private const HEALTH_KEY = 'feed:fleet_health';
-
-    /**
-     * Every install with a channel — i.e. every install, retired ones included.
-     *
-     * `installs.retired_at` is NOT filtered here. § 4.10's read filter is about SEATS on the
-     * snapshot; an install's own retirement has no rule in D2 and inventing one would be this
-     * card deciding a question D2 has not asked. A channel with no subscriber costs one publish
-     * into nothing.
-     *
-     * @return list<string>
-     */
-    private static function installs(): array
-    {
-        return DB::table('installs')->orderBy('install_id')->pluck('install_id')->all();
-    }
 }

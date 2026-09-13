@@ -43,21 +43,31 @@ class AuthSurfaceTest extends TestCase
         $this->post('/register', [])->assertNotFound();
     }
 
-    public function test_the_broadcasting_auth_route_carries_the_mfa_middleware(): void
+    /**
+     * ⭐ MOVED FROM `/broadcasting/auth` ON card#9300, NOT DELETED WITH IT. The feed's transport is
+     * `GET /api/fleet/stream` (D2 § 8.3), and its route middleware is the connect-time gate that the
+     * handshake's used to be: the only thing between an un-enrolled session and the whole fleet's
+     * activity picture. `fleet.read` must NOT be on it — its token branch would admit an `mzr_`
+     * credential to a surface D2 § 9 refuses machines.
+     */
+    public function test_the_stream_route_carries_the_mfa_middleware(): void
     {
-        // The route's middleware is the live gate on the handshake. Under the `log` and
-        // `null` broadcasters the channel authorization callback in routes/channels.php is
-        // never consulted (LogBroadcaster::auth() is an empty method), so this stack is the
-        // only thing between an un-enrolled session and a channel subscription.
         $route = collect(Route::getRoutes()->getRoutes())
-            ->first(fn ($route) => $route->uri() === 'broadcasting/auth');
+            ->first(fn ($route) => $route->uri() === 'api/fleet/stream');
 
-        $this->assertNotNull($route, 'The broadcasting auth route is not registered.');
+        $this->assertNotNull($route, 'The feed stream route is not registered.');
 
         $middleware = $route->gatherMiddleware();
 
         $this->assertContains('auth', $middleware);
         $this->assertContains('mfa', $middleware);
+        $this->assertNotContains('fleet.read', $middleware);
+    }
+
+    /** …and the retired handshake is gone rather than left registered beside it. */
+    public function test_no_broadcasting_auth_route_is_registered(): void
+    {
+        $this->assertNotContains('broadcasting/auth', $this->routeUris());
     }
 
     public function test_the_two_factor_challenge_route_exists(): void

@@ -2,11 +2,12 @@
 
 namespace Tests\Feature\Fold;
 
-use App\Events\SeatRetired;
+use App\Feed\Outbox;
+use App\Feed\SeatRetired;
 use App\Fold\Clock;
 use App\Sweep\Sweep;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
+use Tests\Feature\Feed\OutboxWire;
 use Tests\Feature\Sweep\SweepTestCase;
 
 /**
@@ -35,7 +36,7 @@ class At23RetiredSeatTest extends SweepTestCase
      */
     public function test_retiring_a_seat_renders_it_retired_and_publishes_the_message_and_the_delta(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
@@ -67,13 +68,13 @@ class At23RetiredSeatTest extends SweepTestCase
         $this->assertSame('blocked', $row['from']);
         $this->assertSame('retired', $row['to']);
 
-        Event::assertDispatched(SeatRetired::class, function (SeatRetired $e) use ($state) {
-            return $e->seatRef === $this->seatRef
-                && $e->installId === self::INSTALL
-                && $e->seatId === self::SEAT
-                && $e->retiredBy === 'operator@aimla'
-                && $e->stateVersion === (int) $state->state_version;
-        });
+        // The message, committed in the act's transaction as an outbox row (card#9300).
+        $retired = $wire->ofType('seat.retired');
+        $this->assertCount(1, $retired);
+        $this->assertSame(self::INSTALL, $retired[0]['install_id']);
+        $this->assertSame(self::SEAT, $retired[0]['payload']['seat_id']);
+        $this->assertSame('decommissioned', $retired[0]['payload']['reason']);
+        $this->assertSame((int) $state->state_version, $retired[0]['payload']['state_version']);
     }
 
     /**
@@ -125,7 +126,7 @@ class At23RetiredSeatTest extends SweepTestCase
      */
     public function test_third_red_the_columns_without_the_command_publish_nothing_and_mislabel_the_cause(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->cleanTurn());
         $this->fold();
@@ -144,7 +145,7 @@ class At23RetiredSeatTest extends SweepTestCase
         $this->assertSame('retired', $this->state()->render_state);
 
         // …and the two things that do NOT.
-        Event::assertNotDispatched(SeatRetired::class);
+        $this->assertSame([], $wire->ofType('seat.retired'));
 
         $row = collect($this->transitions())->last();
         $this->assertSame('staleness_sweep', $row['cause']);
@@ -178,7 +179,7 @@ class At23RetiredSeatTest extends SweepTestCase
     /** § 2.1: "Re-running it on an already-retired seat is a NO-OP." */
     public function test_re_running_on_an_already_retired_seat_is_a_no_op(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->cleanTurn());
         $this->fold();
@@ -204,7 +205,7 @@ class At23RetiredSeatTest extends SweepTestCase
         $this->assertSame($version, (int) $this->state()->state_version);
         $this->assertCount($rows, $this->transitions());
 
-        Event::assertDispatchedTimes(SeatRetired::class, 1);
+        $this->assertCount(1, $wire->ofType('seat.retired'));
     }
 
     /**
@@ -283,32 +284,31 @@ class At23RetiredSeatTest extends SweepTestCase
 
     /**
      * **The publish is ordered by the transaction and never survives its rollback** — § 4.10's
-     * "in the transaction that sets the columns", bought by `ShouldDispatchAfterCommit` rather than
-     * by publishing inside a transaction that can still roll back.
+     * "in the transaction that sets the columns", bought by `App\Feed\Outbox::transaction()`
+     * inserting the row as the transaction's LAST statement (card#9300).
      *
-     * ⚠ WHY THIS ARM EXISTS AT ALL, WHEN THREE TESTS ABOVE ALREADY ASSERT THE DISPATCH. Every one
-     * of them runs the command on a transaction that COMMITS, and on that path a publish before the
-     * commit, inside it, or after it are indistinguishable. None of them could tell an event that
-     * defers from one that does not — which is exactly how the earlier shape (published from
-     * outside the transaction, with a comment claiming the departure was disclosed in the PR body)
-     * survived a full suite. The rollback is the only fixture that separates them.
+     * ⚠ WHY THIS ARM EXISTS AT ALL, WHEN THREE TESTS ABOVE ALREADY ASSERT THE MESSAGE. Every one of
+     * them runs the command on a transaction that COMMITS, and on that path a publish before the
+     * commit, inside it, or after it are indistinguishable. The rollback is the only fixture that
+     * separates them — which is how the earlier shape (published from outside the transaction)
+     * survived a full suite.
      *
      * The transaction is driven directly rather than through `mezzanine:retire`, because the
-     * property under test belongs to the EVENT and the command has no failure injection point. What
-     * this proves is the contract the command relies on: dispatched inside a transaction, delivered
-     * on commit, never on rollback.
+     * property under test belongs to the OUTBOX and the command has no failure injection point.
      */
     public function test_the_retired_message_never_reaches_a_client_from_a_transaction_that_rolled_back(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->cleanTurn());
         $this->fold();
 
+        $message = fn () => new SeatRetired($this->seatRef, self::INSTALL, self::SEAT,
+            Clock::sql(now()), 'operator@aimla', 'decommissioned', 1);
+
         try {
-            DB::transaction(function () {
-                SeatRetired::dispatch($this->seatRef, self::INSTALL, self::SEAT,
-                    Clock::sql(now()), 'operator@aimla', 'decommissioned', 1);
+            Outbox::transaction(function () use ($message) {
+                Outbox::enqueue($message());
 
                 // Anything that aborts the act after the publish has been ordered: a constraint
                 // violation on one of the three columns, a lost connection, a raise in the shared
@@ -319,15 +319,17 @@ class At23RetiredSeatTest extends SweepTestCase
             // expected — the rollback is the fixture
         }
 
-        Event::assertNotDispatched(SeatRetired::class);
+        $this->assertSame([], $wire->ofType('seat.retired'));
 
-        // …and the SAME dispatch, on a transaction that commits, does reach a listener. Without
-        // this half the assertion above would pass against an event that is never delivered at all.
-        DB::transaction(function () {
-            SeatRetired::dispatch($this->seatRef, self::INSTALL, self::SEAT,
-                Clock::sql(now()), 'operator@aimla', 'decommissioned', 1);
-        });
+        // …and the SAME enqueue, on a transaction that commits, does write the row. Without this half
+        // the assertion above would pass against a message that is never written at all.
+        Outbox::transaction(fn () => Outbox::enqueue($message()));
 
-        Event::assertDispatchedTimes(SeatRetired::class, 1);
+        $this->assertCount(1, $wire->ofType('seat.retired'));
+
+        // ⛔ AND OUTSIDE A TRANSACTION IT IS REFUSED, loudly — a message with no commit to precede
+        // could not be the last statement before one.
+        $this->expectException(\LogicException::class);
+        Outbox::enqueue($message());
     }
 }

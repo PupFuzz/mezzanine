@@ -2,10 +2,11 @@
 
 namespace App\Floor;
 
-use App\Building\BuildingChanged;
 use App\Building\InvalidBuildingLayout;
 use App\Building\Layouts;
 use App\Building\Revisions;
+use App\Feed\Outbox;
+use App\Feed\RoomMapChanged;
 use App\Fold\Clock;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -87,8 +88,6 @@ final class Floors
             return self::writeCurrent($installId, $map->document, null, $by);
         });
 
-        self::announce($installId, $written['version'], $written['at']);
-
         return $written['version'];
     }
 
@@ -148,8 +147,6 @@ final class Floors
             return self::writeCurrent($installId, $map->document, $revision, $by);
         });
 
-        self::announce($installId, $written['version'], $written['at']);
-
         return $written['version'];
     }
 
@@ -177,8 +174,6 @@ final class Floors
         if ($removed === null) {
             return false;
         }
-
-        self::announce($installId, null, $removed);
 
         return true;
     }
@@ -219,6 +214,10 @@ final class Floors
             ]);
         }
 
+        // § 8.7's `room.map`, carrying the version the revision just minted and the instant it
+        // records. Enqueued inside `Layouts::serialise()`, whose last statement inserts it (card#9300).
+        Outbox::enqueue(new RoomMapChanged($installId, $revision, (string) Clock::wire($at)));
+
         return ['version' => $revision, 'at' => $at];
     }
 
@@ -235,25 +234,9 @@ final class Floors
 
         DB::table('floors')->where('install_id', $installId)->delete();
 
-        return $at;
-    }
+        // § 8.7: a removal announces `map_version: null` — the room is back on the shipped default.
+        Outbox::enqueue(new RoomMapChanged($installId, null, (string) Clock::wire($at)));
 
-    /**
-     * § 6.11: "on commit … publish". The seam is `App\Building\BuildingChanged` and there is no
-     * transport behind it yet — card#9287 — so this call is where slice 2 hooks the message up,
-     * and it is made outside the transaction because a notification about a state the store never
-     * committed is the one thing it may never send.
-     */
-    private static function announce(string $installId, ?int $version, string $at): void
-    {
-        BuildingChanged::announce(BuildingChanged::ROOM_MAP, [
-            'install_id' => $installId,
-            // § 8.7: `null` after a removal — the room is back on the shipped default.
-            'map_version' => $version,
-            // § 8.3's `at`, in the wire spelling, and it is the instant the REVISION records
-            // rather than the moment this line runs: a message that timestamped itself would
-            // disagree with the row it announces.
-            'at' => Clock::wire($at),
-        ]);
+        return $at;
     }
 }
