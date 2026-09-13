@@ -142,6 +142,13 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `up()` alone and refuses a form it cannot read, and the plant harness gains a `narrow-up` and a
   `narrow-sql` plant that add such a migration. *(3)* D3 § 5.7's last copy of *an absent
   declaration* reads *no seat may resolve it*, as the rest of round 4 does.
+  ⭐ **Round 5 — D1 § 6.14 no longer declares the check non-null.** It marked
+  `protocol_agent_name_check` `Null? no` on a field added at the same schema version, which
+  `docs/VERSIONING.md` rule 3 allows only for an optional field, while the ingest accepted and the
+  fold stored its absence. D1 was the side in the wrong. Both rows now read as the ingest behaves,
+  and a new paragraph under the table separates the ingest contract from the obligation on a
+  current reporter; the worst-case composition, `EventValidator`'s comment and `FoldTestCase`'s
+  fixture comment now point at that obligation rather than at a non-null row.
 
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
   development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded

@@ -2342,14 +2342,29 @@ predicate rather than folding it in here.
 | `open_sessions` | int | — | no | 0…16, **enforced** by the session cap ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)) | `1` |
 | `open_attention` | int | — | no | 0…16, requests awaiting an `attention.resolved`; one per session, so the session cap bounds it | `0` |
 | `enabled` | bool | — | no | `config.enabled` ([§ 3.1](#31-the-seat-config-file)) | `true` |
-| `protocol_agent_name` | slug | — | **yes** | `config.protocol_agent_name` ([§ 3.1](#31-the-seat-config-file)) verbatim; ≤ 48 B — the bound [§ 18.6](#186-coordthread) gives a protocol agent name, which that row points at. It is a **figure** here and not a pointer because [§ 12.1](#121-validation-order) step 10 refuses only a bound this table states: left as a pointer, an over-long name would pass the ingest and fail at the fold against [D2 § 6.4](FLEET-STATE.md#64-ddl)'s 48 B column instead. `tools/design/verify-event-schema.py` holds this figure — and D2's column, D2 § 8.2.1's row and the store's migration — equal to § 18.6's; `null` exactly when `protocol_agent_name_check` is `undeclared` | `"pm"` |
-| `protocol_agent_name_check` | enum | — | no | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — [§ 3.1](#31-the-seat-config-file)'s state table owns the set and the rule that produces each member | `"checked"` |
+| `protocol_agent_name` | slug | — | **yes** | `config.protocol_agent_name` ([§ 3.1](#31-the-seat-config-file)) verbatim; ≤ 48 B — the bound [§ 18.6](#186-coordthread) gives a protocol agent name, which that row points at. It is a **figure** here and not a pointer because [§ 12.1](#121-validation-order) step 10 refuses only a bound this table states: left as a pointer, an over-long name would pass the ingest and fail at the fold against [D2 § 6.4](FLEET-STATE.md#64-ddl)'s 48 B column instead. `tools/design/verify-event-schema.py` holds this figure — and D2's column, D2 § 8.2.1's row and the store's migration — equal to § 18.6's; `null` on a seat that declares none, and absent from a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"pm"` |
+| `protocol_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — [§ 3.1](#31-the-seat-config-file)'s state table owns the set and the rule that produces each member; null or absent means a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"checked"` |
 | `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all monotonic since flusher start; reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **396 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
 | `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **210 B** — **no reduction rule, and none owed** (same exemption) | see below |
 | `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** | `"9f2c41a7be03d518"` |
+
+**The declaration pair is OPTIONAL AT THE INGEST and OWED BY A CURRENT REPORTER — two contracts,
+and neither one implies the other.**
+
+- **What the ingest accepts.** Both members were added to this kind at the same schema version,
+  which [`docs/VERSIONING.md`](../VERSIONING.md) rule 3 allows only for an optional field — so both
+  rows above read `Null? yes`. A heartbeat that carries neither, from a reporter that predates them,
+  is valid, and each absent member is `null` like any missing key
+  ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) *Missing vs null*). The ingest refuses
+  no heartbeat for omitting either member, and none for a pair that breaks the obligation below.
+- **What a current reporter owes.** A reporter that implements [§ 3.1](#31-the-seat-config-file)
+  emits one row of § 3.1's state table on **every** heartbeat, as that table's *What the reporter
+  emits* column states it. So it never omits `protocol_agent_name_check`, and it sends
+  `protocol_agent_name` as `null` **exactly when** the check is `undeclared`. The worst-case
+  composition below rests on this obligation, not on the rows above.
 
 **`enabled` rides the heartbeat so a deliberately-disabled seat is distinguishable from a dead one.**
 [§ 3.1](#31-the-seat-config-file) calls `enabled: false` "explicit, local, and visible in the
@@ -2502,9 +2517,9 @@ by 63 B, which is the drift a maintainer re-deriving from a looser sentence woul
 composition serializes to **2,852 B of the 3 KiB `data` cap**
 ([§ 4.3](#43-common-per-event-fields)), 220 B spare, so the counters rule reducing to 1.5 KiB is what
 keeps the event valid and nothing else has to. ⚠ **One pair is taken at its REACHABLE JOINT maximum,
-not at each member's own:** the field table above makes `protocol_agent_name` `null` exactly when
-`protocol_agent_name_check` is `undeclared`, so the 48 B name never sits beside the longest check
-value, and the pair's worst case is that name beside `"disagreed"`. Taking the two maxima
+not at each member's own:** a current reporter never sends a name beside `undeclared` — the
+reporter's obligation stated under the field table above — so the 48 B name never sits beside the
+longest check value, and the pair's worst case is that name beside `"disagreed"`. Taking the two maxima
 independently gives **2,853 B** — the figure a hand re-derivation reaches if this sentence is missed,
 and not a correction to the one above; no cap or threshold moves either way.
 `D2-CITED:` [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta) composes the same pair

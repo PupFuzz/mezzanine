@@ -211,9 +211,9 @@ final class EventValidator
                 // column says: this loop checks membership only. § 6.0: "A missing key and an
                 // explicit `null` are the same thing." Nothing in § 12.1 makes an absent enum a
                 // refusal. Most enum fields are nullable by their own row or absent when their kind
-                // does not carry them; `reporter.heartbeat.protocol_agent_name_check` is neither —
-                // D1 § 6.14 marks it `Null? no` — and its absence is accepted here all the same, so
-                // a heartbeat from a reporter that predates that field is ingested, not refused.
+                // does not carry them. `reporter.heartbeat.protocol_agent_name_check` is nullable by
+                // its own row: D1 § 6.14 makes it optional at the ingest and owed only by a current
+                // reporter, so a heartbeat from a reporter that predates it is ingested, not refused.
                 continue;
             }
 

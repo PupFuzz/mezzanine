@@ -422,11 +422,12 @@ abstract class FoldTestCase extends TestCase
     /**
      * § 11's `heartbeat_only`: N heartbeats, one per minute, NO activity event of any kind.
      *
-     * The declaration pair is carried because D1 § 6.14 makes `protocol_agent_name_check` non-null
-     * on every heartbeat, so a fixture without it is not D1's heartbeat — and because a POPULATED
-     * value is what lets AT-D2-10's column comparison discriminate on these two columns. Every
-     * seat a test delivers this to declares `pm`: § 8.2.1's uniqueness invariant is enforced at the
-     * consumer (§ 8.3.3 rule 1), and nothing on this plane reads a duplicate.
+     * The declaration pair is carried because this fixture is a CURRENT reporter's heartbeat, and
+     * D1 § 6.14 states what such a reporter owes — the pair is optional only at the ingest — and
+     * because a POPULATED value is what lets AT-D2-10's column comparison discriminate on these
+     * two columns. Every seat a test delivers this to declares `pm`: § 8.2.1's uniqueness
+     * invariant is enforced at the consumer (§ 8.3.3 rule 1), and nothing on this plane reads a
+     * duplicate.
      */
     protected function heartbeats(int $count, int $uptimeStart = 86_213): array
     {
