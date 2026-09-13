@@ -758,7 +758,7 @@ select into a lane — the tool matches `lane:now`, never `now` (`sprint-burndow
 "the race-to-release HTML file" are the SAME ask and both mean run it fresh:
 
 ```
-sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html --write-config
+sprint-burndown.py --html ~/mezzanine/docs/sprint-burndown.html --write-config
 ```
 
 The page is a render of one live board read, so a stale copy is the exact drift adopting the tool
