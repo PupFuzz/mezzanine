@@ -54,9 +54,10 @@ checking, and it survives exactly the pass that falsifies it.
                                                      the join had to survive, checked on the field
                                                      tables rather than on the prose about them)
   G14 the stall bound and the enforcement bound:    (card#9326: each restated in full at six-plus
-      one owner each, every inline copy held to it   sites over two documents with nothing checking
-      across D2, D3 and PLAN, the owners re-derived  the copies agreed -- round 7 corrected six,
-      from the handler they bound                    round 8 found two more on the retired figure)
+      one owner each, re-derived from the handler    sites over two documents with nothing checking
+      they bound; every copy under docs/ held to     the copies agreed -- round 7 corrected six,
+      it, and the retired shapes refused whatever    round 8 found two more on the retired figure,
+      figure they carry                              and every one agreed with SOME owner figure)
 
 Three things are NOT fully mechanizable and say so in the output rather than reporting a clean
 over a population they never measured (canon: a clean result over an unnamed population reports
@@ -1684,30 +1685,42 @@ else:
 # their definition sites, never the prose that restates them.  The duplication minted the same defect
 # in two consecutive review rounds: round 7 found the enforcement bound ~4x short and moved it at six
 # sites, and round 8 found two more still carrying the retired figure.  The class answer is DELETE
-# first -- every consumer site points at the owner -- and this guard for the copies that must stay
-# inline: the handler fence an implementer builds from, section 12's row, an acceptance test's
-# threshold.  NOTHING is listed here: each owner is read from its own section, section 9's figures are
-# re-derived from section 8.3's handler and section 8.5's bound, and the population is every statement
-# of either bound's SHAPE in the documents below, found on each run.
+# first -- every consumer site points at the owner -- and this guard for what cannot point: the
+# handler fence an implementer builds from, and a number-table row.  NOTHING is listed here: each
+# owner is read from its own section, section 9's figures are re-derived from section 8.3's handler
+# and section 8.5's bound, and the population is every statement of either bound's SHAPE in every
+# markdown document under docs/, globbed on each run -- a document nobody listed is exactly where
+# the N+1th copy would land.
+#
+# THE REFUSALS are the half that matters.  Every statement rounds 7 and 8 corrected carried a figure
+# that agreed with SOME owner figure -- "15 s + one 250 ms tick" IS section 9's draining figure, and
+# "within 15 s" IS the re-check interval -- so a value comparison alone passes them.  Measured on this
+# card, not reasoned: the first draft of this guard compared values only, and all but one of the
+# statements eb1886e and 6bf076b corrected, re-planted verbatim, passed it.  So two shapes are refused
+# whatever figure they carry: a FLAT figure in a statement about enforcement, expiry or revocation,
+# and the draining figure in a statement that never says the consumer drains.
 #
 # ⚠ Its hole, stated rather than implied: a copy phrased outside these shapes is not in the
-# population, and the retired flat-figure shape is only recognised in a sentence that names the
-# enforcement bound.  That is why a consumer POINTS rather than copies -- this guard is the backstop
-# for the copies that cannot point, not a licence to write more of them.  docs/CHANGELOG.md is outside
-# the population by design: its entries are the record of what each round found, retired figures
+# population.  That is why a consumer POINTS rather than copies -- this guard is the backstop for the
+# copies that cannot point, not a licence to write more of them.  docs/CHANGELOG.md is outside the
+# population by design: its entries are the record of what each round found, retired figures
 # included, and a guard that held history to today's figure would red on every honest correction.
-G14_DOCS = (("D2", raw), ("D3", d3_raw), ("PLAN", (ROOT / "docs/PLAN.md").read_text()))
+G14_DOCS = sorted(p for p in (ROOT / "docs").rglob("*.md") if p.resolve() != (ROOT / "docs/CHANGELOG.md").resolve())
 G14_STALL = (
-    re.compile(r"(\d+) s\**\s*(?:stall )?bound\b"),             # "45 s stall bound", "the 45 s bound"
-    re.compile(r"stall bound\**\s*(?:of|\()\s*\**(\d+) s\b"),   # "stall bound of 45 s", "(45 s)"
-    re.compile(r"tick_started > (\d+) s\b"),                     # section 8.3's handler fence
+    re.compile(r"(\d+) s\**\s*stall bound\b"),                              # "the 45 s stall bound"
+    re.compile(r"stall bound\**\s*(?:of|\()\s*\**(\d+) s\b"),               # "stall bound of 45 s"
+    re.compile(r"\ba gap over \**(\d+) s\b"),                               # section 8.5's own wording
+    re.compile(r"\b(?:cannot|did not|does not|fails? to) complete within \**(\d+) s\b"),
+    re.compile(r"tick_started > (\d+) s\b"),                                # section 8.3's handler fence
 )
+G14_STALL_BARE = re.compile(r"(\d+) s\**\s*bound\b")      # "the 45 s bound", read only where ...
+G14_STALL_CTX = re.compile(r"stall|§ ?8\.5\b|#85-")      # ... the statement is about the stall bound
 G14_STALL_ROW = re.compile(r"^\|\s*Stream stall bound\s*\|\s*(\d+) s\s*\|")   # a number-table row
 G14_DRAIN = re.compile(r"(\d+) s\**\s*\+\s*one (\d+) ms tick")
+G14_ENF = re.compile(r"enforce|expir|revok|reason:\s*\"session\"|no longer entitled", re.I)
 G14_UNDER = re.compile(r"\bunder \**(\d+) s\b")
-G14_FLAT = re.compile(r"\b(?:up to|within|at most|no more than) \**"
+G14_FLAT = re.compile(r"(?:\bup to|\bwithin|\bat most|\bno more than|≤)\s*\**\s*"
                       r"(one (?:\d+ ms )?tick|\d+(?:\.\d+)? m?s)\b(?!\**\s*\+)")
-G14_ENF = re.compile(r"enforcement (?:bound|window|lag)|expiry and (?:its )?enforcement", re.I)
 
 
 def g14_units(text):
@@ -1772,49 +1785,59 @@ else:
     # every copy, against its owner AS STATED -- a wrong owner is reported above, once
     _h85, _h9 = BY_ANCHOR["85-gaps-reconnect-and-why-state_version-is-not-seq"], BY_ANCHOR["9-read-side-authentication"]
     g14_stall_at, g14_enf_at, g14_fence_copy, g14_units_read = [], [], False, 0
+    RETIRED = ("the retired shape that stood ~4× short through two review rounds; point at section 9, "
+               "whose bound is the auth interval plus one loop pass and names the consumer it holds for")
 
-    def _g14_stall(doc, ln, n, owner_sec):
+    def _g14_stall(where, n, owner_sec):
         if not owner_sec:
-            g14_stall_at.append(f"{doc}:{ln}")
+            g14_stall_at.append(where)
         if n != g14_stall:
-            fail.append(f"G14: {doc} line {ln} states the stall bound as {n} s and its owner, section "
-                        f"8.5, states {g14_stall} s — a copy its owner does not move is the defect "
+            fail.append(f"G14: {where} states the stall bound as {n} s and its owner, section 8.5, "
+                        f"states {g14_stall} s — a copy its owner does not move is the defect "
                         f"card#9326 exists for: point at section 8.5, or move the copy with it")
 
-    for doc, text in G14_DOCS:
-        for ln, kind, u in g14_units(text):
+    for path in G14_DOCS:
+        rel = path.relative_to(ROOT).as_posix()
+        is_d2 = path.resolve() == DOC.resolve()
+        for ln, kind, u in g14_units(path.read_text()):
             g14_units_read += 1
-            in85 = doc == "D2" and _h85[3] < ln <= _h85[4]
-            in9 = doc == "D2" and _h9[3] < ln <= _h9[4]
+            where = f"{rel} line {ln}"
+            in85 = is_d2 and _h85[3] < ln <= _h85[4]
+            in9 = is_d2 and _h9[3] < ln <= _h9[4]
             if kind == "row":
                 for m in G14_STALL_ROW.finditer(u):
-                    _g14_stall(doc, ln, int(m.group(1)), in85)
+                    _g14_stall(where, int(m.group(1)), in85)
                 continue
             for k, pat in enumerate(G14_STALL):
                 for m in pat.finditer(u):
-                    g14_fence_copy |= (k == 2 and doc == "D2" and kind == "fence")
-                    _g14_stall(doc, ln, int(m.group(1)), in85)
+                    g14_fence_copy |= (pat is G14_STALL[-1] and is_d2 and kind == "fence")
+                    _g14_stall(where, int(m.group(1)), in85)
+            if G14_STALL_CTX.search(u):
+                for m in G14_STALL_BARE.finditer(u):
+                    _g14_stall(where, int(m.group(1)), in85)
             for m in G14_DRAIN.finditer(u):
                 if not in9:
-                    g14_enf_at.append(f"{doc}:{ln}")
+                    g14_enf_at.append(where)
                 if (int(m.group(1)), int(m.group(2))) != g14_drain:
-                    fail.append(f"G14: {doc} line {ln} states the enforcement bound's draining figure as "
+                    fail.append(f"G14: {where} states the enforcement bound's draining figure as "
                                 f"{m.group(1)} s + one {m.group(2)} ms tick, and its owner, section 9 "
                                 f"case (a), states {g14_drain[0]} s + one {g14_drain[1]} ms tick")
+                elif not re.search(r"drain", u, re.I):
+                    fail.append(f"G14: {where} states `{m.group(0)}` and never says the consumer "
+                                f"DRAINS — that is section 9's figure for a draining client only, and "
+                                f"stated as the bound it is {RETIRED}")
             if not G14_ENF.search(u):
                 continue
             for m in G14_UNDER.finditer(u):
                 if not in9:
-                    g14_enf_at.append(f"{doc}:{ln}")
+                    g14_enf_at.append(where)
                 if int(m.group(1)) != g14_under:
-                    fail.append(f"G14: {doc} line {ln} states the enforcement bound as under "
-                                f"{m.group(1)} s, and its owner, section 9 case (a), states under "
-                                f"{g14_under} s")
+                    fail.append(f"G14: {where} states the enforcement bound as under {m.group(1)} s, "
+                                f"and its owner, section 9 case (a), states under {g14_under} s")
             for m in G14_FLAT.finditer(u):
-                fail.append(f"G14: {doc} line {ln} states the enforcement bound as a flat "
-                            f"`{m.group(0)}` — the retired shape, the re-check interval or one tick "
-                            f"read as the bound, which stood ~4× short through two review rounds; "
-                            f"point at section 9, whose bound is the auth interval plus one loop pass")
+                fail.append(f"G14: {where} states a flat `{m.group(0).replace('*', '')}` in a statement "
+                            f"about enforcement, expiry or revocation — the re-check interval or one "
+                            f"tick read as the bound, {RETIRED}")
     if not g14_fence_copy:
         fail.append("G14 CONTROL: section 8.3's handler fence carries no stall comparison this gate "
                     "can read, and that fence is the one copy of the stall bound an implementer builds "
@@ -1823,8 +1846,9 @@ else:
                   f"{g14_stall_at}; enforcement bound under {g14_under} s, and {g14_drain[0]} s + one "
                   f"{g14_drain[1]} ms tick on a draining client (owner section 9, re-derived from the "
                   f"handler's {g14_auth} s re-check and {g14_tick} ms tick and the stall bound), held at "
-                  f"the copies {g14_enf_at}; units read over {[d for d, _ in G14_DOCS]}: "
-                  f"{g14_units_read} (docs/CHANGELOG.md excluded as history)")
+                  f"the copies {g14_enf_at}; population globbed from docs/**/*.md: "
+                  f"{[p.relative_to(ROOT).as_posix() for p in G14_DOCS]}, {g14_units_read} units read "
+                  f"(docs/CHANGELOG.md excluded as history)")
 
 # ---------------- the count of guard classes, which is itself a prose count ----
 # Section 14 item 8 and section 12's status table state how much of this document is tool-checked.

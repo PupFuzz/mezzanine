@@ -3977,9 +3977,9 @@ a non-draining one blocks the handler, which can measure nothing until the write
 is on **the tick**: at the top of each pass, **before it reads**, the handler compares the clock to the
 moment its previous tick **started**, and a gap over **45 s** ends the stream with
 `feed.close{reason:"stalled"}` — after which `feed_resync_required` is counted and the worker is
-returned. ⭐ **That figure is the stall bound's one statement (card#9326)**: a site elsewhere points
-here, and a copy that must stay inline is held to it by `verify-fleet-state.py`'s G14, which finds
-those copies itself on every run. Both placements are the bound rather than details of it, and
+returned. ⭐ **That figure is the stall bound's one statement (card#9326)**: every other site points
+here, and a copy that cannot point — a pseudocode fence, a number-table row — is held to it by
+`verify-fleet-state.py`'s G14, which finds those copies itself on every run. Both placements are the bound rather than details of it, and
 [§ 8.3](#83-the-websocket-delta-feed) says why: measured from the tick's *completion* the difference is
 the sleep and never the blocked write, so the bound would never fire; checked *after* the read, a
 stream blocked past [§ 6.7](#67-retention-and-purge)'s retention would advance its cursor across rows
@@ -4291,9 +4291,9 @@ is the one no revision of this section has stated.**
   bound.** The re-check fires within the auth interval plus that bound, so the enforcement lag is
   **under 60 s** — and on a client that drains promptly it is **15 s + one 250 ms tick**, which is the
   figure a test on a healthy consumer asserts. ⭐ **These two figures are the enforcement bound's one
-  statement (card#9326)**: every other site points here, and a copy that must stay inline — an
-  acceptance test's threshold — is held to them by `verify-fleet-state.py`'s G14, which also
-  re-derives both from [§ 8.3](#83-the-websocket-delta-feed)'s handler.
+  statement (card#9326)**: every other site points here and carries no figure. `verify-fleet-state.py`'s G14
+  re-derives both from [§ 8.3](#83-the-websocket-delta-feed)'s handler, and refuses a copy anywhere under `docs/`
+  that disagrees with them or states the bound in a retired shape.
 - **(b) A pass that OVERRUNS the stall bound.** ⛔ **That bound is a DETECTOR, not a cap**: it is
   compared at the top of the FOLLOWING pass, so a write that blocks for longer than the bound does not
   end when the bound is reached — it simply makes that pass the last one, and the stream then ends on `stalled` rather than
@@ -4307,7 +4307,7 @@ revocation story whose worst case belongs to the host is not one that may quote 
 saying so.
 ⚠ **An earlier revision of this sentence stated the 250 ms figure as THE bound**, reasoning only from
 the re-check's position at the bottom of the loop body. It was short by ~4×, and what the difference
-buys a revoked session that drains slowly is most of a stall bound's worth of fleet data it is no longer entitled to — which
+buys a revoked session that drains slowly is up to a stall bound's worth of fleet data it is no longer entitled to — which
 is a security figure, so it is corrected here rather than softened (card#9287 maintainer round).
 ⛔ **Hoisting the re-check ABOVE the write loop does not make 250 ms true, and is refused here rather
 than left as an open option.** The exposure is created by the write loop itself: for as long as it
@@ -4860,7 +4860,7 @@ and the gate on trusting the derived signal at all.*
 - **Build — two legs, because the bound does two different things and one of them is the host's.**
   *(a) the SLOW consumer:* two open streams, one of which drains at a rate that makes each write return
   late — a few bytes per second is enough — driven for longer than
-  [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s 45 s stall bound. *(b) the FROZEN
+  [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound. *(b) the FROZEN
   consumer:* the same pair, but the second harness stops reading altogether while holding the
   connection open, and the proxy in front is configured with a finite client-send timeout (R2's
   teardown clause, [§ 8.3](#83-the-websocket-delta-feed)) — **this leg tests a deployment property and
@@ -4891,8 +4891,8 @@ and the gate on trusting the derived signal at all.*
   fires for none; leg (a) regresses to the RED above **while the code still contains a stall check**,
   which is the failure this test is really for.
 - **Third RED — check after the read:** move the comparison below the `SELECT`, and drive leg **(a)**
-  past [§ 6.7](#67-retention-and-purge)'s **60 s** outbox retention rather than merely past the 45 s
-  bound → the slow consumer's handler resumes, reads, and advances its cursor **over rows the purge
+  past [§ 6.7](#67-retention-and-purge)'s **60 s** outbox retention rather than merely past
+  [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound → the slow consumer's handler resumes, reads, and advances its cursor **over rows the purge
   removed while it was blocked**, where the check-before-read placement would have ended the stream
   instead; the client silently loses them. Assert on a `coord.round` in that window, which no gap check
   can recover. ⚠ **It is leg (a), and an earlier revision of this RED named leg (b)** — which cannot
@@ -4975,7 +4975,7 @@ and the gate on trusting the derived signal at all.*
 - **GREEN — no revocation cache:** revoke a token mid-run and issue the next request immediately → it is
   refused on the first attempt, not after a TTL.
 - **GREEN — the stream re-checks:** open a stream under a valid MFA session, then expire the session (or
-  clear the user's enrolment) with the stream open → within **[§ 9](#9-read-side-authentication)'s enforcement bound — the auth interval plus one loop PASS**, which on this leg's draining consumer is 15 s + one 250 ms tick; that section owns the bound for every other consumer, including the case it does not cap — the stream's last message is
+  clear the user's enrolment) with the stream open → within **[§ 9](#9-read-side-authentication)'s enforcement bound — the auth interval plus one loop PASS**, which on this leg's draining consumer is that section's case (a) figure, and that section owns the bound for every other consumer, including the case it does not cap — the stream's last message is
   `feed.close{reason:"session"}` and it ends; the client's reconnect is refused as the browser-session
   case above is. Assert the **close reason** and the tick bound, not merely that the stream ended.
 - **GREEN — the store goes away under an OPEN stream, and the stream ENDS saying so:** open a stream
@@ -4986,8 +4986,8 @@ and the gate on trusting the derived signal at all.*
   re-check fails. **The assertion below holds in both runs and only the BOUND differs**, because the
   two runs fail different reads: in the first the tick read fails, so the close arrives within **one
   250 ms tick**; in the second only the re-check does, so it arrives within **the auth interval plus
-  one loop pass** ([§ 9](#9-read-side-authentication)), which on a draining consumer is 15 s + one
-  250 ms tick. In both runs the stream's
+  one loop pass** ([§ 9](#9-read-side-authentication)), which on a draining consumer is that section's case (a)
+  figure. In both runs the stream's
   **last message is `feed.close{reason:"unavailable"}`** and the stream **ends**. ⛔ Assert the bound [§ 9](#9-read-side-authentication) states and not the flat auth interval, which reds one loop tick past it against a correct build; and drive both runs with a consumer that DRAINS, because on a slow one the bound is the auth interval plus the stall bound and this leg would red against a correct handler. ⛔ Assert the reason,
   and assert it is a member of [§ 8.3](#83-the-websocket-delta-feed)'s **declared** set — that row
   owns the members and their number and this leg does not restate either — so an implementation that
@@ -5358,7 +5358,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | **§ 10's trace** | delta count and transition count re-derived from the table's own columns | **tool-checked** |
 | **The declared agent-name join, across the two identity surfaces** | the `protocol_agent_name_check` value set, re-derived from [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s field-table row and set-differenced against [§ 6.4](#64-ddl)'s `ENUM` and [§ 8.2.1](#821-the-seat-state-object)'s row — three homes for one set, two documents, and a rename on any of them reds; **and** that neither coordination object in [§ 8.3.3](#833-the-coordination-objects) declares a field naming a desk, which is the refusal the join had to survive — as a **shape** match — the segment says *seat* or *desk* — over every dot- and bracket-separated segment of every field row those two tables declare, beside name-equality against the three members [§ 8.2.1](#821-the-seat-state-object) declares today, so a `coord_thread.desk` or a nested `…[].seat_ref` reds rather than passing under a name the tool was never told; and with the control's own denominator re-derived from the two tables' row counts rather than written in the tool | **tool-checked** |
 | **`feed.close` reason closure, and the ruling the reasons carry** | the reason set re-derived from every `feed.close{reason:"…"}` this document writes, held against [§ 8.3](#83-the-websocket-delta-feed)'s declaring row **and against the size that row states**; then the three sites that state card#9287's close rule — [§ 2.2](#22-fail-posture-per-path)'s two stream rows, [§ 9](#9-read-side-authentication)'s re-check and [§ 8.3](#83-the-websocket-delta-feed)'s handler loop — each required to name `feed.close{reason:"unavailable"}`, so a site that reverts to a stream surviving the outage stops naming it and reds; that token is read off the declaring row by its member's description rather than written into the tool, and **every member the row declares** must be written by a pseudocode fence inside [§ 8.3](#83-the-websocket-delta-feed), the member set re-derived from the row and held to the size it states — so a member declared with no close in the buildable loop reds, whatever it is called (card#9326) | **tool-checked** |
-| **The stall bound and the enforcement bound, one owner each** | the stall bound from [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s own statement, and the enforcement bound from [§ 9](#9-read-side-authentication)'s case (a), whose *under* figure is re-derived as the auth interval plus that stall bound and whose draining figure as the auth interval plus one stream tick, both read from [§ 8.3](#83-the-websocket-delta-feed)'s handler fence; then every statement of either bound's **shape** in this document, in [FLOOR.md](FLOOR.md) and in `docs/PLAN.md` — found on each run, never listed — is held to its owner, and the retired shape, a flat figure stated as the enforcement bound, is refused outright. ⚠ A copy phrased outside those shapes is not seen, which is why a consumer points at the owner rather than copying it; `docs/CHANGELOG.md` is outside the population, because its entries are the record of retired figures (card#9326) | **tool-checked** |
+| **The stall bound and the enforcement bound, one owner each** | the stall bound from [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s own statement, and the enforcement bound from [§ 9](#9-read-side-authentication)'s case (a), whose *under* figure is re-derived as the auth interval plus that stall bound and whose draining figure as the auth interval plus one stream tick, both read from [§ 8.3](#83-the-websocket-delta-feed)'s handler fence; then every statement of either bound's **shape** in every markdown document under `docs/` — globbed on each run, never listed — is held to its owner; and two **retired** shapes are refused whatever figure they carry, because every statement the card#9287 rounds corrected agreed with some owner figure: a flat figure in a statement about enforcement, expiry or revocation, and the draining figure in a statement that never says the consumer drains. ⚠ A copy phrased outside those shapes is not seen, which is why a consumer points at the owner rather than copying it; `docs/CHANGELOG.md` is outside the population, because its entries are the record of retired figures (card#9326) | **tool-checked** |
 | The store sizing model (row costs, index entry sizes) | — | **hand-verified**: it needs a provisioned host to measure, and [§ 6.8](#68-sizing) says so |
 | Every **Cited** row's agreement with D1 | — | **hand-verified**: the tool checks the number's presence at its D2 home, not its truth at D1's |
 

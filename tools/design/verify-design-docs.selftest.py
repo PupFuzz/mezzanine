@@ -62,6 +62,13 @@ because a gate can only be proven on a defect of its own class:
                `narrow-sql` narrows through a raw `ALTER TABLE ... MODIFY`.  card#9296 round 4's
                review is why these exist: check 12 read the last width in the last file, `down()`
                included, and passed both.
+  `copy-bump-to-floor`, `copy-as-bound-to-floor`, `copy-as-flat-to-floor`
+            -- leave the anchored OWNER untouched and append a copy made from it to another document,
+               which is the class "a consumer restated the owner, and the copy is wrong": bumped, or
+               carrying the owner's figure unchanged in a shape a review round found stated as the
+               bound.  card#9326 is why these exist: two bounds had six-plus copies over two documents
+               with nothing holding any of them, and a plant that only perturbs the owner can never
+               show that the gate reaches the copies.
 
 An anchor matching NOTHING is a hard error, never a skip -- that is the false-clean shape this whole
 directory exists against.  No kind writes the value it perturbs into this file.
@@ -237,15 +244,54 @@ PLANTS = [
         "states the stall bound as",
     ),
     (
-        # card#9326.  An acceptance test's threshold is the other copy that stays inline: AT-D2-19's
-        # draining-consumer figure is what a test asserts, held by G14 to § 9 case (a).
+        # card#9326.  The class itself: a CONSUMER document restates an owner's figure and the copy
+        # drifts.  Each of these leaves D2 untouched and appends a copy of the owner's own statement to
+        # FLOOR.md -- which carries no copy of either bound -- so the red proves both that G14's
+        # population reaches past D2 and that it holds what it finds there to the owner.
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
-        r"(which on this leg's draining consumer is )(\d+)( s \+ one)",
-        "bump",
-        "AT-D2-19's copy of § 9's enforcement bound on a draining consumer, which G14 holds to its "
+        r"(a gap over \*\*)(\d+)( s\*\* ends the stream)",
+        "copy-bump-to-floor",
+        "a drifted copy of § 8.5's stall bound, planted in FLOOR.md, which G14 finds and holds to its "
         "owner (card#9326)",
+        "states the stall bound as",
+    ),
+    (
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(enforcement lag is\s+\*\*under )(\d+)( s\*\*)",
+        "copy-bump-to-floor",
+        "a drifted copy of § 9 case (a)'s *under* figure, planted in FLOOR.md (card#9326)",
+        "states the enforcement bound as under",
+    ),
+    (
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(on a client that drains promptly it is \*\*)(\d+)( s \+ one \d+ ms tick\*\*)",
+        "copy-bump-to-floor",
+        "a drifted copy of § 9 case (a)'s draining figure, planted in FLOOR.md (card#9326)",
         "draining figure as",
+    ),
+    (
+        # card#9326.  The two REFUSALS, each planted as the shape a review round actually found.  Both
+        # copies carry the owner's figure UNCHANGED, which is the point: every statement rounds 7 and 8
+        # corrected agreed with some owner figure, so a value comparison passes them.  Round 7's shape
+        # is the draining figure stated as THE bound; round 8's is the re-check interval stated flat.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(on a client that drains promptly it is \*\*)(\d+ s \+ one \d+ ms tick)(\*\*)",
+        "copy-as-bound-to-floor",
+        "§ 9's draining figure restated in FLOOR.md as THE enforcement bound, round 7's shape (card#9326)",
+        "never says the consumer DRAINS",
+    ),
+    (
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(if now - auth_done >= )(\d+ s)(:)",
+        "copy-as-flat-to-floor",
+        "§ 8.3's re-check interval restated in FLOOR.md as a flat enforcement window, round 8's shape "
+        "(card#9326)",
+        "states a flat",
     ),
     (
         # card#9326.  The OWNER is checked too: § 9's *under* figure is the auth interval plus § 8.5's
@@ -332,6 +378,21 @@ PLANTS = [
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
     "rename": lambda m: m.group(1) + m.group(2) + "_renamed" + m.group(3),
+}
+
+# The copying kinds.  Each leaves the anchored OWNER untouched and appends, as its own paragraph at the
+# end of the destination document, a copy made from what the owner says -- the class "a consumer
+# restated the owner, and the copy is wrong".  The destination is the kind's; every figure in the copy
+# is read out of the owner by the anchor, and only connecting words are written here.
+COPIES = {
+    # the owner's statement with its figure bumped: a divergent copy
+    "copy-bump-to-floor": ("docs/design/FLOOR.md", MUTATIONS["bump"]),
+    # group(2) is a draining figure, restated as THE bound with no consumer named
+    "copy-as-bound-to-floor": ("docs/design/FLOOR.md", lambda m: (
+        "The lag between an expiry and its enforcement is therefore at most **" + m.group(2) + "**.")),
+    # group(2) is the re-check interval, restated as a flat enforcement window
+    "copy-as-flat-to-floor": ("docs/design/FLOOR.md", lambda m: (
+        "The window between an expiry and its enforcement is within " + m.group(2) + ".")),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
@@ -423,7 +484,7 @@ def run_verifier(tool, mutation=None):
             rel, anchor, kind = mutation
             doc = tmp / rel
             text = doc.read_text(encoding="utf-8")
-            if kind in SPAWNS:
+            if kind in SPAWNS or kind in COPIES:
                 m = re.search(anchor, text, flags=re.S)
                 n = 1 if m else 0
             else:
@@ -439,6 +500,10 @@ def run_verifier(tool, mutation=None):
                     raise SystemExit(f"CONTROL: {spawned.name} already exists beside {rel}, so the "
                                      f"plant would overwrite a tracked file rather than add one")
                 spawned.write_text(MIGRATION_TEMPLATE % SPAWNS[kind](m), encoding="utf-8")
+            elif kind in COPIES:
+                dest = tmp / COPIES[kind][0]
+                dest.write_text(dest.read_text(encoding="utf-8") + "\n\n" + COPIES[kind][1](m) + "\n",
+                                encoding="utf-8")
             else:
                 doc.write_text(new, encoding="utf-8")
 
