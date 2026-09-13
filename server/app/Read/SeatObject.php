@@ -149,6 +149,12 @@ final class SeatObject
             'badges' => Badges::render($state),
             'badges_since' => Clock::wire(Badges::since($state)),
             'enabled' => $state->enabled === null ? null : (bool) $state->enabled,
+            // § 8.2.1: the seat's DECLARATION and its check's outcome, carried VERBATIM — this plane
+            // performs no check of its own and re-derives neither. Both are null before the first
+            // heartbeat; the name is also null on a seat that declares none, and the check is what
+            // tells those two apart (`undeclared` against `null`).
+            'protocol_agent_name' => $state->protocol_agent_name,
+            'protocol_agent_name_check' => $state->protocol_agent_name_check,
 
             'reporter' => [
                 'version' => $state->reporter_version,

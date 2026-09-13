@@ -59,8 +59,10 @@ namespace App\Ingest;
  * declared, not closed at the ingest, and the difference is deliberate"), so nothing descends
  * into them. Their `bounds` entries do not descend either: § 6.14 states each one's cap on the
  * SERIALIZED object ("≤ 1.5 KiB serialized"), so the measurement is of the whole value and says
- * nothing about which keys are in it — which is what lets § 6.14's "a reporter that ships a
- * seventh check ahead of the table takes no `422`" stay true while the cap is enforced.
+ * nothing about which keys are in it — which is what lets § 6.14's declared-but-not-closed key
+ * set stay true while the cap is enforced: a reporter shipping a check that table does not yet
+ * name takes no `422`. (Stated without quoting § 6.14: `EventSchemaDriftTest` guards names,
+ * members and bounds, not prose, so a quotation here would be a copy nothing guards.)
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * THIS TABLE IS A RESTATEMENT, SO IT IS GUARDED. Every value below is transcribed from
@@ -374,15 +376,29 @@ final class KindRegistry
             'fields' => [
                 'uptime_s', 'spool_bytes', 'spool_files', 'spool_lag_events',
                 'oldest_unsent_age_s', 'last_hook_at', 'open_calls', 'open_sessions',
-                'open_attention', 'enabled', 'degraded', 'counters', 'counters_omitted',
-                'predicates', 'selftest', 'config_fingerprint',
+                'open_attention', 'enabled', 'protocol_agent_name', 'protocol_agent_name_check',
+                'degraded', 'counters', 'counters_omitted', 'predicates', 'selftest',
+                'config_fingerprint',
             ],
             'bounds' => [
+                // card#9296 round 3: § 6.14 states this as a figure precisely so this step can
+                // refuse it. A name over it is a reporter bug — § 3.1's own config row carries the
+                // same bound, so a conforming reporter cannot load one — and without the refusal it
+                // would pass the ingest and fail at the fold against D2's 48 B column instead.
+                'protocol_agent_name' => 48,
                 'counters' => 1536,
                 'predicates' => 512,
                 'selftest' => 256,
             ],
             'enums' => [
+                // Reporter-minted (§ 6.0: "a read of the seat config against the coordination
+                // roster"), so no unknown member: a value outside § 3.1's state table is a reporter
+                // bug and a 422, exactly as § 6.0 says of every reporter-minted set.
+                'protocol_agent_name_check' => [
+                    'members' => ['checked', 'unchecked', 'disagreed', 'undeclared'],
+                    'unknown' => null,
+                    'array' => false,
+                ],
                 // § 9.3's twelve-member table IS this field's value set, declared there and
                 // nowhere else. § 9.3 states plainly what a wrong set costs here: "a guess that
                 // misses makes a *degraded* seat's heartbeat a `422 invalid_event` … the liveness

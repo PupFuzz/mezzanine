@@ -52,6 +52,138 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   unmeasured. ⚠ Not run
   against any real host; `mezzanine:feed-reload` stays a named gap there.
 
+- **card#9296** — **BUILT `card#7957`'s ruling (d): a seat DECLARES its own protocol agent name,
+  and a disagreement between the two identity surfaces now FAILS AN ACT.** `card#7957` established
+  that nothing joined a protocol agent name (`pm`, `magento`) to a `seat_id`, ruled option (d) —
+  the seat declares its own — and left the CHECK leg open with the finding that **no act would
+  fail today**. This lands both. **D1:** [§ 3.1](docs/design/EVENT-SCHEMA.md) gains one optional
+  seat-config row, `protocol_agent_name`, with its four states and the roster check; the
+  declaration and `protocol_agent_name_check` ride `reporter.heartbeat` (§ 6.14) — the only event
+  a seat is guaranteed to emit, so an **idle** seat still declares; § 9.3 gains two counters, § 6.14
+  a seventh `selftest` member `protocol_agent_name_in_roster`, and § 13 the acceptance test AT-27.
+  **D2:** two nullable columns on `seat_state`, two members on the seat object, and
+  [§ 8.3.3](docs/design/FLEET-STATE.md) rewritten — the mapping EXISTS, it is DECLARED, it lives
+  on the seat object, and the coordination objects still carry **no desk reference**. **D3:**
+  § 5.7's resolve arm resolves.
+  ⛔ **Three refusals survive unchanged, and they are the point of the change rather than caveats
+  on it.** *(1)* An unresolved participant is still first-class and permanent — no line to a
+  guessed desk, no line to nothing, reported as unresolved — which is the honest render for every
+  seat that declares nothing. *(2)* Equality with a `seat_id` is still **not** a join: only a
+  declaration resolves, and AT-D2-24's byte-identical control stays discriminating. *(3)* A
+  `disagreed` or `undeclared` declaration resolves to nothing.
+  ⚠ **The act that fails:** `fleet-reporter selftest` exits non-zero naming
+  `protocol_agent_name_in_roster` when the declared name is absent from a roster readable on that
+  box, and the failure rides every heartbeat in `selftest` → `reporter.selftest_failed`. Where no
+  roster is readable the reporter **says so** (`unchecked`) rather than omitting the field — the
+  name-what-you-cannot-verify leg, and an omitted field would be byte-identical to a seat that
+  declares nothing.
+  ⚠ **This supersedes the standing claims that no join exists** — D3 § 5.7's *"No join exists
+  today … no line is drawn on any floor"*, D1 § 18.13 row 6's UNVERIFIED, D2 § 8.3.3's *"this
+  plane publishes no mapping"*, and D3's *"all three are unreachable today"* for A18/A19/A20. Each
+  is rewritten in this change; earlier changelog entries stating them are historical records and
+  are left standing, superseded by this one.
+  ⚠ **NOT built here, and named rather than left to be discovered:** no CODE constructs the join
+  yet. `server/public/js/coord/main.js` still passes no `options.join` and
+  `CoordDrawsNoLineWithoutAJoinTest` still pins that — both assert what the code does, which this
+  change does not move, and both now say what the follow-up build slice owes (build the map from
+  the seats of the floor's `install_id` whose check is `checked` or `unchecked`, and split the
+  test's subject in two). **Gates:** `tools/design/verify-fleet-state.py` gains **G13**, which
+  re-derives the check's value set from all three of its homes across two documents and reds when
+  they disagree, and holds the coordination objects to declaring no seat→desk member; the plant
+  harness gains a rename plant against it, watched red before it was trusted.
+  ⭐ **Round 2 — an independent review found the fix had re-minted `card#7957`'s own finding, twice.**
+  *(1)* **The roster path made `disagreed` unreachable on the install shape (d) exists for.** § 3.1
+  read the roster from `~/.config/coord/coordination.config.json` and *"no environment variable"*,
+  but the coordination framework resolves its config from `$COORD_CONFIG` alone, and on a
+  multi-agent install that points into the coordination repository; the home path is the solo
+  shape. A pm/impl fleet would find no roster, emit `unchecked`, pass `protocol_agent_name_in_roster`
+  and exit `selftest` zero with the roster readable on the box. § 3.1 now resolves `$COORD_CONFIG`
+  first — set, it is the whole answer — and the home path only when it is unset, says why § 3.4
+  rule 1 does not forbid that, and withdraws the unsourced `%APPDATA%` Windows location. AT-27 gains
+  case E (the roster only where `$COORD_CONFIG` points) with a ⛔ RED for a home-path-only reporter,
+  and case B a set-but-missing variant. Canon #7's legs: DECLARED at § 3.1; CHECKED by a new
+  `verify-event-schema.py` check that re-derives the resolution order from § 3.1 and holds AT-27,
+  § 18.13 row 6 and every roster-location mention in D1 to it; NAMED on § 18.13 row 6, whose
+  closing act — carrying the contract to the framework's owner — is recorded as not yet performed.
+  *(2)* ⭐ **OPERATOR RULING: a protocol agent name is UNIQUE per install.** Surfaces that legalised a
+  set-valued resolution while A18 and `resolve()` are singular made the map a builder was told to
+  build last-writer-wins over an unordered seat population. A duplicate is now a misconfiguration:
+  resolution is 0 or 1 desks, a name more than one resolving seat carries resolves to nothing *(that
+  scope is superseded in round 3 (3): every DECLARING seat counts, `disagreed` included)*, the
+  consumer never picks, and the name is reported with its own reason (`duplicate_declaration`, beside
+  `no_declaring_seat`). No seat can detect it — both duplicates pass their own check — so D2 declares
+  the invariant, says why no `UNIQUE KEY` enforces it, and the consumer enforces it; AT-D2-24 gains
+  a RED for the pick. A18 and A19 needed no change. **Also:** D1 § 6.14 now says the heartbeat
+  carrier is CHOSEN, and names and prices the batch envelope, which its three facts do not rule out;
+  the 2,852 B composition states that the declared-name pair is taken at its reachable joint maximum
+  and why D2's independently composed worked block is also right; D1 prose quoted with a stale
+  ordinal is deleted from D2 § 8.2.1, `KindRegistry.php` and `At18UnknownEnumTest.php`, the class
+  member being recorded on `card#9326`; D3 § 2.1's heading and lede say what the closed list is closed
+  over; and D1 § 3.1's *"every other shape"* is narrowed to the shapes `card#7957` weighed.
+  **Gates:** G13's no-desk-reference leg was a name-equality test that a `coord_thread.desk`, a
+  `coord_round.from_seat` or a nested `…[].seat_ref` each passed; it now also matches the seat/desk
+  shape over every segment of every field name, reads nested rows, and takes its under-read
+  control's denominator from the tables' own row counts instead of a written figure. Every new or
+  changed leg was watched red on a hand mutant, with the control clean.
+  ⭐ **Round 3 — a second independent review.** *(1)* **`KindRegistry.php` had not taken the two new
+  heartbeat fields**, so `EventSchemaDriftTest` was red and a D1-conformant reporter would have had
+  both counted as `ignored_unknown_fields` on every heartbeat. The registry now carries both and the
+  reporter-minted `protocol_agent_name_check` enum; and D1 § 6.14's name row states its bound as a
+  `≤ 48 B` figure rather than a pointer, because the ingest refuses only a stated figure and an
+  over-long name would otherwise have passed it and failed at the fold — `verify-event-schema.py`
+  check 12 holds that figure equal to § 18.6's. *(2)* **The OS-supervised flusher never received
+  `$COORD_CONFIG`**, and it is the flusher that heartbeats on a healthy seat, so `disagreed` was still
+  unreachable on a multi-agent install through the start path. § 3.1's delivery contract now reaches
+  the supervised start (the installer writes the variable into the unit's or task's environment,
+  mechanics on `card#7336`), the flusher is barred from gating emission on its absence, AT-27 gains
+  case F and its RED, § 18.13 row 6 names the installer half as not established, and check 11 reds
+  when the contract or AT-27 stops naming one of § 2.3's start paths. *(3)* ⭐ **OPERATOR RULING:
+  every seat that declares a name counts toward a duplicate, whatever its check state** — a `checked`
+  and a `disagreed` seat declaring one name resolve to nothing as `duplicate_declaration`. D2 § 8.3.3
+  rule 1 states that scope once and decides the duplicate before rule 2's filter; the other surfaces
+  point at it, and AT-D2-24 gains a seventh RED for the pair. **Also:** two hand-written counts in D1
+  are replaced by the command that prints them or dropped; stale D1 figures and check counts quoted
+  in the reporter's self-test, comments and README and in the plant harness are removed, the
+  remaining members recorded on `card#9326`; and D1 § 3.1's home-path site is scoped to Linux.
+  ⭐ **Round 4 — the CODE half of the two seat-object members**, without which CI was red:
+  `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's field list and `App\Read\SeatObject`
+  carried neither member. A migration adds § 6.4's two nullable `seat_state` columns;
+  `Projector::heartbeat` stores both as the last heartbeat's value verbatim, so a heartbeat that
+  omits a key stores `null` (D1 § 6.0: missing is null), exactly as `enabled` does; the object
+  publishes both. Both are VERSION-BEARING (§ 6.5's heartbeat-exceptions table), so
+  `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` take them together, and
+  `mezzanine:rebuild` resets them with the rest of the heartbeat group. The consumer join is still
+  not built. **Also, from round 3's independent review:** the protocol agent name's byte bound is
+  one guarded population — `verify-event-schema.py` check 12 holds D2 § 6.4's column, D2 § 8.2.1's
+  row and the width the last migration's `up()` gives the column to § 18.6's figure beside § 6.14's,
+  with a plant per new home, and refuses any migration whose `up()` touches the column in a form it
+  cannot read (raw SQL, a rename, a drop, a width-less `string()`) rather than passing it, and the
+  fold reads the bound from `KindRegistry` instead of restating it; D1 § 3.1's contract sentence and
+  § 18.13 row 6 scope the home path to Linux; the supervised start's contract says its LAUNCH
+  delivers the value, with the route left to `card#7336`, rather than promising a per-start
+  environment, and it names the staleness when the coordination config moves (rewrite-on-change in
+  the contract, the residual on row 6, a moved variant of AT-27 case F); and D2 § 8.3.3's empty arm
+  is renamed *no seat may resolve it*, because a lone `disagreed` seat does declare the name — the
+  `no_declaring_seat` token is unchanged, and D3 § 5.7 and `coord-model.js` follow.
+  ⭐ **Round 4 review's minors.** *(1)* **A `null` declaration pair has a third reading**: the fold
+  writes `null` for a heartbeat that carries neither member, and the shipped reporter sends neither,
+  so D2 § 6.4's column comments, D2 § 8.2.1's rows and D3 § 5.6's and § 5.7's rows now name it
+  beside *no heartbeat yet* and *declares none*; `EventValidator`'s comment states that an absent
+  enum is skipped whatever its row's `Null?` says, `protocol_agent_name_check` included. *(2)*
+  **Check 12 read `down()`'s width**: it took the last width match in the last file, so a later
+  narrowing that restored the width in `down()`, and a raw-SQL narrowing, both passed. It now reads
+  `up()` alone and refuses a form it cannot read, and the plant harness gains a `narrow-up` and a
+  `narrow-sql` plant that add such a migration. *(3)* D3 § 5.7's last copy of *an absent
+  declaration* reads *no seat may resolve it*, as the rest of round 4 does.
+  ⭐ **Round 5 — D1 § 6.14 no longer declares the check non-null.** It marked
+  `protocol_agent_name_check` `Null? no` on a field added at the same schema version, which
+  `docs/VERSIONING.md` rule 3 allows only for an optional field, while the ingest accepted and the
+  fold stored its absence. D1 was the side in the wrong. Both rows now read as the ingest behaves,
+  and a new paragraph under the table separates the ingest contract from the obligation on a
+  current reporter; the worst-case composition, `EventValidator`'s comment and `FoldTestCase`'s
+  fixture comment now point at that obligation rather than at a non-null row.
+
+
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
   development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded
   as `docs/PLAN.md` D-15's new amendment, and it **reverses card#9250's** "an additional lane, not a
@@ -106,6 +238,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   prefix, so renaming it per host would sign everybody out. ⚠ Existing enrolments keep their old
   label (the secret is unchanged, so codes still work). README § The authenticator entry's name
   says how to relabel. Tests: `tests/Feature/TwoFactorIssuerTest.php`.
+
 
 - **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
   are asked two different questions, and the comments that promised to fold them into one are

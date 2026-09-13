@@ -17,10 +17,40 @@
  *      falls back to `name === seat_id`, which D2 § 8.3.3 calls "a coincidence this plane cannot
  *      check", and it never picks a desk by position, by order or by prefix. A name that does
  *      not resolve is REPORTED as unresolved and DOES NOT SUPPRESS the rest of the object
- *      (card#7957 ruling (2)). ⚠ NOTHING PRODUCES A JOIN TODAY — no wire event and no config in
- *      this repository carries one — so `main.js` passes none and every name resolves to
- *      `null`. That is why the parameter exists rather than being deleted: the renderer is
- *      correct on day one and does not change shape when the join lands.
+ *      (card#7957 ruling (2)). ⚠ NO JOIN REACHES THIS MODULE YET, AND THE REASON CHANGED ON
+ *      card#9296. The join is now DESIGNED — a seat declares its own protocol agent name
+ *      (D1 § 3.1), it rides the heartbeat (D1 § 6.14) and D2 § 8.2.1 publishes it on the seat
+ *      object — but nothing in this repository BUILDS the map from the seat population yet, so
+ *      `main.js` still passes none and every name still resolves to `null`. That is why the
+ *      parameter exists rather than being deleted: the renderer is correct on day one and does
+ *      not change shape when the join arrives. ⛔ WHOEVER BUILDS THE MAP BUILDS IT FROM
+ *      `protocol_agent_name` ON THE SEATS OF THIS FLOOR'S `install_id` WHOSE
+ *      `protocol_agent_name_check` IS `checked` OR `unchecked`, and from nothing else
+ *      (D2 § 8.3.3's three rules) — a `disagreed` or `undeclared` seat is a seat whose own
+ *      check failed or which said nothing, and neither resolves.
+ *      ⛔ BUT COUNT DUPLICATES FIRST, OVER EVERY SEAT OF THE INSTALL THAT DECLARES THE NAME —
+ *      `checked`, `unchecked` AND `disagreed` ALIKE, ONLY `undeclared` LEFT OUT — AND APPLY THE
+ *      FILTER ABOVE ONLY TO A NAME EXACTLY ONE SEAT DECLARES. A NAME TWO OR MORE SEATS DECLARE
+ *      MAPS TO NOTHING, A `checked` SEAT BESIDE A `disagreed` ONE INCLUDED: the disagreeing seat
+ *      still sends the name, and filtering first would hand the map the other seat, which is a
+ *      pick. D2 § 8.3.3 rule 1 owns that scope and that order.
+ *      A protocol agent name is UNIQUE per install (operator ruling, card#9296; D2 § 8.2.1
+ *      and § 8.3.3 rule 1), so two seats of one install declaring one name is an install MISCONFIGURATION
+ *      and not one agent at two desks. The builder must not assign into the map twice and let
+ *      the last writer win: the seat population has no order, so last-writer-wins IS a pick,
+ *      and a picked desk is exactly what § 5.7 clause 1 forbids — the same refusal as the
+ *      `name === seat_id` fallback above, arrived at by obeying a loop instead of a fallback.
+ *      ⛔ AND IT IS REPORTED, NOT SILENTLY DROPPED. The two unresolved reasons are named and
+ *      distinct — `no_declaring_seat` (no seat may resolve it, a lone `disagreed` declarer
+ *      included) and `duplicate_declaration` (the
+ *      invariant is violated) — and § 5.7 clause 1 renders the second in words beside the
+ *      name, because a misconfiguration rendered as a name no seat may resolve is the opposite
+ *      diagnosis. `resolve()` below cannot tell an excluded name from an undeclared one and
+ *      must not be asked to: the builder hands the render the duplicated names BESIDE the map,
+ *      and `resolve()` stays one name to one `seat_id` or to none.
+ *      ⚠ ONLY THIS CLIENT CAN SEE THE VIOLATION. A seat's own check asks whether its declared
+ *      name is in the roster, so both duplicates pass and both emit `checked`; D2 mints no
+ *      state from it. The report is made here or it is not made.
  *
  *   2. NULL AND EMPTY ARE DIFFERENT ANSWERS, on `coord_round.targets` above all: `[]` is "this
  *      post reached nobody", `null` is "the fan-out is not resolvable here". Collapsing them is
@@ -225,7 +255,9 @@ export function roundAnimations(round) {
  * event" (D2 § 8.3.3). The count is kept so the exclusion is visible rather than silent.
  *
  * `options.join` is the name→`seat_id` map of `resolve()` above. Omitted — which is what
- * `main.js` does and what every deployment does today — nothing resolves and no line is drawn.
+ * `main.js` does, and what every deployment does until the slice that CONSTRUCTS the map from
+ * the seat population lands (designed on card#9296, built by nobody yet) — nothing resolves and
+ * no line is drawn.
  *
  * ⛔ THE BEAD COUNT IS A COUNT OF DISTINCT `post_ref`, per D2: these messages carry no `seq`,
  * "a lost coordination message is not detectable", and identity is all a consumer has. A

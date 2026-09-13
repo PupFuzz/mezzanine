@@ -381,6 +381,181 @@ else:
             fail.append(f"§ 10.3: stated {what} {m.group(1)} disagrees with {want:,.2f} measured "
                         f"from § 6.14's worked example ({hb_bytes} B serialized)")
 
+# ---- 11. the coordination roster's resolution sites: one contract, held at every site stating it --
+# § 3.1 resolves the coordination roster from an ORDERED list of sites, and the order is a
+# cross-repository contract (card#9296): a reporter reading only the home path finds no roster on a
+# multi-agent install, whose framework points `$COORD_CONFIG` into the coordination repository, and
+# `disagreed` becomes unreachable with the roster readable on the box.  The contract is stated at
+# that list, exercised at AT-27 and named as unestablished at § 18.13 row 6.  No site is written
+# here: the list is re-derived from § 3.1 on every run and every other surface is held against it.
+# What this cannot check is the reporter half -- that a build reads the sites in this order --
+# which is AT-27's.
+sec31 = re.search(r"^### 3\.1 .*?(?=^### 3\.2 )", raw, re.S | re.M)
+m_sites = re.search(r"^\*\*Where the roster is, in resolution order(?:[^\n]*\n)+?\n"
+                    r"((?:\d+\. [^\n]*\n(?:   [^\n]*\n)*)+)", sec31.group(0) if sec31 else "", re.M)
+sites = []
+if m_sites:
+    for item in re.split(r"^\d+\. ", m_sites.group(1), flags=re.M):
+        tok = re.search(r"`([^`\n]+)`", item)
+        if tok:
+            sites.append(tok.group(1))
+at27 = re.search(r"^### AT-27 .*?(?=^### |^## )", raw, re.S | re.M)
+row6 = next((l for l in raw.splitlines() if l.startswith("| **That a protocol agent name identifies")), None)
+if not sites or not at27 or row6 is None:
+    fail.append(f"check 11 CONTROL: § 3.1's roster resolution order parsed as {sites}; AT-27 "
+                f"{'found' if at27 else 'NOT found'}; § 18.13 row 6 {'found' if row6 else 'NOT found'} "
+                f"— a contract the check cannot read, or a surface it cannot find, is one nothing holds "
+                f"to the other")
+else:
+    for i, line in enumerate(raw.splitlines(), 1):
+        for tok in re.findall(r"`(\$COORD_[A-Za-z_]+|[^`\s]*[/\\]coordination\.config\.json)`", line):
+            if tok not in sites:
+                fail.append(f"L{i}: `{tok}` names a location for the coordination config that is not a "
+                            f"site of § 3.1's resolution order {sites} — a second place a builder can "
+                            f"read the roster from, which the contract does not declare")
+    for s in sites:
+        if f"`{s}`" not in at27.group(0):
+            fail.append(f"AT-27 never names `{s}`, a site of § 3.1's roster resolution order — a "
+                        f"build that never reads it passes every case, which is how reading one site "
+                        f"made `disagreed` unreachable")
+    pos = [row6.find(f"`{s}`") for s in sites]
+    if -1 in pos or pos != sorted(pos):
+        fail.append(f"§ 18.13 row 6 does not name § 3.1's roster resolution sites {sites} in their "
+                    f"order — the residual it names is stated against a contract it no longer matches")
+
+    # The DELIVERY half (card#9296 round 3).  The sites are only reached if the variable reaches the
+    # flusher, and § 2.3 declares more than one way a flusher starts: the OS-supervised one inherits
+    # nothing from the harness, holds the exclusive lock and heartbeats in steady state, and a
+    # contract that named only the hook-spawned start left it on the home path.  So every start path
+    # § 2.3's first numbered list declares must be named by § 3.1's DECLARED leg and by AT-27.  The
+    # paths are re-derived from § 2.3's list labels on every run; none is written here.  What this
+    # cannot check is that a unit's or task's launch delivers the value, or that the installer
+    # rewrites it when the value changes -- both are installer card#7336's, and § 18.13 row 6
+    # names them as not established.
+    sec23 = re.search(r"^### 2\.3 .*?(?=^### )", raw, re.S | re.M)
+    m_starts = re.search(r"((?:^\d+\. \*\*[^*\n]+\*\*[^\n]*\n(?:   [^\n]*\n)*)+)",
+                         sec23.group(0) if sec23 else "", re.M)
+    starts = re.findall(r"^\d+\. \*\*([^*\n]+)\*\*", m_starts.group(1), re.M) if m_starts else []
+    declared = re.search(r"^- \*\*DECLARED\b.*?(?=^- \*\*)", sec31.group(0), re.S | re.M)
+    if not starts or not declared:
+        fail.append(f"check 11 CONTROL: § 2.3's flusher start paths parsed as {starts}; § 3.1's "
+                    f"DECLARED leg {'found' if declared else 'NOT found'} — the delivery half of the "
+                    f"roster contract cannot be held to a start-path list the check cannot read")
+    else:
+        flat = lambda s: " ".join(s.replace("*", "").split()).lower()
+        for label in starts:
+            for where, body in (("§ 3.1's DECLARED leg", declared.group(0)), ("AT-27", at27.group(0))):
+                if flat(label) not in flat(body):
+                    fail.append(f"{where} never names § 2.3's flusher start path \"{label}\" — a start "
+                                f"the roster contract does not reach is one whose heartbeat reads the "
+                                f"home path, which is how the supervised start was left `unchecked`")
+
+# ---- 12. the protocol agent name's byte bound: one figure, held at every home that states it ------
+# § 12.1 step 10 refuses only a `≤ N B` figure a § 6 field row states (card#9283), so § 6.14's
+# `protocol_agent_name` row carries one rather than a pointer (card#9296 round 3).  That figure is a
+# restatement of the bound § 18.6 gives a protocol agent name on the wire; D2's § 6.4 column and
+# § 8.2.1 row restate it, and the store's migrations size the column (card#9296 round 4).  Every home
+# `name_bounds` lists is read on every run and each must equal § 18.6's: a D2 column narrower than
+# the ingest's figure is a name the ingest accepts and the fold then cannot store, with every gate
+# green.  `opened_by` is the subject § 18.6 bounds a single agent name on, named like any subject --
+# not a population.
+#
+# The migration home is the width the LAST migration's `up()` gives the column, because that is the
+# store's effective width: a later widening or narrowing is read, not the original, and `down()` is
+# never read, because it describes a store being rolled back, not the one migrated forward.  Inside
+# `up()` the check reads the column's name in `string('protocol_agent_name', N)`, which sizes it, and
+# in `after('protocol_agent_name')`, which places another column and sizes nothing.
+# Any other mention in an `up()` -- raw SQL, a rename, a drop, a `string()` without a width, a comment
+# -- REFUSES, naming the file, and so does a migration mentioning the column whose `up()` cannot be
+# read: a width the check cannot read is one it would otherwise pass unheld.
+def php_method_body(src, name):
+    """The body of `function name(...) { ... }` in PHP source, braces matched outside string
+    literals and comments; None when the method is absent or its braces never balance."""
+    head = re.search(rf"\bfunction\s+{name}\s*\([^)]*\)[^{{;]*\{{", src)
+    if not head:
+        return None
+    depth, i, n = 1, head.end(), len(src)
+    while i < n:
+        c = src[i]
+        if c in "'\"":
+            i += 1
+            while i < n and src[i] != c:
+                i += 2 if src[i] == "\\" else 1
+        elif src.startswith("//", i) or c == "#":
+            i = src.find("\n", i)
+            i = n if i < 0 else i
+        elif src.startswith("/*", i):
+            i = src.find("*/", i + 2)
+            i = n if i < 0 else i + 1
+        elif c in "{}":
+            depth += 1 if c == "{" else -1
+            if depth == 0:
+                return src[head.end():i]
+        i += 1
+    return None
+
+
+def first_byte_bound(row):
+    m = re.search(r"≤\s*([\d,]+)\s*B\b", row or "")
+    return int(m.group(1).replace(",", "")) if m else None
+sec614 = re.search(r"^### 6\.14 .*?(?=^### |^## )", raw, re.S | re.M)
+sec186 = re.search(r"^#### 18\.6 .*?(?=^#### |^### |^## )", raw, re.S | re.M)
+hb_name_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
+                    if l.startswith("| `protocol_agent_name` |")), None)
+wire_name_row = next((l for l in (sec186.group(0) if sec186 else "").splitlines()
+                      if l.startswith("| `opened_by` |")), None)
+d2_raw = (ROOT / "docs" / "design" / "FLEET-STATE.md").read_text()
+d2_sec64 = re.search(r"^### 6\.4 .*?(?=^### )", d2_raw, re.S | re.M)
+d2_sec821 = re.search(r"^#### 8\.2\.1 .*?(?=^#### )", d2_raw, re.S | re.M)
+d2_ddl = re.search(r"^\s*protocol_agent_name\s+VARCHAR\((\d+)\)",
+                   d2_sec64.group(0) if d2_sec64 else "", re.M)
+d2_name_row = next((l for l in (d2_sec821.group(0) if d2_sec821 else "").splitlines()
+                    if l.startswith("| `protocol_agent_name` |")), None)
+name_column = r"(?<!\w)protocol_agent_name(?!\w)"
+sizes_column = re.compile(r"string\(\s*'protocol_agent_name'\s*,\s*(\d+)\s*\)")
+places_after_column = re.compile(r"after\(\s*'protocol_agent_name'\s*\)")
+mig_widths, mig_unreadable = [], []
+for m in sorted((ROOT / "server" / "database" / "migrations").glob("*.php")):
+    src = m.read_text()
+    if not re.search(name_column, src):
+        continue
+    up = php_method_body(src, "up")
+    if up is None:
+        mig_unreadable.append(f"{m.name} (its `up()` body could not be read)")
+        continue
+    if re.search(name_column, places_after_column.sub("", sizes_column.sub("", up))):
+        mig_unreadable.append(m.name)
+        continue
+    widths = sizes_column.findall(up)
+    if widths:
+        mig_widths.append((m.name, int(widths[-1])))
+for name in mig_unreadable:
+    fail.append(f"check 12 CONTROL: migration {name} touches `protocol_agent_name` in its `up()` in a "
+                f"form this check cannot read -- only `string('protocol_agent_name', N)` and "
+                f"`after('protocol_agent_name')` are read, so a width set any other way would pass "
+                f"unheld against § 18.6's bound")
+name_bounds = {
+    "D1 § 18.6 `opened_by`": first_byte_bound(wire_name_row),
+    "D1 § 6.14 `protocol_agent_name`": first_byte_bound(hb_name_row),
+    "D2 § 6.4 `protocol_agent_name VARCHAR`": int(d2_ddl.group(1)) if d2_ddl else None,
+    "D2 § 8.2.1 `protocol_agent_name`": first_byte_bound(d2_name_row),
+    f"migration {mig_widths[-1][0] if mig_widths else '(none sizes the column)'}":
+        mig_widths[-1][1] if mig_widths else None,
+}
+unread = [home for home, n in name_bounds.items() if n is None]
+if unread:
+    fail.append(f"check 12 CONTROL: no byte bound could be read at {unread} (parsed {name_bounds}) — "
+                f"a home the check cannot read, or one stating no figure, is one nothing holds to "
+                f"the bound the ingest enforces")
+else:
+    ref = name_bounds["D1 § 18.6 `opened_by`"]
+    for home, n in name_bounds.items():
+        if n != ref:
+            fail.append(f"{home} states {n} B, and § 18.6 bounds a protocol agent name at {ref} B — "
+                        f"the ingest refuses by § 6.14, the store is sized by D2's column and the "
+                        f"migration, and a name between two of them is accepted by one and fails at "
+                        f"the other")
+
 print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"enum fields re-derived: {n_enum}, {n_enum - n_unclassified} classified; "
       f"counter-name mentions checked: {n_counter} against {len(wire_fields)} wire fields; "
@@ -388,7 +563,10 @@ print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"capped objects dispositioned: {len(capped)}; "
       f"heartbeat example re-serialized: {hb_bytes} B; "
       f"exempt-object bounds re-derived: predicates {worst_pred} B from {n_pred} members, "
-      f"selftest {worst_self} B from {n_self} members")
+      f"selftest {worst_self} B from {n_self} members; "
+      f"roster resolution sites re-derived from § 3.1, in order: {sites}; "
+      f"flusher start paths re-derived from § 2.3: {starts if sites and at27 and row6 is not None else 'not read'}; "
+      f"protocol agent name bound per home: {name_bounds}")
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
     for f in fail:

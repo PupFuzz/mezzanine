@@ -104,6 +104,8 @@ final class SeatDelta implements ShouldBroadcastNow, ShouldDispatchAfterCommit
         'badges' => 'badges',
         'badges_since' => 'badges_since',
         'enabled' => 'enabled',
+        'protocol_agent_name' => 'protocol_agent_name',
+        'protocol_agent_name_check' => 'protocol_agent_name_check',
         'reporter_version' => 'reporter',
         'reporter_platform' => 'reporter',
         'selftest_failed' => 'reporter',
