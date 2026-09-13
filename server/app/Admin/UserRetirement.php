@@ -24,9 +24,10 @@ use Illuminate\Support\Facades\DB;
  *
  * ⛔ THE COUNT IS TAKEN UNDER A ROW LOCK IN THE SAME TRANSACTION AS THE WRITE. Two operators
  * retiring the last two accounts at the same moment would each see a count of 2, each pass the
- * check, and leave zero — the exact state D4 exists to make unreachable. `lockForUpdate()` is a
- * no-op on the SQLite the suite runs on and is honoured by the MySQL this deploys to
- * (`docs/PLAN.md` D-15), so the guard is correct on the store that can actually race.
+ * check, and leave zero — the exact state D4 exists to make unreachable. `lockForUpdate()` is
+ * honoured by MariaDB, the only store this application runs on (`docs/PLAN.md` D-15), so the guard
+ * is correct on the store that can actually race — though the single-connection suite has no
+ * second session to race it, so that leg is reasoned rather than executed.
  *
  * ⛔ AN AUTHOR AND A REASON ARE THIS ACT'S OBLIGATION, NOT ITS CALLERS'. § 4.5 calls retirement
  * "an act with an AUTHOR and a REASON", and until card#9070's first review round both callers held

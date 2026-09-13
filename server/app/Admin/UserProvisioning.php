@@ -17,7 +17,7 @@ use Illuminate\Validation\Rule;
  * `config/fortify.php` sets `lowercase_usernames => true`, so `Laravel\Fortify\Actions\
  * CanonicalizeUsername` lowercases the submitted address before the credential lookup on EVERY
  * login. An account stored as `Ops@Example.com` is therefore looked up as `ops@example.com` and
- * — on any case-sensitive collation, which includes the SQLite the suite runs on — is never
+ * — on any case-sensitive collation — is never
  * found. The account would be created successfully, report success, and be unable to log in:
  * exactly the "looks like a working console until somebody tries it" failure this card exists to
  * close. Canonicalising at the WRITE site is the fix, because it is the only site that can make
@@ -87,8 +87,8 @@ final class UserProvisioning
      * lock closes the race, and it is the same lock `App\Admin\UserRetirement::retire()` takes over
      * the same rows, so the two acts serialise against each other rather than interleaving.
      *
-     * ⚠ IT IS A NO-OP ON SQLITE AND HONOURED BY MYSQL (`docs/PLAN.md` D-15), exactly as
-     * `UserRetirement` records of its own lock. The suite therefore drives the stale-read leg —
+     * ⚠ MariaDB HONOURS IT, BUT THE SUITE HAS NO SECOND SESSION FOR IT TO EXCLUDE (`docs/PLAN.md`
+     * D-15), exactly as `UserRetirement` records of its own lock. The suite therefore drives the stale-read leg —
      * `UserManagementTest::test_the_provisioning_act_refuses_a_subject_retired_after_the_request_bound_it`
      * fails without this — and the race leg is reasoned, not executed. Said here rather than left
      * to be assumed.

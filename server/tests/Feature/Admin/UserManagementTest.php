@@ -562,9 +562,10 @@ class UserManagementTest extends TestCase
      *
      * ⚠ WHAT THIS DOES AND DOES NOT ESTABLISH. It drives the STALE-READ leg — the check is made
      * against the store rather than against the caller's snapshot — which is the leg that is
-     * reachable with one request. It does NOT establish the lock: `lockForUpdate()` is a no-op on
-     * the SQLite this suite runs on and is honoured by the MySQL this deploys to
-     * (`docs/PLAN.md` D-15), the same limitation `UserRetirement`'s own docblock names.
+     * reachable with one request. It does NOT establish the lock: `lockForUpdate()` is honoured by
+     * the MariaDB this suite runs on (`docs/PLAN.md` D-15), but one request is one connection and
+     * there is no second session for it to exclude — the same limitation `UserRetirement`'s own
+     * docblock names.
      */
     public function test_the_provisioning_act_refuses_a_subject_retired_after_the_request_bound_it(): void
     {

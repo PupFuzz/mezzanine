@@ -117,8 +117,9 @@ return new class extends Migration
         });
 
         // § 6.4's `CONSTRAINT ck_one_layout CHECK (id = 1)`, where the store has the syntax.
-        // SQLite cannot add a check constraint to an existing table and the suite's default store
-        // is SQLite (`phpunit.xml`), so the constraint is emitted for the engine production runs
+        // The branch dates from when the suite ran on SQLite, which cannot add a check constraint
+        // to an existing table. SQLite is no longer a supported configuration (card#9328), so
+        // every supported store takes it; the constraint is emitted for the engine production runs
         // — the same shape `App\Support\Ddl` takes for `ascii_bin` and for index names, and for
         // the same reason: the document's DDL is what the deployed store gets.
         if (in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {

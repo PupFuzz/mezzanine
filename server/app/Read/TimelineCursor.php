@@ -81,8 +81,9 @@ final class TimelineCursor
 
     /**
      * `received_at DESC, id DESC` is the timeline's order, so "older than this cursor" is the
-     * standard key-set predicate over that pair — the row-wise `<` written out, because neither
-     * of the two engines this ships on is relied on to optimise a row constructor.
+     * standard key-set predicate over that pair — the row-wise `<` written out, because the
+     * engine this ships on (MariaDB, `docs/PLAN.md` D-15) is not relied on to optimise a row
+     * constructor.
      */
     public function olderThan(Builder $query): Builder
     {
