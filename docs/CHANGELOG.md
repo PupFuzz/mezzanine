@@ -19,36 +19,33 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
-- **card#9326** — **The feed stream's two bounds each have ONE statement, and a copy anywhere
-  under `docs/` that disagrees with its owner, or restates the bound in a shape a review round already
-  withdrew, reds `verify-fleet-state.py` — design documents and their verifiers only; nothing an
-  installer runs changes.** card#9287's stall bound (`docs/design/FLEET-STATE.md` § 8.5) and
-  enforcement bound (§ 9) were stated in full at six or more sites across D2 and
-  `docs/design/FLOOR.md` (D3) with nothing checking that the copies agreed, and the duplication
-  minted the same ~4×-short defect in two consecutive review rounds. **DELETE, the default:** every
-  D3 site now points at D2 and carries no figure for either bound — § 9 F7, § 12's session re-check
-  row and § 13 decision 36 (§ 9's note and § 14 item 5 already pointed; § 2.5 and `docs/PLAN.md`
-  state neither) — and inside D2 each bound is stated once, at § 8.5 and § 9 case (a), with § 2.2's
-  backpressure row, § 6.7's `feed_outbox` row, § 8.3's `feed.close` row, § 9's case (b) and tick
-  note, § 12's two basis cells, AT-D2-15 and AT-D2-19 pointing at it. **GUARD, for what cannot
-  point** — § 8.3's handler fence and § 12's stall-bound row — the new **G14**: each owner is read
-  from its own section and § 9's two figures are re-derived from § 8.3's handler and § 8.5; every
-  statement of either bound's shape in every markdown file under `docs/`, globbed on each run, is
-  held to its owner; and two retired shapes are refused whatever figure they carry — a flat figure
-  in a statement about enforcement, expiry or revocation, and the draining-client figure in a
-  statement that never says the consumer drains — because every statement rounds 7 and 8 corrected
-  agreed with *some* owner figure, and a guard comparing values alone passed them when they were
-  re-planted verbatim. ⚠ A copy phrased outside those shapes is not seen, which is why a consumer
-  points rather than copies; this file is outside the population because it is the record of
-  retired figures. **G12b** no longer holds one close reason by name: the member set is read off
-  § 8.3's `feed.close` row and held to the size the row states, every member must be written by a
-  pseudocode fence *inside § 8.3* (any fence in the document used to satisfy it), and G12's ruling
-  token is read off that row by its member's description — so a new reason declared in the row and
-  used only in prose, which ran green before, reds. D2 § 12's status table gains G14's row, § 14 item
-  8 moves to G1–G14 under the verifier's own count guard, and `verify-design-docs.selftest.py` gains
-  plants that append a drifted or retired-shape copy of an owner to D3. **Not built here:** a
-  quoted-sentence drift guard over `server/**` and `tools/**` comments (the card's comments 4852 and
-  4876), whose instances were fixed on card#9296; it is returned to the card as a proposal.
+- **card#9326** — **The feed stream's two bounds each have ONE statement, every other site points
+  at it, and the copies that cannot point are held to it by `verify-fleet-state.py` — design documents
+  and their verifiers only; nothing an installer runs changes.** card#9287's stall bound
+  (`docs/design/FLEET-STATE.md` § 8.5) and enforcement bound (§ 9) were stated in full at six or more
+  sites across D2 and `docs/design/FLOOR.md` (D3) with nothing checking that the copies agreed, and
+  the duplication minted the same ~4×-short defect in two consecutive review rounds. **DELETE, the
+  default:** every D3 site now points at D2 and carries no figure for either bound — § 9 F7, § 12's
+  session re-check row and § 13 decision 36 (§ 9's note and § 14 item 5 already pointed; § 2.5 and
+  `docs/PLAN.md` state neither) — and inside D2 each bound is stated once, at § 8.5 and § 9 case (a),
+  with § 2.2's backpressure row, § 6.7's `feed_outbox` row, § 8.3's `feed.close` row, § 9's case (b)
+  and tick note, § 12's two basis cells, AT-D2-15 and AT-D2-19 pointing at it. **That deletion is what
+  prevents a drifted copy; no tool searches the documents for one.** **GUARD, exactly, for the two
+  copies that cannot point:** **G3**, which already held § 8.5's stall bound to § 8.3's dead-feed
+  figure and § 6.7's retention, now also holds it to the `tick_started > N s` comparison in § 8.3's
+  handler fence and to § 12's `Stream stall bound` row — its figure read bolded or not — and reds by
+  CONTROL when either copy cannot be found or read. **G14** re-derives § 9 case (a)'s two figures —
+  *under* as the handler's re-check interval plus the stall bound, the draining figure as that interval
+  plus one tick — and reds when either disagrees. **G12b** no longer holds one close reason by name:
+  the member set is read off § 8.3's `feed.close` row and held to the size the row states, every member
+  must be written by a pseudocode fence *inside § 8.3* (any fence in the document used to satisfy it),
+  and G12's ruling token is read off that row by its member's description — so a new reason declared
+  in the row and used only in prose, which ran green before, reds. D2 § 12's status table gains G14's
+  row and names G3's stall-bound checks, § 14 item 8 moves to G1–G14 under the verifier's own count
+  guard, and `verify-design-docs.selftest.py` gains plants for a drifted fence figure, a drifted § 12
+  row figure bolded and unbolded, a renamed § 12 row, and each drifted § 9 case (a) figure. **Not built
+  here:** a quoted-sentence drift guard over `server/**` and `tools/**` comments (the card's comments
+  4852 and 4876), whose instances were fixed on card#9296; it is returned to the card as a proposal.
 
 - **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
   as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
