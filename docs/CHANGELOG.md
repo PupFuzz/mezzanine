@@ -111,6 +111,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   are replaced by the command that prints them or dropped; stale D1 figures and check counts quoted
   in the reporter's self-test, comments and README and in the plant harness are removed, the
   remaining members recorded on `card#9326`; and D1 § 3.1's home-path site is scoped to Linux.
+  ⭐ **Round 4 — the CODE half of the two seat-object members**, without which CI was red:
+  `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's field list and `App\Read\SeatObject`
+  carried neither member. A migration adds § 6.4's two nullable `seat_state` columns;
+  `Projector::heartbeat` stores both as the last heartbeat's value verbatim, so a heartbeat that
+  omits a key stores `null` (D1 § 6.0: missing is null), exactly as `enabled` does; the object
+  publishes both. Both are VERSION-BEARING (§ 6.5's heartbeat-exceptions table), so
+  `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` take them together, and
+  `mezzanine:rebuild` resets them with the rest of the heartbeat group. The consumer join is still
+  not built.
 
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
   development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded

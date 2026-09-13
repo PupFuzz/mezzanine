@@ -233,6 +233,12 @@ final class SeatFacts
             'badges' => Badges::render($s),
             'badges_since' => Badges::since($s),
             'enabled' => $s->enabled === null ? null : (bool) $s->enabled,
+            // § 8.2.1's declared protocol agent name and its check are VERSION-BEARING: neither is
+            // one of the ten, and § 6.5's table of what a heartbeat moves outside the ten names
+            // both. So a seat editing its declaration, or a roster appearing or vanishing under
+            // it, is delivered on the heartbeat that carries the edge — and on no other.
+            'protocol_agent_name' => $s->protocol_agent_name,
+            'protocol_agent_name_check' => $s->protocol_agent_name_check,
             'reporter_version' => $s->reporter_version,
             'reporter_platform' => $s->reporter_platform,
             'selftest_failed' => $s->selftest_failed,

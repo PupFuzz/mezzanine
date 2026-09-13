@@ -419,7 +419,15 @@ abstract class FoldTestCase extends TestCase
         return $events;
     }
 
-    /** § 11's `heartbeat_only`: N heartbeats, one per minute, NO activity event of any kind. */
+    /**
+     * § 11's `heartbeat_only`: N heartbeats, one per minute, NO activity event of any kind.
+     *
+     * The declaration pair is carried because D1 § 6.14 makes `protocol_agent_name_check` non-null
+     * on every heartbeat, so a fixture without it is not D1's heartbeat — and because a POPULATED
+     * value is what lets AT-D2-10's column comparison discriminate on these two columns. Every
+     * seat a test delivers this to declares `pm`: § 8.2.1's uniqueness invariant is enforced at the
+     * consumer (§ 8.3.3 rule 1), and nothing on this plane reads a duplicate.
+     */
     protected function heartbeats(int $count, int $uptimeStart = 86_213): array
     {
         $events = [];
@@ -430,6 +438,7 @@ abstract class FoldTestCase extends TestCase
                 'uptime_s' => $uptimeStart + ($i * 60), 'spool_bytes' => 0, 'spool_files' => 1,
                 'spool_lag_events' => 0, 'oldest_unsent_age_s' => null, 'last_hook_at' => null,
                 'open_calls' => 0, 'open_sessions' => 0, 'open_attention' => 0, 'enabled' => true,
+                'protocol_agent_name' => 'pm', 'protocol_agent_name_check' => 'checked',
                 'degraded' => [], 'counters' => ['batches_sent' => $i + 1], 'counters_omitted' => 0,
                 'predicates' => [], 'selftest' => ['spool_writable' => 'pass'],
                 'config_fingerprint' => '9f2c41a7be03d518',

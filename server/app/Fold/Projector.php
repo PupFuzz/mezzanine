@@ -3,6 +3,7 @@
 namespace App\Fold;
 
 use App\Ingest\Counters;
+use App\Ingest\KindRegistry;
 use App\Ingest\Wire;
 use App\Sweep\Predicates;
 use Illuminate\Support\Facades\DB;
@@ -908,6 +909,23 @@ class Projector
             // move it — which is why § 6.5 lists it as one of the facts a heartbeat moves that IS
             // version-bearing, against the ordinary "a heartbeat emits no delta".
             'enabled' => $enabled === null ? null : (bool) $enabled,
+            // § 8.2.1 / § 6.4: the seat's DECLARED protocol agent name and D1 § 3.1's check outcome,
+            // each "last heartbeat's value", verbatim. Like `enabled` they are only ever learned from
+            // a heartbeat (D1 § 6.14), and like it a heartbeat that OMITS a key writes `null` rather
+            // than keeping the previous value: D1 § 6.0 makes a missing key and an explicit `null`
+            // the same thing, so that heartbeat's value is `null`, and a kept declaration would
+            // publish a name the seat has stopped sending as though it still sent it. `null`
+            // resolves no participant (§ 8.3.3), which is the direction a stale claim must fail in.
+            //
+            // Through `str()` / `enum()` rather than raw: the ingest bounds the name and refuses an
+            // out-of-set check, but type-checks neither, so a non-string reaches the column as
+            // `null`. The check's member set is READ from the ingest's registry, not restated here —
+            // it is the one set the ingest already refused everything else against.
+            'protocol_agent_name' => $e->str('protocol_agent_name', 48),
+            'protocol_agent_name_check' => $e->enum(
+                'protocol_agent_name_check',
+                KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],
+            ),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
             // `seat_counters`. They are monotonic since flusher start, so last-write-wins is the
