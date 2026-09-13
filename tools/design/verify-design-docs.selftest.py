@@ -62,6 +62,11 @@ because a gate can only be proven on a defect of its own class:
                `narrow-sql` narrows through a raw `ALTER TABLE ... MODIFY`.  card#9296 round 4's
                review is why these exist: check 12 read the last width in the last file, `down()`
                included, and passed both.
+  `bold-bump`
+            -- `bump`, with the bumped figure also wrapped in `**`, which is the class "a figure's
+               EMPHASIS moved it out of the check's reach".  card#9326's review is why this exists: a
+               row match that expected an unbolded figure passed a bolded drifted one at rc 0, and
+               bolding the correct figure silently dropped the row from the check.
 
 An anchor matching NOTHING is a hard error, never a skip -- that is the false-clean shape this whole
 directory exists against.  No kind writes the value it perturbs into this file.
@@ -225,6 +230,81 @@ PLANTS = [
         "retains `feed_outbox` for",
     ),
     (
+        # card#9326.  § 8.5's stall bound has ONE statement, and every other site points at it.  Two
+        # copies cannot point and are held to it by G3: § 8.3's handler fence, which is what an
+        # implementer builds, and § 12's number-table row.  A fence copy that drifts is the defect the
+        # review rounds found in prose, arriving on the surface that ships.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(if now - tick_started > )(\d+)( s:)",
+        "bump",
+        "§ 8.3's handler-fence copy of § 8.5's stall bound, which G3 holds to its owner (card#9326)",
+        "handler fence states the stall bound as",
+    ),
+    (
+        # card#9326.  § 12's row, drifted as written (unbolded) ...
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| Stream stall bound \| )(\d+)( s \|)",
+        "bump",
+        "§ 12's `Stream stall bound` row, drifted unbolded, which G3 holds to § 8.5 (card#9326)",
+        "row states the stall bound as",
+    ),
+    (
+        # ... and drifted AND bolded, the shape the review reproduced passing at rc 0 against a match
+        # that only read an unbolded figure.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| Stream stall bound \| )(\d+ s)( \|)",
+        "bold-bump",
+        "§ 12's `Stream stall bound` row, drifted and bolded, which G3 still reads (card#9326)",
+        "row states the stall bound as",
+    ),
+    (
+        # card#9326.  The row's CONTROL: a renamed row is a copy nothing reads, and the gate must say so
+        # rather than hold nothing and report clean.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| Stream stall )(bound)( \| )",
+        "rename",
+        "the label of § 12's `Stream stall bound` row, whose absence G3's CONTROL reports (card#9326)",
+        "section 12 has no `Stream stall bound` row",
+    ),
+    (
+        # card#9326.  § 9 case (a)'s two figures are the enforcement bound's one statement, and G14
+        # re-derives both: the *under* figure as the handler's re-check interval plus § 8.5's stall
+        # bound, the draining figure as that interval plus the handler's tick.  One plant per figure,
+        # because each is a separate equality.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(enforcement lag is\s+\*\*under )(\d+)( s\*\*)",
+        "bump",
+        "§ 9 case (a)'s *under* figure, which G14 re-derives from § 8.3's re-check interval plus "
+        "§ 8.5's stall bound (card#9326)",
+        "states the enforcement bound as under",
+    ),
+    (
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(on a client that drains promptly it is \*\*)(\d+)( s \+ one \d+ ms tick\*\*)",
+        "bump",
+        "§ 9 case (a)'s draining figure, which G14 re-derives from § 8.3's re-check interval and "
+        "tick (card#9326)",
+        "states the enforcement bound on a draining client as",
+    ),
+    (
+        # card#9326.  G12b's population is the `feed.close` row's DECLARED member set, read off the
+        # row.  Renaming a member there is a member the handler fence does not write, and G12b must
+        # say so -- it used to hold one member by name and would have waited for this one to be typed.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `feed\.close` \| server → client \|.*?; `)(reload)(` — )",
+        "rename",
+        "a member of § 8.3's declared `feed.close` set, which G12b now re-derives from that row and "
+        "holds § 8.3's handler fence to (card#9326)",
+        "G12b: section 8.3's `feed.close` row declares",
+    ),
+    (
         # card#9296.  The declared protocol agent name is ONE value set with THREE homes across TWO
         # documents -- D1's field table, D2's `ENUM`, D2's read surface -- and card#7957's finding
         # was that NO ACT FAILED when the two identity surfaces disagreed.  The plant renames a
@@ -282,9 +362,12 @@ PLANTS = [
     ),
 ]
 
-# Both read group(2) out of the document and transform it; neither carries a value of its own.
+# Each reads group(2) out of the document and transforms it; none carries a value of its own.
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
+    "bold-bump": lambda m: (m.group(1) + "**"
+                            + re.sub(r"^\d+", lambda d: str(int(d.group(0)) + 1), m.group(2)) + "**"
+                            + m.group(3)),
     "rename": lambda m: m.group(1) + m.group(2) + "_renamed" + m.group(3),
 }
 
