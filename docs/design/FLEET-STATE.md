@@ -4268,7 +4268,7 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 |---|---|---|
 | the floor, the drill-down, the stream, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the feed **and** the REST snapshot — and on the stream the gate is re-applied every **15 s** for as long as it is open, below |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
-| the stream, from a machine consumer | **not supported** | see below — the reason it was refused is gone and the refusal stands until someone rules otherwise |
+| the stream, from a machine consumer | **not supported** | refused by operator ruling, 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15); the reason it was first refused is gone — see below |
 | the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
 **The stream re-checks its own authorization every 15 s, so revocation on an open connection is a
@@ -4398,22 +4398,23 @@ over a dimmed floor. **The tick deliberately does not touch `last_activity`**, a
 rather than an oversight: touching it would make an unattended tab immortal and defeat idle expiry on
 exactly the screen this product leaves on a wall, which is a security property nobody has ruled may be
 spent. The cost is the other half — an operator's floor asks for MFA again every two hours — and it is
-filed, not absorbed: [§ 14](#14-open-questions-for-the-review-loop) item 16 puts the ruling where it
-belongs, because the fix (a longer lifetime for this route, a kiosk credential, a re-auth that does not
-blank the floor) is an authorization decision and not a render.
+filed, not absorbed: [§ 14](#14-open-questions-for-the-review-loop) item 16 holds it, because the fix (a
+longer lifetime for this route, a kiosk credential, a re-auth that does not blank the floor) is an
+authorization decision and not a render. The operator **deferred** that decision on 2026-09-13 until
+the floor exists, with a kiosk credential as the likely shape, so this behaviour stands until then.
 
 ⚠ **The live feed stays browser-only, and the reason has changed, which is stated so nobody reads the
 old reason as still standing.** The refusal rested on *no revocation story on an open connection*; that
 story now exists, and a machine consumer's `mzr_` token could be re-checked on the same tick against
-`feed_tokens.revoked_at` with no new mechanism. **What has not happened is a ruling that machines may
-hold the stream** — an authorization decision with its own costs (a worker pinned per machine consumer
-under R2's arithmetic, a token's 120 req/min limit that means nothing on a stream, the all-or-nothing
-read of the paragraph below granted to a credential rather than a person), and this amendment removes
-the blocker without taking the decision. [§ 14](#14-open-questions-for-the-review-loop) item 15 files
-it. The known machine consumer is the bridge's autonomy watchdog, whose decision cadence is minutes
+`feed_tokens.revoked_at` with no new mechanism. **Whether machines may hold the stream is an
+authorization ruling, and the operator ruled it no, for now, on 2026-09-13**
+([§ 14](#14-open-questions-for-the-review-loop) item 15). A yes has costs of its own: a worker pinned
+per machine consumer under R2's arithmetic, a token's 120 req/min limit that means nothing on a stream,
+and the all-or-nothing read of the paragraph below granted to a credential rather than a person. The
+known machine consumer is the bridge's autonomy watchdog, whose decision cadence is minutes
 ([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why)), so REST polling
 serves it exactly, as before. The cost, stated: a future machine consumer that genuinely needs
-sub-second fleet state gets polling latency until that ruling is made.
+sub-second fleet state gets polling latency, and that need is what reopens item 15.
 
 | Property | Value | Derivation |
 |---|---|---|
@@ -4432,8 +4433,10 @@ sub-second fleet state gets polling latency until that ruling is made.
 install, and any `fleet_read` token does too. That is stated rather than assumed, because the moment a
 second organisation's install reports into one Mezzanine it is wrong. Every outbox row carries its
 `install_id` and the stream handler filters per subscriber ([§ 8.3](#83-the-websocket-delta-feed)), and
-the endpoint shapes are per-install, so a future ACL has somewhere to attach; whether one is needed is
-[§ 14](#14-open-questions-for-the-review-loop) item 7, and it is an operator question, not a design one.
+the endpoint shapes are per-install, so a future ACL has somewhere to attach. Whether one is needed was
+an operator question, not a design one, and the operator ruled on 2026-09-13 that none is, for now:
+[§ 14](#14-open-questions-for-the-review-loop) item 7 records the ruling, and it reopens before a second
+organisation's install reports in.
 
 ---
 
@@ -5392,7 +5395,7 @@ review can reverse it deliberately rather than discover it later.
 | 7 | **The comparator includes `seq_epoch`** | `(event_time, seq)` exactly as `D2-MUST` #4 words it | `seq` restarts at a new epoch, so the literal two-part key is not a total order across a reset. The three-part key reduces to it whenever the epoch is constant, which is every comparison but one | none functionally; it is a wording divergence from D1 and is filed as such ([§ 14](#14-open-questions-for-the-review-loop) item 4) rather than left to be discovered |
 | 8 | **The feed's ordering key is a server-minted `state_version`, not `(seq_epoch, seq)`** | order deltas by the wire key | State transitions are also minted by rules with **no wire event** — orphan closes, staleness, ceilings, quiescence. Those carry no `seq` and there is no honest value to invent. A `seq`-ordered feed could not sequence precisely the transitions that fire when a seat goes quiet | two ordering keys in the system, which is why [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states the division explicitly and the snapshot carries the wire key as provenance |
 | 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat). `feed_outbox` (card#9287) is not that buffer: a stream never starts below the head it connected at and `Last-Event-ID` is never written ([§ 8.3](#83-the-websocket-delta-feed)) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
-| 10 | **The live feed is browser-only; machine consumers poll REST** — ⚠ **the reason changed on card#9287 and the decision did not** | authenticate the stream with an `mzr_` token too | Until card#9287: a long-lived socket needs revocation *on an open connection*, which was a mechanism nobody had asked for. Since: the stream re-checks its session every 15 s ([§ 9](#9-read-side-authentication)) and could re-check a token the same way, so the blocker is gone — and admitting machines is an authorization ruling with its own costs (a worker per consumer, a rate limit that means nothing on a stream) that nobody has made; [§ 14](#14-open-questions-for-the-review-loop) item 15 holds it | a future consumer needing sub-second fleet state gets polling latency until item 15 is ruled; reversing this is now one row here, one tick check and one ruling — not a mechanism |
+| 10 | **The live feed is browser-only; machine consumers poll REST** — ⚠ **the reason changed on card#9287 and the decision did not** | authenticate the stream with an `mzr_` token too | Until card#9287: a long-lived socket needs revocation *on an open connection*, which was a mechanism nobody had asked for. Since: the stream re-checks its session every 15 s ([§ 9](#9-read-side-authentication)) and could re-check a token the same way, so the blocker is gone — and admitting machines is an authorization ruling with its own costs (a worker per consumer, a rate limit that means nothing on a stream), and the operator ruled it **no, for now**, on 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15) | a future consumer needing sub-second fleet state gets polling latency, and that need reopens item 15; reversing this is one row here, one tick check and a new ruling — not a mechanism |
 | 11 | **REST carries the compatibility discipline; the stream does not** | apply `docs/VERSIONING.md § Wire compatibility` to both | Only REST has a consumer that upgrades on someone else's schedule. An N/N-1 window on a channel whose two ends ship in one act is an obligation nobody can exercise, and therefore one nobody maintains | if the delta feed ever gains an independent consumer this is wrong — which is a checkable condition, stated in [§ 8.1](#81-two-surfaces-two-compatibility-postures) as the trigger |
 | 12 | **`events` is not partitioned** | RANGE partition on `received_at` for O(1) purge by `DROP PARTITION` | MariaDB requires every unique key to contain every partitioning column, so `uq_dedup` would become `(seat_ref, event_id, received_at)` — under which a re-sent event on a later day no longer conflicts and **`D2-MUST` #3's dedup silently stops working**. A cheap purge is not worth the guarantee it would break | purge is bounded `DELETE`s with a wall-clock budget instead, and `purge_backlog_rows` says when that stops keeping up |
 | 13 | **`data` stays opaque JSON; the fold projects every field the state model reads** | generated/stored columns or functional indexes over `data` | One home per fact, and a projection change needs no `ALTER` on the largest table — just a rebuild. Indexing into a JSON column would make the log's shape part of the query plan | the projections must be kept in step with D1's field tables, which is what [AT-D2-10](#at-d2-10-rebuild-equals-fold) and the fixtures are for |
@@ -5447,8 +5450,9 @@ is never a reason to leave two readings live.
 **All seven, and item 13's marker convention, were ruled on and landed in D1 (card#7521); each is
 closed below with the D1 anchor its amendment landed at.** Where D2 had stated a reading, the
 amendment adopted that reading, so no rule in this document moved — what changed is that the second
-reading is gone from D1 rather than merely unused here. Items 3, 6, 7 and 9 remain open and are not
-D1's: they need an operator answer, a proposal document, or D3.
+reading is gone from D1 rather than merely unused here. Items 3, 6 and 9 remain open and are not
+D1's: they need an operator answer, a proposal document, or D3. Item 7, the fourth such item when this
+was written, has since been closed by operator ruling.
 
 1. **✅ CLOSED — the flusher's `inferred_silence` `session.end` carries no `turn.end`.**
    D1 § 6.0's kind table lists `turn.end` as hook-emitted, and § 6.2's turn-closing reap is on the
@@ -5523,32 +5527,21 @@ D1's: they need an operator answer, a proposal document, or D3.
    history. The console's export is the operator's own copy in the meantime, and it is a copy someone
    has to remember to take.
 
-7. **⇢ Operator — is fleet-read all-or-nothing?**
-   Today any MFA-authenticated user and any `fleet_read` token sees every install
-   ([§ 9](#9-read-side-authentication)). ⚠ **The two paragraphs below predate card#9287 and say
-   *channel* where the feed no longer has one; the ⭐ paragraph at the end of this item is the current
-   attachment point and supersedes them.** The endpoint shapes are per-install so an ACL has
-   somewhere to attach. **Blocks:** nothing while every install belongs to one operator.
-   **Closes it:** a ruling, ideally before a second organisation's install reports in.
-   ⚠ **A second cost joined the ruling on 2026-09-12 (card#9208's reversal):** [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
-   `room.map` is published on every install's channel carrying the changed room's `install_id`, so a
-   per-install ACL cannot be attached at the channel alone — the message must be filtered per
-   subscriber, or moved to a building channel of its own, in the same change. **And a second
-   thing the same ACL has to answer was already on every channel before that message existed:**
-   `feed.heartbeat` and `fleet.health` carry the fleet-wide `fleet{}` — aggregates over every seat —
-   per install ([§ 8.3](#83-the-websocket-delta-feed)), so what a per-install viewer may see of the
-   fleet's health is a product question, not a filter. Today, under the all-or-nothing read, every
-   subscriber may see every room and every aggregate and nothing is exposed; the cost is that the
-   ACL, when ruled, is a filter on `room.map`, a rule for `fleet{}`, and the authorization it always
-   was — on the channel, **and on the fleet-wide snapshot and health endpoints, which take no
-   per-install parameter** ([§ 8.2](#82-rest)) and would filter `installs[]` per caller — three
-   edits, one of them a design answer, and it is written here so the ruling is priced with them.
-   ⭐ **Under one fleet-wide stream (card#9287) the ACL's attachment point on the feed is the handler's
-   per-subscriber filter ([§ 8.3](#83-the-websocket-delta-feed), [§ 9](#9-read-side-authentication)),
-   not a channel:** every `feed_outbox` row carries its `install_id`, or `NULL` for fleet-wide, so the
-   filter on `room.map` this item priced is a predicate over that column, and the `fleet{}` question is
-   the same product question over the `NULL` rows. The three edits stand; the first of them moved from
-   *a channel per install* to *a predicate in one place*.
+7. **✅ CLOSED — fleet-read is all-or-nothing, for now.** ⭐ **Operator ruling, 2026-09-13.** Any
+   MFA-authenticated user and any `fleet_read` token sees every install
+   ([§ 9](#9-read-side-authentication)). **What it changes:** nothing in the design. It confirms the read
+   § 9 already specified, so the stream handler's per-subscriber filter
+   ([§ 8.3](#83-the-websocket-delta-feed)) keeps admitting everything and no ACL is built.
+   **Reopens:** before a second organisation's install reports in. The price of the ACL that reopening
+   would buy stays here so it is not re-derived, as three edits. First, the handler's one
+   per-subscriber filter becomes a predicate over `feed_outbox.install_id` (card#9287 moved the
+   attachment point there from a channel per install), and that predicate is also the filter
+   [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
+   `room.map` needs, because it carries another install's `install_id`. Second, a product answer for
+   the fleet-wide `fleet{}` that `feed.heartbeat` and `fleet.health` carry (the `NULL`-`install_id`
+   rows), which is a design question and not a filter. Third, per-caller filtering of `installs[]` on
+   the fleet-wide snapshot and health endpoints, which take no per-install parameter
+   ([§ 8.2](#82-rest)).
 
 8. **✅ CLOSED — a D2 verifier exists and ships with this document.**
    `tools/design/verify-fleet-state.py` mechanises **fourteen** guard classes (G1–G14), listed with their
@@ -5654,28 +5647,30 @@ D1's: they need an operator answer, a proposal document, or D3.
     [§ 8.2](#82-rest)'s REST surface, D1 § 18.7's enum-classification obligation attaches at that
     publication — the trigger is the act, not a review round.
 
-15. **⇢ Operator — may a machine consumer hold the stream, now that revocation on an open connection
-    exists?** [§ 9](#9-read-side-authentication) refused the live feed to machine consumers because a
-    long-lived connection authenticated by a bearer token had no revocation story; card#9287's stream
-    re-checks its session every 15 s and could re-check an `mzr_` token against `feed_tokens.revoked_at`
-    on the same tick with no new mechanism. **The blocker is removed and the decision is not made**,
-    because they are different things: admitting machines is an authorization ruling with costs of its
-    own — one FPM worker pinned per machine consumer under R2's arithmetic, a 120 req/min token limit
-    that bounds nothing on a stream, and the all-or-nothing fleet read granted to a credential rather
-    than a person. **Blocks:** nothing — the known machine consumer polls REST at a cadence of minutes
-    and is served exactly. **Closes it:** a ruling; if yes, one row in § 9's surface table, the token
-    re-check on the tick, and a per-token stream cap, in one change.
+15. **✅ CLOSED — no: a machine consumer may not hold the stream, for now.** ⭐ **Operator ruling,
+    2026-09-13.** The known machine consumer polls REST at a cadence of minutes and is served exactly
+    that way. **What it changes:** nothing is built. [§ 9](#9-read-side-authentication)'s surface table
+    keeps *the stream, from a machine consumer* at **not supported**, and the refusal now rests on this
+    ruling. It no longer rests on a missing revocation story: card#9287's stream re-checks its session
+    every 15 s and could re-check an `mzr_` token against `feed_tokens.revoked_at` on the same tick.
+    **Reopens:** a machine consumer that needs fleet state faster than REST polling gives it. A yes would
+    cost one FPM worker pinned per machine consumer under R2's arithmetic, a 120 req/min token limit
+    that bounds nothing on a stream, and the all-or-nothing fleet read (item 7) granted to a credential
+    rather than a person. It would land as one row in § 9's surface table, the token re-check on the
+    tick, and a per-token stream cap, in one change.
 
-16. **⇢ Operator — a floor left open re-authenticates every `SESSION_LIFETIME`; is that the product?**
+16. **⇢ Operator — DEFERRED by operator ruling, 2026-09-13: a floor left open re-authenticates every
+    `SESSION_LIFETIME`.** ⭐ The operator will revisit this once the floor exists, and the likely shape is
+    **a kiosk credential with its own expiry**. **Meanwhile the current behaviour stands:**
     [§ 9](#9-read-side-authentication)'s 15 s re-check reads the session from the store and deliberately
-    does **not** refresh it, so an open stream does not keep a session alive: a floor on a wall asks for
-    MFA again 120 minutes after it connected, every time. The alternative — the tick touching
-    `last_activity` — makes an unattended tab immortal and spends an idle-expiry property on the screen
-    most likely to be unattended, which is why it is not taken here. **Blocks:** nothing; the floor
-    renders [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 correctly and an operator
-    signs in. **Closes it:** a ruling, with three shapes priced — a longer lifetime for this route only,
-    a kiosk credential with its own expiry, or a re-auth that restores the stream without blanking the
-    floor. ⚠ The number is **this application's configuration, not a constant**: it is
+    does **not** refresh it, so an open stream does not keep a session alive, and a floor on a wall asks
+    for MFA again 120 minutes after it connected, every time. Touching `last_activity` on the tick stays
+    refused: it would make an unattended tab immortal and spend an idle-expiry property on the screen
+    most likely to be unattended. **Blocks:** nothing; the floor renders
+    [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 correctly and an operator signs in.
+    **Closes it:** that revisit. The three shapes priced for it were a longer lifetime for this route
+    only, a kiosk credential with its own expiry, or a re-auth that restores the stream without blanking
+    the floor. ⚠ The number is **this application's configuration, not a constant**: it is
     `SESSION_LIFETIME` in `server/.env`, and a deployment that changes it changes this item's answer
     without touching this document.
 

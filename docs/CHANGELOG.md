@@ -19,6 +19,31 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
+  questions, and two false claims are corrected.** Docs only; no code changes.
+  - **D2 § 14 item 7, closed:** fleet-read is all-or-nothing, for now. Any MFA user and any
+    `fleet_read` token sees every install. It reopens before a second organisation's install
+    reports in. D2 § 9 and D3 § 1.2 say so.
+  - **D2 § 14 item 15, closed:** a machine consumer may not hold the stream, for now. The known one
+    polls REST at a cadence of minutes. D2 § 9's surface table and § 13 row 10 rest the refusal on
+    the ruling.
+  - **D2 § 14 item 16, deferred:** a floor left open still re-authenticates every
+    `SESSION_LIFETIME`. The operator will revisit it once the floor exists, likely as a kiosk
+    credential. D2 § 9 and D3 § 9 say so.
+  - **D3 § 14 item 3, closed:** `card#N` renders as plain text, because the board is private and no
+    link base URL is configured. § 4.3 and § 5.2 no longer describe a configured link.
+  - **D3 § 14 item 18, closed:** no in-browser room editor. Tiled stays the editor; § 10.3 and
+    § 13 row 28 say so.
+  - **`docs/VERSIONING.md`, corrected:** card#9328 step 2's *"FALSE AS MEASURED"* notes are removed
+    from § Branch model and core rule 5. `dev` is squash-only for everyone, and ruleset `21953633`'s
+    admin bypass (mode `always`) exists so the `main` → `dev` back-merge lands as a merge commit. The
+    admin identity merges it with `gh pr merge <N> --merge`, not `solo-self-merge`, which squashes.
+    Release-flow step 11 and card#9328's entry below say so too.
+  - **D1, corrected:** § 6.0 said the reporter config's `harness_label` is *"written by the
+    installer"*. There is no installer, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key
+    unset on purpose. § 6.0 and § 6.1 now say the field is `null` on such a seat.
+  **Installer action:** none.
+
 - **card#9368** — **A Linux agent seat can report without an installer and without root.** The new
   `fleet-reporter/INSTALL-LINUX.md` is a by-hand runbook, performed on the sandbox host to connect
   `mezzanine` / `mezzanine-solo` as the first reporting seat. Its steps: issue the seat token straight
@@ -299,10 +324,11 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   classic protection), and gives one command that prints both layers for both branches. The
   contexts it lists are marked as measured on 2026-09-13. Two historical mentions of the old job in
   `Tests\TestCase` and `SeatConsoleTest` stay as they are: they record card#9250's first MariaDB
-  run. ⚠ **Found while re-measuring, marked and not decided:** `dev` measured squash-only
-  (ruleset `21953633`). That falsifies § Branch model's *"`dev` now allows `squash` AND `merge`"*
-  and core rule 5's matching sentence, both now marked in place. Whether it is intended, and what
-  it means for rule 5's merge-commit back-merge, is an open question for the release flow.
+  run. ⚠ **Corrected 2026-09-13 (operator ruling):** this step also read ruleset `21953633`
+  (`dev` squash-only) as making rule 5's merge-commit back-merge unsatisfiable, and marked
+  § Branch model and core rule 5 *"FALSE AS MEASURED"*. That reading was wrong: the ruleset has an
+  admin bypass in mode `always`, which exists so the back-merge lands as a merge commit. The marks
+  are removed; see the *Operator rulings recorded* entry above.
 
 - **2FA issuer (no card)** — **an authenticator app now names this site's entry after the
   site's own hostname instead of `Mezzanine` on every host.** The operator asked for the sandbox's
