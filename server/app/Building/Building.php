@@ -7,10 +7,11 @@ namespace App\Building;
  * fleet reports, in, and the floors this deployment draws, out.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ A PURE FUNCTION OF ITS TWO INPUTS, AND IT READS NOTHING ELSE. It opens no channel, issues no
+ * ⛔ A PURE FUNCTION OF ITS TWO INPUTS, AND IT READS NOTHING ELSE. It opens no stream, issues no
  * fetch and names no seat — `docs/design/FLOOR.md § 4.6` puts `ADMIT`'s population with the
- * SNAPSHOT and never with the layout, because a client that opened `private-fleet.{install_id}`
- * on the strength of a layout naming a room would be asking for an install that may not exist.
+ * SNAPSHOT and never with the layout, because a client that admitted an install on the strength
+ * of a layout naming a room would be asking for an install that may not exist. (The feed is one
+ * fleet-wide stream since card#9287; there is no per-install channel for a layout to open.)
  * The layout decides WHERE a room is drawn and contributes no count, no state, no membership and
  * no message.
  *

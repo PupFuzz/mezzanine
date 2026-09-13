@@ -148,9 +148,10 @@ final class FeedStream
     }
 
     /**
-     * § 9's per-subscriber filter. It admits everything today — fleet read is all-or-nothing, and
-     * whether a per-install ACL is needed is § 14 item 7, an operator question. Every row carries its
-     * `install_id` so that the rule has a key to attach to when it is ruled.
+     * § 9's per-subscriber filter. It admits everything — § 14 item 7, CLOSED by operator ruling
+     * 2026-09-13: fleet-read is all-or-nothing, for now, and no ACL is built. It reopens before a
+     * second organisation's install reports in; every row carries its `install_id` so that the
+     * ACL then has a key to attach to.
      */
     private function admits(object $row): bool
     {
