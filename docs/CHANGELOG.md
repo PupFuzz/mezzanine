@@ -19,6 +19,23 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9300** — **D3 follows operator ruling A4: a deploy that does not change `feed_version` shows
+  the floor's viewer nothing.** Docs only; no code changes.
+  - **D3 § 14 item 20, closed.** § 2.5's `fleet.reload` row and § 9 F8 raise the reload banner only on
+    a `feed_version` the client does not know. F3's `reload` cells render nothing. A stream the
+    deploy's drain ends with SIGTERM carries no `feed.close`, so it takes F1's path.
+  - **§ 2.2 now owns a 60 s reload grace.** After `feed.close{reason:"reload"}` the client re-opens on
+    its 10 s cadence and renders nothing while the deploy's maintenance window refuses it. § 12 derives
+    the figure from D2 § 2.1's feed-reload row, `bin/deploy.sh`'s drain and `docs/PLAN.md § 5`'s
+    opcache wait. Past the grace the client renders the failure, so a deploy that failed with the app
+    down is not drawn as a healthy floor. AT-D3-8 and `fx-refusals` gain the legs for both sides.
+  - **D3 no longer describes the retired per-install channel.** § 3.1, § 4.3, § 4.6, § 6.2's A17 row,
+    AT-D3-9 and Appendix B step 3 now describe the one fleet-wide stream.
+  - **D2, corrected:** § 8.3 no longer says a per-install ACL attaches "when item 7 is ruled", because
+    item 7 was ruled and recorded. § 8.7 and § 13 row 42 no longer describe per-install channels or say
+    every `fleet.reload` demands a reload.
+  **Installer action:** none.
+
 - **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
   questions, and two false claims are corrected.** Docs only; no code changes.
   - **D2 § 14 item 7, closed:** fleet-read is all-or-nothing, for now. Any MFA user and any
