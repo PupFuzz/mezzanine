@@ -76,6 +76,7 @@
 #                         php-fpm<this host's CLI PHP minor>, e.g. php-fpm8.5 — derived; see below]
 #   MEZZ_DAEMON_STOP_TIMEOUT_S  seconds the previous daemons get to exit after SIGTERM [default: 30]
 #   MEZZ_DAEMON_SETTLE_S  seconds a relaunched daemon must stay alive to count [default: 3]
+#                         Both are whole numbers of seconds; anything else is refused (A1b).
 #   MEZZ_DOCROOT          the vhost's document root, whose `.user.ini` A14 reads [default:
 #                         $HOME/public_html, the Virtualmin layout; absent ⇒ a warning naming it]
 #   The supervised set is deliberately NOT configurable here: it is bin/supervision.sh's, the same
@@ -176,6 +177,32 @@ env_get() {
 }
 
 git_at() { git -C "$DEPLOY_ROOT" "$@"; }
+
+# whole_seconds <value> — a whole number of seconds read from OUTSIDE this script (an ini, a pool, the environment,
+# the serving release's hand-over), printed in base 10; fails, printing nothing, on anything but digits. Every such
+# number is parsed through here, because bash arithmetic reads a leading zero as octal: `08` aborts the script with
+# "value too great for base" — exit 1, which the ERR trap never sees, so a window already open would fail with no
+# banner under the exit code that says nothing was touched — and `010` is silently 8.
+# For opcache.revalidate_freq, base 10 is never SHORTER than PHP's own reading, so a wait computed from it is never
+# short and "within N s" stays true. Measured with PHP 8.5.4's CLI (opcache_get_configuration(), 2026-09-13): `010`
+# is 8, `08` is 0 with a warning ("interpreting as "0" for backwards compatibility"), `0178` is 15.
+whole_seconds() {
+  case "$1" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s' "$((10#$1))"
+}
+
+# daemon_timings — MEZZ_DAEMON_STOP_TIMEOUT_S and MEZZ_DAEMON_SETTLE_S, parsed into DAEMON_STOP_TIMEOUT_S and
+# DAEMON_SETTLE_S; on a value that is not a whole number of seconds, fails with TIMING_NOT_READY naming it. Phase A
+# refuses on it (A1b). Phase B reads them again before building anything, because the serving release that ran
+# phase A may be one that never checked.
+daemon_timings() {
+  DAEMON_STOP_TIMEOUT_S="$(whole_seconds "${MEZZ_DAEMON_STOP_TIMEOUT_S:-30}")" || {
+    TIMING_NOT_READY="MEZZ_DAEMON_STOP_TIMEOUT_S is '${MEZZ_DAEMON_STOP_TIMEOUT_S:-}', not a whole number of seconds"
+    return 1; }
+  DAEMON_SETTLE_S="$(whole_seconds "${MEZZ_DAEMON_SETTLE_S:-3}")" || {
+    TIMING_NOT_READY="MEZZ_DAEMON_SETTLE_S is '${MEZZ_DAEMON_SETTLE_S:-}', not a whole number of seconds"
+    return 1; }
+}
 
 # ── the PHP floor, derived ────────────────────────────────────────────────────────────────────
 # card#9203. `server/composer.json` is the ONE place this project states which PHP it runs on,
@@ -280,19 +307,19 @@ ini_file_value() {
 
 # fpm_judge <label> <enable> <validate_timestamps> <revalidate_freq> <preload> — one effective opcache
 # posture. Called by fpm_code_reload_ready only: it records into that function's locals (cached, stale,
-# preloaded, max_f), and fails with FPM_NOT_READY set on a revalidate_freq it cannot wait out.
+# preloaded, max_f — in base 10, whole_seconds), and fails with FPM_NOT_READY set on a revalidate_freq it cannot
+# wait out. The one place a revalidate_freq is parsed: the ini's, a pool's and each .user.ini's all arrive here.
 fpm_judge() {
+  local freq
   # Off, or not loaded at all (no `opcache.enable` in the phpinfo): every request reads the disk.
   if ! ini_on "${2:-0}"; then return 0; fi
   cached=1
   if ! ini_on "$3"; then stale+=("$1"); fi
   if [ -n "$5" ]; then preloaded+=("$1"); fi
-  case "$4" in
-    '' | *[!0-9]*)
-      FPM_NOT_READY=("$1: opcache.revalidate_freq is '$4', not a whole number of seconds")
-      return 1 ;;
-  esac
-  if [ "$4" -gt "$max_f" ]; then max_f="$4"; fi
+  freq="$(whole_seconds "$4")" || {
+    FPM_NOT_READY=("$1: opcache.revalidate_freq is '$4', not a whole number of seconds")
+    return 1; }
+  if [ "$freq" -gt "$max_f" ]; then max_f="$freq"; fi
 }
 
 fpm_code_reload_ready() {
@@ -445,6 +472,10 @@ phase_a() {
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
+
+  # A1b — the restart's timings. restart_daemons does arithmetic on them inside the window, where a value it
+  # cannot read would stop the deploy with the app down.
+  daemon_timings || refuse "$TIMING_NOT_READY"
 
   # A2 — the anti-"bare re-run" guard (handover item 3). A deploy that failed in the window left
   # this marker AND left the app down. Without this check the obvious operator reflex — run it
@@ -606,7 +637,7 @@ phase_a() {
     "constraint."
   # `^X.…` is bounded above at the next major; `>=X.…` is not bounded at all.
   floor_max=""
-  if [ "$floor_op" = '^' ]; then floor_max="$(( ${floor_min%%.*} + 1 )).0.0"; fi
+  if [ "$floor_op" = '^' ]; then floor_max="$(( 10#${floor_min%%.*} + 1 )).0.0"; fi
   phpver="${HOST_PHP_VERSION:-0}"
   if ! ver_ge "$phpver" "$floor_min" || { [ -n "$floor_max" ] && ver_ge "$phpver" "$floor_max"; }; then
     refuse "PHP $phpver does not satisfy server/composer.json's $floor_constraint at $(git_at rev-parse --short "$SHA")" \
@@ -957,7 +988,7 @@ holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid still ru
 
 restart_daemons() {
   local php_bin cmd lock lk pid deadline step_started stopped=""
-  local stop_timeout="${MEZZ_DAEMON_STOP_TIMEOUT_S:-30}" settle="${MEZZ_DAEMON_SETTLE_S:-3}"
+  local stop_timeout="$DAEMON_STOP_TIMEOUT_S" settle="$DAEMON_SETTLE_S"
   local -a target_locks=() files=() hs=()
   php_bin="$(supervision_default_php)"
   step_started="$(date +%s)"
@@ -1032,14 +1063,15 @@ phase_b_post_checkout() {
 
   # The supervised set installed and restarted below is the DEPLOYED release's: this file and the
   # bin/supervision.sh it sourced are both the checked-out copies — that is what the re-exec bought. Phase A's
-  # opcache floor (phase_b_open_window) is checked here, before anything is built, rather than at the wait,
-  # after the migration.
+  # opcache floor (phase_b_open_window) and the restart's timings are read here, before anything is built, rather
+  # than where they are used, after the migration. Both through whole_seconds: phase A ran in the SERVING release,
+  # which may hand over, or have let through, a number with a leading zero.
   FAILED_STEP="reading the opcache floor phase A handed over"
-  case "${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}" in
-    '' | *[!0-9]*)
-      echo "MEZZ_DEPLOY_REVALIDATE_FLOOR_S is '${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}', not the whole number of seconds phase A hands over" >&2
-      false ;;
-  esac
+  REVALIDATE_FLOOR_S="$(whole_seconds "${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}")" || {
+    echo "MEZZ_DEPLOY_REVALIDATE_FLOOR_S is '${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}', not the whole number of seconds phase A hands over" >&2
+    false; }
+  FAILED_STEP="reading MEZZ_DAEMON_STOP_TIMEOUT_S and MEZZ_DAEMON_SETTLE_S"
+  daemon_timings || { echo "$TIMING_NOT_READY" >&2; false; }
 
   # ── dependencies ────────────────────────────────────────────────────────────────────────────
   # Every artisan/composer/npm call below runs from the app directory (D-16) rather than in a
@@ -1122,7 +1154,7 @@ phase_b_post_checkout() {
   fpm_code_reload_ready || { printf '%s\n' "${FPM_NOT_READY[@]}" >&2; false; }
   # The previous release's .user.ini can hold a longer revalidate_freq than anything readable now: phase A's
   # reading of it is the floor (phase_b_open_window).
-  local floor="$MEZZ_DEPLOY_REVALIDATE_FLOOR_S" wait_for="$FPM_REVALIDATE_S"
+  local floor="$REVALIDATE_FLOOR_S" wait_for="$FPM_REVALIDATE_S"
   if [ "$floor" -gt "$wait_for" ]; then wait_for="$floor"; fi
   local wait_s=$((last_code_write + wait_for + 1 - $(date +%s)))
   if [ "$wait_s" -gt 0 ]; then sleep "$wait_s"; fi

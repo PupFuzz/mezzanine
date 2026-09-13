@@ -915,6 +915,43 @@ run
 eq  "floor mutant: the mutator really cut the floor"                   1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'floor cut out by the selftest mutant')"
 eq  "floor mutant: less than the previous release's revalidate_freq + 1 s passed" "yes" "$([ "$(waited)" -lt 5 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 
+section "WHOLE SECONDS READ FROM OUTSIDE — a leading zero is base 10; a non-number is refused before the window"
+# bash arithmetic reads `08` as a bad octal and aborts the script — exit 1, no ERR trap, no banner, the window open —
+# and `010` as 8. Base 10 is never the shorter wait PHP keeps (deploy.sh whole_seconds says why).
+mkfix freq_leading_zero; export MEZZ_DAEMON_SETTLE_S=0
+printf 'php_value[opcache.revalidate_freq] = 08\n' >> "$POOL"
+run
+eq  "freq 08: exit 0"                                         0 "$RC"
+has "freq 08: read as 8 s"                                    "revalidates a changed file within 8 s" "$OUT"
+eq  "freq 08: ≥ 8 + 1 s passed before up"                     "yes" "$([ "$(waited)" -ge 9 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
+# The floor as a serving release hands it over — one whose phase A passed on the digits it read, as bbba3cd's did.
+hand_over_010() { sed -i 's/ MEZZ_DEPLOY_REVALIDATE_FLOOR_S="\$FPM_REVALIDATE_S"$/ MEZZ_DEPLOY_REVALIDATE_FLOOR_S=010/' "$1/bin/deploy.sh"; }
+mkfix floor_leading_zero "" hand_over_010; export MEZZ_DAEMON_SETTLE_S=0
+eq  "floor 010: the serving release really hands over 010"    1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c ' MEZZ_DEPLOY_REVALIDATE_FLOOR_S=010$')"
+run
+eq  "floor 010: exit 0"                                       0 "$RC"
+has "floor 010: read as 10 s"                                 "(before the checkout: within 10 s)" "$OUT"
+eq  "floor 010: ≥ 10 + 1 s passed before up"                  "yes" "$([ "$(waited)" -ge 11 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
+mkfix timeout_leading_zero; export MEZZ_DAEMON_STOP_TIMEOUT_S=08
+run
+eq  "stop timeout 08: exit 0"                                 0 "$RC"
+mkfix timing_not_a_number; export MEZZ_DAEMON_STOP_TIMEOUT_S=3s
+run_refusal "stop timeout 3s (A1b)" "MEZZ_DAEMON_STOP_TIMEOUT_S is '3s', not a whole number of seconds" --dry-run
+export MEZZ_DAEMON_STOP_TIMEOUT_S=3 MEZZ_DAEMON_SETTLE_S=-1
+run_refusal "settle -1 (A1b)" "MEZZ_DAEMON_SETTLE_S is '-1', not a whole number of seconds" --dry-run
+export MEZZ_DAEMON_SETTLE_S=2; run --dry-run
+eq  "control: the same host with both timings whole deploys"  0 "$RC"
+# …and in the window, under a serving release that never checked: phase B reads them again before building anything.
+cut_timing_check() { sed -i 's/^  daemon_timings || refuse "\$TIMING_NOT_READY"$/  : timing check cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
+mkfix timing_unchecked_by_serving "" cut_timing_check; export MEZZ_DAEMON_STOP_TIMEOUT_S=3s
+eq  "unchecked 3s: the serving release really lacks the check" 1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c 'timing check cut out by the selftest mutant')"
+run
+eq  "unchecked 3s: exit 2"                                    2 "$RC"
+has "unchecked 3s: names the value"                           "MEZZ_DAEMON_STOP_TIMEOUT_S is '3s', not a whole number of seconds" "$OUT"
+has "unchecked 3s: the banner"                                "THE APP IS DOWN AND STAYS DOWN" "$OUT"
+unlogged "unchecked 3s: nothing was built"                    "composer install"
+unlogged "unchecked 3s: the app is NEVER brought up"          "artisan up"
+
 section "IN-WINDOW FAILURE — down and stay down, and a bare re-run refuses"
 mkfix migrate_fails
 STUB_FAIL_RE='artisan migrate'; run
@@ -960,15 +997,17 @@ run
 eq  "snapshot mutant: exit 2"                                2 "$RC"
 has "snapshot mutant: the lock holder predates the restart"  "BEFORE this restart — it is running the previous release's code" "$OUT"
 unlogged "snapshot mutant: the app is NEVER brought up"      "artisan up"
-# …and the same mutant under a ps that prints no age. A holder whose start cannot be read cannot be proven fresh: read
-# as started this very second, this mutant deployed green naming a previous pid as a new one.
-mkfix daemon_snapshot_cut_blind_ps cut_snapshot
-start_old_daemons; sleep 2; : > "$T/knobs/blind_ps"
+# A holder whose start cannot be read cannot be proven fresh. An unmutated deploy under a ps that prints no age: the
+# relaunched daemons hold their locks and are alive, so what fails the window is holders_started_after's EMPTY-age
+# branch — without it `$((now - age))` reads the empty age as 0, a process started this very second, and the deploy
+# goes green without proving anything.
+mkfix daemon_blind_ps
+: > "$T/knobs/blind_ps"
 run
-eq  "blind ps mutant: exit 2"                                  2 "$RC"
-has "blind ps mutant: says the holder's start cannot be read"  "cannot read when pid" "$OUT"
-hasnt "blind ps mutant: no success line"                       "✔ DEPLOYED" "$OUT"
-unlogged "blind ps mutant: the app is NEVER brought up"        "artisan up"
+eq  "blind ps: exit 2"                                  2 "$RC"
+has "blind ps: says the holder's start cannot be read"  "cannot read when pid" "$OUT"
+hasnt "blind ps: no success line"                       "✔ DEPLOYED" "$OUT"
+unlogged "blind ps: the app is NEVER brought up"        "artisan up"
 
 section "IN-WINDOW — cron's losing flock, sampled beside a live daemon, is not a daemon that died"
 # cron's minute tick runs `flock -n` against the lock the running daemon holds, and the loser has the

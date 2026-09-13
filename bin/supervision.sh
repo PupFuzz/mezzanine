@@ -24,8 +24,7 @@
 #   · the lock files do not move: A13 refuses a target whose `supervision_lock <root> 'mezzanine:*'` differs
 #     from the serving copy's, because the window finds the running daemons by that pattern (LOCKS, below).
 # Change either signature, or the lock path, and the deploy that ships the change is the one that meets it.
-# bin/deploy.selftest.sh deploys a target whose copy adds a daemon, one that drops one, one that renames the
-# install plan, and one whose copy moves the locks.
+# bin/deploy.selftest.sh § ACROSS RELEASES is where that contract is exercised.
 #
 # USAGE
 #   bin/supervision.sh render  [--root <checkout>] [--php <binary>]   print the managed crontab block

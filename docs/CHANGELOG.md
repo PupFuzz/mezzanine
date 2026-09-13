@@ -29,7 +29,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   release's crontab block inside the maintenance window — a missing entry included, named by the dry
   run — so a release that adds or drops a daemon brings its crontab with it. `MEZZ_SYSTEMCTL`,
   `MEZZ_DAEMON_SERVICES`, `MEZZ_REVERB_SERVICE` and `MEZZ_FPM_SERVICE` are gone; `MEZZ_FPM_BIN`,
-  `MEZZ_DAEMON_STOP_TIMEOUT_S`, `MEZZ_DAEMON_SETTLE_S` and `MEZZ_DOCROOT` (the vhost's document root,
+  `MEZZ_DAEMON_STOP_TIMEOUT_S`, `MEZZ_DAEMON_SETTLE_S` (whole seconds, refused before the window
+  otherwise) and `MEZZ_DOCROOT` (the vhost's document root,
   default `$HOME/public_html`) replace them. Supervision is cron +
   `flock -n` (new `bin/supervision.sh`, the one list of supervised daemons, held equal to
   `FLEET-STATE.md § 2.1` by the selftest). A restart is SIGTERM to the holders of any of the
@@ -39,7 +40,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   other lock file being held by nothing. PHP-FPM is not reloaded: the
   deploy refuses an FPM whose opcache would not revalidate changed files — a `.user.ini` in the
   document root or in the release's `server/public/` included — and waits out the longer of the
-  previous and the deployed release's `revalidate_freq` before `up` — measured on the sandbox host, new code was served 3.1 s after an
+  previous and the deployed release's `revalidate_freq` before `up` (a leading zero read in base 10,
+  never shorter than PHP reads it) — measured on the sandbox host, new code was served 3.1 s after an
   in-place checkout at PHP's defaults, and stale code 8 s after it with `validate_timestamps=0`.
   The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description. ⚠ Not run
   against any real host; `mezzanine:feed-reload` stays a named gap there.
