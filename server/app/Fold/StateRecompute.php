@@ -261,9 +261,9 @@ class StateRecompute
         // of § 6.5's subtraction, and the two would first disagree about whether an ordinary
         // `reporter.heartbeat` mints a delta — the question that subtraction exists to settle.
         //
-        // `SeatDelta` is `ShouldDispatchAfterCommit`, so this dispatch INSIDE the transaction is
-        // ordered by the act that bumped the version while the delivery waits for the commit —
-        // the same mechanism, for the same reason, that `App\Events\SeatRetired` already used.
+        // The delta is ENQUEUED here, inside the writer's `Outbox::transaction()`, and inserted as
+        // that transaction's last statement (card#9300): it commits with the version it announces
+        // or not at all — the same mechanism, for the same reason, `App\Feed\SeatRetired` uses.
         if ($bumped && $this->publish) {
             Publisher::seatDelta($seatRef, $before, $after);
         }

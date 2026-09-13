@@ -21,14 +21,15 @@ namespace Tests\Feature\Feed;
  *     so a client that applies every delta converges on the server rather than drifting.
  *
  * Those are server properties, and this class is the instrument that reads them. The REDs the
- * tests drive are mutations of THIS class's protocol (subscribe-after-snapshot, no watermark, no
+ * tests drive are mutations of THIS class's protocol (stream-opened-after-snapshot, no watermark, no
  * version check) precisely because § 11 states them that way — they are the client mistakes the
  * server's contract has to make detectable.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * § 8.4's SIX STEPS, and each method below is one of them:
  *
- *   1. client connects, subscribes to private-fleet.<install>      → subscribe()
+ *   1. client opens GET /api/fleet/stream — ONE stream, every
+ *      install (§ 8.3); there is no per-install channel            → subscribe()
  *   2. client BUFFERS every seat.delta it receives from this moment → buffer()
  *   3. client GETs /api/fleet/snapshot                             → the caller's GET
  *   4. client applies the snapshot                                 → applySnapshot()
@@ -77,9 +78,10 @@ final class ClientHarness
     }
 
     /**
-     * Step 2. A delta that arrives before `subscribe()` is NOT received at all — that is the
-     * whole content of the subscribe-first rule, and it is why this method drops rather than
-     * buffers when unsubscribed.
+     * Step 2. A delta that arrives before `subscribe()` (this harness's name for step 1, opening
+     * the stream) is NOT received at all — that is the whole content of § 8.4's rule that the
+     * stream opens BEFORE the fetch, and it is why this method drops rather than buffers before the
+     * stream is open.
      *
      * @param  array<string, mixed>  $delta  a `seat.delta` payload
      */

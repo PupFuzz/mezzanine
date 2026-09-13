@@ -108,7 +108,8 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
     public function test_composing_a_floor_never_changes_which_channel_a_room_is(): void
     {
         // ⛔ § 4.6: the layout subscribes to nothing, fetches nothing and names no seat. The
-        // room's `install_id` — which IS the channel, the snapshot grouping and the ACL point —
+        // room's `install_id` — D2's per-subscriber filter key, the snapshot grouping and the ACL
+        // point (the per-install channel it once named is retired, card#9287) —
         // is carried through untouched whether the room is placed or not, and the composed floor
         // is the ONLY thing that differs between the two arms below.
         $placed = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]]), ['sola', 'zeta']);

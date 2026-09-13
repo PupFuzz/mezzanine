@@ -2,12 +2,11 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Events\SeatRetired;
 use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
+use Tests\Feature\Feed\OutboxWire;
 use Tests\Feature\Sweep\SweepTestCase;
 
 /**
@@ -116,7 +115,7 @@ class SeatConsoleTest extends SweepTestCase
 
     public function test_retiring_through_the_console_performs_the_whole_act(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
@@ -152,11 +151,12 @@ class SeatConsoleTest extends SweepTestCase
         // 4 — the version bump and the publish, both in the same transaction.
         $this->assertGreaterThan($before, (int) $state->state_version);
 
-        Event::assertDispatched(SeatRetired::class, fn (SeatRetired $e) => $e->seatRef === $this->seatRef
-            && $e->installId === self::INSTALL
-            && $e->seatId === self::SEAT
-            && $e->retiredBy === $operator->email
-            && $e->stateVersion === (int) $state->state_version);
+        $retired = $wire->ofType('seat.retired');
+        $this->assertCount(1, $retired, 'the console act published no seat.retired');
+        $this->assertSame(self::INSTALL, $retired[0]['install_id']);
+        $this->assertSame(self::SEAT, $retired[0]['payload']['seat_id']);
+        $this->assertSame('the box was decommissioned', $retired[0]['payload']['reason']);
+        $this->assertSame((int) $state->state_version, $retired[0]['payload']['state_version']);
     }
 
     public function test_a_reason_is_required_and_nothing_is_written_without_one(): void
@@ -284,7 +284,7 @@ class SeatConsoleTest extends SweepTestCase
      */
     public function test_a_retirement_that_lands_after_another_one_writes_nothing(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
@@ -331,6 +331,6 @@ class SeatConsoleTest extends SweepTestCase
             'and the caller is told WHEN it was retired — both callers print this value',
         );
 
-        Event::assertNotDispatched(SeatRetired::class);
+        $this->assertSame([], $wire->ofType('seat.retired'));
     }
 }

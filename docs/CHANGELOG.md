@@ -19,6 +19,35 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9300** — **THE LIVE FEED IS BUILT: Server-Sent Events on `GET /api/fleet/stream`, fed by a
+  `feed_outbox` table** (`docs/design/FLEET-STATE.md` Appendix B step 9). ⛔ **Installer action, before the
+  next deploy — the deploy now REFUSES a host that cannot serve or drain the stream:** provision a
+  DEDICATED PHP-FPM pool for `/api/fleet/stream` running as the application user, with
+  `request_terminate_timeout = 0`, `pm.status_path` and `pm.status_listen` set; route that path to it in the
+  vhost with `ProxySet flushpackets=on` on its socket (without it this host's Virtualmin vhost shape was
+  measured holding the whole stream, and every browser renders *feed down*); and export
+  `MEZZ_STREAM_POOL=<pool name>` to `bin/deploy.sh`. `cgi-fcgi` and `timeout` are now required on the host.
+  (The deploy that first ships this runs its preconditions in the previous release's script, so it only
+  warns about a missing pool, in the window, and skips the drain; the one after it refuses.)
+  After a deploy that changed the stream path, the proxy or the pool, run `bin/feed-stream-check.sh
+  https://<origin> <cookie file>` as an operator (`docs/PLAN.md § 5` has the steps). What ships:
+  `App\Feed\Outbox` writes every feed message as its writer's LAST statement before COMMIT (the fold, the
+  sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — the
+  heartbeat and `fleet.health` are now ONE fleet-wide row each, not one per install); `App\Feed\FeedStream`
+  is D2 § 8.3's handler (first frame `fleet.health`, cursor behind the 2 s lag, stall check before the read,
+  15 s session + MFA re-check, `fleet.reload` → `feed.close{reason:"reload"}`); `mezzanine:feed-reload`
+  runs in the deploy immediately before the opcache wait, and the deploy then SIGTERMs the streams that
+  missed it after `MEZZ_FEED_DRAIN_CEILING_S` (30 s) — D2 § 14 item 17, closed by measurement;
+  `mezzanine:purge` keeps outbox rows 60 s. The deploy refuses `zlib.output_compression`,
+  `output_handler` or `ignore_user_abort` on the stream pool; `output_buffering` is measured harmless
+  (the handler's flush defeats 4096) and only reported. **Retired:** `/broadcasting/auth`,
+  `routes/channels.php`, `->withBroadcasting()`, the `ShouldBroadcastNow` markers and
+  `BROADCAST_CONNECTION` (delete it from a host's `.env` at leisure; nothing reads it) — the session + MFA
+  gate moved to the stream route with its tests. `App\Events\SeatRetired` is now `App\Feed\SeatRetired`.
+  Gates: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15, AT-D2-19's stream legs, AT-D2-12's
+  connect leg and AT-D2-25 (a real race on four MariaDB connections) are new — AT-D2-15's worker return
+  by the proxy and its RSS leg need a real deployment and say so.
+
 - **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
   questions, and two false claims are corrected.** Docs only; no code changes.
   - **D2 § 14 item 7, closed:** fleet-read is all-or-nothing, for now. Any MFA user and any

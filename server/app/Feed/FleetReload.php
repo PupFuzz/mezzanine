@@ -2,61 +2,42 @@
 
 namespace App\Feed;
 
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
-use Illuminate\Foundation\Events\Dispatchable;
-
 /**
- * `docs/design/FLEET-STATE.md § 8.3`'s **`fleet.reload`** — "`feed_version` changed under a
- * running client (a deploy)".
+ * `docs/design/FLEET-STATE.md § 8.3`'s **`fleet.reload`** — written on EVERY deploy by
+ * `mezzanine:feed-reload` (§ 2.1), carrying the release's `feed_version` whether or not it changed.
  *
- * ⛔ THIS MESSAGE IS THE WHOLE OF § 8.1's SECOND ROW, AND THAT ROW IS WHY THE FEED CARRIES NO
- * SUPPORT WINDOW.
+ * ⛔ TERMINAL. The stream handler delivers it, writes `feed.close{reason:"reload"}` and ends the
+ * stream (`App\Feed\FeedStream`), which is what takes an open stream off the previous release's code:
+ * opcache revalidation reaches new requests only, and the client's reconnect is a new request.
  *
- * § 8.1: the WebSocket surface "carries `feed_version` for detection, but **no support window and
- * no N/N-1 obligation**: there is never a client in the wild older than the server. A client that
- * sees an unknown `feed_version` STOPS APPLYING DELTAS and tells the user to reload — it does not
- * attempt a compatibility dance it cannot win."
- *
- * So this is the server's half of that: the deploy that moves `FEED_VERSION` tells every client
- * still holding the old one, rather than letting it discover the mismatch on the next delta it
- * cannot parse. Without it the asymmetry § 8.1 argues for would cost exactly what a support
- * window costs — a client silently wrong until something else moves.
- *
- * ⚠ NOTHING CALLS THIS YET, AND THAT IS STATED RATHER THAN HIDDEN. Its producer is a DEPLOY step
- * (`bin/deploy.sh`, `docs/PLAN.md § 5`) which does not exist, and its trigger is a comparison
- * against the `feed_version` a running client last saw, which needs the socket server this card
- * does not install. It is built because § 8.3 declares the message and a message a consumer is
- * told to expect with no class to produce it is exactly the defect § 4.10 caught for
- * `seat.retired`; it is NOT claimed as wired.
+ * ⚠ THE MESSAGE IS WRITTEN ON EVERY DEPLOY; THE CLIENT'S RELOAD BANNER IS NOT RAISED BY EVERY ONE.
+ * Operator ruling A4 (FLOOR.md § 14 item 20): on a deploy that does not change `feed_version` the
+ * viewer sees nothing — the client reconnects silently — and the banner is raised only on a
+ * `feed_version` the client does not know (§ 8.1). The `reason` member of the `feed.close` that
+ * follows is what lets the client tell this chosen end from a failure.
  */
-final class FleetReload implements ShouldBroadcastNow
+final class FleetReload implements FeedMessage
 {
-    use Dispatchable;
     use FeedEnvelope;
 
-    public function __construct(
-        private readonly string $installId,
-        public readonly string $reason,
-    ) {}
+    public function __construct(public readonly string $reason) {}
 
     public function type(): string
     {
         return 'fleet.reload';
     }
 
-    public function installId(): string
+    public function installId(): ?string
     {
-        return $this->installId;
+        return null;
     }
 
     /** @return array<string, mixed> */
     public function body(): array
     {
         // `feed_version` appears TWICE by § 8.3's own construction — once in the envelope every
-        // message carries, and once as this message's declared payload member. They are the same
-        // value read from the same constant, so they cannot disagree; both are kept because § 8.3
-        // lists `feed_version` in this row's Payload column and a consumer reading that table
-        // would look for it there.
+        // message carries, and once as this message's declared payload member. Same constant, so
+        // they cannot disagree; both are kept because § 8.3's Payload column lists it.
         return ['feed_version' => self::FEED_VERSION, 'reason' => $this->reason];
     }
 }

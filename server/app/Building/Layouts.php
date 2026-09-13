@@ -2,6 +2,8 @@
 
 namespace App\Building;
 
+use App\Feed\BuildingLayoutChanged;
+use App\Feed\Outbox;
 use App\Floor\FloorMap;
 use App\Fold\Clock;
 use Illuminate\Support\Facades\DB;
@@ -131,7 +133,10 @@ final class Layouts
      */
     public static function serialise(callable $write): mixed
     {
-        return DB::transaction(function () use ($write) {
+        // `Outbox::transaction()` rather than `DB::transaction()` (card#9300): § 6.11's "on commit
+        // … publish" is the `room.map` / `building.layout` row each write enqueues, inserted as this
+        // transaction's LAST statement, so the message commits with the revision it announces.
+        return Outbox::transaction(function () use ($write) {
             // The row is READ for the lock and the result deliberately discarded: what the
             // callers need is the lock, and each of them re-reads exactly the state it checks so
             // that no caller is reading a row somebody else fetched for a different reason.
@@ -180,10 +185,6 @@ final class Layouts
             return self::write($document, null, $by);
         });
 
-        // § 6.11: "on commit … publish". Outside the transaction, because a message announcing a
-        // state the store never committed is the one thing a notification may never do.
-        BuildingChanged::announce(BuildingChanged::LAYOUT, ['layout_version' => $version]);
-
         return $version;
     }
 
@@ -220,8 +221,6 @@ final class Layouts
 
             return self::write($document, $revision, $by);
         });
-
-        BuildingChanged::announce(BuildingChanged::LAYOUT, ['layout_version' => $version]);
 
         return $version;
     }
@@ -276,6 +275,11 @@ final class Layouts
                 'updated_at' => $at,
             ],
         );
+
+        // § 8.7's `building.layout`, enqueued here because every write of the layout — a save and a
+        // restore — comes through this method, inside `serialise()`. `at` is the instant the
+        // REVISION records, never the moment the message is serialized.
+        Outbox::enqueue(new BuildingLayoutChanged($revision, (string) Clock::wire($at)));
 
         return $revision;
     }

@@ -52,6 +52,18 @@
 #   There is no escalation knob and no second mode: a root path kept "optional" would be a second
 #   supported way to deploy, which is what the ruling ends.
 #
+# ⚑ THE FEED'S STREAMS (card#9300, `docs/design/FLEET-STATE.md § 8.3`). `GET /api/fleet/stream` is a
+#   PHP-FPM request that does not end, so opcache revalidation never reaches it. Phase A reads the two
+#   host conditions the stream depends on that need no credential — R1's ini half and R2's pool half —
+#   off the FPM SAPI and the dedicated stream pool, and refuses a host where either is false
+#   (fpm_code_reload_ready) — in phase A; phase B, whose phase A may have been a release without the check,
+#   warns rather than keeping the app down over it. Phase B writes `fleet.reload` (`mezzanine:feed-reload`) immediately before
+#   the opcache wait, watches the stream pool until every stream the previous release served has gone,
+#   and at a ceiling SIGTERMs the ones that missed the message (drain_previous_streams) — D2 § 14 item
+#   17's decision, measured on a throwaway non-root master before it was written here. R1's WIRE half —
+#   what the proxy does to the stream — needs a signed-in MFA session and is the operator runbook's
+#   (docs/PLAN.md § 5), not a deploy step.
+#
 # WHAT IT IS NOT. It does not provision the host (D-08 / D-15 own that), writes no crontab outside its
 # window (`bin/supervision.sh install` supervises a host before its first deploy, as the application
 # user; each deploy then replaces that managed block with its own release's), does not write `.env`,
@@ -79,6 +91,11 @@
 #                         Both are whole numbers of seconds; anything else is refused (A1b).
 #   MEZZ_DOCROOT          the vhost's document root, whose `.user.ini` A14 reads [default:
 #                         $HOME/public_html, the Virtualmin layout; absent ⇒ a warning naming it]
+#   MEZZ_STREAM_POOL      the name of the DEDICATED PHP-FPM pool the web server routes
+#                         `/api/fleet/stream` to (FLEET-STATE.md § 8.3 R2) [REQUIRED — no default: a
+#                         guessed pool would be read, judged and drained as if it were the stream's]
+#   MEZZ_FEED_DRAIN_CEILING_S  seconds phase B waits for the previous release's streams to end on
+#                         `fleet.reload` before it SIGTERMs the rest [default: 30, § 2.1's ceiling]
 #   The supervised set is deliberately NOT configurable here: it is bin/supervision.sh's, the same
 #   list the crontab was installed from.
 #
@@ -195,6 +212,14 @@ whole_seconds() {
 # DAEMON_SETTLE_S; on a value that is not a whole number of seconds, fails with TIMING_NOT_READY naming it. Phase A
 # refuses on it (A1b). Phase B reads them again before building anything, because the serving release that ran
 # phase A may be one that never checked.
+# drain_timing — MEZZ_FEED_DRAIN_CEILING_S into FEED_DRAIN_CEILING_S; on a value that is not a whole number of seconds,
+# fails with TIMING_NOT_READY naming it. Read in phase A (A1b) and again in phase B, as daemon_timings is.
+drain_timing() {
+  FEED_DRAIN_CEILING_S="$(whole_seconds "${MEZZ_FEED_DRAIN_CEILING_S:-30}")" || {
+    TIMING_NOT_READY="MEZZ_FEED_DRAIN_CEILING_S is '${MEZZ_FEED_DRAIN_CEILING_S:-}', not a whole number of seconds"
+    return 1; }
+}
+
 daemon_timings() {
   DAEMON_STOP_TIMEOUT_S="$(whole_seconds "${MEZZ_DAEMON_STOP_TIMEOUT_S:-30}")" || {
     TIMING_NOT_READY="MEZZ_DAEMON_STOP_TIMEOUT_S is '${MEZZ_DAEMON_STOP_TIMEOUT_S:-}', not a whole number of seconds"
@@ -282,8 +307,38 @@ ver_ge() {
 # exist is WARNED about, by name, not refused: the default is the Virtualmin layout, and a host laid out
 # otherwise names its own.
 #
-# Sets FPM_POSTURE and FPM_REVALIDATE_S on success; on failure FPM_NOT_READY — a refusal title, then
-# its lines. Phase A refuses on it; phase B, which re-reads it, fails the window on it.
+# ⚑ AND THE FEED STREAM'S TWO HOST CONDITIONS (card#9300, FLEET-STATE.md § 8.3), from the SAME reads —
+# one reader of the FPM SAPI, its pools and its .user.ini files, never a second (the card's ruling):
+#   R1, its ini half — on the pool MEZZ_STREAM_POOL names, the ini baseline then that pool's override then
+#   each .user.ini, exactly as opcache is resolved above. MEASURED on the sandbox host (2026-09-13) with its
+#   own php-fpm8.5 and FPM php.ini under a throwaway non-root master, through the framework's real
+#   eventStream() primitive, before any of these became a refusal:
+#     · output_buffering = 4096 (this host's FPM ini) is NOT a hazard: the primitive's ob_flush() delivered
+#       each message at its own second (+0.4 s, +1.4 s, +2.4 s); the same frames with flush() alone arrived
+#       together at the end (+3.0 s). Reported, never refused.
+#     · zlib.output_compression = on BUFFERS the stream: three messages a second apart arrived as one 242 B
+#       record at +3.0 s, gzip-encoded. Refused.
+#     · output_handler = ob_gzhandler compressed it (Content-Encoding: gzip), each flush a record of its
+#       own. § 8.3 R1 forbids compression between PHP-FPM and the browser; what a browser's EventSource
+#       does with that encoding was not measured. Refused — any non-empty output_handler, since this
+#       reader cannot tell a compressing handler from another.
+#     · ignore_user_abort = on let a handler outlive its client: with it off the worker stopped at the
+#       first failed write (4.0 s into a request whose client left at 3 s); with it on the generator was
+#       resumed past that write and ran to the next one (6.0 s) — § 8.5's frozen-consumer claim rests on it
+#       being off. Refused.
+#   R2, its pool half — MEZZ_STREAM_POOL must be one of the pools running as this user (so phase B's SIGTERM
+#   needs no root), with request_terminate_timeout 0 or unset (any other value ends every stream on that
+#   period), pm.status_path AND pm.status_listen set, and its status must ANSWER over that listener with
+#   the pool's own name. pm.status_listen is not optional: MEASURED, with every worker of a pool pinned by a
+#   stream, the status request over the pool's own socket queued behind them until a 5 s timeout, and over
+#   pm.status_listen it answered in 0.17 s — and a pool pinned by streams is exactly the pool phase B has to
+#   read. What this CANNOT see, named rather than assumed: that the web server routes /api/fleet/stream to
+#   this pool and nothing else to it (the vhost is root's), pm.max_children against the number of open
+#   tabs, and the proxy's client-send timeout. Those, and R1's wire half, are the runbook's.
+#
+# Sets FPM_POSTURE, FPM_REVALIDATE_S, STREAM_POSTURE and STREAM_STATUS_LISTEN on success; on failure
+# FPM_NOT_READY — a refusal title, then its lines. Phase A refuses on it; phase B, which re-reads it, fails
+# the window on it.
 phpinfo_value() { awk -F' => ' -v k="$2" '$1 == k { print $2; exit }' <<< "$1"; }
 pool_ini() { awk -F'\t' -v p="$2" -v k="$3" '$1 == p && $2 == k { v = $3 } END { printf "%s", v }' <<< "$1"; }
 ini_on() { case "${1,,}" in 1 | on | yes | true) return 0 ;; esac; return 1; }
@@ -322,8 +377,11 @@ fpm_judge() {
   if [ "$freq" -gt "$max_f" ]; then max_f="$freq"; fi
 }
 
+# R1's ini directives, read wherever opcache's are: the ini baseline, a pool's php_(admin_)value/flag, a .user.ini.
+R1_KEYS='output_buffering|output_handler|zlib\\.output_compression|ignore_user_abort'
+
 fpm_code_reload_ready() {
-  FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0
+  FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0; STREAM_POSTURE=""; STREAM_STATUS_LISTEN=""; STREAM_NOT_READY=()
   local me info ini_file fpm_conf inc f rows
   me="$(id -un)"
   if ! command -v "$FPM_BIN" >/dev/null 2>&1; then
@@ -353,17 +411,25 @@ fpm_code_reload_ready() {
     for f in $inc; do if [ -r "$f" ]; then pool_files+=("$f"); fi; done
   done < <(awk -F= '/^[[:space:]]*include[[:space:]]*=/ { v = $2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); print v }' "$fpm_conf")
 
-  # One row per pool running as this user ("<pool> - -"), then one per opcache override in it.
-  rows="$(awk -v me="$me" '
+  # One row per pool running as this user ("<pool> - -"), then one per opcache or R1 override in it, and one per
+  # pool directive R2 reads (request_terminate_timeout, pm.status_path, pm.status_listen), keyed "=<directive>".
+  # A pool that runs as ANOTHER user gets one row "<pool> = <user>", so R2 can say whose it is.
+  rows="$(awk -v me="$me" -v r1="$R1_KEYS" '
     /^[[:space:]]*\[[^]]+\][[:space:]]*$/ { pool = $0; gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", pool); next }
     pool != "" && /^[[:space:]]*user[[:space:]]*=/ {
       v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v); owner[pool] = v; next }
-    pool != "" && /^[[:space:]]*php_(admin_)?(value|flag)\[opcache\.[a-z_]+\][[:space:]]*=/ {
+    pool != "" && /^[[:space:]]*php_(admin_)?(value|flag)\[[a-z_.]+\][[:space:]]*=/ {
       k = $0; sub(/^[^[]*\[/, "", k); sub(/\].*$/, "", k)
+      if (k !~ /^opcache\.[a-z_]+$/ && k !~ ("^(" r1 ")$")) next
       v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v)
       ov[pool, k] = v; next }
+    pool != "" && /^[[:space:]]*(request_terminate_timeout|pm\.status_path|pm\.status_listen)[[:space:]]*=/ {
+      k = $0; sub(/^[[:space:]]*/, "", k); sub(/[[:space:]]*=.*$/, "", k)
+      v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]*;.*$/, "", v); sub(/[[:space:]]+$/, "", v)
+      ov[pool, "=" k] = v; next }
     END {
-      for (p in owner) if (owner[p] == me) {
+      for (p in owner) {
+        if (owner[p] != me) { print p "\t=\t" owner[p]; continue }
         print p "\t-\t-"
         for (x in ov) { split(x, pk, SUBSEP); if (pk[1] == p) print p "\t" pk[2] "\t" ov[x] }
       }
@@ -405,7 +471,7 @@ fpm_code_reload_ready() {
     fi
   fi
 
-  local p e v fq pl base_e base_v base_f base_p max_f=0 cached=0
+  local p e v fq pl base_e base_v base_f base_p max_f=0 cached=0 k
   base_e="$(phpinfo_value "$info" opcache.enable)"
   base_v="$(phpinfo_value "$info" opcache.validate_timestamps)"
   base_f="$(phpinfo_value "$info" opcache.revalidate_freq)"
@@ -439,12 +505,115 @@ fpm_code_reload_ready() {
       "this user cannot restart the master.")
     return 1
   fi
+  # ⚑ THE STREAM POOL IS A REFUSAL IN PHASE A AND A WARNING IN PHASE B, and only this half of the reader is split
+  # that way. Phase A runs the SERVING release's copy of this function, so the deploy that first ships this check is
+  # judged in phase A by a copy that has none — and a phase B that failed on it would take the app down for a pool
+  # nobody was ever asked to provision, over a condition that degrades the feed (F19/F20) rather than the pages. Every
+  # later deploy refuses it before anything is touched. opcache, above, stays a failure in both phases: without it the
+  # new code is not served at all.
+  if ! stream_pool_ready "$info" "$rows" "$me"; then
+    [ -n "$POST_CHECKOUT_SHA" ] || return 1
+    STREAM_NOT_READY=("${FPM_NOT_READY[@]}"); FPM_NOT_READY=(); STREAM_STATUS_LISTEN=""
+  fi
   FPM_REVALIDATE_S="$max_f"
   if [ "$cached" -eq 1 ]; then
     FPM_POSTURE="opcache revalidates a changed file within ${max_f} s"
   else
     FPM_POSTURE="opcache is off, so every request reads the disk"
   fi
+}
+
+# stream_pool_ready <phpinfo> <pool rows> <me> — R1's ini half and R2's pool half, for fpm_code_reload_ready (the
+# argument and every measurement are there). Reads ui_src/ui_text, that function's .user.ini files. Sets STREAM_POSTURE
+# and STREAM_STATUS_LISTEN; on failure FPM_NOT_READY.
+stream_pool_ready() {
+  local info="$1" rows="$2" me="$3" pool="${MEZZ_STREAM_POOL:-}" key base val x i listen status bad=()
+  if [ -z "$pool" ]; then
+    FPM_NOT_READY=("MEZZ_STREAM_POOL is unset — no PHP-FPM pool is named as the one that serves /api/fleet/stream"
+      "FLEET-STATE.md § 8.3 R2: the stream route needs a DEDICATED pool — request_terminate_timeout 0, pm.status_path"
+      "and pm.status_listen set — because each open browser tab pins a worker for as long as it is open, and in the"
+      "shared pool those workers starve every snapshot and admin page (FLOOR.md § 9 F20). Provision the pool, route"
+      "/api/fleet/stream to it in the vhost (docs/PLAN.md § 5), and name it here.")
+    return 1
+  fi
+  if ! awk -F'\t' -v p="$pool" '$1 == p && $2 == "-" { f = 1 } END { exit !f }' <<< "$rows"; then
+    x="$(awk -F'\t' -v p="$pool" '$1 == p && $2 == "=" { print $3 }' <<< "$rows")"
+    if [ -n "$x" ]; then
+      FPM_NOT_READY=("the stream pool [$pool] runs as '$x', not as $me"
+        "Phase B ends the streams that miss fleet.reload with SIGTERM to that pool's workers, which needs no root only"
+        "because they run as this user (FLEET-STATE.md § 14 item 17).")
+    else
+      FPM_NOT_READY=("MEZZ_STREAM_POOL names [$pool], and no pool of that name is defined in ${pool_files[*]}")
+    fi
+    return 1
+  fi
+
+  # R1 — the ini baseline, the stream pool's override, then each .user.ini over the app's scripts.
+  local -a r1_where=("[$pool]")
+  for i in "${!ui_src[@]}"; do r1_where+=("[$pool] under ${ui_src[i]}"); done
+  local ob=""
+  for key in output_buffering output_handler zlib.output_compression ignore_user_abort; do
+    base="$(phpinfo_value "$info" "$key")"; [ "$base" != "no value" ] || base=""
+    val="$(pool_ini "$rows" "$pool" "$key")"; val="$(unquote "${val:-$base}")"
+    for i in "" "${!ui_src[@]}"; do
+      local v2="$val" where="[$pool]"
+      if [ -n "$i" ]; then
+        x="$(ini_file_value "${ui_text[i]}" "$key")"; [ -z "$x" ] || v2="${x#=}"
+        where="[$pool] under ${ui_src[i]}"
+      fi
+      case "$key" in
+        zlib.output_compression) if ini_on "$v2"; then bad+=("zlib.output_compression is on for $where — measured to hold the stream until the request ends"); fi ;;
+        ignore_user_abort)       if ini_on "$v2"; then bad+=("ignore_user_abort is on for $where — a handler then outlives its client past the failed write (§ 8.5)"); fi ;;
+        output_handler)          if [ -n "$v2" ] && [ "$v2" != "no value" ]; then bad+=("output_handler is '$v2' for $where — an output filter § 8.3 R1 forbids between PHP-FPM and the browser"); fi ;;
+        output_buffering)        [ -n "$i" ] || ob="$v2" ;;
+      esac
+    done
+  done
+  if [ ${#bad[@]} -gt 0 ]; then
+    FPM_NOT_READY=("the stream would not reach the browser as it is written (FLEET-STATE.md § 8.3 R1)" "${bad[@]}"
+      "Every browser on this host would render 'feed down — polling' against a healthy fleet (FLOOR.md § 9 F19).")
+    return 1
+  fi
+
+  # R2 — the pool's own directives, then its status, read over its separate status listener.
+  val="$(pool_ini "$rows" "$pool" "=request_terminate_timeout")"
+  case "$(unquote "$val")" in
+    '' | 0 | 0s | 0m | 0h | 0d) ;;
+    *) bad+=("request_terminate_timeout is '$val' — it would end every healthy stream on that period, every browser reconnecting in lockstep") ;;
+  esac
+  local spath slisten
+  spath="$(unquote "$(pool_ini "$rows" "$pool" "=pm.status_path")")"
+  slisten="$(unquote "$(pool_ini "$rows" "$pool" "=pm.status_listen")")"
+  [ -n "$spath" ] || bad+=("pm.status_path is not set — phase B lists the streams still open from it")
+  [ -n "$slisten" ] || bad+=("pm.status_listen is not set — a status request on the pool's own socket queues behind the very streams it must list (measured: timed out with every worker pinned; 0.17 s over pm.status_listen)")
+  if [ ${#bad[@]} -gt 0 ]; then
+    FPM_NOT_READY=("the stream pool [$pool] is not one a deploy can drain (FLEET-STATE.md § 8.3 R2)" "${bad[@]}")
+    return 1
+  fi
+  STREAM_STATUS_LISTEN="$slisten"; STREAM_STATUS_PATH="$spath"
+  if ! status="$(fpm_status)"; then
+    FPM_NOT_READY=("the stream pool [$pool]'s status did not answer over pm.status_listen ($slisten, path $spath) within 5 s"
+      "Phase B reads it to find the streams that missed fleet.reload. Check that the pool is running and that this user"
+      "can reach that listener.")
+    return 1
+  fi
+  x="$(php -r '$s = json_decode(stream_get_contents(STDIN), true); echo is_array($s) ? ($s["pool"] ?? "") : "";' <<< "$status")"
+  if [ "$x" != "$pool" ]; then
+    FPM_NOT_READY=("the status at $slisten (path $spath) answers for pool '${x:-<not a PHP-FPM JSON status>}', not [$pool]"
+      "MEZZ_STREAM_POOL and the listener must name the same pool, or phase B would drain another pool's requests.")
+    return 1
+  fi
+  STREAM_POSTURE="stream pool [$pool]: its status answers over $slisten; zlib.output_compression, output_handler and ignore_user_abort off; output_buffering ${ob:-0} (defeated by the handler's flush — measured)"
+}
+
+# fpm_status [full] — the stream pool's status as JSON, over pm.status_listen, in 5 s or a failure. cgi-fcgi sends
+# its whole ENVIRONMENT as the request's FastCGI params, so it runs under `env -i` with PATH alone: nothing of
+# this deploy's environment reaches the pool.
+fpm_status() {
+  local q='json'; [ "${1:-}" = full ] && q='json&full'
+  env -i PATH="$PATH" SCRIPT_NAME="$STREAM_STATUS_PATH" SCRIPT_FILENAME="$STREAM_STATUS_PATH" REQUEST_METHOD=GET QUERY_STRING="$q" \
+    timeout 5 cgi-fcgi -bind -connect "$STREAM_STATUS_LISTEN" 2>/dev/null | sed '1,/^\r\{0,1\}$/d'
+  [ "${PIPESTATUS[0]}" -eq 0 ]
 }
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -466,9 +635,11 @@ phase_a() {
   # A1 — the tools this script shells out to. A missing binary discovered mid-window is an
   # outage; discovered here it is a refusal. crontab, flock, fuser, setsid and ps are the supervision's:
   # A13 reads the crontab, and restart_daemons finds, stops, relaunches and ages the daemons with them —
-  # without ps no holder of a lock can be proven to have started after the restart.
+  # without ps no holder of a lock can be proven to have started after the restart. cgi-fcgi and timeout
+  # are the stream pool's: A14 reads the pool's status over FastCGI, and phase B's drain lists the
+  # streams still open with it (fpm_status).
   local missing=()
-  for c in git php composer npm curl crontab flock fuser setsid ps; do
+  for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
@@ -476,6 +647,7 @@ phase_a() {
   # A1b — the restart's timings. restart_daemons does arithmetic on them inside the window, where a value it
   # cannot read would stop the deploy with the app down.
   daemon_timings || refuse "$TIMING_NOT_READY"
+  drain_timing || refuse "$TIMING_NOT_READY"
 
   # A2 — the anti-"bare re-run" guard (handover item 3). A deploy that failed in the window left
   # this marker AND left the app down. Without this check the obvious operator reflex — run it
@@ -792,9 +964,10 @@ phase_a() {
 
   # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
   # fpm_code_reload_ready; phase B re-reads the same posture before it waits.
-  step "Checking that PHP-FPM picks up new code without a reload"
+  step "Checking that PHP-FPM picks up new code without a reload, and can serve and drain the feed's streams"
   fpm_code_reload_ready || refuse "${FPM_NOT_READY[@]}"
   say "  ok — $FPM_BIN, pool(s) running as $(id -un): $FPM_POSTURE"
+  say "  ok — $STREAM_POSTURE"
 
   say ""
   say "Ready:"
@@ -802,6 +975,7 @@ phase_a() {
   say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
   say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
   say "  php-fpm  not reloaded — $FPM_POSTURE"
+  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL:-}])"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1044,6 +1218,75 @@ restart_daemons() {
   done
 }
 
+# ── the feed's streams: D2 § 14 item 17's decision ──────────────────────────────────────────────
+# A stream the previous release served and that missed `fleet.reload` — its consumer frozen or too slow to take the
+# message inside the ceiling — would hold that release's code until its session expires. It is ended here, from the
+# stream pool's own status (fpm_status full), by SIGTERM: the pool runs as this user (A14), so no root is needed, and
+# the pool's master starts a fresh worker in its place. MEASURED on the sandbox host (2026-09-13) against a throwaway
+# non-root php-fpm8.5 master behind a throwaway Apache with this host's vhost shape:
+#   · the full listing does NOT identify a stream by its URI — behind the front controller every Laravel request is
+#     `request uri=/index.php`. What identifies one in a DEDICATED pool is a request STILL RUNNING THAT STARTED BEFORE
+#     `fleet.reload` WAS WRITTEN: its `request duration` exceeds the time since then. Every other request the
+#     window lets into that pool is a 503 from maintenance mode, milliseconds long.
+#   · SIGTERM from the pool's user ended the worker at once ("exited on signal 15"), the master started a new one in
+#     its place ("child … started"), and the client — curl, through the proxy — saw its transfer cut without a
+#     terminating chunk (curl exit 18). A browser's EventSource reads that as a network error: no feed.close, so the
+#     client takes its reconnect path, which for this stream is the point. Its consumer had stopped taking messages.
+#   · on this host the live pool workers under the ROOT master carry real, effective and saved uid 1002 (/proc, read
+#     only), which is what kill(2) checks; the respawn by a root-owned master was not exercised — only a non-root one.
+# A residual the signal does not end, or a status that stops answering, is WARNED about and never fails the window:
+# the app is down while this runs, and a stale stream is a degradation named in the log, not a reason to stay down.
+# Sets DRAIN_RESULT.
+previous_stream_pids() { # <since epoch> — the Running requests in the stream pool that started before <since>
+  local listing
+  listing="$(fpm_status full)" || return 1
+  php -r '
+    $s = json_decode(stream_get_contents(STDIN), true);
+    if (! is_array($s) || ! isset($s["processes"])) { exit(1); }
+    $min = (time() - (int) $argv[1]) * 1000000;
+    foreach ($s["processes"] as $p) {
+      if (($p["state"] ?? "") === "Running" && (int) ($p["request duration"] ?? 0) > $min) { echo $p["pid"], "\n"; }
+    }' "$1" <<< "$listing"
+}
+
+drain_previous_streams() {
+  local since="$1" deadline pids
+  if [ -z "$STREAM_STATUS_LISTEN" ]; then
+    DRAIN_RESULT="NOT DRAINED — the stream pool is not one this deploy can read (see the warning above)"
+    warn "streams the previous release served were not drained: $DRAIN_RESULT"
+    return 0
+  fi
+  deadline=$(($(date +%s) + FEED_DRAIN_CEILING_S))
+  while :; do
+    if ! pids="$(previous_stream_pids "$since")"; then
+      DRAIN_RESULT="NOT DRAINED — the stream pool's status stopped answering"
+      warn "the stream pool [$MEZZ_STREAM_POOL]'s status did not answer — streams the previous release served may still be open, and will hold its code until their sessions expire"
+      return 0
+    fi
+    [ -n "$pids" ] || { DRAIN_RESULT="every stream the previous release served had ended on fleet.reload"; say "  ok — $DRAIN_RESULT"; return 0; }
+    [ "$(date +%s)" -lt "$deadline" ] || break
+    sleep 1
+  done
+  pids="$(printf '%s' "$pids" | tr '\n' ' ')"; pids="${pids% }"
+  say "  $(wc -w <<< "$pids") stream(s) the previous release served were still open after a ${FEED_DRAIN_CEILING_S} s drain that began once fleet.reload had been read: pid(s) $pids — ending them"
+  # shellcheck disable=SC2086 # one pid per word, on purpose
+  kill -TERM $pids 2>/dev/null || true
+  deadline=$(($(date +%s) + 5))
+  local left="$pids"
+  while [ -n "$left" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+    sleep 0.5
+    if left="$(previous_stream_pids "$since")"; then left="$(printf '%s' "$left" | tr '\n' ' ')"; left="${left% }"
+    else left="(unknown — the status stopped answering)"; break; fi
+  done
+  if [ -n "$left" ]; then
+    DRAIN_RESULT="NOT DRAINED — pid(s) $left still serve a stream the previous release opened"
+    warn "SIGTERM did not end pid(s) $left in [$MEZZ_STREAM_POOL] — those streams hold the previous release until they end on their own"
+  else
+    DRAIN_RESULT="ended the stream(s) that missed fleet.reload with SIGTERM (pid(s) $pids)"
+    say "  ok — $DRAIN_RESULT"
+  fi
+}
+
 phase_b_post_checkout() {
   [ "${MEZZ_DEPLOY_IN_WINDOW:-0}" = "1" ] || refuse \
     "--internal-post-checkout is not an operator entry point" \
@@ -1070,8 +1313,9 @@ phase_b_post_checkout() {
   REVALIDATE_FLOOR_S="$(whole_seconds "${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}")" || {
     echo "MEZZ_DEPLOY_REVALIDATE_FLOOR_S is '${MEZZ_DEPLOY_REVALIDATE_FLOOR_S:-}', not the whole number of seconds phase A hands over" >&2
     false; }
-  FAILED_STEP="reading MEZZ_DAEMON_STOP_TIMEOUT_S and MEZZ_DAEMON_SETTLE_S"
+  FAILED_STEP="reading MEZZ_DAEMON_STOP_TIMEOUT_S, MEZZ_DAEMON_SETTLE_S and MEZZ_FEED_DRAIN_CEILING_S"
   daemon_timings || { echo "$TIMING_NOT_READY" >&2; false; }
+  drain_timing || { echo "$TIMING_NOT_READY" >&2; false; }
 
   # ── dependencies ────────────────────────────────────────────────────────────────────────────
   # Every artisan/composer/npm call below runs from the app directory (D-16) rather than in a
@@ -1140,18 +1384,32 @@ phase_b_post_checkout() {
   # ── PHP-FPM: no reload ──────────────────────────────────────────────────────────────────────
   # This user cannot reload the pool (its master is root's) and does not need to: fpm_code_reload_ready
   # says why. The posture is RE-READ here rather than trusted from A14, because the wait it sets is
-  # what makes `up` safe, and a host whose FPM settings changed mid-window must fail loudly.
+  # what makes `up` safe, and a host whose FPM settings changed mid-window must fail loudly. It is read
+  # BEFORE the feed reload, because the drain below reads the stream pool it resolves.
   # +1 s because opcache's clock and file mtimes are both whole seconds.
-  #
-  # ⚑ `mezzanine:feed-reload` (FLEET-STATE.md § 2.1) belongs immediately BEFORE this wait once it
-  # exists. Revalidation reaches every NEW request; a long-lived stream request already open holds the
-  # previous release in memory until something ends it, and ending it is that command's job. Neither
-  # the command nor the stream route exists in this tree yet (§ 2.1's build-order row 9), so there is
-  # no long-lived FPM request to end today — and calling a command that does not exist would fail the
-  # window on every deploy.
+  FAILED_STEP="re-reading PHP-FPM's posture"
+  step "PHP-FPM: re-reading the opcache posture and the stream pool"
+  fpm_code_reload_ready || { printf '%s\n' "${FPM_NOT_READY[@]}" >&2; false; }
+  if [ ${#STREAM_NOT_READY[@]} -gt 0 ]; then
+    warn "the feed's stream pool is NOT ready — the next deploy will refuse this host until it is (FLEET-STATE.md § 8.3 R1/R2):"
+    printf '    %s\n' "${STREAM_NOT_READY[@]}" >&2
+  fi
+
+  # ── the feed's open streams (card#9300) ─────────────────────────────────────────────────────
+  # Revalidation reaches every NEW request; a stream already open holds the previous release in memory
+  # until something ends it. `mezzanine:feed-reload` writes `fleet.reload` and returns once every draining
+  # stream has read it (lag + tick + margin); each ends with feed.close{reason:"reload"} and its client
+  # reconnects — onto the new code once the window closes. drain_previous_streams then ends the ones that
+  # did not. IMMEDIATELY BEFORE the opcache wait, which is where FLEET-STATE.md § 2.1 puts it.
+  FAILED_STEP="php artisan mezzanine:feed-reload"
+  step "Ending the previous release's open streams (mezzanine:feed-reload)"
+  local reload_at; reload_at="$(date +%s)"
+  php artisan mezzanine:feed-reload
+  FAILED_STEP="draining the stream pool"
+  drain_previous_streams "$reload_at"
+
   FAILED_STEP="waiting for PHP-FPM's opcache to revalidate"
   step "PHP-FPM: letting opcache revalidate the new code (no reload)"
-  fpm_code_reload_ready || { printf '%s\n' "${FPM_NOT_READY[@]}" >&2; false; }
   # The previous release's .user.ini can hold a longer revalidate_freq than anything readable now: phase A's
   # reading of it is the floor (phase_b_open_window).
   local floor="$REVALIDATE_FLOOR_S" wait_for="$FPM_REVALIDATE_S"
@@ -1201,6 +1459,7 @@ SMOKE
 ═══════════════════════════════════════════════════════════════════════════════
   restarted : ${SUPERVISED_DAEMONS[*]} (new pids proven alive)
   php-fpm   : not reloaded — $FPM_POSTURE
+  streams   : $DRAIN_RESULT
 
   A tag is not a deploy and a deploy is not a verdict (docs/VERSIONING.md).
   Exercise the real surface: log in, watch a floor render from live telemetry.
@@ -1229,7 +1488,8 @@ main() {
   3  re-exec the deployed release's own bin/deploy.sh
   4  composer install --no-dev · npm ci · npm run build
   5  optimize:clear → migrate --force → config/route/view/event:cache
-  6  queue:restart · install the release's crontab block · SIGTERM every holder of the checkout's daemon lock files · relaunch $TARGET_DAEMONS (cron's command) · wait out opcache revalidation (no FPM reload)
+  6  queue:restart · install the release's crontab block · SIGTERM every holder of the checkout's daemon lock files · relaunch $TARGET_DAEMONS (cron's command)
+  6b mezzanine:feed-reload · SIGTERM the [${MEZZ_STREAM_POOL:-}] streams still open after ${FEED_DRAIN_CEILING_S} s · wait out opcache revalidation (no FPM reload)
   7  php artisan up · GET \$APP_URL/up
 PLAN
     return
