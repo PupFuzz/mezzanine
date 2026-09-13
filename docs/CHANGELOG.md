@@ -43,7 +43,13 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   previous and the deployed release's `revalidate_freq` before `up` (a leading zero read in base 10,
   never shorter than PHP reads it) — measured on the sandbox host, new code was served 3.1 s after an
   in-place checkout at PHP's defaults, and stale code 8 s after it with `validate_timestamps=0`.
-  The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description. ⚠ Not run
+  The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description.
+  `docs/design/FLEET-STATE.md` (D2) follows it: § 2.1's daemon rows name the crontab;
+  `mezzanine:feed-reload` runs before the opcache wait rather than an FPM reload (§ 2.1, § 8.3,
+  Appendix B step 9); R2 drops `process_control_timeout`, whose one purpose was that reload, and keeps
+  `pm.status_path`; and what ends a stream that misses `fleet.reload` — FPM's reload escalation did —
+  is now an owed decision, D2 § 14 item 17, its candidate (SIGTERM to the residual stream workers)
+  unmeasured. ⚠ Not run
   against any real host; `mezzanine:feed-reload` stays a named gap there.
 
 - **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
