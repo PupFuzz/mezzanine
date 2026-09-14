@@ -29,9 +29,9 @@ use Laravel\Fortify\Fortify;
  * never need that window: they prove the new authenticator first.
  *
  * THE THREE STEPS, all behind `auth` + `mfa` + `password.confirm` (`routes/web.php`):
- *   · `start`   generates a secret and keeps it, ENCRYPTED, in the SESSION. The users row is not
- *               touched, so an abandoned move is a session value that ends with the session.
- *               Starting again replaces it.
+ *   · `start`   generates a secret and keeps it, ENCRYPTED, in the SESSION, together with the id of
+ *               the user who started the move. The users row is not touched, so an abandoned move
+ *               is a session value that ends with the session. Starting again replaces it.
  *   · `show`    renders the pending secret's QR code and setup key, and the code form.
  *   · `confirm` verifies a code against the PENDING secret and, in one transaction, writes it as the
  *               account's secret, replaces the recovery codes and stamps `two_factor_confirmed_at`.
@@ -54,20 +54,26 @@ use Laravel\Fortify\Fortify;
  * proven with a code — Fortify's meaning for it. `TwoFactorAuthenticationEnabled` and
  * `TwoFactorAuthenticationDisabled` do not fire, because two-factor authentication stays on for the
  * whole move.
+ *
+ * ⛔ A PENDING MOVE BELONGS TO THE USER WHO STARTED IT, NOT TO THE SESSION. A session can be carried
+ * from one account's sign-in into another's on the same browser, and the intended-URL redirect after
+ * that login can land on the move page. `pendingSecret()` therefore answers "no move in progress"
+ * to any user but the starter, so a second account is never shown the first one's secret as its
+ * own new authenticator and cannot confirm it onto either row.
  */
 class TwoFactorMoveController extends Controller
 {
-    /** The session key holding the encrypted pending secret. */
+    /** The session key holding the pending move: the starting user's id and the encrypted secret. */
     public const PENDING_SECRET = 'two_factor_move.pending_secret';
 
     public function start(Request $request, TwoFactorAuthenticationProvider $provider): RedirectResponse
     {
         $secretLength = (int) config('fortify-options.two-factor-authentication.secret-length', 16);
 
-        $request->session()->put(
-            self::PENDING_SECRET,
-            Fortify::currentEncrypter()->encrypt($provider->generateSecretKey($secretLength)),
-        );
+        $request->session()->put(self::PENDING_SECRET, [
+            'user_id' => $request->user()->getKey(),
+            'secret' => Fortify::currentEncrypter()->encrypt($provider->generateSecretKey($secretLength)),
+        ]);
 
         return redirect()->route('two-factor.move');
     }
@@ -129,10 +135,18 @@ class TwoFactorMoveController extends Controller
         );
     }
 
+    /**
+     * The pending secret, or null when no move is in progress FOR THIS USER — including a move another
+     * user started in this session, or a pending value that names no user.
+     */
     private function pendingSecret(Request $request): ?string
     {
-        $encrypted = $request->session()->get(self::PENDING_SECRET);
+        $pending = $request->session()->get(self::PENDING_SECRET);
 
-        return $encrypted === null ? null : Fortify::currentEncrypter()->decrypt($encrypted);
+        if (($pending['user_id'] ?? null) !== $request->user()->getKey()) {
+            return null;
+        }
+
+        return Fortify::currentEncrypter()->decrypt($pending['secret']);
     }
 }

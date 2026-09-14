@@ -343,8 +343,9 @@ class TwoFactorMoveAuthenticatorTest extends TestCase
 
     /**
      * ⛔ A SESSION ALONE MUST NOT START OR FINISH A MOVE — neither one that never re-proved the
-     * password nor one whose confirmation has aged past `auth.password_timeout`. Without this, a
-     * stolen session cookie would enrol the thief's own device.
+     * password nor one whose confirmation has aged past `auth.password_timeout` (`config/auth.php`).
+     * This stops a session with no password confirmation inside that window from enrolling a device
+     * of its own; a session that confirmed the password inside it passes.
      */
     public function test_the_move_is_refused_without_a_recent_password_confirmation(): void
     {
@@ -430,13 +431,60 @@ class TwoFactorMoveAuthenticatorTest extends TestCase
 
         $newSecret = $this->theMovePage()['secret'];
         $stored = session(TwoFactorMoveController::PENDING_SECRET);
-        $this->assertIsString($stored);
-        $this->assertStringNotContainsString($newSecret, $stored, 'the session holds the secret in plaintext');
-        $this->assertSame($newSecret, Fortify::currentEncrypter()->decrypt($stored));
+        $this->assertSame($user->getKey(), $stored['user_id'], 'the pending move names the user who started it');
+        $this->assertIsString($stored['secret']);
+        $this->assertStringNotContainsString($newSecret, serialize($stored), 'the session holds the secret in plaintext');
+        $this->assertSame($newSecret, Fortify::currentEncrypter()->decrypt($stored['secret']));
 
         // Starting again replaces the pending secret, still without touching the row.
         $this->startTheMoveFromTheCodesPage();
         $this->assertNotSame($newSecret, $this->theMovePage()['secret']);
         $this->assertSame($before, $this->rowOf($user));
+    }
+
+    // ── (g) Another account in the same session ────────────────────────────────────────────
+
+    /**
+     * ⛔ A PENDING MOVE BELONGS TO THE ACCOUNT THAT STARTED IT, NOT TO THE SESSION. A session can
+     * outlive its account's sign-in and be carried into a second account's (a guest session, then a
+     * login on that browser). That second account must not be shown the first one's pending secret
+     * as its own new authenticator, and must not be able to confirm it onto either row.
+     */
+    public function test_a_move_started_by_one_account_is_not_shown_or_confirmed_for_another_in_the_same_session(): void
+    {
+        $starter = User::factory()->twoFactorConfirmed()->create();
+        $other = User::factory()->twoFactorConfirmed()->create();
+        $starterBefore = $this->rowOf($starter);
+        $otherBefore = $this->rowOf($other);
+
+        $this->actingAs($starter);
+        $this->confirmPassword();
+        $this->startTheMoveFromTheCodesPage();
+        $pendingSecret = $this->theMovePage()['secret'];
+
+        // The same session, now authenticated as the other account.
+        $this->actingAs($other);
+        $this->assertTrue(session()->has(TwoFactorMoveController::PENDING_SECRET), 'the control: the session still holds the starter\'s move');
+
+        $this->get(route('two-factor.move'))
+            ->assertRedirect(route('two-factor.codes'))
+            ->assertDontSee($pendingSecret, false);
+
+        $this->followingRedirects()
+            ->post(route('two-factor.move.confirm'), ['code' => $this->otp($pendingSecret)])
+            ->assertOk()
+            ->assertSee('No move to a new authenticator is in progress, so nothing was changed.')
+            ->assertDontSee($pendingSecret, false);
+
+        $this->assertSame($otherBefore, $this->rowOf($other));
+        $this->assertSame($starterBefore, $this->rowOf($starter));
+
+        // The control: the starter's move is still pending and still completes for the starter.
+        $this->actingAs($starter);
+        $this->assertSame($pendingSecret, $this->theMovePage()['secret']);
+        $this->post(route('two-factor.move.confirm'), ['code' => $this->otp($pendingSecret, 1)])
+            ->assertRedirect(route('two-factor.codes'));
+        $this->assertSame($pendingSecret, $this->secretOf($starter->fresh()));
+        $this->assertSame($otherBefore, $this->rowOf($other));
     }
 }

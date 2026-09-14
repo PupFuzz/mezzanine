@@ -52,6 +52,16 @@ Route::middleware('auth')->group(function () {
  * part of `Features::twoFactorAuthentication()` and cannot be removed without the feature. It clears
  * the second factor outright, so no page a CONFIRMED account sees links it: its only form is the
  * enrolment page's "Start over", which that page draws for an account that has not confirmed.
+ *
+ * ⚠ SO DOES FORTIFY'S `POST /user/two-factor-authentication` (`two-factor.enable`), AND WITH `force=1`
+ * IT REPLACES A CONFIRMED ACCOUNT'S SECOND FACTOR. `TwoFactorAuthenticationController::store` calls
+ * `EnableTwoFactorAuthentication` with `force` true, which writes a new secret and a new set of
+ * recovery codes and leaves `two_factor_confirmed_at` set (read at laravel/fortify v1.38.0,
+ * `routes/routes.php` and `Actions\EnableTwoFactorAuthentication`). It is gated by `auth` +
+ * `password.confirm` (`confirmPassword => true` in `config/fortify.php`), without `mfa`. No page a
+ * confirmed account sees links it: its only form is the enrolment page's "Generate a secret", which
+ * that page draws for an account with no secret. It adds no capability beyond the move: a session
+ * inside the password-confirmation window can already replace the secret and codes through the move.
  */
 Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
     Route::get('/two-factor/recovery-codes', [TwoFactorRecoveryCodeController::class, 'show'])
