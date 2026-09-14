@@ -23,7 +23,11 @@ use Illuminate\Support\Facades\DB;
  */
 final class Counters
 {
-    /** Refusals at validation steps 1–3, before any identity is established. Global ONLY. */
+    /**
+     * Refusals at validation steps 1–4, before any identity is established — steps 1–3 through
+     * `batchRefused(null, …)`, and every step-4 refusal (a token that resolves to nothing, or to a
+     * revoked row) counted by its caller beside the specific fact `TokenResolver` records. Global ONLY.
+     */
     public const UNATTRIBUTED_REFUSALS = 'unattributed_refusals';
 
     /** A token that resolves to nothing. Global; it degrades no seat, because the token named none. */
@@ -66,8 +70,12 @@ final class Counters
         self::upsert('global_counters', ['name' => $name], $by);
     }
 
+    /** D1 § 12.7's `batches_failed.<detail>`, completed by a `ServerFault`'s value. */
+    public const BATCHES_FAILED = 'batches_failed.';
+
     /**
-     * `batches_refused.<error>`, keyed by error code, counted against the token's binding.
+     * `batches_refused.<error>`, keyed by error code, counted against the token's binding. A 4xx
+     * refusal only: a request the server could not finish is `batchFailed()`.
      *
      * D2 § 7.1 gives this counter NO badge, and says why: the reporter observes the same refusal
      * from the other side and raises D1 § 9.3's `batches_rejected` from its own counter. "A second
@@ -85,6 +93,31 @@ final class Counters
         }
 
         self::seat($seatRef, 'batches_refused.'.$errorCode);
+    }
+
+    /**
+     * `batches_failed.<detail>`: a request the ingest could not finish, answered `server_error`
+     * (D1 § 12.2), keyed by its fault class (card#9465).
+     *
+     * NOT A REFUSAL, so neither `batches_refused.<error>` nor `unattributed_refusals`. The reporter
+     * retries every `5xx` and counts that in its own `batches_retried`, and a retry commits once; a
+     * refusal counter would put a batch the retry stored into the floor's `batches_rejected`
+     * drill-down, and make the reporter/server disagreement D2 § 7.1 reads as a signal routine.
+     *
+     * Attribution is D1 § 12.1's all the same: against the token's binding once step 4 has resolved
+     * one, and under the same key in `global_counters` before it, because no seat may be named yet.
+     */
+    public static function batchFailed(?int $seatRef, ServerFault $fault): void
+    {
+        $name = self::BATCHES_FAILED.$fault->value;
+
+        if ($seatRef === null) {
+            self::global($name);
+
+            return;
+        }
+
+        self::seat($seatRef, $name);
     }
 
     /**

@@ -4,6 +4,8 @@ namespace App\Read;
 
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
+use App\Ingest\Counters;
+use App\Ingest\ServerFault;
 use App\Sweep\PlaneClock;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -69,7 +71,12 @@ final class FleetHealth
      * same pairing.
      */
     public const COUNTERS = [
-        // § 7.1 — D1's server-side counters whose exposure surface is fleet health.
+        // § 7.1 — D1's server-side counters whose exposure surface is fleet health. `batches_failed`'s
+        // global rows (a fault before step 4 resolves a seat) are one member per `ServerFault` case;
+        // `IngestServerErrorTest` reds when a case has none.
+        Counters::BATCHES_FAILED.ServerFault::StoreContended->value,
+        Counters::BATCHES_FAILED.ServerFault::StoreFailed->value,
+        Counters::BATCHES_FAILED.ServerFault::Internal->value,
         'unattributed_refusals',
         'auth_failed_by_ip',
         'revoked_token_presented',
