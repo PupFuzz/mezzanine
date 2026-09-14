@@ -13,18 +13,16 @@ a data file that tooling reads, not documentation. Everything from
 [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) onward is
 specific to Mezzanine and has no counterpart there.
 
-> **Status — re-measured 2026-08-31, after `v0.2.0` landed.** `VERSION` is `0.2.0`. **Two tags
-> exist**: `v0.1.0` on `556ac3f` — the scaffolding seed merge (PR #11, 2026-08-24), which is
-> the bootstrap case the ⚠ under [§ Release flow](#release-flow) records, not a release anybody
-> reviewed as one — and `v0.2.0` on `804c31a` (PR #40, 2026-08-30), the first tag this flow
-> produced deliberately. Both are immutable and are never moved.
-> **Nothing is deployed** (this clause re-measured 2026-09-09, card#7459): `bin/deploy.sh` now
-> exists and every one of its refusals is exercised by `bin/deploy.selftest.sh`, but it has
-> **never run against a host** — `docs/PLAN.md § 5` records the prod host as unprovisioned
-> (D-08) — so both target verdicts in
-> [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) are still
-> *first install*, never *upgrade*. `docs/CHANGELOG.md` exists and is written to per PR
-> (`docs/PLAN.md § 4`, which owns its format); **`fleet-reporter/` now exists too** — the
+> **Status — read it at its sources; this note states no version and counts no tags.** The
+> released version is the root `VERSION` file on `main` (`git show origin/main:VERSION`). The
+> releases are the tags (`git tag --list 'v*'`), each immutable and never moved, and each release's
+> notes are its section of `docs/CHANGELOG.md`, which is written to per PR (`docs/PLAN.md § 4`
+> owns its format). The first tag, `v0.1.0`, is the bootstrap case the ⚠ under
+> [§ Release flow](#release-flow) records, not a release anybody reviewed as one.
+> **Deploy state is `docs/PLAN.md § 5`'s to record** — its `bin/deploy.sh` bullet says whether the
+> script has run against a host. Until a first deploy has run, both target verdicts in
+> [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets) are
+> *first install*, never *upgrade*. **Both ends of the wire contract exist** — the
 > ⚠ inside [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line)
 > records what that section's rules bind to today.
 
