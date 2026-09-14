@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * `docs/design/FLEET-STATE.md § 8.3`'s outbox read as a VISIBLE PREFIX — card#9467. Every read of
  * `feed_outbox` that a stream's cursor moves on goes through here: the connect read (`boundary()`,
- * behind `Outbox::headBehindLag()`), the tick read (`after()`, behind `Outbox::after()`), and the
+ * behind `Outbox::visiblePrefixHead()`), the tick read (`after()`, behind `Outbox::after()`), and the
  * sweeper's stall watch (`countStalled()`).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -67,8 +67,9 @@ use Illuminate\Support\Facades\Log;
  * than the lag, so that is what each one watches:
  *
  *   · `feed_prefix_future` — every evaluation of the prefix (a connect read, a tick read, a sweep's
- *     stall watch) whose HOLD row's `created_at` is later than the evaluating process's clock.
- *     Counted once per evaluation, and logged with how far ahead the stamp is. Monotone; no gauge.
+ *     stall watch) whose HOLD row's `created_at` is later than the evaluating process's clock, read
+ *     AFTER the statement returns (`countFuture()` says why). Counted once per evaluation, and logged
+ *     with how far ahead the stamp is. Monotone; no gauge.
  *   · `feed_outbox_boundary_stalled` — a sweep pass that finds a committed row at or above HOLD whose
  *     `created_at` is `STALLED_AGE_S` or more in the past. § 6.7's purge deletes by each row's own
  *     `created_at` whether or not any stream read it, so such a row is one lag short of being deleted
@@ -99,7 +100,7 @@ final class VisiblePrefix
             [self::youngAfter($now)],
         );
 
-        self::countFuture($row, $now);
+        self::countFuture($row);
 
         return (int) $row->head;
     }
@@ -122,7 +123,7 @@ final class VisiblePrefix
             [self::youngAfter($now), $cursor],
         );
 
-        self::countFuture($rows[0], $now);
+        self::countFuture($rows[0]);
 
         return collect($rows)
             ->filter(fn (object $row) => $row->id !== null)
@@ -142,7 +143,7 @@ final class VisiblePrefix
             [Clock::sql($now->copy()->subSeconds(self::STALLED_AGE_S)), self::youngAfter($now)],
         );
 
-        self::countFuture($row, $now);
+        self::countFuture($row);
 
         if ((bool) $row->stalled) {
             Log::warning('mezzanine.feed: a feed_outbox row outside the visible prefix is one lag from its purge age, undelivered', [
@@ -160,13 +161,27 @@ final class VisiblePrefix
         return Clock::sql($now->copy()->subSeconds(Outbox::VISIBILITY_LAG_S));
     }
 
-    private static function countFuture(object $row, CarbonInterface $now): void
+    /**
+     * `feed_prefix_future` for one evaluation — called AFTER the statement that returned `$row`, and it
+     * reads its own `now()` then.
+     *
+     * ⛔ NEVER THE `now()` THE LAG'S CUTOFF WAS COMPUTED FROM. That reading is taken before the statement,
+     * and another writer can stamp, insert and commit between it and the moment the statement's snapshot
+     * opens: its row is then HOLD with a stamp later than the cutoff's `now()` while every clock agrees,
+     * and § 7.2 reads a non-zero count as a clock defect. A reading taken after the statement returns
+     * cannot be passed that way on one clock: a row the snapshot sees was stamped before its commit, which
+     * came before the snapshot, which came before the return, which came before this reading — so a stamp
+     * later than it is a clock that disagrees, and nothing else. The cutoff stays on the earlier reading,
+     * which errs safe (an earlier cutoff counts more rows young, so the prefix can only be shorter). No
+     * tolerance is added: the ordering leaves nothing for one to absorb.
+     */
+    private static function countFuture(object $row): void
     {
         if ($row->hold_at === null) {
             return;
         }
 
-        $aheadMs = Clock::toMs($row->hold_at) - Clock::toMs(Clock::sql($now));
+        $aheadMs = Clock::toMs($row->hold_at) - Clock::toMs(Clock::sql(now()));
 
         if ($aheadMs > 0) {
             Log::warning('mezzanine.feed: the feed_outbox prefix is held by a row stamped in this process\'s future', [

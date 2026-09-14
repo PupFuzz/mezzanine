@@ -152,7 +152,7 @@ class At25ConcurrentWriterTest extends FeedTestCase
      * Between `t0 + 2300` and `t0 + 2900` A's row is past the lag and B's is not. A read that FILTERS on
      * the lag returns A alone and moves the cursor past B's lower id; a read that is a PREFIX stops below
      * B. Stream A is open throughout and ticks inside that window (the TICK's arm); stream B CONNECTS
-     * inside it (the CONNECT's arm, `headBehindLag()`). Both must deliver B, then A.
+     * inside it (the CONNECT's arm, `visiblePrefixHead()`). Both must deliver B, then A.
      */
     public function test_a_writer_that_stamps_earlier_but_commits_later_reaches_every_stream(): void
     {

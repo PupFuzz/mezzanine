@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\DB;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * THE READ SIDE: the two statements § 8.3's handler runs, both a VISIBLE PREFIX bounded by the lag
- * below — `headBehindLag()` is the connect read (never a bare `MAX(id)`: AT-D2-25's second RED) and
+ * below — `visiblePrefixHead()` is the connect read (never a bare `MAX(id)`: AT-D2-25's second RED) and
  * `after()` is the tick's. Both are `App\Feed\VisiblePrefix`'s, which states the boundary, why a
  * `created_at` FILTER lost a row when two writers' stamps and ids disagree (card#9467), and the
  * conditions the prefix rests on.
@@ -128,7 +128,7 @@ final class Outbox
     }
 
     /** § 8.3's connect read: the head of the visible prefix. A stream starts here and never below it. */
-    public static function headBehindLag(): int
+    public static function visiblePrefixHead(): int
     {
         return VisiblePrefix::boundary();
     }

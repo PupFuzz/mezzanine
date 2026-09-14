@@ -160,7 +160,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 
         // …and only NOW does the client open the stream. Nothing written before it is replayed: § 8.5
         // "there is no per-seat delta-replay buffer on the server and deliberately so", and the
-        // handler's cursor starts at the head behind the lag.
+        // handler's cursor starts at the head of the visible prefix.
         $client->subscribe();
         $this->quietPastTheLag();
 

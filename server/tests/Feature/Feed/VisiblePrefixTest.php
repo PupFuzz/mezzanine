@@ -3,6 +3,7 @@
 namespace Tests\Feature\Feed;
 
 use App\Feed\Outbox;
+use App\Feed\VisiblePrefix;
 use App\Fold\Clock;
 use App\Sweep\Purge;
 use Illuminate\Support\Carbon;
@@ -51,7 +52,7 @@ class VisiblePrefixTest extends FeedTestCase
     }
 
     /**
-     * ⛔ THE CONNECT READ IS THE SAME PREFIX. A stream starts its cursor at `headBehindLag()`, and a
+     * ⛔ THE CONNECT READ IS THE SAME PREFIX. A stream starts its cursor at `visiblePrefixHead()`, and a
      * head computed over the rows past the lag lands on the aged, HIGHER id — so the young, lower one
      * is below a cursor that has not yet read anything.
      */
@@ -59,7 +60,7 @@ class VisiblePrefixTest extends FeedTestCase
     {
         [$young] = $this->reversedPair();
 
-        $this->assertLessThan($young, Outbox::headBehindLag(),
+        $this->assertLessThan($young, Outbox::visiblePrefixHead(),
             'the connect read started a stream above a younger, lower id it will never look below again');
     }
 
@@ -73,7 +74,7 @@ class VisiblePrefixTest extends FeedTestCase
         // An ordinary hold: the holding row is young but in the reader's past. Nothing to count.
         $this->row(Clock::sql(now()->subMilliseconds(500)), 'young');
         Outbox::after($this->floor);
-        Outbox::headBehindLag();
+        Outbox::visiblePrefixHead();
 
         $this->assertSame(0, $this->globalCounter('feed_prefix_future'), 'an ordinary young row was counted as a clock defect');
 
@@ -86,8 +87,48 @@ class VisiblePrefixTest extends FeedTestCase
         Outbox::after($this->floor);
         $this->assertSame(1, $this->globalCounter('feed_prefix_future'), 'the tick read held by a future stamp was not counted');
 
-        Outbox::headBehindLag();
+        Outbox::visiblePrefixHead();
         $this->assertSame(2, $this->globalCounter('feed_prefix_future'), 'the connect read held by a future stamp was not counted');
+    }
+
+    /**
+     * ⛔ A ROW THAT COMMITS BETWEEN THE READER'S CLOCK AND ITS STATEMENT IS NOT A FUTURE STAMP. The read
+     * takes `now()` for the lag's cutoff BEFORE its statement; another writer can stamp, insert and commit
+     * after that reading and before the statement's snapshot opens, and its row is then the holding row
+     * with a stamp later than the cutoff's `now()` — on ONE clock. `feed_prefix_future` reads as a clock
+     * defect (§ 7.2), so the comparison is against a `now()` taken after the statement returns. The race
+     * is planted deterministically: immediately before each prefix statement runs, the clock moves on and
+     * a row stamped at the new instant is committed.
+     */
+    public function test_a_row_committed_between_the_readers_clock_and_its_statement_is_not_counted_as_a_future_stamp(): void
+    {
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
+
+        $armed = false;
+        DB::connection()->beforeExecuting(function (string $query) use (&$armed) {
+            if (! $armed || ! str_contains($query, 'hold.created_at')) {
+                return;
+            }
+
+            $armed = false;
+            Carbon::setTestNow(Carbon::now()->addMilliseconds(500));
+            $this->row(Clock::sql(now()), 'committed-mid-read');
+        });
+
+        foreach ([
+            'the tick read' => fn () => Outbox::after($this->floor),
+            'the connect read' => fn () => Outbox::visiblePrefixHead(),
+            'the stall watch' => fn () => VisiblePrefix::countStalled(),
+        ] as $read => $evaluate) {
+            DB::table('feed_outbox')->where('id', '>', $this->floor)->delete();
+            $armed = true;
+
+            $evaluate();
+
+            $this->assertFalse($armed, "the race was not planted before {$read}'s statement");
+            $this->assertSame(0, $this->globalCounter('feed_prefix_future'),
+                "{$read} counted a row stamped after its cutoff's clock but before its own statement returned as a clock defect");
+        }
     }
 
     /**
