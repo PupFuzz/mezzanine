@@ -32,7 +32,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   pass's failed seats and `sweep_seat_error`. `Outbox::transaction()` takes an attempt count and clears
   its queued messages at the start of each attempt. A new migration adds `ix_purge` on the retention
   column of `events`, `batches`, `sessions` and `seat_state_transitions`, each with
-  `ALGORITHM=INPLACE, LOCK=NONE`. D2 § 2.2, § 6.4, § 6.5, § 6.6, § 6.8, § 7.2 and § 12 state all of it. **Installer action:**
+  `ALGORITHM=INPLACE, LOCK=NONE`. The purge deletes every table in the order of its retention index's
+  key (`received_at, id` on `events`; `closed_at, orphan_due_at, id` on `calls`) instead of by `id`, so a
+  backlog drains in batches read off that index with no sort of the expired range. D2 § 2.2, § 6.4,
+  § 6.5, § 6.6, § 6.7, § 6.8, § 7.2 and § 12 state all of it. **Installer action:**
   none beyond the deploy, which runs the migration; each `ALTER` waits for open transactions on its
   table before it starts and before it finishes.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is

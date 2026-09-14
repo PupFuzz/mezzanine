@@ -2264,7 +2264,7 @@ If any of the three moves, all three are re-checked in the same change. A retent
 window silently re-ingests re-sent events as new ones — the single most confusing possible corruption of
 a timeline, and the reason D1 states the first half of this chain at all.
 
-**Purge mechanics.** `DELETE FROM events WHERE received_at < ? ORDER BY id LIMIT 5000`, looped until it
+**Purge mechanics.** `DELETE FROM events WHERE received_at < ? ORDER BY received_at, id LIMIT 5000`, looped until it
 deletes fewer than the limit or a **60-second wall-clock budget** expires, then the next table. Bounded
 batches keep the transaction and the binlog small and keep the store responsive during the pass; the
 budget means a purge that cannot keep up **falls behind visibly** (`purge_backlog_rows` is counted)
@@ -2280,6 +2280,25 @@ unmoved by the rows behind it (EXPLAIN on MariaDB 11.8.6 over 20,000 rows: 0.40 
 fire on a fleet much larger than planned or a purge that has been dead for a long time, either of which
 is worth a human.
 
+**Each table is deleted in the order of its retention index's own key** (card#9466): the columns of the
+index that leads with the retention column, then `id` — `received_at, id` above, and on `calls` the
+whole `ix_orphan` key, `closed_at, orphan_due_at, id`. `App\Sweep\Purge` declares the order per table,
+and its test derives each key from `information_schema.STATISTICS` and reds when a declaration stops
+matching it. The order does two jobs. It deletes the oldest rows first, so a pass the budget interrupts
+has deleted a prefix of the expired rows and every row it kept is at or above every row it deleted.
+And it keeps a backlog's batches cheap: the `WHERE` is a range on that index, and an `ORDER BY` on the
+same key lets the engine read 5,000 rows off it in order and stop, where `ORDER BY id` over that range,
+at the sizes measured here, made it read and sort the whole expired range for every batch. Measured on MariaDB 11.8.6 against each
+plan table at 200,000 rows with half of them expired (card#9466 review round 1, 2026-09-14): with
+`ORDER BY id`, `EXPLAIN` showed the retention index as a range over the whole expired range plus
+`Using filesort`, and a table's first batch took 532–1,140 ms; ordered by the key, it showed the same
+range estimated at 5,000 rows with no filesort, and the first batch took 96–247 ms. The plans held at
+1,000,000 rows with half expired, measured on `events` and `calls` only: 2,406 and 3,738 ms by `id`
+against 190 and 560 ms by the key. With 5 % expired the plans split the same way, but the timings did
+not separate consistently table by table (107–467 ms against 90–332 ms). Below those sizes the plan
+`ORDER BY id` gets depends on the rows present: with half expired it walked `PRIMARY` instead on
+`calls` at 2,000 rows and on `events` at 20,000.
+
 ### 6.8 Sizing
 
 All of it derives from D1's own volume estimate, which is itself an estimate: **10,420 events/seat/day
@@ -2289,7 +2308,7 @@ first week of live data.
 
 | Quantity | Value | Derivation |
 |---|---|---|
-| `events` row cost | **~756 B** | clustered row 479 B (columns 449 B + ~30 B InnoDB header) × 1.05 fill, plus three secondary index entries totalling 153 B × 1.5 for B-tree fill and per-entry overhead, plus ~24 B **measured** for `ix_purge` (below) |
+| `events` row cost | **~756 B** | clustered row 479 B (columns 449 B + ~30 B InnoDB header) × 1.05 fill, plus the secondary index entries of `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold` totalling 153 B × 1.5 for B-tree fill and per-entry overhead (below), plus ~24 B **measured** for `ix_purge` (below) |
 | `events` per seat-day | **7.9 MB** | 10,420 × 756 B |
 | projections per seat-day | **~2.1 MB** | calls ~3,000 × 300 B, transitions ~1,400 × 160 B, sessions/attention/heartbeat-derived ~1,740 × 200 B, each × 1.4 for indexes; plus `ix_purge` measured on transitions, 1,400 × 24 B, and on sessions at most 1,740 × 29 B — a bound, because the 1,740 blends three row populations this section does not split. 2.09–2.14 MB |
 | **total per seat-day** | **~10.0 MB** | the two above |
@@ -2315,12 +2334,22 @@ against 8,980 deltas. An earlier draft sized this table at the delta rate; the e
 `batches`, `sessions` and `seat_state_transitions` ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge)) was
 added to a copy of each table holding 200,000 rows on MariaDB 11.8.6, by the migration's own
 `ALTER … ADD INDEX …, ALGORITHM=INPLACE, LOCK=NONE`, and `information_schema.TABLES.INDEX_LENGTH`
-was read after `ANALYZE TABLE` before and after (2026-09-14). The growth was ~24 B per row on the three
-tables whose retention column rises with insert order, and ~29 B per row on `sessions`. That figure
-already includes the B-tree's fill, so no × 1.4 or × 1.5 is applied to it; `batches` is costed
-nowhere in this section and moves no figure. `sessions.ended_at` is written when a session closes
+was read after `ANALYZE TABLE` before and after (2026-09-14). The growth was ~24 B per row on `events`,
+`batches` and `seat_state_transitions`, whose retention column rises with insert order, and ~29 B per
+row on `sessions`. That figure already includes the B-tree's fill, so no × 1.4 or × 1.5 is applied to
+it; `batches` is costed nowhere in this section and moves no figure. `sessions.ended_at` is written when a session closes
 rather than at insert, so its index is maintained out of order in service, and its live figure may sit
 above the one built here.
+
+**The 153 B index-entry figure covers `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold`** — every
+secondary index `events` carried before `ix_purge`, all of them in [§ 6.4](#64-ddl)'s DDL since this
+section was first written. Until card#9466's review round 1 this section counted them as three. Like
+the 449 B column sum, the figure has no written per-index derivation, so which indexes it covers was
+settled against a measurement rather than recovered: a copy of `events` holding 200,000 rows on
+MariaDB 11.8.6, spread across 50 seats with a pseudo-random 26-character `event_id`, read those indexes
+at ~216 B per row from `mysql.innodb_index_stats` page counts after `ANALYZE TABLE` (2026-09-14),
+against the model's 153 B × 1.5 ≈ 230 B, and the same indexes without `ix_fold` at ~187 B. No figure
+moves. The same read put `ix_purge` at ~24 B per row, as above.
 
 ⚠ **The `data` bytes in the row cost above were modelled on a BINARY `JSON` column, and MariaDB's
 `JSON` is an alias for `LONGTEXT` ([§ 6.1](#61-deployment-posture)).** How the two compare, in
@@ -5464,7 +5493,7 @@ document.
 | Fold claim size | 8 seats | **Chosen** — small enough that a second worker partitions cleanly under `SKIP LOCKED`, large enough that a four-seat fleet is one claim | [§ 6.5](#65-the-fold) |
 | Purge batch / budget | 5,000 rows / 60 s | **Chosen** — bounded DELETEs keep the transaction and the binlog small; the wall-clock budget makes a purge that cannot keep up fall behind *visibly* (`purge_backlog_rows`) instead of holding a long transaction | [§ 6.7](#67-retention-and-purge) |
 | `events` table-size alarm | 20 GB | **Derived** — ~2.9× the 50-seat 14-day figure below, so it can only fire on a fleet far larger than planned or a long-dead purge | [§ 6.7](#67-retention-and-purge) |
-| `events` row cost | **~756 B** | **Derived** — 479 B clustered (449 B of columns + ~30 B header) × 1.05, plus 153 B of three secondary index entries × 1.5 for fill and overhead, plus ~24 B measured for `ix_purge` | [§ 6.8](#68-sizing) |
+| `events` row cost | **~756 B** | **Derived** — 479 B clustered (449 B of columns + ~30 B header) × 1.05, plus 153 B of the `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold` index entries × 1.5 for fill and overhead, plus ~24 B measured for `ix_purge` | [§ 6.8](#68-sizing) |
 | Render-state changes per seat-day | **~1,400** | **Derived** — ~1,200 turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) + ~200 attention edges + a handful of staleness and ceiling transitions. **Not** the 8,980 delta rate: a transition row is written only on a `render_state` change and the two are different populations ([§ 6.5](#65-the-fold)) | [§ 6.8](#68-sizing) |
 | Store per seat-day | **~10.0 MB** | **Derived** — 7.9 MB of `events` (10,420 × 756 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4, plus `ix_purge` measured at 24 B a transition and at most 29 B on the 1,740) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~140 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |

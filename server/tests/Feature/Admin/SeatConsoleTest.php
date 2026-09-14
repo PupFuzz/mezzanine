@@ -144,6 +144,31 @@ class SeatConsoleTest extends SweepTestCase
         $this->assertNull($this->seatRow()->retired_at, 'nothing was changed');
     }
 
+    /**
+     * The busy refusal is for a concurrency error and nothing else — card#9466. Any other error the
+     * act throws is not "busy, try again": it is a defect, and the route answers it with a 500 rather
+     * than telling the operator a retry would help.
+     */
+    public function test_an_error_that_is_not_a_concurrency_error_is_a_500_and_not_a_busy_refusal(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        SeatRetirement::$beforeRetire = fn () => throw new \RuntimeException('a defect in the act');
+
+        try {
+            $this->actingAs($this->operator())
+                ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+                    'reason' => 'the box was decommissioned',
+                ])
+                ->assertStatus(500);
+        } finally {
+            SeatRetirement::$beforeRetire = null;
+        }
+
+        $this->assertNull($this->seatRow()->retired_at, 'nothing was changed');
+    }
+
     public function test_retiring_through_the_console_performs_the_whole_act(): void
     {
         $wire = new OutboxWire;

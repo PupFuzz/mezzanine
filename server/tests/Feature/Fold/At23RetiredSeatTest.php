@@ -302,6 +302,34 @@ class At23RetiredSeatTest extends SweepTestCase
         $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
     }
 
+    /**
+     * The busy refusal is for a concurrency error and nothing else — card#9466. Any other error the
+     * act throws escapes the command, so the shell shows the defect instead of "try again".
+     */
+    public function test_an_error_that_is_not_a_concurrency_error_escapes_the_command(): void
+    {
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $defect = new \RuntimeException('a defect in the act');
+        SeatRetirement::$beforeRetire = fn () => throw $defect;
+
+        $thrown = null;
+
+        try {
+            Artisan::call('mezzanine:retire', [
+                '--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'operator@aimla', '--reason' => 'decommissioned',
+            ]);
+        } catch (\Throwable $e) {
+            $thrown = $e;
+        } finally {
+            SeatRetirement::$beforeRetire = null;
+        }
+
+        $this->assertSame($defect, $thrown, 'the command did not let the non-concurrency error escape');
+        $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
+    }
+
     /** § 11's DISCRIMINATING CONTROL: "a live seat in the same fleet is unaffected at every step." */
     public function test_a_live_seat_in_the_same_fleet_is_unaffected(): void
     {

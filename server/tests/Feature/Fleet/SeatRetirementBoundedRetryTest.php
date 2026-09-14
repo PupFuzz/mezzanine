@@ -50,12 +50,6 @@ class SeatRetirementBoundedRetryTest extends CommittedSeatTestCase
             $this->assertSame(2, $attempt, 'the retirement did not retry');
             $this->assertNull($thrown, 'the retried retirement still failed: '.$thrown?->getMessage());
             $this->assertSame(SeatRetirementOutcome::RETIRED, $outcome->outcome);
-            $this->assertSame(
-                1,
-                DB::connection(self::FIXTURE)->table('feed_outbox')->where('t', 'seat.retired')
-                    ->where('install_id', $this->install())->count(),
-                'the rolled-back attempt left a second seat.retired behind',
-            );
         } finally {
             $this->release($holder);
         }

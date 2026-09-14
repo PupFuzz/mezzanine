@@ -107,11 +107,11 @@ final class SeatRetirement
      * so an ordinary collision is absorbed by the wait and never raises. It is pinned the way
      * `IngestPipeline::boundTheWriteSession()` pins the ingest's: `SET SESSION`, never `SET GLOBAL`.
      *
-     * THE BOUND IS PER BLOCKED STATEMENT, NOT PER ATTEMPT: at most 2 s for any one statement,
-     * across `LOCK_ATTEMPTS` attempts. The typical contention case — the seat lock is held and
-     * released — costs at most 3 × 2 s = 6 s. Once this act holds the seat lock, only a writer that
-     * does not lock the seat first can still hold a row it touches. A fold window is such a writer
-     * today, and it is bounded by `Fold::BATCH` events rather than by a clock, so retiring a seat
+     * THE BOUND IS PER BLOCKED STATEMENT, NOT PER ATTEMPT: at most `LOCK_WAIT_TIMEOUT_S` for any one
+     * statement, across `LOCK_ATTEMPTS` attempts. The typical contention case — the seat lock is held
+     * and released — costs at most `LOCK_ATTEMPTS` × `LOCK_WAIT_TIMEOUT_S`. Once this act holds the
+     * seat lock, only a writer that does not lock the seat first can still hold a row it touches. A
+     * fold window is such a writer today, and it is bounded by `Fold::BATCH` events rather than by a clock, so retiring a seat
      * whose fold is draining a backlog can exhaust the attempts: the callers then answer "busy — try
      * again", and nothing was changed.
      */
@@ -119,7 +119,7 @@ final class SeatRetirement
 
     /**
      * Attempts at the whole transaction when it throws a concurrency error (`1020`/`1205`/`1213`):
-     * the first attempt and two retries. A real `1213` is broken by MariaDB's deadlock detector in
+     * the count includes the first attempt. A real `1213` is broken by MariaDB's deadlock detector in
      * milliseconds, so its retry is nearly free; a `1205` retry pays off against a holder that
      * releases inside the next attempt's wait. `RebuildCommand::REPLAY_LOCK_ATTEMPTS` is the same
      * count at the server's default wait.

@@ -33,7 +33,7 @@ class RebuildCommand extends Command
 
     /**
      * Attempts at the whole replay transaction when it throws a concurrency error
-     * (`1020`/`1205`/`1213`) — card#9466. 3 = the first attempt and two retries.
+     * (`1020`/`1205`/`1213`) — card#9466. The count includes the first attempt.
      *
      * ⚠ THE RETRY IS NOT THE LOCK ORDER, AND IT IS NOT WHAT ABSORBS AN ORDINARY COLLISION. A holder
      * that releases inside the wait raises nothing: the blocked statement waits and proceeds, and
@@ -46,8 +46,9 @@ class RebuildCommand extends Command
      * THE WAIT IS THE SERVER'S DEFAULT `innodb_lock_wait_timeout` (50 s), NOT A PINNED ONE. This is
      * a console command with no HTTP deadline in front of it; `SeatRetirement` pins a short wait
      * because an operator's browser is waiting on that one. The bound is per BLOCKED STATEMENT, not
-     * per attempt: 3 × 50 s bounds the wait for the seat lock, and once `reset()` holds that lock
-     * only a writer that does not lock the seat first can still hold a row the replay touches.
+     * per attempt: `REPLAY_LOCK_ATTEMPTS` × `innodb_lock_wait_timeout` bounds the wait for the seat
+     * lock, and once `reset()` holds that lock only a writer that does not lock the seat first can
+     * still hold a row the replay touches.
      */
     public const REPLAY_LOCK_ATTEMPTS = 3;
 

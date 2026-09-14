@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\DB;
  * Every `App\Sweep\Purge::PLAN` table whose retention column led no index gains one — card#9466.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * WHICH TABLES, AND HOW THAT IS KNOWN. The purge deletes `WHERE <retention column> < ? ORDER BY id
- * LIMIT 5000` (`docs/design/FLEET-STATE.md § 6.7`). A table needs an index whose FIRST column is that
- * retention column for the `WHERE` to seek; an index that leads with `seat_ref` does not serve it,
+ * WHICH TABLES, AND HOW THAT IS KNOWN. The purge deletes `WHERE <retention column> < ? ORDER BY
+ * <the retention index's key> LIMIT 5000` (`docs/design/FLEET-STATE.md § 6.7`). A table needs an
+ * index whose FIRST column is that retention column for the `WHERE` to seek; an index that leads with `seat_ref` does not serve it,
  * because the purge carries no `seat_ref` predicate. The tables below are the ones
  * `information_schema.STATISTICS` showed with no `SEQ_IN_INDEX = 1` row on their retention column
  * on a store migrated to the migration before this one. `calls` (`ix_orphan`), `attention_requests`
@@ -18,10 +18,15 @@ use Illuminate\Support\Facades\DB;
  * `Tests\Feature\Sweep\PurgeTest::test_every_purge_plan_table_has_a_retention_leading_index()` runs
  * that same query over `Purge::PLAN` itself, so a table added to the plan without an index reds.
  *
- * WHAT THE INDEX BUYS, AND NO MORE. In the steady state few rows are past retention, and without it
- * the DELETE had no index to seek those few through, so it scanned the table in `id` order to find
- * them. With a real backlog of expired rows the optimizer walks `PRIMARY` whether or not the index
- * exists, because most of the table then qualifies. The index serves the steady state.
+ * WHAT THE INDEX BUYS, AND WHAT IT NEEDS FROM THE PURGE. In the steady state few rows are past
+ * retention, and without it the DELETE had no index to seek those few through, so it scanned the
+ * table to find them. With a backlog the DELETE still ranges over the index, and only an `ORDER BY`
+ * on the index's own key lets it stop at the `LIMIT` (`App\Sweep\Purge::drain()`, round 1 of this
+ * card's review). Measured on MariaDB 11.8.6 at 200,000 rows with half of them expired, on
+ * every plan table: `ORDER BY id` planned a range over this index plus a filesort of the whole expired
+ * range, at 532–1,140 ms for a table's first 5,000-row batch; ordered by the index's key, the same
+ * range with no filesort, at 96–247 ms. Which plan `ORDER BY id` gets depends on the rows present:
+ * with half expired it walked `PRIMARY` instead on `calls` at 2,000 rows and on `events` at 20,000.
  *
  * ⛔ `ALGORITHM=INPLACE, LOCK=NONE` IS IN THE SQL THE SERVER RECEIVES, not only in this comment
  * (§ 6.9 rule 1: `INPLACE` for a secondary index). The literal clause is what makes MariaDB build
