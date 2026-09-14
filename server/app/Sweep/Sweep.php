@@ -119,10 +119,9 @@ final class Sweep
                 // `seat()` takes first covers `seat_state`, and every transaction that samples the
                 // seat's fingerprint takes it first (§ 6.5). It does not cover a downstream row
                 // (`sessions`, `calls`, `attention_requests`, `seat_counters`) written outside those
-                // transactions — the ingest's refusal and failure counters write `seat_counters` with
-                // no seat lock — and a job's write to such a row can still time out (`1205`), deadlock
-                // (`1213`) or find it changed (`1020`). Nothing was written, and the next pass retries
-                // the seat.
+                // transactions — § 6.5 names the writers outside the lock — and a job's write to such
+                // a row can still time out (`1205`), deadlock (`1213`) or find it changed (`1020`).
+                // Nothing was written, and the next pass retries the seat.
                 if (app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
                     $this->contended((int) $seatRef, 'a downstream row held');
 

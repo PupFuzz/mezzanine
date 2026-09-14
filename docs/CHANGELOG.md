@@ -38,11 +38,19 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `FoldLockFirstTest` and `FoldWindowDurationTest` on real MariaDB connections, `FoldWindowTimeBoundTest`,
   `FoldWindowBudgetSourcesTest`, and a session time-zone assertion in `DatabasePinTest`.
   **Installer action:** check the store's time zone. There is no migration, and the deploy's daemon
-  restart puts the fold on the new code. Before deploying, run `SELECT @@system_time_zone` on the
-  store. Where it is not UTC, the `TIMESTAMP` values the auth tables and `failed_jobs` already hold were
-  written through that zone, and they read back shifted by its offset once the connection is pinned.
-  On a store west of UTC, a two-factor reset code issued within `TwoFactorReset::TTL_MINUTES` before
-  the deploy stays valid for that offset longer, once.
+  restart puts the fold on the new code. Before deploying, run
+  `SELECT @@global.time_zone, @@system_time_zone;` on the store. The store is safe when the global zone
+  is `+00:00` or `UTC`, or when it is `SYSTEM` and the system zone is UTC; the system zone alone misses a
+  global zone set explicitly. On any other store, the `TIMESTAMP` values the auth tables and
+  `failed_jobs` already hold were written through that zone, and they read back shifted by its offset
+  once the connection is pinned: on a store four hours west of UTC, a `12:30:00` written before the
+  deploy reads back as `16:30:00` after it. `TwoFactorReset::request()` writes a code's `expires_at` and
+  `TwoFactorReset::consume()` compares it with `now()`, so on a store west of UTC an unconsumed
+  two-factor reset code issued within `TwoFactorReset::TTL_MINUTES` plus that offset before the deploy
+  is valid for the offset longer than its lifetime, and a code among them that had already expired
+  becomes valid again. On such a store, delete the unconsumed codes during the deploy, once the new
+  code is serving: `DELETE FROM two_factor_reset_tokens WHERE consumed_at IS NULL;`. A user who still
+  needs a reset requests a new code.
 - **card#9466** — **Rebuild, retirement and the sweep take the seat's `seat_state` lock first, and every
   purge table has a retention index.** `mezzanine:rebuild` locks the seat before it deletes its
   projections and retries the whole replay on a lock timeout, deadlock or changed row
