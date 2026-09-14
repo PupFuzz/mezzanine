@@ -20,8 +20,9 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                suite a test names (read with `ast`, not grepped -- a
                                                grep is satisfied by the suite's own docstring); the
                                                build order gates every artifact a test reads, and
-                                               every Build bullet the harness drives declares the
-                                               harness or names another instrument; the
+                                               every Build bullet of a test the harness drives
+                                               declares the harness, while a test naming no fixture
+                                               and not the harness may name an instrument instead; the
                                                animation-log schema's two homes; the episode walk's
                                                own episode and row counts
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
@@ -1085,16 +1086,24 @@ if fx_declared:
 #   the harness itself (`the harness`, the bold name Appendix B builds it under) is a harness test too.
 #
 #   THE OTHER INSTRUMENTS are Appendix B's bold artifact names whose head noun is `gate` / `gates` --
-#   the other thing this document RUNS rather than reads.  A bullet whose `Reads:` clause names one is
-#   driven by that instrument and owes no harness.  The animation log is not among them: it records
-#   what the harness replays and replays nothing itself.
+#   the other thing this document RUNS rather than reads.  The animation log is not among them: it
+#   records what the harness replays and replays nothing itself.
 #
-# A bullet the harness drives must declare `the harness`; a bullet that names no fixture, no harness
-# and no other instrument reds, because what runs it is undeclared and a check that guessed would pass
-# exactly the bullet it cannot read.  A backticked `fx-` token the fixture table does not declare is a
-# CONTROL: the predicate cannot recognise that fixture, so it cannot classify the test on it.  The
-# token is read wider than the table's own shape, so a malformed name is seen rather than skipped.
+# THE CLASSIFICATION DECIDES, AND IT IS CHECKED FIRST.  A harness test's every bullet must declare
+# `the harness`, whatever else its clause names: a gate named beside a replayed fixture does not stand
+# in for the harness that replays it.  Only a bullet of a test that names no fixture and not the harness
+# may be covered by an instrument instead.  Any other bullet reds, because what runs it is undeclared
+# and a check that guessed would pass exactly the bullet it cannot read.  Checking the instrument first
+# -- the first revision of this half -- let a harness test swap the harness for a step-0 gate and pass,
+# which is the round-1 review's MAJOR on PupFuzz/mezzanine#164.
+#
+# A backticked name beginning `fx` that the fixture table does not declare is a CONTROL: the predicate
+# cannot recognise that fixture, so it cannot classify the test on it -- and a malformed name dropped
+# out of the harness class is exactly what would let a gate name cover the test.  The token is read
+# wider than the table's own `fx-[a-z0-9-]+` shape -- any separator, any case -- so a malformed name
+# (`fx_gap`, `FX-gap`) is seen rather than skipped.
 G5_HARNESS = "the harness"
+G5_FX_TOKEN = re.compile(r"`(fx[^`\n]*)`", re.I)
 g5_harness_bullets, g5_instrument_bullets = [], []
 g5_other_instruments = sorted(a for a in artifact_step if re.search(r"\bgates?$", a))
 if appB and G5_HARNESS not in artifact_step:
@@ -1106,40 +1115,42 @@ if appB and fx_declared and G5_HARNESS in artifact_step:
     for name, half, seg, reads in g5_bullets:
         g5_by_test.setdefault(name, []).append((half, seg, reads))
     for name, bl in g5_by_test.items():
-        fx_named = {t for _, seg, _ in bl for t in re.findall(r"`(fx-[^`\s]*)`", seg)}
+        fx_named = {t for _, seg, _ in bl for t in G5_FX_TOKEN.findall(seg)}
         for t in sorted(fx_named - fx_declared):
             fail.append(f"G5 CONTROL: `{name}` names `{t}` in a Build bullet and section 11's fixture "
                         f"table declares no such fixture, so the harness half cannot recognise what "
                         f"the test replays and classifies it on the fixtures it does recognise, or on "
                         f"none")
-        harness_test = bool(fx_named & fx_declared) or any(
-            re.search(r"\bthe harness\b", seg, re.I) for _, seg, _ in bl)
+        fx_replayed = sorted(fx_named & fx_declared)
+        harness_test = bool(fx_replayed) or any(
+            re.search(r"\bthe\s+harness\b", seg, re.I) for _, seg, _ in bl)
         for i, (half, seg, reads) in enumerate(bl, 1):
             if reads is None:            # reds above: a bullet with no Reads clause declares nothing
                 continue
             label = (f"`{name}`'s Build bullet {i} of {len(bl)}"
                      f"{' (the ' + half + ' half)' if half else ''}")
-            if reads & set(g5_other_instruments):
-                g5_instrument_bullets.append(label)
-            elif harness_test:
+            instruments = sorted(reads & set(g5_other_instruments))
+            if harness_test:
                 g5_harness_bullets.append(label)
                 if G5_HARNESS not in reads:
                     fail.append(
                         f"G5: {label} is driven by the harness — its test "
-                        f"{'replays ' + str(sorted(fx_named & fx_declared)) if fx_named & fx_declared else 'names the harness'}"
-                        f" — and its **Reads:** clause declares neither `{G5_HARNESS}` nor another "
-                        f"instrument ({g5_other_instruments}). A bullet that replays a fixture reads "
-                        f"the harness as surely as anything it asserts on; leave it out and the "
-                        f"ordering rule cannot see that the test needs step "
-                        f"{artifact_step[G5_HARNESS]}'s artifact, which is how AT-D3-1's instrument "
-                        f"half stood at step 2")
-            elif G5_HARNESS in reads:
-                g5_harness_bullets.append(label)
+                        f"{'replays ' + str(fx_replayed) if fx_replayed else 'names the harness'}"
+                        f" — and its **Reads:** clause does not declare `{G5_HARNESS}`."
+                        + (f" It names {instruments} instead, and that does not stand in for the "
+                           f"harness: only a test that names no fixture and not the harness may "
+                           f"name an instrument instead." if instruments else "")
+                        + f" A bullet that replays a fixture reads the harness as surely as anything "
+                          f"it asserts on; leave it out and the ordering rule cannot see that the "
+                          f"test needs step {artifact_step[G5_HARNESS]}'s artifact, which is how "
+                          f"AT-D3-1's instrument half stood at step 2")
+            elif instruments:
+                g5_instrument_bullets.append(label)
             else:
                 fail.append(
-                    f"G5: {label} names no fixture from section 11's table, does not name the "
-                    f"harness, and declares no instrument in its **Reads:** clause (`{G5_HARNESS}`, "
-                    f"or one of {g5_other_instruments}). What runs the test is undeclared, so whether "
+                    f"G5: {label} belongs to a test that names no fixture from section 11's table "
+                    f"and does not name the harness, and its **Reads:** clause names no instrument "
+                    f"(one of {g5_other_instruments}). What runs the test is undeclared, so whether "
                     f"its gate stands on the harness cannot be decided, and a check that guessed would "
                     f"pass the one bullet it cannot read")
     if not g5_harness_bullets:
@@ -2623,10 +2634,11 @@ print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Re
       f"is where an undeclared read hides, and a count would hide it again")
 for _n, _a in g5_unread:
     print(f"    G5 residue — named but not declared as read · {_n}: `{_a}`")
-print(f"    G5 harness: {len(g5_harness_bullets)} Build bullets driven by the harness, each required "
-      f"to declare it; {len(g5_instrument_bullets)} driven by another instrument "
-      f"({g5_other_instruments}): {g5_instrument_bullets}. Classified from the fixture table, the "
-      f"harness's own name and Appendix B's gates — no bullet is listed in this tool")
+print(f"    G5 harness: {len(g5_harness_bullets)} Build bullets of tests the harness drives, each "
+      f"required to declare it whatever else it names; {len(g5_instrument_bullets)} of tests naming "
+      f"no fixture and not the harness, run by an instrument ({g5_other_instruments}): "
+      f"{g5_instrument_bullets}. Classified from the fixture table and the harness's own name first, "
+      f"Appendix B's gates second — no bullet is listed in this tool")
 print(f"    G5 ordinal REDs: {g5_ord_total} across the acceptance tests, each sequence checked "
       f"CONTIGUOUS from Second. Which of them are bound to a suite is printed rather than counted — "
       f"a test whose REDs no fixture file claims has had its ENUMERATION checked and its EXECUTION "

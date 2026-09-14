@@ -99,6 +99,19 @@ because a gate can only be proven on a defect of its own class:
                replayed a fixture and left the harness out of its `Reads:` clause stood below the
                step that builds the harness, and G5 could not see it.  The span is read out of the
                document, so this kind carries nothing it deletes.
+  `instrument`
+            -- replace the bold artifact name in the anchored span with the first gate Appendix B's
+               Artifact cells name (a bold name whose head noun is `gate` / `gates`), which is the
+               class "a declaration a gate holds the document to was swapped for one it exempts".
+               PupFuzz/mezzanine#164's round-1 review is why this exists: G5 checked the instrument
+               exemption before the harness classification, so a fixture-replaying bullet that named
+               a step-0 gate in place of the harness passed.  The gate's name is read out of Appendix
+               B on every run; the recognizer restates G5's `gates?` head-noun rule because that
+               verifier cannot be imported without running it.
+  `separator`
+            -- replace the first hyphen of the anchored name with an underscore, which is the class
+               "a name was malformed into a shape the gate's token does not read".  Also #164 round 1:
+               G5's undeclared-fixture control read only `fx-` names, so `fx_gap` was invisible to it.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -445,8 +458,11 @@ PLANTS = [
     (
         # card#7341.  G5's harness half: a bullet of a test that replays a fixture declares the
         # harness.  The plant is placed on a half that replays its fixture BY REFERENCE ("the same
-        # fixture"), deliberately: a per-bullet fixture match passes this mutant, so only the per-test
-        # predicate the half uses can red it.
+        # fixture"), and its substring is the harness-test message, so what it pins is the per-test
+        # classification's MESSAGE: a per-bullet fixture match would still red this mutant, through
+        # the branch for a bullet whose test names no fixture, no harness and no instrument, but
+        # under that branch's message rather than this one.  The plant whose VERDICT depends on the
+        # classification is the `instrument` plant below.
         "verify-floor.py",
         "docs/design/FLOOR.md",
         r"(\*\*Build — the strip half:\*\* the same fixture, with the status strip rendered\. "
@@ -468,6 +484,34 @@ PLANTS = [
         "rename",
         "the fixture AT-D3-7's protocol half replays, renamed to one section 11's fixture table does "
         "not declare, which G5's harness-half CONTROL must report (card#7341)",
+        "section 11's fixture table declares no such fixture",
+    ),
+    (
+        # PupFuzz/mezzanine#164 round 1, the MAJOR.  The dodge: AT-D3-1's instrument half replays a
+        # fixture, and its `Reads:` clause trades the harness for the gate Appendix B builds first.
+        # A gate that checks the instrument exemption before the harness classification passes this
+        # mutant at rc 0 -- measured on the first revision -- so this plant's verdict, not only its
+        # message, depends on the classification being checked first.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\*\*Build — the instrument half:\*\* replay `[^`]+` alone, then silence; collect the "
+        r"animation\s+log\. \*\*Reads:\*\* the \*\*animation log\*\*,)( \*\*the harness\*\*,)( the)",
+        "instrument",
+        "the harness in AT-D3-1's instrument half swapped for an Appendix B gate, which G5's harness "
+        "half must refuse because that test replays a fixture (#164 round 1)",
+        "does not stand in for the harness",
+    ),
+    (
+        # PupFuzz/mezzanine#164 round 1, MINOR-2.  The undeclared-fixture CONTROL's token against a
+        # name malformed with an underscore.  The fixture closure's own `fx-[a-z0-9-]+` does not read
+        # `fx_...`, and this test replays other declared fixtures, so nothing else reds this mutant:
+        # against the `fx-`-only token it ran at rc 0.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\*\*Build — the instrument half:\*\* replay `)(fx-[a-z0-9-]+)(` alone)",
+        "separator",
+        "the fixture AT-D3-1's instrument half replays, its first hyphen made an underscore, which "
+        "G5's harness-half CONTROL must report as a fixture the table does not declare (#164 round 1)",
         "section 11's fixture table declares no such fixture",
     ),
 ]
@@ -530,6 +574,13 @@ MUTATIONS = {
     "noun": lambda m: (m.group(1) + m.group(2) + ", and keeps a count of "
                        + re.search(r"`[a-z_]+`", m.group(2)).group(0) + m.group(3)),
     "drop": lambda m: m.group(1) + m.group(3),
+    "instrument": lambda m: (m.group(1)
+                             + re.sub(r"\*\*[^*]+\*\*", lambda _: "the **" + re.search(
+                                 r"^\| \d+ \|[^|\n]*?\*\*([^*\n]*\bgates?)\*\*",
+                                 m.string[m.string.index("| Order | Artifact | Gate |"):],
+                                 re.M).group(1) + "**", m.group(2), count=1)
+                             + m.group(3)),
+    "separator": lambda m: m.group(1) + m.group(2).replace("-", "_", 1) + m.group(3),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
