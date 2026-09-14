@@ -48,7 +48,7 @@ use App\Floor\InvalidFloorMap;
  * `white-space: normal` strips a run of whitespace at each end and collapses every run inside, so
  * `the solos`, ` the solos` and `the  solos` are one plate name on the screen and a comparison on
  * the BYTES would hand the operator the very building this refusal exists to prevent. Nothing is
- * normalised on the way IN: what the page delivers is still the operator's own string.
+ * normalised on the way IN: what `GET /api/building` delivers is still the operator's own string.
  *
  * ⭐ THE PLAN IS POSITION AND NOTHING ELSE (card#9292, § 4.6 rule 1). A room's `origin` says where
  * its top-left corner goes; the room's SIZE is its map's grid (`App\Floor\FloorMap`) and is never
@@ -120,8 +120,8 @@ final class BuildingLayout
     private function __construct(
         /**
          * The floors the layout composes, NORMALISED: floor keys ascending, each floor's rooms by
-         * `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape the lobby
-         * page delivers to the browser, so the client is handed keys and never derives one.
+         * `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape
+         * `GET /api/building` delivers to the browser, so the client is handed keys and never derives one.
          *
          * @var list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: array<mixed>}>
          */
@@ -350,7 +350,7 @@ final class BuildingLayout
                 'floor' => $floorKey,
                 // Stored exactly as authored — NOT trimmed and not normalised (card#9273): the
                 // reader refuses a label it cannot accept and repairs none that it can, so what
-                // the page delivers is the operator's own string.
+                // `GET /api/building` delivers is the operator's own string.
                 'label' => $label,
                 'rooms' => array_values($onThisFloor),
             ];

@@ -57,6 +57,23 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   build keeps its badge, because the total lives in its `state.json`; `fleet-reporter/INSTALL-LINUX.md`
   says why neither replacing the artifact nor deleting `state.json` clears it, and card#9491 owns
   whether it should.
+- **card#9208** — **The lobby fetches the building layout from `GET /api/building`, and the page
+  no longer carries it** (`docs/design/FLOOR.md` Appendix B row 13, build slice 3). The lobby
+  fetches the snapshot, then the layout, then renders; the `#lobby-layout` JSON island and the
+  dashboard route's layout read are gone, so a saved layout reaches a viewer on Refresh or reload.
+  A failed layout request is § 9 F17: the lobby says *the building layout could not be loaded —
+  HTTP N* and composes no building, listing each install as a room with no floor claimed on a cold
+  start and keeping the floors it held, labelled *last known layout*, after one. A `200` whose body
+  is not a layout and a request that never reaches the server are failures too, never the empty
+  layout. New `server/public/js/wire/building.js` holds the layout and each room's map by version:
+  a room is fetched only when the map held is not at the version the server reported, a `room.map`
+  for a rendered room re-fetches that room alone and returns one event-log line, a
+  `building.layout` naming a new version re-fetches the layout, and a failed map request keeps what
+  was held with the failure beside it and never the shipped default (§ 9 F16). No page calls the
+  room-map half yet: rooms are entered by the floor route (Appendix B step 7) and messages arrive on
+  the client stream (step 3), and both are unbuilt, as are the room re-render, the written event
+  record and F17's backoff retry. A stored layout the reader refuses is now `GET /api/building`'s
+  `500` and the lobby's F17 statement, where it was an exception on `/dashboard`.
 
 - **card#9320** — **G8 sees a counter written the way D2's pseudocode fences write one.**
   `verify-fleet-state.py`'s G8 holds every counter a rule writes against § 7.1 / § 7.2, and in the

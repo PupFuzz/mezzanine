@@ -13,7 +13,7 @@
  * ⛔ EVERY RENDERED FACT NAMES ITS D2 MEMBER (§ 1.3 corollary 1: "No rendered fact without a
  * named field"). The map, once, so no function below has to argue it a second time:
  *
- *   floor row .................. the BUILDING LAYOUT the page delivered (§ 4.6), composed
+ *   floor row .................. the BUILDING LAYOUT `GET /api/building` answered (§ 4.6), composed
  *                                against `installs[].install_id`        (§ 4.1 row 1)
  *   a room on the row .......... `installs[].install_id`, and whether the client holds it
  *   per-floor summary counts ... `render_state` over `installs[].seats[]` for every install the
@@ -98,13 +98,13 @@ export function floorSummary(seats) {
  * layout composes, plus one per install it does not place, floor keys ascending.
  *
  * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
- * `layout` is the validated, normalised document the page delivered (`#lobby-layout`): a list of
+ * `layout` is the validated, normalised floors `GET /api/building` answered (D2 § 8.7): a list of
  * `{ floor, label, rooms: [{ install, form }] }`, keys already derived server-side and `label`
  * null on a floor the operator did not name (card#9273, § 4.6). What THIS function
  * adds is § 4.6's one default rule — an install the snapshot carries that no delivered floor
  * places is a floor of its own, alone, `open` — and it adds it HERE and not only on the server
- * because § 4.1's discrepancy check discovers an install AFTER the page was served, and that
- * install owes a floor the page could not have known about. The rule has a second home in
+ * because § 4.1's discrepancy check discovers an install AFTER the layout was fetched, and that
+ * install owes a floor the layout could not have known about. The rule has a second home in
  * `App\Building\Building::compose()` for the console; `tests/fixtures/building/compose-cases.json`
  * is the one statement both are held to.
  *
@@ -114,16 +114,27 @@ export function floorSummary(seats) {
  * subscribed to and never counted. ADMIT's population is the snapshot's, not the layout's.
  *
  * The sort is § 2.1 row 6's ("floors by floor id ascending") and is applied here rather than
- * trusted from the page or the wire: a client that renders in received order is a client whose
+ * trusted from the wire: a client that renders in received order is a client whose
  * order is a property of somebody else's serialiser.
  *
- * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor is
- * card#9208-blocked (no floor map of any kind is vendored). The row is still the link, because
+ * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING, AND THIS FUNCTION IS WHERE THAT IS DECIDED (§ 9 F17). A
+ * `layout` that is not a list, absent or `null`, answers `null`, never the rows of the EMPTY layout:
+ * `[]` is § 4.6's legal document, which composes one floor per install, and reading a missing layout
+ * as that document would draw a building out of a request that failed, which is F17's "Never". Both
+ * callers here read `null` as *no building*, and a caller added later (Appendix B step 7's floor
+ * route) that forgets a check of its own gets `null` from this function, never a building.
+ *
+ * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor screen is
+ * Appendix B step 7 (card#7341). The row is still the link, because
  * § 4.1 says the row IS the link and a lobby whose rows are inert is a different design; what it
  * must not be is a link to an invented endpoint, and this is D3's own published route, not one
  * minted here.
  */
-export function floors(snapshot, layout = []) {
+export function floors(snapshot, layout) {
+    if (!Array.isArray(layout)) {
+        return null;
+    }
+
     const installs = Array.isArray(snapshot?.installs) ? snapshot.installs : [];
     // Install id -> the seats the client holds for it. `Object.create(null)` for the same reason
     // `floorSummary()` uses it: the keys are wire strings.
@@ -136,7 +147,7 @@ export function floors(snapshot, layout = []) {
     const placed = new Set();
     const rows = [];
 
-    for (const floor of Array.isArray(layout) ? layout : []) {
+    for (const floor of layout) {
         const rooms = (Array.isArray(floor?.rooms) ? floor.rooms : []).map((room) => {
             const install_id = String(room?.install);
             placed.add(install_id);
@@ -370,19 +381,75 @@ export class DiscrepancyBudget {
 }
 
 /**
- * The whole lobby, from one snapshot body and the building layout the page delivered: what
- * § 4.1's table says the screen carries, and nothing else. `main.js` renders these strings and
- * decides none of them.
+ * § 9 F17's statement, from the failed layout request's `{ status }` (`../wire/building.js`):
+ * "**the building layout could not be loaded — HTTP N**".
+ *
+ * ⚠ TWO FAILURES F17 DOES NOT WORD, because it words a status code and neither has one to name: a
+ * request that never reached a status — worded as this file's snapshot twin is in `main.js` — and a
+ * `200` whose body is not a layout, which is F17's own words with what the code does not say added.
+ * Neither string is ratified.
  */
-export function lobbyModel(snapshot, layout = []) {
-    // ONE pass over the installs, and the held count summed from the same rows the floors
-    // render. Calling `heldSeats()` here as well would build the summaries twice and open the
+export function layoutStatement(failure) {
+    if (failure === null) {
+        return null;
+    }
+
+    if (failure.status === null) {
+        return 'the building layout could not be requested — the browser could not reach the server';
+    }
+
+    return failure.status === 200
+        ? 'the building layout could not be loaded — HTTP 200, and the body is not a layout'
+        : `the building layout could not be loaded — HTTP ${failure.status}`;
+}
+
+/**
+ * § 9 F17's cold start: "there is no layout to keep, so under that statement it lists the snapshot's
+ * installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}`". No floor, no key,
+ * no label and no summary is derived — composing is exactly what the failed document was needed for.
+ * `held` is carried so the lobby's held count still counts every seat the client holds.
+ */
+function unclaimedRooms(snapshot) {
+    const installs = Array.isArray(snapshot?.installs) ? snapshot.installs : [];
+
+    return installs.map((install) => {
+        const install_id = String(install?.install_id);
+
+        return {
+            install_id,
+            href: `/floor/${encodeURIComponent(install_id)}`,
+            held: Array.isArray(install?.seats) ? install.seats.length : 0,
+        };
+    });
+}
+
+/**
+ * The whole lobby, from one snapshot body and the building layout `GET /api/building` answered:
+ * what § 4.1's table says the screen carries, and nothing else. `main.js` renders these strings and
+ * decides none of them.
+ *
+ * `layout` is the floors the client holds — `null` when no layout request has ever succeeded — and
+ * `layoutFailure` is the last layout request's failure, or `null`.
+ *
+ * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING (§ 9 F17). `floors()` decides it and answers `null`, and
+ * that `null` is what takes the uncomposed render here: F17's cold-start list, and no floors.
+ */
+export function lobbyModel(snapshot, layout, layoutFailure = null) {
+    // ONE pass over the installs, and the held count summed from the same rows the lobby
+    // renders. Calling `heldSeats()` here as well would build the summaries twice and open the
     // one gap that matters: two counts of one population that can disagree.
-    const rows = floors(snapshot, layout);
-    const held = rows.reduce((n, floor) => n + floor.held, 0);
+    const composed = floors(snapshot, layout);
+    const rows = composed ?? [];
+    const unclaimed = composed === null ? unclaimedRooms(snapshot) : [];
+    const held = [...rows, ...unclaimed].reduce((n, row) => n + row.held, 0);
 
     return {
         floors: rows,
+        unclaimed,
+        layout_statement: layoutStatement(layoutFailure),
+        // F17: "over the floors it already holds, labelled *last known layout*" — and on a cold start
+        // there are none, so nothing is labelled as kept.
+        layout_kept: layoutFailure !== null && composed !== null ? 'last known layout' : null,
         held,
         totals: fleetTotals(snapshot?.fleet),
         // A non-integer `seats_total` is `discrepancyNotice`'s own `null` case: there is no
