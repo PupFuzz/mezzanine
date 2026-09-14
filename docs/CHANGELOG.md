@@ -96,8 +96,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `verify-design-docs.selftest.py` gains a fenced `rename` plant for G8, a `backtick` plant that
   sees the new G8 CONTROL fire, and a second verdict, **holds** — correct forms that must not red,
   and on which the verifier must neither crash nor exit above the control — with two kinds
-  (`imperative`, `noun`) holding the idiom from both sides; `tools/design/README.md` and the
-  verifier workflow describe the holds.
+  (`imperative`, `noun`) holding the idiom from both sides, each declaring either that its mutation
+  only adds text or the plant that proves its premise; `tools/design/README.md` and the verifier
+  workflow describe the holds.
 
 - **card#9208** — **The building surface is served: `GET /api/building` and
   `GET /api/building/rooms/{install_id}/map`** (D2 § 8.7, `docs/design/FLOOR.md` Appendix B row 12,
