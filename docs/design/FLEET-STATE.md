@@ -2242,8 +2242,10 @@ rather than holding a long transaction. `feed_outbox` is in the pass on the same
 scan; against the hourly cadence its rows linger up to an hour past their 60 s, which at the 50-seat
 ceiling is 8,980 × 50 ÷ 24 = 18,708 rows (~7.5 MB at ~400 B a row — both figures in
 [§ 12](#12-every-number-and-where-it-comes-from)) and is never read
-by anything: the handler's poll is a primary-key range from its cursor, bounded by one `ix_created` range over
-the rows still inside the lag, and is unmoved by the rows behind it. Table-size alarm: `events` past **20 GB** raises
+by anything: the handler's poll is one statement whose plan is a covering `ix_created` range over the rows
+still inside the lag (their `MIN(id)`, materialized), an `eq_ref` on the primary key back to that holding row, a
+primary-key range from its cursor, and an in-memory temporary table sorted over the returned rows only — so it is
+unmoved by the rows behind it (EXPLAIN on MariaDB 11.8.6 over 20,000 rows: 0.40 ms, card#9467 review round 2). Table-size alarm: `events` past **20 GB** raises
 `store_size_alarm` — that is ~2.9× the 50-seat 14-day figure of [§ 6.8](#68-sizing), so it can only
 fire on a fleet much larger than planned or a purge that has been dead for a long time, either of which
 is worth a human.
