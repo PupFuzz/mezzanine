@@ -19,6 +19,11 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9146** — **The promote mover's header records the rt#444 ruling: this repo keeps its
+  `card#<id>` token mover.** `bin/promote-cards-by-token` § WHY THIS MOVER states the ruling, leaves
+  the body's provenance and pin unchanged, carries runnable commands that measure both correlation
+  keys on v0.1.0..v0.2.0 and v0.3.0..v0.4.0, and names the condition that reopens it.
+  `docs/KANBAN.md` points at the ruling.
 - **card#9445** — **Two-factor enrolment now says what happened to the code you entered.** A
   rejected code shows Fortify's message (*"The provided two factor authentication code was
   invalid."*) above the form, and an accepted code lands on the dashboard under *"Two-factor
