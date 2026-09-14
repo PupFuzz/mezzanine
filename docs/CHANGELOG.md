@@ -31,7 +31,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   is. `App\Floor\FloorMap` reads room maps and hallways in the same mode, so for both a `layers` (a
   `group` layer's included), `tilesets`, tile layer `data` or `desks` `objects` that is not a JSON
   array, and a layer, tileset entry or desk object that is not a JSON object, is refused naming the
-  shape it has; a document that is `[]` is refused as a JSON array. `GET /api/building` writes
+  shape it has (an absent or `null` `tilesets`, or a `group` layer's absent or `null` `layers`, is
+  read as empty, as before); a document that is `[]` is refused as a JSON array. `GET /api/building` writes
   the same bytes as before for a layout with no empty object in it, pinned against the pre-change
   output for an all-digit `install_id` layout and a planned, labelled floor with a hallway.
   `AuthoredDocument::isJsonObject` is removed, and the migration seeding `config/building.php`
@@ -46,8 +47,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `php artisan migrate`. Those shapes are: a layout whose `floors` is `{}` or keyed `"0"`, `"1"`, …,
   or with a floor whose `rooms` is a non-empty list; a room map or hallway whose `tilesets` is `{}` or
   keyed, whose `layers` is keyed (or, in a hallway, `{}`), with a `group` layer whose `layers` is
-  `{}`, keyed or a scalar, with a tile layer whose `data` is `{}` or keyed, or with a `[]` in place of
-  a layer or a tileset entry; and a room map whose `desks` layer's `objects` is keyed or holds a `[]`.
+  `{}`, keyed or a scalar, with a tile layer whose `data` is `{}` or keyed, or with a JSON array (`[]`
+  or any other) in place of a layer or a tileset entry; and a room map whose `desks` layer's `objects`
+  is keyed or holds a JSON array.
   The migration fails with a message naming each such document by kind, subject and
   revision beside the reader's own sentence, so `bin/deploy.sh` stops inside its maintenance window
   with exit 2 and the app down, before these readers serve anything. To fix it: review and remove the

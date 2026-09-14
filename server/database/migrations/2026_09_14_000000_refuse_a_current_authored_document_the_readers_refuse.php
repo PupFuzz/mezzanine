@@ -19,9 +19,9 @@ use Illuminate\Database\Migrations\Migration;
  * written as `{}` or keyed `"0"`, `"1"`, …, and a floor's `rooms` written as a non-empty list; in a
  * room map or a floor's hallway, `tilesets` written as `{}` or keyed, `layers` written keyed (and in
  * a hallway, which declares no `desks` layer, as `{}`), a `group` layer's `layers` written as `{}`,
- * keyed or a scalar, a tile layer's `data` written as `{}` or keyed, and a `[]` in place of a layer
- * or a tileset entry; and in a room map, the `desks` layer's `objects` written keyed, or a `[]` in
- * place of one of them. Such a layout would answer `GET /api/building` with a `500` from the first
+ * keyed or a scalar, a tile layer's `data` written as `{}` or keyed, and a JSON array (`[]` or any
+ * other) in place of a layer or a tileset entry; and in a room map, the `desks` layer's `objects`
+ * written keyed, or a JSON array in place of one of them. Such a layout would answer `GET /api/building` with a `500` from the first
  * request after the deploy (`App\Http\Controllers\BuildingController::building()`), and such a room
  * map is named unreadable in the floors console and stops every layout write that measures its room.
  *
