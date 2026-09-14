@@ -30,7 +30,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   seat that reports — the fleet-reporter runs on the agent machine, not on the server, and nothing
   in `bin/supervision.sh` touches it:** copy the new `fleet-reporter/fleet-reporter.js` over that
   seat's install location (`fleet-reporter/INSTALL-LINUX.md` Step 1) and then stop that seat's
-  running flusher with the runbook's `stop-flusher.js` helper (Step 5 saves it, Step 8 step 2 shows
+  running flusher with the runbook's `stop-flusher.js` helper (Step 5 saves it, Step 8 item 3 shows
   the invocation), because a flusher already running keeps the code it started with; cron's next
   minute boundary starts it on the new artifact. Any *blocked* a seat is already stranded in clears
   at D2's 60-minute ceiling without help. What ships: `idle_prompt` moves to the no-emit row of
