@@ -34,7 +34,9 @@ checking, and it survives exactly the pass that falsifies it.
                                                    there shipped at rc=0)
   G8  counter closure, with Stored/Exposed, BOTH  (R1-15: 14 counters with no home; and the
       directions                                   mirror direction, a section 7.2 row no rule
-                                                   writes, which the forward check could not see)
+                                                   writes, which the forward check could not see;
+                                                   card#9320: and the backtick-only WRITER idiom
+                                                   that put § 8.3's fence, `count x`, outside both)
   G9  fixture arity                               (R1-21: "nine events" against a ten-row trace)
   G10 retention chain 8 < 10 < 14                 (regression guard on the one number D1 says
                                                    corrupts a timeline silently)
@@ -1242,17 +1244,56 @@ if declared_types and fleet_fields:
                     "this gate is decorative again")
 
 # The document's WRITING idiom for a counter, in the two word orders it actually uses: the verb
-# before the name (`counting \`x\``) and the name before the verb (`\`x\` increments`, `\`x\` is
-# counted`).  ONE definition, used by BOTH directions of G8 below.  A second copy would let the two
-# drift, and the reverse direction's whole point is that it asks the SAME question as the forward
-# one -- "is there a rule that writes this?" -- of a population the forward one cannot see.
-WRITER_RE = (r"(?:counting|counts|increments|counted)\s+`{name}`"
-             r"|`{name}`(?:\s+is)?\s+(?:counted|incremented|increments)")
+# before the name (`counting \`x\``, and the fences' bare imperative `count x`) and the name before
+# the verb (`\`x\` increments`, `\`x\` is counted`).  ONE definition, used by BOTH directions of G8
+# below.  A second copy would let the two drift, and the reverse direction's whole point is that it
+# asks the SAME question as the forward one -- "is there a rule that writes this?" -- of a
+# population the forward one cannot see.
+#
+# THE NAME, TWO SPELLINGS (card#9320 -- card#9303's defect, one gate over).  This idiom used to
+# require the backtick and a closed verb set with no imperative in it, so § 8.3's handler fence --
+# the surface an implementer BUILDS from, which writes `count feed_resync_required; return` -- was
+# invisible to BOTH legs at once: a counter renamed or invented there shipped at rc=0 with no row in
+# § 7.1 or § 7.2, and a § 7.2 counter written only there would red as "nothing increments it".  Both
+# halves were binding: an optional backtick alone still misses the imperative verb.
+#
+#   BACKTICKED -- prose marks an identifier with backticks, so a backticked name is one.
+#   BARE       -- a fence has no backticks; everything in it is code, and English comments sit
+#                 beside it (`-- worker cannot count the episode twice`, `C = count of open calls`).
+#                 A bare token is read as a counter name only if it is snake_case: it carries a `_`,
+#                 which no English word does.  That is what keeps "count" -- an ordinary English
+#                 noun and verb all over this document -- out of the population without a list of
+#                 forgiven sentences.  The name must also be WHOLE: not the tail of a dotted or
+#                 backticked token, and not the head of a member path (`x.y`), though a sentence
+#                 period after it is fine.
+#
+# Not scoped to fences: the reverse leg searches an excised copy of the document with no line map,
+# so a fence-only bare spelling would have to become a second definition, which is the thing this
+# comment forbids.  Nothing is lost by it: a bare snake_case name after a counting verb in PROSE is a
+# counter write with its backticks missing, and is judged the same way.
+#
+# ⚠ DECLARED, not closed.  (1) A counter whose name has no `_` written bare is invisible -- § 7.1
+#   carries D1's `accepted` and `duplicates`, and `count accepted` cannot be told from English by
+#   spelling.  Backtick it.  (2) The fences' OTHER counter idiom, `x += 1`, is not in the population:
+#   § 6.5's fold pseudocode writes `state_version += 1`, a version field, in the same form as
+#   `fold_window_purged += 1`, so no spelling separates a counter from a field there.  (3) A family
+#   MEMBER written by its dotted path is invisible in EITHER spelling --
+#   `count bogus_counter.too_large` in a fence, `increments \`batches_refused.too_large\`` in
+#   prose: the name must be whole, and a member path is not.  A family is written by its base name
+#   (`batches_refused`); a write spelled only as a member path is outside the population, so an
+#   undeclared family written that way passes (card#9320 round 2: both plants at once ran at rc=0
+#   with no line naming either).  Write the base name.  (4) The polarity fails LOUD: `count seat_state rows` in a fence comment would red
+#   as an undeclared counter.  Rephrase it; a counter slipping past silently is the defect this gate
+#   exists for.
+_WRITER_NAME = r"(?:`{name}`|(?<![\w`.])(?=[a-z_]*_){name}(?![\w`]|\.\w))"
+WRITER_RE = (r"\b(?:count|counting|counts|increments|counted)\s+" + _WRITER_NAME
+             + r"|" + _WRITER_NAME + r"(?:\s+is)?\s+(?:counted|incremented|increments)")
 
 # --------------------------------------------------- G8. counter closure ------
 s71 = section_text("71-d1s-server-side-counters--where-they-live")
 s72 = section_text("72-this-planes-own-counters-and-badges")
 counters, claims_health, d2_own = set(), set(), set()
+g8_bare = 0
 # the fleet-health surface's own closed list, read from the `counters` row of section 8.2.4
 health_counters = set()
 _hc = re.search(r"^\|\s*`counters`\s*\|[^|]*\|[^|]*\|(.*?)\|[^|]*\|\s*$", sec824 or "", re.M)
@@ -1355,13 +1396,27 @@ else:
         for extra in sorted(d2_ctr - d1_ctr):
             fail.append(f"G8: section 7.1 carries `{extra}`, which D1 section 12.7 does not "
                         f"define; this plane's own counters belong in section 7.2")
-    # every counter MENTIONED with a counting verb must be declared in one of the two tables
+    # every counter MENTIONED with a counting verb must be declared in one of the two tables.  A
+    # declared FAMILY (`batches_refused.<error>`) is written by its base name.  The check used to be
+    # `tok.startswith(c)` for any declared `c`, which forgave every SUFFIX on a declared name -- so
+    # `feed_resync_required_renamed`, the ordinary shape of a rename, passed as declared (card#9320;
+    # measured: no writer in this document relied on it).
+    counter_bases = {c.split(".")[0] for c in counters}
     for m in re.finditer(WRITER_RE.format(name="([a-z_][a-z_]*)"), raw):
-        tok, line = m.group(1) or m.group(2), raw[:m.start()].count("\n") + 1
-        if tok not in counters and not any(tok.startswith(c) for c in counters):
+        tok, line = next(g for g in m.groups() if g), raw[:m.start()].count("\n") + 1
+        if m.group(2) or m.group(4):        # the BARE spelling, in either word order
+            g8_bare += 1
+        if tok not in counter_bases:
             fail.append(f"L{line}: G8: `{tok}` is written as a counter and has no row in section "
                         f"7.1 or 7.2 — it has no storage, no exposure surface and nothing that "
                         f"would ever read it")
+    # The widening has to be SEEN to reach past the backtick, or it decays into the narrow idiom
+    # without anything saying so -- G7's `g7_undelimited` control, for the same reason.
+    if not g8_bare:
+        fail.append("G8 CONTROL: every counter write in this document is backtick-delimited, so the "
+                    "writer idiom reaches nothing the backtick-only idiom it replaces could already "
+                    "see. Either § 8.3's handler fence no longer writes a counter — a larger finding "
+                    "than this control — or this leg is decorative again")
     # ...and the SAME CHECK THE OTHER WAY, because one direction is half a guard.  The pass above
     # catches a WRITER WITH NO ROW; it cannot see a ROW WITH NO WRITER, which is how a counter
     # deleted from this plane's rules can survive in section 7.2 as a name nothing increments --
@@ -1837,8 +1892,9 @@ print(f"G7  feed message types declared: {len(declared_types)}, over the namespa
       f"above for any that sat inside a fence: {g7_field_form}")
 print(f"G8  counters declared: {len(counters)}, of which section 7.2's own: {len(d2_own)} (each "
       f"checked for a rule that WRITES it — the document's counting-verb idiom, in either word "
-      f"order — outside that table and outside section 11's tests); fleet-health counters "
-      f"declared by section 8.2.4: {len(health_counters)}")
+      f"order — outside that table and outside section 11's tests); counter writes spelled BARE, "
+      f"the pseudocode fences' idiom, which the backtick-only idiom could not see: {g8_bare}; "
+      f"fleet-health counters declared by section 8.2.4: {len(health_counters)}")
 print(f"G9  fixtures with a stated arity: {g9}")
 print(f"G10 retention chain: {chain}")
 print(f"G12 `feed.close` reasons re-derived from this document's own uses: {g12_reasons}; section 2.2 "

@@ -83,11 +83,14 @@ jobs:
       # judge somebody's PR. It plants a defect of the class each targeted guard exists for — a
       # stated figure drifting from what re-derives it, or a name renamed on a surface the gate is
       # supposed to hold (card#9303) — and requires the verifier to reject it, with the red
-      # attributable to the plant rather than to any nonzero exit. How many plants and of which
-      # kinds is printed by the harness on its own last line rather than restated here.
+      # attributable to the plant rather than to any nonzero exit. It also plants HOLDS, correct
+      # forms a wrong gate would red on, and requires that no new failure of that gate appears and
+      # that the verifier neither crashes nor exits above the control on them (card#9320). How many
+      # of each and of which kinds is printed by the harness on its own last line rather than
+      # restated here.
       # The NAME is what shows in the CI UI, so it carries no count either: "per verifier" was
       # already false once the second plant against `verify-fleet-state.py` landed (card#9303).
-      - name: Self-test (a planted defect per targeted guard, each red attributed to its plant — the harness prints how many, over how many verifiers, on its own last line)
+      - name: Self-test (planted defects that must red and correct forms that must not, each verdict attributed to its plant — the harness prints how many on its own last line)
         run: python3 tools/design/verify-design-docs.selftest.py
 
       # Three separate steps, each `!cancelled()` DELIBERATELY and UNIFORMLY: these three gates

@@ -110,6 +110,32 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   the client stream (step 3), and both are unbuilt, as are the room re-render, the written event
   record and F17's backoff retry. A stored layout the reader refuses is now `GET /api/building`'s
   `500` and the lobby's F17 statement, where it was an exception on `/dashboard`.
+
+- **card#9320** — **G8 sees a counter written the way D2's pseudocode fences write one.**
+  `verify-fleet-state.py`'s G8 holds every counter a rule writes against § 7.1 / § 7.2, and in the
+  other direction requires every § 7.2 counter to have a writer. Its writing idiom required the
+  counter name in backticks and had no imperative verb, so § 8.3's handler fence —
+  `count feed_resync_required; return`, the line an implementer builds from — was invisible to both
+  directions: a counter renamed or invented there passed with no row, and a § 7.2 counter written
+  only there would red as "nothing increments it". The idiom now also reads the fences' spelling: the
+  imperative `count`, and a **bare** name that is snake_case — it carries a `_`, which no English word
+  does, so "count" used as ordinary English (all over D2, fences included) stays out of the
+  population. How many writes the widening adds on D2 is printed on G8's summary line
+  (`counter writes spelled BARE…`) rather than written here. Two further changes close what the
+  plant exposed: the forward check had forgiven any suffix on a declared name (`tok.startswith(c)`),
+  which let the ordinary shape of a rename pass as declared — it now matches the declared name, or a
+  declared family's base name; and a new **G8 CONTROL** reds if no counter write in D2 is spelled
+  bare, so the widening cannot quietly decay into the old idiom. Declared rather than closed, on the
+  tool and in § 12's row: a fence's `x += 1` (§ 6.5 writes `state_version += 1`, a field, in the
+  same form), a bare name with no `_`, and a family member written by its dotted path in either
+  spelling (`count x_y.member`).
+  `verify-design-docs.selftest.py` gains a fenced `rename` plant for G8, a `backtick` plant that
+  sees the new G8 CONTROL fire, and a second verdict, **holds** — correct forms that must not red,
+  and on which the verifier must neither crash nor exit above the control — with two kinds
+  (`imperative`, `noun`) holding the idiom from both sides, each declaring either that its mutation
+  only adds text or the plant that proves its premise; `tools/design/README.md` and the verifier
+  workflow describe the holds.
+
 - **card#9208** — **The building surface is served: `GET /api/building` and
   `GET /api/building/rooms/{install_id}/map`** (D2 § 8.7, `docs/design/FLOOR.md` Appendix B row 12,
   build slice 2). `/api/building` answers the layout the lobby page already inlines
