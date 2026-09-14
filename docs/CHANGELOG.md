@@ -48,6 +48,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   connect leg and AT-D2-25 (a real race on four MariaDB connections) are new — AT-D2-15's worker return
   by the proxy and its RSS leg need a real deployment and say so.
 
+- **card#9300** — **D3 follows operator ruling A4: a deploy that does not change `feed_version` shows
+  the floor's viewer nothing.** Docs, plus one COMMENT in `bin/deploy.sh`; no behaviour changes.
+  - **D3 § 14 item 20, closed.** § 2.5's `fleet.reload` row and § 9 F8 raise the reload banner only on
+    a `feed_version` the client does not know. F3's `reload` cells render nothing. A stream the
+    deploy's drain ends with SIGTERM carries no `feed.close`, so it takes F1's path.
+  - **§ 2.2 now owns a 60 s reload grace.** After `feed.close{reason:"reload"}` the client re-opens on
+    its 10 s cadence and renders nothing while the deploy's maintenance window refuses it. § 12 derives
+    the figure from D2 § 2.1's feed-reload row, `bin/deploy.sh`'s drain and `docs/PLAN.md § 5`'s
+    opcache wait. Past the grace the client renders the failure, so a deploy that failed with the app
+    down is not drawn as a healthy floor. AT-D3-8 and `fx-refusals` gain the legs for both sides.
+  - **D3 no longer describes the retired per-install channel.** § 3.1, § 4.3, § 4.6, § 6.2's A17 row,
+    AT-D3-9 and Appendix B step 3 now describe the one fleet-wide stream.
+  - **D2, corrected:** § 8.3 no longer says a per-install ACL attaches "when item 7 is ruled", because
+    item 7 was ruled and recorded. § 8.7 and § 13 row 42 no longer describe per-install channels or say
+    every `fleet.reload` demands a reload.
+  - **Review round 2.** § 2.2's protocol block, step 8, now carries the exception the prose, F3 and F8
+    already carried: after F8's banner nothing is re-opened. § 2.2's grace paragraph gains a fourth
+    clause — the grace also suppresses F6 for the reads the client issues on its own, because an
+    `EventSource` open failure carries no status code and the client issues no poll of its own inside
+    it, so a session that expires there waits for the grace's end; F6's
+    **Detected by** column and AT-D3-8 point at it. And **the drain ceiling's consumer is now named at
+    both ends**: `bin/deploy.sh`'s env-var block and D2 § 2.1's feed-reload row say that raising
+    `MEZZ_FEED_DRAIN_CEILING_S` can push the window past the client's grace, which no client can read.
+  - **Review round 3.** The 45 s silence path — § 2.2 step 7, § 9 F1 and D2 § 2.2's Stream row — carries
+    the reload-grace exception: inside the grace, clause (2) applies in place of the *feed down —
+    polling* render and its poll. Clause (4), F6 and AT-D3-8 now claim only that the client issues no
+    read **of its own** inside the grace; a read the user causes (§ 4.3's drill-down, § 4.4's
+    navigation, F10/F11's retry) is suppressed by nothing, and a `401` from it fires F6 as usual.
+    Appendix A's T14 and T15 carry the same exception.
+  **Installer action:** none — the `bin/deploy.sh` change is a comment.
+
 - **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
   questions, and two false claims are corrected.** Docs only; no code changes.
   - **D2 § 14 item 7, closed:** fleet-read is all-or-nothing, for now. Any MFA user and any
