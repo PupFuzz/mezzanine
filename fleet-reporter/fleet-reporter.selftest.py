@@ -886,13 +886,12 @@ def seat_log(s: Seat) -> str:
     return "".join(f.read_text(encoding="utf-8") for f in sorted(d.glob("*.log"))) if d.exists() else ""
 
 
-# (b) `selftest`, and the flusher's start, on a config whose ca_file cannot be read.
-def drive_ca_missing(name: str, reporter: Path = REPORTER) -> dict:
-    missing = TMP / name / "no-such-ca.pem"
-    s = seat(name, ca=str(missing))
+# (b) `selftest`, and the flusher's start, on a config whose ca_file the seat must refuse.
+def drive_ca_config(name: str, ca: str, reporter: Path = REPORTER) -> dict:
+    s = seat(name, ca=ca)
     g0 = INGEST.gets
     r, rep_ = selftest(s, reporter=reporter, **EXTRA_TRUST)
-    d = dict(path=str(missing), rc=r.returncode, gets=INGEST.gets - g0,
+    d = dict(path=ca, rc=r.returncode, gets=INGEST.gets - g0,
              check=rep_.get("checks", {}).get("config_readable"),
              errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
     hook(s, "PreToolUse", pre(tuid="toolu_ca_start"), reporter=reporter)
@@ -901,6 +900,10 @@ def drive_ca_missing(name: str, reporter: Path = REPORTER) -> dict:
     d.update(posts=len(INGEST.batches) - b0, log=seat_log(s),
              config_invalid=s.state().get("counters", {}).get("config_invalid", 0))
     return d
+
+
+def drive_ca_missing(name: str, reporter: Path = REPORTER) -> dict:
+    return drive_ca_config(name, str(TMP / name / "no-such-ca.pem"), reporter)
 
 
 ca_missing = drive_ca_missing("ca-unreadable-selftest")
@@ -951,6 +954,27 @@ eq("  … it is a config failure: config_invalid counted, never a retryable batc
    (True, 0, 0), (ca_gone["config_invalid"] > 0, ca_gone["retried"], ca_gone["rejected"]))
 eq("  … and the event is kept: with the file restored, the next pass delivers it", True, ca_gone["recovered"])
 
+# (c) A `ca_file` that is a string but not an absolute path is the same config error: § 3.1 types the
+# field "absolute path or `null`", and only `null` or an absent key leaves it unset. The empty string used
+# to count as unset, so the seat trusted the whole default store. A relative path was read against the
+# process's working directory, which is not the config's to choose: a flusher inherits it from the hook
+# that forks it, the agent's project directory. Both legs run where a fall-back to the default store, or
+# a read of the relative path, shows up as a delivery: the relative path names the stub's own
+# certificate from the suite's working directory.
+def ca_not_absolute_errors(d: dict) -> bool:
+    return any("ca_file must be an absolute path" in e for e in d["errors"])
+
+
+ca_empty = drive_ca_config("ca-empty-string", "")
+ca_relative = drive_ca_config("ca-relative-path", os.path.relpath(CA, HERE))
+for label, d in (("an empty-string ca_file", ca_empty), (f"a relative ca_file ({ca_relative['path']})", ca_relative)):
+    eq(f"{label} fails config_readable in `selftest`, and the error names the field's rule", ("fail", True),
+       (d["check"], ca_not_absolute_errors(d)))
+    eq("  … the command exits 1, and asks the ingest nothing under a config that failed", (1, 0), (d["rc"], d["gets"]))
+    eq("  … a flusher started on it sends nothing, even to an ingest the default store trusts, and counts "
+       "config_invalid", (0, True), (d["posts"], d["config_invalid"] > 0))
+    eq("  … and its log names the rule", True, "ca_file must be an absolute path" in d["log"])
+
 # RED — each leg against the defect verbatim, planted on a copy: the request that catches the read failure
 # and sends with the default store, and the config check that never reads the file.
 p_ca_fallback = plant(("    if (caError) { out.invalid = caError; done(out.invalid); return; }",
@@ -964,6 +988,25 @@ red_missing = drive_ca_missing("ca-unreadable-selftest-red", reporter=p_ca_unche
 eq("RED: a config check that never reads ca_file passes config_readable in `selftest`, and its errors name "
    "nothing", ("pass", False),
    (red_missing["check"], any(red_missing["path"] in e for e in red_missing["errors"])))
+# RED — the not-absolute legs against the defect verbatim: a `ca_file` check that treats the empty string
+# as unset, and one that reads a relative path against the working directory.
+p_ca_empty_unset = plant(("  if (f === null || f === undefined) return { ca: null, error: null };",
+                          "  if (!f) return { ca: null, error: null };"))
+red_empty = drive_ca_config("ca-empty-string-red", "", reporter=p_ca_empty_unset)
+eq("RED: a check that reads \"\" as unset passes config_readable and delivers through the default store",
+   ("pass", 1), (red_empty["check"], red_empty["posts"]))
+p_ca_relative = plant(("  if (!path.isAbsolute(f)) return { ca: null, error: `ca_file must be an absolute path or null (§ 3.1), not ${JSON.stringify(f)}` };\n", ""))
+red_relative = drive_ca_config("ca-relative-path-red", ca_relative["path"], reporter=p_ca_relative)
+eq("RED: a check that reads a relative ca_file against the working directory passes config_readable and delivers",
+   ("pass", 1), (red_relative["check"], red_relative["posts"]))
+redgreen("a ca_file that is not an absolute path, the empty string included, is a config error (§ 3.1, card#9500)",
+         f"\"\" read as unset -> selftest config_readable={red_empty['check']}, rc={red_empty['rc']}, flusher start "
+         f"delivered {red_empty['posts']} through the default store; relative path read from the working directory -> "
+         f"config_readable={red_relative['check']}, rc={red_relative['rc']}, delivered {red_relative['posts']}",
+         f"\"\" -> config_readable={ca_empty['check']}, rc={ca_empty['rc']}, errors={ca_empty['errors']}, delivered "
+         f"{ca_empty['posts']}, config_invalid {ca_empty['config_invalid']}; relative -> "
+         f"config_readable={ca_relative['check']}, rc={ca_relative['rc']}, errors={ca_relative['errors']}, delivered "
+         f"{ca_relative['posts']}, config_invalid {ca_relative['config_invalid']}")
 redgreen("an unreadable ca_file is a config error, never a fall-back to the default trust store (§ 3.5, card#9500)",
          f"fall back in the request -> ca_file removed mid-pass: {red_gone['posts']} batch delivered through the "
          f"default store, path in log {red_gone['path'] in red_gone['log']}; no read in the config check -> "

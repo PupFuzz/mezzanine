@@ -290,8 +290,9 @@ function loadConfig(p) {
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
   }
-  // § 3.5: a `ca_file` the seat cannot read is REFUSED at install and at runtime, like an http://
-  // ingest_url — never replaced by the default trust store (card#9500).
+  // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
+  // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
+  // the default trust store (card#9500).
   if (typeof c.ca_file === 'string') { const { error } = readCaFile(c); if (error) errors.push(error); }
   // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
   // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
@@ -302,12 +303,17 @@ function loadConfig(p) {
  * both go through here, so the two cannot disagree about what "readable" means. `ca` REPLACES the
  * default trust store (§ 3.5), so a `ca_file` that cannot be read has no safe fallback: sending with
  * the default store would widen the seat's trust from the one file it pins to every publicly trusted
- * CA. The error names the path and the errno. A falsy `ca_file` sets no `ca`, and the request uses the
- * default store. */
+ * CA. The error names the path and the errno. Only `null` or an absent key leaves `ca_file` unset (no
+ * `ca`, the default store). A string that is not an absolute path is the same config error, the empty
+ * string included (§ 3.1 types the field "absolute path or `null`"): "" would otherwise read as unset and
+ * widen the trust the same way, and a relative path would be read against the process's working
+ * directory, which a flusher inherits from the hook that forks it — the agent's project directory. */
 function readCaFile(config) {
-  if (!config.ca_file) return { ca: null, error: null };
-  try { return { ca: fs.readFileSync(config.ca_file), error: null }; }
-  catch (e) { return { ca: null, error: `ca_file unreadable at ${config.ca_file}: ${e.code || e.message}` }; }
+  const f = config.ca_file;
+  if (f === null || f === undefined) return { ca: null, error: null };
+  if (!path.isAbsolute(f)) return { ca: null, error: `ca_file must be an absolute path or null (§ 3.1), not ${JSON.stringify(f)}` };
+  try { return { ca: fs.readFileSync(f), error: null }; }
+  catch (e) { return { ca: null, error: `ca_file unreadable at ${f}: ${e.code || e.message}` }; }
 }
 
 /* ── The declared protocol agent name, and its roster check (§ 3.1) ─────────────────────────
@@ -2344,8 +2350,9 @@ function buildBatch(config, state, items, maxEvents) {
  * no read of NODE_TLS_REJECT_UNAUTHORIZED and no `checkServerIdentity` override — a sandbox host
  * with a private CA is supported by config.ca_file, which is passed as the TLS `ca` option with
  * verification intact. `ca` REPLACES the default trust store: a seat with `ca_file` set trusts
- * only the certificates in that file, and a `ca_file` it cannot read is a config error that sends
- * nothing — never a fallback to the default store (`readCaFile`, card#9500).
+ * only the certificates in that file, and a `ca_file` that is not an absolute path or that it cannot
+ * read is a config error that sends nothing — never a fallback to the default store (`readCaFile`,
+ * card#9500).
  * Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it
  * ships to production seats. `selftest` and the acceptance suite both lint for it. */
 let _agent = null;
@@ -2364,8 +2371,8 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
  *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
  *     the default trust store (the seat trusts only that file). It is read per request, and one that
- *     cannot be read ends the request as `invalid` before any socket opens, naming the path and the
- *     errno (card#9500). The host name is verified on both
+ *     is not an absolute path, or cannot be read, ends the request as `invalid` before any socket
+ *     opens, naming the rule or the path and the errno (card#9500). The host name is verified on both
  *     routes; SNI carries it only when it is a name (RFC 6066 forbids an IP literal there, and Node
  *     warns, DEP0123, that it will stop honouring one).
  *   - THE CONNECT DEADLINE, K.CONNECT_MS, from the start of the request to a verified TLS session
@@ -2377,7 +2384,7 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  * It always RESOLVES, never rejects, with what it observed: `status`/`headers`/`body` for an answer
  * (`body` is set only once the response ended), `error` otherwise, `deadline` ('connect' | 'request')
  * when a deadline ended it, `invalid` when the config named no request to make or one the seat must not
- * send (an unreadable `ca_file`), and the two stages a
+ * send (a `ca_file` that is not an absolute path or cannot be read), and the two stages a
  * caller needs to tell a refused certificate from nothing learned: `tcp` (a connection to the ingest
  * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
 function ingestRequest(config, { method, path: pathOf, headers, body }) {
@@ -2478,7 +2485,7 @@ function postBatch(config, body) {
   }
   headers['Content-Length'] = String(payload.length);
   return ingestRequest(config, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
-    // A request the config forbids — an http:// ingest_url, a `ca_file` the seat cannot read — is
+    // A request the config forbids — an http:// ingest_url, a `ca_file` that is not absolute or cannot be read — is
     // `refused`: config_invalid, keep spooling, send nothing (§ 3.5). An unparseable ingest_url is `permanent`.
     if (r.invalid) return { kind: r.invalid === 'bad ingest_url' ? 'permanent' : 'refused', status: 0, error: r.invalid };
     // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
