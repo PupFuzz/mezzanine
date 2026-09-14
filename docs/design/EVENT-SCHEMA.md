@@ -135,7 +135,7 @@ one file plus one config; a dependency tree is a supply-chain surface on every a
 | `node fleet-reporter.js hook <HookName>` | one-shot, one process per hook fire | parse stdin, build ≤ 1 event, append to spool, exit 0 |
 | `node fleet-reporter.js statusline` | one-shot, fires on every status-line render | sample context ([§ 6.11](#611-contextsample)), write the session's last-sample state, **pass the wrapped status line through to stdout**, exit 0 |
 | `node fleet-reporter.js flusher` | long-lived, one per seat | own the spool cursor, POST batches, emit heartbeats |
-| `node fleet-reporter.js selftest` | one-shot, run by the installer and by CI | run the checks [§ 6.14](#614-reporterheartbeat)'s member table declares — that table names each one and what it asserts, and is the same set the heartbeat reports `pass`/`fail` for, so the subcommand and the wire object cannot drift apart. One of them, **`harness_payload_keys`**, is required outright by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
+| `node fleet-reporter.js selftest` | one-shot, run by the installer and by CI | run the checks [§ 6.14](#614-reporterheartbeat)'s member table declares — that table names each one and what it asserts, and is the same set the heartbeat reports `pass`/`fail` for, so the subcommand and the wire object cannot drift apart. One of them, **`harness_payload_keys`**, is required outright by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST`. The subcommand's `not_measured` result and its exit code are stated in [§ 6.14](#614-reporterheartbeat) too |
 
 Hook wiring lives in the seat's Claude Code settings; the complete set of hooks this design
 subscribes to, and what each one produces, is
@@ -2549,6 +2549,35 @@ against `degraded` — a member set stated nowhere is not implementable — one 
 | `predicate_discrimination` | every predicate in [§ 9.4](#94-the-predicate-constant-alarm)'s table is present in `predicates` and has a criterion its own volume can reach | [§ 9.4](#94-the-predicate-constant-alarm) |
 | `harness_payload_keys` | every payload key this reporter reads is present in that hook's vendored fixture, and every enum value it recognises is a member of the declared set | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
 | `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which | [§ 3.1](#31-the-seat-config-file) |
+
+**A check the subcommand could not measure is `not_measured`, and it is neither a pass nor a fail.**
+`tls_verify` and `schema_version_accepted` are measured by one `GET /api/ingest/health`
+([§ 4.1](#41-endpoints)) against the configured ingest — the probe the flusher runs for the heartbeat,
+with the same TLS path, `ca_file` and deadline — and the subcommand runs it once, only when
+`config_readable` passes. Each result is one of three values:
+
+| Result | `tls_verify` | `schema_version_accepted` |
+|---|---|---|
+| `pass` | the health surface answered over TLS with verification on, **and** the source carries no verification-disabling spelling ([AT-15](#at-15-transport-posture)) | a `200` answer carries an `accepted_schema_versions` set that contains this reporter's `schema_version` |
+| `fail` | the source carries a verification-disabling spelling, whatever the probe saw; **or** a TCP connection to the ingest was made and the TLS handshake then failed | a `200` answer carries a set that does **not** contain this reporter's `schema_version` |
+| `not_measured` | no probe ran (the config is not readable), no TCP connection was made, or no answer arrived for any other reason — a deadline, or a failure after the handshake completed | no `200` answer carrying a set arrived — no probe ran, the ingest was unreachable, or it answered with another status (a refused token, an outage page), whose body carries no set to refuse the version with |
+
+**The subcommand's exit code:** `0` when every check is `pass`; `1` when any check is `fail`; `2` when
+none is `fail` and at least one is `not_measured`. An installer reading `2` has an install nothing
+has falsified and a verification that did not happen — re-run it once the ingest is reachable, and
+read the check's `detail` for the probe's error or status.
+
+**The heartbeat keeps each network check at its last measured value.** The heartbeat's `selftest`
+object carries two values (the field row above), and `not_measured` exists only in the subcommand's own
+report. The flusher runs the same probe for the heartbeat. A probe that measures a check replaces that
+check's value, `fail` included. A probe that measures nothing for a check (its `not_measured` column
+above: a deadline, a dropped connection, an answer carrying no set) leaves the value the last measuring
+probe set, so a probe that falsified nothing never puts a `fail` on the wire. A check no probe has
+measured yet rides the wire as `fail`. While the last probe left either check unmeasured, the flusher
+probes again no sooner than one heartbeat interval ([§ 9.1](#91-the-cadence-and-the-alarm)) after that
+probe began, instead of at its ordinary cadence (`K.HEALTH_MS` in `fleet-reporter/fleet-reporter.js`).
+The heartbeat is where the result is read, so a shorter interval would change nothing on the wire. A
+kept value is the last measurement, not a current one.
 
 **The keys are declared, not closed at the ingest, and the difference is deliberate.** The field-table
 row above is where this object's *shape* is stated — the value set, the key pattern, the per-key bound
