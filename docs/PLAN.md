@@ -471,8 +471,20 @@ rule violations anyone could have committed at the time.
     script, which never asked, and staying down over a pool nobody was asked for would be the worse outcome.
     Its streams are then not drained, and the deploy after it refuses until the pool exists.
   - **`flushpackets=on` for that pool's socket in the vhost**, e.g. `<Proxy
-    "unix:/run/php/<stream pool>.sock|fcgi://127.0.0.1"> ProxySet flushpackets=on </Proxy>`, and no
-    compression filter on `text/event-stream`. ⛔ **Without it every browser renders *feed down — polling*
+    "unix:/run/php/<stream pool>.sock|fcgi://mezz-stream"> ProxySet flushpackets=on </Proxy>` with
+    `ProxyPassMatch "^/api/fleet/stream$" "unix:/run/php/<stream pool>.sock|fcgi://mezz-stream<document root>/index.php"`,
+    and no compression filter on `text/event-stream`. ⛔ **The stream worker's name after `fcgi://` must differ
+    from the one in the application pool's `SetHandler`** (Virtualmin writes `fcgi://127.0.0.1` there). Apache
+    reuses a worker by that name, so with both named `fcgi://127.0.0.1` every PHP request on the site goes to
+    the stream pool. Measured 2026-09-13 on this host's Apache 2.4.66, with a throwaway non-root Apache in
+    front of both live pools: with a shared name, 20 of 20 ordinary PHP requests landed on the stream pool;
+    with `fcgi://mezz-stream`, none did, and the stream route still reached its pool. Nothing breaks
+    visibly: the site answers, but ordinary requests compete with open streams for the stream pool's
+    workers, and the deploy's stream drain signals workers that are serving them. **After the reload,
+    check it on the host as the application user**: read the stream pool's `accepted conn` from its
+    status listener (`SCRIPT_NAME=/stream-status SCRIPT_FILENAME=/stream-status REQUEST_METHOD=GET
+    QUERY_STRING= cgi-fcgi -bind -connect <status socket>`), request any ordinary page a few times, and
+    read it again. It must not move. A request to `/api/fleet/stream` must move it. ⛔ **Without it every browser renders *feed down — polling*
     against a healthy fleet** (FLOOR.md § 9 F19): measured on a throwaway Apache with this host's vhost
     shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response, headers included, until the
     request ended. The deploy cannot see the vhost; the check below can.
