@@ -6,33 +6,30 @@ use App\Fold\Fold;
 use Illuminate\Support\Facades\DB;
 
 /**
- * AT-D2-22 — concurrent ingest cannot strand an event behind the cursor.
+ * AT-D2-22 — concurrent ingest cannot strand an event behind the cursor: the single-connection half.
  *
- * ⚠ WHAT THIS FILE DOES NOT ESTABLISH, FIRST, BECAUSE IT IS THE LARGER HALF.
+ * The overlapping same-seat ingest itself — transaction 1 held open across transaction 2 and a fold
+ * pass — needs two real transactions, which the suite's one in-process connection cannot hold. It is
+ * driven on committed rows across named connections in `At22LockFirstIngestTest` (card#9398), together
+ * with the position of the ingest's seat lock that closes it.
  *
- * § 11's build is "two ingest requests for ONE SEAT, overlapping in time, against a RUNNING fold …
- * transaction 1 inserts and is HELD OPEN, transaction 2 inserts and commits, then transaction 1
- * commits. Drive it 20 times." The suite runs over ONE in-process connection to MariaDB, so two
- * overlapping write transactions on one seat cannot exist, and THE RACE IS NOT DRIVEN AND THE 20
- * ITERATIONS ARE NOT RUN. Neither is `FOR UPDATE SKIP LOCKED`, which is the fold's concurrency
- * correctness — a real engine does not change that: with one connection nothing is ever skipped.
- *
- * What IS driven here is each MECHANISM the race would exercise, deterministically:
- *   · the visibility lag as a property — an event inside the 2 s window is not read and the cursor
- *     does not pass it, and the same event is folded once it ages out;
+ * What is driven HERE, on the suite's own connection:
+ *   · the control — a fresh batch, never aged, folds on the very next pass, because the fold reads
+ *     `events` by id and has no age to wait out;
  *   · the purged-window branch's discriminator and its guarded write, INCLUDING the interleaving,
  *     by moving the head between the emptiness proof and the write through the seam the branch
  *     exposes for exactly that reason.
  *
- * A mechanism driven deterministically is not the same evidence as a race driven twenty times, and
- * the PR body says so rather than letting this file's name carry the claim.
+ * Two fold workers partitioning the claim (`FOR UPDATE SKIP LOCKED`) is driven by neither file.
  */
 class At22CursorSafetyTest extends FoldTestCase
 {
-    public function test_an_event_inside_the_visibility_lag_is_not_folded_and_the_cursor_does_not_pass_it(): void
+    public function test_a_fresh_event_folds_on_the_next_pass(): void
     {
-        // Delivered WITHOUT the harness's usual ageing, so the batch's `received_at` is `now` and
-        // the whole window is inside the lag.
+        // Delivered WITHOUT the harness's usual ageing, so the batch's `received_at` is `now`. The
+        // fold reads `events` by id alone (card#9398): the seat lock the ingest takes first is what
+        // keeps an uncommitted lower id from existing behind a committed higher one, so there is no
+        // age to wait out and a fresh batch folds on the very next pass.
         $this->deliverFresh($this->cleanTurn());
 
         $head = (int) $this->state()->head_event_id;
@@ -40,19 +37,9 @@ class At22CursorSafetyTest extends FoldTestCase
 
         app(Fold::class)->pass();
 
-        // The pass CLAIMED the seat (the cursor is below the head) and read nothing, and the
-        // purged-window branch must not have fired: the events exist, they are merely young.
-        $this->assertSame(0, (int) $this->state()->fold_cursor_event_id,
-            'the cursor advanced past events younger than the visibility lag');
-        $this->assertSame(0, $this->counter('fold_window_purged'),
-            'a young window was mistaken for a purged one');
-        $this->assertSame('offline', $this->state()->render_state, 'a young event was folded');
-
-        // Aged out, the identical events fold normally — so the lag DELAYS and never DISCARDS.
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
-        $this->fold();
-
-        $this->assertSame($head, (int) $this->state()->fold_cursor_event_id);
+        $this->assertSame($head, (int) $this->state()->fold_cursor_event_id,
+            'a committed event was held back from the fold');
+        $this->assertSame(0, $this->counter('fold_window_purged'), 'a fresh window was mistaken for a purged one');
         $this->assertSame('idle', $this->state()->activity_state);
     }
 
@@ -137,7 +124,7 @@ class At22CursorSafetyTest extends FoldTestCase
     }
 
     /**
-     * Deliver without ageing the receipt — the batch lands inside the visibility lag.
+     * Deliver without moving the server clock — the batch's receipt is `now`.
      *
      * @param  list<array<string, mixed>>  $events
      */

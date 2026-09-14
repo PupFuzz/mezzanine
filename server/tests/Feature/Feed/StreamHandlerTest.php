@@ -87,7 +87,7 @@ class StreamHandlerTest extends FeedTestCase
     }
 
     /**
-     * § 6.5's visibility lag on the tick: a row younger than 2 s is not delivered on the tick that reads
+     * § 8.3's visibility lag on the tick: a row younger than 2 s is not delivered on the tick that reads
      * past it, and IS delivered once it ages — the lag delays and never discards.
      */
     public function test_a_row_inside_the_visibility_lag_waits_and_is_then_delivered(): void
