@@ -2325,9 +2325,11 @@ function buildBatch(config, state, items, maxEvents) {
  * The Mezzanine server runs on a physically separate host from every agent seat (operator
  * ruling): no loopback mode, no unix socket, no "it's local so a retry is cheap".
  *
- * CERTIFICATE VERIFICATION IS ALWAYS ON. There is no `rejectUnauthorized: false` in this file
- * and no read of NODE_TLS_REJECT_UNAUTHORIZED — a sandbox host with a private CA is supported
- * by config.ca_file, which is passed as an ADDITIONAL trust anchor with verification intact.
+ * CERTIFICATE VERIFICATION IS ALWAYS ON. There is no `rejectUnauthorized: false` in this file,
+ * no read of NODE_TLS_REJECT_UNAUTHORIZED and no `checkServerIdentity` override — a sandbox host
+ * with a private CA is supported by config.ca_file, which is passed as the TLS `ca` option with
+ * verification intact. `ca` REPLACES the default trust store: a seat with `ca_file` set trusts
+ * only the certificates in that file.
  * Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it
  * ships to production seats. `selftest` and the acceptance suite both lint for it. */
 let _agent = null;
@@ -2344,9 +2346,10 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  *   - ROUTE: `config.proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
  *     null ⇒ direct, on the shared keep-alive agent. `config.proxy_url` ONLY — HTTP(S)_PROXY
  *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
- *   - TLS: `https://` ingest only, verification on, `ca_file` as an ADDITIONAL trust anchor. The host
- *     name is verified on both routes; SNI carries it only when it is a name (RFC 6066 forbids an IP
- *     literal there, and Node warns, DEP0123, that it will stop honouring one).
+ *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
+ *     the default trust store (the seat trusts only that file). The host name is verified on both
+ *     routes; SNI carries it only when it is a name (RFC 6066 forbids an IP literal there, and Node
+ *     warns, DEP0123, that it will stop honouring one).
  *   - THE CONNECT DEADLINE, K.CONNECT_MS, from the start of the request to a verified TLS session
  *     with the ingest: DNS, the TCP connect, the proxy's CONNECT answer and the handshake all spend
  *     it. A kept-alive socket arrives verified and spends none. A proxy that accepts TCP and never
@@ -3114,6 +3117,7 @@ function checkTlsPosture() {
   const banned = [
     new RegExp('reject' + 'Unauthorized\\s*:\\s*false'),
     new RegExp('NODE_TLS_' + 'REJECT_UNAUTHORIZED'),
+    new RegExp('check' + 'ServerIdentity'),
   ];
   const hits = banned.filter((r) => r.test(src)).map((r) => r.source);
   return { ok: hits.length === 0, detail: { forbidden_spellings_present: hits } };

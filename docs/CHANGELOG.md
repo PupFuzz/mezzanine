@@ -39,6 +39,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   address the seat cannot reach directly, and drives the one-shot and the heartbeat through it, the
   sender through it, a seat with no `proxy_url` direct, and a proxy that never answers, with REDs of a
   probe and a sender that ignore `proxy_url` and of a primitive with no connect deadline.
+  The AT-15 source lint also refuses `checkServerIdentity`, so a copy that overrides host-name
+  verification reads `tls_verify` `fail` on both routes. D1 § 3.5 and the reporter's transport
+  comments now say that `ca_file` is passed as the TLS `ca` option, which replaces the default trust
+  store.
   **Installer action:** none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1); a running
   flusher keeps the code it started with until it restarts. A seat with `proxy_url` set re-runs Step 6
   after the update to read its network checks.

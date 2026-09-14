@@ -620,7 +620,7 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 | Scheme | `https://` only | the bearer token is in the header; cleartext is a credential broadcast |
 | A `http://` `ingest_url` | **refused** at install (`selftest` fails) and at runtime (flusher refuses to send, sets `config_invalid`, keeps spooling) | fail closed, loudly, on the client's own surface |
 | TLS | ≥ 1.2, certificate verification **always on** | — |
-| Disabling verification | **forbidden**: no `rejectUnauthorized:false`, no `NODE_TLS_REJECT_UNAUTHORIZED=0` | a sandbox host with a private CA is supported by `ca_file` → `NODE_EXTRA_CA_CERTS`. Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it ships to production seats |
+| Disabling verification | **forbidden**: no `rejectUnauthorized:false`, no `NODE_TLS_REJECT_UNAUTHORIZED=0`, no `checkServerIdentity` override | a sandbox host with a private CA is supported by `ca_file`: the reporter passes the file as the TLS `ca` option, which replaces the default trust store, so a seat with `ca_file` set trusts only the certificates in that file. Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it ships to production seats |
 | Connection reuse | keep-alive, ≤ 2 sockets, on the direct route; through `proxy_url` each request opens its own `CONNECT` tunnel | a TLS handshake is 2 RTTs; at 6 flushes/min a fresh handshake each time is ~12 avoidable RTTs/min/seat |
 | Total request deadline | **15 s** | 256 KiB on a 1 Mbit/s uplink is 2.1 s; plus TLS setup (~1 s pathological) plus server processing (target < 500 ms) ≈ 4 s worst realistic case. 15 s ≈ 3.5× that — past it, retrying beats waiting |
 | Connect deadline | **5 s** | a cross-continent TLS connect is ~300 ms typical, ~2 s pathological; 5 s ≈ 2.5× pathological. *It runs from the start of a request to a verified TLS session with the ingest: DNS, the TCP connect, the proxy's `CONNECT` answer when `proxy_url` is set, and the handshake all spend it, and a kept-alive socket spends none. It bounds the batch POST and the health probe alike, so a proxy that accepts TCP and never answers `CONNECT` holds a flusher pass for 5 s, never 15 s. Enforceable with `https.request` and a timer; with global `fetch` only the 15 s total deadline is enforceable. Either implementation is acceptable — the binding requirement is the 15 s ceiling.* |
@@ -4703,8 +4703,8 @@ recorded here because they are what a re-run will hit first:
   dropped; (c) `202`, and `GET /api/ingest/health` returns an accepted set containing the reporter's
   own `schema_version`.
 - **RED:** set `rejectUnauthorized: false` → (b) passes, which is the wrong answer and must be caught
-  in review; a lint rule forbidding `rejectUnauthorized` and `NODE_TLS_REJECT_UNAUTHORIZED` in the
-  reporter source makes it mechanical.
+  in review; a lint rule forbidding `rejectUnauthorized`, `NODE_TLS_REJECT_UNAUTHORIZED` and
+  `checkServerIdentity` in the reporter source makes it mechanical.
 
 ### AT-16 the counter sink survives concurrency
 
