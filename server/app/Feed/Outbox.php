@@ -28,12 +28,12 @@ use Illuminate\Support\Facades\DB;
  * included — rolls back the state change with it.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * THE READ SIDE: the two statements § 8.3's handler runs, both behind § 6.5's 2 s visibility lag —
+ * THE READ SIDE: the two statements § 8.3's handler runs, both behind § 8.3's 2 s visibility lag —
  * the SAME term on both, which is why they are here together. `headBehindLag()` is the connect read
  * (never a bare `MAX(id)`: AT-D2-25's second RED) and `after()` is the tick's.
  *
  * ⚠ ONE CLOCK, the application's. `created_at` is stamped here from `now()` and the lag is computed
- * against `now()`, exactly as `events.received_at` and § 6.5's fold lag are. The store is on its own
+ * against `now()`, exactly as `events.received_at` is stamped. The store is on its own
  * host (§ 6.1); comparing a store-clock stamp with an application-clock `server_now` would put the
  * two hosts' skew inside a 2 s bound.
  */
@@ -141,7 +141,10 @@ final class Outbox
             ->get();
     }
 
-    /** § 6.5's visibility lag — the fold's own constant, because it is the same term for the same reason. */
+    /**
+     * § 8.3's visibility lag. The constant still lives on `Fold`, which no longer reads behind it (card#9398
+     * replaced the fold's lag with the ingest's seat lock); card#9467 rehomes it with this read.
+     */
     private static function visibleUpTo(): string
     {
         return Clock::sql(now()->subSeconds(Fold::VISIBILITY_LAG_S));

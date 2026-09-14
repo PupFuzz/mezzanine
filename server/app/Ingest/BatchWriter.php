@@ -11,7 +11,29 @@ use Illuminate\Support\Facades\DB;
  * ONE TRANSACTION, and `docs/design/FLEET-STATE.md § 2.1` enumerates exactly what is inside it:
  * "write `events` + `batches`, the seat's `head_event_id`, and — only where it is still `NULL`,
  * i.e. on the seat's first-ever event — the seed of `fold_cursor_received_at` … all in one
- * transaction, return `202`."
+ * transaction whose first statement locks the seat's `seat_state` row, return `202`."
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ THE SEAT LOCK IS THE TRANSACTION'S FIRST STATEMENT, AND THE FOLD'S CURSOR DEPENDS ON IT
+ * (`docs/design/FLEET-STATE.md § 6.5`, card#9398).
+ *
+ * The fold reads `events` by `id > cursor` and advances the cursor to the last id it read. That is
+ * safe only if, for one seat, no row below an id the fold has read can commit afterwards — i.e. if
+ * id-assignment order and commit order are the same order. This lock is what makes them so: `write()`
+ * takes the seat's `seat_state` row `FOR UPDATE` before it inserts anything, so a second write for
+ * the same seat cannot insert — cannot even be assigned an id — until the first has committed or
+ * rolled back, and its ids are then all above the earlier one's, given § 6.5's condition on
+ * `AUTO_INCREMENT` (an allocated value is never issued again). No clock enters the argument.
+ *
+ * What this rests on, stated so an edit that breaks it is recognisable: this is the ONLY
+ * writer of `events` rows (`Tests\Unit\Ingest\EventsHaveOneWriterTest` fails on any other), and the
+ * lock is held from the first statement to the COMMIT. A lock taken later — after the `batches` row,
+ * or at the `seat_state` update the transaction always made — leaves the ids assigned before it
+ * unprotected; `At22LockFirstIngestTest` pins the position.
+ *
+ * A write for a seat whose row another transaction holds — the fold's window, an overlapping post,
+ * or any other writer of that row — WAITS, bounded only by the connection's
+ * `innodb_lock_wait_timeout`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHICH `seat_state` COLUMNS THE INGEST WRITES — a decision D1 left to D2 and D2 states in three
@@ -42,29 +64,47 @@ use Illuminate\Support\Facades\DB;
 final class BatchWriter
 {
     /**
-     * SQLite's compiled parameter ceiling and MySQL's `max_allowed_packet` are both well clear of
-     * this, and a 200-event batch becomes 4 statements rather than 1. The alternative — one
-     * 200-row `INSERT` at 14 columns, 2,800 placeholders — sits close enough to SQLite's older
-     * 999-parameter default that a store built with it would fail on a full batch and on nothing
-     * smaller, which is the worst possible place for a limit to bind.
+     * Rows per `events` INSERT. The figure was sized against SQLite's older 999-parameter default,
+     * which one 200-row `INSERT` would have exceeded (200 times the columns `write()` builds per
+     * row); SQLite is no longer a supported store (card#9328), and no MariaDB limit is known here to
+     * bind at a full batch. It stays as it is because nothing has measured a reason to move it.
      */
     private const INSERT_CHUNK = 50;
 
     /**
+     * Test seam: invoked inside the transaction right after the seat lock is taken and BEFORE the
+     * receipt is stamped — so a test can stand in for a wait on the lock.
+     *
+     * @var null|callable(int): void
+     */
+    public static $afterLock = null;
+
+    /**
+     * Test seam: invoked inside the transaction right after the first `events` chunk is inserted.
+     *
+     * @var null|callable(int): void
+     */
+    public static $afterFirstChunk = null;
+
+    /**
      * @param  list<ValidEvent>  $events
+     * @param  \DateTimeImmutable  $arrivedAt  the request's arrival on the application clock, taken by
+     *                                         `IngestPipeline::handle()` — the skew gauge's basis,
+     *                                         never the receipt stamp
      */
     public function write(
         TokenBinding $binding,
         ValidBatch $batch,
         array $events,
-        \DateTimeImmutable $receivedAt,
+        \DateTimeImmutable $arrivedAt,
     ): Acceptance {
-        $receivedAtSql = $receivedAt->format('Y-m-d H:i:s.v');
-
-        // D1 § 10.1 / § 12.7 — the gauge, per batch. A seat whose clock is ahead yields a
-        // negative value, which is the honest sign and what `clock_skew` badges past ±120 s.
+        // D1 § 10.1 / § 12.7 — the gauge, per batch: the request's ARRIVAL against the seat's
+        // `sent_at`. A seat whose clock is ahead yields a negative value, which is the honest sign
+        // and what `clock_skew` badges past ±120 s. Arrival, not `received_at`: the receipt is
+        // stamped after the seat lock below, and a post that waited out a fold window for its seat
+        // would otherwise carry the wait into the gauge and could badge a correct clock.
         $clockSkewMs = (int) round(
-            ((float) $receivedAt->format('U.u') - (float) $batch->sentAt->format('U.u')) * 1000,
+            ((float) $arrivedAt->format('U.u') - (float) $batch->sentAt->format('U.u')) * 1000,
         );
 
         $known = array_values(array_filter($events, fn (ValidEvent $e) => $e->known));
@@ -79,9 +119,22 @@ final class BatchWriter
         }
 
         return DB::transaction(function () use (
-            $binding, $batch, $known, $ignoredUnknownKinds, $coerced, $unknownFields,
-            $receivedAt, $receivedAtSql, $clockSkewMs,
+            $binding, $batch, $known, $ignoredUnknownKinds, $coerced, $unknownFields, $clockSkewMs,
         ) {
+            // FIRST — see the class docblock. Nothing is inserted before this returns.
+            DB::table('seat_state')->where('seat_ref', $binding->seatRef)->lockForUpdate()->value('seat_ref');
+
+            if (self::$afterLock !== null) {
+                (self::$afterLock)($binding->seatRef);
+            }
+
+            // THE RECEIPT, STAMPED UNDER THE LOCK. `received_at` is the clock D1 § 10.1 makes
+            // authoritative for liveness, retention and every cross-seat comparison; it is the one
+            // value written to `events`, `batches` and the seat's receipt columns here. It is the
+            // APPLICATION's clock (`now()`), so `travel()` reaches it.
+            $receivedAt = now()->utc()->toDateTimeImmutable();
+            $receivedAtSql = $receivedAt->format('Y-m-d H:i:s.v');
+
             $batchRef = DB::table('batches')->insertGetId([
                 'seat_ref' => $binding->seatRef,
                 'batch_id' => $batch->batchId,
@@ -103,7 +156,7 @@ final class BatchWriter
 
             $inserted = 0;
 
-            foreach (array_chunk($known, self::INSERT_CHUNK) as $chunk) {
+            foreach (array_chunk($known, self::INSERT_CHUNK) as $chunkIndex => $chunk) {
                 $rows = [];
 
                 foreach ($chunk as $event) {
@@ -134,6 +187,10 @@ final class BatchWriter
                 // an ambiguous timeout and "must be able to converge without operator
                 // involvement".
                 $inserted += DB::table('events')->insertOrIgnore($rows);
+
+                if ($chunkIndex === 0 && self::$afterFirstChunk !== null) {
+                    (self::$afterFirstChunk)($binding->seatRef);
+                }
             }
 
             $duplicates = count($known) - $inserted;
@@ -144,9 +201,9 @@ final class BatchWriter
             ]);
 
             // The head is read back rather than inferred from an insert id. `lastInsertId()`
-            // after a multi-row insert is the FIRST id on MySQL and the LAST on SQLite, and
-            // `insertOrIgnore` may have inserted nothing at all — so the only answer that is
-            // right on both stores and on a fully-duplicate replay is the seat's actual maximum.
+            // after a multi-row insert is the FIRST id of the statement, not the last, and
+            // `insertOrIgnore` may have inserted nothing at all — so the only answer that is right
+            // on a fully-duplicate replay too is the seat's actual maximum.
             $head = (int) (DB::table('events')->where('seat_ref', $binding->seatRef)->max('id') ?? 0);
 
             DB::table('seat_state')

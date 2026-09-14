@@ -3653,8 +3653,10 @@ Rules:
    that is the only record of what the seat believed.
 2. **D2: the UI never renders a seat-supplied timestamp as an absolute clock**, and renders age from
    `received_at`. Otherwise one skewed seat displays "last seen in 3 hours".
-3. **D2:** the server computes `clock_skew_ms = received_at − sent_at` per batch and stores the
-   latest per seat. `|skew| > 120 s` → the seat renders a `clock_skew` badge and the number.
+3. **D2:** the server computes `clock_skew_ms` per batch as the request's arrival on the server clock
+   − `sent_at`, and stores the latest per seat. (Arrival, not the stored `received_at`, which the
+   server stamps once the seat's write lock is held: a post that waited for that lock must not carry
+   the wait into its skew.) `|skew| > 120 s` → the seat renders a `clock_skew` badge and the number.
    **120 s derivation:** 2× the heartbeat interval, well above any NTP-managed drift (sub-second) and
    below the 300 s stale threshold, so the two alarms cannot alias into one another.
 4. `event_time` values within a seat may be non-monotonic if the clock steps; ordering falls back to
@@ -4310,7 +4312,7 @@ number that raised it.
 | `unattributed_refusals` | a refusal at validation steps 1–3, before any identity is established | global only; **no seat is degraded by it**, because no seat is known ([§ 12.1](#121-validation-order)) |
 | `auth_failed_by_ip` | a token that resolves to nothing — incremented at [§ 12.1](#121-validation-order) **step 4**, which is also where the limit it feeds is evaluated | the 60/h limit ([§ 12.3](#123-rate-limits)); log-volume control, not a guessing defence. Counted globally and per source IP; it degrades no seat, because the token named none |
 | `revoked_token_presented` | a token that resolves to a revoked row | **operator alert**: a seat is still holding a dead credential and only the server can see it |
-| `clock_skew_ms` | *(a gauge, not a counter)* per batch, `received_at − sent_at` | seat badge `clock_skew` past ±120 s ([§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what)) |
+| `clock_skew_ms` | *(a gauge, not a counter)* per batch, request arrival − `sent_at` | seat badge `clock_skew` past ±120 s ([§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what)) |
 
 **The coordination route's counters are NOT in this table, and the reason is a property of the table
 rather than an oversight.** They are declared at

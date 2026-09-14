@@ -4,11 +4,31 @@ namespace App\Fold;
 
 use App\Feed\Outbox;
 use App\Ingest\Counters;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
  * `docs/design/FLEET-STATE.md § 6.5` — one transaction per pass, per seat.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * WHAT THE CURSOR NEEDS, AND WHAT BUYS IT — which is not gaplessness, and not a clock (card#9398).
+ *
+ * `events.id` is not gapless: InnoDB burns an `AUTO_INCREMENT` value on a rolled-back transaction,
+ * and interleaves values across concurrent statements to a degree `innodb_autoinc_lock_mode` decides
+ * (MariaDB's default for it is verified at provisioning, § 6.1). A cursor does not care about holes.
+ * It needs NO ROW WITH `id <= cursor` TO BECOME VISIBLE AFTER THE CURSOR HAS PASSED IT — and ids are
+ * assigned at INSERT while rows become visible at COMMIT, so that needs, for one seat, id-assignment
+ * order and commit order to be the same order.
+ *
+ * The ingest makes them so. `BatchWriter::write()` takes the seat's `seat_state` row lock as its
+ * transaction's first statement and is the only inserter into `events` (`EventsHaveOneWriterTest`
+ * checks that), so a second same-seat write cannot be assigned an id until the first has committed
+ * or rolled back; and an allocated `AUTO_INCREMENT` value is never issued again. Every uncommitted
+ * id for a seat is therefore above
+ * every committed one, and a plain `id > cursor ORDER BY id` read — any read view, locked or not —
+ * sees a prefix of the seat's ids. No time comparison enters it, so clock skew and a clock stepping
+ * backwards change nothing.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * PER-SEAT CURSORS, NOT ONE GLOBAL CURSOR. A single global cursor makes one unprojectable event
@@ -24,23 +44,11 @@ final class Fold
     public const CLAIM = 8;
 
     /**
-     * § 6.5's VISIBILITY LAG, and the property it buys — which is not gaplessness.
-     *
-     * An earlier draft of the design justified the cursor by calling `events.id` "gapless", which
-     * is both false (InnoDB burns an AUTO_INCREMENT value on a rollback and interleaves values
-     * across concurrent statements under `innodb_autoinc_lock_mode = 2`, the 8.0 default) and the
-     * WRONG PROPERTY. A cursor does not care about holes; it needs no row with `id <= cursor` to
-     * become visible after the cursor has passed it. AUTO_INCREMENT does not give that either: ids
-     * are assigned at INSERT and rows become visible at COMMIT, so two overlapping ingest
-     * transactions for one seat — an anticipated state, D1 § 10.3's ambiguous-timeout retry — can
-     * commit out of id order, and a fold pass landing between the two commits would advance past
-     * the lower id and leave those events PERMANENTLY unfolded until a manual rebuild.
-     *
-     * So the fold buys the property it needs by reading only rows whose `received_at` is at least
-     * 2 s old. `received_at` is stamped inside the ingest transaction, so a row becomes eligible
-     * only 2 s after its id was assigned — by which time the transaction that assigned it has
-     * committed or rolled back. THE RESIDUAL IS STATED RATHER THAN HIDDEN: this is a bound, not a
-     * proof. An exact guarantee would need a commit-ordered column, which MySQL does not offer.
+     * THE FEED OUTBOX'S visibility lag (§ 8.3), in seconds. The fold itself no longer reads
+     * `events` behind a lag (card#9398 — see the class docblock); the constant stays here only
+     * because `App\Feed\Outbox`, `mezzanine:feed-reload` and the tests that age rows past the
+     * outbox's read still name it, and card#9467 is the one that rehomes it with the outbox's own
+     * read.
      */
     public const VISIBILITY_LAG_S = 2;
 
@@ -82,10 +90,10 @@ final class Fold
      * that has never received an event, and such a seat has `head_event_id = 0`.
      *
      * ⚠ `FOR UPDATE SKIP LOCKED` IS THE FOLD'S CONCURRENCY CORRECTNESS, AND THE SUITE EXERCISES
-     * NONE OF IT. It is what makes two fold workers partition themselves — another worker's seats
-     * are skipped rather than waited on. The suite runs it on MariaDB but over ONE connection, so
-     * no row is ever locked by anyone else and nothing is ever skipped: the property is UNTESTED,
-     * not merely untested-here (card#7523 owns the two-connection case).
+     * ONE ARM OF IT. It is what makes two fold workers partition themselves — another worker's
+     * seats are skipped rather than waited on. The suite's one skip is `At22LockFirstIngestTest`'s:
+     * a fold pass on its own connection skips the seat an open ingest transaction holds. Two FOLD
+     * workers partitioning the claim is UNTESTED, not merely untested-here (card#7523 owns it).
      *
      * @return Collection<int, object>
      */
@@ -113,7 +121,13 @@ final class Fold
             // transaction rolled back, so nothing was applied twice — the projections are
             // idempotent but the COUNTERS are not, which is exactly what the guard protects.
             return 0;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            if ($this->contended($e)) {
+                // Lock contention, not a poison event — the transaction rolled back and nothing
+                // was applied. Yield the seat for this pass, as a lost cursor race does.
+                return 0;
+            }
+
             // § 6.5's POISON-EVENT RULE, first half: "if `project()` raises, the transaction is
             // rolled back, the event is retried alone once". Re-running the window one event at a
             // time is what isolates the offender — the whole-window attempt cannot say which event
@@ -172,26 +186,28 @@ final class Fold
     {
         return DB::table('events')
             ->where('seat_ref', $seatRef)
-            ->where('id', '>', $cursor)
-            ->where('received_at', '<=', Clock::sql(now()->subSeconds(self::VISIBILITY_LAG_S)))
-            ->orderBy('id')                 // ARRIVAL order for visiting; § 6.5 applies by the triple
+            ->where('id', '>', $cursor)     // by id alone: the class docblock is why no age term is needed
+            ->orderBy('id')                 // receipt (lock) order for visiting; § 6.5 applies by the triple
             ->limit(self::BATCH)
             ->get();
     }
 
     /**
-     * § 6.5's empty read has TWO CAUSES AND THEY NEED OPPOSITE HANDLING, which is why the branch
-     * is in the document's loop rather than left to an implementer.
+     * § 6.5's empty read: the seat is on the claim (`fold_cursor_event_id < head_event_id`) and
+     * `readable()` returned nothing.
      *
-     *   Everything above the cursor is younger than 2 s — the events are still coming, and
-     *   advancing would skip them. DO NOTHING and let the next pass have them.
+     * The cause the branch exists for is a PURGED window (§ 6.7's 14-day retention outlived the
+     * fold's downtime, or a `rebuild --since` left the cursor below a window that has since aged
+     * out). Here doing nothing is the defect: the claim still matches, the read still returns
+     * nothing, and the seat is re-claimed on EVERY pass forever, never advancing, permanently
+     * frozen while `fold_lag_ms` grows without bound — § 2.3's frozen fold arriving one seat at a
+     * time, badging and alarming correctly while being unfixable by waiting.
      *
-     *   Everything above the cursor has been PURGED (§ 6.7's 14-day retention outlived the fold's
-     *   downtime, or a `rebuild --since` left the cursor below a window that has since aged out).
-     *   Here doing nothing is the defect: the claim still matches, the read still returns nothing,
-     *   and the seat is re-claimed on EVERY pass forever, never advancing, permanently frozen
-     *   while `fold_lag_ms` grows without bound — § 2.3's frozen fold arriving one seat at a time,
-     *   badging and alarming correctly while being unfixable by waiting.
+     * The other cause — rows above the cursor that the read did not return — is unreachable under
+     * REPEATABLE READ (the server default; not pinned by config): `readable()` and the proof below
+     * are the same predicate, `id > cursor`, read from the same transaction's read view. Under READ
+     * COMMITTED a commit landing between the two statements makes it reachable, and waiting for the
+     * next pass is then right, so the branch stays.
      */
     private function emptyWindow(int $seatRef, int $cursor): void
     {
@@ -205,7 +221,7 @@ final class Fold
         );
 
         if (! $probe || ! (int) $probe->window_empty) {
-            return;   // the rows exist and are simply inside the visibility lag. Wait.
+            return;   // rows committed after the read (READ COMMITTED only — see above). The next pass reads them.
         }
 
         // COUNTED ON THE PROOF, NEVER ON THE WRITE BELOW. `window_empty` IS the purge, and a lost
@@ -285,9 +301,10 @@ final class Fold
             $ok = false;
 
             // "Retried ALONE ONCE" — two attempts, and only the second failure quarantines. One
-            // attempt would quarantine a transient failure (a deadlock, a lost connection) as
-            // though the event were malformed, and the event's own row is what a `--seat` rebuild
-            // would then be replaying against a cursor that had already skipped it.
+            // attempt would quarantine a transient failure (a lost connection) as though the event
+            // were malformed, and the event's own row is what a `--seat` rebuild would then be
+            // replaying against a cursor that had already skipped it. Lock contention does not
+            // spend an attempt at all: it yields below.
             foreach ([1, 2] as $attempt) {
                 try {
                     Outbox::transaction(function () use ($event, $seatRef, $cursor, $row) {
@@ -307,7 +324,11 @@ final class Fold
                     break;
                 } catch (CursorRaced) {
                     return $applied;
-                } catch (\Throwable) {
+                } catch (\Throwable $e) {
+                    if ($this->contended($e)) {
+                        return $applied;   // not this event's fault; the next pass retries it whole
+                    }
+
                     // Attempt 1 falls through and retries; attempt 2 falls out to the quarantine.
                 }
             }
@@ -318,6 +339,14 @@ final class Fold
                 try {
                     $this->quarantine($seatRef, $cursor, $event, $row->received_at);
                 } catch (CursorRaced) {
+                    return $applied;
+                } catch (\Throwable $e) {
+                    if (! $this->contended($e)) {
+                        throw $e;
+                    }
+
+                    // The quarantine's own transaction rolled back: no `fold_error`, no advance.
+                    // The event is retried from the top on the next pass.
                     return $applied;
                 }
             }
@@ -330,6 +359,21 @@ final class Fold
         }
 
         return $applied;
+    }
+
+    /**
+     * Whether `$e` is the store's concurrency error — `1020` (a row changed since this snapshot
+     * read it), `1205` (lock wait timeout), `1213` (deadlock) — rather than a fault of the event.
+     *
+     * Asked of Laravel's `ConcurrencyErrorDetector`, the same one the connection consults, so there
+     * is no second list of engine messages here. It matches on the message, which Laravel keeps when
+     * it rethrows a nested transaction's concurrency error as `DeadlockException`, so the answer is
+     * the same at any transaction depth: production folds at the top level (`QueryException`), and
+     * the suite folds inside `RefreshDatabase`'s transaction (`DeadlockException`).
+     */
+    private function contended(\Throwable $e): bool
+    {
+        return app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e);
     }
 
     private function quarantine(int $seatRef, int $cursor, FoldEvent $event, string $receivedAt): void

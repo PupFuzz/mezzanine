@@ -44,6 +44,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   with REDs of a flusher that lets the timeout overwrite on a fixed cadence, of one that never replaces
   a measured value, and of one that re-probes on every pass. **Installer action:**
   none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1).
+- **card#9398** — **Two overlapping posts for one seat can no longer leave events permanently
+  unfolded.** The fold read `events` behind a 2 s lag on `received_at`, and the ingest stamped
+  `received_at` when the request arrived — before validation and before its transaction — so a post
+  that arrived first but inserted second could hold a lower id than a batch the fold had already read
+  past, and those events were never folded and nothing reported it. The ingest transaction now takes
+  the seat's `seat_state` row lock as its first statement and stamps `received_at` after it, so for one
+  seat id order and commit order are the same order, and the fold reads `events` by id alone, with no
+  lag. `clock_skew_ms` still measures the request's arrival against `sent_at` (D1 § 10.1), so a post
+  that waits for the lock does not badge `clock_skew`. The fold now treats MariaDB's concurrency errors
+  (`1020`, `1205`, `1213`) as transient: the pass yields that seat and retries it whole on the next pass,
+  where before, contention on both attempts could quarantine an innocent event as poison
+  (`fold_error`, `derivation_error`). D2 § 6.5, AT-D2-22 and the number and decision tables restate
+  the property and its conditions; the feed outbox keeps its own 2 s lag (card#9467). New tests drive
+  the overlap on real MariaDB connections (`At22LockFirstIngestTest`) and the transient path at both
+  transaction depths, and `EventsHaveOneWriterTest` fails on any write to `events` outside the
+  ingest's `BatchWriter`, the condition the lock argument rests on. **Installer action:** none; no
+  migration. A post for a seat whose row another transaction holds — the fold's window, or an
+  overlapping post for the same seat — now waits for it before inserting anything rather than at its
+  final `seat_state` update, bounded as before by the store connection's `innodb_lock_wait_timeout`.
+- **card#9146** — **The promote mover's header records the rt#444 ruling: this repo keeps its
+  `card#<id>` token mover.** `bin/promote-cards-by-token` § WHY THIS MOVER states the ruling, leaves
+  the body's provenance and pin unchanged, carries runnable commands that measure both correlation
+  keys on v0.1.0..v0.2.0 and v0.3.0..v0.4.0, and names the condition that reopens it.
+  `docs/KANBAN.md` points at the ruling.
 - **card#9445** — **Two-factor enrolment now says what happened to the code you entered.** A
   rejected code shows Fortify's message (*"The provided two factor authentication code was
   invalid."*) above the form, and an accepted code lands on the dashboard under *"Two-factor

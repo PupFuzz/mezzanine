@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * **AT-D2-25 — a concurrent writer cannot strand a message behind a stream's cursor**
- * (`docs/design/FLEET-STATE.md § 11`, § 8.3's two reads, § 6.5's visibility lag). card#9300.
+ * (`docs/design/FLEET-STATE.md § 11`, § 8.3's two reads and its visibility lag). card#9300.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⭐ THE RACE IS DRIVEN, ON REAL CONNECTIONS — unlike AT-D2-22's file, which could not. The suite's own
