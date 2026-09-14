@@ -53,10 +53,12 @@
         {{--
             THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install
             and a floor is an operator-composed set of rooms. The composed floors reach the client
-            WITH THE PAGE, validated and normalised by `App\Building\BuildingLayout`, and never
-            from an endpoint: the layout is not fleet state, and § 1.2 forbids D3 minting a read
-            surface for it. The client adds one floor per install the snapshot carries that no
-            floor here places (§ 4.6's default rule) and composes nothing else.
+            WITH THE PAGE, validated and normalised by `App\Building\BuildingLayout`. Since
+            card#9208's reversal the same value is also served by `GET /api/building`
+            (`docs/design/FLEET-STATE.md § 8.7`); moving the client onto that fetch is
+            `docs/design/FLOOR.md` Appendix B row 13, and until it lands this page is the delivery.
+            The client adds one floor per install the snapshot carries that no floor here places
+            (§ 4.6's default rule) and composes nothing else.
 
             ⚠ A page loaded before the building was rearranged draws the old building until it
             is reloaded — the same deploy-shaped staleness § 10.3 already accepted for the map.
