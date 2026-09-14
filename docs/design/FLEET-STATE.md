@@ -205,7 +205,7 @@ is in neither.
 
 | Path | Store/dependency unavailable | Posture | Why this posture and not the other |
 |---|---|---|---|
-| **Ingest write** | the store unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged, in [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses)'s shape with `detail` `store_contended` (a lock wait timed out, a deadlock, a changed row) or `store_failed` (any other store error), and counted as `batches_failed.<detail>` against the token's binding — or under the same key in `global_counters` when the fault comes before step 4 has resolved one — and never as a refusal, because the reporter retries it ([§ 7.1](#71-d1s-server-side-counters--where-they-live)). `App\Ingest\IngestPipeline` answers a failure at any step this way, because a store that is down is first read at step 4; a defect in the server takes the same shape as a `500` with `detail: internal`, and every one of them still reaches exception reporting. A store that cannot take even the counter still gets the answer, and both failures are reported. ⭐ **The transaction is bounded on the ingest's own session** (card#9465), since it holds its seat's `seat_state` lock from its first statement ([§ 6.5](#65-the-fold)): `innodb_lock_wait_timeout` = **11 s** bounds a post's wait for a seat lock, and `idle_transaction_timeout` = **10 s** bounds how long the server keeps a transaction open while the application sends nothing, after which the server ends the connection, rolls back and frees the lock. **Derived from D1's request deadline** ([D1 § 3.5](EVENT-SCHEMA.md#35-transport-is-wan-always)), past which no reporter reads the answer: 15 s less the 2.1 s upload, ~1 s of TLS and the 500 ms processing target leaves 11.4 s, floored to the variables' whole seconds for the wait; the idle bound is one second under it, so a post queued behind a transaction the server ends is granted the lock inside its own wait and answers by 13.6 s. A post that meets either bound answers this row's `503`. Both are set by that request on its own connection and on no other. `idle_write_transaction_timeout` is not the bound: on MariaDB 11.8.6 it does not end a transaction whose only statement so far is a locking read, which is the write's state before its first insert (measured 2026-09-14). ⚠ The server-side bound frees the LOCK; the partitioned application's own request is not bounded by it, and its reporter's 15 s deadline answers for that request, whose retry then finds the lock free | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing, and a retry commits once: a rolled-back write left no row, and a write whose COMMIT landed before the failure is answered from its `batch_id` ([D1 § 10.4](EVENT-SCHEMA.md#104-batch-level-idempotency)). An unbounded transaction instead freezes that seat's fold and ingest for as long as the store keeps it. |
+| **Ingest write** | the store unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged, in [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses)'s shape with `detail` `store_contended` (a lock wait timed out, a deadlock, a changed row) or `store_failed` (any other store error), and counted as `batches_failed.<detail>` against the token's binding — or under the same key in `global_counters` when the fault comes before step 4 has resolved one — and never as a refusal, because the reporter retries it ([§ 7.1](#71-d1s-server-side-counters--where-they-live)). `App\Ingest\IngestPipeline` answers a failure at any step this way, because a store that is down is first read at step 4; a defect in the server takes the same shape as a `500` with `detail: internal`, and every one of them still reaches exception reporting. A store that cannot take even the counter still gets the answer, and both failures are reported. ⭐ **The transaction is bounded on the ingest's own session** (card#9465), since it holds its seat's `seat_state` lock from its first statement ([§ 6.5](#65-the-fold)): `innodb_lock_wait_timeout` = **11 s** bounds a post's wait for a seat lock, and `idle_transaction_timeout` = **10 s** bounds how long the server keeps a transaction open while the application sends nothing, after which the server ends the connection, rolls back and frees the lock. **Derived from D1's request deadline** ([D1 § 3.5](EVENT-SCHEMA.md#35-transport-is-wan-always)), past which no reporter reads the answer: 15 s less the 2.1 s upload, ~1 s of TLS and the 500 ms processing target leaves 11.4 s, floored to the variables' whole seconds for the wait; the idle bound is one second under it, so a post queued behind a transaction the server ends is granted the lock inside its own wait and answers by 13.6 s. The fold's window, which holds the same lock, stops at `Fold::WINDOW_BUDGET_MS` — this idle bound less the processing target ([§ 6.5](#65-the-fold), [§ 12](#12-every-number-and-where-it-comes-from)) — so the holder's side of that wait is bounded as well. A post that meets either bound answers this row's `503`. Both are set by that request on its own connection and on no other. `idle_write_transaction_timeout` is not the bound: on MariaDB 11.8.6 it does not end a transaction whose only statement so far is a locking read, which is the write's state before its first insert (measured 2026-09-14). ⚠ The server-side bound frees the LOCK; the partitioned application's own request is not bounded by it, and its reporter's 15 s deadline answers for that request, whose retry then finds the lock free | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing, and a retry commits once: a rolled-back write left no row, and a write whose COMMIT landed before the failure is answered from its `batch_id` ([D1 § 10.4](EVENT-SCHEMA.md#104-batch-level-idempotency)). An unbounded transaction instead freezes that seat's fold and ingest for as long as the store keeps it. |
 | **REST snapshot read** | the store unreachable | **CLOSED** — `503 fleet_unavailable`, machine-readable, **never `200` with an empty or partial fleet** | An empty fleet is indistinguishable from a calm fleet. This is `docs/KANBAN.md § G-1`'s defect (a 200 with empty data reading as a clean zero) and [`docs/VERSIONING.md § The failure direction`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)'s rule, on the read side. |
 | **REST snapshot read** | the store reachable, **some seats' fold cursors stale** | **OPEN, labelled** — serve the state, with `derivation.fold_lag_ms` per seat and `fleet.fold` ≠ `ok` | Frozen state is still the last true state; refusing the whole fleet because one seat's derivation is behind would turn a partial degradation into a total outage. The label is what stops it being read as current. |
 | **Stream connect** | the app up, the store down | **CLOSED** — the request is accepted, the handler's **first message** is `fleet.health` with `db: "down"`, and the stream then **ends** with `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)); no snapshot is served | Same argument as the REST read. The connection is accepted only far enough to say *why* there is nothing — under SSE that message is the handler's first yield rather than a hook nobody had ([§ 8.3](#83-the-websocket-delta-feed)) — and then it ends, because every datum it would carry comes out of the store it could not read. |
@@ -1150,7 +1150,7 @@ floor is not decorative — the requirements below are load-bearing:
 | Engine / version | **MariaDB ≥ 11.8.6** | `SELECT … FOR UPDATE SKIP LOCKED` for the fold's seat claim ([§ 6.5](#65-the-fold)) — MariaDB 10.6.0; `ALGORITHM=INSTANT` column adds on `events` ([§ 6.9](#69-migrations-on-a-live-events-table)) — MariaDB 10.3.2/10.4 by operation, and with no MySQL-style 64-row-version ceiling before a rebuild; `DATETIME(3)`; and `JSON` **as a type name only** — on MariaDB it is an alias for `LONGTEXT` with an automatic `CHECK (json_valid(…))` and not a binary type, which is sufficient here **only because nothing queries into `data`** (below, and [§ 6.3](#63-conventions)). **DOCS-CITED** (MariaDB Knowledge Base), **verified at provisioning** — the deploy host is not built yet |
 | Storage engine | InnoDB, `ROW_FORMAT=DYNAMIC` | transactions; the fold's cursor advance and its projections are one transaction |
 | Character set | `utf8mb4` / `utf8mb4_unicode_ci` (the value's one home is `server/config/database.php`); **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly. ⭐ **`ascii_bin` is the correctness guard, not the default collation**: `utf8mb4_unicode_ci` is case-INSENSITIVE, and two ULIDs differing only in case must not compare equal in `uq_dedup`. `utf8mb4_0900_ai_ci` — what this row named before the repin — is **not a native MariaDB collation**; it is accepted as an alias onto the UCA-1400 family from 11.4.5, and MariaDB's own ticket cautions the resulting ordering is not guaranteed byte-identical to MySQL's, so the name is not used here at all |
-| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — which is why this schema uses no `TIMESTAMP` column anywhere. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
+| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — and while every column this plane defines is `DATETIME(3)` ([§ 6.3](#63-conventions)), the auth tables and `failed_jobs` keep `TIMESTAMP` columns (`git grep -nE "timestamp\(|timestamps\(" -- server/database/migrations` lists them), which this setting is what makes read and write UTC whatever the store host's zone. Set by `server/config/database.php`'s `timezone` key, which Laravel's connector issues on every connect. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
 | Transport | **TLS required**, certificate verified, no fallback to plaintext | the app and the store are on different machines, so the credential and every descriptor cross a network. Loosening verification "because it is our own network" is the constraint-weakening fix D1 refuses for the reporter's TLS, and it ships to production the same way. Fail **closed**: no TLS, no connection, `503` |
 | Connections | request path: one per request (PHP-FPM), no persistent connections; daemons: one long-lived connection each, with reconnect-on-`gone away` and capped backoff | a persistent pool under FPM keeps `wait_timeout` sessions alive across unrelated requests and makes the time-zone and session-variable posture per-worker rather than per-request |
 | Query budget | the fleet snapshot is **one query**; the fold's per-batch work is **one transaction** | every round trip is a WAN round trip. An N+1 over 50 seats is 50 round trips on the dashboard's critical path |
@@ -1309,7 +1309,7 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 |---|---|---|
 | Surrogate keys | `installs.id SMALLINT UNSIGNED`, `seats.id INT UNSIGNED`; every hot table carries `seat_ref` | a natural key on `events` would be `install_id` (≤ 32 B) + `seat_id` (≤ 48 B) on every row and in every index — ~76 B against 4 |
 | ULIDs | `CHAR(26) CHARACTER SET ascii COLLATE ascii_bin` | 26 bytes, exact comparison, legible in a query, and lexicographically ordered by mint time. `BINARY(16)` would save 10 B/row and make every diagnostic query require a conversion function; at 10,420 events/seat/day that saving is ~0.1 MB/seat/day against permanent illegibility |
-| Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP` | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone |
+| Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP`, for every column this plane defines | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone. The auth tables and `failed_jobs` keep their `TIMESTAMP` columns, and [§ 6.1](#61-deployment-posture)'s session time zone is what makes those UTC |
 | Enums | MariaDB `ENUM` where the column's **writer can only produce members the schema declares** — a D1 value set coerced at the ingest, or a closed set this plane mints and its own fold, sweeper or console writes (`unknown_reason`, `seat_state_transitions.cause`, `feed_tokens.scope`, `authored_revisions.kind` …); `VARCHAR` + application validation where an unknown member is **data to record** rather than a bug to reject — the open sets D1 rule 7 says must be coerced-and-counted. ⚠ Until card#9208's reversal this row said *closed sets D1 owns* and its Reason cell closed with *which is every enum this schema stores* — false of the schema it sat beside: re-derived by `tools/design/verify-fleet-state.py`'s G1, which prints how many ENUM members this document mints on every run, roughly a quarter of them are D2's own and always were. The criterion is restated rather than the list of exceptions, because the list would be most of the schema | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted, and right for a value only this plane's own code can write — an unknown member there is a bug, and a migration per member is the price of the storage layer refusing it. G1 holds the second half honest: every member this document mints must be produced by a rule it states |
 | `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on **any** path — not just not on a hot one — and after the MariaDB repin that is load-bearing rather than incidental: MariaDB's `JSON` is an alias for `LONGTEXT` + `CHECK (json_valid(…))` and has no arrow operators before 13.1 ([§ 6.1](#61-deployment-posture)). Every JSON column is written whole, read whole and decoded in PHP; the column is kept for the drill-down, for replay and for forensics |
 | String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MariaDB counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
@@ -1884,11 +1884,18 @@ loop:
           FOR UPDATE SKIP LOCKED            -- MariaDB 10.6.0+; another worker's seats are skipped
   for each seat in claim:
      BEGIN
+       SELECT seat_ref FROM seat_state              -- the seat lock, FIRST: before any read (below)
+        WHERE seat_ref = ?
+          FOR UPDATE SKIP LOCKED
+       if it returned no row: COMMIT, next seat     -- another transaction holds it: yield this pass,
+                                                    -- having written nothing
        rows = SELECT * FROM events
                WHERE seat_ref = ? AND id > cursor   -- by id alone, no age term (card#9398)
                ORDER BY id                  -- assignment order; see "what the cursor needs"
                LIMIT 500
        for each event: project(event)       -- idempotent upserts, LWW-guarded (below)
+                       stop after it once Fold::WINDOW_BUDGET_MS has passed since the lock was
+                       granted -- checked after each applied event, never before the first (below)
        recompute derive_activity() + link_state + render_state
        if any VERSION-BEARING field changed (the set is named below): state_version += 1
        if render_state changed:                    INSERT seat_state_transitions
@@ -1901,8 +1908,8 @@ loop:
                         -- `delta.state_version == local + 1` rule can never deliver it: the
                         -- drill-down would have the row and the feed would have nothing.
        if rows is non-empty:
-         UPDATE seat_state SET fold_cursor_event_id    = last row's id,
-                               fold_cursor_received_at = last row's received_at, ...
+         UPDATE seat_state SET fold_cursor_event_id    = last APPLIED row's id,
+                               fold_cursor_received_at = last APPLIED row's received_at, ...
        else:
          H, window_empty = SELECT head_event_id,                  -- ONE statement, so the bound H
                                   NOT EXISTS (SELECT 1 FROM events   -- and the emptiness proof come
@@ -1941,6 +1948,21 @@ loop:
      if state_version changed: enqueue a delta (§ 8.3)
 ```
 
+**The window takes its seat's lock first, and stops at a budget (card#9464).** Its first statement is
+the seat's `seat_state` row lock, before `rows` is read and before any version-bearing fingerprint is
+sampled — the lock the ingest also takes as its transaction's first statement. `START TRANSACTION`
+reads nothing and a locking read is not a consistent read, so the snapshot the window's plain reads
+share is fixed after the grant: a same-seat write committed before the grant is in every fingerprint,
+and a writer that takes the lock cannot commit until the window ends, under either setting of
+`innodb_snapshot_isolation` and under REPEATABLE READ or READ COMMITTED. `SKIP LOCKED` makes a
+contended seat yield the pass at once, having written nothing — the same outcome as a lost claim — and
+a seat that keeps yielding shows as `fold_lag` ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)).
+The poison-event rule's one-event attempts and its quarantine (below) take the same lock the same way.
+The window stops at the batch size or at `Fold::WINDOW_BUDGET_MS` = **9,500 ms**
+([§ 12](#12-every-number-and-where-it-comes-from) derives it), whichever it reaches first, and
+advances the cursor to the last row it **applied**, never the last row it read: no later window
+re-reads an id at or below the cursor, so an unapplied tail behind it would be stranded.
+
 **The empty read is a purged window, and that is why the branch is in the loop above rather than left
 to an implementer.** The claim's predicate is `fold_cursor_event_id < head_event_id` and the read under
 it is `id > cursor`, so a seat satisfies the claim and reads **zero rows** when *everything above the
@@ -1953,7 +1975,9 @@ one seat at a time, and it would badge and alarm correctly while being unfixable
 `NOT EXISTS` above asks the read's own predicate again, from the same transaction's read view: under
 REPEATABLE READ — the server default, which nothing in this tree pins — it cannot disagree with the empty
 read, and under READ COMMITTED a commit landing between the two statements can, which is the `else`
-branch's case and one where waiting for the next pass is right. And counting `fold_window_purged`
+branch's case and one where waiting for the next pass is right. The window's seat lock keeps the ingest
+— `events`' one inserter — from committing between them at all; the branch stays so the loop's
+correctness does not rest on that. And counting `fold_window_purged`
 ([§ 7.2](#72-this-planes-own-counters-and-badges)) is what makes the skip visible rather than silent:
 the events those passes would have folded are **gone**, so the seat's state is honest but shorter, the
 same admission `rebuild_truncated` makes.
@@ -2151,9 +2175,14 @@ emptiness proof covered, which an interleaved commit turns into a no-op instead 
 **What the lock costs, and the errors it makes transient.** A post for a seat whose row another
 transaction holds — this fold's window, an overlapping post for the same seat, or any other writer of
 that row — **waits**, bounded by the ingest session's `innodb_lock_wait_timeout`, which the ingest pins and
-[§ 2.2](#22-fail-posture-per-path) derives; a post that times out answers `503 server_error` and is retried. The fold's own transaction can in turn lose to an ingest that commits between its read and its
-first `seat_state` write (`1020`, with snapshot isolation on), time out on a lock (`1205`), or deadlock
-(`1213`). **Those errors are transient and never poison:** the pass yields that seat, writes nothing, and
+[§ 2.2](#22-fail-posture-per-path) derives; a post that times out answers `503 server_error` and is retried. The fold's window holds
+that row from its first statement for at most `Fold::WINDOW_BUDGET_MS`, the event in flight and its
+commit — a budget derived from the ingest's idle-transaction bound
+([§ 12](#12-every-number-and-where-it-comes-from)), so a post queued at the window's lock grant is granted
+the lock inside its own wait as long as that event and commit fit the ingest's processing target. The
+fold's own transactions can still find a row another writer changed since their snapshot (`1020`, with
+snapshot isolation on), time out on a lock (`1205`), or deadlock (`1213`), on a row the seat lock does
+not cover (below). **Those errors are transient and never poison:** the pass yields that seat, writes nothing, and
 the next pass folds the window whole. The poison-event rule below is for every other error.
 
 **The rebuild, retirement and the sweep take the same lock first** (card#9466). Each takes the seat's
@@ -2171,13 +2200,17 @@ holds the seat lock, only a writer that did not take it first can still hold a r
 The sweep takes the lock `FOR UPDATE SKIP LOCKED`, so a seat another writer holds is skipped at once
 and retried on the next pass ([§ 2.2](#22-fail-posture-per-path)).
 
-**This is not a statement that every writer takes the lock first.** None of the fold's transactions
-does: the window, the one-event retry and the quarantine each sample `$before` without it and reach
-`seat_state` only through a later write.
-A transaction that holds a projection row and then needs `seat_state`, meeting one that holds
-`seat_state` and then needs that row, is a deadlock, and MariaDB's detector breaks it with a `1213`.
-That is why rebuild and retirement retry, and why the sweep treats a concurrency error on a row its
-lock does not cover as contention rather than failure.
+**Every transaction that samples a seat's version-bearing fingerprint takes the seat lock as its first
+statement.** `git grep -n "versionBearing(" -- server/app` lists every sample: the fold's window,
+one-event retry and quarantine, the rebuild's replay, retirement, and the sweep's per-seat pass, each
+inside a transaction that opens with the seat's `seat_state` row lock, as the ingest's does. Two of them
+on one seat therefore meet at that lock, where the later one waits or skips, and none of them holds a
+row of the seat's while it is still to take `seat_state`. The seat lock does not cover a statement that runs outside those transactions: the
+ingest's refusal and failure counters (`Counters::batchRefused()`, `Counters::batchFailed()`) write the
+seat's `seat_counters` row with no seat lock, before the batch transaction or after its rollback. A
+lock-first transaction that writes that row can still wait on it or find it changed. That is why rebuild
+and retirement retry, and why the sweep treats a concurrency error on a row its lock does not cover as
+contention rather than failure.
 
 **Idempotency has two independent mechanisms, and both are load-bearing:**
 
@@ -2203,11 +2236,12 @@ skipped. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` re
 which is only true because the log is the source of truth and the projections are derived.
 
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
-pass consumes a real seat's arrivals in one transaction while holding row locks for a few
-milliseconds; 8 seats per claim keeps one worker's transaction footprint small enough that a second
+pass consumes a real seat's arrivals in one transaction, whose hold on the seat's lock
+`Fold::WINDOW_BUDGET_MS` bounds as well — a window stops at whichever it reaches first; 8 seats per claim keeps one worker's transaction footprint small enough that a second
 worker can be added for a larger fleet without changing anything (the claim is `SKIP LOCKED`, so
 workers partition themselves). At the ceiling volume a seat produces 10,420 events/day ≈ 0.12/s, so a
-500-row pass is ~70 minutes of one seat's traffic: the batch size binds only during a drain.
+500-row pass is ~70 minutes of one seat's traffic: the batch size, like the budget, binds only during a
+drain.
 
 ### 6.6 Rebuild from the log
 
@@ -5490,7 +5524,7 @@ document.
 | `fold_lag` badge | 60 s | **Derived** — one heartbeat interval (D1 § 9.1): a seat a whole heartbeat behind in derivation has certainly missed an input, so the badge cannot fire on a healthy pass. Healthy value is ~1 s | [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) |
 | `fleet.fold = stalled` | 300 s | **Derived** — the `stale` threshold reused, so transport silence and derivation silence become visible at the same age and are comparable in one unit | [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) |
 | Authored document size bound | **512 KiB** | **Chosen** — the console's write bound on one Tiled document (`App\Floor\FloorMap::MAX_BYTES`, card#9085), carried into this contract because the read surface serves what the console accepted. A CSV-encoded 1,200-tile layer is ~6 KB, so a room of a dozen layers is under a tenth of it, and the bound exists so a pasted document that is not a map fails on size before it fails on shape. Sixty-four times the 8 KiB feed message bound, which is the arithmetic behind the document never riding a message | [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) |
-| Fold batch size | 500 events | **Derived** — ~2.5 D1 batches (200-event cap), a few ms of row locks per transaction; ~70 min of one seat's ceiling traffic, so it binds only during a drain | [§ 6.5](#65-the-fold) |
+| Fold batch size | 500 events | **Derived** — ~2.5 D1 batches (200-event cap); ~70 min of one seat's ceiling traffic, so it binds only during a drain. The transaction's hold on its seat's lock is bounded by the fold window budget, not by this size | [§ 6.5](#65-the-fold) |
 | Fold claim size | 8 seats | **Chosen** — small enough that a second worker partitions cleanly under `SKIP LOCKED`, large enough that a four-seat fleet is one claim | [§ 6.5](#65-the-fold) |
 | Purge batch / budget | 5,000 rows / 60 s | **Chosen** — bounded DELETEs keep the transaction and the binlog small; the wall-clock budget makes a purge that cannot keep up fall behind *visibly* (`purge_backlog_rows`) instead of holding a long transaction | [§ 6.7](#67-retention-and-purge) |
 | `events` table-size alarm | 20 GB | **Derived** — ~2.9× the 50-seat 14-day figure below, so it can only fire on a fleet far larger than planned or a long-dead purge | [§ 6.7](#67-retention-and-purge) |
@@ -5524,6 +5558,7 @@ document.
 | REST poll fallback (feed down) | 10 s | **Cited** — D1's flush interval, so a polled floor is no staler than its own input cadence | [§ 2.2](#22-fail-posture-per-path) |
 | Ingest lock-wait bound (`innodb_lock_wait_timeout`) | 11 s | **Derived** — D1 § 3.5's 15 s request deadline less its 2.1 s upload, ~1 s TLS setup and 500 ms processing target (11.4 s), floored to whole seconds; pinned on the ingest's session only (`App\Ingest\IngestPipeline::LOCK_WAIT_TIMEOUT_S`, card#9465) | [§ 2.2](#22-fail-posture-per-path) |
 | Ingest idle-transaction bound (`idle_transaction_timeout`) | 10 s | **Derived** — one second under the lock-wait bound above, so a post queued behind a transaction the server ends is granted the lock before its own wait expires (`IngestPipeline::IDLE_TRANSACTION_TIMEOUT_S`) | [§ 2.2](#22-fail-posture-per-path) |
+| Fold window budget (`Fold::WINDOW_BUDGET_MS`) | 9,500 ms | **Derived** — the ingest idle-transaction bound above less D1 § 3.5's server-processing target: a window stops holding its seat's lock with that target unspent, for the event in flight and its commit, so a post queued at the window's lock grant is granted the lock inside its own wait. A window stops at this or at the fold batch size, whichever it reaches first (`App\Fold\Fold::WINDOW_BUDGET_MS`, card#9464) | [§ 6.5](#65-the-fold) |
 | Read token entropy / storage | 256 bits / SHA-256 | **Cited** — D1 § 3.3 | [§ 9](#9-read-side-authentication) |
 | Read token expiry | 90 days | **Chosen** — quarterly rotation; a forgotten token dies. Multiple active tokens make rotation issue-then-revoke with no overlap to specify | [§ 9](#9-read-side-authentication) |
 | Rate limit, read token | 120 req/min | **Cited** — D1's per-seat request ceiling, reused so the fleet has one number; ~120× the watchdog's real cadence | [§ 9](#9-read-side-authentication) |

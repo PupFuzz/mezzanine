@@ -125,6 +125,8 @@ abstract class CommittedSeatTestCase extends TestCase
         RebuildCommand::$afterFirstDelete = null;
         SeatRetirement::$beforeRetire = null;
         SeatRetirement::$afterBefore = null;
+        Fold::$beforeLock = null;
+        Fold::$afterReadable = null;
         Carbon::setTestNow();
 
         $this->deleteCommittedRows(outbox: true);

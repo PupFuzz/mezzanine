@@ -64,8 +64,14 @@ final class IngestPipeline
     /** D1 § 3.5: 256 KiB on a 1 Mbit/s uplink (2.1 s) plus a pathological TLS setup (~1 s). */
     private const TRANSPORT_WORST_MS = 2_100 + 1_000;
 
-    /** D1 § 3.5: the server-processing target. */
-    private const PROCESSING_TARGET_MS = 500;
+    /**
+     * D1 § 3.5: the server-processing target.
+     *
+     * Public because `App\Fold\Fold::WINDOW_BUDGET_MS` is derived from it and from
+     * `IDLE_TRANSACTION_TIMEOUT_S` below (card#9464), so a fold window releases a seat's lock early
+     * enough for a post queued behind it. A change to either constant re-flows there.
+     */
+    public const PROCESSING_TARGET_MS = 500;
 
     private const WAIT_BUDGET_MS = self::REPORTER_DEADLINE_MS - self::TRANSPORT_WORST_MS - self::PROCESSING_TARGET_MS;
 
