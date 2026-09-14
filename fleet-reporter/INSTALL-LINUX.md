@@ -738,10 +738,15 @@ processes, as Step 5 reports.
   install used a checkout of `4ce0a19` (Step 1), which is older. A seat running an older build sends no
   name, and the snapshot shows `protocol_agent_name: null`, until Step 1's artifact is replaced and
   Step 5's flusher restarted.
-- **Every fresh seat is badged `epoch_reset`, and the badge stays.** The flusher's first start finds
-  no `state.json`, and the reporter counts that as § 11.4's *unreadable or corrupt* state reset. The
-  first heartbeat carries `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10,
-  eleven minutes later and after a flusher restart, because the counter is a running total.
+- **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
+  the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
+  `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and
+  after a flusher restart, because the counter is a running total kept in `state.json`. A build that
+  includes card#9374 counts no reset on a first start, so a seat installed from it starts with an
+  empty `degraded`. Replacing Step 1's artifact on an older seat does not clear the badge, because the
+  new build loads the same total. Deleting `state.json` does not clear it either: the next batch
+  arrives under a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
+  `seq_epoch_change`. Whether and how a badge clears is card#9491.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

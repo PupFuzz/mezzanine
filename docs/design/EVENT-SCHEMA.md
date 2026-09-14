@@ -3282,7 +3282,7 @@ named here because they read the same payload value against two different index 
 - `agent_id` present but **unbound**, and **exactly one** open `is_dispatch` call → close it, `match:
   "sole_open"`. This is not a defence against a missing `agent_id` — the key is always there. It is
   the recovery path for a **lost `bind` record**: a torn index-journal line drops the binding while
-  leaving the call open ([§ 11.4](#114-corruption-the-torn-last-line-and-a-lost-statejson)), and
+  leaving the call open ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)), and
   without this row that call would sit open to its 60-minute orphan ceiling;
 - otherwise → emit nothing, increment `subagent_stop_unmatched`.
 
@@ -3503,7 +3503,7 @@ statusLine processes reach the flusher through the counter sink
 | `payload_key_missing.is_interrupt` | `PostToolUseFailure` arrived without `is_interrupt`, so the close defaulted to `failed` ([§ 6.6](#66-toolend)) | `degraded`; an interrupted call would be mislabelled as a failure while this is non-zero |
 | `index_fold_truncated` | the index journal tail exceeded 8 MiB and history was skipped | `degraded` |
 | `flusher_lost_ownership` | a flusher found `state.json` owned by another and exited | informational; > 1/day means the lock is being lost, not just raced |
-| `state_reset` | `state.json` was unreadable; a new epoch was minted and the spool re-sent from its oldest bucket ([§ 11.4](#114-corruption-the-torn-last-line-and-a-lost-statejson)) | informational, rendered `epoch_reset`; **not** `lossy`, because nothing was discarded |
+| `state_reset` | `state.json` existed and could not be used (a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape); a new epoch was minted and the spool re-sent from its oldest bucket ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)). **A missing `state.json` is not a reset:** it is a first start, or state lost with the file, and it mints an epoch and re-sends the same way while counting nothing. Lost state on a seat that has already reported is badged by the server's `seq_epoch_change` ([§ 10.2](#102-ordering-seq-and-gap-detection)) | informational, rendered `epoch_reset`; **not** `lossy`, because nothing was discarded |
 | `subagent_stop_unmatched` | `SubagentStop` that could name no call | informational; expected ~0 once the `agent_id` binding works, so a rising share is the signal that it does not |
 | `agent_bind_sole_unbound` | a `SubagentStart` bound by being the only unbound dispatch call — the **only** binding rule, since the payload carries no parent reference ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; its share of `SubagentStart`s is the binding's success rate |
 | `agent_bind_ambiguous` / `agent_bind_unresolved` | two unbound dispatch calls at `SubagentStart`; a subagent hook whose parent could not be resolved | informational; `parent_call_id` is `null` for those events. `agent_bind_ambiguous` is the trigger to revisit [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) with a real parallel-dispatch capture |
@@ -3578,7 +3578,7 @@ members stated nowhere and its two examples spelling one member two different wa
 | `bad_session_id` | `bad_session_id` | a `session_id` failed its pattern and was sent as `null` |
 | `config_invalid` | `config_invalid` | the config failed runtime validation; the flusher spools and sends nothing |
 | `statusline_degraded` | `wrapped_statusline_failures` | the wrapped status-line command is failing; the seat's own UI is affected |
-| `epoch_reset` | `state_reset` | a new `seq_epoch` was minted and the spool re-sent; **not** `lossy` — nothing was discarded |
+| `epoch_reset` | `state_reset` | a `state.json` that existed could not be used, so a new `seq_epoch` was minted and the spool re-sent; **not** `lossy` — nothing was discarded. A first start raises nothing |
 
 **Twelve members, and the array's bound is twelve.** The bound is not a chosen number: the array
 carries at most one of each member, so its ceiling is the size of this table and moves only when this
@@ -3685,12 +3685,18 @@ a `seq_epoch`. Exactly one flusher runs per seat ([§ 2.3](#23-the-flusher-must-
 which is what makes a lock-free counter correct — and this is why `seq` is not assigned in the hook,
 where cross-process locking would sit inside the 250 ms budget P-5 protects.
 
-- `seq_epoch` is a ULID minted when `state.json` is created. Losing state (reinstall, wiped state dir,
-  an unreadable `state.json`) mints a **new epoch**, which the server treats as an intentional
-  discontinuity: logged, counted as `seq_epoch_change`, rendered per seat as `epoch_reset`, and not
-  alarmed — because it is a re-numbering, not a loss ([§ 11.4](#114-corruption-the-torn-last-line-and-a-lost-statejson)
+- `seq_epoch` is a ULID minted when `state.json` is created: on a seat's first start, and again
+  whenever state is lost (reinstall, wiped state dir, a deleted or unreadable `state.json`). A **new
+  epoch** on a seat that has already sent under an earlier one is treated by the server as an
+  intentional discontinuity: logged, counted as `seq_epoch_change`, rendered per seat as `epoch_reset`,
+  and not alarmed — because it is a re-numbering, not a loss ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)
   states what happens to the events themselves, and the answer is that they are re-sent, not skipped).
-  Without a new epoch, a reset counter would look like a 48,000-event gap.
+  A seat's first epoch follows none, so it counts nothing. Without a new epoch, a reset counter would
+  look like a 48,000-event gap.
+- **The reporter counts only an unreadable `state.json`**, as [§ 9.3](#93-degradation-counters)'s
+  `state_reset`. A missing one looks the same on a first start as after lost state, so the reporter
+  counts neither: a first start is not a degradation, and lost state on a seat that has already
+  reported is badged by the server's `seq_epoch_change` alone.
 - The ordering key is `(seq_epoch, seq)`. A **missing `seq`** within an epoch is a real gap — events
   lost after the flusher counted them — and the server counts `seq_gap` and raises its **own**
   `seq_gap` badge on that seat. **D2:** that badge belongs to the server's vocabulary
@@ -3947,7 +3953,7 @@ plus one flush interval in that case, which is a bounded overshoot of a disk-spa
 `tool.end` survives. That is the `synthesized` path in [§ 6.6](#66-toolend) — the ledger stays total,
 and the anomaly is flagged rather than silently producing a negative open-call count.
 
-### 11.4 Corruption, the torn last line, and a lost `state.json`
+### 11.4 Corruption, the torn last line, and a missing or unreadable `state.json`
 
 | Case | Rule | Observable |
 |---|---|---|
@@ -3957,13 +3963,14 @@ and the anomaly is flagged rather than silently producing a negative open-call c
 | A line longer than 4 KiB | quarantine | `spool_corrupt_lines` |
 | An entire bucket file unreadable | record the filename in `quarantine/corrupt.jsonl`, skip it, continue | **`spool_dropped_events`** += the bucket's estimated line count (its byte size ÷ the ~500 B typical event size, [§ 4.4](#44-size-caps-and-their-derivations)); badge `lossy` |
 | A torn or unparseable **index journal** line | skipped by the fold, counted `spool_corrupt_lines`; a lost `open` record makes its close `synthesized`, a lost `close` makes the entry reapable — both already-handled paths | `lossy` |
-| `state.json` unreadable or corrupt | **state reset** — see below | `state_reset`, `seq_epoch_change` server-side, badge `epoch_reset` |
+| `state.json` present but unusable: a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape | **state reset** — see below | `state_reset`, badge `epoch_reset`; `seq_epoch_change` server-side on a seat that has already reported |
+| `state.json` missing: a first start, or state lost with the file (a reinstall, a wiped state dir, a deleted file) | a new `seq_epoch` and the same re-send from the oldest bucket, **not** a state reset | none from the reporter. On a seat that has already reported, the server's `seq_epoch_change` and its badge `epoch_reset`; a first start raises nothing |
 
 **One torn line never poisons a batch and never wedges the queue.** The failure is bounded to the
 line, counted, and quarantined for inspection — never "abort the batch", which would let one bad byte
 stop a seat's telemetry indefinitely.
 
-**The state reset re-sends; it does not skip.** When `state.json` cannot be read, the flusher mints a
+**The state reset re-sends; it does not skip.** When `state.json` cannot be read, or is missing, the flusher mints a
 fresh `seq_epoch` **and sets its cursor to the start of the OLDEST bucket still on disk**, not the
 newest. An earlier draft did the opposite, and the cost was severe and silent: up to a full spool of
 unsent events — days of them — discarded with no counter incremented, while
@@ -3978,7 +3985,11 @@ server's dedup window (10 days) exceeds the spool's residency cap (8 days) **by 
 outage recovery ([§ 11.5](#115-retry-and-backoff)) — and the visible signal is `state_reset` plus a
 non-zero `duplicates` on the next batches. If a bucket cannot be read at all during that re-send it
 follows the unreadable-bucket row above: counted into `spool_dropped_events`, badge `lossy`. Nothing
-is discarded uncounted.
+is discarded uncounted. A missing `state.json` takes the same path and counts no `state_reset`: a
+first start has delivered nothing, so there is nothing to duplicate, and after lost state the signal
+is the server's `seq_epoch_change` beside the `duplicates`. The reporter does not tell those two apart,
+because the spool cannot: a hook spools its event before it respawns the flusher, so a first start
+usually finds data waiting.
 
 **One path, one counter.** An earlier draft counted the unreadable bucket into `spool_corrupt_lines`
 in the table and into `spool_dropped_events` in this paragraph — two counters for one loss, so any
@@ -4332,7 +4343,7 @@ number that raised it.
 | `session_reopened` | an event arrived for a session closed by `inferred_silence` | **re-derives the 90-minute rule** ([§ 6.2](#62-sessionend)) |
 | `seq_gap` | a missing `seq` inside an epoch | the **server's own** `seq_gap` badge on that seat, per the rule above — **not** a `lossy` member of [§ 9.3](#93-degradation-counters)'s array, which only the reporter mints ([§ 10.2](#102-ordering-seq-and-gap-detection)) |
 | `seq_collision` | one `(seq_epoch, seq)` carrying two different `event_id`s | seat badge `degraded`; the only mechanism that produces it is two flushers ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) |
-| `seq_epoch_change` | a batch arrived under a new `seq_epoch` | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
+| `seq_epoch_change` | a batch arrived under a new `seq_epoch` on a seat that has already sent under an earlier one; a seat's first epoch is not a change | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
 | `batches_refused.<error>` | any 4xx refusal, keyed by error code | counted **against the token's binding** ([§ 12.1](#121-validation-order)). A permanent refusal renders the seat degraded by one route, the reporter's own `batches_rejected` member ([§ 9.3](#93-degradation-counters)), raised when it quarantines the batch; the server raises **no** badge for this counter ([FLEET-STATE.md § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)), so the preamble's server-badge reading does not apply to this row |
 | `batches_failed.<detail>` | a request the server could not finish, answered `server_error` ([§ 12.2](#122-error-responses)), keyed by its `detail` | counted **against the token's binding** once step 4 has resolved one, and globally under the same key before it ([§ 12.1](#121-validation-order)). **Not a refusal, and no badge:** the reporter retries it ([§ 11.5](#115-retry-and-backoff)) and counts [§ 9.3](#93-degradation-counters)'s `batches_retried`, and a retry commits once ([§ 10.4](#104-batch-level-idempotency)) |
 | `unattributed_refusals` | a refusal at validation steps 1–4, before any identity is established; at step 4, a token that resolves to nothing or to a revoked row, on either [§ 4.1](#41-endpoints) endpoint | global only; **no seat is degraded by it**, because no seat is known ([§ 12.1](#121-validation-order)) |
@@ -4742,6 +4753,12 @@ alarm — the structural backstop — is built on sand.*
   silent hole is the failure being designed out.
 - **Discriminating control:** the same run **without** corrupting `state.json` → `duplicates == 0`,
   proving the duplicates in GREEN come from the reset path and not from ordinary retry.
+- **A missing `state.json` is not a reset:** a first start with an empty spool, a first start whose
+  spool already holds a hook event, and a `state.json` deleted after the seat reported each count
+  `state_reset == 0` through a start and a restart, and no heartbeat carries `epoch_reset`; the
+  deleted one sends under a new `seq_epoch` and re-sends the spool. An empty, truncated,
+  unparseable, wrong-shaped or unreadable `state.json` counts `state_reset` exactly once.
+  **RED:** count a missing file as a reset → every first start carries `epoch_reset` for good.
 
 ### AT-18 an unknown enum value costs one field, not a batch
 

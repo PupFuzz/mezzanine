@@ -1547,6 +1547,145 @@ eq("RED: resetting the cursor to the END of the spool silently loses every unsen
 eq("  … and records NOTHING as dropped — the silent hole this rule designs out", 0,
    s17r.state().get("counters", {}).get("spool_dropped_events", 0))
 
+# A FIRST START IS NOT A STATE RESET (card#9374, D1 § 9.3's `state_reset` row and § 11.4's table).
+# `state_reset` counts a state.json that EXISTS and cannot be used. A missing one is a first start,
+# or state lost with the file, and both mint a new seq_epoch and send from byte 0 of every bucket
+# exactly as a reset does, but count nothing. The defect counted a missing file as a reset, so every
+# new seat carried `epoch_reset` for good: the badge is derived from a running total.
+#
+# "No state.json" is the whole test for a first start, because the spool cannot be: a hook spools
+# its event BEFORE it respawns the flusher, so a first start driven by a hook finds data already
+# waiting, and one driven by the crontab finds none. Both are driven here.
+def epoch_trace(s: Seat, reporter: Path = REPORTER) -> dict:
+    """The seat's next two flusher processes, a start and then a restart, each a real pass against
+    the suite's ingest. Returns what state.json, each start's heartbeat and the wire carry."""
+    INGEST.batches.clear()
+    runs = (flush(s, reporter=reporter), flush(s, reporter=reporter))
+    hbs = [e["data"] for e in s.events() if e["kind"] == "reporter.heartbeat"][-2:]
+    posted = [b["batch"] for b in INGEST.batches]
+    wire_hbs = [e["data"] for b in posted for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    return {"rcs": [r.returncode for r in runs],
+            "state_reset": (s.state().get("counters", {}).get("state_reset", 0),
+                            [hb.get("counters", {}).get("state_reset", 0) for hb in hbs]),
+            "degraded": [hb.get("degraded") for hb in hbs],
+            "wire_degraded": [hb.get("degraded") for hb in wire_hbs],
+            "epochs": sorted({b["seq_epoch"] for b in posted}),
+            "ids": {e["event_id"] for b in posted for e in b.get("events", [])}}
+
+
+def spooled_ids(s: Seat) -> set:
+    return {e["event_id"] for e in s.events() if e["kind"] != "reporter.heartbeat"}
+
+
+FIRST_START = ([0, 0], (0, [0, 0]), [[], []], 1)
+
+
+def first_start_view(t: dict) -> tuple:
+    return (t["rcs"], t["state_reset"], t["degraded"], len(t["epochs"]))
+
+
+fs_cron = seat("firststart-cron")
+t_cron = epoch_trace(fs_cron)
+eq("a first start from the CRONTAB, empty spool and no state.json: across that start and a restart, "
+   "`state_reset` is 0 in state.json and on both heartbeats, neither heartbeat is degraded, and both "
+   "starts send under one seq_epoch", FIRST_START, first_start_view(t_cron))
+eq("  … and the first start's heartbeat, sent by the restart, reaches the wire with no badge", True,
+   bool(t_cron["wire_degraded"]) and all(d == [] for d in t_cron["wire_degraded"]))
+
+fs_hook = seat("firststart-hook")
+hook(fs_hook, "PreToolUse", pre(tuid="fs_hook"))
+hook_ids = spooled_ids(fs_hook)
+t_hook = epoch_trace(fs_hook)
+eq("a first start from a HOOK, its event already spooled and no state.json: the same result as the "
+   "crontab's start", FIRST_START, first_start_view(t_hook))
+eq("  … and the hook's event is sent from byte 0, which is § 11.4's re-send, unchanged", (True, True),
+   (bool(hook_ids), hook_ids <= t_hook["ids"]))
+
+# STATE LOST ON A SEAT THAT HAS ALREADY REPORTED is not a reporter reset either: the reporter cannot
+# tell it from a first start, and does not need to. It mints a new seq_epoch, and the server's
+# `seq_epoch_change` counts exactly that, a batch under a new epoch on a seat whose previous epoch is
+# known (server/app/Fold/StateRecompute.php `$epochChanged`), and badges the seat `epoch_reset`
+# (D1 § 10.2). A first epoch has no previous one, so a fresh seat is never badged there.
+# server/tests/Feature/Fold/At11OutOfOrderTest.php `test_the_epoch_is_part_of_the_comparator` asserts
+# that server half: two epochs count 1, not 2. What this side owes that rule is the new epoch on the
+# wire, and the events re-sent under it.
+fs_lost = seat("firststart-lost")
+hook(fs_lost, "PreToolUse", pre(tuid="fs_lost"))
+t_lost_before = epoch_trace(fs_lost)
+lost_ids = spooled_ids(fs_lost)
+(fs_lost.spool / "state.json").unlink()
+t_lost = epoch_trace(fs_lost)
+eq("state.json DELETED on a seat that has already reported: no `state_reset` and no badge from the "
+   "reporter, across the start that found it missing and a restart", FIRST_START, first_start_view(t_lost))
+eq("  … under a NEW seq_epoch, which the server counts as `seq_epoch_change` and badges `epoch_reset`",
+   (1, True), (len(t_lost_before["epochs"]), t_lost["epochs"] != t_lost_before["epochs"]))
+eq("  … and every spooled event is sent again from byte 0, so nothing already spooled is skipped",
+   True, bool(lost_ids) and lost_ids <= t_lost["ids"])
+
+# A state.json that EXISTS and cannot be used stays a reset: § 11.4's "unreadable or corrupt" row.
+STATE_UNUSABLE = [("truncated mid-document", '{"seq_epoch":"trunc'),
+                  ("empty", ""),
+                  ("not JSON at all", "not json {{{"),
+                  ("JSON of the wrong shape (no next_seq)", '{"seq_epoch":"01K3T0000A5N7M2X9V4B6D0FGH"}'),
+                  ("JSON null", "null")]
+RESET = ([0, 0], (1, [1, 1]), [["epoch_reset"], ["epoch_reset"]], 1)
+
+
+def unusable_state(name: str, text: str, *, unreadable: bool = False, reporter: Path = REPORTER) -> dict:
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid=f"{name}_e"))
+    f = s.spool / "state.json"
+    f.write_text(text, encoding="utf-8")
+    if unreadable:
+        f.chmod(0)
+    ids = spooled_ids(s)
+    t = epoch_trace(s, reporter=reporter)
+    t["resent"] = bool(ids) and ids <= t["ids"]
+    return t
+
+
+for i, (label, text) in enumerate(STATE_UNUSABLE):
+    t_bad = unusable_state(f"reset-{i}", text)
+    eq(f"a state.json {label}: a reset, counted once: `state_reset` 1 in state.json and on both "
+       f"heartbeats, both badged `epoch_reset`, and the restart counts no second one", RESET,
+       first_start_view(t_bad))
+    eq("  … and the spool re-sent from byte 0", True, t_bad["resent"])
+if os.geteuid() == 0:
+    skip("a state.json present but unreadable (EACCES) needs a non-root run: root reads a mode-000 file, "
+         "so that branch was NOT measured, and that is not a pass")
+else:
+    t_eacces = unusable_state("reset-eacces", '{"seq_epoch":"01K3T0000A5N7M2X9V4B6D0FGH","next_seq":1}',
+                              unreadable=True)
+    eq("a state.json present but UNREADABLE (mode 000, a non-ENOENT read error): a reset, exactly as a "
+       "corrupt one", RESET, first_start_view(t_eacces))
+
+# THE REDS, planted on copies at the one line that decides. The defect verbatim: every catch a reset.
+p_enoent = plant(("reset: e.code !== 'ENOENT'", "reset: true"))
+r_cron = epoch_trace(seat("firststart-cron-red"), reporter=p_enoent)
+r_hook_seat = seat("firststart-hook-red")
+hook(r_hook_seat, "PreToolUse", pre(tuid="fs_hook_red"))
+r_hook = epoch_trace(r_hook_seat, reporter=p_enoent)
+eq("RED: a reporter counting a missing state.json as a reset badges both first starts, crontab and hook, "
+   "`epoch_reset` on every heartbeat, and the restart keeps it", (RESET, RESET),
+   (first_start_view(r_cron), first_start_view(r_hook)))
+# The opposite defect: no catch a reset. Every unusable state.json then passes silently.
+p_never = plant(("reset: e.code !== 'ENOENT'", "reset: false"))
+r_unusable = [first_start_view(unusable_state(f"reset-red-{i}", text, reporter=p_never))
+              for i, (_label, text) in enumerate(STATE_UNUSABLE)]
+eq("RED: a reporter counting no catch as a reset leaves every unusable state.json (truncated, empty, "
+   "not JSON, wrong shape, null) uncounted and unbadged", [FIRST_START] * len(STATE_UNUSABLE), r_unusable)
+if os.geteuid() != 0:
+    eq("  … and the unreadable (EACCES) one too", FIRST_START,
+       first_start_view(unusable_state("reset-red-eacces", '{"seq_epoch":"01K3T0000A5N7M2X9V4B6D0FGH","next_seq":1}',
+                                       unreadable=True, reporter=p_never)))
+redgreen("a first start is not a state reset; an unusable state.json is (§ 9.3, § 11.4, card#9374)",
+         f"missing state.json counted as a reset -> crontab first start {first_start_view(r_cron)}, hook "
+         f"first start {first_start_view(r_hook)} (rcs, (state_reset in state.json, on each heartbeat), "
+         f"degraded per heartbeat, epochs); no catch a reset -> the {len(STATE_UNUSABLE)} unusable "
+         f"state.json cases all read {FIRST_START}",
+         f"crontab {first_start_view(t_cron)}, hook {first_start_view(t_hook)}, deleted-after-reporting "
+         f"{first_start_view(t_lost)} under a new epoch; each unusable state.json {RESET}, spool re-sent")
+
 
 print("\n== 7. BATCH CORRECTNESS (§ 4.2 envelope, § 11.5 retry ladder and the poison pill) ==")
 INGEST.batches.clear()
@@ -2904,13 +3043,12 @@ eq("case D — no key in the config: protocol_agent_name is null (PRESENT), the 
    "selftest passes and both counters are 0", (0, "pass", want(None, "undeclared", "pass")), act(at_d))
 eq("  … and an explicit null declares nothing either", (0, "pass", want(None, "undeclared", "pass")),
    act(drive_at27(at27_box("at27-d-null", declare=None, home=AT27_ROSTER))))
-# `degraded` is not literally empty on these seats and cannot be: each is a FRESH seat, whose first
-# flusher start finds no state.json and counts § 11.4's `state_reset` (`epoch_reset`,
-# INSTALL-LINUX.md's "What this install does not give you"). What AT-27 case D asserts is that NO
-# DECLARATION STATE raises a badge (§ 9.3 gives neither counter a member), so every case is held to
-# that one fresh-seat baseline.
-eq("  … and no declaration state raises a badge: A, B, C and D carry the same `degraded`, the fresh "
-   "seat's `epoch_reset` alone", [["epoch_reset"]] * 4,
+# Each of these is a FRESH seat, and a fresh seat's `degraded` is empty: its first flusher start finds
+# no state.json, which is a first start and not § 11.4's `state_reset` (card#9374, § 6 above). What
+# AT-27 case D asserts is that NO DECLARATION STATE raises a badge (§ 9.3 gives neither counter a
+# member), so every case is held to that empty set.
+eq("  … and no declaration state raises a badge: A, B, C and D all carry an empty `degraded`",
+   [[]] * 4,
    [at_a["degraded"], at_b["degraded"], at_c["degraded"], at_d["degraded"]])
 
 at_e = drive_at27(at27_box("at27-e", coord=AT27_ROSTER))
@@ -2969,8 +3107,8 @@ for label, bad_name, shown in MALFORMED:
        f"nowhere — the heartbeat, state.json, the counter sink", ("pass", (0, 0, 0)),
        (d_bad["config_readable"], d_bad["config_invalid"]))
     eq("  … and the seat still sends: its flush POSTs a batch whose heartbeat carries null / `undeclared` "
-       "beside a failing protocol_agent_name_in_roster, and no badge beyond the fresh seat's",
-       (True, want(None, "undeclared", "fail"), ["epoch_reset"]),
+       "beside a failing protocol_agent_name_in_roster, and an empty `degraded`",
+       (True, want(None, "undeclared", "fail"), []),
        (d_bad["posts"] > 0, d_bad["posted_wire"], d_bad["degraded"]))
     eq("  … and `selftest` fails that one check (exit 1), its detail naming the value — a non-string by its type",
        (1, ["protocol_agent_name_in_roster"], shown, None, "undeclared"),
