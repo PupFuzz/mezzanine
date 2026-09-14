@@ -117,13 +117,24 @@ export function floorSummary(seats) {
  * trusted from the wire: a client that renders in received order is a client whose
  * order is a property of somebody else's serialiser.
  *
+ * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING, AND THIS FUNCTION IS WHERE THAT IS DECIDED (§ 9 F17). A
+ * `layout` that is not a list, absent or `null`, answers `null`, never the rows of the EMPTY layout:
+ * `[]` is § 4.6's legal document, which composes one floor per install, and reading a missing layout
+ * as that document would draw a building out of a request that failed, which is F17's "Never". Both
+ * callers here read `null` as *no building*, and a caller added later (Appendix B step 7's floor
+ * route) that forgets a check of its own gets `null` from this function, never a building.
+ *
  * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor screen is
  * Appendix B step 7 (card#7341). The row is still the link, because
  * § 4.1 says the row IS the link and a lobby whose rows are inert is a different design; what it
  * must not be is a link to an invented endpoint, and this is D3's own published route, not one
  * minted here.
  */
-export function floors(snapshot, layout = []) {
+export function floors(snapshot, layout) {
+    if (!Array.isArray(layout)) {
+        return null;
+    }
+
     const installs = Array.isArray(snapshot?.installs) ? snapshot.installs : [];
     // Install id -> the seats the client holds for it. `Object.create(null)` for the same reason
     // `floorSummary()` uses it: the keys are wire strings.
@@ -136,7 +147,7 @@ export function floors(snapshot, layout = []) {
     const placed = new Set();
     const rows = [];
 
-    for (const floor of Array.isArray(layout) ? layout : []) {
+    for (const floor of layout) {
         const rooms = (Array.isArray(floor?.rooms) ? floor.rooms : []).map((room) => {
             const install_id = String(room?.install);
             placed.add(install_id);
@@ -420,18 +431,16 @@ function unclaimedRooms(snapshot) {
  * `layout` is the floors the client holds — `null` when no layout request has ever succeeded — and
  * `layoutFailure` is the last layout request's failure, or `null`.
  *
- * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING (§ 9 F17). There is deliberately no default for `layout`:
- * `[]` is the EMPTY layout — a legal document that composes one floor per install — and a caller that
- * passed nothing would draw that building from a request that failed, which is F17's "Never". Anything
- * that is not a list of floors takes the uncomposed render.
+ * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING (§ 9 F17). `floors()` decides it and answers `null`, and
+ * that `null` is what takes the uncomposed render here: F17's cold-start list, and no floors.
  */
 export function lobbyModel(snapshot, layout, layoutFailure = null) {
-    const composed = Array.isArray(layout);
     // ONE pass over the installs, and the held count summed from the same rows the lobby
     // renders. Calling `heldSeats()` here as well would build the summaries twice and open the
     // one gap that matters: two counts of one population that can disagree.
-    const rows = composed ? floors(snapshot, layout) : [];
-    const unclaimed = composed ? [] : unclaimedRooms(snapshot);
+    const composed = floors(snapshot, layout);
+    const rows = composed ?? [];
+    const unclaimed = composed === null ? unclaimedRooms(snapshot) : [];
     const held = [...rows, ...unclaimed].reduce((n, row) => n + row.held, 0);
 
     return {
@@ -440,7 +449,7 @@ export function lobbyModel(snapshot, layout, layoutFailure = null) {
         layout_statement: layoutStatement(layoutFailure),
         // F17: "over the floors it already holds, labelled *last known layout*" — and on a cold start
         // there are none, so nothing is labelled as kept.
-        layout_kept: layoutFailure !== null && composed ? 'last known layout' : null,
+        layout_kept: layoutFailure !== null && composed !== null ? 'last known layout' : null,
         held,
         totals: fleetTotals(snapshot?.fleet),
         // A non-integer `seats_total` is `discrepancyNotice`'s own `null` case: there is no

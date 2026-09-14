@@ -217,6 +217,51 @@ class TheClientHoldsRoomMapsByVersionTest extends FeedTestCase
             'CONTROL 24 did not bite: a duplicate room.map re-fetched and the check stayed clean');
     }
 
+    /**
+     * A map fetch's own `map_version` is newer than the `rooms[]` read before it, so once a `room.map`
+     * has re-fetched a room, entering it again compares against the map's answer and not the building's
+     * older report.
+     */
+    public function test_a_room_a_room_map_refetched_is_not_fetched_again_on_the_next_entry(): void
+    {
+        $served = $this->authoredOnce();
+
+        $saved = $this->announced(fn () => Floors::save('aimla', FloorMap::parse(FloorMapFixture::valid(12)), self::OPERATOR));
+        $second = $this->served(self::AIMLA);
+
+        // `building` was served before the save, so it reports `aimla` at 1. A spare answer, so a
+        // re-fetch shows as a REQUEST.
+        $responses = [
+            self::SNAPSHOT => [$served['snapshot']],
+            self::BUILDING => [$served['building']],
+            self::AIMLA => [$served['aimla'], $second, $second],
+        ];
+        $steps = [
+            ['do' => 'enter'],
+            ['do' => 'rooms', 'rooms' => ['aimla']],
+            ['do' => 'room.map', 'message' => $saved],
+            ['do' => 'rooms', 'rooms' => ['aimla']],
+        ];
+
+        [, , $applied, $again] = $this->scenario($responses, ['aimla'], $steps);
+
+        $this->assertSame([self::SNAPSHOT, self::BUILDING, self::AIMLA, self::AIMLA], $applied['requests']);
+        $this->assertSame(['source' => 'authored', 'map_version' => 2], $this->heldIn($applied, 'aimla'));
+        $this->assertSame($applied['requests'], $again['requests'],
+            'entering a room a room.map had already re-fetched fetched it again');
+        $this->assertSame(['source' => 'authored', 'map_version' => 2], $this->heldIn($again, 'aimla'));
+
+        // ⛔ CONTROL 27 — the map's own version not recorded: entry compares the held 2 with the building's 1.
+        $forgetful = $this->mutatedModules([
+            '../wire/building.js',
+            "        this.#reported.set(id, body.map_version);\n",
+            '',
+        ]);
+
+        $this->assertNotSame($applied['requests'], $this->scenario($responses, ['aimla'], $steps, $forgetful)[3]['requests'],
+            'CONTROL 27 did not bite: the room was re-fetched on entry and the check stayed clean');
+    }
+
     public function test_a_room_map_request_that_fails_holds_no_default_in_its_place(): void
     {
         $served = $this->authoredOnce();

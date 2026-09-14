@@ -56,9 +56,13 @@ import { floors } from './lobby-model.js';
  * "stacked"; the ratified reference artifact (`docs/design/floor-preview/`) draws the first of the
  * ascending order at the top, and `main.js` follows it. Keeping the direction out of the model is
  * what lets that be a rendering choice rather than a second ruling invented here.
+ *
+ * `null` when `floors()` composes no building, which is its answer when no layout is held (§ 9 F17).
  */
-export function plates(snapshot, layout = []) {
-    return floors(snapshot, layout).map((floor, level) => ({ ...floor, level }));
+export function plates(snapshot, layout) {
+    const rows = floors(snapshot, layout);
+
+    return rows === null ? null : rows.map((floor, level) => ({ ...floor, level }));
 }
 
 /**
@@ -152,22 +156,22 @@ export function elevator(stack, requested = null) {
  * The whole cross-section, from one snapshot body, the viewer's own cab position and the floors
  * `GET /api/building` answered — the shape `main.js` renders and the shape the probe asserts.
  *
- * ⛔ NO LAYOUT HELD, NO CROSS-SECTION (§ 9 F17: "no composition is asserted on either screen"), and
- * for `lobby-model.js`'s reason there is no default `layout`. The ride is refused with NO notice:
+ * ⛔ NO LAYOUT HELD, NO CROSS-SECTION (§ 9 F17: "no composition is asserted on either screen"). The
+ * refusal is `floors()`'s, and `plates()` carries its `null` here. The ride is refused with NO notice:
  * `NO_STOPS` and `ONE_STOP` each state what the layout composes, which a failed request cannot tell,
  * and the lobby's F17 statement is the reason already on the page. `composed: false` is what lets
  * `main.js` keep the viewer's cab where it was rather than re-seat it on a building that was not drawn.
  */
 export function buildingModel(snapshot, at, layout) {
-    if (!Array.isArray(layout)) {
+    const stack = plates(snapshot, layout);
+
+    if (stack === null) {
         return {
             composed: false,
             plates: [],
             elevator: { at: null, level: null, next: null, destination: null, stranded: false, stops: 0, notices: [] },
         };
     }
-
-    const stack = plates(snapshot, layout);
 
     return { composed: true, plates: stack, elevator: elevator(stack, at ?? null) };
 }

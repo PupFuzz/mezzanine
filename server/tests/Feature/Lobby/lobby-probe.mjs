@@ -12,8 +12,10 @@
  *                              the empty layout's floors, `[]`>,
  *                   "observations": [[held, total], …],
  *                   "cab": <the stop the viewer last rode to, or absent>,
+ *                   "primitives": <absent, or a list of argument lists for `floors()` / `plates()`>,
  *                   "scenario": <absent, or a scripted run of the building surface — below> }`
- * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...}, "budget": {...},
+ * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...},
+ *                   "primitives": { "floors": [...], "plates": [...] } | null, "budget": {...},
  *                   "scenario": [<one record per step>] | null }`
  *
  * THE SCENARIO drives the shipped `lobby-entry.js` and `../wire/building.js` against a scripted
@@ -63,6 +65,13 @@ console.log(JSON.stringify({
     building: payload.snapshot === undefined
         ? null
         : building.buildingModel(payload.snapshot, payload.cab ?? null, payload.layout ?? []),
+    // The composition PRIMITIVES, called directly: `floors()` and `plates()`, once per argument list
+    // named here, each list spread after the snapshot. So `[]` calls with no layout argument at all
+    // and `[null]` passes `null`, the two a JSON `layout` member cannot tell apart.
+    primitives: payload.primitives === undefined ? null : {
+        floors: payload.primitives.map((args) => model.floors(payload.snapshot, ...args)),
+        plates: payload.primitives.map((args) => building.plates(payload.snapshot, ...args)),
+    },
     budget: { admitted, spent: budget.spent },
     scenario: payload.scenario === undefined ? null : await runScenario(payload.scenario),
 }, null, 2));

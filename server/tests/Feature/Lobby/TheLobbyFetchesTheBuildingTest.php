@@ -188,6 +188,62 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
             'CONTROL 22 did not bite: a failed layout request was composed as the empty layout and the check stayed clean');
     }
 
+    /**
+     * A refused snapshot is F4's render with nothing to compose, so the entry asks for no layout.
+     */
+    public function test_a_refused_snapshot_asks_for_no_layout(): void
+    {
+        $this->aComposedBuilding();
+
+        $building = $this->served(self::BUILDING);
+        $user = $this->enrolled();
+        Schema::drop('seat_state');
+        $refused = ['status' => 503, 'body' => $this->actingAs($user)->getJson(self::SNAPSHOT)->assertStatus(503)->json()];
+
+        // A layout answer is scripted anyway, so a layout request shows as a REQUEST the assertion
+        // counts rather than as the probe refusing an unscripted one.
+        $responses = [self::SNAPSHOT => [$refused], self::BUILDING => [$building]];
+
+        [$record] = $this->scenario($responses, [['do' => 'enter']]);
+
+        $this->assertSame([self::SNAPSHOT], $record['requests'], 'a refused snapshot still asked for the layout');
+        $this->assertSame(503, $record['snapshot_status']);
+        $this->assertNull($record['layout_failure']);
+
+        // ⛔ CONTROL 28 — the snapshot's outcome ignored: the layout is fetched whatever the snapshot said.
+        $blind = $this->mutatedModules(['lobby-entry.js', 'if (snapshot.ok) {', 'if (true) {']);
+
+        $this->assertNotSame([self::SNAPSHOT], $this->scenario($responses, [['do' => 'enter']], $blind)[0]['requests'],
+            'CONTROL 28 did not bite: the layout was fetched after a refused snapshot and the check stayed clean');
+    }
+
+    /**
+     * F17's refusal lives in the composition primitive, so a caller that reaches `floors()` or `plates()`
+     * with no layout held (Appendix B step 7's floor route is the next one) gets no building, and not
+     * the EMPTY layout's building. The empty layout, an actual `[]`, is § 4.6's legal document and still
+     * composes one floor per install.
+     */
+    public function test_the_composition_primitives_compose_no_building_from_no_layout(): void
+    {
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $snapshot = $this->served(self::SNAPSHOT)['body'];
+
+        $primitives = $this->probe(['snapshot' => $snapshot, 'primitives' => [[], [null], [[]]]])['primitives'];
+
+        foreach (['floors', 'plates'] as $primitive) {
+            [$absent, $null, $empty] = $primitives[$primitive];
+
+            $this->assertNull($absent, "$primitive() called with no layout composed a building");
+            $this->assertNull($null, "$primitive() called with a null layout composed a building");
+            $this->assertSame(['aimla'], array_column($empty, 'floor'),
+                "$primitive() no longer composes the empty layout as one floor per install");
+        }
+
+        $this->assertSame(0, $primitives['plates'][2][0]['level']);
+    }
+
     public function test_a_layout_request_that_fails_after_a_building_layout_keeps_the_last_known_layout(): void
     {
         $this->aComposedBuilding();
@@ -233,6 +289,57 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         ), 'the recovered fetch did not replace the last known layout');
         $this->assertNull($recovered['lobby']['layout_statement']);
         $this->assertNull($recovered['lobby']['layout_kept']);
+    }
+
+    /**
+     * F17's recovery is "on the next `building.layout`", so while a layout failure stands a message
+     * naming the version the client still holds fetches too. The failure here is a Refresh whose layout
+     * request failed, which leaves the held version unchanged.
+     */
+    public function test_a_building_layout_naming_the_held_version_refetches_while_a_layout_failure_stands(): void
+    {
+        $this->aComposedBuilding();
+
+        $snapshot = $this->served(self::SNAPSHOT);
+        $building = $this->served(self::BUILDING);
+        $user = $this->enrolled();
+        Schema::drop('building_layout');
+        $refusal = ['status' => 503, 'body' => $this->actingAs($user)->getJson(self::BUILDING)->assertStatus(503)->json()];
+
+        $responses = [
+            self::SNAPSHOT => [$snapshot, $snapshot],
+            self::BUILDING => [$building, $refusal, $building],
+        ];
+        $steps = [
+            ['do' => 'enter'],
+            // Refresh: `main.js` enters again, and this time the layout request fails.
+            ['do' => 'enter'],
+            ['do' => 'building.layout', 'message' => ['t' => 'building.layout', 'layout_version' => $building['body']['layout']['layout_version']]],
+        ];
+
+        [, $failed, $recovered] = $this->scenario($responses, $steps);
+
+        $this->assertSame('last known layout', $failed['lobby']['layout_kept']);
+        $this->assertSame(['status' => 503], $failed['layout_failure']);
+
+        $this->assertSame([self::SNAPSHOT, self::BUILDING, self::SNAPSHOT, self::BUILDING, self::BUILDING], $recovered['requests'],
+            'a building.layout naming the held version did not re-fetch while the layout failure stood');
+        $this->assertTrue($recovered['result']);
+        $this->assertNull($recovered['layout_failure']);
+        $this->assertNull($recovered['lobby']['layout_statement']);
+        $this->assertNull($recovered['lobby']['layout_kept']);
+        $this->assertSame(['aimla', 'sola'], $this->stacked($recovered));
+
+        // ⛔ CONTROL 26 — the failure dropped from the apply's test: only the version is compared, so a
+        // client whose last request failed stays failed until the layout changes.
+        $versionOnly = $this->mutatedModules([
+            '../wire/building.js',
+            "        if (this.#layoutFailure === null\n            && this.#layout !== null",
+            '        if (this.#layout !== null',
+        ]);
+
+        $this->assertNotSame($recovered['requests'], $this->scenario($responses, $steps, $versionOnly)[2]['requests'],
+            'CONTROL 26 did not bite: a standing layout failure was not retried and the check stayed clean');
     }
 
     /**

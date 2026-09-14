@@ -1369,8 +1369,8 @@ say:** the plate's name is written into HTML, which strips whitespace at both en
 collapses every run inside it, so `the solos`, ` the solos` and `the  solos` are **one** plate name
 and are refused as one — a byte comparison would accept the pair and hand the operator the building
 this rule exists to prevent. The same normalised form is what makes a blank label blank, a NO-BREAK
-SPACE included. It is a comparison form only: what the reader stores and the page delivers is still
-the operator's own string, and it is the **authored** string the refusal names.
+SPACE included. It is a comparison form only: what the reader stores and `GET /api/building` delivers
+is still the operator's own string, and it is the **authored** string the refusal names.
 ⚠ **What the reader cannot check, named:** a label equal to
 the `install_id` of an install the layout does **not** place — provisioned after the document was
 written, which is the very case the derived key exists for. The composer does not refuse it and
