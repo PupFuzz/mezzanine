@@ -100,6 +100,10 @@ php artisan mezzanine:user:create                   # ← the first account; not
 php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
+`server/vendor` must be a real directory inside the tree under test, installed there by
+`composer install`: the suite's bootstrap (`server/tests/bootstrap.php`) exits before any test runs
+when `App\` autoloads from another checkout, which is what a symlinked `vendor` does.
+
 Every page requires a second factor, so a freshly created account is sent to the enrolment
 screen and reaches nothing else until it finishes there.
 

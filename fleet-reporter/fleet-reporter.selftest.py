@@ -43,6 +43,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import ssl
 import statistics
 import subprocess
@@ -873,6 +874,220 @@ eq("  … and names the forbidden spelling", True,
    len(rep_tls["detail"]["tls_verify"]["forbidden_spellings_present"]) == 1)
 eq("GREEN: the real source carries no verification-disabling spelling", [],
    rep["detail"]["tls_verify"]["forbidden_spellings_present"])
+
+
+# (g) THE HEALTH PROBE TAKES THE SEAT'S ROUTE, `proxy_url` INCLUDED (card#9473). The probe used to be a
+# second HTTPS client with no proxy leg, so on a seat whose egress requires `proxy_url` the batches
+# were delivered and the probe went direct and measured nothing: the one-shot read `not_measured`
+# (rc 2) and the heartbeat rode both network checks as `fail`. The probe and the sender now share one
+# request primitive, `ingestRequest`, which owns the route, the TLS options and both § 3.5 deadlines.
+#
+# DIRECT EGRESS TO THE INGEST IS UNREACHABLE HERE BY CONSTRUCTION, NOT BY FILTERING: these seats name
+# `DEAD` (127.0.0.1:9, refused) as their ingest, and the stub proxy stands in for the proxy's own
+# egress by forwarding every CONNECT to the TLS ingest stub. The stub records the target each CONNECT
+# ASKED for, so "went through the proxy" is read off the proxy, and "could not have gone direct" is
+# case (c) above: the same `DEAD` address, no proxy, `not_measured`. The ingest's certificate carries
+# IP:127.0.0.1, so verification through the tunnel is the real check, with the seat's own `ca_file`.
+class ConnectProxy:
+    """A plain-HTTP CONNECT proxy on 127.0.0.1. `answer=False` accepts TCP, reads the CONNECT, and never
+    answers it — the proxy that costs a client its whole connect deadline."""
+
+    def __init__(self, upstream_port: int, *, answer: bool = True):
+        self.upstream_port = upstream_port
+        self.answer = answer
+        self.connects: list[str] = []
+        self.lsock = socket.create_server(("127.0.0.1", 0))
+        self.port = self.lsock.getsockname()[1]
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def _accept(self):
+        while True:
+            try:
+                conn, _ = self.lsock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    @staticmethod
+    def _pump(src, dst):
+        try:
+            while True:
+                chunk = src.recv(65536)
+                if not chunk:
+                    break
+                dst.sendall(chunk)
+        except OSError:
+            pass
+        for s in (src, dst):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def _serve(self, conn):
+        conn.settimeout(60)
+        buf = b""
+        try:
+            while b"\r\n\r\n" not in buf:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    return
+                buf += chunk
+            self.connects.append(buf.split(b"\r\n", 1)[0].decode("ascii", "replace").rsplit(" ", 1)[0])
+            if not self.answer:
+                while conn.recv(4096):   # hold until the client gives up and closes
+                    pass
+                return
+            up = socket.create_connection(("127.0.0.1", self.upstream_port))
+            conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            rest = buf.split(b"\r\n\r\n", 1)[1]
+            if rest:
+                up.sendall(rest)
+            conn.settimeout(None)
+            threading.Thread(target=self._pump, args=(up, conn), daemon=True).start()
+            self._pump(conn, up)
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
+    def stop(self):
+        self.lsock.close()
+
+
+PROXY = ConnectProxy(INGEST.port)
+SILENT_PROXY = ConnectProxy(INGEST.port, answer=False)
+DEAD_TARGET = "CONNECT 127.0.0.1:9"          # what a tunnel to DEAD's host:port asks the proxy for
+K_CONNECT_S = int(re.search(r"\bCONNECT_MS: (\d+),", _prod_src).group(1)) / 1000
+K_REQUEST_S = PROD_K["REQUEST_MS"] / 1000
+# A pass bounded by the connect deadline ends near K_CONNECT_S; one that waits out the request deadline
+# ends past K_REQUEST_S. Their midpoint tells the two apart with node's start-up on either side.
+DEADLINE_SPLIT_S = (K_CONNECT_S + K_REQUEST_S) / 2
+eq(f"precondition: § 3.5's connect deadline sits below its request deadline "
+   f"({K_CONNECT_S} s < {K_REQUEST_S} s), so a proxy that never answers is told apart from a hang",
+   True, K_CONNECT_S < K_REQUEST_S)
+
+
+def proxied_seat(name: str, proxy: ConnectProxy, **kw) -> Seat:
+    s = seat(name, ingest=DEAD, **kw)
+    s.cfg["proxy_url"] = proxy.url
+    s.write_cfg()
+    return s
+
+
+def send_one(s: Seat, reporter: Path = REPORTER) -> tuple[list[dict], int]:
+    """Spool one event on `s`, run one flusher pass, and return (the batches the ingest received, the
+    CONNECTs the proxy stub recorded) during that pass."""
+    b0, c0 = len(INGEST.batches), len(PROXY.connects)
+    hook(s, "PreToolUse", pre(tuid="toolu_proxy"))
+    flush(s, reporter=reporter)
+    return INGEST.batches[b0:], PROXY.connects[c0:]
+
+
+eq("precondition: with no proxy, the DEAD address these seats name measures nothing — direct egress "
+   "to it is unreachable", ("not_measured", 2), (rep_dead["checks"]["schema_version_accepted"], r_dead.returncode))
+
+# GREEN — the one-shot, through the proxy.
+s_px = proxied_seat("proxy-probe", PROXY, enabled=False)
+c0, g0 = len(PROXY.connects), INGEST.gets
+r_px, rep_px = selftest(s_px)
+px_connects = PROXY.connects[c0:]
+eq("GREEN: with proxy_url set, the one-shot's health probe asks the proxy for a tunnel to the ingest's host",
+   [DEAD_TARGET], px_connects)
+eq("  … and reaches the health surface through it", 1, INGEST.gets - g0)
+eq("  … so tls_verify and schema_version_accepted pass, and the command exits 0",
+   ("pass", "pass", 0), (rep_px["checks"]["tls_verify"], rep_px["checks"]["schema_version_accepted"], r_px.returncode))
+
+# GREEN — the flusher's heartbeat, through the proxy. `enabled: false`, so the pass sends no batch and
+# the probe is the only thing that can have set either check (the sender sets tls_verify on delivery).
+c1 = len(PROXY.connects)
+flush(s_px)
+hb_px = heartbeat_selftests(s_px)
+eq("GREEN: the flusher's probe goes through the proxy too", [DEAD_TARGET], PROXY.connects[c1:])
+eq("  … and the heartbeat it spools reports both network checks pass", ("pass", "pass"),
+   pair(hb_px[-1]) if hb_px else None)
+
+# RED — the defect verbatim: the probe's request made without the seat's proxy, as before card#9473.
+p_bypass = plant(("  return ingestRequest(config, { method: 'GET',",
+                  "  return ingestRequest(Object.assign({}, config, { proxy_url: null }), { method: 'GET',"))
+c2 = len(PROXY.connects)
+r_bp, rep_bp = selftest(s_px, reporter=p_bypass)
+bp_connects = PROXY.connects[c2:]
+flush(s_px, reporter=p_bypass)
+hb_bp = heartbeat_selftests(s_px)
+eq("RED: a probe that ignores proxy_url asks the proxy for nothing, and the one-shot reads not_measured, rc 2",
+   ([], "not_measured", "not_measured", 2),
+   (bp_connects, rep_bp["checks"]["tls_verify"], rep_bp["checks"]["schema_version_accepted"], r_bp.returncode))
+eq("  … and on a fresh flusher its heartbeat rides both checks as `fail`", ("fail", "fail"),
+   pair(hb_bp[-1]) if hb_bp else None)
+
+# The sender, through the proxy (it must not regress), and a no-proxy seat still direct.
+s_ps = proxied_seat("proxy-send", PROXY)
+got_ps, conn_ps = send_one(s_ps)
+eq("GREEN: the sender delivers through the proxy — the batch arrives, and the pass asked the proxy for two "
+   "tunnels to the ingest's host (the probe's, then the batch's)",
+   (True, [DEAD_TARGET, DEAD_TARGET]),
+   (any(e.get("kind") == "tool.start" for b in got_ps for e in b["batch"].get("events", [])), conn_ps))
+p_send_bypass = plant(("  return ingestRequest(config, { method: 'POST',",
+                       "  return ingestRequest(Object.assign({}, config, { proxy_url: null }), { method: 'POST',"))
+s_psr = proxied_seat("proxy-send-red", PROXY)
+got_psr, conn_psr = send_one(s_psr, reporter=p_send_bypass)
+eq("RED: a sender that ignores proxy_url delivers nothing, and only the probe's tunnel is asked for",
+   ([], [DEAD_TARGET]), (got_psr, conn_psr))
+
+s_direct = seat("direct-send")
+got_d, conn_d = send_one(s_direct)
+c3 = len(PROXY.connects)
+r_d, rep_d = selftest(s_direct)
+eq("GREEN: a seat with no proxy_url sends direct — its batch arrives and the proxy stub is asked for nothing",
+   (True, []), (bool(got_d), conn_d + PROXY.connects[c3:]))
+eq("  … and its one-shot probe measures direct, exit 0", ("pass", "pass", 0),
+   (rep_d["checks"]["tls_verify"], rep_d["checks"]["schema_version_accepted"], r_d.returncode))
+
+# A PROXY THAT ACCEPTS TCP AND NEVER ANSWERS CONNECT. The primitive's connect deadline, K.CONNECT_MS
+# (§ 3.5's 5 s), runs from the start of the request to a verified TLS session, and the proxy's
+# CONNECT answer is inside it — so the probe gives up at the connect deadline, measures nothing, and
+# costs the flush loop K.CONNECT_MS instead of K.REQUEST_MS.
+s_sil = proxied_seat("proxy-silent", SILENT_PROXY, enabled=False)
+t0 = time.monotonic()
+r_sil, rep_sil = selftest(s_sil)
+t_sil = time.monotonic() - t0
+eq("GREEN: against a proxy that never answers CONNECT, the one-shot reports both network checks "
+   "not_measured and exits 2", ("not_measured", "not_measured", 2),
+   (rep_sil["checks"]["tls_verify"], rep_sil["checks"]["schema_version_accepted"], r_sil.returncode))
+eq("  … naming the connect deadline as why", "connect deadline", rep_sil["detail"]["tls_verify"].get("probe_error"))
+eq(f"  … having asked that proxy for the tunnel and waited out the connect deadline, not the request "
+   f"deadline ({K_CONNECT_S} s <= {t_sil:.1f} s < {DEADLINE_SPLIT_S} s)", (True, True),
+   (DEAD_TARGET in SILENT_PROXY.connects, K_CONNECT_S <= t_sil < DEADLINE_SPLIT_S))
+t0 = time.monotonic()
+flush(s_sil)
+t_sil_pass = time.monotonic() - t0
+eq(f"GREEN: a flusher pass on that seat is held by the probe for the connect deadline only "
+   f"({K_CONNECT_S} s <= {t_sil_pass:.1f} s < {DEADLINE_SPLIT_S} s)", True, K_CONNECT_S <= t_sil_pass < DEADLINE_SPLIT_S)
+p_noconnect = plant(("    connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);\n", ""))
+t0 = time.monotonic()
+flush(s_sil, reporter=p_noconnect)
+t_sil_red = time.monotonic() - t0
+eq(f"RED: with no connect deadline the same pass waits out the request deadline "
+   f"({t_sil_red:.1f} s >= {DEADLINE_SPLIT_S} s)", True, t_sil_red >= DEADLINE_SPLIT_S)
+redgreen("the health probe takes the seat's route, proxy_url included, and a silent proxy costs the connect "
+         "deadline, not the request deadline (§ 3.5, card#9473)",
+         f"probe without the proxy -> CONNECTs {bp_connects}, one-shot "
+         f"{rep_bp['checks']['tls_verify']}/{rep_bp['checks']['schema_version_accepted']} rc={r_bp.returncode}, "
+         f"heartbeat {pair(hb_bp[-1]) if hb_bp else None}; sender without the proxy -> batches {len(got_psr)}, "
+         f"CONNECTs {conn_psr}; no connect deadline -> silent-proxy pass {t_sil_red:.1f} s",
+         f"probe via ingestRequest -> CONNECTs {px_connects}, one-shot "
+         f"{rep_px['checks']['tls_verify']}/{rep_px['checks']['schema_version_accepted']} rc={r_px.returncode}, "
+         f"heartbeat {pair(hb_px[-1]) if hb_px else None}; sender -> batches {len(got_ps)}, CONNECTs {conn_ps}; "
+         f"no proxy_url -> batches {len(got_d)}, CONNECTs {conn_d}; silent proxy -> one-shot "
+         f"{rep_sil['checks']['schema_version_accepted']} rc={r_sil.returncode} "
+         f"'{rep_sil['detail']['tls_verify'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
+PROXY.stop()
+SILENT_PROXY.stop()
 
 
 print("\n== 2. SANITIZER — § 7.5's thirteen fixtures, and the four REDs AT-2 names ==")

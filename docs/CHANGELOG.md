@@ -51,6 +51,42 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   release again; the migration runs again because a failed migration is not recorded. A superseded
   revision is left out of the check: restoring one this release refuses is refused on the console's
   revisions page.
+- **card#9499** — **The PHP suite runs only against the `app/` of the tree under test.** Composer
+  computes the `App\` base from the autoloader's own location, resolved through symlinks, so a
+  `server/vendor` linked in from another checkout ran that checkout's `app/` under this tree's tests.
+  `server/phpunit.xml` now bootstraps `server/tests/bootstrap.php`, which reads Composer's PSR-4 map
+  and exits `1` before any test runs when an `App\` base resolves outside the directory holding
+  `phpunit.xml`, naming both paths and the fix: `server/vendor` must be a real directory inside the
+  tree, installed with `composer install`. `composer test`, `php artisan test` and `vendor/bin/phpunit`
+  all load that bootstrap. The README's local-run section states the requirement. **Installer
+  action:** none; no migration.
+- **card#9473** — **A seat whose egress requires `proxy_url` now delivers its batches and reads
+  healthy.** The reporter made its requests through two HTTPS clients. The health probe had no proxy
+  leg, so it went direct and measured nothing: `selftest` read `not_measured` (rc 2), the heartbeat
+  carried `tls_verify` and `schema_version_accepted` as `fail`, and since card#9373 the flusher
+  re-probed every heartbeat interval. The sender asked the proxy for a tunnel and then sent the batch
+  over a direct connection, because Node answers `agent: false` with a fresh agent that ignores
+  `createConnection`, so its batches reached the ingest only where direct egress also worked. Both now
+  go through one primitive, `ingestRequest`, which owns the route (the `proxy_url` tunnel, or direct on
+  the keep-alive agent), the TLS options (`ca_file`, host verification, SNI for host names only) and
+  both § 3.5 deadlines. The connect deadline, `K.CONNECT_MS` (5 s), runs from the start of a request
+  to a verified TLS session, the proxy's `CONNECT` answer included, so a proxy that accepts TCP and
+  never answers holds a flusher pass for 5 s; the probe had no connect deadline and waited out the
+  15 s request deadline. The sender's connect deadline was a socket idle timer that also ended a
+  request whose server took more than 5 s to answer; such an answer now has the 15 s request deadline.
+  D1 § 3.5 (connection reuse, connect deadline, proxies) and § 6.14 (the probe's route, and the
+  `tls_verify` results through a proxy), `fleet-reporter/README.md` and `INSTALL-LINUX.md` Step 6 now
+  say so. The acceptance suite's block 1 puts a `CONNECT` proxy stub in front of the ingest stub on an
+  address the seat cannot reach directly, and drives the one-shot and the heartbeat through it, the
+  sender through it, a seat with no `proxy_url` direct, and a proxy that never answers, with REDs of a
+  probe and a sender that ignore `proxy_url` and of a primitive with no connect deadline.
+  The AT-15 source lint also refuses `checkServerIdentity`, so a copy that overrides host-name
+  verification reads `tls_verify` `fail` on both routes. D1 § 3.5 and the reporter's transport
+  comments now say that `ca_file` is passed as the TLS `ca` option, which replaces the default trust
+  store.
+  **Installer action:** none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1); a running
+  flusher keeps the code it started with until it restarts. A seat with `proxy_url` set re-runs Step 6
+  after the update to read its network checks.
 - **card#9465** — **A failed ingest write now answers `503 server_error` and is counted, and a hung
   ingest transaction no longer holds its seat.** A store failure while `POST /api/ingest/events` ran
   surfaced as Laravel's default error body and incremented nothing, so an operator could not see a
