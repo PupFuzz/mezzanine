@@ -116,11 +116,13 @@ final class Sweep
                 }
             } catch (\Throwable $e) {
                 // ⛔ A CONCURRENCY ERROR IS CONTENTION, NOT A FAILURE — card#9466. The seat lock
-                // `seat()` takes first covers `seat_state`. It does not cover a downstream row
-                // (`sessions`, `calls`, `attention_requests`, `seat_counters`) that a writer which
-                // does not lock the seat first already holds — a fold window is one — and a job's
-                // write to that row can still time out (`1205`), deadlock (`1213`) or find it changed
-                // (`1020`). Nothing was written, and the next pass retries the seat.
+                // `seat()` takes first covers `seat_state`, and every transaction that samples the
+                // seat's fingerprint takes it first (§ 6.5). It does not cover a downstream row
+                // (`sessions`, `calls`, `attention_requests`, `seat_counters`) written outside those
+                // transactions — the ingest's refusal and failure counters write `seat_counters` with
+                // no seat lock — and a job's write to such a row can still time out (`1205`), deadlock
+                // (`1213`) or find it changed (`1020`). Nothing was written, and the next pass retries
+                // the seat.
                 if (app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
                     $this->contended((int) $seatRef, 'a downstream row held');
 
@@ -206,8 +208,8 @@ final class Sweep
         // on: the next pass is 15 s away, and a sweep that queued behind a rebuild's replay would
         // stall every seat after this one. A skipped seat reads as no row.
         //
-        // No `lockForUpdate()` fallback for an engine without `SKIP LOCKED`, unlike
-        // `Fold::claim()`'s driver check: MariaDB is the only engine this runs on. `bin/deploy.sh`
+        // No `lockForUpdate()` fallback for an engine without `SKIP LOCKED`: MariaDB is the only
+        // engine this runs on. `bin/deploy.sh`
         // refuses any `DB_CONNECTION` but `mysql`, `Tests\TestCase` aborts a suite whose resolved
         // default connection is anything else, and `config/database.php` states both.
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)

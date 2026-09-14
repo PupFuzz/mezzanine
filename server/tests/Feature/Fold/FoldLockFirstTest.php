@@ -25,11 +25,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
  * combination of the two runs, set on the fold's own session.
  *
  * THE POSITION IS ASSERTED ON THE STATEMENTS THEMSELVES: the fold connection's first statement after
- * its transaction begins is the lock. A lock taken after `readable()` still refuses a later writer
- * and would pass a test that only probed for it.
+ * each of its transactions begins is the lock (`recordFoldTransactions()`). A lock taken after
+ * `readable()` still refuses a later writer and would pass a test that only probed for it.
  *
  * The recovery tests drive the two sibling transactions — a one-event attempt and the quarantine —
- * finding the seat locked, through `Fold::$beforeLock` and the probe connection.
+ * finding the seat locked, through `Fold::$beforeLock` and the probe connection, and assert the same
+ * position on every transaction they open: a lock moved below the `$before` sample still yields the
+ * contended seat, so the yield alone does not pin it.
  */
 class FoldLockFirstTest extends CommittedSeatTestCase
 {
@@ -73,19 +75,7 @@ class FoldLockFirstTest extends CommittedSeatTestCase
         $versionBefore = (int) $this->state()->state_version;
         $outboxFrom = (int) DB::connection(self::FIXTURE)->table('feed_outbox')->max('id');
 
-        $statements = null;
-
-        Event::listen(TransactionBeginning::class, function (TransactionBeginning $e) use (&$statements) {
-            if ($e->connectionName === self::FOLD && $statements === null) {
-                $statements = [];
-            }
-        });
-
-        Event::listen(QueryExecuted::class, function (QueryExecuted $q) use (&$statements) {
-            if ($q->connectionName === self::FOLD && $statements !== null) {
-                $statements[] = $q->sql;
-            }
-        });
+        $transactions = $this->recordFoldTransactions();
 
         $seamFired = false;
         $writer = null;
@@ -115,9 +105,7 @@ class FoldLockFirstTest extends CommittedSeatTestCase
         $this->assertSame('refused: 1205', $writer,
             "a writer committed the seat's seat_state row between the window's readable() and its \$before sample ($snapshot, $isolation)");
 
-        $this->assertNotEmpty($statements, 'the fold connection never began a transaction');
-        $this->assertMatchesRegularExpression(self::LOCK_SQL, $statements[0],
-            "the window's first statement after BEGIN is not the seat's seat_state lock");
+        $this->assertLockOpensEveryTransaction($transactions(), 1, 'the window');
 
         // The second observable: the refused write reached neither the seat nor any delta the pass
         // published, and the pass bumped the version for its own event alone.
@@ -163,6 +151,7 @@ class FoldLockFirstTest extends CommittedSeatTestCase
         // event's. The probe holds the seat from that last one until a later attempt — which only a
         // misrouted yield makes: a second attempt, then the quarantine, which the probe lets through.
         $attempts = $this->holdTheSeatFrom(3, releaseAt: 5);
+        $transactions = $this->recordFoldTransactions();
 
         try {
             $applied = $this->foldPass(self::FOLD, new Fold($failsOnce));
@@ -171,6 +160,8 @@ class FoldLockFirstTest extends CommittedSeatTestCase
         }
 
         $this->assertGreaterThanOrEqual(3, $attempts(), 'the probe never held the seat at a recovery attempt');
+        // The window, then one transaction per recovery attempt: each opens with the lock.
+        $this->assertLockOpensEveryTransaction($transactions(), $attempts(), 'a recovery attempt');
         $this->assertSame(0, $this->counter('fold_error'), 'a recovery attempt that found the seat locked quarantined an event');
         $this->assertSame(0, (int) $this->state()->fold_errors, 'a recovery attempt that found the seat locked quarantined an event');
         $this->assertSame($first, (int) $this->state()->fold_cursor_event_id, 'the cursor is not on the last event the recovery applied');
@@ -204,6 +195,7 @@ class FoldLockFirstTest extends CommittedSeatTestCase
         // Lock attempts: the window; the first event's attempt; the second event's two attempts; the
         // quarantine — which the probe holds.
         $attempts = $this->holdTheSeatFrom(5, releaseAt: null);
+        $transactions = $this->recordFoldTransactions();
         $thrown = null;
 
         try {
@@ -216,10 +208,59 @@ class FoldLockFirstTest extends CommittedSeatTestCase
 
         $this->assertNull($thrown, 'a quarantine that found the seat locked threw out of the pass: '.($thrown === null ? '' : $thrown::class));
         $this->assertSame(5, $attempts(), 'the probe never held the seat at the quarantine');
+        // The window, the three recovery attempts and the quarantine: each opens with the lock.
+        $this->assertLockOpensEveryTransaction($transactions(), $attempts(), 'the quarantine or a recovery attempt');
         $this->assertSame(0, $this->counter('fold_error'), 'a quarantine that found the seat locked counted a fold error');
         $this->assertSame(0, (int) $this->state()->fold_errors);
         $this->assertSame($first, (int) $this->state()->fold_cursor_event_id, 'the cursor moved past the event whose quarantine yielded');
         $this->assertSame(1, $applied, 'the pass did not report the one event the recovery applied');
+    }
+
+    /**
+     * Record the fold connection's statements, one list per transaction it begins.
+     *
+     * `TransactionBeginning` fires after the connection has begun, and `START TRANSACTION` itself is
+     * not a `QueryExecuted`, so a list's first entry is the transaction's first statement. Only the
+     * fold connection is recorded: `Fold::$beforeLock`'s probe runs on its own.
+     *
+     * @return callable(): list<list<string>>
+     */
+    private function recordFoldTransactions(): callable
+    {
+        $transactions = [];
+
+        Event::listen(TransactionBeginning::class, function (TransactionBeginning $e) use (&$transactions) {
+            if ($e->connectionName === self::FOLD) {
+                $transactions[] = [];
+            }
+        });
+
+        Event::listen(QueryExecuted::class, function (QueryExecuted $q) use (&$transactions) {
+            if ($q->connectionName === self::FOLD && $transactions !== []) {
+                $transactions[array_key_last($transactions)][] = $q->sql;
+            }
+        });
+
+        return function () use (&$transactions) {
+            return $transactions;
+        };
+    }
+
+    /**
+     * Every transaction the fold began opens with the seat lock — and there were `$expected` of them,
+     * each with a lock attempt of its own, so an assertion over too few transactions cannot pass.
+     *
+     * @param  list<list<string>>  $transactions
+     */
+    private function assertLockOpensEveryTransaction(array $transactions, int $expected, string $which): void
+    {
+        $this->assertCount($expected, $transactions, 'the fold began a different number of transactions than it made lock attempts');
+
+        foreach ($transactions as $i => $statements) {
+            $this->assertNotEmpty($statements, "fold transaction #$i issued no statement");
+            $this->assertMatchesRegularExpression(self::LOCK_SQL, $statements[0],
+                "the first statement of fold transaction #$i ($which) is not the seat's seat_state lock");
+        }
     }
 
     /** @return list<int> this seat's event ids, in id order */

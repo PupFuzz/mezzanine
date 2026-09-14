@@ -40,8 +40,8 @@ class RebuildCommand extends Command
      * `DB::transaction()` retries only a callback that THREW. What the retry is for is the rarer
      * pair: a real `1213`, which MariaDB's deadlock detector breaks in milliseconds so the retry is
      * nearly free, and a `1205` against a holder that releases before the next attempt's own wait
-     * runs out — a same-seat replay already in progress, or a fold window, which today is bounded by
-     * `Fold::BATCH` events rather than by a clock.
+     * runs out — a same-seat replay already in progress, or a fold window, which holds the seat lock
+     * for at most `Fold::WINDOW_BUDGET_MS`, the event in flight and its commit (§ 6.5).
      *
      * THE WAIT IS THE SERVER'S DEFAULT `innodb_lock_wait_timeout` (50 s), NOT A PINNED ONE. This is
      * a console command with no HTTP deadline in front of it; `SeatRetirement` pins a short wait

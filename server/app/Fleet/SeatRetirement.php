@@ -102,18 +102,21 @@ final class SeatRetirement
      * Both callers have a person waiting: `SeatController::retire()` answers an operator's browser
      * and `RetireCommand` an operator's shell. At the server default of 50 s a retirement queued
      * behind a busy seat would hold that person for minutes before it said anything, and a proxy in
-     * front of the web request may give up first while PHP still commits the act behind it. 2 s is
-     * far above the few milliseconds a fold window holds its rows for in the ordinary case (§ 6.5),
-     * so an ordinary collision is absorbed by the wait and never raises. It is pinned the way
+     * front of the web request may give up first while PHP still commits the act behind it. 2 s
+     * absorbs a fold window over the few new events of a seat that is keeping up, so that collision
+     * waits and never raises. It is pinned the way
      * `IngestPipeline::boundTheWriteSession()` pins the ingest's: `SET SESSION`, never `SET GLOBAL`.
      *
      * THE BOUND IS PER BLOCKED STATEMENT, NOT PER ATTEMPT: at most `LOCK_WAIT_TIMEOUT_S` for any one
      * statement, across `LOCK_ATTEMPTS` attempts. The typical contention case — the seat lock is held
      * and released — costs at most `LOCK_ATTEMPTS` × `LOCK_WAIT_TIMEOUT_S`. Once this act holds the
-     * seat lock, only a writer that does not lock the seat first can still hold a row it touches. A
-     * fold window is such a writer today, and it is bounded by `Fold::BATCH` events rather than by a clock, so retiring a seat
-     * whose fold is draining a backlog can exhaust the attempts: the callers then answer "busy — try
-     * again", and nothing was changed.
+     * seat lock, only a writer that does not lock the seat first can still hold a row it touches.
+     *
+     * A DRAINING SEAT CAN STILL ANSWER BUSY. A fold window over a backlog holds the seat lock for up to
+     * `Fold::WINDOW_BUDGET_MS`, plus the event in flight and its commit (§ 6.5), and at these values
+     * `LOCK_ATTEMPTS` × `LOCK_WAIT_TIMEOUT_S` is less than that budget. Retiring a seat whose fold is
+     * draining can therefore spend every attempt waiting on one window: the callers then answer
+     * "busy — try again", and nothing was changed.
      */
     public const LOCK_WAIT_TIMEOUT_S = 2;
 

@@ -1150,7 +1150,7 @@ floor is not decorative — the requirements below are load-bearing:
 | Engine / version | **MariaDB ≥ 11.8.6** | `SELECT … FOR UPDATE SKIP LOCKED` for the fold's seat claim ([§ 6.5](#65-the-fold)) — MariaDB 10.6.0; `ALGORITHM=INSTANT` column adds on `events` ([§ 6.9](#69-migrations-on-a-live-events-table)) — MariaDB 10.3.2/10.4 by operation, and with no MySQL-style 64-row-version ceiling before a rebuild; `DATETIME(3)`; and `JSON` **as a type name only** — on MariaDB it is an alias for `LONGTEXT` with an automatic `CHECK (json_valid(…))` and not a binary type, which is sufficient here **only because nothing queries into `data`** (below, and [§ 6.3](#63-conventions)). **DOCS-CITED** (MariaDB Knowledge Base), **verified at provisioning** — the deploy host is not built yet |
 | Storage engine | InnoDB, `ROW_FORMAT=DYNAMIC` | transactions; the fold's cursor advance and its projections are one transaction |
 | Character set | `utf8mb4` / `utf8mb4_unicode_ci` (the value's one home is `server/config/database.php`); **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly. ⭐ **`ascii_bin` is the correctness guard, not the default collation**: `utf8mb4_unicode_ci` is case-INSENSITIVE, and two ULIDs differing only in case must not compare equal in `uq_dedup`. `utf8mb4_0900_ai_ci` — what this row named before the repin — is **not a native MariaDB collation**; it is accepted as an alias onto the UCA-1400 family from 11.4.5, and MariaDB's own ticket cautions the resulting ordering is not guaranteed byte-identical to MySQL's, so the name is not used here at all |
-| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — and while every column this plane defines is `DATETIME(3)` ([§ 6.3](#63-conventions)), the framework-owned tables keep `TIMESTAMP` columns (`git grep -n "timestamp(" -- server/database/migrations` lists them), which this setting is what makes read and write UTC whatever the store host's zone. Set by `server/config/database.php`'s `timezone` key, which Laravel's connector issues on every connect. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
+| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — and while every column this plane defines is `DATETIME(3)` ([§ 6.3](#63-conventions)), the auth tables and `failed_jobs` keep `TIMESTAMP` columns (`git grep -nE "timestamp\(|timestamps\(" -- server/database/migrations` lists them), which this setting is what makes read and write UTC whatever the store host's zone. Set by `server/config/database.php`'s `timezone` key, which Laravel's connector issues on every connect. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
 | Transport | **TLS required**, certificate verified, no fallback to plaintext | the app and the store are on different machines, so the credential and every descriptor cross a network. Loosening verification "because it is our own network" is the constraint-weakening fix D1 refuses for the reporter's TLS, and it ships to production the same way. Fail **closed**: no TLS, no connection, `503` |
 | Connections | request path: one per request (PHP-FPM), no persistent connections; daemons: one long-lived connection each, with reconnect-on-`gone away` and capped backoff | a persistent pool under FPM keeps `wait_timeout` sessions alive across unrelated requests and makes the time-zone and session-variable posture per-worker rather than per-request |
 | Query budget | the fleet snapshot is **one query**; the fold's per-batch work is **one transaction** | every round trip is a WAN round trip. An N+1 over 50 seats is 50 round trips on the dashboard's critical path |
@@ -1309,7 +1309,7 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 |---|---|---|
 | Surrogate keys | `installs.id SMALLINT UNSIGNED`, `seats.id INT UNSIGNED`; every hot table carries `seat_ref` | a natural key on `events` would be `install_id` (≤ 32 B) + `seat_id` (≤ 48 B) on every row and in every index — ~76 B against 4 |
 | ULIDs | `CHAR(26) CHARACTER SET ascii COLLATE ascii_bin` | 26 bytes, exact comparison, legible in a query, and lexicographically ordered by mint time. `BINARY(16)` would save 10 B/row and make every diagnostic query require a conversion function; at 10,420 events/seat/day that saving is ~0.1 MB/seat/day against permanent illegibility |
-| Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP`, for every column this plane defines | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone. The framework-owned tables keep their `TIMESTAMP` columns, and [§ 6.1](#61-deployment-posture)'s session time zone is what makes those UTC |
+| Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP`, for every column this plane defines | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone. The auth tables and `failed_jobs` keep their `TIMESTAMP` columns, and [§ 6.1](#61-deployment-posture)'s session time zone is what makes those UTC |
 | Enums | MariaDB `ENUM` where the column's **writer can only produce members the schema declares** — a D1 value set coerced at the ingest, or a closed set this plane mints and its own fold, sweeper or console writes (`unknown_reason`, `seat_state_transitions.cause`, `feed_tokens.scope`, `authored_revisions.kind` …); `VARCHAR` + application validation where an unknown member is **data to record** rather than a bug to reject — the open sets D1 rule 7 says must be coerced-and-counted. ⚠ Until card#9208's reversal this row said *closed sets D1 owns* and its Reason cell closed with *which is every enum this schema stores* — false of the schema it sat beside: re-derived by `tools/design/verify-fleet-state.py`'s G1, which prints how many ENUM members this document mints on every run, roughly a quarter of them are D2's own and always were. The criterion is restated rather than the list of exceptions, because the list would be most of the schema | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted, and right for a value only this plane's own code can write — an unknown member there is a bug, and a migration per member is the price of the storage layer refusing it. G1 holds the second half honest: every member this document mints must be produced by a rule it states |
 | `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on **any** path — not just not on a hot one — and after the MariaDB repin that is load-bearing rather than incidental: MariaDB's `JSON` is an alias for `LONGTEXT` + `CHECK (json_valid(…))` and has no arrow operators before 13.1 ([§ 6.1](#61-deployment-posture)). Every JSON column is written whole, read whole and decoded in PHP; the column is kept for the drill-down, for replay and for forensics |
 | String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MariaDB counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
@@ -2181,11 +2181,8 @@ commit — a budget derived from the ingest's idle-transaction bound
 ([§ 12](#12-every-number-and-where-it-comes-from)), so a post queued at the window's lock grant is granted
 the lock inside its own wait as long as that event and commit fit the ingest's processing target. The
 fold's own transactions can still find a row another writer changed since their snapshot (`1020`, with
-snapshot isolation on), time out on a lock (`1205`), or deadlock (`1213`). `Sweep::seat()` locks a seat's
-`sessions` rows before it writes `seat_state`, the reverse of the window's order, so a fold and a sweep
-pass on one seat can deadlock: that cycle already existed for a window's second and later events, and
-taking the lock first extends it to the window's first event. The fold is the cheap victim — it has
-applied at most that event — and yields. **Those errors are transient and never poison:** the pass yields that seat, writes nothing, and
+snapshot isolation on), time out on a lock (`1205`), or deadlock (`1213`), on a row the seat lock does
+not cover (below). **Those errors are transient and never poison:** the pass yields that seat, writes nothing, and
 the next pass folds the window whole. The poison-event rule below is for every other error.
 
 **The rebuild, retirement and the sweep take the same lock first** (card#9466). Each takes the seat's
@@ -2203,13 +2200,17 @@ holds the seat lock, only a writer that did not take it first can still hold a r
 The sweep takes the lock `FOR UPDATE SKIP LOCKED`, so a seat another writer holds is skipped at once
 and retried on the next pass ([§ 2.2](#22-fail-posture-per-path)).
 
-**This is not a statement that every writer takes the lock first.** None of the fold's transactions
-does: the window, the one-event retry and the quarantine each sample `$before` without it and reach
-`seat_state` only through a later write.
-A transaction that holds a projection row and then needs `seat_state`, meeting one that holds
-`seat_state` and then needs that row, is a deadlock, and MariaDB's detector breaks it with a `1213`.
-That is why rebuild and retirement retry, and why the sweep treats a concurrency error on a row its
-lock does not cover as contention rather than failure.
+**Every transaction that samples a seat's version-bearing fingerprint takes the seat lock as its first
+statement.** `git grep -n "versionBearing(" -- server/app` lists every sample: the fold's window,
+one-event retry and quarantine, the rebuild's replay, retirement, and the sweep's per-seat pass, each
+inside a transaction that opens with the seat's `seat_state` row lock, as the ingest's does. Two of them
+on one seat therefore meet at that lock, where the later one waits or skips, and none of them holds a
+row of the seat's while it is still to take `seat_state`. The seat lock does not cover a statement that runs outside those transactions: the
+ingest's refusal and failure counters (`Counters::batchRefused()`, `Counters::batchFailed()`) write the
+seat's `seat_counters` row with no seat lock, before the batch transaction or after its rollback. A
+lock-first transaction that writes that row can still wait on it or find it changed. That is why rebuild
+and retirement retry, and why the sweep treats a concurrency error on a row its lock does not cover as
+contention rather than failure.
 
 **Idempotency has two independent mechanisms, and both are load-bearing:**
 

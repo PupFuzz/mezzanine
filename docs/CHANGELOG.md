@@ -32,14 +32,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   so a same-seat writer cannot commit between them; a seat another transaction holds is yielded for the
   pass with nothing written. The poison-event rule's one-event attempts and its quarantine take the
   same lock the same way. The `mysql` connection now sets the session time zone to `+00:00` on every
-  connection through its `timezone` key, so the framework-owned `TIMESTAMP` columns read and write UTC
-  whatever the store host's zone. D2 § 2.2, § 6.1, § 6.3, § 6.5 and § 12 state it. New tests:
+  connection through its `timezone` key, so the `TIMESTAMP` columns of the auth tables and
+  `failed_jobs` read and write UTC whatever the store host's zone. D2 § 2.2, § 6.1, § 6.3, § 6.5 and
+  § 12 state it. New tests:
   `FoldLockFirstTest` and `FoldWindowDurationTest` on real MariaDB connections, `FoldWindowTimeBoundTest`,
   `FoldWindowBudgetSourcesTest`, and a session time-zone assertion in `DatabasePinTest`.
-  **Installer action:** none; no migration. The deploy's daemon restart puts the fold on the new code.
-  Before deploying, `SELECT @@system_time_zone` on the store: where it is not UTC, the `TIMESTAMP`
-  values the framework-owned tables already hold were written through that zone and read back shifted
-  by its offset once the connection is pinned.
+  **Installer action:** check the store's time zone. There is no migration, and the deploy's daemon
+  restart puts the fold on the new code. Before deploying, run `SELECT @@system_time_zone` on the
+  store. Where it is not UTC, the `TIMESTAMP` values the auth tables and `failed_jobs` already hold were
+  written through that zone, and they read back shifted by its offset once the connection is pinned.
+  On a store west of UTC, a two-factor reset code issued within `TwoFactorReset::TTL_MINUTES` before
+  the deploy stays valid for that offset longer, once.
 - **card#9466** — **Rebuild, retirement and the sweep take the seat's `seat_state` lock first, and every
   purge table has a retention index.** `mezzanine:rebuild` locks the seat before it deletes its
   projections and retries the whole replay on a lock timeout, deadlock or changed row

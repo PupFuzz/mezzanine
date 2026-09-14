@@ -124,8 +124,9 @@ final class Fold
      *
      * ⚠ `FOR UPDATE SKIP LOCKED` IS THE FOLD'S CONCURRENCY CORRECTNESS, AND THE SUITE EXERCISES
      * ONE ARM OF IT. It is what makes two fold workers partition themselves — another worker's
-     * seats are skipped rather than waited on. The suite's one skip is `At22LockFirstIngestTest`'s:
-     * a fold pass on its own connection skips the seat an open ingest transaction holds. Two FOLD
+     * seats are skipped rather than waited on. The one skip of the claim's that the suite drives is
+     * `At22LockFirstIngestTest`'s: a fold pass on its own connection skips the seat an open ingest
+     * transaction holds. Two FOLD
      * workers partitioning the claim is UNTESTED, not merely untested-here (card#7523 owns it).
      *
      * @return Collection<int, object>
@@ -214,12 +215,13 @@ final class Fold
      * window re-selects an id at or below the cursor, and advancing past an unapplied tail would
      * strand it.
      *
-     * LOCK ORDER. The window now takes `seat_state` before `sessions` / `calls` /
-     * `attention_requests`. `Sweep::seat()` locks the seat's `sessions` rows before it writes
-     * `seat_state`, so a fold and a sweep pass on one seat can deadlock. That cycle already existed for
-     * a window's second and later events, which ran after the first event's `seat_state` write; taking
-     * the lock first extends it to the first event. The fold is the cheap victim — it has applied at
-     * most that event — and yields through `contended()` (`1213`).
+     * LOCK ORDER. The window takes `seat_state` before any other row of the seat's, and so does every
+     * transaction that samples `SeatFacts::versionBearing()` (`git grep -n "versionBearing(" --
+     * server/app` lists them; § 6.5 states the rule), so none of them holds a row of this seat's while
+     * it is still to take `seat_state`. This window takes the lock `SKIP LOCKED` and never waits for
+     * it. A row written outside those transactions — the ingest's refusal and failure counters on
+     * `seat_counters` — can still raise a concurrency error here, and the pass yields through
+     * `contended()`.
      */
     private function window(int $seatRef, int $cursor): int
     {
