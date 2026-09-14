@@ -19,6 +19,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9500** — **A `ca_file` the seat cannot read, or one that is not an absolute path, now stops
+  the seat's requests and fails `selftest` by name.** The reporter caught the read failure and sent the
+  request with the default trust store. The seat then trusted every publicly trusted CA instead of the
+  one file its config pins, and nothing logged it. An empty-string `ca_file` counted as unset and widened
+  the trust the same way, and a relative one was read against the process's working directory, which a
+  flusher inherits from whatever starts it: the agent's project directory from a hook, the account's
+  home directory from cron. Against a private-CA ingest every request failed verification, and `selftest`
+  reported `tls_verify` `fail`, which points at the certificate rather than the file. One read,
+  `readCaFile`, now serves both the config check and each request. The config check adds
+  `ca_file unreadable at <path>: <errno>` to `config_readable`'s errors, so `selftest` exits 1 naming
+  the path and runs no probe, and a flusher started on that config spools and sends nothing, as for an
+  `http://` `ingest_url`, while the file stays unreadable. It re-reads the file on each pass, and from
+  the first pass that reads it the same process probes, sends, logs `ca_file readable at <path>` and
+  heartbeats `config_readable` `pass`, with no restart. A `ca_file` that is a string but not an absolute path, the empty string
+  included, is the same config error, `ca_file must be an absolute path or null (§ 3.1), not "<value>"`:
+  only `null` or an absent key leaves it unset. A file that becomes unreadable while the flusher runs ends that request before
+  any socket opens: the batch is `refused` (counted in `config_invalid`, never `batches_retried` and
+  never quarantined), the log names the path and the errno, and the spooled events are delivered once
+  the file is readable again. D1 § 3.5 (a row for the refused `ca_file`), § 6.14's `config_readable`
+  row, § 9.3's `config_invalid` row, `INSTALL-LINUX.md` Step 6 and the reporter's transport comments
+  now say so. The acceptance suite's block 1 drives `selftest` and a flusher start on a missing
+  `ca_file`, on an empty-string one and on a relative one, and a flusher pass whose `ca_file` is removed
+  between the health probe and the batch, and a running flusher started on a missing `ca_file` that is
+  then created, with
+  the stub's certificate added to Node's default store (`NODE_EXTRA_CA_CERTS`) so that a fallback
+  shows up as a delivery. It carries REDs of the request that falls back, of the config check that
+  never reads the file, of a check that reads `""` as unset, of one that reads a relative path, and of
+  a flusher that checks the file only at start. **Installer action:** none beyond the ordinary artifact update
+  (`INSTALL-LINUX.md` Step 1). A seat whose `ca_file` is unreadable, empty or relative, and that reached
+  its ingest through the system store or a file found from its working directory, stops sending after
+  the update. Its `selftest` names the file or the rule. Once the file is readable the running flusher
+  resumes by itself. After setting an absolute path or `null`, stop the flusher with `stop-flusher.js`
+  (`INSTALL-LINUX.md` Step 6) so the next start reads the corrected config.
 - **card#9464** — **A draining seat's fold window now releases the seat within a time budget, and a
   fold's deltas are computed from what the seat held when its window took the lock, under any session
   isolation settings.** A fold window held its seat's `seat_state` lock until it had applied up to `Fold::BATCH`

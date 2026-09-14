@@ -265,7 +265,7 @@ const TOKEN_RE = /^mzn_[A-Za-z0-9_-]{43}$/;
  * drives a name at it and one byte past it, so this literal cannot drift from the row unseen. */
 const AGENT_NAME_RE = /^[a-z0-9-]{1,48}$/;
 
-/* Returns {config, errors[]}. NEVER throws: a hook with an unreadable config still exits 0 and
+/* Returns {config, errors[], caError}. NEVER throws: a hook with an unreadable config still exits 0 and
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
  * (the log, `config_invalid`, `selftest`) — never on the agent's. */
 function loadConfig(p) {
@@ -290,9 +290,33 @@ function loadConfig(p) {
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
   }
+  // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
+  // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
+  // the default trust store (card#9500).
+  // `caError` is that error, also in `errors`: the one a running flusher re-checks (flusherMain).
+  const caError = typeof c.ca_file === 'string' ? readCaFile(c).error : null;
+  if (caError) errors.push(caError);
   // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
   // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
-  return { config: c, errors };
+  return { config: c, errors, caError };
+}
+
+/* THE ONE READ OF `ca_file` (card#9500): the config check above and every request (`ingestRequest`)
+ * both go through here, so the two cannot disagree about what "readable" means. `ca` REPLACES the
+ * default trust store (§ 3.5), so a `ca_file` that cannot be read has no safe fallback: sending with
+ * the default store would widen the seat's trust from the one file it pins to every publicly trusted
+ * CA. The error names the path and the errno. Only `null` or an absent key leaves `ca_file` unset (no
+ * `ca`, the default store). A string that is not an absolute path is the same config error, the empty
+ * string included (§ 3.1 types the field "absolute path or `null`"): "" would otherwise read as unset and
+ * widen the trust the same way, and a relative path would be read against the process's working
+ * directory, which a flusher inherits from whatever starts it: the agent's project directory through the
+ * hook that forks it, the account's home directory through the crontab entry that supervises it. */
+function readCaFile(config) {
+  const f = config.ca_file;
+  if (f === null || f === undefined) return { ca: null, error: null };
+  if (!path.isAbsolute(f)) return { ca: null, error: `ca_file must be an absolute path or null (§ 3.1), not ${JSON.stringify(f)}` };
+  try { return { ca: fs.readFileSync(f), error: null }; }
+  catch (e) { return { ca: null, error: `ca_file unreadable at ${f}: ${e.code || e.message}` }; }
 }
 
 /* ── The declared protocol agent name, and its roster check (§ 3.1) ─────────────────────────
@@ -2329,7 +2353,9 @@ function buildBatch(config, state, items, maxEvents) {
  * no read of NODE_TLS_REJECT_UNAUTHORIZED and no `checkServerIdentity` override — a sandbox host
  * with a private CA is supported by config.ca_file, which is passed as the TLS `ca` option with
  * verification intact. `ca` REPLACES the default trust store: a seat with `ca_file` set trusts
- * only the certificates in that file.
+ * only the certificates in that file, and a `ca_file` that is not an absolute path or that it cannot
+ * read is a config error that sends nothing — never a fallback to the default store (`readCaFile`,
+ * card#9500).
  * Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it
  * ships to production seats. `selftest` and the acceptance suite both lint for it. */
 let _agent = null;
@@ -2347,7 +2373,9 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  *     null ⇒ direct, on the shared keep-alive agent. `config.proxy_url` ONLY — HTTP(S)_PROXY
  *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
  *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
- *     the default trust store (the seat trusts only that file). The host name is verified on both
+ *     the default trust store (the seat trusts only that file). It is read per request, and one that
+ *     is not an absolute path, or cannot be read, ends the request as `invalid` before any socket
+ *     opens, naming the rule or the path and the errno (card#9500). The host name is verified on both
  *     routes; SNI carries it only when it is a name (RFC 6066 forbids an IP literal there, and Node
  *     warns, DEP0123, that it will stop honouring one).
  *   - THE CONNECT DEADLINE, K.CONNECT_MS, from the start of the request to a verified TLS session
@@ -2358,7 +2386,8 @@ const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAliv
  *
  * It always RESOLVES, never rejects, with what it observed: `status`/`headers`/`body` for an answer
  * (`body` is set only once the response ended), `error` otherwise, `deadline` ('connect' | 'request')
- * when a deadline ended it, `invalid` when the config named no request to make, and the two stages a
+ * when a deadline ended it, `invalid` when the config named no request to make or one the seat must not
+ * send (a `ca_file` that is not an absolute path or cannot be read), and the two stages a
  * caller needs to tell a refused certificate from nothing learned: `tcp` (a connection to the ingest
  * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
 function ingestRequest(config, { method, path: pathOf, headers, body }) {
@@ -2375,6 +2404,8 @@ function ingestRequest(config, { method, path: pathOf, headers, body }) {
     let url;
     try { url = new URL(config.ingest_url); } catch (e) { out.invalid = 'bad ingest_url'; done(out.invalid); return; }
     if (url.protocol !== 'https:') { out.invalid = 'ingest_url is not https'; done(out.invalid); return; }
+    const { ca, error: caError } = readCaFile(config);
+    if (caError) { out.invalid = caError; done(out.invalid); return; }
 
     const endByDeadline = (which, error) => {
       if (settled) return;
@@ -2387,8 +2418,6 @@ function ingestRequest(config, { method, path: pathOf, headers, body }) {
 
     const port = Number(url.port || 443);
     const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':');
-    let ca;
-    if (config.ca_file) { try { ca = fs.readFileSync(config.ca_file); } catch (e) { /* fall back to the system store, still verifying */ } }
     const opts = {
       host: url.hostname, port, path: pathOf(url), method,
       headers: Object.assign({ Authorization: `Bearer ${config.token}` }, headers), agent: getAgent(),
@@ -2459,7 +2488,9 @@ function postBatch(config, body) {
   }
   headers['Content-Length'] = String(payload.length);
   return ingestRequest(config, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
-    if (r.invalid) return { kind: r.invalid === 'ingest_url is not https' ? 'refused' : 'permanent', status: 0, error: r.invalid };
+    // A request the config forbids — an http:// ingest_url, a `ca_file` that is not absolute or cannot be read — is
+    // `refused`: config_invalid, keep spooling, send nothing (§ 3.5). An unparseable ingest_url is `permanent`.
+    if (r.invalid) return { kind: r.invalid === 'bad ingest_url' ? 'permanent' : 'refused', status: 0, error: r.invalid };
     // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
     // cut off before its end: all transient by nature (§ 11.5).
     if (r.error) return { kind: 'retryable', status: 0, error: r.error };
@@ -2652,7 +2683,7 @@ function unfoldUnsaved() {
 
 async function flusherMain() {
   const cp = configPath();
-  const { config, errors } = loadConfig(cp);
+  const { config, errors, caError } = loadConfig(cp);
   if (!config || !config.spool_dir) { return; }
   registerConfigSecrets(config);
   const spool = config.spool_dir;
@@ -2676,7 +2707,14 @@ async function flusherMain() {
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
   else if (minted) logLine(spool, 'flusher', 'no state.json (a first start, or lost state) — new seq_epoch, sending from the oldest bucket');
   if (errors.length) { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${errors.join('; ')} — spooling, sending nothing`); }
-  const configOk = errors.length === 0;
+  let configOk = errors.length === 0;
+  /* A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
+   * changes is the file — a delete-and-recreate rotation, a mount that comes up late — and not the config
+   * this process loaded, so each pass re-reads it through `readCaFile`, the read every request makes, and
+   * the first pass that finds it readable probes and drains. This is the recovery a file that vanishes
+   * mid-run already has, at the request. Any other config error holds until the flusher restarts on a
+   * corrected config, and so does a `ca_file` that is not an absolute path: its re-check fails every pass. */
+  let caPending = errors.length === 1 && caError !== null;
 
   const emit = makeEmitter(config, spool);
   const ctx = { config, spool, emit };
@@ -2709,6 +2747,12 @@ async function flusherMain() {
       for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', atMs);
       expireOpenFacts(ctx, ix, atMs);
       writeSnapshot(spool, state, ix);
+
+      if (caPending && readCaFile(config).error === null) {
+        caPending = false; configOk = true;
+        selftest.config_readable = true;   // its one error is gone: the heartbeat stops reporting the refusal
+        logLine(spool, 'flusher', `ca_file readable at ${config.ca_file} — probing and sending resume`);
+      }
 
       if (configOk && atMs - lastHealth > healthEveryMs) {
         lastHealth = atMs; renewLock(spool, state);
@@ -2893,8 +2937,9 @@ async function drainOnce(config, spool, state, atMs) {
     }
     if (res.kind === 'refused') {
       // config_invalid: keep spooling and send nothing. Fail closed, loudly, on the client's
-      // own surface (§ 3.5).
+      // own surface (§ 3.5), naming what the config got wrong.
       count('config_invalid');
+      logLine(spool, 'flusher', `batch refused by the config, sending nothing: ${res.error}`);
       return { retry: true, sent };
     }
 

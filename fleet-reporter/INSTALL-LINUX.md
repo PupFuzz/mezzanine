@@ -622,6 +622,20 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
   handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
   `ca_file` that does not trust the ingest's certificate.
+- **`rc=1` with `config_readable` failing** — `detail.config_readable.errors` names each rule the
+  config breaks, and the command runs no probe. `ca_file unreadable at <path>: <errno>` means the seat
+  cannot read the CA file its config pins: it was moved, its permissions changed, or the path has a
+  typo. `ca_file must be an absolute path or null (§ 3.1), not "<value>"` means the config holds an
+  empty string or a relative path: set the file's absolute path, or `null` for a seat that trusts the
+  system store. The reporter never falls back to the system trust store (D1 § 3.5): the flusher sends
+  nothing and keeps spooling, and logs the same error. Fix the file or the config and re-run this step.
+  A running flusher re-reads an unreadable `ca_file` on each pass: once the file is readable it probes
+  and sends the spooled events, logs `ca_file readable at <path>`, and needs no restart. The flusher
+  reads its config only when it starts, so after a config change (an absolute path, or `null`) stop it
+  with Step 5's `stop-flusher.js`, as Step 8 item 3 runs it:
+  `node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js`.
+  A clean stop removes its lock, so the next start, at cron's next minute boundary or from a sooner
+  hook, reads the corrected config.
 - **`rc=1` with `protocol_agent_name_in_roster` failing** — the declared `protocol_agent_name` is not
   a member of the roster the command read, which D1 § 3.1 calls `disagreed`.
   `detail.protocol_agent_name_in_roster` names the roster file (`roster`), which site it came from
