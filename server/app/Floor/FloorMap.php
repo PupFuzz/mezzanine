@@ -140,12 +140,12 @@ final class FloorMap
         }
 
         // ⛔ DECODED IN OBJECT MODE (card#9322). `json_decode(…, true)` decodes `{}` and `[]` to the
-        // same PHP value, and this reader asks LIST questions — `layers`, `tilesets`, a layer's
-        // `data`, the `desks` layer's `objects` — where `[]` is a legal list and `{}` is not one. It
-        // is also the reader of a floor's `hallway`, which arrives inside the layout document
-        // already decoded this way (`App\Building\BuildingLayout`), so one decode mode is what
-        // lets § 10.3's table be read by one `structure()` for both. A JSON object is `stdClass`
-        // and a JSON array is a PHP list, everywhere in the tree.
+        // same PHP value, and this reader asks LIST questions — `layers` (a group's included),
+        // `tilesets`, a layer's `data`, the `desks` layer's `objects` — where `[]` is a legal list and
+        // `{}` is not one. It is also the reader of a floor's `hallway`, which arrives inside the
+        // layout document already decoded this way (`App\Building\BuildingLayout`), so one decode
+        // mode is what lets § 10.3's table be read by one `structure()` for both. A JSON object is
+        // `stdClass` and a JSON array is a PHP list, everywhere in the tree.
         try {
             $decoded = json_decode($document, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
@@ -473,7 +473,23 @@ final class FloorMap
             $name = is_scalar($layer->name ?? null) ? (string) $layer->name : '(unnamed)';
 
             if ($type === 'group') {
-                self::refuseUnreadableLayerData(is_array($layer->layers ?? null) ? $layer->layers : []);
+                // ⛔ A GROUP's `layers` IS A LIST, and a JSON object in its place is refused by name
+                // (card#9322). Read as an empty group instead, a keyed `{"k": …}` hid every layer in
+                // it from the checks below — a base64 layer one re-spelling away from its refusal.
+                $children = $layer->layers ?? [];
+
+                if (! is_array($children)) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Group layer "%s" stores its `layers` as %s rather than as the list of layers '
+                        .'a group carries. docs/design/FLOOR.md § 10.3 reads `layers` as a JSON array '
+                        .'at every level Tiled nests it, so a layer inside a group is held to every '
+                        .'rule a top-level one is.',
+                        $name,
+                        self::jsonShape($children),
+                    ));
+                }
+
+                self::refuseUnreadableLayerData($children);
 
                 continue;
             }
@@ -675,10 +691,8 @@ final class FloorMap
             }
 
             if (($layer->type ?? null) === 'group') {
-                $found = array_merge(
-                    $found,
-                    self::deskLayers(is_array($layer->layers ?? null) ? $layer->layers : []),
-                );
+                // `structure()` has already refused a group whose `layers` is not a list.
+                $found = array_merge($found, self::deskLayers($layer->layers ?? []));
 
                 continue;
             }

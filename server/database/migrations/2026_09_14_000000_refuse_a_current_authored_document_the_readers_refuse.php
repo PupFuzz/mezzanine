@@ -14,11 +14,16 @@ use Illuminate\Database\Migrations\Migration;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHY IT EXISTS. card#9322 decodes the building layout and the room maps in OBJECT mode, so a
- * `"floors": {}`, or a room map's `layers`, `tilesets`, tile `data` or desk `objects` written as
- * `{}`, is refused where the previous release's associative decode accepted it and let it be
- * stored. Such a layout would answer `GET /api/building` with a `500` from the first request after
- * the deploy (`App\Http\Controllers\BuildingController::building()`), and such a room map is
- * named unreadable in the floors console and stops every layout write that measures its room.
+ * document the previous release's associative decode accepted and let be stored can be refused by
+ * this one. The shapes that release could store and this one refuses: in the layout, `floors`
+ * written as `{}` or keyed `"0"`, `"1"`, …, and a floor's `rooms` written as a non-empty list; in a
+ * room map or a floor's hallway, `tilesets` written as `{}` or keyed, `layers` written keyed (and in
+ * a hallway, which declares no `desks` layer, as `{}`), a `group` layer's `layers` written as `{}`,
+ * keyed or a scalar, a tile layer's `data` written as `{}` or keyed, and a `[]` in place of a layer
+ * or a tileset entry; and in a room map, the `desks` layer's `objects` written keyed, or a `[]` in
+ * place of one of them. Such a layout would answer `GET /api/building` with a `500` from the first
+ * request after the deploy (`App\Http\Controllers\BuildingController::building()`), and such a room
+ * map is named unreadable in the floors console and stops every layout write that measures its room.
  *
  * WHY A MIGRATION. `bin/deploy.sh` runs `php artisan migrate --force` inside its maintenance window,
  * after the checkout and before `php artisan up`, so this is the first step that runs this

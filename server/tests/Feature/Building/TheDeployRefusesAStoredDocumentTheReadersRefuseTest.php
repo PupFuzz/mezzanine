@@ -39,13 +39,13 @@ class TheDeployRefusesAStoredDocumentTheReadersRefuseTest extends TestCase
         return require database_path('migrations/2026_09_14_000000_refuse_a_current_authored_document_the_readers_refuse.php');
     }
 
-    public function test_a_stored_floors_object_and_a_stored_layers_object_are_refused_each_by_name(): void
+    public function test_a_stored_floors_object_and_a_stored_tilesets_object_are_refused_each_by_name(): void
     {
         $layout = '{"floors": {}}';
         $this->storeLayout($layout, 3);
 
         $map = FloorMapFixture::decoded();
-        $map['layers'] = new \stdClass;
+        $map['tilesets'] = new \stdClass;
         $map = FloorMapFixture::encode($map);
         $this->storeRoomMap('aimla', $map, 2);
         $this->storeRoomMap('sola', FloorMapFixture::valid(), 1);
@@ -106,7 +106,7 @@ class TheDeployRefusesAStoredDocumentTheReadersRefuseTest extends TestCase
         $this->storeLayout('{"floors": []}', 2);
 
         $map = FloorMapFixture::decoded();
-        $map['layers'] = new \stdClass;
+        $map['tilesets'] = new \stdClass;
         $this->storeRevision(Revisions::ROOM_MAP, 'aimla', 1, FloorMapFixture::encode($map));
         $this->storeRoomMap('aimla', FloorMapFixture::valid(), 2);
 

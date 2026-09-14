@@ -28,10 +28,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   in object mode, the decode card#9295 gave the ingest, so each member is checked against its own
   shape. `"floors": []` is the empty building; `"floors": {}` is refused with a sentence that gives
   `"floors": []` as the empty building's spelling; `rooms` as a list is refused naming the mapping it
-  is. `App\Floor\FloorMap` reads room maps and hallways in the same mode, so for both a `layers`,
-  `tilesets`, tile layer `data` or `desks` `objects` that is not a JSON array, and a layer, tileset
-  entry or desk object that is not a JSON object, is refused naming the shape it has; a document that
-  is `[]` is refused as a JSON array. `GET /api/building` writes
+  is. `App\Floor\FloorMap` reads room maps and hallways in the same mode, so for both a `layers` (a
+  `group` layer's included), `tilesets`, tile layer `data` or `desks` `objects` that is not a JSON
+  array, and a layer, tileset entry or desk object that is not a JSON object, is refused naming the
+  shape it has; a document that is `[]` is refused as a JSON array. `GET /api/building` writes
   the same bytes as before for a layout with no empty object in it, pinned against the pre-change
   output for an all-digit `install_id` layout and a planned, labelled floor with a hallway.
   `AuthoredDocument::isJsonObject` is removed, and the migration seeding `config/building.php`
@@ -42,8 +42,13 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `TheDeployRefusesAStoredDocumentTheReadersRefuseTest`. **Installer action:** none for a store these
   readers accept. The release carries a migration that adds no schema and changes no data: it reads
   the current building layout and every current room map through this release's readers. A current
-  document with a list spelled `{}` or a record spelled `[]`, which the previous release accepted and
-  stored, fails `php artisan migrate` with a message naming each such document by kind, subject and
+  document in a shape the previous release accepted and stored and this one refuses fails
+  `php artisan migrate`. Those shapes are: a layout whose `floors` is `{}` or keyed `"0"`, `"1"`, …,
+  or with a floor whose `rooms` is a non-empty list; a room map or hallway whose `tilesets` is `{}` or
+  keyed, whose `layers` is keyed (or, in a hallway, `{}`), with a `group` layer whose `layers` is
+  `{}`, keyed or a scalar, with a tile layer whose `data` is `{}` or keyed, or with a `[]` in place of
+  a layer or a tileset entry; and a room map whose `desks` layer's `objects` is keyed or holds a `[]`.
+  The migration fails with a message naming each such document by kind, subject and
   revision beside the reader's own sentence, so `bin/deploy.sh` stops inside its maintenance window
   with exit 2 and the app down, before these readers serve anything. To fix it: review and remove the
   failure marker, deploy the commit the marker names as `from_commit` to bring the console back,

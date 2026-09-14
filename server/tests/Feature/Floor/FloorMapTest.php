@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Floor;
 
+use App\Building\BuildingLayout;
+use App\Building\InvalidBuildingLayout;
 use App\Floor\FloorAssets;
 use App\Floor\FloorMap;
 use App\Floor\InvalidFloorMap;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Admin\FloorMapFixture;
 use Tests\TestCase;
 
@@ -192,6 +195,64 @@ class FloorMapTest extends TestCase
         $this->refuses(FloorMapFixture::encode($objects), 'stores its `objects` as a JSON object rather than as the list of slots');
 
         $this->assertSame(12, FloorMap::parse(FloorMapFixture::valid())->slots);
+    }
+
+    /**
+     * ⛔ A GROUP's `layers` IS A LIST TOO, at every level Tiled nests it. Read as `[]` when it was
+     * not a PHP list, a keyed object hid its layers from the encoding check — so the base64 layer
+     * `base64LayerInsideAGroup()` is refused for was accepted, one re-spelling away.
+     *
+     * @return array<string, array{\stdClass}>
+     */
+    public static function groupLayersSpelledAsAnObject(): array
+    {
+        $empty = json_decode(FloorMapFixture::base64LayerInsideAGroup(), false);
+        $empty->layers[0]->layers = new \stdClass;
+
+        $keyed = json_decode(FloorMapFixture::base64LayerInsideAGroup(), false);
+        $keyed->layers[0]->layers = (object) ['k' => $keyed->layers[0]->layers[0]];
+
+        return ['`{}`' => [$empty], 'keyed, holding a base64 tile layer' => [$keyed]];
+    }
+
+    #[DataProvider('groupLayersSpelledAsAnObject')]
+    public function test_a_group_layers_layers_as_a_json_object_is_refused_naming_it(\stdClass $map): void
+    {
+        // THE CONTROL: the same group with its `layers` a list is refused for the base64 layer in
+        // it, so the refusal below is earned by the spelling of `layers` and not by the layer.
+        $this->refuses(FloorMapFixture::base64LayerInsideAGroup(), 'declares encoding "base64"');
+
+        $this->refuses(
+            FloorMapFixture::encode((array) $map),
+            'Group layer "scenery" stores its `layers` as a JSON object rather than as the list of layers',
+        );
+    }
+
+    #[DataProvider('groupLayersSpelledAsAnObject')]
+    public function test_a_group_layers_layers_as_a_json_object_inside_a_hallway_is_refused_naming_it(\stdClass $map): void
+    {
+        // The same group, moved into a floor's hallway: a hallway is read by the same table
+        // (§ 10.3), and it arrives through the layout's own decode rather than through `parse()`.
+        $hallway = FloorMapFixture::asDecoded(FloorMapFixture::hallway());
+        $hallway->layers = [$map->layers[0]];
+
+        $layout = fn (\stdClass $hallway) => (string) json_encode(['floors' => [[
+            'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
+            'hallway' => $hallway,
+        ]]]);
+
+        // THE CONTROL: the valid hallway, on the same planned floor, is accepted.
+        BuildingLayout::fromJson($layout(FloorMapFixture::asDecoded(FloorMapFixture::hallway())));
+
+        try {
+            BuildingLayout::fromJson($layout($hallway));
+            $this->fail('a hallway whose group `layers` is a JSON object was accepted');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString(
+                'Group layer "scenery" stores its `layers` as a JSON object rather than as the list of layers',
+                $e->getMessage(),
+            );
+        }
     }
 
     // ── card#9292's HALLWAY: § 10.3's table with one row inverted ────────────────────────────
