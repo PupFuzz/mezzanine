@@ -64,7 +64,8 @@ Python 3 stdlib plus `node` and `openssl` on PATH. It takes a few minutes: it dr
 script as real subprocesses several thousand times, and stands up a TLS ingest stub on
 127.0.0.1 with a throwaway self-signed certificate, trusted through the reporter's **own**
 `ca_file` key — so the transport path runs with certificate verification ON rather than being
-proven by turning it off.
+proven by turning it off. A `CONNECT` proxy stub in front of it drives the `proxy_url` route against
+an ingest address the seat cannot reach directly, for the health probe and the sender alike.
 
 **The last block signals processes, and only ever its own.** § 2.3 has every hook fork a real
 detached flusher when it finds no live one, so a run can leave live daemons behind; the suite

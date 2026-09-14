@@ -614,7 +614,8 @@ node /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js selftest; ech
 ```
 
 The command measures both network checks itself, with the flusher's own health probe against the
-config's `ingest_url` and `ca_file` (card#9373). Read its exit code by D1 § 6.14:
+config's `ingest_url` and `ca_file` (card#9373), through `proxy_url` when the config sets one, the
+route the batches take (card#9473). Read its exit code by D1 § 6.14:
 
 - **`rc=0`** — every check passed. The install is verified.
 - **`rc=1`** — a check failed; `checks` names it and `detail` says why. A `tls_verify` fail with an
