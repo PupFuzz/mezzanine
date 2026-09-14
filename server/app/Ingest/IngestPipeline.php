@@ -222,26 +222,26 @@ final class IngestPipeline
      * THE CATCH IS BROAD, AND EVERY FAULT IS STILL REPORTED. Narrowing it to store errors would leave a
      * defect answering Laravel's default body, which carries no `error` for a reporter to branch on and
      * counts nothing, while the reporter retries it exactly as it retries a `503`. So a defect gets the
-     * same shape and the same counter, with a `500` and `detail: internal` to say what it was, and
+     * same shape and the same counting, with a `500` and `detail: internal` to say what it was, and
      * `report()` still hands it to exception reporting — as it does every store error, whose message is
      * the one place the store's own words go.
      *
-     * The counter is written to the store that may just have failed. If it cannot be, the refusal is
-     * still answered, and the counting failure is reported too: the log is then its only surface.
+     * The counter is written to the store that may just have failed. If it cannot be, the `server_error`
+     * is still answered, and the counting failure is reported too: the log is then its only surface.
      */
     private function serverFault(\Throwable $e, ?int $seatRef, ?string $batchId): JsonResponse
     {
         report($e);
 
-        $refusal = Refusal::serverError(ServerFault::of($e))->withBatchId($batchId);
+        $fault = ServerFault::of($e);
 
         try {
-            Counters::batchRefused($seatRef, $refusal->error);
+            Counters::batchFailed($seatRef, $fault);
         } catch (\Throwable $counting) {
             report($counting);
         }
 
-        return $refusal->toResponse();
+        return Refusal::serverError($fault)->withBatchId($batchId)->toResponse();
     }
 
     /**

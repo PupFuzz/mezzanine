@@ -115,7 +115,8 @@ class IngestWriteBoundTest extends CommittedSeatTestCase
         $store = DB::connection(self::FIXTURE);
         $this->assertFalse($store->table('batches')->where('batch_id', $body['batch_id'])->exists(), 'the ended transaction committed its batch');
         $this->assertSame(0, $store->table('events')->where('seat_ref', $this->seatRef)->count());
-        $this->assertSame(1, $this->counter('batches_refused.server_error'));
+        $this->assertSame(1, $this->counter('batches_failed.store_failed'));
+        $this->assertSame(0, $this->refusals(), 'a fault was counted as a refusal');
 
         // The flusher's retry, on a fresh request.
         DB::purge(self::WRITER_1);
@@ -145,10 +146,18 @@ class IngestWriteBoundTest extends CommittedSeatTestCase
         $store = DB::connection(self::FIXTURE);
         $this->assertFalse($store->table('batches')->where('batch_id', $body['batch_id'])->exists());
         $this->assertSame(0, $store->table('events')->where('seat_ref', $this->seatRef)->count());
-        $this->assertSame(1, $this->counter('batches_refused.server_error'));
+        $this->assertSame(1, $this->counter('batches_failed.store_contended'));
+        $this->assertSame(0, $this->refusals(), 'a fault was counted as a refusal');
 
         // The top-level shape: Laravel rolled back and rethrew the engine's own exception.
         Exceptions::assertReported(QueryException::class);
+    }
+
+    /** Every `batches_refused.*` increment on this seat — a fault is never one. */
+    private function refusals(): int
+    {
+        return (int) DB::connection(self::FIXTURE)->table('seat_counters')->where('seat_ref', $this->seatRef)
+            ->where('name', 'like', 'batches\\_refused.%')->sum('value');
     }
 
     /** @param  array<string, mixed>  $body */

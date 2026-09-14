@@ -3,6 +3,8 @@
 namespace Tests\Feature\Ingest;
 
 use App\Ingest\BatchWriter;
+use App\Ingest\ServerFault;
+use App\Read\FleetHealth;
 use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +16,11 @@ use Tests\Feature\Fold\ConcurrencyError;
 /**
  * card#9465 — a failure while the ingest writes is answered in D1 § 12.2's shape, counted, and never
  * acknowledged; `docs/design/FLEET-STATE.md § 2.2`'s ingest-write row.
+ *
+ * COUNTED AS A FAILURE, NEVER AS A REFUSAL (`assertCountedAsFailed()`). D1 § 12.7's
+ * `batches_refused.<error>` is what the floor's `batches_rejected` drill-down reads and
+ * `unattributed_refusals` is the fleet's refusal count, while the reporter retries every `5xx` and a
+ * retry commits once. A fault in either would report a stored batch as refused.
  *
  * ⚠ THESE RUN AT TRANSACTION LEVEL 2, inside `RefreshDatabase`'s transaction, where Laravel rethrows a
  * concurrency error as `DeadlockException` — the nested shape. `IngestWriteBoundTest` drives the
@@ -54,6 +61,7 @@ class IngestServerErrorTest extends IngestTestCase
 
         $batch = $this->validBatch([$this->event(), $this->event(['seq' => 48210])]);
         $before = DB::table('seat_state')->where('seat_ref', $this->seatRef)->first();
+        $globals = $this->globalCounters();
 
         // After the first chunk: rows are inserted and must not survive.
         BatchWriter::$afterFirstChunk = function () use ($engineMessage) {
@@ -70,12 +78,12 @@ class IngestServerErrorTest extends IngestTestCase
         $this->assertSame((int) $before->head_event_id, (int) $after->head_event_id);
         $this->assertSame($before->last_receipt_at, $after->last_receipt_at);
 
-        $this->assertSame(1, $this->seatCounter('batches_refused.server_error'));
+        $this->assertCountedAsFailed('store_failed', true, $globals);
         $this->assertSame(0, $this->seatCounter('accepted'));
         Exceptions::assertReported(QueryException::class);
     }
 
-    public function test_the_retry_of_a_refused_batch_commits_it_exactly_once(): void
+    public function test_the_retry_of_a_failed_batch_commits_it_exactly_once(): void
     {
         $batch = $this->validBatch([$this->event(), $this->event(['seq' => 48210])]);
 
@@ -96,7 +104,8 @@ class IngestServerErrorTest extends IngestTestCase
         $this->assertSame(2, $this->storedEvents());
         $this->assertSame(1, DB::table('batches')->where('batch_id', $batch['batch_id'])->count());
         $this->assertSame(2, $this->seatCounter('accepted'));
-        $this->assertSame(1, $this->seatCounter('batches_refused.server_error'));
+        $this->assertSame(1, $this->seatCounter('batches_failed.store_failed'));
+        $this->assertSame(0, $this->seatRefusals());
     }
 
     /** @return array<string, array{int}> */
@@ -111,6 +120,7 @@ class IngestServerErrorTest extends IngestTestCase
         Exceptions::fake();
 
         $batch = $this->validBatch();
+        $globals = $this->globalCounters();
 
         BatchWriter::$afterFirstChunk = function () use ($errno) {
             throw ConcurrencyError::raised($errno);
@@ -119,7 +129,7 @@ class IngestServerErrorTest extends IngestTestCase
         $response = $this->postBatch($batch);
 
         $this->assertServerError($response, 503, 'store_contended', $batch['batch_id'], ConcurrencyError::raised($errno)->getPrevious()->getMessage());
-        $this->assertSame(1, $this->seatCounter('batches_refused.server_error'));
+        $this->assertCountedAsFailed('store_contended', true, $globals);
 
         // The nested shape: what reached the classifier was Laravel's rethrow, not a QueryException.
         Exceptions::assertReported(DeadlockException::class);
@@ -130,6 +140,7 @@ class IngestServerErrorTest extends IngestTestCase
         Exceptions::fake();
 
         $batch = $this->validBatch();
+        $globals = $this->globalCounters();
 
         BatchWriter::$afterFirstChunk = function () {
             throw new \LogicException('a defect in the write, not the store');
@@ -139,15 +150,16 @@ class IngestServerErrorTest extends IngestTestCase
 
         $this->assertServerError($response, 500, 'internal', $batch['batch_id'], 'a defect in the write');
         $this->assertSame(0, $this->storedEvents());
-        $this->assertSame(1, $this->seatCounter('batches_refused.server_error'));
+        $this->assertCountedAsFailed('internal', true, $globals);
         Exceptions::assertReported(fn (\LogicException $e) => $e->getMessage() === 'a defect in the write, not the store');
     }
 
-    public function test_a_store_failure_before_the_token_resolves_is_counted_unattributed(): void
+    public function test_a_store_failure_before_the_token_resolves_is_counted_globally_and_not_as_a_refusal(): void
     {
         Exceptions::fake();
 
         $batch = $this->validBatch();
+        $globals = $this->globalCounters();
 
         DB::connection()->beforeExecuting(function (string $query) {
             if (str_contains($query, 'ingest_tokens')) {
@@ -159,16 +171,29 @@ class IngestServerErrorTest extends IngestTestCase
 
         $this->assertServerError($response, 503, 'store_failed', $batch['batch_id'], 'gone away');
 
-        // No identity was established, so no seat may be named (D1 § 12.1's attribution rule).
-        $this->assertSame(1, $this->globalCounter('unattributed_refusals'));
-        $this->assertSame(0, $this->seatCounter('batches_refused.server_error'));
+        // No identity was established, so no seat may be named (D1 § 12.1's attribution rule): the same
+        // key, globally — and not `unattributed_refusals`, because nothing was refused.
+        $this->assertCountedAsFailed('store_failed', false, $globals);
     }
 
-    public function test_a_store_that_cannot_even_count_the_refusal_still_answers_503(): void
+    /**
+     * The global rows a fault before step 4 is counted in are readable on the surface D2 § 7.1 names for
+     * them, `GET /api/fleet/health`'s `counters`: one member per fault class, so a new class cannot be
+     * counted into a row no surface reads.
+     */
+    public function test_every_fault_class_has_a_fleet_health_member(): void
+    {
+        foreach (ServerFault::cases() as $fault) {
+            $this->assertContains('batches_failed.'.$fault->value, FleetHealth::COUNTERS, $fault->name);
+        }
+    }
+
+    public function test_a_store_that_cannot_even_count_the_failure_still_answers_503(): void
     {
         Exceptions::fake();
 
         $batch = $this->validBatch();
+        $globals = $this->globalCounters();
         $down = true;
 
         DB::connection()->beforeExecuting(function () use (&$down) {
@@ -183,7 +208,8 @@ class IngestServerErrorTest extends IngestTestCase
         $this->assertServerError($response, 503, 'store_failed', $batch['batch_id'], 'Connection refused');
 
         // Nothing could be counted, so the log is the only surface: both failures are reported.
-        $this->assertSame(0, $this->globalCounter('unattributed_refusals'));
+        $this->assertSame($globals, $this->globalCounters());
+        $this->assertSame(0, $this->seatCounter('batches_failed.store_failed'));
         Exceptions::assertReportedCount(2);
     }
 
@@ -204,6 +230,44 @@ class IngestServerErrorTest extends IngestTestCase
         $this->assertNotSame('', $body['message']);
         $this->assertStringNotContainsString($internals, $response->getContent());
         $this->assertStringNotContainsString('SQLSTATE', $response->getContent());
+    }
+
+    /**
+     * Exactly one counter for the fault, and not a refusal's: `batches_failed.<detail>` on the token's
+     * binding when step 4 resolved one, the same key in `global_counters` when it did not — and no
+     * `batches_refused.*` row on the seat, no `unattributed_refusals`, no other global moved.
+     *
+     * @param  array<string, int>  $globalsBefore
+     */
+    private function assertCountedAsFailed(string $detail, bool $attributed, array $globalsBefore): void
+    {
+        $name = 'batches_failed.'.$detail;
+
+        $this->assertSame($attributed ? 1 : 0, $this->seatCounter($name), "the seat's {$name}");
+        $this->assertSame(0, $this->seatRefusals(), 'a fault was counted as a refusal on the seat');
+
+        $moved = [];
+
+        foreach ($this->globalCounters() as $counter => $value) {
+            if ($value !== ($globalsBefore[$counter] ?? 0)) {
+                $moved[$counter] = $value - ($globalsBefore[$counter] ?? 0);
+            }
+        }
+
+        $this->assertSame($attributed ? [] : [$name => 1], $moved, 'the global counters the fault moved');
+    }
+
+    /** Every `batches_refused.*` increment on this seat. */
+    private function seatRefusals(): int
+    {
+        return (int) DB::table('seat_counters')->where('seat_ref', $this->seatRef)
+            ->where('name', 'like', 'batches\\_refused.%')->sum('value');
+    }
+
+    /** @return array<string, int> */
+    private function globalCounters(): array
+    {
+        return DB::table('global_counters')->pluck('value', 'name')->map(fn ($v) => (int) $v)->all();
     }
 
     private static function storeError(string $engineMessage): QueryException
