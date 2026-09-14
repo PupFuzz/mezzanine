@@ -80,8 +80,8 @@ flusher exclusive across *all* starts, cron's and the hooks'. A copy that loses 
 straight away.
 
 **How long an unclean death costs, derived rather than quoted.** `fleet-reporter.js` touches
-`flusher.lock` at the start of every flush pass (`touchLock`), and passes run `K.FLUSH_MS` apart. A start treats
-the lock as held until it is `K.LOCK_STALE_MS` old. A flusher killed uncleanly (SIGKILL, OOM) leaves the
+`flusher.lock` at the start of every flush pass and before every request it sends (`renewLock`), and passes run
+`K.FLUSH_MS` apart. A start treats the lock as held until it is `K.LOCK_STALE_MS` old. A flusher killed uncleanly (SIGKILL, OOM) leaves the
 lock behind, so no start takes over until `K.LOCK_STALE_MS` after its last touch. After that, the first
 start wins: the next cron minute boundary, or any hook that fires sooner. So an idle seat loses up to
 `K.LOCK_STALE_MS` plus one cron minute plus a `node` start. [Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s

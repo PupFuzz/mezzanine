@@ -446,6 +446,7 @@ function atomicWrite(file, text) {
  * an implementer could not construct.                                                        */
 const C = Object.create(null);   // counter deltas for THIS process
 const P = Object.create(null);   // predicate branch deltas for THIS process
+const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null) };   // the flusher's folds not yet saved: see foldLocalCounters
 
 /* A DIAGNOSTIC MUST NOT MOVE AN OPERATIONAL COUNTER. `selftest` runs § 7.5's thirteen fixtures
  * through the real sanitizer, and the flusher runs `selftest` at startup — so without this the
@@ -1857,9 +1858,14 @@ function sampleContext(config, spool, payload, atMs) {
  *
  * THE LOCK IS NOT THE CORRECTNESS MECHANISM — OWNERSHIP IS. flusher.lock is an atomic
  * exclusive-create so exactly one process can win it, but state.json carries owner_pid and
- * owner_started_at, and every write re-reads it and proceeds only if it still names itself.
- * The residual window is the microseconds between that re-read and the rename, and even that is
- * not assumed away: the server counts a repeated (seq_epoch, seq) as `seq_collision`.
+ * owner_started_at, and every write, every send AND every resume from an awaited request re-reads
+ * it and proceeds only if it still names itself. A flusher that finds another owner stops at
+ * once: it sends nothing more, writes nothing more, and exits (`assertOwner`, `LostOwnership`).
+ * The residual windows — between that re-read and the rename, and between the re-read and the
+ * ingest's answer to the one request already in flight — are narrowed, not assumed away: the
+ * server counts a repeated (seq_epoch, seq) as `seq_collision`. The third, local window, the
+ * synchronous end of a pass after its last check, costs no seq; what it can cost is stated at
+ * the exit path in `flusherMain`.
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const statePath = (spool) => path.join(spool, 'state.json');
@@ -1906,17 +1912,42 @@ function loadState(spool, atMs) {
   }
 }
 
-function ownsState(spool, state) {
-  try {
-    const on = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
-    if (!on || !on.owner_pid) return true;
-    return on.owner_pid === state.owner_pid && on.owner_started_at === state.owner_started_at;
-  } catch (e) { return true; }   // unreadable: this process is as entitled as any other
+/* § 2.3 — ONE ANSWER TO "AM I STILL THE OWNER", AND ONE OUTCOME WHEN IT IS NO.
+ *
+ * THROWN, NOT RETURNED. The refusal used to be a `false` from `saveState`, and every caller
+ * ignored it: the drain kept posting from its in-memory `next_seq` and the loop kept running
+ * passes, so a flusher that had DETECTED another owner went on emitting the same seqs as that
+ * owner — the two-producer state the check exists to prevent. A return value is one forgotten
+ * `if` away from that again; an exception unwinds the pass to the flusher loop whatever the call
+ * site remembers, and the loop is the one place that counts it, logs it and exits (`flusherMain`).
+ * Every ownership-sensitive act goes through here: each state.json and snapshot write, the lock
+ * renewal, and each request the drain sends.
+ *
+ * AND EVERY AWAIT IN A PASS IS FOLLOWED BY IT. A pass is synchronous local work except where it
+ * awaits the network — the health probe and each batch POST — and an await is where a takeover
+ * lands: a new owner claims state.json while this process is suspended. What the pass does on
+ * resuming is ownership-sensitive whether or not it writes state.json: it disposes of corrupt
+ * lines and quarantines rejected batches the new owner will dispose of too, drops spool buckets,
+ * reaps counter buckets by offsets the new owner has not folded, and spools a heartbeat. So the
+ * check runs on resuming from each await (`refreshHealth` in `flusherMain`, `send` in
+ * `drainOnce`), before any of those. What remains is the synchronous work after a check: no
+ * await, local file operations only, but a new owner can still claim state.json inside it — see
+ * the exit path in `flusherMain` for what that window can and cannot cost. */
+class LostOwnership extends Error {}
+
+function assertOwner(spool, state) {
+  let on;
+  try { on = JSON.parse(fs.readFileSync(statePath(spool), 'utf8')); } catch (e) { return; }   // unreadable: this process is as entitled as any other
+  if (!on || !on.owner_pid) return;
+  if (on.owner_pid === state.owner_pid && on.owner_started_at === state.owner_started_at) return;
+  throw new LostOwnership(`state.json names pid ${on.owner_pid} started ${on.owner_started_at}`);
 }
 
 function saveState(spool, state) {
-  if (!ownsState(spool, state)) { count('flusher_lost_ownership'); return false; }
-  return atomicWrite(statePath(spool), JSON.stringify(state));
+  assertOwner(spool, state);
+  if (!atomicWrite(statePath(spool), JSON.stringify(state))) return false;
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
+  return true;
 }
 
 /* § 2.3 — exclusive create, atomic on both platforms. A starting flusher that loses the create
@@ -1943,8 +1974,29 @@ function acquireLock(spool, state) {
   return tryCreate();
 }
 
-function touchLock(spool) {
+/* § 2.3 — the lock's mtime is the liveness every hook reads, so it is renewed at the start of
+ * every pass AND immediately before every request the pass awaits: the health probe and each
+ * batch POST, the 413 retry included. Once per pass was not enough — one pass on a slow ingest
+ * awaits several requests of up to K.REQUEST_MS each, so a LIVE flusher's lock aged past
+ * K.LOCK_STALE_MS and a hook correctly started a second flusher. Renewed here, a live lock ages
+ * between touches by at most one request plus one K.FLUSH_MS sleep plus the pass's local work,
+ * which is the bound § 2.3's 90 s derivation rests on. Ownership is re-checked FIRST, so an
+ * ex-owner never freshens a lock that is no longer its own. */
+function renewLock(spool, state) {
+  assertOwner(spool, state);
   try { const t = new Date(now()); fs.utimesSync(path.join(spool, 'flusher.lock'), t, t); } catch (e) { /* removed under us; ownership still governs */ }
+}
+
+/* Release the lock ONLY while it still names this process. An exiting ex-owner that unlinked
+ * unconditionally deleted the NEW owner's lock, and the next hook to fire then started a third
+ * flusher. Read-then-unlink is not atomic, and does not need to be: § 2.3's acquire rule replaces
+ * a lock only once it is K.LOCK_STALE_MS old, which a lock renewed by its live owner is not. */
+function releaseLock(spool, state) {
+  const lock = path.join(spool, 'flusher.lock');
+  try {
+    const held = JSON.parse(fs.readFileSync(lock, 'utf8'));
+    if (held && held.pid === process.pid && held.started_at === state.owner_started_at) fs.unlinkSync(lock);
+  } catch (e) { /* absent or unreadable: nothing of ours to release */ }
 }
 
 /* ── The counter sink fold (§ 11.1) ──────────────────────────────────────────────────────────
@@ -2391,7 +2443,7 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
 }
 
 function writeSnapshot(spool, state, ix) {
-  if (!ownsState(spool, state)) { count('flusher_lost_ownership'); return; }
+  assertOwner(spool, state);
   atomicWrite(path.join(indexDir(spool), 'snapshot.json'), JSON.stringify({
     taken_at: rfc3339(now()), bucket: ix.bucket, offset: ix.offset,
     entries: [...ix.calls.values()], tombstones: [...ix.tombstones.values()],
@@ -2404,14 +2456,39 @@ function writeSnapshot(spool, state, ix) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* The flusher's own process-local counters are part of the same totals the hook processes
- * contribute through the sink. */
+ * contribute through the sink.
+ *
+ * A FOLD IS NOT DELIVERY UNTIL A STATE.JSON WRITE LANDS. Folding moves a count out of `C`, the
+ * one place the exit path can still flush it from, into `state.counters`, which reaches the
+ * heartbeat only through a later `saveState`. A pass that folds and then never saves — a
+ * takeover between its last ownership check and its save, or a pass that fails and a shutdown
+ * before the next — used to take those counts with it, and the count most exposed is the one
+ * that reports a loss: `spool_dropped_events` from `enforceSpoolBounds` is folded immediately
+ * before the save (§ 0 item 9). `FOLDED_UNSAVED` records what has been folded since the last
+ * write that landed; `saveState` clears it, and `unfoldUnsaved` hands it back to `C`/`P` for the
+ * exit flush. */
 function foldLocalCounters(state) {
-  for (const [k, v] of Object.entries(C)) { state.counters[k] = (state.counters[k] || 0) + v; delete C[k]; }
+  for (const [k, v] of Object.entries(C)) {
+    state.counters[k] = (state.counters[k] || 0) + v;
+    FOLDED_UNSAVED.c[k] = (FOLDED_UNSAVED.c[k] || 0) + v;
+    delete C[k];
+  }
   for (const [k, v] of Object.entries(P)) {
     if (!state.predicates[k]) state.predicates[k] = { true: 0, false: 0 };
     state.predicates[k].true += v.true; state.predicates[k].false += v.false;
+    if (!FOLDED_UNSAVED.p[k]) FOLDED_UNSAVED.p[k] = { true: 0, false: 0 };
+    FOLDED_UNSAVED.p[k].true += v.true; FOLDED_UNSAVED.p[k].false += v.false;
     delete P[k];
   }
+}
+
+function unfoldUnsaved() {
+  for (const [k, v] of Object.entries(FOLDED_UNSAVED.c)) C[k] = (C[k] || 0) + v;
+  for (const [k, v] of Object.entries(FOLDED_UNSAVED.p)) {
+    if (!P[k]) P[k] = { true: 0, false: 0 };
+    P[k].true += v.true; P[k].false += v.false;
+  }
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
 }
 
 async function flusherMain() {
@@ -2434,7 +2511,7 @@ async function flusherMain() {
    * different events, which is the ordering-key collision D2-MUST #4 forbids. */
   if (!atomicWrite(statePath(spool), JSON.stringify(state))) {
     logLine(spool, 'flusher', 'cannot write state.json; exiting rather than running unowned');
-    try { fs.unlinkSync(path.join(spool, 'flusher.lock')); } catch (e) { /* nothing to release */ }
+    releaseLock(spool, state);
     return;
   }
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
@@ -2459,7 +2536,7 @@ async function flusherMain() {
   while (running) {
     const atMs = now();
     try {
-      touchLock(spool);
+      renewLock(spool, state);
       foldCounterSink(spool, state);
       foldLocalCounters(state);
 
@@ -2468,7 +2545,11 @@ async function flusherMain() {
       expireOpenFacts(ctx, ix, atMs);
       writeSnapshot(spool, state, ix);
 
-      if (configOk && atMs - lastHealth > 600000) { lastHealth = atMs; await refreshHealth(config, selftest); }
+      if (configOk && atMs - lastHealth > 600000) {
+        lastHealth = atMs; renewLock(spool, state);
+        await refreshHealth(config, selftest);
+        assertOwner(spool, state);   // resumed from an await: see assertOwner's header
+      }
 
       if (atMs >= waitUntil && configOk && config.enabled !== false) {
         const drained = await drainOnce(config, spool, state, atMs);
@@ -2490,6 +2571,14 @@ async function flusherMain() {
       foldLocalCounters(state);
       saveState(spool, state);
     } catch (e) {
+      if (e instanceof LostOwnership) {
+        /* § 2.3 — another flusher owns the seat: stop sending, write nothing, exit 0. The
+         * count reaches the heartbeat through the counter sink below, never through state.json,
+         * which is no longer this process's to write. */
+        count('flusher_lost_ownership');
+        logLine(spool, 'flusher', `lost ownership: ${e.message}; sending nothing more, writing nothing more, exiting`);
+        break;
+      }
       logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
     }
     // A TEST SEAM, and a deliberately inert one: it breaks the loop after a completed pass and
@@ -2498,7 +2587,26 @@ async function flusherMain() {
     if (process.env.FLEET_REPORTER_ONE_PASS) break;
     await sleep(K.FLUSH_MS);
   }
-  try { fs.unlinkSync(path.join(spool, 'flusher.lock')); } catch (e) { /* another owner already replaced it */ }
+  /* Counts that never reached a state.json this process wrote go to the counter sink the next
+   * owner folds, the path hook processes use: those still in `C`, and those folded out of it since
+   * the last save that landed (`unfoldUnsaved`). After a clean pass that is nothing, because the
+   * pass folds before its save. After a lost-ownership exit it is the loss itself plus whatever
+   * the abandoned passes counted. Some of that may describe work the new owner redoes and counts
+   * again (a corrupt line it re-disposes); that over-count is the tolerable direction, because
+   * discarding it would also discard losses nobody redoes.
+   *
+   * WHAT THE OWNERSHIP CHECKS DO NOT COVER. Every await is followed by one (see assertOwner's
+   * header), so an ex-owner resuming from a request acts on nothing. The synchronous work between
+   * a pass's last check and its save — the heartbeat, `enforceSpoolBounds`, `reapOldBuckets` — has
+   * no await and does local file operations only, but a new owner can still claim state.json
+   * inside it, and the save then throws. Of what that pass did: a spool bucket it dropped is
+   * still COUNTED, because the fold's count comes back here and reaches the sink. A counter
+   * bucket it reaped by offsets the new owner had not folded is LOST, and uncounted: the hook
+   * counter lines in it reach no total. A heartbeat it spooled, carrying this process's totals,
+   * is sent by the new owner. That window is narrowed to one pass's local work, not closed. */
+  unfoldUnsaved();
+  flushCounters(spool, 'flusher');
+  releaseLock(spool, state);
 }
 
 /* Every open fact has a ceiling, and each one's expiry is a WIRE EVENT this reporter emits —
@@ -2534,6 +2642,18 @@ function expireOpenFacts(ctx, ix, atMs) {
  * always attempts whatever is pending. */
 async function drainOnce(config, spool, state, atMs) {
   let sent = false;
+  /* EVERY request is preceded by the ownership check and the lock renewal (§ 2.3). The check
+   * does not close the race, it narrows it to one request: a new owner can claim state.json
+   * after this check and before the ingest answers, and that one in-flight batch then carries
+   * seqs the new owner may also assign. The ownership check after the await throws before
+   * anything acts on the answer, so an ex-owner disposes of nothing and sends no second request,
+   * and D2's `seq_collision` counts what the one request can still cause. */
+  const send = async (body) => {
+    renewLock(spool, state);
+    const res = await postBatch(config, body);
+    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner
+    return res;
+  };
   for (let round = 0; round < 8; round++) {
     const items = collectPending(spool, state, K.BATCH_EVENTS);
     if (!items.length) return { retry: false, sent };
@@ -2557,7 +2677,7 @@ async function drainOnce(config, spool, state, atMs) {
       advanceCursors(state, items, built.lastIdx >= 0 ? built.lastIdx : items.length - 1);
       continue;
     }
-    let res = await postBatch(config, built.body);
+    let res = await send(built.body);
 
     if (res.kind === 'too_large') {
       // § 11.5 — 413 gets exactly ONE adaptive retry: halve the batch and resend. If a SINGLE
@@ -2565,7 +2685,7 @@ async function drainOnce(config, spool, state, atMs) {
       // counted rather than blocking every event behind it forever.
       if (built.events.length > 1) {
         built = buildBatch(config, state, items, Math.max(1, Math.floor(built.events.length / 2)));
-        res = await postBatch(config, built.body);
+        res = await send(built.body);
       }
       if (res.kind === 'too_large' && built.events.length === 1) {
         quarantine(spool, 'rejected', JSON.stringify(built.events[0]));

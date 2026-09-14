@@ -173,8 +173,9 @@ class Seat:
         # generated worker source, which could only re-`utime` on WALL time — the very thing this
         # change exists to stop doing — and would silently be wrong the day a burst is given a
         # pinned clock. A duplicated primitive that cannot see the clock its hooks read buys a
-        # margin nothing is spending. § 17 is the guard instead: if the window is ever crossed,
-        # the sweep fails the run and names the leaked daemon rather than leaving it silent.
+        # margin nothing is spending. The suite's last block, the leaked-flusher sweep, is the guard
+        # instead: if the window is ever crossed, the sweep fails the run and names the leaked
+        # daemon rather than leaving it silent.
         if freeze:
             self.freeze_flusher(e.get("FLEET_REPORTER_NOW_MS"))
         return e
@@ -365,6 +366,12 @@ class Ingest:
         self.batches: list[dict] = []
         self.status = 202
         self.body_override: dict | None = None
+        # Seconds a POST is HELD after it is recorded and before it is answered: a slow ingest,
+        # which is the only condition under which a flusher's pass can outlast its own lock.
+        self.delay_s = 0.0
+        # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
+        self.gets = 0
+        self.get_delay_s = 0.0
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
         subprocess.run(
@@ -389,6 +396,9 @@ class Ingest:
                 return raw
 
             def do_GET(self):
+                outer.gets += 1
+                if outer.get_delay_s:
+                    time.sleep(outer.get_delay_s)
                 body = json.dumps({"accepted_schema_versions": [1],
                                    "server_time": "2026-08-24T00:00:00.000Z",
                                    "min_reporter_version": "0.1.0"}).encode()
@@ -406,6 +416,8 @@ class Ingest:
                     batch = {"_unparseable": raw[:200].decode("utf-8", "replace")}
                 outer.batches.append({"batch": batch, "auth": self.headers.get("Authorization", ""),
                                       "ctype": self.headers.get("Content-Type", "")})
+                if outer.delay_s:
+                    time.sleep(outer.delay_s)
                 st = outer.status
                 body = json.dumps(outer.body_override or {
                     "batch_id": batch.get("batch_id"), "accepted": len(batch.get("events", [])),
@@ -2204,7 +2216,301 @@ redgreen("the bucket is derived at the write (§ 11.1) and § 6.1's pattern admi
          f"earlier; § 6.1's pattern now admits `{doc_example}` and the reporter emits it")
 
 
-print("\n== 18. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+print("\n== 18. A FLUSHER THAT LOSES OWNERSHIP STOPS SENDING AND EXITS; A LIVE ONE KEEPS ITS LOCK FRESH (§ 2.3, card#9393) ==")
+# THE DEFECT THIS BLOCK EXISTS FOR. `seq` is correct only while exactly one process assigns it,
+# and § 2.3 makes state.json's owner fields the arbiter: a flusher that finds another owner
+# exits without writing. The reporter used to DETECT that (the save refused) and then carry on —
+# the drain kept posting from its in-memory `next_seq` and the loop kept running passes — so two
+# live flushers emitted overlapping seqs for one seat. The way a second flusher comes to exist
+# at all is the other half: the lock was touched once per pass, and one pass on a slow ingest
+# awaits several 15 s requests, so a LIVE flusher's lock could age past LOCK_STALE_MS and a hook
+# would correctly start another.
+#
+# A SLOW INGEST IS THE ONLY FIXTURE. `INGEST.delay_s` holds every POST before answering it; the
+# takeover is written WHILE the first POST is held, which is the real race (a new owner claims
+# state.json during a request), made deterministic by holding the request rather than by timing.
+# The spool holds enough events for several drain rounds (`BATCH_EVENTS` per POST): one real
+# hook line re-minted under fresh event ids, instead of hundreds of hook processes.
+OTHER_PID = 4194301                       # any pid that is not the flusher under test
+OTHER_STARTED = "2000-01-01T00:00:00.000Z"
+HOLD_S = 0.4
+
+
+def owned_seat(name: str, events: int, *, corrupt: bool = False) -> Seat:
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid=f"{name}_0"))
+    bucket = sorted(s.spool.glob("*.jsonl"))[0]
+    rec = next(json.loads(l) for l in bucket.read_text(encoding="utf-8").splitlines()
+               if l and json.loads(l)["e"]["kind"] == "tool.start")
+    with bucket.open("a", encoding="utf-8") as fh:
+        if corrupt:   # inside batch 1, behind real events: disposed of only once that POST is answered
+            fh.write("{torn line 9393\n")
+        for i in range(events):
+            rec["e"]["event_id"] = f"01K9393{i:019d}"
+            fh.write(json.dumps(rec) + "\n")
+    return s
+
+
+def take_over(s: Seat) -> bytes:
+    """Do what a second flusher does when it wins: replace the lock, then claim state.json."""
+    st = s.state()
+    (s.spool / "flusher.lock").write_text(json.dumps(
+        {"pid": OTHER_PID, "started_at": OTHER_STARTED, "seq_epoch": st["seq_epoch"]}), encoding="utf-8")
+    st["owner_pid"], st["owner_started_at"] = OTHER_PID, OTHER_STARTED
+    body = json.dumps(st).encode("utf-8")
+    tmp = s.spool / "state.json.takeover.tmp"
+    tmp.write_bytes(body)
+    os.replace(tmp, s.spool / "state.json")
+    return body
+
+
+def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_within: float,
+               hold_health: bool = False) -> dict:
+    """Run a real flusher against the held ingest and observe each POST as it arrives.
+
+    For every POST: the wall time it was seen and the lock's mtime at that moment. With
+    `takeover`, the other owner is written while POST 1 is held — or, with `hold_health`, while
+    the health probe is held instead (the POSTs are then not held). `exit_within` is how long
+    after the last request the process is given to exit on its own; one still running then is
+    SIGKILLed and reported as not exited (SIGTERM would let it finish its pass, which is not an
+    exit).
+    """
+    lock = s.spool / "flusher.lock"
+    lock.unlink(missing_ok=True)
+    INGEST.batches.clear()
+    INGEST.gets = 0
+    INGEST.delay_s, INGEST.get_delay_s = (0.0, HOLD_S) if hold_health else (HOLD_S, 0.0)
+    envx = {"FLEET_REPORTER_ONE_PASS": "1"} if one_pass else {}
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **envx),
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    posts: list[tuple[float, float | None]] = []
+    taken: bytes | None = None
+    quiet_since = time.time()
+    try:
+        while p.poll() is None:
+            n = len(INGEST.batches)
+            if n > len(posts):
+                seen = time.time()
+                try:
+                    mtime = lock.stat().st_mtime
+                except FileNotFoundError:
+                    mtime = None
+                posts.extend([(seen, mtime)] * (n - len(posts)))
+                quiet_since = seen
+                if takeover and taken is None and not hold_health:
+                    taken = take_over(s)
+            if hold_health and INGEST.gets and taken is None:
+                quiet_since = time.time()
+                if takeover:
+                    taken = take_over(s)
+            if time.time() - quiet_since > exit_within + HOLD_S:
+                break
+            time.sleep(0.01)
+        exited = p.poll() is not None
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        INGEST.delay_s = INGEST.get_delay_s = 0.0
+    lost_log = []
+    for f in sorted((s.spool / "log").glob("*.log")) if (s.spool / "log").exists() else []:
+        lost_log += [l for l in f.read_text(encoding="utf-8").splitlines() if "lost ownership" in l]
+    try:
+        lock_body = json.loads(lock.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        lock_body = None
+    return {"posts": posts, "n_posts": len(INGEST.batches), "exited": exited, "taken": taken,
+            "state_bytes": (s.spool / "state.json").read_bytes(),
+            "lost_counted": s.counters().get("flusher_lost_ownership", 0), "sink": s.counters(),
+            "corrupt_quarantined": _lines(s.spool / "quarantine" / "corrupt.jsonl"),
+            "lost_log": lost_log, "lock": lock_body}
+
+
+def _lines(f: Path) -> int:
+    return len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
+
+
+def refreshed_between_posts(posts) -> list[bool]:
+    """For POST k >= 2: was the lock touched AFTER POST k-1 was seen? Clock-free — both sides are
+    the wall clock, and a touch between posts lands at least HOLD_S after the previous arrival."""
+    return [m is not None and m > posts[k - 1][0] for k, (_, m) in enumerate(posts) if k >= 1]
+
+
+# Three drain rounds' worth, read from the reporter's own K: two full batches and one more event.
+N_EVENTS = 2 * int(subprocess.run(
+    ["node", "-e", f"process.stdout.write(String(require({json.dumps(str(REPORTER))}).K.BATCH_EVENTS))"],
+    capture_output=True, text=True, check=True).stdout) + 1
+
+# GREEN — ownership lost while POST 1 is held, NO one-pass seam: only the loss can end the process.
+g_a = drive_pass(owned_seat("own-lost-green", N_EVENTS, corrupt=True), REPORTER, takeover=True,
+                 one_pass=False, exit_within=1.5)
+eq("GREEN: ownership taken while POST 1 is in flight -> no further POST after that one",
+   1, g_a["n_posts"])
+eq("  … state.json still holds the new owner's bytes: the ex-owner wrote nothing after the loss",
+   g_a["taken"], g_a["state_bytes"])
+eq("  … and the process EXITED on its own (no one-pass seam, no signal)", True, g_a["exited"])
+eq("  … counting `flusher_lost_ownership` exactly once, in the counter sink the new owner folds",
+   1, g_a["lost_counted"])
+eq("  … and logging it exactly once", 1, len(g_a["lost_log"]))
+eq("GREEN: the exiting ex-owner leaves the lock that names the new owner in place",
+   OTHER_PID, (g_a["lock"] or {}).get("pid"))
+eq("GREEN: resuming from the answered POST, the ex-owner disposes of nothing in that batch — the "
+   "torn line is neither quarantined nor counted (the new owner disposes of it once)",
+   (0, None), (g_a["corrupt_quarantined"], g_a["sink"].get("spool_corrupt_lines")))
+
+# GREEN — no takeover, one pass of three held POSTs: the pass outlasts any single touch.
+g_b = drive_pass(owned_seat("own-touch-green", N_EVENTS), REPORTER, takeover=False, one_pass=True,
+                 exit_within=1.5)
+eq(f"GREEN: a pass of {g_b['n_posts']} POSTs each held {HOLD_S} s refreshes the lock between "
+   f"every pair of posts", True, g_b["n_posts"] >= 3 and all(refreshed_between_posts(g_b["posts"])))
+eq("  … and a flusher that still owns its lock releases it on exit", None, g_b["lock"])
+
+# RED 1 — the refusal returned and ignored, which is the reporter before card#9393: a save that
+# finds another owner writes nothing, and nothing stops the drain or the loop.
+p_own = plant_src(
+    (r"throw new LostOwnership\(`[^`]*`\);", "{ count('flusher_lost_ownership'); return false; }"),
+    (re.escape("  assertOwner(spool, state);\n  if (!atomicWrite(statePath(spool)"),
+     "  if (assertOwner(spool, state) === false) return false;\n  if (!atomicWrite(statePath(spool)"),
+    (re.escape("  assertOwner(spool, state);\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"),
+     "  if (assertOwner(spool, state) === false) return;\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"))
+r_a = drive_pass(owned_seat("own-lost-red", N_EVENTS), p_own, takeover=True, one_pass=False,
+                 exit_within=1.5)
+eq("RED: with the loss returned and ignored, the ex-owner keeps POSTing after the takeover",
+   True, r_a["n_posts"] > 1)
+eq("  … and never exits on its own", False, r_a["exited"])
+eq("  … and its count never reaches a surface anyone reads", 0, r_a["lost_counted"])
+
+# RED 2 — the lock renewed once per pass only, as before: no touch between posts.
+p_touch = plant_src((re.escape("    renewLock(spool, state);\n    const res = await postBatch(config, body);"),
+                     "    const res = await postBatch(config, body);"))
+r_b = drive_pass(owned_seat("own-touch-red", N_EVENTS), p_touch, takeover=False, one_pass=True,
+                 exit_within=1.5)
+eq("RED: renewed once per pass, the lock is NOT refreshed between held posts", True,
+   r_b["n_posts"] >= 3 and not any(refreshed_between_posts(r_b["posts"])))
+
+# RED 3 — the unconditional unlink on exit.
+p_unlink = plant_src((re.escape("if (held && held.pid === process.pid && held.started_at === state.owner_started_at) fs.unlinkSync(lock);"),
+                      "fs.unlinkSync(lock);"))
+r_c = drive_pass(owned_seat("own-unlink-red", N_EVENTS), p_unlink, takeover=True, one_pass=False,
+                 exit_within=1.5)
+eq("RED: an ex-owner that unlinks unconditionally deletes the NEW owner's lock", None, r_c["lock"])
+
+# RED 4 — no check on resuming from the POST: the answered batch is disposed of by an ex-owner.
+p_send = plant_src((re.escape("    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner\n"), ""))
+r_d = drive_pass(owned_seat("own-send-red", N_EVENTS, corrupt=True), p_send, takeover=True,
+                 one_pass=False, exit_within=1.5)
+eq("RED: with no check after the POST's await, the ex-owner quarantines and counts the torn line "
+   "the new owner will dispose of again — posts sent, quarantined, and spool-corrupt sink count",
+   (1, 1, 1),
+   (r_d["n_posts"], r_d["corrupt_quarantined"], r_d["sink"].get("spool_corrupt_lines")))
+
+# THE END OF A PASS. The heartbeat, the spool bounds and the bucket reaps run after the pass's
+# awaits; a takeover written while the HEALTH PROBE is held reaches them with no POST in between
+# (the seat is `enabled: false`, so no drain runs and the probe is the pass's one await). The seat
+# holds what makes each of them act: a spool bucket past the 8-day residency (dropped, and counted
+# as spool_dropped_events), a counter bucket as old that the pass's own fold consumes (reaped by
+# this process's offsets, which the new owner's state.json does not carry), and no heartbeat yet.
+STALE_BUCKET = time.strftime("%Y%m%d%H", time.gmtime(time.time() - 9 * 86400))
+HOOK_COUNTER = "x_card9393_hook_count"
+
+
+def tail_seat(name: str) -> Seat:
+    s = seat(name, enabled=False)
+    (s.spool / f"{STALE_BUCKET}.jsonl").write_text("".join(
+        json.dumps({"v": 1, "e": {"kind": "tool.start", "event_id": f"01K9393STALE{i:014d}"}}) + "\n"
+        for i in range(3)), encoding="utf-8")
+    (s.spool / "counters").mkdir(exist_ok=True)
+    (s.spool / "counters" / f"{STALE_BUCKET}.jsonl").write_text(json.dumps(
+        {"t": "2000-01-01T00:00:00.000Z", "p": "hook", "c": {HOOK_COUNTER: 5}, "k": {}}) + "\n",
+        encoding="utf-8")
+    return s
+
+
+def tail_effects(s: Seat, r: dict) -> dict:
+    return {"spool_bucket_kept": (s.spool / f"{STALE_BUCKET}.jsonl").exists(),
+            "counter_bucket_kept": (s.spool / "counters" / f"{STALE_BUCKET}.jsonl").exists(),
+            "heartbeats_spooled": sum(1 for e in s.events() if e["kind"] == "reporter.heartbeat"),
+            "spool_dropped_events_in_sink": r["sink"].get("spool_dropped_events"),
+            "hook_counter_in_sink": r["sink"].get(HOOK_COUNTER),
+            "lost_counted": r["lost_counted"], "exited": r["exited"]}
+
+
+T_TAIL = time.time()
+tail_green_seat = tail_seat("own-tail-green")
+g_t = drive_pass(tail_green_seat, REPORTER, takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
+e_gt = tail_effects(tail_green_seat, g_t)
+eq("GREEN: takeover while the health probe is held -> the ex-owner spools no heartbeat, drops no "
+   "spool bucket, reaps no counter bucket, and exits counting the loss once",
+   {"spool_bucket_kept": True, "counter_bucket_kept": True, "heartbeats_spooled": 0,
+    "spool_dropped_events_in_sink": None, "hook_counter_in_sink": 5, "lost_counted": 1, "exited": True},
+   e_gt)
+eq("  … state.json still holds the new owner's bytes", g_t["taken"], g_t["state_bytes"])
+
+# RED 5 — no check on resuming from the health probe: the whole end of the pass acts for an ex-owner.
+CHECK_AFTER_HEALTH = re.escape("        assertOwner(spool, state);   // resumed from an await: see assertOwner's header\n")
+tail_red_seat = tail_seat("own-tail-red")
+r_t = drive_pass(tail_red_seat, plant_src((CHECK_AFTER_HEALTH, "")), takeover=True, one_pass=False,
+                 exit_within=1.5, hold_health=True)
+e_rt = tail_effects(tail_red_seat, r_t)
+eq("RED: with no check after the probe's await, the ex-owner drops the spool bucket, reaps the counter "
+   "bucket the new owner never folded (its hook count reaches no sink), and spools a heartbeat",
+   (False, False, None, 1), (e_rt["spool_bucket_kept"], e_rt["counter_bucket_kept"],
+                             e_rt["hook_counter_in_sink"], e_rt["heartbeats_spooled"]))
+# The same run is the GREEN of the exit path's unfold: it stands in for a takeover landing in the
+# synchronous window after the last check, where the drop happens and then the save throws.
+eq("GREEN: a drop folded into state.counters by a pass whose save then throws still reaches the "
+   "sink (the exit path hands folded-but-unsaved counts back)", 3, e_rt["spool_dropped_events_in_sink"])
+
+# RED 6 — the same, and the exit path flushes only what is still in C: the drop's count is lost.
+tail_unfold_seat = tail_seat("own-unfold-red")
+r_u = drive_pass(tail_unfold_seat, plant_src((CHECK_AFTER_HEALTH, ""),
+                                             (re.escape("  unfoldUnsaved();\n  flushCounters"), "  flushCounters")),
+                 takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
+e_ru = tail_effects(tail_unfold_seat, r_u)
+eq("RED: without the unfold, the bucket is dropped and its 3 events are counted nowhere (§ 0 item 9) "
+   "— bucket kept, dropped-events in sink, exited, and lost-ownership count",
+   (False, None, True, 1), (e_ru["spool_bucket_kept"], e_ru["spool_dropped_events_in_sink"], e_ru["exited"], e_ru["lost_counted"]))
+T_TAIL = time.time() - T_TAIL
+
+
+def _ages(posts):
+    return [round(t - m, 2) if m is not None else None for t, m in posts]
+
+
+redgreen("a flusher that loses ownership stops sending and exits (§ 2.3, card#9393)",
+         f"loss returned and ignored -> {r_a['n_posts']} POSTs in all, {r_a['n_posts'] - 1} of them "
+         f"after a takeover written while POST 1 was held, exited on its own={r_a['exited']}, "
+         f"flusher_lost_ownership in the sink="
+         f"{r_a['lost_counted']}",
+         f"thrown and caught by the loop -> {g_a['n_posts']} POST (the one in flight), state.json "
+         f"byte-identical to the new owner's, exited={g_a['exited']}, counted {g_a['lost_counted']}x "
+         f"in the sink, logged {len(g_a['lost_log'])}x")
+redgreen("a live flusher's lock is renewed before every request (§ 2.3, card#9393)",
+         f"once per pass -> lock age (s) at each of {r_b['n_posts']} POSTs held {HOLD_S} s: "
+         f"{_ages(r_b['posts'])} — it grows by a request per POST, so a slow enough ingest outlasts "
+         f"LOCK_STALE_MS inside one live pass",
+         f"before every request -> lock age (s) at each POST: {_ages(g_b['posts'])} — bounded by one "
+         f"request")
+redgreen("an ex-owner resuming from a POST disposes of nothing in the answered batch (§ 2.3, card#9393)",
+         f"no check after the await -> torn line quarantined {r_d['corrupt_quarantined']}x, "
+         f"spool_corrupt_lines={r_d['sink'].get('spool_corrupt_lines')} in the sink, before the save threw",
+         f"checked on resuming -> quarantined {g_a['corrupt_quarantined']}x, spool_corrupt_lines="
+         f"{g_a['sink'].get('spool_corrupt_lines')}")
+redgreen("the end of a pass does nothing for an ex-owner resuming from the health probe (§ 2.3, § 0 item 9, card#9393)",
+         f"no check after the await -> {e_rt}",
+         f"checked on resuming -> {e_gt} (the three health-probe runs took {T_TAIL:.1f} s)")
+redgreen("counts folded but never saved reach the sink on exit (§ 0 item 9, card#9393)",
+         f"exit flushes only C -> spool bucket kept={e_ru['spool_bucket_kept']}, "
+         f"spool_dropped_events in the sink={e_ru['spool_dropped_events_in_sink']}",
+         f"exit hands back folds since the last landed save -> spool bucket kept={e_rt['spool_bucket_kept']}, "
+         f"spool_dropped_events in the sink={e_rt['spool_dropped_events_in_sink']}")
+redgreen("an exiting ex-owner leaves the new owner's lock alone (§ 2.3, card#9393)",
+         f"unconditional unlink -> lock after exit = {r_c['lock']} (a hook would start a third flusher)",
+         f"unlink only while the lock names this process -> lock after exit names pid "
+         f"{(g_a['lock'] or {}).get('pid')}; a flusher that still owns it releases it (lock={g_b['lock']})")
+
+
+print("\n== 19. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
 # and that process loops until it is signalled. A teardown that quietly reaped them would leave

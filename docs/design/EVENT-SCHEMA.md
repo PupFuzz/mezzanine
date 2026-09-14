@@ -240,29 +240,48 @@ The heartbeat is only a liveness signal if its absence means something. Two mech
    it, and why the install rewrites the start and restarts the flusher when that value changes).
 2. **Opportunistic respawn** — every `hook` invocation checks `spool/flusher.lock`. If the lock is
    absent, or its `mtime` is older than **90 s**, the hook spawns a detached flusher (`windowsHide`,
-   per P-7). Derivation of 90 s: the flusher touches the lock at the start of every flush pass
-   (`touchLock` in `fleet-reporter/fleet-reporter.js`), so between touches a live flusher's lock ages by
-   one flush interval plus that pass's own awaited requests. 90 s = 1.5 heartbeat intervals, which is
-   long enough that a flusher busy in a 15 s POST is never declared dead, and under two heartbeat
+   per P-7). Derivation of 90 s: the flusher touches the lock at the start of every flush pass **and
+   immediately before every request it awaits** — the health probe and each batch POST, a 413 retry
+   included (`renewLock` in `fleet-reporter/fleet-reporter.js`) — so between touches a live flusher's
+   lock ages by at most one request (15 s, [§ 3.5](#35-transport-is-wan-always)) plus one flush interval
+   plus the pass's local work, however many requests one pass makes. Touching once per pass is not
+   enough: a pass can await several batch POSTs, so on a slow ingest a live flusher's lock would pass
+   90 s inside one pass and a hook would start a second flusher. 90 s = 1.5 heartbeat intervals, which
+   is long enough that a flusher busy in a 15 s POST is never declared dead, and under two heartbeat
    intervals, so a crashed flusher is replaced by the next hook fire.
 
 **Flusher exclusivity is mandatory, not advisory.** `flusher.lock` is created with
 `O_CREAT|O_EXCL` (`fs.openSync(path, 'wx')`), which is atomic on both platforms: exactly one process
-can win it. It holds `{"pid":…,"started_at":…,"seq_epoch":…}`, and its `mtime` is touched every
-flush pass. A starting flusher that loses the create reads the lock: if the `mtime` is newer than 90 s
+can win it. It holds `{"pid":…,"started_at":…,"seq_epoch":…}`, and its `mtime` is touched on item 2's cadence.
+A flusher that exits removes the lock only while its body still names that flusher's own `pid` and
+`started_at`; a lock that names another flusher is left in place, because removing it lets the next
+hook start a third. A starting flusher that loses the create reads the lock: if the `mtime` is newer than 90 s
 it **exits 0 immediately**; if it is older it re-stats, unlinks the lock **only if the `mtime` it
 read is still the one on disk**, and retries the exclusive create exactly once. Losing that retry is
 also an immediate exit 0.
 
 **The lock is not the correctness mechanism, though — ownership is.** `state.json` carries
-`owner_pid` and `owner_started_at`. Before every write of `state.json` the flusher re-reads it and
-writes only if it still names itself as owner; one that finds another owner increments
-`flusher_lost_ownership`, logs, and exits 0 without writing. Two flushers overlapping is therefore
+`owner_pid` and `owner_started_at`. Before every write of `state.json` (and of `index/snapshot.json`),
+before every lock touch, before every request it sends, and on resuming from every request it awaited
+(the health probe and each batch POST), the flusher re-reads it and proceeds only if it still names
+itself as owner. The check on resuming is what keeps a flusher taken over while it waited from acting on
+that pass's remaining work — disposing of the batch the ingest just answered, spooling a heartbeat,
+dropping spool buckets past the bounds of [§ 11.3](#113-rotation-and-the-overflow-policy), or deleting
+counter buckets the new owner has not folded. One that finds another owner sends nothing more and
+writes nothing more to either file: it increments `flusher_lost_ownership` once, in the counter sink
+([§ 11.1](#111-layout)) that the new owner folds, logs once, and exits 0. The flusher's own
+counters (`count()`) that it had folded into `state.json`'s totals but never saved go to that
+sink with it, so a bucket drop counted in a pass that could not save is still counted
+([§ 0](#0-overview) item 9). Two flushers overlapping is therefore
 **not** a tolerated state. It was, in an earlier draft, on the grounds that server-side dedup absorbs
 the duplicate events — but dedup absorbs *events*, not the `seq` counter. Two flushers each reading
 `next_seq = X` produce either a gap (and the seat renders `lossy` from nothing) or two events sharing
-one `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing. The residual window is the
-microseconds between that re-read and the `rename`, and even that is not assumed away. **D2:** the
+one `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing. Two residual windows
+remain: the microseconds between a re-read and the `rename`, and one request — a new owner can take
+over between the check before a send and the ingest's answer, and that one batch is not recalled.
+Neither is assumed away. A third window is local: a new owner can claim `state.json` during the
+synchronous work between a pass's last check and its save, and a counter bucket that pass deletes in
+it loses the hook counter lines the new owner had not folded. **D2:** the
 server treats a repeated `(seq_epoch, seq)` carrying two different `event_id`s as `seq_collision`,
 counted and badged ([§ 10.2](#102-ordering-seq-and-gap-detection)).
 
@@ -5275,7 +5294,7 @@ what a field on the wire means.
 | 15 | **Counters and predicates travel to the flusher through an hour-bucketed append-only sink** | let hook processes write `state.json` directly, or drop the counters that hooks compute | `state.json` is flusher-owned and the counters are computed in short-lived concurrent processes — the earlier draft specified both and reconciled neither, which left [§ 9.4](#94-the-predicate-constant-alarm)'s alarm unbuildable from this document. The sink reuses the spool's own primitive, so there is one concurrency discipline in the design rather than two | one extra small append per process exit, and counters up to one flush interval stale in a heartbeat. StatusLine-side counters remain a floor because the harness cancels renders — stated at [§ 9.3](#93-degradation-counters) rather than hidden |
 | 16 | **A `state.json` reset re-sends from the OLDEST spool bucket** | keep the cursor jump to the newest bucket, or count the skipped lines as loss | the jump discarded up to a full spool — days of events — with no counter and no badge, while [§ 0](#0-overview) item 9 promises a counter for every discarded event. Re-sending is nearly free: dedup absorbs it, and the 10-day window exceeds the 8-day residency cap by design | one extra drain after a rare event, visible as a `duplicates` spike and an `epoch_reset` badge. AT-17 asserts the id-set equality |
 | 17 | **Spool residency is capped by age (8 days) as well as by size (32 MiB)** | derive maximum residency from the size bound and the volume estimate alone | residency-from-size is rate-dependent, and the *quiet* seat is the dangerous one: at heartbeat-only volume a 32 MiB spool takes longer to fill than the 10-day dedup window, so its oldest event would age out of that window while still queued and be re-ingested as new. An age cap makes the dedup coupling exact and rate-independent | a quiet seat's week-old events are dropped and counted rather than kept; that is the same judgement the drop-oldest policy already makes. **Amended 2026-08-23 (round 6):** the fill time this row carried — "50+ days" — had been superseded twice in [§ 10.3](#103-idempotency-and-the-dedup-window) and never here, and [§ 11.3](#113-rotation-and-the-overflow-policy) and [§ 14](#14-every-number-and-where-it-comes-from) carried it too. It is **deleted** at all three rather than re-synced by hand: what this decision rests on is that the fill time exceeds the dedup window, not its value, and the value now has one home that the gate re-measures from the worked heartbeat |
-| 18 | **Exactly one flusher runs per seat: `O_EXCL` lock plus an ownership check on `state.json`** | tolerate brief overlap and let server-side dedup absorb the duplicates | dedup absorbs *events*, not the `seq` counter: two flushers each reading `next_seq = X` produce either a gap (the seat renders `lossy` from nothing) or a duplicated `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing | a losing flusher exits silently (counted). The residual microsecond window is not assumed away: the server counts `seq_collision` |
+| 18 | **Exactly one flusher runs per seat: `O_EXCL` lock plus an ownership check on `state.json`** | tolerate brief overlap and let server-side dedup absorb the duplicates | dedup absorbs *events*, not the `seq` counter: two flushers each reading `next_seq = X` produce either a gap (the seat renders `lossy` from nothing) or a duplicated `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing | a flusher that loses ownership stops sending and exits 0 (counted and logged). The residual windows, microseconds before a write and one in-flight request before a send, are not assumed away: the server counts `seq_collision` |
 | 19 | **`schema_version` rides every event as well as the batch** | keep it batch-only, or make D2 stamp it onto each event at ingest | the policy's rule 1 says *every event* carries it, and the stored event is what gets replayed, quoted and pasted; a field that tells a reader what the other fields **mean** is the last one to leave the durable unit. Making the store stamp it would put a compliance obligation in another document | ~20 B/event (~4 %). Equality with the batch is enforced, so it cannot drift |
 | 20 | **An unrecognised closed-enum value is coerced to the field's unknown member and counted, at both ends** | pass the harness's value through verbatim and let the ingest validate strictly | verbatim pass-through plus atomic batches means one unannounced harness value (`SessionStart.source: "fork"` was exactly this, and is now a known member) destroys up to 200 good events and quarantines them permanently. Coercion costs one mislabelled field | a genuinely new harness state is rendered as `unknown` until this document is updated — visible in `enum_value_unknown.<wire field>`, which is the edit's trigger |
 | 21 | **`agent_scope` is labelled from the documented `agent_id` payload field** | keep it permanently `null`, as an earlier draft did on the grounds that any presence-based inference repeats the 30-day outage | the outage was an **undocumented environment variable** with nothing watching it. This is a documented payload field, and it is watched: both branches ride the heartbeat and the predicate-constant alarm fires if it goes constant either way | if the harness starts or stops sending `agent_id` universally, the label is wrong until the alarm fires — which is precisely the instrument the incident lacked |
