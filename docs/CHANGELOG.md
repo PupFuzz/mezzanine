@@ -35,6 +35,12 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   point for claim-bearing motion and that motion bypassing it is NOT MECHANIZED, and adds § 14
   items 21–23 on the unstated parts of `fx-clear-trace`, `fx-snapshot-4` and `fx-degraded`, each
   blocking the lowest Appendix B gate of a test that replays the fixture or a fixture built on it.
+  `tools/design/verify-floor.py`'s G5 now requires **the harness** in the `Reads:` clause of every
+  Build bullet of a test that names a § 11 fixture or the harness, unless the clause names another
+  instrument (an Appendix B gate); a bullet naming no fixture, no harness and no instrument reds, and
+  an `fx-` name the fixture table does not declare reds as a control. Every such bullet in FLOOR.md
+  now lists the harness, AT-D3-12's lineage half lists the provenance gates it runs, and no gate
+  moved. `tools/design/verify-design-docs.selftest.py` plants both reds.
   No renderer calls the module yet; that is steps 5 and 6. **Installer action:** none; no migration.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
   served with every `{}` it was authored with.** The layout reader decoded the document

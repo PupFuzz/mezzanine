@@ -19,7 +19,9 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                Second, and bound BOTH WAYS to the FIXTURE NAMES of the
                                                suite a test names (read with `ast`, not grepped -- a
                                                grep is satisfied by the suite's own docstring); the
-                                               build order gates every artifact a test reads; the
+                                               build order gates every artifact a test reads, and
+                                               every Build bullet the harness drives declares the
+                                               harness or names another instrument; the
                                                animation-log schema's two homes; the episode walk's
                                                own episode and row counts
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
@@ -810,6 +812,7 @@ else:
                     f"— the gate-cell parse is broken and the ordering rule reads an empty population")
 
     BUILD_RE = re.compile(r"^- \*\*Build(?:\s*—\s*the\s+(.+?)\s+half[^:*]*)?:\*\*", re.M)
+    g5_bullets = []                      # (test, half, bullet text, declared names or None), in order
     for h in at_heads:
         name = re.match(r"(AT-D3-\d+)", h[1]).group(1)
         body = "\n".join(lines[h[3]:h[4]])
@@ -833,9 +836,11 @@ else:
                     f"the test states them, by Appendix B's own artifact names, and this gate holds "
                     f"the arithmetic. A test that declares nothing would otherwise be gated anywhere")
                 halves.setdefault(half, set())
+                g5_bullets.append((name, half, seg, None))
                 continue
             names = {re.sub(r"[`\s]+", " ", a).strip().lower()
                      for a in re.findall(r"\*\*([^*]+)\*\*", mr.group(1))}
+            g5_bullets.append((name, half, seg, names))
             for a in sorted(names - set(artifact_step)):
                 fail.append(f"G5: `{name}` declares that it reads `{a}`, which no Appendix B Artifact "
                             f"cell names. Either the artifact is built by no step — in which case "
@@ -1066,6 +1071,81 @@ if fx_declared:
                     f"fixture is described nowhere cannot be built from this document alone")
     for f in sorted(fx_declared - fx_used):
         fail.append(f"G5: `{f}` is declared as a fixture and used by no test")
+
+# G5, fifth half: A BUILD BULLET THE HARNESS DRIVES DECLARES THE HARNESS.  The ordering rule above
+# holds a test to the artifacts its `Reads:` clause declares, so a clause that omits one is a gate the
+# rule cannot see under -- and the harness is the artifact fixture-replaying tests kept omitting:
+# AT-D3-1's instrument half stood at step 2 while its GREEN needed step 3's harness.  Which bullets
+# the harness drives is decided from the document's own vocabulary, never from a list of bullets:
+#
+#   THE FIXTURES are section 11's fixture table (`fx_declared`, above).  A TEST any of whose Build
+#   bullets names one is a harness test, and EVERY bullet of it is harness-driven -- per test, not per
+#   bullet, because a split test's later halves replay "the same fixture" or "both runs above" by
+#   reference, and a per-bullet fixture match under-covers exactly those.  A test whose bullets name
+#   the harness itself (`the harness`, the bold name Appendix B builds it under) is a harness test too.
+#
+#   THE OTHER INSTRUMENTS are Appendix B's bold artifact names whose head noun is `gate` / `gates` --
+#   the other thing this document RUNS rather than reads.  A bullet whose `Reads:` clause names one is
+#   driven by that instrument and owes no harness.  The animation log is not among them: it records
+#   what the harness replays and replays nothing itself.
+#
+# A bullet the harness drives must declare `the harness`; a bullet that names no fixture, no harness
+# and no other instrument reds, because what runs it is undeclared and a check that guessed would pass
+# exactly the bullet it cannot read.  A backticked `fx-` token the fixture table does not declare is a
+# CONTROL: the predicate cannot recognise that fixture, so it cannot classify the test on it.  The
+# token is read wider than the table's own shape, so a malformed name is seen rather than skipped.
+G5_HARNESS = "the harness"
+g5_harness_bullets, g5_instrument_bullets = [], []
+g5_other_instruments = sorted(a for a in artifact_step if re.search(r"\bgates?$", a))
+if appB and G5_HARNESS not in artifact_step:
+    fail.append(f"G5 CONTROL: no Appendix B Artifact cell names `{G5_HARNESS}` in bold, so the "
+                f"artifact every harness-driven Build bullet must declare has no step, and the "
+                f"harness half would hold every bullet to a name nothing builds")
+if appB and fx_declared and G5_HARNESS in artifact_step:
+    g5_by_test = {}
+    for name, half, seg, reads in g5_bullets:
+        g5_by_test.setdefault(name, []).append((half, seg, reads))
+    for name, bl in g5_by_test.items():
+        fx_named = {t for _, seg, _ in bl for t in re.findall(r"`(fx-[^`\s]*)`", seg)}
+        for t in sorted(fx_named - fx_declared):
+            fail.append(f"G5 CONTROL: `{name}` names `{t}` in a Build bullet and section 11's fixture "
+                        f"table declares no such fixture, so the harness half cannot recognise what "
+                        f"the test replays and classifies it on the fixtures it does recognise, or on "
+                        f"none")
+        harness_test = bool(fx_named & fx_declared) or any(
+            re.search(r"\bthe harness\b", seg, re.I) for _, seg, _ in bl)
+        for i, (half, seg, reads) in enumerate(bl, 1):
+            if reads is None:            # reds above: a bullet with no Reads clause declares nothing
+                continue
+            label = (f"`{name}`'s Build bullet {i} of {len(bl)}"
+                     f"{' (the ' + half + ' half)' if half else ''}")
+            if reads & set(g5_other_instruments):
+                g5_instrument_bullets.append(label)
+            elif harness_test:
+                g5_harness_bullets.append(label)
+                if G5_HARNESS not in reads:
+                    fail.append(
+                        f"G5: {label} is driven by the harness — its test "
+                        f"{'replays ' + str(sorted(fx_named & fx_declared)) if fx_named & fx_declared else 'names the harness'}"
+                        f" — and its **Reads:** clause declares neither `{G5_HARNESS}` nor another "
+                        f"instrument ({g5_other_instruments}). A bullet that replays a fixture reads "
+                        f"the harness as surely as anything it asserts on; leave it out and the "
+                        f"ordering rule cannot see that the test needs step "
+                        f"{artifact_step[G5_HARNESS]}'s artifact, which is how AT-D3-1's instrument "
+                        f"half stood at step 2")
+            elif G5_HARNESS in reads:
+                g5_harness_bullets.append(label)
+            else:
+                fail.append(
+                    f"G5: {label} names no fixture from section 11's table, does not name the "
+                    f"harness, and declares no instrument in its **Reads:** clause (`{G5_HARNESS}`, "
+                    f"or one of {g5_other_instruments}). What runs the test is undeclared, so whether "
+                    f"its gate stands on the harness cannot be decided, and a check that guessed would "
+                    f"pass the one bullet it cannot read")
+    if not g5_harness_bullets:
+        fail.append("G5 CONTROL: no Build bullet was recognised as driven by the harness — the "
+                    "fixture names or the Build-bullet parse are unread, and the harness half would "
+                    "pass every bullet over an empty population")
 
 # -------------------------------------- G6. Appendix A counts + marker coverage ---
 appA = section_text("appendix-a--every-obligation-addressed-to-this-document") or ""
@@ -2543,6 +2623,10 @@ print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Re
       f"is where an undeclared read hides, and a count would hide it again")
 for _n, _a in g5_unread:
     print(f"    G5 residue — named but not declared as read · {_n}: `{_a}`")
+print(f"    G5 harness: {len(g5_harness_bullets)} Build bullets driven by the harness, each required "
+      f"to declare it; {len(g5_instrument_bullets)} driven by another instrument "
+      f"({g5_other_instruments}): {g5_instrument_bullets}. Classified from the fixture table, the "
+      f"harness's own name and Appendix B's gates — no bullet is listed in this tool")
 print(f"    G5 ordinal REDs: {g5_ord_total} across the acceptance tests, each sequence checked "
       f"CONTIGUOUS from Second. Which of them are bound to a suite is printed rather than counted — "
       f"a test whose REDs no fixture file claims has had its ENUMERATION checked and its EXECUTION "

@@ -94,6 +94,11 @@ because a gate can only be proven on a defect of its own class:
                without running it; a bare write this plant cannot rewrite -- another verb, another
                word order, or one outside the fence -- leaves the control silent and turns THIS
                plant red, never green.
+  `drop`    -- delete the anchored span outright, which is the class "a declaration a gate holds
+               the document to was left out".  card#7341 is why this exists: a Build bullet that
+               replayed a fixture and left the harness out of its `Reads:` clause stood below the
+               step that builds the harness, and G5 could not see it.  The span is read out of the
+               document, so this kind carries nothing it deletes.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -437,6 +442,34 @@ PLANTS = [
         "§ 8.1's stated spare bytes, which G3 re-derives as bound minus worst case",
         "re-derived from its own",
     ),
+    (
+        # card#7341.  G5's harness half: a bullet of a test that replays a fixture declares the
+        # harness.  The plant is placed on a half that replays its fixture BY REFERENCE ("the same
+        # fixture"), deliberately: a per-bullet fixture match passes this mutant, so only the per-test
+        # predicate the half uses can red it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\*\*Build — the strip half:\*\* the same fixture, with the status strip rendered\. "
+        r"\*\*Reads:\*\*)( \*\*the harness\*\*,)( the)",
+        "drop",
+        "the harness, removed from the `Reads:` clause of AT-D3-7's strip half, which G5's harness "
+        "half must report as a harness-driven bullet that does not declare it (card#7341)",
+        "is driven by the harness",
+    ),
+    (
+        # card#7341.  The same half's CONTROL: a fixture name the fixture table does not declare is
+        # one the predicate cannot recognise, so the test it drives cannot be classified on it, and
+        # G5 must say so rather than classify on what is left.  The suffix `rename` appends puts an
+        # underscore in the name, which the fixture closure's own `fx-[a-z0-9-]+` does not read at
+        # all -- so this red comes from the harness half's wider token or from nowhere.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(### AT-D3-7 .*?\*\*Build — the protocol half:\*\* replay `)(fx-[a-z0-9-]+)(`)",
+        "rename",
+        "the fixture AT-D3-7's protocol half replays, renamed to one section 11's fixture table does "
+        "not declare, which G5's harness-half CONTROL must report (card#7341)",
+        "section 11's fixture table declares no such fixture",
+    ),
 ]
 
 # PLANTS' shape plus a premise; the substring is the failure a WRONG gate would print, which the
@@ -496,6 +529,7 @@ MUTATIONS = {
                            + m.group(3)),
     "noun": lambda m: (m.group(1) + m.group(2) + ", and keeps a count of "
                        + re.search(r"`[a-z_]+`", m.group(2)).group(0) + m.group(3)),
+    "drop": lambda m: m.group(1) + m.group(3),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
