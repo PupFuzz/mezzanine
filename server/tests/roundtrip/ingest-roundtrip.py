@@ -653,11 +653,12 @@ def check_declaration(h):
 
     defective = h.work / "fleet-reporter-bad-check.js"
     src = REPORTER.read_text()
-    anchor = "protocol_agent_name_check: declaration.check,"
+    # The heartbeat's member, and not `runSelftestChecks`' detail object, which spells the same key.
+    anchor = "    protocol_agent_name_check: declaration.check,\n    degraded:"
     if not record("declaration RED plant found its target in fleet-reporter.js", src.count(anchor) == 1,
                   "the heartbeat's check member moved; the RED below is not evidence"):
         return
-    defective.write_text(src.replace(anchor, "protocol_agent_name_check: 'verified',", 1))
+    defective.write_text(src.replace(anchor, "    protocol_agent_name_check: 'verified',\n    degraded:", 1))
     beats = run("magento", str(roster), script=defective)
     record("declaration RED — a check value outside § 3.1's set is refused: nothing stored, REJECTED.txt written",
            not beats and (h.spool / "REJECTED.txt").exists(), f"{len(beats)} heartbeats stored")
