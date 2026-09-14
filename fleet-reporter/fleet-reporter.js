@@ -290,9 +290,8 @@ function loadConfig(p) {
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
   }
-  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) {
-    errors.push('protocol_agent_name must be null or a slug of at most 48 B (§ 3.1)');
-  }
+  // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
+  // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
   return { config: c, errors };
 }
 
@@ -306,15 +305,26 @@ function loadConfig(p) {
  * subcommand run. A roster read is a file read of another product's config, and a hook has no
  * budget for it (P-5).
  *
- * D1-SILENT: a `protocol_agent_name` that is PRESENT AND MALFORMED — not a string, not a slug, over
- * 48 B. § 3.1's state table has no row for it. `loadConfig` refuses it like any other row's bound
- * (so `config_readable` fails and the flusher sends nothing, as for every invalid row), and the value
- * resolves as `undeclared` here, so a heartbeat spooled while the config is wrong never carries a
- * value the ingest would refuse once the config is fixed and the spool drains: one over-bound name
- * would cost its whole 200-event batch (§ 12.4). */
+ * A MALFORMED NAME — PRESENT, but not a string, not a slug, or over § 6.14's bound — DECLARES
+ * NOTHING, AND THE SEAT KEEPS REPORTING (§ 3.1's state table). It is not a config error:
+ * `config_invalid` means the flusher spools and sends nothing (§ 9.3), and a typo in an optional
+ * label must not silence a seat whose identity and ingest are fine. So it resolves as `undeclared`,
+ * and the heartbeat never carries a value the ingest would refuse — one over-bound name would cost
+ * its whole 200-event batch (§ 12.4). What says it is wrong is `protocol_agent_name_in_roster`,
+ * which FAILS, with the value named in the `selftest` subcommand's `detail` and nowhere else: not on
+ * the wire, and not in the seat's log. */
 function declaredAgentName(cfg) {
   const v = cfg.protocol_agent_name;
   return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;
+}
+
+/* The malformed declaration as `selftest`'s detail shows it, or null when the key is absent, null or
+ * valid. A string is shown verbatim (the subcommand's output is redacted like every other); any other
+ * JSON value by its type alone, e.g. `<number>`. */
+function malformedAgentName(cfg) {
+  const v = cfg.protocol_agent_name;
+  if (v === undefined || v === null || declaredAgentName(cfg) !== null) return null;
+  return typeof v === 'string' ? v : `<${Array.isArray(v) ? 'array' : typeof v}>`;
 }
 
 /* § 3.1's resolution order. `$COORD_CONFIG` SET IS THE WHOLE ANSWER — an empty value included, since
@@ -343,21 +353,21 @@ function readRosterNames(file) {
 }
 
 /* One row of § 3.1's state table, and its § 9.3 counter. The counter is counted once per resolution:
- * in the flusher that is once per start, so the heartbeat's monotonic value reads 1 for a flusher
- * that found the state; in the `selftest` subcommand nothing flushes the counters, so it costs no
- * count on the seat. */
+ * in the flusher that is one count per flusher START, and like every counter it accumulates across
+ * restarts in state.json, so the heartbeat's value is the number of starts that found the state; in
+ * the `selftest` subcommand nothing flushes the counters, so it costs no count on the seat. */
 function resolveDeclaration(cfg) {
   const name = declaredAgentName(cfg);
-  if (name === null) return { name: null, check: 'undeclared', roster: null, via: null, error: null };
+  if (name === null) return { name: null, check: 'undeclared', roster: null, via: null, error: null, malformed: malformedAgentName(cfg) };
   const site = rosterSite();
   const roster = site.path === null ? { names: null, error: site.error || 'no roster site on this platform' } : readRosterNames(site.path);
   if (roster.names === null) {
     count('protocol_agent_name_unchecked');
-    return { name, check: 'unchecked', roster: site.path, via: site.via, error: roster.error };
+    return { name, check: 'unchecked', roster: site.path, via: site.via, error: roster.error, malformed: null };
   }
-  if (roster.names.includes(name)) return { name, check: 'checked', roster: site.path, via: site.via, error: null };
+  if (roster.names.includes(name)) return { name, check: 'checked', roster: site.path, via: site.via, error: null, malformed: null };
   count('protocol_agent_name_disagreed');
-  return { name, check: 'disagreed', roster: site.path, via: site.via, error: null, roster_names: roster.names };
+  return { name, check: 'disagreed', roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -2615,6 +2625,9 @@ async function flusherMain() {
   const started = runSelftestChecks(config, cp);
   let selftest = started.results;
   const declaration = started.declaration;   // § 3.1: read at flusher start, and never again per flush
+  // Loud on the seat's own surface, once per start, and WITHOUT the value: D1 § 3.1 gives the value
+  // one home, the `selftest` subcommand's detail.
+  if (declaration.malformed !== null) logLine(spool, 'flusher', 'protocol_agent_name is not a valid declaration (§ 3.1) — heartbeating as undeclared; `selftest` names the value');
   let lastHeartbeat = 0, lastHealth = 0, healthEveryMs = K.HEALTH_MS, attempt = 0, waitUntil = 0, running = true;
   const stop = () => { running = false; };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
@@ -3099,15 +3112,16 @@ function runSelftestChecks(config, cp) {
   detail.tls_verify = Object.assign({ reached: null }, t.detail);
   results.schema_version_accepted = null;
   detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, accepted_schema_versions: null, http_status: null };
-  // § 6.14: `fail` on `disagreed` and on nothing else — a `pass` states that no disagreement was
-  // found, and `protocol_agent_name_check` says whether a roster was read at all. With no config
-  // there is no declaration to check, so nothing was measured (only the subcommand can reach that:
-  // the flusher never starts without a config).
+  // § 6.14: `fail` on `disagreed` and on a malformed declaration, and on nothing else — a `pass` states
+  // that no disagreement was found, and `protocol_agent_name_check` says whether a roster was read at
+  // all. With no config there is no declaration to check, so nothing was measured (only the subcommand
+  // can reach that: the flusher never starts without a config).
   const declaration = config ? resolveDeclaration(config) : null;
-  results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' : null;
+  results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;
   detail.protocol_agent_name_in_roster = declaration
     ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
-      read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names }
+      read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names,
+      malformed_declaration: declaration.malformed }
     : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
   return { results, detail, declaration };
 }

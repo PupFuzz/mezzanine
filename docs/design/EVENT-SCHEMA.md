@@ -501,7 +501,7 @@ framework's, in another repository, and it can move without a single check here 
 | `checked` | declared, a roster is readable here, and the name is a member of it | the name, and `checked` | — |
 | `unchecked` | declared, and **no roster is readable here** | the name, and `unchecked` — ⛔ **never the field silently omitted**, which is the whole of what this state exists to prevent | `protocol_agent_name_unchecked` ([§ 9.3](#93-degradation-counters)) |
 | `disagreed` | declared, a roster is readable here, and the name is **not** a member of it | the name **exactly as declared**, and `disagreed` | `protocol_agent_name_disagreed` ([§ 9.3](#93-degradation-counters)) |
-| `undeclared` | the config declares no name | `null`, and `undeclared` | — |
+| `undeclared` | the config declares no **valid** name: the key is absent or `null`, or its value is **malformed** (the paragraph below) | `null`, and `undeclared` | — |
 
 **`checked` and `unchecked` both resolve; `disagreed` and `undeclared` do not**, and the asymmetry is
 the point. The declaration is the join's authority — the roster read is a guard against a typo, not
@@ -510,9 +510,21 @@ is the ordinary case for a seat box and the case (d) exists to serve. What such 
 claim to have been checked, so the state travels with the name to every consumer and a reader can see
 which of the two any drawn line rests on.
 
+**A malformed name declares nothing, and the seat keeps reporting.** A value that is present but is
+not a valid declaration — not a string, not the `slug` pattern, or over the bound
+[§ 6.14](#614-reporterheartbeat)'s row states — is `undeclared`: the heartbeat carries `null`, never
+the value, because the ingest would refuse a heartbeat carrying it and the whole batch with it
+([§ 12.4](#124-batches-are-atomic)). ⛔ **It is not a config error**: `config_readable`
+passes and `config_invalid` is not counted, because that badge means the flusher spools and sends
+nothing ([§ 9.3](#93-degradation-counters)), and a typo in an optional label must not silence a seat
+whose identity and ingest are sound. What says the declaration is wrong is the act below:
+`protocol_agent_name_in_roster` **fails**, and the `selftest` subcommand's `detail` names the value, a
+non-string by its type alone (`<number>`). The reporter writes the value there and nowhere else: not
+on the wire, and not in its log (card#9375).
+
 **The act that fails when the two identity surfaces disagree, named rather than implied.**
 `disagreed` fails the `selftest` check `protocol_agent_name_in_roster`
-([§ 6.14](#614-reporterheartbeat)'s member table) — the subcommand
+([§ 6.14](#614-reporterheartbeat)'s member table), and so does a malformed name — the subcommand
 [§ 2.1](#21-one-file-four-subcommands) runs at install and an operator runs on demand: **the act
 exits non-zero and names the check**, and the same result rides every heartbeat inside `selftest`, so
 the seat carries a named failing check for as long as the config stays wrong. ⚠ **A `pass` on that
@@ -2550,7 +2562,7 @@ against `degraded` — a member set stated nowhere is not implementable — one 
 | `sanitizer_fixtures` | every RED fixture redacts to its stated output | [§ 7.5](#75-red-fixtures--required-tests) |
 | `predicate_discrimination` | every predicate in [§ 9.4](#94-the-predicate-constant-alarm)'s table is present in `predicates` and has a criterion its own volume can reach | [§ 9.4](#94-the-predicate-constant-alarm) |
 | `harness_payload_keys` | every payload key this reporter reads is present in that hook's vendored fixture, and every enum value it recognises is a member of the declared set | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
-| `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which | [§ 3.1](#31-the-seat-config-file) |
+| `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on a **malformed** declaration ([§ 3.1](#31-the-seat-config-file)'s state table: `undeclared`, with the value named in the subcommand's `detail` and never on the wire), and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which | [§ 3.1](#31-the-seat-config-file) |
 
 **A check the subcommand could not measure is `not_measured`, and it is neither a pass nor a fail.**
 `tls_verify` and `schema_version_accepted` are measured by one `GET /api/ingest/health`
@@ -6684,8 +6696,9 @@ unsupported**: on the seat this was written on there is no reporter config at al
 example rather than a measured one. The conclusion is unchanged and the supporting claim was the
 weaker for being stated. So this section derives the name and stops there — and since
 `card#9296` the other end of the join exists: a seat DECLARES its own protocol agent name in its own
-config ([§ 3.1](#31-the-seat-config-file)), emitted on [§ 6.14](#614-reporterheartbeat)'s heartbeat,
-checked against the roster where one sits on the same box, and named *unchecked* where it does not.
+config ([§ 3.1](#31-the-seat-config-file)), emitted on [§ 6.14](#614-reporterheartbeat)'s heartbeat
+by a seat running a build that includes `card#9375`, checked against the roster where one sits on
+the same box, and named *unchecked* where it does not.
 ⛔ **That changes nothing about THIS producer and must not**: it holds no seat identity, acquires
 none, and emits no `seat_id` — the join is resolved by the consumer against the seat population, not
 by this route learning a mapping it has no source for, which is exactly why ruling (a) was rejected.

@@ -2766,8 +2766,9 @@ that neither end has to guess:
   and nowhere else.
 
 **`protocol_agent_name` is the seat→agent DECLARATION, and publishing it here is the whole of what
-this plane does with it.** ⭐ **`card#7957`'s ruling *(d)*, built on `card#9296`.** The seat declares
-its own protocol agent name in its own config and emits it on every heartbeat
+this plane does with it.** ⭐ **`card#7957`'s ruling *(d)*, built on the server's side on `card#9296`,
+and on the reporter's on `card#9375`.** The seat declares its own protocol agent name in its own
+config, and a seat running a build that includes `card#9375` emits it on every heartbeat
 ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file), [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat));
 the fold stores it against `(install_id, seat_id)` like every other heartbeat-carried fact and this
 object carries it. Four consequences, stated so neither end has to infer them:
@@ -3739,8 +3740,9 @@ than restated here. Neither object carries `state_version`, and neither emits a 
 
 **Names on these objects are PROTOCOL AGENT NAMES, and the mapping from one to a desk now EXISTS —
 on the SEAT object, as a DECLARATION, and nowhere else.** ⭐ **`card#7957`'s ruling *(d)*, built on
-`card#9296`.** The seat declares its own protocol agent name in its own config and emits it on every
-heartbeat ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file),
+the server's side on `card#9296`, and on the reporter's on `card#9375`.** The seat declares its own
+protocol agent name in its own config, and a seat running a build that includes `card#9375` emits it
+on every heartbeat ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file),
 [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)); this plane stores it against
 `(install_id, seat_id)` and publishes it, with its check state beside it, on
 [§ 8.2.1](#821-the-seat-state-object)'s object — the surface a consumer already reads to learn a desk
@@ -5551,7 +5553,8 @@ was written, has since been closed by operator ruling.
    because a GitHub-sourced *title* had to reach a desk, and there is no longer such a title. The
    agent-name→`seat_id` declaration `card#7957` ruled was still wanted — for the **thread line**, which
    is [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line)'s and not this merge's — so it was not
-   closed here, it moved off this item, and it was **built on `card#9296`**
+   closed here, it moved off this item, and it was **built on the server's side on `card#9296`, and on
+   the reporter's on `card#9375`**
    ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)). *(c)* ⭐ **The LAST third closed on `card#7582`: the board
    producer is designed**, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md), and the ruling this item
    asked for is that it is a **document of its own** — which is where

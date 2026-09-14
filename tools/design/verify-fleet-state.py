@@ -1619,8 +1619,9 @@ if _close_row:   # a missing row is G12's CONTROL above, which already names it
                       "declaring prose keeps the close table's cardinal matching")
 
 # ------------- G13. the declared agent-name join, across the two identity surfaces ----
-# card#9296 built card#7957's ruling (d): a seat DECLARES its own protocol agent name, D1 carries it
-# on the heartbeat, and this plane stores and publishes it.  That puts ONE value set in THREE homes
+# card#9296 specified card#7957's ruling (d) and built its server half, and card#9375 its reporter
+# half: a seat DECLARES its own protocol agent name, D1 carries it on the heartbeat, and this plane
+# stores and publishes it.  That puts ONE value set in THREE homes
 # across TWO documents -- D1 section 6.14's field-table row (the wire), section 6.4's `ENUM` (the
 # store) and section 8.2.1's row (the read surface) -- and card#7957's own finding was that NO ACT
 # FAILED when the two identity surfaces disagreed.  This is an act that fails.  Every population is

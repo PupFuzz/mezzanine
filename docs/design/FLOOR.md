@@ -1528,7 +1528,8 @@ section owes that card is the **form**, so that it is not invented at the moment
   several rooms is one plate naming them ([§ 4.1](#41-the-lobby--the-building-summary) row 1,
   card#9267), so the line's endpoints would be **floors** while
   the fact is about **agents** — and the join that exists resolves an agent name to a
-  **desk** and to nothing coarser (card#7957's ruling (d), built on card#9296), so a plate endpoint
+  **desk** and to nothing coarser (card#7957's ruling (d), built on the server's side on card#9296
+  and on the reporter's on card#9375), so a plate endpoint
   would be a guess laid over a resolution that is not one. A lobby line would be drawn from an
   unresolved name, which is [§ 5.7](#57-the-coordination-thread-line) property 1's guessed desk.
 - ⛔ **No row is added to [§ 6.2](#62-the-animation-table--the-closed-set) and none may be** until
@@ -4959,13 +4960,16 @@ reason to leave two readings live.
    surface at [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)), and it no longer feeds a
    title either, because **tier 2 was retired on card#9234**.
    ✅ **The agent-name→`seat_id` half of this item is DISCHARGED and carries nothing forward.** It
-   had already moved off the task title and onto the **thread line**; card#9296 built card#7957's
-   ruling *(d)* — [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s declared field, carried on
-   [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s heartbeat and published on
-   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s seat object — so
+   had already moved off the task title and onto the **thread line**; card#7957's ruling *(d)* is
+   built on the server's side on card#9296, and on the reporter's on card#9375 —
+   [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s declared field, carried on
+   [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s heartbeat by a seat running a build that
+   includes card#9375, and published on
+   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s seat object — so, for such a seat,
    [§ 5.7](#57-the-coordination-thread-line)'s resolve arm resolves and no line waits on a missing
    artifact. ⚠ **What is not discharged, and is not this item's:** whether a given fleet's seats
-   actually declare, which is a provisioning act ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)),
+   actually declare and run such a build, which is a provisioning act
+   ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)),
    and the three residuals [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)
    row 6 keeps.
 

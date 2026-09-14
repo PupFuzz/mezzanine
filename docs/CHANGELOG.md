@@ -59,13 +59,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `protocol_agent_name_unchecked` / `protocol_agent_name_disagreed`. `selftest` gains
   `protocol_agent_name_in_roster`, which fails on `disagreed` (exit 1) and names the roster file and
   its names in `detail`. A missing, unreadable or malformed roster file is `unchecked`. A malformed name
-  fails `config_readable`, and the heartbeat carries it as `undeclared`, never as a value the ingest
-  would refuse. The acceptance suite's § 19 builds AT-27 cases A–F with each RED; case F runs
+  declares nothing and the seat keeps sending: the heartbeat carries `undeclared` and `null`, never a
+  value the ingest would refuse, `config_readable` passes and `config_invalid` is not counted, and
+  `protocol_agent_name_in_roster` fails with the value in `detail` (a non-string by its type). D1 § 3.1's
+  state table and § 6.14's check row now state that case. The acceptance suite's § 19 builds AT-27 cases A–F with each RED; case F runs
   `INSTALL-LINUX.md`'s crontab line, read out of the runbook, under `sh -c` from an environment carrying
   no `COORD_CONFIG`. `server/tests/roundtrip/ingest-roundtrip.py` sends all four states through the real
   ingest and fold, and a check value outside the set is refused. D1 § 3.1's CHECKED leg and § 18.13
   row 6 now say the reporter half is built; the runbook's Step 6 and closing section, and the
-  fleet-reporter README, follow. **Installer action:** on each seat, replace
+  fleet-reporter README, follow. D2 and D3, which credited card#9296 with the whole of the declaration,
+  now credit card#9375 with the reporter half and say a seat sends the name only on a build that
+  includes it. **Installer action:** on each seat, replace
   `fleet-reporter.js` (runbook Step 1) and restart the flusher (Step 5), or its heartbeat keeps carrying
   no name. A seat that declares a name needs `protocol_agent_name` in its config (Step 2 already writes
   it). Nothing changes on the server.

@@ -624,7 +624,10 @@ config's `ingest_url` and `ca_file` (card#9373). Read its exit code by D1 § 6.1
 - **`rc=1` with `protocol_agent_name_in_roster` failing** — the declared `protocol_agent_name` is not
   a member of the roster the command read, which D1 § 3.1 calls `disagreed`.
   `detail.protocol_agent_name_in_roster` names the roster file (`roster`), which site it came from
-  (`read_via`: `$COORD_CONFIG` or `home`) and the names that roster holds (`roster_names`).
+  (`read_via`: `$COORD_CONFIG` or `home`) and the names that roster holds (`roster_names`). When
+  `detail.protocol_agent_name_in_roster.malformed_declaration` is not `null`, the check failed for
+  another reason: the declared value is not a valid name by D1 § 3.1, and that field shows the value,
+  or its type for a non-string. The seat still reports, as `undeclared`, until the config is fixed.
 - **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
   (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
   (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,

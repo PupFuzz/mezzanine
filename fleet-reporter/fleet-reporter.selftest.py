@@ -2925,22 +2925,91 @@ eq("discriminating control — case A with the declared name one byte off: case 
    act(at_c), (at_ctl["rc"], at_ctl["selftest"], dict(at_ctl["wire"] or {}, name=AT27_NAME)))
 eq("  … the name carried exactly as declared, typo and all", "magenta", (at_ctl["wire"] or {}).get("name"))
 
-# THE BOUND. § 6.14 states it as a figure because the ingest refuses a heartbeat over it; the reporter
-# refuses such a config, and never lets the value reach the wire.
+# THE BOUND. § 6.14 states it as a figure because the ingest refuses a heartbeat over it, so a value past
+# it — or any value that is not a valid declaration — never reaches the wire.
 _name_row = [l for l in DOC.splitlines() if l.startswith("| `protocol_agent_name` | slug | — |")][0]
 NAME_BOUND = int(re.search(r"≤ (\d+) B", _name_row).group(1))
 _bound_roster = {"roster": [{"name": "a" * NAME_BOUND}, {"name": "a" * (NAME_BOUND + 1)}, {"name": "Magento"}]}
 at_bnd = drive_at27(at27_box("at27-bound", declare="a" * NAME_BOUND, home=_bound_roster))
 eq(f"a name AT § 6.14's {NAME_BOUND} B bound is a valid declaration: config_readable passes and it is `checked`",
    ("pass", "checked"), (at_bnd["config_readable"], (at_bnd["wire"] or {}).get("check")))
-for label, bad_name in ((f"{NAME_BOUND + 1} B, one past the bound", "a" * (NAME_BOUND + 1)),
-                        ("not a lowercase slug", "Magento")):
-    d_bad = drive_at27(at27_box(f"at27-bad-{len(bad_name)}", declare=bad_name, home=_bound_roster))
-    eq(f"a name {label} fails config_readable", ("fail", True),
-       (d_bad["config_readable"], "config_readable" in d_bad["failing"]))
-    eq("  … and the heartbeat it spools carries null / `undeclared`, never the value the ingest would refuse",
-       (False, None, "undeclared"),
-       (bad_name in json.dumps(d_bad["wire"]), (d_bad["wire"] or {}).get("name"), (d_bad["wire"] or {}).get("check")))
+
+
+# A MALFORMED NAME DOES NOT SILENCE THE SEAT (D1 § 3.1's state table, card#9375 round 2). A present value
+# that is not a valid declaration declares nothing: the seat keeps reporting, as `undeclared`, and the act
+# that fails is `protocol_agent_name_in_roster`, whose `selftest` detail names the value. It is NOT a config
+# error — `config_invalid` means "spooling and sending nothing" to D1 § 9.3 and to D3's badge, so a seat
+# still sending would render falsely. Each seat runs one hook (whose config read would count
+# `config_invalid`) and two flushes against the suite's ingest, whose batches are the wire: a pass
+# spools its heartbeat after it sends, so the first pass's heartbeat reaches the wire on the second.
+def drive_malformed(name: str, declare, reporter: Path = REPORTER) -> dict:
+    s, env = box = at27_box(name, declare=declare, home=_bound_roster)
+    hook(s, "PreToolUse", pre(), **env)
+    before = len(INGEST.batches)
+    d = drive_at27(box, reporter=reporter)
+    flush(s, reporter=reporter, **env)
+    posted = INGEST.batches[before:]
+    hbs = [e["data"] for b in posted for e in b["batch"].get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    spooled = last_heartbeat(s) or {}
+    logs = "".join(f.read_text(encoding="utf-8") for f in sorted((s.spool / "log").glob("*.log")))
+    d.update(posts=len(posted), posted_wire=wire(hbs[-1]) if hbs else None, posted_text=json.dumps(posted),
+             log=logs, config_invalid=(spooled.get("counters", {}).get("config_invalid", 0),
+                                       s.state().get("counters", {}).get("config_invalid", 0),
+                                       s.counters().get("config_invalid", 0)))
+    return d
+
+
+MALFORMED = ((f"{NAME_BOUND + 1} B, one past the bound", "a" * (NAME_BOUND + 1), "a" * (NAME_BOUND + 1)),
+             ("not a lowercase slug", "Magento", "Magento"),
+             ("not a string", 48, "<number>"))
+malformed_seen = {}
+for label, bad_name, shown in MALFORMED:
+    d_bad = malformed_seen[label] = drive_malformed(f"at27-bad-{type(bad_name).__name__}-{len(str(bad_name))}", bad_name)
+    eq(f"a name {label} leaves the config valid: config_readable passes, and `config_invalid` is counted "
+       f"nowhere — the heartbeat, state.json, the counter sink", ("pass", (0, 0, 0)),
+       (d_bad["config_readable"], d_bad["config_invalid"]))
+    eq("  … and the seat still sends: its flush POSTs a batch whose heartbeat carries null / `undeclared` "
+       "beside a failing protocol_agent_name_in_roster, and no badge beyond the fresh seat's",
+       (True, want(None, "undeclared", "fail"), ["epoch_reset"]),
+       (d_bad["posts"] > 0, d_bad["posted_wire"], d_bad["degraded"]))
+    eq("  … and `selftest` fails that one check (exit 1), its detail naming the value — a non-string by its type",
+       (1, ["protocol_agent_name_in_roster"], shown, None, "undeclared"),
+       (d_bad["rc"], d_bad["failing"], (d_bad["detail"] or {}).get("malformed_declaration"),
+        (d_bad["detail"] or {}).get("declared"), (d_bad["detail"] or {}).get("protocol_agent_name_check")))
+    if isinstance(bad_name, str):
+        eq("  … and the value reaches neither the wire nor the seat's log: `selftest`'s detail is its only home",
+           (False, False, False), (bad_name in d_bad["posted_text"], bad_name in json.dumps(d_bad["wire"]),
+                                   bad_name in d_bad["log"]))
+eq("  … and the flusher's start log says the declaration is malformed and was sent as `undeclared`", True,
+   all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
+
+# RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
+_red_silent = plant(("  return { config: c, errors };\n}",
+                     "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors };\n}"))
+r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
+eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
+   "`config_invalid` counted", (0, "fail", True),
+   (r_silent["posts"], r_silent["config_readable"], any(r_silent["config_invalid"])))
+# RED 2 — the value passed through: the malformed name reaches the wire.
+_red_value = plant(("  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;", "  return v;"))
+r_value = drive_malformed("at27-bad-red-value", "Magento", reporter=_red_value)
+eq("RED: a reporter that sends the malformed value verbatim puts it on the wire", True,
+   "Magento" in r_value["posted_text"])
+# RED 3 — the value in the start log line.
+_red_log = plant(("heartbeating as undeclared; `selftest` names the value');",
+                  "heartbeating as undeclared; `selftest` names the value: ' + JSON.stringify(config.protocol_agent_name));"))
+r_log = drive_malformed("at27-bad-red-log", "Magento", reporter=_red_log)
+eq("RED: a start log line that names the value puts it in the seat's log", True, "Magento" in r_log["log"])
+_slug = malformed_seen["not a lowercase slug"]
+redgreen("a malformed declared name does not silence the seat, and its value stays off the wire (D1 § 3.1, card#9375)",
+         f"refused as a config error -> POSTs {r_silent['posts']}, config_readable={r_silent['config_readable']}, "
+         f"config_invalid (heartbeat, state, sink) {r_silent['config_invalid']}; value passed through -> "
+         f"'Magento' on the wire: {'Magento' in r_value['posted_text']}; value in the start log -> "
+         f"'Magento' in the log: {'Magento' in r_log['log']}",
+         f"POSTs {_slug['posts']}, posted heartbeat {_slug['posted_wire']}, config_readable={_slug['config_readable']}, "
+         f"config_invalid {_slug['config_invalid']}, selftest rc={_slug['rc']} failing {_slug['failing']} with "
+         f"malformed_declaration {[(d['detail'] or {}).get('malformed_declaration') for d in malformed_seen.values()]}")
 
 # CASE F — the SUPERVISED START. The flusher a healthy seat runs is the one its OS start launches, and
 # that start inherits nothing from the harness. On Linux the start definition is the crontab line
@@ -3042,7 +3111,7 @@ r_ok = drive_at27(at27_box("at27-red-checked", home=AT27_ROSTER_WITHOUT),
 eq("RED: a reporter that calls a non-member `checked` exits 0 with the check passing on a disagreeing seat",
    (0, "pass", "checked"), (r_ok["rc"], r_ok["selftest"], (r_ok["wire"] or {}).get("check")))
 r_pass = drive_at27(at27_box("at27-red-pass", home=AT27_ROSTER_WITHOUT), reporter=plant(
-    ("results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' : null;",
+    ("results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;",
      "results.protocol_agent_name_in_roster = declaration ? true : null;")))
 eq("RED: a selftest that passes `disagreed` exits 0 and the heartbeat's check passes, though the wire says "
    "`disagreed`", (0, "pass", "pass", "disagreed"),
