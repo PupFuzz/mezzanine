@@ -618,7 +618,7 @@ config's `ingest_url` and `ca_file` (card#9373). Read its exit code by D1 § 6.1
 
 - **`rc=0`** — every check passed. The install is verified.
 - **`rc=1`** — a check failed; `checks` names it and `detail` says why. A `tls_verify` fail with an
-  empty `detail.tls_verify.forbidden_spellings_present` means the ingest was reached and the TLS
+  empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
   handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
   `ca_file` that does not trust the ingest's certificate.
 - **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest

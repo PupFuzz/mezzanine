@@ -377,6 +377,11 @@ class Ingest:
         # that carries no set at all (a bad token, an outage page) — card#9373 tells those apart.
         self.accepted: list = [1]
         self.get_status = 200
+        # A per-GET script, consumed in arrival order before the defaults above apply: an entry may
+        # set `hold` (seconds) and `accepted`. It lets one flusher's successive probes answer
+        # differently without the suite racing that flusher to change a default between two of them.
+        # A held answer closes its connection: the reporter has usually abandoned it by then.
+        self.get_script: list[dict] = []
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
         subprocess.run(
@@ -402,19 +407,26 @@ class Ingest:
 
             def do_GET(self):
                 outer.gets += 1
-                if outer.get_delay_s:
-                    time.sleep(outer.get_delay_s)
+                step = outer.get_script.pop(0) if outer.get_script else {}
+                hold = step.get("hold", outer.get_delay_s)
+                if hold:
+                    time.sleep(hold)
                 if outer.get_status == 200:
-                    body = json.dumps({"accepted_schema_versions": outer.accepted,
+                    body = json.dumps({"accepted_schema_versions": step.get("accepted", outer.accepted),
                                        "server_time": "2026-08-24T00:00:00.000Z",
                                        "min_reporter_version": "0.1.0"}).encode()
                 else:
                     body = json.dumps({"error": "unauthorized"}).encode()
-                self.send_response(outer.get_status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                try:
+                    self.send_response(outer.get_status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except OSError:   # the probe's deadline passed and the reporter dropped the socket
+                    pass
+                if step.get("hold"):
+                    self.close_connection = True
 
             def do_POST(self):
                 raw = self._read()
@@ -656,6 +668,126 @@ redgreen("the one-shot selftest measures the ingest, and says when it could not 
          f'unreachable: {rep_dead["checks"]["schema_version_accepted"]}/rc={r_dead.returncode}; '
          f'401: {rep_401["checks"]["schema_version_accepted"]}/rc={r_401.returncode}; '
          f'no ca_file: tls_verify={rep_noca["checks"]["tls_verify"]}/rc={r_noca.returncode}')
+
+# (f) THE FLUSHER KEEPS ITS LAST MEASUREMENT, AND RE-PROBES SOONER WHEN A PROBE MEASURED NOTHING. The
+# heartbeat's `selftest` object carries two values, so a check the flusher sends as `fail` is read on
+# the seat as a failure (the ingest folds it into `selftest_failed`). A probe that times out, whose
+# kept-alive socket drops, or that gets an answer carrying no set has falsified nothing: the flusher
+# keeps the value its last probe MEASURED and re-probes on `K.HEARTBEAT_MS` instead of `K.HEALTH_MS`.
+# A probe that did measure overwrites, `false` included.
+#
+# THE TIMING IS SCALED ON A COPY, AND ONLY THE TIMING. The real cadence puts the second probe
+# `K.HEALTH_MS` after the first, which no suite can wait for. The copy rewrites the `K` intervals
+# the scenario runs on (FAST_K's keys) and no line of logic; every RED below is planted on top of
+# the same scaled copy.
+FAST_K = {"FLUSH_MS": 25, "HEARTBEAT_MS": 400, "REQUEST_MS": 800, "HEALTH_MS": 4000}
+HOLD_PAST_DEADLINE_S = 2 * FAST_K["REQUEST_MS"] / 1000
+RETRY_WITHIN_S = FAST_K["HEALTH_MS"] / 2000        # half the full cadence: a retry, not the next round
+WINDOW_S = 0.9 * FAST_K["HEALTH_MS"] / 1000        # past this a fixed-cadence flusher could probe again
+
+
+def fast_flusher(*defects) -> Path:
+    return plant_src(*[(rf"\b{k}: \d+,", f"{k}: {v},") for k, v in FAST_K.items()],
+                     *[(re.escape(old), new) for old, new in defects])
+
+
+def heartbeat_selftests(s: Seat) -> list[dict]:
+    """The `selftest` object of every heartbeat spooled so far — complete lines only, because the
+    flusher under observation may be mid-append."""
+    out = []
+    for f in sorted(s.spool.glob("*.jsonl")):
+        raw = f.read_bytes()
+        for line in raw[: raw.rfind(b"\n") + 1].splitlines():
+            e = json.loads(line)["e"] if line.strip() else {}
+            if e.get("kind") == "reporter.heartbeat":
+                out.append(e["data"]["selftest"])
+    return out
+
+
+def drive_probes(name: str, reporter: Path) -> dict:
+    """A long-lived flusher on an `enabled: false` seat (no drain, so the probe is its only request)
+    against scripted health answers: probe 1 accepts this version; probes 2 and 3 are held past the
+    probe deadline; probe 4 answers with a set that lacks the version. Heartbeats are split at the
+    moment a probe ARRIVES at the stub. The flusher is single-threaded and awaits each probe, so a
+    heartbeat spooled after probe k arrived was spooled after probe k-1 resolved."""
+    s = seat(name, enabled=False)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    INGEST.gets = 0
+    INGEST.get_script = [{}, {"hold": HOLD_PAST_DEADLINE_S}, {"hold": HOLD_PAST_DEADLINE_S},
+                         {"accepted": [999]}]
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False),
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    arrived: dict[int, float] = {}
+    split: dict[int, int] = {}
+    try:
+        started = time.time()
+        while p.poll() is None and time.time() - started < 30:
+            for k in (2, 3, 4):
+                if k not in arrived and INGEST.gets >= k:
+                    arrived[k] = time.time()
+                    split[k] = len(heartbeat_selftests(s))
+            if 4 in arrived and len(heartbeat_selftests(s)) > split[4]:
+                break
+            if 2 in arrived and 4 not in arrived and time.time() - arrived[2] > WINDOW_S:
+                break
+            time.sleep(0.01)
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        INGEST.get_script = []
+        s.freeze_flusher()
+    hbs = heartbeat_selftests(s)
+    return {"before": hbs[: split.get(2, len(hbs))],
+            "after_timeouts": hbs[split.get(2, len(hbs)): split.get(4, len(hbs))],
+            "after_refusal": hbs[split[4]:] if 4 in arrived else [],
+            "retry_s": round(arrived[3] - arrived[2], 2) if 3 in arrived and 2 in arrived else None}
+
+
+def pair(st: dict) -> tuple:
+    return (st.get("tls_verify"), st.get("schema_version_accepted"))
+
+
+g_f = drive_probes("flusher-keeps-last", fast_flusher())
+eq("precondition: the flusher's first probe measured both network checks, and a heartbeat says so",
+   ("pass", "pass"), pair(g_f["before"][-1]) if g_f["before"] else None)
+eq("GREEN: after probes that timed out, every heartbeat still reports the last measured values — "
+   "no false `schema_version_accepted` fail", (True, {("pass", "pass")}),
+   (bool(g_f["after_timeouts"]), {pair(x) for x in g_f["after_timeouts"]}))
+eq(f"GREEN: a probe that measured nothing re-probes on K.HEARTBEAT_MS, well inside the K.HEALTH_MS "
+   f"cadence (under {RETRY_WITHIN_S} s at the scaled {FAST_K['HEALTH_MS']} ms)", True,
+   g_f["retry_s"] is not None and g_f["retry_s"] < RETRY_WITHIN_S)
+eq("GREEN: a later probe that DID measure overwrites — an answer lacking this version turns the kept "
+   "pass into a fail", ("pass", "fail"), pair(g_f["after_refusal"][-1]) if g_f["after_refusal"] else None)
+
+# RED 1 — the defect verbatim, as #143 round 1 shipped it: every probe's result overwrites, null
+# included, and the cadence is K.HEALTH_MS whatever the probe measured.
+r_f = drive_probes("flusher-keeps-last-red-overwrite", fast_flusher(
+    ("          if (checks[c] === null) unmeasured = true;\n          else selftest[c] = checks[c];",
+     "          selftest[c] = checks[c];"),
+    ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = K.HEALTH_MS;")))
+eq("RED: a flusher that lets a timed-out probe overwrite heartbeats a false fail after it",
+   True, ("fail", "fail") in {pair(x) for x in r_f["after_timeouts"]})
+eq("  … and, on a fixed K.HEALTH_MS cadence, does not re-probe inside half of it", True,
+   r_f["retry_s"] is None or r_f["retry_s"] >= RETRY_WITHIN_S)
+
+# RED 2 — keep-last read as keep-FIRST: a measured value is never replaced, so a refusal that arrives
+# after a pass is hidden behind it.
+r_k = drive_probes("flusher-keeps-last-red-keepfirst", fast_flusher(
+    ("else selftest[c] = checks[c];", "else if (selftest[c] === null) selftest[c] = checks[c];")))
+eq("RED: a flusher that never replaces a measured value keeps reporting pass after the ingest "
+   "measurably refuses the version", ("pass", "pass"),
+   pair(r_k["after_refusal"][-1]) if r_k["after_refusal"] else None)
+redgreen("the flusher keeps the last MEASURED network checks and re-probes sooner when a probe measured "
+         "nothing (§ 6.14, card#9373 round 2; timing scaled on a copy)",
+         f"null overwrites + fixed cadence -> heartbeats after the timed-out probes "
+         f"{sorted({pair(x) for x in r_f['after_timeouts']})}, re-probe after {r_f['retry_s']} s; "
+         f"never replacing a measured value -> heartbeat after a refusing answer "
+         f"{pair(r_k['after_refusal'][-1]) if r_k['after_refusal'] else None}",
+         f"keep-last + K.HEARTBEAT_MS retry -> before {pair(g_f['before'][-1]) if g_f['before'] else None}, "
+         f"after timeouts {sorted({pair(x) for x in g_f['after_timeouts']})}, re-probe after "
+         f"{g_f['retry_s']} s (HEALTH_MS scaled to {FAST_K['HEALTH_MS']} ms), after a refusal "
+         f"{pair(g_f['after_refusal'][-1]) if g_f['after_refusal'] else None}")
 
 # RED — an http:// ingest_url is REFUSED at install (§ 3.5), not downgraded.
 s_http = seat("http-seat", ingest="http://127.0.0.1:9/api/ingest/events")

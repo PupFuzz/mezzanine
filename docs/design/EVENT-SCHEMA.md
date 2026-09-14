@@ -2565,9 +2565,19 @@ with the same TLS path, `ca_file` and deadline — and the subcommand runs it on
 **The subcommand's exit code:** `0` when every check is `pass`; `1` when any check is `fail`; `2` when
 none is `fail` and at least one is `not_measured`. An installer reading `2` has an install nothing
 has falsified and a verification that did not happen — re-run it once the ingest is reachable, and
-read the check's `detail` for the probe's error or status. The heartbeat's `selftest` object carries
-two values (the field row above), so a check the flusher has not measured rides the wire as `fail`;
-`not_measured` exists only in the subcommand's own report.
+read the check's `detail` for the probe's error or status.
+
+**The heartbeat keeps each network check at its last measured value.** The heartbeat's `selftest`
+object carries two values (the field row above), and `not_measured` exists only in the subcommand's own
+report. The flusher runs the same probe for the heartbeat. A probe that measures a check replaces that
+check's value, `fail` included. A probe that measures nothing for a check (its `not_measured` column
+above: a deadline, a dropped connection, an answer carrying no set) leaves the value the last measuring
+probe set, so a probe that falsified nothing never puts a `fail` on the wire. A check no probe has
+measured yet rides the wire as `fail`. While the last probe left either check unmeasured, the flusher
+probes again one heartbeat interval ([§ 9.1](#91-the-cadence-and-the-alarm)) after that probe began,
+instead of at its ordinary cadence (`K.HEALTH_MS` in `fleet-reporter/fleet-reporter.js`). The heartbeat
+is where the result is read, so a shorter interval would change nothing on the wire. A kept value is
+the last measurement, not a current one.
 
 **The keys are declared, not closed at the ingest, and the difference is deliberate.** The field-table
 row above is where this object's *shape* is stated — the value set, the key pattern, the per-key bound

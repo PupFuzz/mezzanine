@@ -30,10 +30,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   fails against a reached host is a `tls_verify` fail. `tls_verify` is the source posture and
   reachability together in one place, so a probe answer never turns a failing posture into a pass;
   that also holds for the heartbeat, where a successful send used to set it. The heartbeat's
-  `selftest` object keeps its two values, and an unmeasured check rides it as `fail`, as before.
+  `selftest` object keeps its two values, and the flusher keeps each network check at its last measured
+  value: a probe that measures nothing for a check (a deadline, a dropped connection, an answer with no
+  set) leaves the previous value in place, so it never sends a false `fail`. A check no probe has
+  measured yet rides the heartbeat as `fail`, as before. While a check is unmeasured the flusher probes
+  again one heartbeat interval later instead of at its ordinary `K.HEALTH_MS` cadence.
   `fleet-reporter/INSTALL-LINUX.md` Step 6 and the fleet-reporter README follow. The acceptance suite's
   § 1 drives an accepting stub, a stub whose set lacks the version, an unreachable ingest, a `401`, and
-  a seat with no `ca_file`, with a RED plant of the one-shot that never probes. **Installer action:**
+  a seat with no `ca_file`, with a RED plant of the one-shot that never probes. It also drives a
+  long-lived flusher whose probes time out after a measured pass and then meet a refusal, on a copy
+  with its intervals scaled, with REDs of a flusher that lets the timeout overwrite on a fixed cadence
+  and of one that never replaces a measured value. **Installer action:**
   none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1).
 
 - **card#9393** — **A flusher that loses ownership of `state.json` now stops sending and exits, as

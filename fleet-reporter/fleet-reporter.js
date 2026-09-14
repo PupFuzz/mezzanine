@@ -82,6 +82,9 @@ const K = {
   BACKOFF_MAX_MS: 120000,        // § 11.5
   RETRY_AFTER_CAP_S: 600,        // § 11.5
   REQUEST_MS: 15000,             // § 3.5 total request deadline
+  HEALTH_MS: 600000,             // § 6.14 names it — the flusher's health-probe cadence while its last
+                                 // probe measured both network checks; otherwise it re-probes on
+                                 // HEARTBEAT_MS (flusherMain). § 14 has no row for this figure
   CONNECT_MS: 5000,              // § 3.5 connect deadline
   GZIP_MIN: 8192,                // § 3.5
   LOCK_STALE_MS: 90000,          // § 2.3 1.5 heartbeat intervals
@@ -2423,8 +2426,9 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
   const predicates = {};
   for (const p of PREDICATES) predicates[p] = state.predicates[p] || { true: 0, false: 0 };
   const st = {};
-  // The wire object carries two values (§ 6.14's field row), so a check this flusher has not
-  // measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`.
+  // The wire object carries two values (§ 6.14's field row), so a check no probe of this flusher has
+  // yet measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`. Once
+  // measured, a check holds its last measured value (flusherMain), never null again.
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
   makeEmitter(cfg, spool)('reporter.heartbeat', null, {
     uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
@@ -2531,7 +2535,7 @@ async function flusherMain() {
   }
 
   let selftest = runSelftestChecks(config, cp).results;
-  let lastHeartbeat = 0, lastHealth = 0, attempt = 0, waitUntil = 0, running = true;
+  let lastHeartbeat = 0, lastHealth = 0, healthEveryMs = K.HEALTH_MS, attempt = 0, waitUntil = 0, running = true;
   const stop = () => { running = false; };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
 
@@ -2547,10 +2551,24 @@ async function flusherMain() {
       expireOpenFacts(ctx, ix, atMs);
       writeSnapshot(spool, state, ix);
 
-      if (configOk && atMs - lastHealth > 600000) {
+      if (configOk && atMs - lastHealth > healthEveryMs) {
         lastHealth = atMs; renewLock(spool, state);
-        await refreshHealth(config, selftest);
+        const { checks } = await refreshHealth(config);
         assertOwner(spool, state);   // resumed from an await: see assertOwner's header
+        /* KEEP THE LAST MEASUREMENT (card#9373). The heartbeat carries two values, so a check held
+         * at null rides the wire as `fail` and the seat shows a failure. A probe that measured a
+         * check overwrites it, `false` included; a probe that measured nothing for it (a deadline, a
+         * dropped kept-alive socket, an answer carrying no set) has falsified nothing, so the value
+         * the last measuring probe left stays. Before any probe has measured a check it is null and
+         * rides as `fail`. While anything went unmeasured the next probe comes one heartbeat interval
+         * after this one began rather than K.HEALTH_MS: the heartbeat is where the result is read, so
+         * probing more often changes nothing on the wire. */
+        let unmeasured = false;
+        for (const c of Object.keys(checks)) {
+          if (checks[c] === null) unmeasured = true;
+          else selftest[c] = checks[c];
+        }
+        healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;
       }
 
       if (atMs >= waitUntil && configOk && config.enabled !== false) {
@@ -2760,9 +2778,10 @@ function appendRejectedMarker(spool, line) {
  *
  * THE ONE PROBE BEHIND BOTH NETWORK CHECKS, for the flusher's heartbeat and for the one-shot
  * `selftest` alike (card#9373: the one-shot used to run none, so `schema_version_accepted` read
- * false and the install-time verification exited 1 on every correctly configured seat). It folds a
- * MEASUREMENT into `selftest` and returns the probe for a caller that reports detail. Each of the
- * two checks becomes true, false, or null — NOT MEASURED, which § 6.14 keeps distinct from a fail:
+ * false and the install-time verification exited 1 on every correctly configured seat). It returns the
+ * probe, whose `checks` is the MEASUREMENT; each caller decides what to do with it (the one-shot
+ * reports it as it stands, the flusher keeps a previous value over a null). Each of the two checks is
+ * true, false, or null — NOT MEASURED, which § 6.14 keeps distinct from a fail:
  *   - tls_verify: an HTTP answer arrived with verification on ⇒ reached. A TCP connection whose TLS
  *     handshake never completed ⇒ refused (false). No TCP connection, a deadline, or a failure after
  *     the handshake and before an answer ⇒ null: nothing about verification was learned. The source
@@ -2770,17 +2789,19 @@ function appendRejectedMarker(spool, line) {
  *   - schema_version_accepted: a 200 carrying an `accepted_schema_versions` array ⇒ whether it holds
  *     SCHEMA_VERSION. Any other answer (a 401 for a refused token, an outage page) carries no set, so
  *     it cannot refuse the version ⇒ null. */
-function refreshHealth(config, selftest) {
+function refreshHealth(config) {
   return new Promise((resolve) => {
-    const probe = { reached: null, http_status: null, accepted_schema_versions: null, error: null };
+    const probe = { reached: null, http_status: null, accepted_schema_versions: null, error: null, checks: null };
     let settled = false, timer = null, tcp = false, secured = false;
     const done = (error) => {
       if (settled) return;
       settled = true; clearTimeout(timer);
       if (error) probe.error = error;
-      selftest.tls_verify = tlsVerifyResult(probe.reached);
-      selftest.schema_version_accepted = Array.isArray(probe.accepted_schema_versions)
-        ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null;
+      probe.checks = {
+        tls_verify: tlsVerifyResult(probe.reached),
+        schema_version_accepted: Array.isArray(probe.accepted_schema_versions)
+          ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null,
+      };
       resolve(probe);
     };
     let url;
@@ -3010,7 +3031,8 @@ async function selftestMain() {
   // TLS path, `ca_file` and deadline), once — and only on a config that passed validation, because
   // an invalid one names no ingest this command may trust with the token (card#9373).
   if (results.config_readable) {
-    const probe = await refreshHealth(config, results);
+    const probe = await refreshHealth(config);
+    Object.assign(results, probe.checks);
     Object.assign(detail.tls_verify, { reached: probe.reached, probe_error: probe.error });
     Object.assign(detail.schema_version_accepted, { accepted_schema_versions: probe.accepted_schema_versions, http_status: probe.http_status });
   }
