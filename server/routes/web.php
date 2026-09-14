@@ -9,12 +9,19 @@ Route::get('/', fn () => redirect()->route('dashboard'));
 
 /*
  * Reachable once authenticated, deliberately NOT behind `mfa`: it is the screen a user with
- * no second factor is sent to, so gating it would be a redirect loop. It shows nothing but
- * the enrolment controls, which are Fortify's own routes under `password.confirm`.
+ * no second factor is sent to, so gating it would be a redirect loop. It renders one of three
+ * states — the enrolment controls (Fortify's own routes under `password.confirm`), the recovery
+ * codes after enabling, or a confirmed state — and the ⚠ paragraphs below own the last two.
  *
- * ⚠ IT NOW ALSO SHOWS THE RECOVERY CODES (card#9077), and that does not weaken the paragraph
- * above: the branch that renders them is only reachable after `two-factor.enable` has run, and
- * THAT route is `auth` + `password.confirm`. See the view.
+ * ⚠ IT NOW ALSO SHOWS THE RECOVERY CODES (card#9077): the branch that renders them is only
+ * reachable after `two-factor.enable` has run, and THAT route is `auth` + `password.confirm`. The
+ * view states how far that gate reaches — the session that ran it, not a later one.
+ *
+ * ⚠ A CONFIRMED ACCOUNT SEES NO ENROLMENT CONTROLS HERE (card#9445). The view renders a confirmed
+ * state with links onward instead, which is what keeps this route loop-free without a redirect: `mfa`
+ * sends only UNconfirmed accounts here, and a confirmed account that arrives by the back button or a
+ * bookmark is shown where to go rather than bounced. The confirm POST itself lands on the dashboard
+ * (`App\Http\Responses\TwoFactorConfirmedResponse`).
  */
 Route::middleware('auth')->group(function () {
     Route::view('/two-factor-enroll', 'auth.two-factor-enroll')->name('two-factor.enroll');
