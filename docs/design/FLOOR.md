@@ -129,7 +129,7 @@ it, and what it must never draw.
 | **MFA, login, session lifetime** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states what the floor does when a session **expires** ([§ 9](#9-failure-paths-and-their-observables)); it does not specify the second factor |
 | **Prod and sandbox provisioning, deploy** | D-13 and D-15 (`docs/PLAN.md § 5`), owned by the Mezzanine build agent |
 | **Operator ACLs — who may see which install** | [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 7 owns it: **all-or-nothing, for now**, by operator ruling on 2026-09-13, to be reopened before a second organisation's install reports in. Any MFA-authenticated user sees every install ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)), and this document renders exactly what the snapshot returns |
-| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times.** The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is still designed in no document in this repo. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 carries the question forward |
+| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times** — and narrowed a third time when card#7582 designed the board poller (ratified 2026-09-12), which this cell also said otherwise about until 2026-09-14. The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (card#7582, ratified 2026-09-12) and is not built. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 records the question closed by operator ruling, 2026-09-14 |
 | **Sound** | There is no audio in this design. A sound is an animation by another sense and would need its own rows in [§ 6.2](#62-the-animation-table--the-closed-set) with the same totality rule; adding one without them would be adding an un-driven cue. If audio is wanted it is a review decision, not an implementer's |
 | **Historical views, charts, trends** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) rules out the warehouse; the product answers *what is happening now*. The drill-down's timeline is a bounded window over retained events, not a history |
 | **Multi-tenant theming and per-user preferences** | Nobody has asked. ⚠ This row also said *layout customisation* until card#9208's reversal (2026-09-12): a room's design and a floor's composition are now operator-authored at runtime ([§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)), and what stays out is customisation **per viewer**. The one preference honoured is the platform's own `prefers-reduced-motion` ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)), because a state carried only by motion is a state some users cannot read |
@@ -5021,17 +5021,26 @@ reason to leave two readings live.
    configuration is built. `docs/PLAN.md § 2`'s *"current task linked to card/thread"* is answered by
    the title and the reference as text. **Reopens:** a board the floor's viewers can open.
 
-4. **⇢ Review / operator — the proposal's three-tier status fallback (carrying
-   [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 forward).**
-   The proposal is not in this repository and D2 declined to invent its tiers. This document renders
-   whichever tier `task.source` names and does not invent them either. **Blocks:** tier 1 of the
-   task title — a floor built today shows telemetry-derived titles everywhere, which is *visibly* a
-   floor whose board integration is dark rather than one that looks fine ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)).
-   **In the meantime:** tier 3 only, with `task.source` rendered so the tier is legible.
-   **Closes it:** the proposal's text, plus a ruling on where the **board** producer is designed — the
-   GitHub one no longer needs one ([D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), read
-   surface at [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)), and it no longer feeds a
-   title either, because **tier 2 was retired on card#9234**.
+4. **✅ CLOSED — the task title is the merge D2 § 4.9 specifies, and the proposal's three-tier status
+   fallback is not needed to define it (carrying
+   [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 forward).** ⭐ **Operator
+   ruling, 2026-09-14:** *"close"*. The proposal is not in this repository, D2 declined to invent its
+   tiers, and this document does not invent them either. **What it changes:** the definition is the
+   task-title merge card#7582 settled —
+   [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)'s tier 1 over
+   tier 3, numbered non-contiguously because **tier 2 was retired on card#9234** — and this document
+   renders whichever tier `task.source` names. **What remains:** building the **board** poller, a
+   build item rather than an open question. Its design is
+   [`docs/design/BOARD-TASK.md`](BOARD-TASK.md), and `BOARD-TASK.md § 10` names the conditions that
+   keep tier 1 dark until it is built; in that state a floor shows telemetry-derived titles with
+   `task.source` rendered, which is *visibly* a floor whose board integration is dark rather than one
+   that looks fine ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)).
+   **History:** this item blocked tier 1 of the task title and asked for the proposal's text plus a
+   ruling on where the board producer is designed. The GitHub producer needed no such ruling
+   ([D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), read surface at
+   [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)) and no longer feeds a title; card#7582
+   answered the board half with `BOARD-TASK.md` (ratified 2026-09-12); and the operator's ruling
+   closed the item without the proposal's text.
    ✅ **The agent-name→`seat_id` half of this item is DISCHARGED and carries nothing forward.** It
    had already moved off the task title and onto the **thread line**; card#7957's ruling *(d)* is
    built on the server's side on card#9296, and on the reporter's on card#9375 —
