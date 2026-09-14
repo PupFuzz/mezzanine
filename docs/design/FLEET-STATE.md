@@ -157,12 +157,12 @@ checked deploy requirement** rather than a sizing note.
 
 | Process | Kind | Cadence | Job | If it dies |
 |---|---|---|---|---|
-| **ingest** | HTTP request (PHP-FPM) | per batch | validate per [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order), write `events` + `batches`, the seat's **`head_event_id`**, and — only where it is still `NULL`, i.e. on the seat's first-ever event — the **seed of `fold_cursor_received_at`** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)), all in one transaction, return `202` | the reporter spools and retries ([D1 § 11.5](EVENT-SCHEMA.md#115-retry-and-backoff)); nothing is lost until a seat's 8-day residency cap |
+| **ingest** | HTTP request (PHP-FPM) | per batch | validate per [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order), write `events` + `batches`, the seat's **`head_event_id`**, and — only where it is still `NULL`, i.e. on the seat's first-ever event — the **seed of `fold_cursor_received_at`** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)), all in one transaction **whose first statement locks the seat's `seat_state` row** ([§ 6.5](#65-the-fold)), return `202` | the reporter spools and retries ([D1 § 11.5](EVENT-SCHEMA.md#115-retry-and-backoff)); nothing is lost until a seat's 8-day residency cap |
 | **fold** | long-lived daemon (`mezzanine:fold`), supervised by the deploy user's crontab (`bin/supervision.sh`) | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | **sweep** | long-lived daemon (`mezzanine:sweep`), supervised by the deploy user's crontab (`bin/supervision.sh`) | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
 | **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised by the deploy user's crontab (`bin/supervision.sh`) | every **15 s** | write [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` to `feed_outbox` — **one row, fleet-wide, unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting — ⛔ **but only where the store is readable-but-degraded, and an earlier revision of this row overstated it.** This daemon's publish target is `feed_outbox`, which is in the SAME store ([§ 6.4](#64-ddl)): in a full outage it can write nothing, so it is not the messenger of that outage and this row no longer claims to be. Who tells whom, exactly: a **connecting** browser is told by the handler's on-connect `fleet.health`, a direct yield needing no outbox row ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row); an **already-connected** browser is told by this daemon where the store still takes writes, and where the store takes none the messenger is the stream's own `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)) — not this daemon and not its silence. What the heartbeat's ABSENCE still means, and the whole of what it means, is a stream that ended without saying so — a killed worker, the proxy, the network — which arms the client's 45 s dead-feed timer ([§ 8.3](#83-the-websocket-delta-feed)) and is the reason the heartbeat is unconditional | **a quiet fleet and a dead stream stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a stream with `seat.delta` traffic stays up by accident and a **quiet** fleet's stream — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
-| **feed stream** | HTTP request (PHP-FPM), **long-lived** — `GET /api/fleet/stream`, one per open browser, and a worker pinned for as long as it is open ([§ 8.3](#83-the-websocket-delta-feed)) | polls `feed_outbox` every **250 ms**; re-checks the session every **15 s** ([§ 9](#9-read-side-authentication)) | yield `fleet.health` first — `db: "down"` if the store is unreadable ([§ 2.2](#22-fail-posture-per-path)) — then deliver every outbox row past its cursor that [§ 9](#9-read-side-authentication)'s filter admits, in `id` order, behind [§ 6.5](#65-the-fold)'s 2 s visibility lag; end the stream on `fleet.reload`, on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, on **any read of the store that fails** — the connect read, a tick's read, or [§ 9](#9-read-side-authentication)'s session re-check coming back without an answer about the session — or on a re-check that came back **invalid**, saying which with `feed.close` ([§ 8.3](#83-the-websocket-delta-feed)) | that browser's `EventSource` errors and the client re-opens on the cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1, F3) — every other stream is a separate worker and notices nothing. **What a dead pool looks like is the one failure here that is not the feed's:** with every worker pinned, the snapshot, the health endpoint and the console queue behind the streams, which is § 8.3's requirement R2 and its named observable |
-| **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **immediately before** the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot (the pool's master is root's, `docs/PLAN.md § 5`) | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait lag + tick + margin (3 s)**: a row is invisible to every handler for [§ 6.5](#65-the-fold)'s 2 s visibility lag and is delivered on the tick after that, so when the command returns every stream that is draining has read it and ended with `feed.close{reason:"reload"}` ([§ 8.3](#83-the-websocket-delta-feed)) — which is what takes it off the previous release's code, since opcache revalidation reaches new requests only and the client's reconnect is a new request. ⭐ **What ends the streams that did NOT read it is DECIDED ([§ 14](#14-open-questions-for-the-review-loop) item 17, closed by measurement on card#9300):** `bin/deploy.sh` then reads the **stream pool's** full status over its `pm.status_listen` ([§ 8.3](#83-the-websocket-delta-feed) R2) and waits, up to a **30 s ceiling** (`MEZZ_FEED_DRAIN_CEILING_S`), for every request that **started before the row was written** to finish; at the ceiling it sends those workers **SIGTERM**, and the pool's master starts fresh ones in their place. ⚠ **The ceiling's default has a consumer at the CLIENT:** [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s reload grace — the span in which a browser re-opens silently instead of rendering a failure over a routine deploy — is derived at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from) from this ceiling among other figures, so a host that raises `MEZZ_FEED_DRAIN_CEILING_S` beyond this default **can** hold the maintenance window past that grace — it does so on a deploy where a stream missed `fleet.reload`, since the drain returns as soon as no previous-release stream remains. No client can read the setting, and those two sections own what its viewer sees then. A stream is picked by **when its request started, never by its URI** — behind the front controller every request in the listing reads `/index.php` (measured) — and that is exact only because the pool is **dedicated** (R2): the only other requests the maintenance window lets into it are `503`s, milliseconds long. The signal needs no root because the pool runs as the deploy user, which the deploy's A14 refuses a host without. A residual the signal does not end, or a status that stops answering, is **logged and does not fail the window** — a deploy must not block, or stay down, on one wedged stream. ⚠ The poll and the signal are `bin/deploy.sh`'s and not this command's, which an earlier revision of this row gave the poll to: they read the host's FPM pool, which the deploy's one FPM reader already resolves (card#9300: never a second reader), and the command then runs the same on a host with no FPM at all | the deploy's window fails on it, like any other step of phase B. Were it skipped, streams would keep serving the previous release's code until each ended on its own clock — for a healthy client, not before its session expires ([§ 9](#9-read-side-authentication)) — and each client would learn of the deploy only when it next reconnected, from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) |
+| **feed stream** | HTTP request (PHP-FPM), **long-lived** — `GET /api/fleet/stream`, one per open browser, and a worker pinned for as long as it is open ([§ 8.3](#83-the-websocket-delta-feed)) | polls `feed_outbox` every **250 ms**; re-checks the session every **15 s** ([§ 9](#9-read-side-authentication)) | yield `fleet.health` first — `db: "down"` if the store is unreadable ([§ 2.2](#22-fail-posture-per-path)) — then deliver every outbox row past its cursor that [§ 9](#9-read-side-authentication)'s filter admits, in `id` order, behind [§ 8.3](#83-the-websocket-delta-feed)'s 2 s visibility lag; end the stream on `fleet.reload`, on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, on **any read of the store that fails** — the connect read, a tick's read, or [§ 9](#9-read-side-authentication)'s session re-check coming back without an answer about the session — or on a re-check that came back **invalid**, saying which with `feed.close` ([§ 8.3](#83-the-websocket-delta-feed)) | that browser's `EventSource` errors and the client re-opens on the cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1, F3) — every other stream is a separate worker and notices nothing. **What a dead pool looks like is the one failure here that is not the feed's:** with every worker pinned, the snapshot, the health endpoint and the console queue behind the streams, which is § 8.3's requirement R2 and its named observable |
+| **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **immediately before** the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot (the pool's master is root's, `docs/PLAN.md § 5`) | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait lag + tick + margin (3 s)**: a row is invisible to every handler for [§ 8.3](#83-the-websocket-delta-feed)'s 2 s visibility lag and is delivered on the tick after that, so when the command returns every stream that is draining has read it and ended with `feed.close{reason:"reload"}` ([§ 8.3](#83-the-websocket-delta-feed)) — which is what takes it off the previous release's code, since opcache revalidation reaches new requests only and the client's reconnect is a new request. ⭐ **What ends the streams that did NOT read it is DECIDED ([§ 14](#14-open-questions-for-the-review-loop) item 17, closed by measurement on card#9300):** `bin/deploy.sh` then reads the **stream pool's** full status over its `pm.status_listen` ([§ 8.3](#83-the-websocket-delta-feed) R2) and waits, up to a **30 s ceiling** (`MEZZ_FEED_DRAIN_CEILING_S`), for every request that **started before the row was written** to finish; at the ceiling it sends those workers **SIGTERM**, and the pool's master starts fresh ones in their place. ⚠ **The ceiling's default has a consumer at the CLIENT:** [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s reload grace — the span in which a browser re-opens silently instead of rendering a failure over a routine deploy — is derived at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from) from this ceiling among other figures, so a host that raises `MEZZ_FEED_DRAIN_CEILING_S` beyond this default **can** hold the maintenance window past that grace — it does so on a deploy where a stream missed `fleet.reload`, since the drain returns as soon as no previous-release stream remains. No client can read the setting, and those two sections own what its viewer sees then. A stream is picked by **when its request started, never by its URI** — behind the front controller every request in the listing reads `/index.php` (measured) — and that is exact only because the pool is **dedicated** (R2): the only other requests the maintenance window lets into it are `503`s, milliseconds long. The signal needs no root because the pool runs as the deploy user, which the deploy's A14 refuses a host without. A residual the signal does not end, or a status that stops answering, is **logged and does not fail the window** — a deploy must not block, or stay down, on one wedged stream. ⚠ The poll and the signal are `bin/deploy.sh`'s and not this command's, which an earlier revision of this row gave the poll to: they read the host's FPM pool, which the deploy's one FPM reader already resolves (card#9300: never a second reader), and the command then runs the same on a host with no FPM at all | the deploy's window fails on it, like any other step of phase B. Were it skipped, streams would keep serving the previous release's code until each ended on its own clock — for a healthy client, not before its session expires ([§ 9](#9-read-side-authentication)) — and each client would learn of the deploy only when it next reconnected, from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
 | **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --clear`) | on demand | the **only** writer of `seats.board_user_id`, and **any** write of that column — setting it or clearing it — deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
@@ -259,7 +259,7 @@ reason: a reader can age a timestamp whose writer has died, and cannot age a num
 in which a fold-written cursor clock has no value: a seat whose first batch has landed and which the
 fold has not yet visited. `head_event_id` is above `0` so the cursor test does not fire;
 `fold_cursor_received_at` was never written, so `server_now − NULL` is not a number. It is not a rare
-window — it opens on every seat's first event, it lasts at least the 2 s visibility lag plus the
+window — it opens on every seat's first event, it lasts at least the
 fold's poll ([§ 6.5](#65-the-fold)), and it is **unbounded if the fold is down when that first batch
 arrives**, which is precisely the state the instrument exists to make visible. So the **ingest** writes
 the seed: in the same transaction that first raises `head_event_id` above `0`, and **only where
@@ -1391,7 +1391,8 @@ CREATE TABLE batches (
   seq_epoch     CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   sent_at       DATETIME(3) NOT NULL,          -- seat clock
   received_at   DATETIME(3) NOT NULL,          -- server clock
-  clock_skew_ms BIGINT       NOT NULL,         -- received_at - sent_at (D1 § 10.1)
+  clock_skew_ms BIGINT       NOT NULL,         -- request arrival - sent_at (D1 § 10.1); received_at
+                                               -- is stamped later, under the seat lock (§ 6.5)
   event_count   SMALLINT UNSIGNED NOT NULL,
   accepted      SMALLINT UNSIGNED NOT NULL,
   duplicates    SMALLINT UNSIGNED NOT NULL,
@@ -1775,13 +1776,13 @@ CREATE TABLE feed_tokens (
 -- by every stream that is open when it commits and by nothing else — no stream ever resumes from it
 -- (§ 8.5 refuses a replay buffer, and this is not one) — so a row nobody was connected to read is
 -- purged unread at § 6.7's retention, and the state it announced reaches that reader at its next
--- snapshot instead. Written as the LAST statement before the writer's COMMIT (§ 8.3), for the same
--- reason `events` is read behind a visibility lag: an id must not be held across a long transaction.
+-- snapshot instead. Written as the LAST statement before the writer's COMMIT (§ 8.3), because the
+-- stream reads it behind a visibility lag: an id must not be held across a long transaction.
 
 CREATE TABLE feed_outbox (
   id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   created_at  DATETIME(3) NOT NULL,             -- stamped by the WRITER at its INSERT, from the application
-                                                -- clock § 6.5's visibility lag and § 6.7's purge are both
+                                                -- clock § 8.3's visibility lag and § 6.7's purge are both
                                                 -- computed on — never a store-clock DEFAULT (card#9300):
                                                 -- the store is on its own host (§ 6.1), and a store-clock
                                                 -- stamp read against an application-clock `server_now`
@@ -1873,8 +1874,7 @@ loop:
   for each seat in claim:
      BEGIN
        rows = SELECT * FROM events
-               WHERE seat_ref = ? AND id > cursor
-                 AND received_at <= server_now - INTERVAL 2 SECOND   -- the visibility lag, below
+               WHERE seat_ref = ? AND id > cursor   -- by id alone, no age term (card#9398)
                ORDER BY id                  -- assignment order; see "what the cursor needs"
                LIMIT 500
        for each event: project(event)       -- idempotent upserts, LWW-guarded (below)
@@ -1908,8 +1908,9 @@ loop:
            -- is what makes that interleaving harmless, rather than a lock held across the loop's
            -- per-seat COMMITs: head still H => no ingest committed since the proof => (cursor, H]
            -- is still empty; head moved => zero rows match, nothing advances, and the next pass
-           -- folds the new rows through the branch above.  Same class of race as the visibility
-           -- lag, and bought the same way -- at the write site, not left to an implementer.
+           -- folds the new rows through the branch above.  Same class of race the ingest's seat
+           -- lock closes for the reading advance, closed here at the write site instead -- and
+           -- not left to an implementer.
            fold_window_purged += 1              -- § 7.2, and counted on the PROOF, never on the
                                                 -- write below: window_empty IS the purge, and a
                                                 -- lost race does not un-purge it.  Counted on the
@@ -1924,24 +1925,24 @@ loop:
            UPDATE seat_state SET fold_cursor_event_id    = H,
                                  fold_cursor_received_at = server_now, ...
             WHERE seat_ref = ? AND head_event_id = H   -- the guard is about the CURSOR alone
-         -- else: rows exist but are all inside the 2 s visibility lag.  Do NOT advance; wait.
+         -- else: rows committed after `rows` was read (READ COMMITTED only; below).  Do NOT advance; wait.
      COMMIT
      if state_version changed: enqueue a delta (§ 8.3)
 ```
 
-**The empty read has two causes and they need opposite handling, which is why the branch is in the
-loop above rather than left to an implementer.** The claim's predicate is `fold_cursor_event_id <
-head_event_id`, and the read under it is filtered twice — by `id > cursor` and by the 2 s visibility
-lag. A seat can therefore satisfy the claim and read **zero rows** two ways. *Everything above the
-cursor is younger than 2 s*: the events are still coming, and advancing the cursor would skip them, so
-the pass must do nothing and let the next one have them. *Everything above the cursor has been purged*
-— the fold was down longer than [§ 6.7](#67-retention-and-purge)'s 14-day retention, or a
+**The empty read is a purged window, and that is why the branch is in the loop above rather than left
+to an implementer.** The claim's predicate is `fold_cursor_event_id < head_event_id` and the read under
+it is `id > cursor`, so a seat satisfies the claim and reads **zero rows** when *everything above the
+cursor has been purged* — the fold was down longer than [§ 6.7](#67-retention-and-purge)'s 14-day retention, or a
 `mezzanine:rebuild --since` left the cursor below a window that has since aged out — and here doing
 nothing is the defect: the claim still matches, the read still returns nothing, and the seat is
 re-claimed on **every** pass forever, never advancing, permanently frozen while `fold_lag_ms` grows
 without bound. That is [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s frozen fold arriving
 one seat at a time, and it would badge and alarm correctly while being unfixable by waiting. The
-`NOT EXISTS` above is the discriminator between the two, and counting `fold_window_purged`
+`NOT EXISTS` above asks the read's own predicate again, from the same transaction's read view: under
+REPEATABLE READ — the server default, which nothing in this tree pins — it cannot disagree with the empty
+read, and under READ COMMITTED a commit landing between the two statements can, which is the `else`
+branch's case and one where waiting for the next pass is right. And counting `fold_window_purged`
 ([§ 7.2](#72-this-planes-own-counters-and-badges)) is what makes the skip visible rather than silent:
 the events those passes would have folded are **gone**, so the seat's state is honest but shorter, the
 same admission `rebuild_truncated` makes.
@@ -2108,22 +2109,40 @@ one seat (an anticipated state: D1 § 10.3's ambiguous-timeout retry) can commit
 fold pass landing between the two commits would advance past the lower id and leave those events
 **permanently unfolded** until a manual rebuild.
 
-So the fold buys the property it needs with a **2-second visibility lag**: it reads only rows whose
-`received_at` is at least 2 s old. `received_at` is stamped inside the ingest transaction, so a row
-becomes eligible only 2 s after its id was assigned — by which time the transaction that assigned it
-has committed or rolled back. 2 s is ~3 orders of magnitude above the ingest transaction this design
-specifies (one multi-row `INSERT` of ≤ 200 events plus one `batches` row,
-[§ 2.1](#21-processes)), and an ingest transaction that exceeds 2 s is a slow-query alarm in its own
-right. The residual is stated rather than hidden: this is a bound, not a proof — an exact guarantee
-would need a commit-ordered column, which MariaDB does not offer — and
-[AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) is the test that drives
-two overlapping same-seat ingest transactions against a live fold rather than reasoning about them. The
-lag covers the advance that *reads* rows; the purged-window branch above advances without reading any,
-so it buys the same property the other way — a cursor write guarded on the head its emptiness proof
-covered, which an interleaved commit turns into a no-op instead of a skip, and which the second case of
-that same test drives. The
-cost is that derivation is at least 2 s behind the wire, which is inside the fold's own ≤ 1 s poll plus
-one pass and two orders of magnitude below the 60 s `fold_lag` badge.
+So **the ingest makes id-assignment order and commit order the same order for one seat, and the fold
+reads by id alone** (card#9398). The property, exactly: *for one seat, no row with an id at or below one
+the cursor has advanced past becomes visible after the cursor has passed it.* Its conditions:
+
+1. **Every transaction that inserts into `events` for a seat holds that seat's `seat_state` row lock,
+   unbroken, from its first statement to its commit or rollback.** The ingest
+   ([§ 2.1](#21-processes)) is the only such inserter — `grep -rn "table('events')->insert" server/app`
+   re-derives that — and it takes the lock `FOR UPDATE` as its transaction's first statement, before it
+   stamps `received_at` or inserts anything. A second same-seat write therefore cannot insert, and
+   cannot be assigned an id, until the first has committed or rolled back.
+2. **An allocated `AUTO_INCREMENT` value is never issued again** — a rolled-back transaction burns its
+   values and concurrent statements interleave allocations, but none is repeated or rewound. Like
+   `innodb_autoinc_lock_mode` above, this is an engine fact **verified at provisioning**
+   ([§ 6.1](#61-deployment-posture)); nothing in this tree checks it.
+
+Given both, every uncommitted id for a seat is above every committed one, so any read view — locked or
+not — sees a prefix of that seat's ids, and `id > cursor ORDER BY id` can never meet a row below one it
+already read past. **No clock enters the argument**: nothing compares a stamp with `server_now`, with
+another row's stamp or with a lag, so neither skew between hosts nor a clock stepping backwards changes
+it. It replaced a 2 s visibility lag on `received_at`, which was a bound and not a proof, and which the
+ingest defeated by stamping `received_at` at the request's arrival — before validation and before any
+lock — so two overlapping posts for one seat could reverse stamp order against id order and strand the
+lower id. The lock covers the advance that *reads* rows; the purged-window branch above advances without
+reading any, so it buys the same property the other way — a cursor write guarded on the head its
+emptiness proof covered, which an interleaved commit turns into a no-op instead of a skip.
+[AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) drives both.
+
+**What the lock costs, and the errors it makes transient.** A post for a seat whose row another
+transaction holds — this fold's window, an overlapping post for the same seat, or any other writer of
+that row — **waits**, bounded only by the connection's `innodb_lock_wait_timeout`; nothing here adds a
+timeout. The fold's own transaction can in turn lose to an ingest that commits between its read and its
+first `seat_state` write (`1020`, with snapshot isolation on), time out on a lock (`1205`), or deadlock
+(`1213`). **Those errors are transient and never poison:** the pass yields that seat, writes nothing, and
+the next pass folds the window whole. The poison-event rule below is for every other error.
 
 **Idempotency has two independent mechanisms, and both are load-bearing:**
 
@@ -2138,8 +2157,9 @@ one pass and two orders of magnitude below the 60 s `fold_lag` badge.
 the entire fleet's derivation — the "one bad batch wedges the stream" shape D1 refuses in the spool. Per
 seat, a poison event costs one desk, and that desk says so (`derivation_error`).
 
-**The poison-event rule.** If `project()` raises, the transaction is rolled back, the event is retried
-alone once, and on a second raise the cursor advances past it, `fold_error` increments,
+**The poison-event rule.** If `project()` raises — anything but the concurrency errors above — the
+transaction is rolled back, the event is retried alone once, and on a second raise the cursor advances
+past it, `fold_error` increments,
 `seat_state.fold_errors` increments, the seat badges `derivation_error` and a transition row records the
 cause — **at a bumped `state_version`, like every other transition row**. A repeat error on a seat
 already badged `derivation_error` moves nothing version-bearing, so without that bump its row would be
@@ -3265,8 +3285,10 @@ Three things in it are load-bearing and each is argued elsewhere, so they are na
 first yield is `fleet.health`**, read before anything else, which is [§ 2.2](#22-fail-posture-per-path)'s
 stream-connect posture and the half of [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero)
 the previous transport could not build — *on connect* was a socket-server event with no server
-installed, and here it is the handler's first line. **The read is behind [§ 6.5](#65-the-fold)'s 2 s
-visibility lag** — the same term, the same number, for the same reason: `feed_outbox.id` is
+installed, and here it is the handler's first line. **The read is behind a 2 s
+visibility lag** — the outbox's own, owned here (the fold read `events` behind the same term until
+card#9398 replaced it with the ingest's seat lock, [§ 6.5](#65-the-fold); card#9467 owns the outbox's
+half of that change): `feed_outbox.id` is
 auto-incremented and assigned inside the writer's transaction, so a row's id can be below the cursor
 while its transaction is still open, and a reader that advanced past it would never deliver it. The
 lag is sufficient only because every writer inserts its outbox row as the **last statement before its
@@ -3543,9 +3565,9 @@ writer inserts its outbox row as the **last statement before its `COMMIT`** (the
 tested by [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor)),
 so the two instants are one round trip apart — but the basis a test asserts against does move: measured
 from the commit the bound is 2 s *minus* that round trip, and a test written to the old wording asserts
-a floor the design does not promise. On top of the fold's own ≥ 2 s behind the wire
-([§ 6.5](#65-the-fold)), which states its own basis correctly — the price of an ordering guarantee this
-document already pays once, in a number it already owns. (5) A deploy must
+a floor the design does not promise. It is the price of the outbox's ordering guarantee; the fold does
+not pay it, because its read of `events` is ordered by the ingest's seat lock instead
+([§ 6.5](#65-the-fold)). (5) A deploy must
 publish `fleet.reload` before the deploy's opcache wait ([§ 2.1](#21-processes)) — no deploy reloads FPM,
 and the deploy user cannot — and a stream that misses it is ended by the deploy's backstop at a 30 s
 ceiling ([§ 2.1](#21-processes)'s feed-reload row; [§ 14](#14-open-questions-for-the-review-loop) item 17, decided).
@@ -5120,25 +5142,31 @@ and the gate on trusting the derived signal at all.*
 
 ### AT-D2-22 concurrent ingest cannot strand an event behind the cursor
 
-*The test for [§ 6.5](#65-the-fold)'s visibility lag, and the only way to see the defect the discarded
-"gapless" claim was hiding.*
+*The test for [§ 6.5](#65-the-fold)'s id-prefix property — the ingest's seat lock, taken first — and the
+only way to see the defect the discarded "gapless" claim was hiding.*
 
-- **Build:** two ingest requests for **one seat**, overlapping in time, against a **running** fold.
-  Transaction 1 inserts its events (taking the lower `events.id` values) and is held open; transaction 2
-  inserts and commits; then transaction 1 commits. Drive it 20 times, as
-  [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart) drives its race, because a window that
-  reproduces sometimes proves nothing until it has been made to reproduce.
-- **GREEN:** every event of both batches is folded, `fold_cursor_event_id` ends at the true head, and
-  the seat's rendered object equals a control run that delivered the two batches serially. Assert the
-  **event set** the fold applied, not just the final state — a state that happens to match while an
-  event was skipped is the failure this test exists to catch.
-- **RED — remove the visibility lag:** drop the `received_at <= server_now - INTERVAL 2 SECOND` term and
-  run the same 20 iterations → a fold pass that lands between the two commits advances past transaction
-  1's lower ids, and those events are **never folded** until a manual `mezzanine:rebuild`. The seat looks
-  healthy: no counter moves, no badge fires, `fold_lag_ms` reads 0 because the cursor is at the head.
-  That silence is the point.
-- **Discriminating control:** the same fixture delivered serially, with the lag in place → zero
-  difference from the control run, so the test is known to be capable of reporting "no loss".
+- **Build:** two ingest writes for **one seat**, each on its own connection, overlapping, against a fold on
+  a third. Transaction 1 inserts its events (taking the lower `events.id` values) and is held open;
+  transaction 2 writes the same seat; a fold pass runs; then transaction 1 commits. The interleaving is
+  driven through seams inside the ingest's transaction, so every run executes it exactly rather than
+  sampling for it.
+- **GREEN:** every event of both batches is folded and `fold_cursor_event_id` ends at the true head.
+  Assert the **event set** the fold applied, not just the final state — a state that happens to match
+  while an event was skipped is the failure this test exists to catch. Transaction 2 cannot write the
+  seat while transaction 1 holds it, and succeeds when it retries.
+- **RED — take no seat lock:** the ingest writes without its leading `FOR UPDATE` → transaction 2 commits
+  ids above transaction 1's uncommitted ones, the fold pass advances past them, and transaction 1's
+  events are **never folded** until a manual `mezzanine:rebuild`. The seat looks healthy: no counter
+  moves, no badge fires, `fold_lag_ms` reads 0 because the cursor is at the head. That silence is the
+  point.
+- **Second RED — take the lock late:** move the `FOR UPDATE` after the `batches` insert, or down to the
+  `seat_state` update the transaction always made → an uncontended write ends in the same state, so the
+  POSITION is asserted directly: while the lock is held the transaction has written no `batches` row, and
+  another connection's `FOR UPDATE NOWAIT` on the seat's row is refused.
+- **Discriminating control:** one fresh batch, delivered alone, folds on the very next pass with no age
+  to wait out, so the test is known to be capable of reporting "no loss".
+- **Built as:** `At22LockFirstIngestTest` (committed rows on named MariaDB connections) and
+  `At22CursorSafetyTest` (the control and the purged-window case below).
 
 **The purged-window branch, driven with the same interleaving.** The case above cannot reach
 [§ 6.5](#65-the-fold)'s purge branch — it has no purged window — so that branch gets its own case here
@@ -5150,7 +5178,8 @@ below a window that has since aged out.
 - **Build:** one seat whose entire unfolded window has been purged, so `fold_cursor_event_id <
   head_event_id` with no event above the cursor; then, with the fold paused **between** its emptiness
   proof and its cursor write, commit an ordinary ingest batch for that seat (which writes its events and
-  raises `head_event_id` in one transaction, [§ 2.1](#21-processes)). Drive it 20 times, as above.
+  raises `head_event_id` in one transaction, [§ 2.1](#21-processes)), through the fold's seam between the
+  two.
 - **GREEN:** the cursor never lands above an unfolded event, and **`fold_window_purged` is +1 in both
   arms** — it records the emptiness proof, which both arms passed — with only the cursor differing:
   either the guarded write matched and the cursor is **H**, the head the proof covered, or the
@@ -5162,7 +5191,7 @@ below a window that has since aged out.
   writes the cursor to the interleaved batch's head, and that batch is **never folded** while nothing
   records the loss: `fold_window_purged` moves, but it is recording the purge the proof saw and says
   nothing about the stranded batch; no badge fires; `fold_lag_ms` reads 0 because the cursor is at the
-  head. The same silence the visibility-lag RED produces, arriving through the other branch.
+  head. The same silence the no-lock RED above produces, arriving through the other branch.
 - **Discriminating control:** the same purged-window fixture with **no** concurrent ingest → the cursor
   advances to `H` on the first pass, `fold_window_purged` = 1, and the seat leaves the claim, so the test
   is known to be capable of reporting "the branch did its job".
@@ -5280,14 +5309,16 @@ receipt route with signed deliveries and reads what reaches a connected client
 
 ### AT-D2-25 a concurrent writer cannot strand a message behind a stream's cursor
 
-*The test for the outbox's use of [§ 6.5](#65-the-fold)'s visibility lag — the same defect
+*The test for the outbox's use of [§ 8.3](#83-the-websocket-delta-feed)'s visibility lag — the defect
 [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) catches on the fold's
-cursor, one table over, with a stream as the reader.*
+cursor, one table over, with a stream as the reader. The fold closes it with the ingest's seat lock
+(card#9398); the outbox still closes it with the lag, and card#9467 owns that half.*
 
 - **Build:** one open stream; two writers overlapping in time. Writer 1 inserts its `feed_outbox` row
   (taking the lower `id`) and holds its transaction open; writer 2 inserts and commits; then writer 1
   commits. Make writer 1's message a `coord.round`, because that is the one class no gap check can
-  recover. Drive it 20 times, as AT-D2-22 does, for the same reason.
+  recover. Drive it 20 times, because a window that reproduces sometimes proves nothing until it has
+  been made to reproduce.
 - **GREEN:** the stream delivers both messages, in `id` order, on every iteration — assert the **message
   set** received, not the client's final seat state, which can match while a post was lost.
 - **RED — remove the visibility lag from the TICK:** drop the `created_at <= server_now - INTERVAL 2
@@ -5359,9 +5390,8 @@ document.
 | Stream session re-check | 15 s | **Derived** — the heartbeat tick, reused so the stream has one clock; a per-message check would be a session read per delta for a property that moves once a day. ⚠ **This is the INTERVAL and not the enforcement bound**, and reading it as one is how the bound stood on the record ~4× short: the check fires on a loop pass, and a pass is bounded by the stall bound above rather than by the tick, so the bound is this interval plus that one — [§ 9](#9-read-side-authentication) states it and owns it | [§ 9](#9-read-side-authentication) |
 | `feed_outbox` row cost | **~400 B** | **Derived** — the measured 323 B typical delta ([§ 8.3.1](#831-worked-delta)) carried whole in `message`, plus the row's own `id`, `created_at`, `t` and `install_id` columns and InnoDB's per-row overhead | [§ 6.7](#67-retention-and-purge), [§ 6.8](#68-sizing) |
 | `feed_outbox` lingering size | **~7.5 MB** | **Derived** — one hour of ceiling traffic between hourly purge passes: 8,980 × 50 ÷ 24 = 18,708 rows (plus 240 heartbeat rows, immaterial) × ~400 B | [§ 6.8](#68-sizing) |
-| Outbox visibility lag | 2 s | **Derived** — equal to the fold visibility lag above: the same primitive for the same reason, a reader must not advance past an id whose transaction has not committed | [§ 8.3](#83-the-websocket-delta-feed) |
+| Outbox visibility lag | 2 s | **Derived** — a reader must not advance past an id whose transaction has not committed, and every outbox writer inserts its row as the last statement before its `COMMIT`, so the lag has to cover one round trip rather than a transaction. 2 s is the figure the fold's read of `events` carried until card#9398 replaced that lag with the ingest's seat lock ([§ 6.5](#65-the-fold)); card#9467 owns the outbox's half | [§ 8.3](#83-the-websocket-delta-feed) |
 | `fleet.sweep = stalled` | 60 s | **Derived** — four sweep passes at the 15 s cadence: one missed pass is a hiccup, four is a dead daemon, and the fleet object needs a threshold it can render ([§ 8.2.4](#824-the-fleet-health-object)) | [§ 2.2](#22-fail-posture-per-path) |
-| Fold visibility lag | 2 s | **Derived** — ~3 orders of magnitude above the ingest transaction (one multi-row `INSERT` of ≤ 200 events plus one `batches` row), which is what makes "the transaction that assigned this id has finished" true rather than hoped; an ingest transaction past 2 s is a slow-query alarm in its own right | [§ 6.5](#65-the-fold) |
 | Compaction ceiling | 15 min | **Derived** — the ordinary orphan ceiling reused, because a compaction is a harness operation of the same order as a tool call and reusing the number keeps one home for it | [§ 4.6](#46-every-open-fact-has-a-ceiling) |
 | Leaving-live clear of `stalled` / `blocked` | 300 s | **Cited** — the `stale` threshold, reused because D1 words both clauses as *"the seat leaving live state (`stale` at 300 s…)"*; it is not a second number | [§ 4.5](#45-link-states) |
 | Retired-seat render window | **none — the seat leaves the read surfaces at `retired_at`** | **Ruled** — operator, card#9078 (2026-09-09): *"when an agent is removed, its seat and desk should go away immediately."* The row keeps its place with no figure rather than being deleted, because this table's job is to answer *where did this number come from* — and for a reader who remembers the fourteen days, *there is no longer a number here* is the answer | [§ 4.10](#410-retirement-is-a-rendered-state) |
@@ -5427,7 +5457,7 @@ review can reverse it deliberately rather than discover it later.
 | 3 | **`blocked` outranks `working`** | `working` outranks `blocked` | A permission prompt fires for a call that is already open, so both facts are true at once and **D1 states no precedence**. Under the alternative, *blocked* is unreachable on the exact path that produces it, and `docs/PLAN.md § 7`'s required state never renders | a seat with an open call and a stale unresolved attention request renders `blocked` rather than `working` — bounded by the 60-minute ceiling, and `attention_ceiling_expired` measures how often it happens |
 | 4 | **Derivation is asynchronous, behind a per-seat cursor** | derive inside the ingest transaction | [D1 § 4.6](EVENT-SCHEMA.md#46-successful-response) already decided it: `202` means accepted for asynchronous processing. Synchronous derivation also puts a fold bug on the ingest's critical path, where it becomes a `5xx` for a seat whose data is fine | fold lag, which is why `fold_lag_ms` is a first-class rendered quantity and [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) exists |
 | 5 | **Per-seat fold cursors, not one global cursor** | one global cursor over `events.id` | A global cursor makes one unprojectable event freeze the whole fleet's derivation — "one bad batch wedges the stream", which D1 refuses in the spool for the same reason | eight cursors to advance instead of one, and a `SKIP LOCKED` claim; the parallelism is free rather than a cost |
-| 6 | **Visit in `events.id` order behind a 2 s visibility lag, apply with `(event_time, seq_epoch, seq)` last-write-wins** | order the cursor by `(seq_epoch, seq)` | `seq` can have permanent holes ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over it can wait forever for an event that will never arrive. `events.id` is **not** gapless and the cursor does not need it to be — what it needs is that no row at or below it becomes visible afterwards, which the lag buys for the reading advance and a guarded write buys for the purged-window one ([§ 6.5](#65-the-fold)) | three `applied_*` columns on every projection row (~40 B), and derivation is ≥ 2 s behind the wire |
+| 6 | **Visit in `events.id` order — ordered by the ingest's seat lock, taken first — apply with `(event_time, seq_epoch, seq)` last-write-wins** | order the cursor by `(seq_epoch, seq)` | `seq` can have permanent holes ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over it can wait forever for an event that will never arrive. `events.id` is **not** gapless and the cursor does not need it to be — what it needs is that no row at or below it becomes visible afterwards, which the ingest's seat lock buys for the reading advance (card#9398, replacing a 2 s visibility lag) and a guarded write buys for the purged-window one ([§ 6.5](#65-the-fold)) | three `applied_*` columns on every projection row (~40 B), and a post waits while another transaction holds its seat's row |
 | 7 | **The comparator includes `seq_epoch`** | `(event_time, seq)` exactly as `D2-MUST` #4 words it | `seq` restarts at a new epoch, so the literal two-part key is not a total order across a reset. The three-part key reduces to it whenever the epoch is constant, which is every comparison but one | none functionally; it is a wording divergence from D1 and is filed as such ([§ 14](#14-open-questions-for-the-review-loop) item 4) rather than left to be discovered |
 | 8 | **The feed's ordering key is a server-minted `state_version`, not `(seq_epoch, seq)`** | order deltas by the wire key | State transitions are also minted by rules with **no wire event** — orphan closes, staleness, ceilings, quiescence. Those carry no `seq` and there is no honest value to invent. A `seq`-ordered feed could not sequence precisely the transitions that fire when a seat goes quiet | two ordering keys in the system, which is why [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states the division explicitly and the snapshot carries the wire key as provenance |
 | 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat). `feed_outbox` (card#9287) is not that buffer: a stream never starts below the head it connected at and `Last-Event-ID` is never written ([§ 8.3](#83-the-websocket-delta-feed)) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
@@ -5862,11 +5892,11 @@ everything from step 3 onward.
 | 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens`, `feed_outbox` | schema only |
 | 3 | `project()` — the per-kind projections, with the LWW comparator | [AT-D2-11](#at-d2-11-out-of-order-batches-converge) |
 | 4 | `derive_activity()` + link states + `render_state` | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), **[AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle)** — the gate on trusting the derived signal at all — [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits) |
-| 5 | `mezzanine:fold` — cursor, transaction, claim, visibility lag, poison rule | [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart), [AT-D2-10](#at-d2-10-rebuild-equals-fold), [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) |
+| 5 | `mezzanine:fold` — cursor, transaction, claim, the id read under the ingest's seat lock (card#9398), poison rule and the concurrency errors it does not quarantine | [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart), [AT-D2-10](#at-d2-10-rebuild-equals-fold), [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) |
 | 6 | `mezzanine:rebuild` | [AT-D2-10](#at-d2-10-rebuild-equals-fold) |
 | 7 | `mezzanine:sweep` — the seven time-derived jobs [§ 2.1](#21-processes) lists, which is their one home | [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle), [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy), [AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
 | 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — **its REST, token and MFA legs only; every leg that opens a stream gates step 9, where the handler they drive is built** — [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
-| 9 | ✅ **BUILT — card#9300 (2026-09-13).** The stream handler and `feed_outbox` — the on-connect `fleet.health`, deltas in `id` order behind the visibility lag, the feed heartbeat, the stall bound, the session re-check — are `App\Feed\FeedStream` behind `GET /api/fleet/stream` (session + MFA), `App\Feed\Outbox` (every writer's row as its transaction's last statement: the fold, the sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — no coordination receipt route exists yet, so nothing writes `coord.*`), the migration, `mezzanine:purge`'s 60 s pass, and `mezzanine:feed-reload`. `bin/deploy.sh`'s edit — the Reverb unit was already retired, with systemd (`docs/PLAN.md § 5`) — runs `mezzanine:feed-reload` immediately **before** the opcache wait, where the ⚑ marker stood, and then drains the stream pool ([§ 2.1](#21-processes)'s feed-reload row; [§ 14](#14-open-questions-for-the-review-loop) item 17, closed). ⭐ **The R1/R2 ini and pool gate IS in this row now**, and was built only after its measurement landed, which is the rule [§ 8.3](#83-the-websocket-delta-feed) R1 states: `fpm_code_reload_ready` refuses `zlib.output_compression`, `output_handler` and `ignore_user_abort` on the stream pool, a stream pool that is not the deploy user's, has a non-zero `request_terminate_timeout`, or lacks `pm.status_path` / `pm.status_listen`, and a status that does not answer; `output_buffering`, measured defeated by the handler's flush, is reported and never refused. R1's **wire** half is `bin/feed-stream-check.sh`, an operator runbook step (`docs/PLAN.md § 5`), seen PASS/FAIL/FAIL/PASS against a proxy before it was trusted. The retirement of the previous transport's wiring is done: `->withBroadcasting()`, `/broadcasting/auth`, `routes/channels.php`, the `ShouldBroadcastNow` markers (`App\Events\SeatRetired` moved to `App\Feed`), `CapturingBroadcaster` and `BROADCAST_CONNECTION` are gone; the MFA-stack assertions MOVED to the stream route (`AuthSurfaceTest`, `MfaGateTest`, `IngestAuthSeparationTest`); and every test that reached the broadcaster — re-derived with `grep -rlF '$this->wire->' server/tests` and, because that grep misses them, `grep -rl 'SeatRetired' server/tests` — was re-pointed to `feed_outbox` rows and a consumed `text/event-stream` in the commit BEFORE the one that deleted it. ⚠ **What the gates below reach and what they cannot**: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15's slow leg and the frozen leg's in-process half run two concurrent streams on one clock, and the frozen leg's worker return (the proxy's send timeout) and the stalled worker's RSS need a real deployment; AT-D2-19's stream legs inject the failed read at the handler's boundary rather than revoking a grant; AT-D2-25 runs its race on the real MariaDB connections `At25ConcurrentWriterTest::CONNECTIONS` names, on a clock that only moves forward — so it never reverses stamp order against id order, and the row that reversal skips is card#9398's, not this gate's | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others), **[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — its stream legs, which step 8 scopes out of its own gate because the handler does not exist until this row**, [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) |
+| 9 | ✅ **BUILT — card#9300 (2026-09-13).** The stream handler and `feed_outbox` — the on-connect `fleet.health`, deltas in `id` order behind the visibility lag, the feed heartbeat, the stall bound, the session re-check — are `App\Feed\FeedStream` behind `GET /api/fleet/stream` (session + MFA), `App\Feed\Outbox` (every writer's row as its transaction's last statement: the fold, the sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — no coordination receipt route exists yet, so nothing writes `coord.*`), the migration, `mezzanine:purge`'s 60 s pass, and `mezzanine:feed-reload`. `bin/deploy.sh`'s edit — the Reverb unit was already retired, with systemd (`docs/PLAN.md § 5`) — runs `mezzanine:feed-reload` immediately **before** the opcache wait, where the ⚑ marker stood, and then drains the stream pool ([§ 2.1](#21-processes)'s feed-reload row; [§ 14](#14-open-questions-for-the-review-loop) item 17, closed). ⭐ **The R1/R2 ini and pool gate IS in this row now**, and was built only after its measurement landed, which is the rule [§ 8.3](#83-the-websocket-delta-feed) R1 states: `fpm_code_reload_ready` refuses `zlib.output_compression`, `output_handler` and `ignore_user_abort` on the stream pool, a stream pool that is not the deploy user's, has a non-zero `request_terminate_timeout`, or lacks `pm.status_path` / `pm.status_listen`, and a status that does not answer; `output_buffering`, measured defeated by the handler's flush, is reported and never refused. R1's **wire** half is `bin/feed-stream-check.sh`, an operator runbook step (`docs/PLAN.md § 5`), seen PASS/FAIL/FAIL/PASS against a proxy before it was trusted. The retirement of the previous transport's wiring is done: `->withBroadcasting()`, `/broadcasting/auth`, `routes/channels.php`, the `ShouldBroadcastNow` markers (`App\Events\SeatRetired` moved to `App\Feed`), `CapturingBroadcaster` and `BROADCAST_CONNECTION` are gone; the MFA-stack assertions MOVED to the stream route (`AuthSurfaceTest`, `MfaGateTest`, `IngestAuthSeparationTest`); and every test that reached the broadcaster — re-derived with `grep -rlF '$this->wire->' server/tests` and, because that grep misses them, `grep -rl 'SeatRetired' server/tests` — was re-pointed to `feed_outbox` rows and a consumed `text/event-stream` in the commit BEFORE the one that deleted it. ⚠ **What the gates below reach and what they cannot**: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15's slow leg and the frozen leg's in-process half run two concurrent streams on one clock, and the frozen leg's worker return (the proxy's send timeout) and the stalled worker's RSS need a real deployment; AT-D2-19's stream legs inject the failed read at the handler's boundary rather than revoking a grant; AT-D2-25 runs its race on the real MariaDB connections `At25ConcurrentWriterTest::CONNECTIONS` names, on a clock that only moves forward — so it never reverses stamp order against id order; card#9398 closed that reversal for the fold, and the outbox's is card#9467's | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others), **[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — its stream legs, which step 8 scopes out of its own gate because the handler does not exist until this row**, [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) |
 | 10 | `mezzanine:purge`, the size alarm, `fold_lag` fleet health | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them), [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) |
 | 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed. ⚠ **And it therefore DEPENDED on what step 9 deleted**: its gate AT-D2-23 drove step 9's `CapturingBroadcaster`. ✅ Step 9 (card#9300) re-pointed every AT-D2-23 test — the store half and the wire half — to `feed_outbox` rows and a consumed stream BEFORE deleting the class, so this row's gate runs against the transport that ships | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
 

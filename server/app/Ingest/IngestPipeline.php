@@ -49,10 +49,10 @@ final class IngestPipeline
         //
         // It is NOT the ingest's receipt stamp. `received_at` is stamped inside
         // `BatchWriter::write()`, after the seat lock its transaction takes first
-        // (`docs/design/FLEET-STATE.md § 6.5`). This value answers exactly two questions: whether
+        // (`docs/design/FLEET-STATE.md § 6.5`). This value decides whether
         // `batch_id` was accepted within the last 24 h (`previousResponse()`), and — handed to the
-        // writer — D1 § 10.1's `clock_skew_ms`, which measures arrival against `sent_at` and must
-        // not grow by however long the write waited for the lock. `TokenResolver::touch()` and
+        // writer — is the basis of D1 § 10.1's `clock_skew_ms`, which measures arrival against
+        // `sent_at` and must not grow by however long the write waited for the lock. `TokenResolver::touch()` and
         // `Counters` read their own `now()`.
         $arrivedAt = now()->utc()->toDateTimeImmutable();
 

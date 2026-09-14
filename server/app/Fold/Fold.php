@@ -89,10 +89,10 @@ final class Fold
      * that has never received an event, and such a seat has `head_event_id = 0`.
      *
      * ⚠ `FOR UPDATE SKIP LOCKED` IS THE FOLD'S CONCURRENCY CORRECTNESS, AND THE SUITE EXERCISES
-     * NONE OF IT. It is what makes two fold workers partition themselves — another worker's seats
-     * are skipped rather than waited on. The suite runs it on MariaDB but over ONE connection, so
-     * no row is ever locked by anyone else and nothing is ever skipped: the property is UNTESTED,
-     * not merely untested-here (card#7523 owns the two-connection case).
+     * ONE ARM OF IT. It is what makes two fold workers partition themselves — another worker's
+     * seats are skipped rather than waited on. The suite's one skip is `At22LockFirstIngestTest`'s:
+     * a fold pass on its own connection skips the seat an open ingest transaction holds. Two FOLD
+     * workers partitioning the claim is UNTESTED, not merely untested-here (card#7523 owns it).
      *
      * @return Collection<int, object>
      */

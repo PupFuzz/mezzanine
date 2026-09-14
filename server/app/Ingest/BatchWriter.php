@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  * ONE TRANSACTION, and `docs/design/FLEET-STATE.md § 2.1` enumerates exactly what is inside it:
  * "write `events` + `batches`, the seat's `head_event_id`, and — only where it is still `NULL`,
  * i.e. on the seat's first-ever event — the seed of `fold_cursor_received_at` … all in one
- * transaction, return `202`."
+ * transaction whose first statement locks the seat's `seat_state` row, return `202`."
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SEAT LOCK IS THE TRANSACTION'S FIRST STATEMENT, AND THE FOLD'S CURSOR DEPENDS ON IT
@@ -22,17 +22,18 @@ use Illuminate\Support\Facades\DB;
  * id-assignment order and commit order are the same order. This lock is what makes them so: `write()`
  * takes the seat's `seat_state` row `FOR UPDATE` before it inserts anything, so a second write for
  * the same seat cannot insert — cannot even be assigned an id — until the first has committed or
- * rolled back — so its ids are all above the earlier one's, given § 6.5's condition on
+ * rolled back, and its ids are then all above the earlier one's, given § 6.5's condition on
  * `AUTO_INCREMENT` (an allocated value is never issued again). No clock enters the argument.
  *
- * Two things this rests on, stated so an edit that breaks one is recognisable: this is the ONLY
+ * What this rests on, stated so an edit that breaks it is recognisable: this is the ONLY
  * inserter into `events` (`grep -rn "table('events')->insert" server/app`), and the lock is held
  * from the first statement to the COMMIT. A lock taken later — after the `batches` row, or at the
  * `seat_state` update the transaction always made — leaves the ids assigned before it unprotected;
  * `At22LockFirstIngestTest` pins the position.
  *
- * A write for a seat another transaction holds — the fold's window, the sweeper, a rebuild, or an
- * overlapping post — WAITS, bounded only by the connection's `innodb_lock_wait_timeout`.
+ * A write for a seat whose row another transaction holds — the fold's window, an overlapping post,
+ * or any other writer of that row — WAITS, bounded only by the connection's
+ * `innodb_lock_wait_timeout`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHICH `seat_state` COLUMNS THE INGEST WRITES — a decision D1 left to D2 and D2 states in three
@@ -66,8 +67,7 @@ final class BatchWriter
      * Rows per `events` INSERT. The figure was sized against SQLite's older 999-parameter default,
      * which one 200-row `INSERT` at 14 columns would have exceeded; SQLite is no longer a supported
      * store (card#9328), and no MariaDB limit is known here to bind at a full batch. It stays as it
-     * is because nothing has measured a reason to move it — and `$afterFirstChunk` below needs a
-     * batch to be more than one statement to mean anything.
+     * is because nothing has measured a reason to move it.
      */
     private const INSERT_CHUNK = 50;
 
@@ -75,14 +75,14 @@ final class BatchWriter
      * Test seam: invoked inside the transaction right after the seat lock is taken and BEFORE the
      * receipt is stamped — so a test can stand in for a wait on the lock.
      *
-     * @var null|callable(int $seatRef): void
+     * @var null|callable(int): void
      */
     public static $afterLock = null;
 
     /**
      * Test seam: invoked inside the transaction right after the first `events` chunk is inserted.
      *
-     * @var null|callable(int $seatRef): void
+     * @var null|callable(int): void
      */
     public static $afterFirstChunk = null;
 

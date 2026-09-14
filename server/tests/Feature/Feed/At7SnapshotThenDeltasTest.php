@@ -338,7 +338,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Let every row written so far age past § 6.5's visibility lag before the stream opens.
+     * Let every row written so far age past § 8.3's visibility lag before the stream opens.
      *
      * ⚠ NOT A CONVENIENCE: the handler's connect read is the head BEHIND the lag (§ 8.3), so a stream
      * opened within 2 s of a write also delivers that write — "at most one lag-window of rows it may

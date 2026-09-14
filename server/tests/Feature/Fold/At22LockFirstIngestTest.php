@@ -24,8 +24,8 @@ use Illuminate\Support\Facades\DB;
  * second pins WHERE the lock is taken, because a lock taken at the end of the transaction would still
  * pass a test that only looks at the end state of an uncontended write.
  *
- * ⚠ One interleaving per run, not the twenty § 11 once asked for: the seams make the interleaving
- * deterministic, so a repeat drives the identical statement order and adds no evidence.
+ * ⚠ One interleaving per run, not the repeated runs § 11 once asked for: the seams make the
+ * interleaving deterministic, so a repeat drives the identical statement order and adds no evidence.
  */
 class At22LockFirstIngestTest extends CommittedSeatTestCase
 {
@@ -42,10 +42,11 @@ class At22LockFirstIngestTest extends CommittedSeatTestCase
         $writerTwo = $this->batch([$this->toolStart($callTwo)]);
 
         $writerTwoFirstAttempt = null;
+        $appliedBetweenTheCommits = null;
         $seamFired = false;
 
         // Writer 1 has inserted its events — its ids are assigned and NOT committed — when this runs.
-        BatchWriter::$afterFirstChunk = function () use ($writerTwo, &$writerTwoFirstAttempt, &$seamFired) {
+        BatchWriter::$afterFirstChunk = function () use ($writerTwo, &$writerTwoFirstAttempt, &$appliedBetweenTheCommits, &$seamFired) {
             BatchWriter::$afterFirstChunk = null;       // once: writer 2's own write passes this seam too
             $seamFired = true;
 
@@ -66,7 +67,7 @@ class At22LockFirstIngestTest extends CommittedSeatTestCase
             // writer 2's committed rows here rather than reading nothing for a reason of its own.
             $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
 
-            $this->foldPass(self::FOLD);
+            $appliedBetweenTheCommits = $this->foldPass(self::FOLD);
         };
 
         $this->write(self::WRITER_1, $writerOne);
@@ -94,8 +95,10 @@ class At22LockFirstIngestTest extends CommittedSeatTestCase
         $this->assertSame((int) $state->head_event_id, (int) $state->fold_cursor_event_id);
         $this->assertSame(0, (int) $state->fold_errors);
 
-        // And the mechanism: writer 2 could not write the seat while writer 1 held it.
+        // And the mechanism: writer 2 could not write the seat while writer 1 held it, and the fold's
+        // claim skipped the held seat rather than folding around the open transaction.
         $this->assertSame('waited for the seat lock and timed out', $writerTwoFirstAttempt);
+        $this->assertSame(0, $appliedBetweenTheCommits, 'the fold applied events while an ingest held the seat');
     }
 
     public function test_the_ingest_takes_the_seat_lock_before_it_writes_anything(): void

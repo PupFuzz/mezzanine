@@ -15,14 +15,14 @@ use PHPUnit\Framework\Attributes\DataProvider;
  * `docs/design/FLEET-STATE.md § 6.5`'s poison-event rule quarantines an event that raises twice.
  * Lock contention raises too — `1020` (snapshot isolation), `1205` (lock wait timeout), `1213`
  * (deadlock) — and quarantining on it skips an INNOCENT event past the cursor and badges
- * `derivation_error` on a healthy seat. So those three yield the pass instead: nothing is applied,
+ * `derivation_error` on a healthy seat. So those yield the pass instead: nothing is applied,
  * nothing is written, the cursor stays put, and the next pass folds the event whole.
  *
  * ⚠ THESE RUN AT TRANSACTION LEVEL 2. `RefreshDatabase` holds the suite's connection inside a
  * transaction, so the fold's own `Outbox::transaction()` is nested, and Laravel rethrows a nested
  * concurrency error as `DeadlockException` — not the `QueryException` a top-level fold (production,
  * `FoldCommand`) sees. `FoldConcurrencyErrorTopLevelTest` drives the top-level shape on committed
- * rows; the two together are what show the check holds at any depth.
+ * rows; together they show the check holds at any depth.
  */
 class FoldConcurrencyErrorTest extends FoldTestCase
 {

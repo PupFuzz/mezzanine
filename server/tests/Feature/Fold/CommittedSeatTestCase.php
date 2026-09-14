@@ -10,6 +10,7 @@ use App\Ingest\BatchWriter;
 use App\Ingest\EventValidator;
 use App\Ingest\TokenBinding;
 use App\Ingest\ValidBatch;
+use App\Ingest\ValidEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -151,7 +152,7 @@ abstract class CommittedSeatTestCase extends TestCase
      * One batch through the real validators, ready for `BatchWriter::write()`.
      *
      * @param  list<array<string, mixed>>  $events
-     * @return array{ValidBatch, list<\App\Ingest\ValidEvent>}
+     * @return array{ValidBatch, list<ValidEvent>}
      */
     protected function batch(array $events): array
     {
@@ -178,7 +179,7 @@ abstract class CommittedSeatTestCase extends TestCase
 
         foreach ($batch->events as $index => $event) {
             $result = app(EventValidator::class)->validate($event, $index, $batch, $this->binding);
-            $this->assertInstanceOf(\App\Ingest\ValidEvent::class, $result,
+            $this->assertInstanceOf(ValidEvent::class, $result,
                 "fixture event $index was refused: ".($result->message ?? ''));
             $valid[] = $result;
         }
@@ -190,7 +191,7 @@ abstract class CommittedSeatTestCase extends TestCase
      * `BatchWriter::write()` on `$connection`, with the request's arrival clock taken now — which is
      * where `IngestPipeline::handle()` takes it.
      *
-     * @param  array{ValidBatch, list<\App\Ingest\ValidEvent>}  $batch
+     * @param  array{ValidBatch, list<ValidEvent>}  $batch
      */
     protected function write(string $connection, array $batch): Acceptance
     {

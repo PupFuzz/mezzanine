@@ -6,26 +6,21 @@ use App\Fold\Fold;
 use Illuminate\Support\Facades\DB;
 
 /**
- * AT-D2-22 — concurrent ingest cannot strand an event behind the cursor.
+ * AT-D2-22 — concurrent ingest cannot strand an event behind the cursor: the single-connection half.
  *
- * ⚠ WHAT THIS FILE DOES NOT ESTABLISH, FIRST, BECAUSE IT IS THE LARGER HALF.
+ * The overlapping same-seat ingest itself — transaction 1 held open across transaction 2 and a fold
+ * pass — needs two real transactions, which the suite's one in-process connection cannot hold. It is
+ * driven on committed rows across named connections in `At22LockFirstIngestTest` (card#9398), together
+ * with the position of the ingest's seat lock that closes it.
  *
- * § 11's build is "two ingest requests for ONE SEAT, overlapping in time, against a RUNNING fold …
- * transaction 1 inserts and is HELD OPEN, transaction 2 inserts and commits, then transaction 1
- * commits. Drive it 20 times." The suite runs over ONE in-process connection to MariaDB, so two
- * overlapping write transactions on one seat cannot exist, and THE RACE IS NOT DRIVEN AND THE 20
- * ITERATIONS ARE NOT RUN. Neither is `FOR UPDATE SKIP LOCKED`, which is the fold's concurrency
- * correctness — a real engine does not change that: with one connection nothing is ever skipped.
- *
- * What IS driven here is each MECHANISM the race would exercise, deterministically:
- *   · the visibility lag as a property — an event inside the 2 s window is not read and the cursor
- *     does not pass it, and the same event is folded once it ages out;
+ * What is driven HERE, on the suite's own connection:
+ *   · the control — a fresh batch, never aged, folds on the very next pass, because the fold reads
+ *     `events` by id and has no age to wait out;
  *   · the purged-window branch's discriminator and its guarded write, INCLUDING the interleaving,
  *     by moving the head between the emptiness proof and the write through the seam the branch
  *     exposes for exactly that reason.
  *
- * A mechanism driven deterministically is not the same evidence as a race driven twenty times, and
- * the PR body says so rather than letting this file's name carry the claim.
+ * Two fold workers partitioning the claim (`FOR UPDATE SKIP LOCKED`) is driven by neither file.
  */
 class At22CursorSafetyTest extends FoldTestCase
 {
@@ -129,7 +124,7 @@ class At22CursorSafetyTest extends FoldTestCase
     }
 
     /**
-     * Deliver without ageing the receipt — the batch lands inside the visibility lag.
+     * Deliver without moving the server clock — the batch's receipt is `now`.
      *
      * @param  list<array<string, mixed>>  $events
      */

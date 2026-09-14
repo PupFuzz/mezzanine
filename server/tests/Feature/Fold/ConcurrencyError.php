@@ -6,13 +6,15 @@ use Illuminate\Database\QueryException;
 
 /**
  * A REAL `QueryException`, carrying the message MariaDB raises for one of the engine's concurrency
- * errors — the three card#9398 names. The fold tests inject it where a store under contention would
+ * errors card#9398 names. The fold tests inject it where a store under contention would
  * raise it, after `Fold::claim()` has already claimed the seat: holding the seat's row from another
  * connection instead never reaches the fold's transaction, because the claim is
  * `FOR UPDATE SKIP LOCKED` and skips a locked seat.
  *
- * The messages are the engine's own text; Laravel's `ConcurrencyErrorDetector` matches on them, and
- * so does the wrap into `DeadlockException` a nested transaction performs.
+ * Each message carries the substring Laravel's `ConcurrencyErrorDetector` matches on — the check the
+ * fold makes, and the one a nested transaction's rethrow as `DeadlockException` keys on. The 1205 text
+ * is also what this engine raised for a real lock wait in `At22LockFirstIngestTest`; the 1020 and 1213
+ * texts were not raised by a real engine in this suite.
  */
 final class ConcurrencyError
 {
