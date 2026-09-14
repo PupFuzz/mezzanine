@@ -62,7 +62,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   declares nothing and the seat keeps sending: the heartbeat carries `undeclared` and `null`, never a
   value the ingest would refuse, `config_readable` passes and `config_invalid` is not counted, and
   `protocol_agent_name_in_roster` fails with the value in `detail` (a non-string by its type). D1 § 3.1's
-  state table and § 6.14's check row now state that case. The acceptance suite's § 19 builds AT-27 cases A–F with each RED; case F runs
+  state table and § 6.14's check row now state that case. The acceptance suite's § 19 builds AT-27 cases A–G with each RED; case F runs
   `INSTALL-LINUX.md`'s crontab line, read out of the runbook, under `sh -c` from an environment carrying
   no `COORD_CONFIG`. `server/tests/roundtrip/ingest-roundtrip.py` sends all four states through the real
   ingest and fold, and a check value outside the set is refused. D1 § 3.1's CHECKED leg and § 18.13

@@ -5144,6 +5144,22 @@ indistinguishable.*
   nothing remains there, a stale roster where a copy does — and no act fails: that is the residual
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6 names, and this variant is where a
   missing rewrite is caught.
+- **Case G — a MALFORMED declaration.** The config carries `protocol_agent_name`, and the value is
+  not a valid declaration ([§ 3.1](#31-the-seat-config-file)): one byte past
+  [§ 6.14](#614-reporterheartbeat)'s bound, a string off the `slug` pattern, and a non-string — one
+  seat each, with a roster readable at the home path that lists both string values, so roster
+  membership cannot rescue them. Run one hook and `selftest`, and flush until a heartbeat reaches the
+  ingest. **GREEN:** the config stays readable — `config_readable` passes, and `config_invalid` is
+  counted **nowhere**: not in the heartbeat's counters, not in `state.json`, not in the spool's counter
+  files. The seat **still sends**: its flush POSTs a batch whose heartbeat carries
+  `protocol_agent_name: null`, `protocol_agent_name_check: "undeclared"`,
+  `selftest.protocol_agent_name_in_roster: "fail"`, both [§ 9.3](#93-degradation-counters) counters
+  0, and the same `degraded` as case D. `selftest` exits **1** with `protocol_agent_name_in_roster`
+  its only failing check, and its `detail` carries `declared: null`, the check `undeclared`, and
+  `malformed_declaration` naming the value — a string exactly as written, a non-string by its type
+  alone (`<number>`). ⛔ **Assert the value is ABSENT**, for each string value, from every batch the
+  ingest received and from the seat's log: `selftest`'s detail is its only home. The flusher's start
+  log line says the declaration is not valid.
 - **⛔ RED — the silent omission.** Make case B's reporter drop the member rather than emit
   `unchecked` → its heartbeat becomes byte-identical to case D's on both members, and no consumer can
   tell a seat that declares nothing from one nobody could check. This is
@@ -5171,6 +5187,14 @@ indistinguishable.*
   trades a wrong label for a silent seat, gating emission on the environment
   ([§ 3.4](#34-why-identity-never-comes-from-the-environment) rule 1). Assert a heartbeat arrives in
   both arms.
+- **⛔ RED — the malformed name that SILENCES the seat.** Make case G's reporter refuse the name as
+  a config error → `config_readable` fails, `config_invalid` is counted, and the flush POSTs nothing:
+  a typo in an optional label has silenced a seat whose identity and ingest are sound, which is what
+  [§ 3.1](#31-the-seat-config-file) forbids. Assert a POST arrives.
+- **⛔ RED — the malformed value that leaks.** Make case G's reporter send the value verbatim → it
+  reaches the wire, where the ingest would refuse the heartbeat and the whole batch with it
+  ([§ 12.4](#124-batches-are-atomic)); or name it in the flusher's start log line → it reaches the
+  seat's log. Assert the string in neither.
 - **RED — the name in the identity.** Add `protocol_agent_name` to `config_fingerprint`'s input, or
   to anything seeding a character → editing a label re-identifies a desk, which
   [§ 3.1](#31-the-seat-config-file) forbids in as many words.
