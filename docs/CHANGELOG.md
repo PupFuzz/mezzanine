@@ -38,11 +38,19 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   validates the text it seeds through `BuildingLayout::fromJson()`, which also measures it against
   the console's write bound. `docs/design/FLOOR.md` § 4.6 (the floor and rooms rows, the empty
   building, the shape contract) and § 10.3 (the `tilesets[]`, `layers[]` and `desks` rows) state it.
-  New tests in `BuildingLayoutTest`, `TheBuildingSurfaceTest` and `FloorMapTest`. **Installer action:** none; no migration. A
-  stored layout or room map written by hand with a list spelled `{}` or a record spelled `[]` (Tiled
-  writes neither) is refused where it is read: `GET /api/building` answers `500` for such a layout
-  and the floors console names such a map; restoring an earlier revision or saving a corrected
-  document repairs it.
+  New tests in `BuildingLayoutTest`, `TheBuildingSurfaceTest`, `FloorMapTest` and
+  `TheDeployRefusesAStoredDocumentTheReadersRefuseTest`. **Installer action:** none for a store these
+  readers accept. The release carries a migration that adds no schema and changes no data: it reads
+  the current building layout and every current room map through this release's readers. A current
+  document with a list spelled `{}` or a record spelled `[]`, which the previous release accepted and
+  stored, fails `php artisan migrate` with a message naming each such document by kind, subject and
+  revision beside the reader's own sentence, so `bin/deploy.sh` stops inside its maintenance window
+  with exit 2 and the app down, before these readers serve anything. To fix it: review and remove the
+  failure marker, deploy the commit the marker names as `from_commit` to bring the console back,
+  re-author each named document or restore a revision of it this release accepts, then deploy this
+  release again; the migration runs again because a failed migration is not recorded. A superseded
+  revision is left out of the check: restoring one this release refuses is refused on the console's
+  revisions page.
 - **card#9465** — **A failed ingest write now answers `503 server_error` and is counted, and a hung
   ingest transaction no longer holds its seat.** A store failure while `POST /api/ingest/events` ran
   surfaced as Laravel's default error body and incremented nothing, so an operator could not see a
