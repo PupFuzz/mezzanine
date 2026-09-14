@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Feed\FeedStream;
 use App\Feed\FleetReload;
 use App\Feed\Outbox;
-use App\Fold\Fold;
 use Illuminate\Console\Command;
 
 /**
@@ -16,10 +15,13 @@ use Illuminate\Console\Command;
  * whether or not it changed, and then WAITS — lag + tick + margin — before returning.
  *
  * ⛔ WHY IT WAITS. A row is invisible to every handler for § 8.3's 2 s visibility lag and is delivered
- * on the tick after that. A deploy that wrote the row and moved on in the next line would do so while
- * every stream is still inside the lag window: it has seen no stream end and cannot tell a stream that
- * took the message from one that missed it. So this returns no sooner than the moment every draining
- * stream has read the row: `Fold::VISIBILITY_LAG_S` + one `FeedStream::TICK_MS` + the margin below
+ * on the tick after that. The read is a visible PREFIX (card#9467), so the row also waits for every
+ * lower id to age past the lag — and a lower id was stamped no later than one INSERT round trip after
+ * this row's stamp (`App\Feed\VisiblePrefix`'s condition (a)), which the margin covers. A deploy
+ * that wrote the row and moved on in the next line would do so while every stream is still inside
+ * the lag window: it has seen no stream end and cannot tell a stream that took the message from one
+ * that missed it. So this returns no sooner than the moment every draining
+ * stream has read the row: `Outbox::VISIBILITY_LAG_S` + one `FeedStream::TICK_MS` + the margin below
  * (§ 2.1: "lag + tick + margin (3 s)"), each read from the constant that owns it.
  *
  * WHAT IT DOES NOT DO, AND WHERE THAT LIVES. Watching the stream pool until its streams are gone, and
@@ -41,11 +43,11 @@ class FeedReloadCommand extends Command
     {
         Outbox::transaction(fn () => Outbox::enqueue(new FleetReload('deploy')));
 
-        $waitMs = Fold::VISIBILITY_LAG_S * 1000 + FeedStream::TICK_MS + self::MARGIN_MS;
+        $waitMs = Outbox::VISIBILITY_LAG_S * 1000 + FeedStream::TICK_MS + self::MARGIN_MS;
 
         $this->line(sprintf(
             'fleet.reload written (feed_version %d); waiting %d ms — lag %d s + tick %d ms + margin %d ms — for every open stream to read it',
-            FleetReload::FEED_VERSION, $waitMs, Fold::VISIBILITY_LAG_S, FeedStream::TICK_MS, self::MARGIN_MS,
+            FleetReload::FEED_VERSION, $waitMs, Outbox::VISIBILITY_LAG_S, FeedStream::TICK_MS, self::MARGIN_MS,
         ));
 
         usleep($waitMs * 1000);

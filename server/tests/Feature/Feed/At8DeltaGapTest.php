@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Feed;
 
+use App\Feed\Outbox;
 use App\Feed\SeatDelta;
-use App\Fold\Fold;
 use App\Read\SeatObject;
 
 /**
@@ -88,7 +88,7 @@ class At8DeltaGapTest extends FeedTestCase
         $client = new ClientHarness;
         $client->subscribe();
         $client->applySnapshot($this->snapshot());
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);   // the setup's rows are behind the stream's cursor
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);   // the setup's rows are behind the stream's cursor
 
         $otherVersionBefore = (int) $this->state($otherRef)->state_version;
         $dropped = null;
@@ -153,7 +153,7 @@ class At8DeltaGapTest extends FeedTestCase
         $client = new ClientHarness;
         $client->subscribe();
         $client->applySnapshot($this->snapshot());
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
         $resync = $this->resyncUsing();
 

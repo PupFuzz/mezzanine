@@ -3,7 +3,6 @@
 namespace App\Feed;
 
 use App\Fold\Clock;
-use App\Fold\Fold;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -15,8 +14,9 @@ use Illuminate\Support\Facades\DB;
  *
  * `feed_outbox.id` is assigned at INSERT and becomes visible at COMMIT, so a row inserted early in a
  * long transaction holds a low id while higher ids commit past it — and a stream whose cursor moves
- * past that id never delivers the row. The handler's 2 s visibility lag covers the window only if
- * the id is held for one round trip, not for the transaction's length. This class makes the rule a
+ * past that id never delivers the row. The stream's visible prefix (`App\Feed\VisiblePrefix`) covers
+ * the window only if the id is held for one round trip, not for the transaction's length — that is
+ * its condition (b). This class makes the rule a
  * property of the primitive rather than of every call site: a writer ENQUEUES a message wherever in
  * its transaction it learns of it, and `transaction()` inserts every enqueued row, in enqueue order,
  * in ONE statement immediately before the COMMIT. `enqueue()` outside `transaction()` is refused
@@ -28,9 +28,11 @@ use Illuminate\Support\Facades\DB;
  * included — rolls back the state change with it.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * THE READ SIDE: the two statements § 8.3's handler runs, both behind § 8.3's 2 s visibility lag —
- * the SAME term on both, which is why they are here together. `headBehindLag()` is the connect read
- * (never a bare `MAX(id)`: AT-D2-25's second RED) and `after()` is the tick's.
+ * THE READ SIDE: the two statements § 8.3's handler runs, both a VISIBLE PREFIX bounded by the lag
+ * below — `headBehindLag()` is the connect read (never a bare `MAX(id)`: AT-D2-25's second RED) and
+ * `after()` is the tick's. Both are `App\Feed\VisiblePrefix`'s, which states the boundary, why a
+ * `created_at` FILTER lost a row when two writers' stamps and ids disagree (card#9467), and the
+ * conditions the prefix rests on.
  *
  * ⚠ ONE CLOCK, the application's. `created_at` is stamped here from `now()` and the lag is computed
  * against `now()`, exactly as `events.received_at` is stamped. The store is on its own
@@ -39,6 +41,13 @@ use Illuminate\Support\Facades\DB;
  */
 final class Outbox
 {
+    /**
+     * § 8.3's visibility lag, in seconds: a row younger than this (by `created_at`, against the reader's
+     * `now()`) holds the stream's visible prefix below its id (`App\Feed\VisiblePrefix`). It lived on
+     * `App\Fold\Fold` until card#9467; the fold stopped reading behind it with card#9398.
+     */
+    public const VISIBILITY_LAG_S = 2;
+
     /** @var list<array{t: string, install_id: ?string, message: string}> */
     private static array $pending = [];
 
@@ -118,35 +127,19 @@ final class Outbox
         ];
     }
 
-    /** § 8.3's connect read: the head BEHIND the lag. A stream starts here and never below it. */
+    /** § 8.3's connect read: the head of the visible prefix. A stream starts here and never below it. */
     public static function headBehindLag(): int
     {
-        return (int) DB::table('feed_outbox')
-            ->where('created_at', '<=', self::visibleUpTo())
-            ->max('id');
+        return VisiblePrefix::boundary();
     }
 
     /**
-     * § 8.3's tick read: every row past `$cursor`, in `id` order, behind the lag.
+     * § 8.3's tick read: every row past `$cursor` and inside the visible prefix, in `id` order.
      *
      * @return Collection<int, object{id: int, t: string, install_id: ?string, message: string}>
      */
     public static function after(int $cursor): Collection
     {
-        return DB::table('feed_outbox')
-            ->select(['id', 't', 'install_id', 'message'])
-            ->where('id', '>', $cursor)
-            ->where('created_at', '<=', self::visibleUpTo())
-            ->orderBy('id')
-            ->get();
-    }
-
-    /**
-     * § 8.3's visibility lag. The constant still lives on `Fold`, which no longer reads behind it (card#9398
-     * replaced the fold's lag with the ingest's seat lock); card#9467 rehomes it with this read.
-     */
-    private static function visibleUpTo(): string
-    {
-        return Clock::sql(now()->subSeconds(Fold::VISIBILITY_LAG_S));
+        return VisiblePrefix::after($cursor);
     }
 }

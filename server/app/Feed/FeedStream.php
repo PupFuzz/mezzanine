@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  *
  *   · THE FIRST FRAME IS `fleet.health`, read before the outbox is opened, `db: "down"` when that read
  *     fails (§ 2.2's stream-connect row).
- *   · THE CURSOR STARTS AT THE HEAD BEHIND THE LAG (`Outbox::headBehindLag()`), never a bare
+ *   · THE CURSOR STARTS AT THE HEAD OF THE VISIBLE PREFIX (`Outbox::headBehindLag()`), never a bare
  *     `MAX(id)`, and nothing the client sends can set it lower — no `id:` is written and
  *     `Last-Event-ID` is never read (§ 8.5 refuses a replay buffer).
  *   · THE STALL CHECK MEASURES FROM THE PREVIOUS TICK'S START AND RUNS BEFORE THE READ. From the start,
