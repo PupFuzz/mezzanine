@@ -65,14 +65,14 @@
 # pin and the upstream-first rule stay exactly as declared at the top of this header.
 #   THE KEY. The generic mover correlates a card's `payload.pr_number` / `payload.dl_number`
 #   stamp against the trailing `(#NNN)` squash markers in the released range's subjects (no
-#   board-14 card carries a DL). This one correlates `CARD_RE` (below) over those same subjects,
-#   so it does not depend on a card being stamped, on its PR having squash-merged, or on the
-#   stamp naming the PR that carried the card into the range. All three gaps are real here: a
+#   board-14 card carries a DL). This one correlates `CARD_RE` over EVERY subject in the range,
+#   merges included, so it does not depend on a card being stamped, on its PR having
+#   squash-merged, or on the stamp naming the PR that carried the card into the range. All three gaps are real here: a
 #   REBASE-merged PR leaves no marker (#27 → card#7913, #28 → card#7912); a MERGE-COMMIT PR
 #   leaves it only on the commit `--no-merges` discards (#39 → card#8174); a stamp names one PR
 #   where another carried the card (card#7456 is stamped `8`, #14 carries it into v0.1.0..v0.2.0;
 #   card#7897 is stamped `30`, outside v0.3.0..v0.4.0) or names none (card#7583).
-#   MEASURED LIKE FOR LIKE, both keys off the SAME subjects, on two released ranges:
+#   MEASURED LIKE FOR LIKE, each key off the subjects its own mover reads, on two released ranges:
 #   R=v0.1.0..v0.2.0, and the v0.4.0 promote run's own range
 #   R=d5b65bc7872dfdc943763b7c8fa944fa9a6bcc1b..3b2e41323ee79380a13812e085d45d950420e113
 #   (= v0.3.0..v0.4.0). On both, the stamp set is a STRICT SUBSET of the token set. Re-derive,
@@ -80,7 +80,7 @@
 #     T="$(mktemp -d)"
 #     kbcard --board mezzanine list > "$T/cards.json"
 #     CARD_RE="$(sed -n "s/^CARD_RE='\(.*\)'$/\1/p" bin/promote-cards-by-token)"
-#     git log "$R" --no-merges --format=%s | grep -oiE "$CARD_RE" | grep -oE '[0-9]+' \
+#     git log "$R" --format=%s | grep -oiE "$CARD_RE" | grep -oE '[0-9]+' \
 #       | sort -u > "$T/token"
 #     git log "$R" --no-merges --format=%s | grep -oE '\(#[0-9]+\)[[:space:]]*$' \
 #       | grep -oE '[0-9]+' | jq -s . | jq -r --slurpfile p /dev/stdin \
