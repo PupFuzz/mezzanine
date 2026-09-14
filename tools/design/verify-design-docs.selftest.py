@@ -105,8 +105,10 @@ because a gate can only be proven on a defect of its own class:
                class "a declaration a gate holds the document to was swapped for one it exempts".
                PupFuzz/mezzanine#164's round-1 review is why this exists: G5 checked the instrument
                exemption before the harness classification, so a fixture-replaying bullet that named
-               a step-0 gate in place of the harness passed.  The gate's name is read out of Appendix
-               B on every run; the recognizer restates G5's `gates?` head-noun rule because that
+               a step-0 gate in place of the harness passed.  Round 2 is the second plant of this
+               kind: a test that names no fixture left the harness class by the same swap and was
+               covered by a gate whose Appendix B row does not gate it.  The gate's name is read out
+               of Appendix B on every run; the recognizer restates G5's `gates?` head-noun rule because that
                verifier cannot be imported without running it.
   `separator`
             -- replace the first hyphen of the anchored name with an underscore, which is the class
@@ -513,6 +515,22 @@ PLANTS = [
         "the fixture AT-D3-1's instrument half replays, its first hyphen made an underscore, which "
         "G5's harness-half CONTROL must report as a fixture the table does not declare (#164 round 1)",
         "section 11's fixture table declares no such fixture",
+    ),
+    (
+        # PupFuzz/mezzanine#164 round 2, the MAJOR.  AT-D3-11 names no fixture, so the harness is in
+        # its class only by its own mention of it: swap that mention for a gate and no recognizer
+        # sees a harness test any more.  Against the round-1 verifier, which let any instrument
+        # cover a non-harness test, this mutant ran at rc 0 -- measured on d62f212.  It reds only
+        # because the Appendix B row that builds the gate does not gate AT-D3-11, so the substring
+        # is that anchoring's message and the verdict depends on the anchoring alone.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(### AT-D3-11 [^\n]*\n\n- \*\*Build:\*\*(?:(?!\n- \*\*)[\s\S])*?\*\*Reads:\*\*)"
+        r"( \*\*the harness\*\*,)( the)",
+        "instrument",
+        "the harness in AT-D3-11, a test that names no fixture, swapped for an Appendix B gate, which "
+        "G5 must refuse because the row that builds the gate does not gate the test (#164 round 2)",
+        "an instrument covers only a test that the Appendix B row building it also gates",
     ),
 ]
 

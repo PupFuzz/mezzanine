@@ -29,7 +29,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   with no argument object at all or `null` in its place, and it exports that class and
   `createAnimationLog` only. § 11 now states that call surface and the contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
   and `Tests\Feature\Floor\AnimationLogClassPopulationMatchesTheDocumentTest` drive the shipped file
-  under `node` against each bound, with a planted control for each. FLOOR.md also re-gates
+  under `node` against each bound, with a planted control for each. No renderer calls the module
+  yet; that is steps 5 and 6. FLOOR.md also re-gates
   AT-D3-1 whole at step 6 (its instrument half reads the harness, the client protocol and the
   animation set), names the harness as step 3's artifact, states that the log is the one entry
   point for claim-bearing motion and that motion bypassing it is NOT MECHANIZED, and adds § 14
@@ -37,14 +38,16 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   blocking the lowest Appendix B gate of a test that replays the fixture or a fixture built on it.
   `tools/design/verify-floor.py`'s G5 now requires **the harness** in the `Reads:` clause of every
   Build bullet of a test that names a § 11 fixture or the harness, whatever else the clause names; a
-  test that names no fixture and not the harness may instead name an instrument (an Appendix B gate),
-  any other bullet reds, and a backticked name beginning `fx` that the fixture table does not declare
-  reds as a control. Every such bullet in FLOOR.md now lists the harness, AT-D3-12's lineage half
-  lists the provenance gates it runs, and no gate moved.
-  `tools/design/verify-design-docs.selftest.py` plants each red: the harness dropped, the harness
-  swapped for a gate, an undeclared fixture name carrying a suffix, and one whose first hyphen is an
-  underscore.
-  No renderer calls the module yet; that is steps 5 and 6. **Installer action:** none; no migration.
+  test that names no fixture and not the harness may instead name an instrument (an Appendix B gate)
+  when the Appendix B row that builds that instrument also gates the test, any other bullet reds, and
+  a backticked name beginning `fx` that the fixture table does not declare reds as a control. G5
+  catches a test the harness drives that forgets the harness; it cannot prove a `Reads:` clause
+  true, so a deliberately false declaration stays a review question. Every such bullet in FLOOR.md
+  now lists the harness, AT-D3-12's lineage half lists the provenance gates it runs, and no gate
+  moved. `tools/design/verify-design-docs.selftest.py` plants each red: the harness dropped, the
+  harness swapped for a gate in a test that replays a fixture and in one that names none, an
+  undeclared fixture name carrying a suffix, and one whose first hyphen is an underscore.
+  **Installer action:** none; no migration.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
   served with every `{}` it was authored with.** The layout reader decoded the document
   associatively, where `{}` and `[]` are one PHP value: `"floors": {}` was accepted as § 4.6's empty

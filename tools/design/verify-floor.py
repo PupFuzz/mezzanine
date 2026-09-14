@@ -1091,11 +1091,25 @@ if fx_declared:
 #
 # THE CLASSIFICATION DECIDES, AND IT IS CHECKED FIRST.  A harness test's every bullet must declare
 # `the harness`, whatever else its clause names: a gate named beside a replayed fixture does not stand
-# in for the harness that replays it.  Only a bullet of a test that names no fixture and not the harness
-# may be covered by an instrument instead.  Any other bullet reds, because what runs it is undeclared
-# and a check that guessed would pass exactly the bullet it cannot read.  Checking the instrument first
-# -- the first revision of this half -- let a harness test swap the harness for a step-0 gate and pass,
-# which is the round-1 review's MAJOR on PupFuzz/mezzanine#164.
+# in for the harness that replays it.  Checking the instrument first -- the first revision of this
+# half -- let a harness test swap the harness for a step-0 gate and pass, which is the round-1
+# review's MAJOR on PupFuzz/mezzanine#164.
+#
+# AN INSTRUMENT COVERS ONLY A TEST ITS OWN APPENDIX B ROW GATES.  The classification is fed by
+# recognizers -- a fixture name the token reads, or the test's own mention of the harness -- so a test
+# can leave the harness class by what it omits: a test naming no fixture whose `the harness` is
+# swapped for a gate name, or a fixture name written unbackticked, bold or as a link.  Round 2 of the
+# same review measured exactly that.  A third recognizer would be one more thing to write around, so
+# the exemption is anchored on the build order instead: a bullet that is not a harness test's is
+# covered by an instrument only when the row that BUILDS that instrument also GATES the test (any half
+# of it -- AT-D3-12's lineage half runs the provenance gates its manifest half is gated on at step 0).
+# A test gated elsewhere that names a gate in place of what runs it reds, whatever the recognizers saw.
+# Any other bullet reds too, because what runs it is undeclared and a check that guessed would pass
+# exactly the bullet it cannot read.
+#
+# WHAT THIS HALF CANNOT DO.  It catches the ACCIDENTAL class -- a harness-driven test that forgets the
+# harness.  It cannot prove a `Reads:` clause is true: a deliberately false declaration, such as a test
+# added to row 0's Gate cell that reads only step-0 artifacts, passes, and stays a review question.
 #
 # A backticked name beginning `fx` that the fixture table does not declare is a CONTROL: the predicate
 # cannot recognise that fixture, so it cannot classify the test on it -- and a malformed name dropped
@@ -1138,21 +1152,26 @@ if appB and fx_declared and G5_HARNESS in artifact_step:
                         f"{'replays ' + str(fx_replayed) if fx_replayed else 'names the harness'}"
                         f" — and its **Reads:** clause does not declare `{G5_HARNESS}`."
                         + (f" It names {instruments} instead, and that does not stand in for the "
-                           f"harness: only a test that names no fixture and not the harness may "
-                           f"name an instrument instead." if instruments else "")
+                           f"harness: only a test that names no fixture and not the harness, and is "
+                           f"gated by the row that builds the instrument, may name it instead."if instruments else "")
                         + f" A bullet that replays a fixture reads the harness as surely as anything "
                           f"it asserts on; leave it out and the ordering rule cannot see that the "
                           f"test needs step {artifact_step[G5_HARNESS]}'s artifact, which is how "
                           f"AT-D3-1's instrument half stood at step 2")
-            elif instruments:
+            elif any(st == artifact_step[i] for st, _ in step_of.get(name, []) for i in instruments):
                 g5_instrument_bullets.append(label)
             else:
+                named = (f"names {instruments}, built at step "
+                         f"{sorted({artifact_step[i] for i in instruments})}, and `{name}` is gated at "
+                         f"step {sorted({st for st, _ in step_of.get(name, [])})}: an instrument "
+                         f"covers only a test that the Appendix B row building it also gates"
+                         if instruments else
+                         f"names no instrument (one of {g5_other_instruments})")
                 fail.append(
                     f"G5: {label} belongs to a test that names no fixture from section 11's table "
-                    f"and does not name the harness, and its **Reads:** clause names no instrument "
-                    f"(one of {g5_other_instruments}). What runs the test is undeclared, so whether "
-                    f"its gate stands on the harness cannot be decided, and a check that guessed would "
-                    f"pass the one bullet it cannot read")
+                    f"and does not name the harness, and its **Reads:** clause {named}. What runs "
+                    f"the test is undeclared, so whether its gate stands on the harness cannot be "
+                    f"decided, and a check that guessed would pass the one bullet it cannot read")
     if not g5_harness_bullets:
         fail.append("G5 CONTROL: no Build bullet was recognised as driven by the harness — the "
                     "fixture names or the Build-bullet parse are unread, and the harness half would "
@@ -2636,9 +2655,11 @@ for _n, _a in g5_unread:
     print(f"    G5 residue — named but not declared as read · {_n}: `{_a}`")
 print(f"    G5 harness: {len(g5_harness_bullets)} Build bullets of tests the harness drives, each "
       f"required to declare it whatever else it names; {len(g5_instrument_bullets)} of tests naming "
-      f"no fixture and not the harness, run by an instrument ({g5_other_instruments}): "
-      f"{g5_instrument_bullets}. Classified from the fixture table and the harness's own name first, "
-      f"Appendix B's gates second — no bullet is listed in this tool")
+      f"no fixture and not the harness, run by an instrument ({g5_other_instruments}) whose own "
+      f"Appendix B row gates the test: {g5_instrument_bullets}. Classified from the fixture table and "
+      f"the harness's own name first, Appendix B's gates second — no bullet is listed in this tool. "
+      f"NOT MECHANIZED: whether a `Reads:` clause is true — a deliberately false declaration is a "
+      f"review question")
 print(f"    G5 ordinal REDs: {g5_ord_total} across the acceptance tests, each sequence checked "
       f"CONTIGUOUS from Second. Which of them are bound to a suite is printed rather than counted — "
       f"a test whose REDs no fixture file claims has had its ENUMERATION checked and its EXECUTION "
