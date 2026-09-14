@@ -29,8 +29,8 @@ use Illuminate\Support\Facades\DB;
  * These are separate from D1 § 9.3's twelve-member `degraded` array and are NEVER merged into it:
  * that array is what the *reporter* knows about itself, and a `lossy` written by this server would
  * sit beside a `spool_dropped_events` of 0 and contradict the number § 9.3 requires be rendered
- * with it. `epoch_reset` appears in both sets deliberately — two independent observations of one
- * transition, and the two disagreeing is itself a signal.
+ * with it. `epoch_reset` appears in both sets deliberately — two independent observers of different
+ * causes (D1 § 10.2, D2 § 7.2), so which side raised it names the cause.
  */
 final class Badges
 {

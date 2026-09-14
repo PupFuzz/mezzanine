@@ -2559,14 +2559,7 @@ member of this list; that is what makes [§ 8.2.1](#821-the-seat-state-object)'s
 `catching_up` is deliberately **not** a badge: it is a `link_state`
 ([§ 4.5](#45-link-states)), and a fact with two homes is a fact free to disagree with itself.
 
-`epoch_reset` appears in both sets, and deliberately: D1's reporter raises it from its own `state_reset`
-counter, and the server raises it independently from `seq_epoch_change`. Two independent observations of
-one transition is the same discipline D1 applies to `/clear` detection, and the two disagreeing is
-itself a signal. They observe different causes (D1 § 10.2): the reporter counts only a `state.json` that
-exists and cannot be used, and the server counts any new epoch on a seat that has already sent under
-one. So the server's badge alone means state lost with the file after the seat reported, and the
-reporter's alone means an unusable `state.json` on a seat that had not yet reported. A first start
-raises neither.
+`epoch_reset` appears in both sets, and deliberately: D1's reporter raises it from its own `state_reset` counter, and the server raises it independently from `seq_epoch_change`. The two are independent observers of different causes (D1 § 10.2), so which side raised the badge names the cause. The reporter counts only a `state.json` that exists and cannot be used; the server counts any new epoch on a seat that has already sent under one. So the server's badge alone means state lost with the file after the seat reported, the reporter's alone means an unusable `state.json` on a seat that had not yet reported, and both together mean an unusable `state.json` on a seat that had. A first start raises neither. ⚠ A seat installed from a reporter build before card#9374 carries the reporter's badge from its first start: that build counted a missing `state.json` as a reset, and the counter persists across flusher restarts (card#9491).
 
 ### 7.3 How the reporter's own counters are handled
 
