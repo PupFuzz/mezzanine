@@ -67,8 +67,8 @@
 #   stamp against the trailing `(#NNN)` squash markers in the released range's subjects (no
 #   board-14 card carries a DL). This one correlates `CARD_RE` over EVERY subject in the range,
 #   merges included, so it does not depend on a card being stamped, on its PR having
-#   squash-merged, or on the stamp naming the PR that carried the card into the range. All three gaps are real here: a
-#   REBASE-merged PR leaves no marker (#27 → card#7913, #28 → card#7912); a MERGE-COMMIT PR
+#   squash-merged, or on the stamp naming the PR that carried the card into the range. All
+#   three gaps are real here: a REBASE-merged PR leaves no marker (#27 → card#7913, #28 → card#7912); a MERGE-COMMIT PR
 #   leaves it only on the commit `--no-merges` discards (#39 → card#8174); a stamp names one PR
 #   where another carried the card (card#7456 is stamped `8`, #14 carries it into v0.1.0..v0.2.0;
 #   card#7897 is stamped `30`, outside v0.3.0..v0.4.0) or names none (card#7583).
