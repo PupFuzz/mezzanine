@@ -333,7 +333,7 @@ inside — derived at [§ 12](#12-every-number-and-where-it-comes-from)'s row of
 figures D2 § 2.1's feed-reload row, `bin/deploy.sh`'s `drain_previous_streams` and
 `docs/PLAN.md § 5`'s opcache wait each own, none of which is restated here.
 
-⛔ **The grace is a bound and not a mute, and there are four things it does not do.** (1) **It does
+⛔ **The grace is a bound and not a mute, and there are things it does not do.** (1) **It does
 not outlast itself**: past 60 s with no stream open the client leaves it for step 7 — F1's *feed down
 — polling*, and its poll's answer rendered by [§ 9](#9-failure-paths-and-their-observables) — because a
 deploy that fails inside its window leaves the application down for an operator (`bin/deploy.sh`'s exit
@@ -5362,8 +5362,8 @@ over it.
 | T11 | § 3.4 | **Forbidden:** rendering an activity state without its currency label when the seat is `catching_up`, `stale`, `offline` or badged `fold_lag` | [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) |
 | T12 | § 8.4 | Snapshot-then-deltas: open the stream, buffer, snapshot, discard at or below the per-seat watermark, then steady state | [§ 2.2](#22-connect-snapshot-deltas), [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) |
 | T13 | § 8.5 | Apply iff `version == local + 1`; on a gap resync **that one seat** with `?resync_from=`, which is the only write path for `feed_gap_detected` | [§ 9](#9-failure-paths-and-their-observables) F2, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) |
-| T14 | § 8.3 | A client that has seen no message of any kind for 45 s treats the feed as dead, renders an indicator and reconnects | [§ 9](#9-failure-paths-and-their-observables) F1, [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) |
-| T15 | § 2.2 | The stream unreachable, store up: REST still serves, the client polls at **10 s** and **must render a `feed_down` indicator** | [§ 9](#9-failure-paths-and-their-observables) F1 |
+| T14 | § 8.3 | A client that has seen no message of any kind for 45 s treats the feed as dead, renders an indicator and reconnects — except inside § 2.2's reload grace, where clause (2) applies | [§ 9](#9-failure-paths-and-their-observables) F1, [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) |
+| T15 | § 2.2 | The stream unreachable, store up: REST still serves, the client polls at **10 s** and **must render a `feed_down` indicator** — except inside § 2.2's reload grace, where clause (2) applies | [§ 9](#9-failure-paths-and-their-observables) F1 |
 | T16 | § 8.1 | A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — no compatibility dance | [§ 9](#9-failure-paths-and-their-observables) F8, [§ 2.5](#25-what-re-renders-and-when) |
 | T17 | § 8.2.1 | `subagents[].title` is `null` when the spawn was lost — an honest orphan, **never invented**; a later `subagent.spawn` for the same `call_id` fills it | [§ 8](#8-interns--subagent-rendering-and-the-cap), [AT-D3-4](#at-d3-4-the-subagent-cap-boundary) |
 | T18 | § 8.2.1 | `subagents` is a stated reduction; `subagents_open` always carries the true count; the per-seat detail endpoint returns all of them | [§ 8](#8-interns--subagent-rendering-and-the-cap), [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |

@@ -65,11 +65,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
     every `fleet.reload` demands a reload.
   - **Review round 2.** § 2.2's protocol block, step 8, now carries the exception the prose, F3 and F8
     already carried: after F8's banner nothing is re-opened. § 2.2's grace paragraph gains a fourth
-    clause — the grace also suppresses F6, because an `EventSource` open failure carries no status code
-    and no poll is issued inside it, so a session that expires there waits for the grace's end; F6's
+    clause — the grace also suppresses F6 for the reads the client issues on its own, because an
+    `EventSource` open failure carries no status code and the client issues no poll of its own inside
+    it, so a session that expires there waits for the grace's end; F6's
     **Detected by** column and AT-D3-8 point at it. And **the drain ceiling's consumer is now named at
     both ends**: `bin/deploy.sh`'s env-var block and D2 § 2.1's feed-reload row say that raising
-    `MEZZ_FEED_DRAIN_CEILING_S` pushes the window past the client's grace, which no client can read.
+    `MEZZ_FEED_DRAIN_CEILING_S` can push the window past the client's grace, which no client can read.
+  - **Review round 3.** The 45 s silence path — § 2.2 step 7, § 9 F1 and D2 § 2.2's Stream row — carries
+    the reload-grace exception: inside the grace, clause (2) applies in place of the *feed down —
+    polling* render and its poll. Clause (4), F6 and AT-D3-8 now claim only that the client issues no
+    read **of its own** inside the grace; a read the user causes (§ 4.3's drill-down, § 4.4's
+    navigation, F10/F11's retry) is suppressed by nothing, and a `401` from it fires F6 as usual.
+    Appendix A's T14 and T15 carry the same exception.
   **Installer action:** none — the `bin/deploy.sh` change is a comment.
 
 - **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
