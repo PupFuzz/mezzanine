@@ -156,21 +156,8 @@ abstract class CommittedSeatTestCase extends TestCase
      */
     protected function batch(array $events): array
     {
-        $body = [
-            'schema_version' => 1,
-            'batch_id' => $this->ulid(),
-            'install_id' => $this->install(),
-            'seat_id' => $this->seat(),
-            'reporter_version' => '0.1.0',
-            'reporter_platform' => 'linux',
-            'runtime_version' => 'v22.11.0',
-            'seq_epoch' => '01K3T0000A5N7M2X9V4B6D0FGH',
-            'sent_at' => $this->wireTime(Clock::toMs(Clock::sql(now()))),
-            'events' => $events,
-        ];
-
         // Decoded the way `BodyReader` decodes the wire: objects stay objects under a shallow cast.
-        $body = (array) json_decode(json_encode($body, JSON_UNESCAPED_SLASHES), false, 512, JSON_THROW_ON_ERROR);
+        $body = (array) json_decode(json_encode($this->body($events), JSON_UNESCAPED_SLASHES), false, 512, JSON_THROW_ON_ERROR);
 
         $batch = app(BatchValidator::class)->validate($body, $this->binding);
         $this->assertInstanceOf(ValidBatch::class, $batch, 'the fixture batch was refused: '.($batch->message ?? ''));
@@ -185,6 +172,29 @@ abstract class CommittedSeatTestCase extends TestCase
         }
 
         return [$batch, $valid];
+    }
+
+    /**
+     * One batch envelope as the wire carries it, for a test that posts it rather than handing it to
+     * `BatchWriter::write()`.
+     *
+     * @param  list<array<string, mixed>>  $events
+     * @return array<string, mixed>
+     */
+    protected function body(array $events): array
+    {
+        return [
+            'schema_version' => 1,
+            'batch_id' => $this->ulid(),
+            'install_id' => $this->install(),
+            'seat_id' => $this->seat(),
+            'reporter_version' => '0.1.0',
+            'reporter_platform' => 'linux',
+            'runtime_version' => 'v22.11.0',
+            'seq_epoch' => '01K3T0000A5N7M2X9V4B6D0FGH',
+            'sent_at' => $this->wireTime(Clock::toMs(Clock::sql(now()))),
+            'events' => $events,
+        ];
     }
 
     /**

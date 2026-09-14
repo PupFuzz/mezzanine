@@ -32,8 +32,10 @@ use Illuminate\Support\Facades\DB;
  * unprotected; `At22LockFirstIngestTest` pins the position.
  *
  * A write for a seat whose row another transaction holds — the fold's window, an overlapping post,
- * or any other writer of that row — WAITS, bounded only by the connection's
- * `innodb_lock_wait_timeout`.
+ * or any other writer of that row — WAITS, bounded by the session's `innodb_lock_wait_timeout`. The
+ * HTTP ingest pins that, and the idle-transaction bound, on its own session before it calls this
+ * (`IngestPipeline::boundTheWriteSession()`, derived at `docs/design/FLEET-STATE.md § 2.2`); a caller
+ * that is not that request carries its connection's own.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHICH `seat_state` COLUMNS THE INGEST WRITES — a decision D1 left to D2 and D2 states in three
