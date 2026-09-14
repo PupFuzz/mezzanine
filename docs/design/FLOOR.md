@@ -4307,8 +4307,8 @@ resync itself, and the line the record gains, are the protocol's and are observa
   cost — so no leg here asserts a sign-in prompt for a session that expires inside the grace while the
   viewer touches nothing. **A read the USER causes is suppressed by nothing**: a user-initiated read
   that returns `401` inside the grace — clause (4) names which reads those are — fires F6 by F6's own
-  trigger, and a leg asserting THAT is asserting what clause (4) says rather than against it. A stream that ends with
-  **no** `feed.close` — the drain's — takes F1's render at once, with no grace.
+  trigger, and a leg asserting THAT is asserting what clause (4) says rather than against it. A stream
+  that ends with **no** `feed.close` — the drain's — takes F1's render at once, with no grace.
 - **RED:** render a `503` as a floor with no desks → an empty office, which is indistinguishable from a
   fleet that has gone home and is exactly the failure [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange)
   forbids on the wire, arriving through the renderer instead.
