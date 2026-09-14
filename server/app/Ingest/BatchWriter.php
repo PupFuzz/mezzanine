@@ -26,10 +26,10 @@ use Illuminate\Support\Facades\DB;
  * `AUTO_INCREMENT` (an allocated value is never issued again). No clock enters the argument.
  *
  * What this rests on, stated so an edit that breaks it is recognisable: this is the ONLY
- * inserter into `events` (`grep -rn "table('events')->insert" server/app`), and the lock is held
- * from the first statement to the COMMIT. A lock taken later — after the `batches` row, or at the
- * `seat_state` update the transaction always made — leaves the ids assigned before it unprotected;
- * `At22LockFirstIngestTest` pins the position.
+ * writer of `events` rows (`Tests\Unit\Ingest\EventsHaveOneWriterTest` fails on any other), and the
+ * lock is held from the first statement to the COMMIT. A lock taken later — after the `batches` row,
+ * or at the `seat_state` update the transaction always made — leaves the ids assigned before it
+ * unprotected; `At22LockFirstIngestTest` pins the position.
  *
  * A write for a seat whose row another transaction holds — the fold's window, an overlapping post,
  * or any other writer of that row — WAITS, bounded only by the connection's
@@ -65,9 +65,9 @@ final class BatchWriter
 {
     /**
      * Rows per `events` INSERT. The figure was sized against SQLite's older 999-parameter default,
-     * which one 200-row `INSERT` at 14 columns would have exceeded; SQLite is no longer a supported
-     * store (card#9328), and no MariaDB limit is known here to bind at a full batch. It stays as it
-     * is because nothing has measured a reason to move it.
+     * which one 200-row `INSERT` would have exceeded (200 times the columns `write()` builds per
+     * row); SQLite is no longer a supported store (card#9328), and no MariaDB limit is known here to
+     * bind at a full batch. It stays as it is because nothing has measured a reason to move it.
      */
     private const INSERT_CHUNK = 50;
 

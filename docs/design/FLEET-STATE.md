@@ -2115,9 +2115,10 @@ the cursor has advanced past becomes visible after the cursor has passed it.* It
 
 1. **Every transaction that inserts into `events` for a seat holds that seat's `seat_state` row lock,
    unbroken, from its first statement to its commit or rollback.** The ingest
-   ([§ 2.1](#21-processes)) is the only such inserter — `grep -rn "table('events')->insert" server/app`
-   re-derives that — and it takes the lock `FOR UPDATE` as its transaction's first statement, before it
-   stamps `received_at` or inserts anything. A second same-seat write therefore cannot insert, and
+   ([§ 2.1](#21-processes)) is the only such inserter —
+   `server/tests/Unit/Ingest/EventsHaveOneWriterTest.php` fails on any other write to `events` — and
+   it takes the lock `FOR UPDATE` as its transaction's first statement, before it stamps
+   `received_at` or inserts anything. A second same-seat write therefore cannot insert, and
    cannot be assigned an id, until the first has committed or rolled back.
 2. **An allocated `AUTO_INCREMENT` value is never issued again** — a rolled-back transaction burns its
    values and concurrent statements interleave allocations, but none is repeated or rewound. Like

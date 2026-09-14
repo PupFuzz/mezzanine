@@ -27,7 +27,6 @@ class FoldConcurrencyErrorTopLevelTest extends CommittedSeatTestCase
     public function test_a_deadlock_in_the_window_yields_the_pass_and_quarantines_nothing(): void
     {
         $this->write(self::WRITER_1, $this->batch([$this->turnStart(), $this->toolStart($this->ulid())]));
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
 
         $contended = new class extends Projector
         {
@@ -46,7 +45,6 @@ class FoldConcurrencyErrorTopLevelTest extends CommittedSeatTestCase
     public function test_a_concurrency_error_while_quarantining_yields_instead_of_escaping_the_pass(): void
     {
         $this->write(self::WRITER_1, $this->batch([$this->turnStart()]));
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
 
         // A genuinely unprojectable event, so both attempts fail and the pass reaches the quarantine —
         // and the store is contended by the time the quarantine writes.

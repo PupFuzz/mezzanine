@@ -22,9 +22,10 @@ use Illuminate\Support\Facades\DB;
  * order and commit order to be the same order.
  *
  * The ingest makes them so. `BatchWriter::write()` takes the seat's `seat_state` row lock as its
- * transaction's first statement and is the only inserter into `events`, so a second same-seat write
- * cannot be assigned an id until the first has committed or rolled back; and an allocated
- * `AUTO_INCREMENT` value is never issued again. Every uncommitted id for a seat is therefore above
+ * transaction's first statement and is the only inserter into `events` (`EventsHaveOneWriterTest`
+ * checks that), so a second same-seat write cannot be assigned an id until the first has committed
+ * or rolled back; and an allocated `AUTO_INCREMENT` value is never issued again. Every uncommitted
+ * id for a seat is therefore above
  * every committed one, and a plain `id > cursor ORDER BY id` read — any read view, locked or not —
  * sees a prefix of the seat's ids. No time comparison enters it, so clock skew and a clock stepping
  * backwards change nothing.
@@ -186,7 +187,7 @@ final class Fold
         return DB::table('events')
             ->where('seat_ref', $seatRef)
             ->where('id', '>', $cursor)     // by id alone: the class docblock is why no age term is needed
-            ->orderBy('id')                 // ARRIVAL order for visiting; § 6.5 applies by the triple
+            ->orderBy('id')                 // receipt (lock) order for visiting; § 6.5 applies by the triple
             ->limit(self::BATCH)
             ->get();
     }

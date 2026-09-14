@@ -29,11 +29,13 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   lag. `clock_skew_ms` still measures the request's arrival against `sent_at` (D1 § 10.1), so a post
   that waits for the lock does not badge `clock_skew`. The fold now treats MariaDB's concurrency errors
   (`1020`, `1205`, `1213`) as transient: the pass yields that seat and retries it whole on the next pass,
-  where before it quarantined an innocent event as poison (`fold_error`, `derivation_error`). D2 § 6.5,
-  AT-D2-22 and the number and decision tables restate the property and its conditions; the feed
-  outbox keeps its own 2 s lag (card#9467). New tests drive the overlap on real MariaDB connections
-  (`At22LockFirstIngestTest`) and the transient path at both transaction depths. **Installer action:**
-  none; no migration. A post for a seat whose row another transaction holds — the fold's window, or an
+  where before, contention on both attempts could quarantine an innocent event as poison
+  (`fold_error`, `derivation_error`). D2 § 6.5, AT-D2-22 and the number and decision tables restate
+  the property and its conditions; the feed outbox keeps its own 2 s lag (card#9467). New tests drive
+  the overlap on real MariaDB connections (`At22LockFirstIngestTest`) and the transient path at both
+  transaction depths, and `EventsHaveOneWriterTest` fails on any write to `events` outside the
+  ingest's `BatchWriter`, the condition the lock argument rests on. **Installer action:** none; no
+  migration. A post for a seat whose row another transaction holds — the fold's window, or an
   overlapping post for the same seat — now waits for it before inserting anything rather than at its
   final `seat_state` update, bounded as before by the store connection's `innodb_lock_wait_timeout`.
 - **card#9445** — **Two-factor enrolment now says what happened to the code you entered.** A
