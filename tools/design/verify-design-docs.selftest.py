@@ -83,13 +83,24 @@ because a gate can only be proven on a defect of its own class:
                name (`keeps a count of \`x\``), which is the class "the widened idiom reads English as
                a counter write".  Also card#9320, and also a HOLD: the imperative verb had to enter
                G8's idiom, and the word is ordinary English all over the document.
+  `backtick` -- put backticks round every counter name the anchored span writes BARE after a
+               counting verb (`count x` becomes count, a space, then x in backticks), which is the
+               class "the widened idiom decayed back into the backtick-only one it replaced".
+               card#9320 round 2 is why this exists: G8's CONTROL reds when no counter write in the
+               document is spelled bare, and until this plant nothing had seen that control fire.
+               The anchor brackets § 8.3's handler fence, the surface that writes counters bare.
+               The verb list is restated from G8's idiom because that verifier cannot be imported
+               without running it; a bare write this plant cannot rewrite -- another verb, another
+               word order, or one outside the fence -- leaves the control silent and turns THIS
+               plant red, never green.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
-other way.  A HOLD is not a pass that cannot fail: each one reds against a specific wrong gate, and
-the comment on each entry names that gate.  The `imperative` hold reds against the backtick-only
-idiom G8 had before card#9320; the `noun` hold reds against the naive widening that makes the
-backtick optional and admits any word after the verb.
+other way -- and must neither crash nor exit above the control, because a run that died before
+judging carries no such line either.  A HOLD is not a pass that cannot fail: each one reds against
+a specific wrong gate, and the comment on each entry names that gate.  The `imperative` hold reds
+against the backtick-only idiom G8 had before card#9320; the `noun` hold reds against the naive
+widening that makes the backtick optional and admits any word after the verb.
 
 An anchor matching NOTHING is a hard error, never a skip -- that is the false-clean shape this whole
 directory exists against.  No kind writes the value it perturbs into this file.
@@ -404,6 +415,18 @@ PLANTS = [
         "coordination field rows were read from section 8.3.3's",
     ),
     (
+        # card#9320 round 2.  G8's CONTROL is the guard on the widening itself: with every bare write
+        # backticked the idiom reaches nothing the backtick-only one could not, and the control must
+        # say so rather than report the narrow population as the wide one.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\nGET /api/fleet/stream )(.*?)(\n```)",
+        "backtick",
+        "every bare counter write in § 8.3's handler fence, backticked, which G8's CONTROL must "
+        "report as a widening that reaches nothing (card#9320 round 2)",
+        "G8 CONTROL: every counter write in this document is backtick-delimited",
+    ),
+    (
         "verify-floor.py",
         "docs/design/FLOOR.md",
         r"(\| spare \| \*\*)([\d,]+)( B\*\*)",
@@ -453,6 +476,10 @@ MUTATIONS = {
     "imperative": lambda m: (m.group(1) + "count " + re.search(r"`([a-z_]+)`", m.group(2)).group(1)
                              + m.group(3)),
     "unwrite": lambda m: m.group(1) + re.sub(r"^\w+", "names", m.group(2)) + m.group(3),
+    "backtick": lambda m: (m.group(1)
+                           + re.sub(r"\b(count|counting|counts|increments|counted)(\s+)"
+                                    r"([a-z]*_[a-z_]*)(?![\w`]|\.\w)", r"\1\2`\3`", m.group(2))
+                           + m.group(3)),
     "noun": lambda m: (m.group(1) + "keeps a count of " + re.search(r"`[a-z_]+`", m.group(2)).group(0)
                        + m.group(3)),
 }
@@ -615,11 +642,24 @@ for tool, rel, anchor, kind, what, wrong in HOLDS:
     ctl_lines = [l.strip() for l in ctl_out.splitlines() if wrong in l]
     new_lines = [l.strip() for l in mut_out.splitlines() if wrong in l and l.strip() not in ctl_lines]
 
+    # ...and a hold is only a verdict if the mutant run FINISHED judging.  A verifier that crashes on
+    # the correct form, or dies on it before printing the failure the substring names, carries no
+    # such line either, so the absence alone would pass it (card#9320 round 2).  A crash or an exit
+    # code above the control's is the hold's failure, whatever the substring says.
+    crashed = "Traceback" in mut_out
     if new_lines:
         failures.append(f"{tool}: a HOLD mutant in {rel} newly carries {wrong!r} — the verifier "
                         f"reds on the correct form this hold plants, so its guard is back to the "
                         f"wrong population: {new_lines[0][:200]}")
         print(f"   ✗ mutant rc={mut_rc} and newly carries: {new_lines[0][:160]}")
+    elif crashed or mut_rc > ctl_rc:
+        how = "crashed (its output carries a Traceback)" if crashed else "exited above the control"
+        last = (mut_out.strip().splitlines() or ["(the mutant run printed nothing)"])[-1].strip()
+        failures.append(f"{tool}: a HOLD mutant in {rel} {how}, control rc={ctl_rc} → mutant "
+                        f"rc={mut_rc} — the verifier did not accept the correct form this hold "
+                        f"plants, and a missing {wrong!r} line from a run that did not finish "
+                        f"judging is no evidence it would not have printed one: {last[:200]}")
+        print(f"   ✗ control rc={ctl_rc} → mutant rc={mut_rc}, and the mutant {how}: {last[:160]}")
     else:
         print(f"   ✓ control rc={ctl_rc} → mutant rc={mut_rc}, and no new line carries {wrong!r}")
     print()

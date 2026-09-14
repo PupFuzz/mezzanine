@@ -1275,9 +1275,15 @@ if declared_types and fleet_fields:
 #   carries D1's `accepted` and `duplicates`, and `count accepted` cannot be told from English by
 #   spelling.  Backtick it.  (2) The fences' OTHER counter idiom, `x += 1`, is not in the population:
 #   § 6.5's fold pseudocode writes `state_version += 1`, a version field, in the same form as
-#   `fold_window_purged += 1`, so no spelling separates a counter from a field there.  (3) The
-#   polarity fails LOUD: `count seat_state rows` in a fence comment would red as an undeclared
-#   counter.  Rephrase it; a counter slipping past silently is the defect this gate exists for.
+#   `fold_window_purged += 1`, so no spelling separates a counter from a field there.  (3) A family
+#   MEMBER written by its dotted path is invisible in EITHER spelling --
+#   `count bogus_counter.too_large` in a fence, `increments \`batches_refused.too_large\`` in
+#   prose: the name must be whole, and a member path is not.  A family is written by its base name
+#   (`batches_refused`); a write spelled only as a member path is outside the population, so an
+#   undeclared family written that way passes (card#9320 round 2: both plants at once ran at rc=0
+#   with no line naming either).  Write the base name.  (4) The polarity fails LOUD: `count seat_state rows` in a fence comment would red
+#   as an undeclared counter.  Rephrase it; a counter slipping past silently is the defect this gate
+#   exists for.
 _WRITER_NAME = r"(?:`{name}`|(?<![\w`.])(?=[a-z_]*_){name}(?![\w`]|\.\w))"
 WRITER_RE = (r"\b(?:count|counting|counts|increments|counted)\s+" + _WRITER_NAME
              + r"|" + _WRITER_NAME + r"(?:\s+is)?\s+(?:counted|incremented|increments)")
