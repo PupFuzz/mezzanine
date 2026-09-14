@@ -131,13 +131,17 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             ."        }\n"
             ."        written.push(Object.freeze({ ...fields, at }));\n";
 
+        $edgeGiven = "        edge(args) {\n            const given = args ?? {};\n";
+        $enterGiven = "        enterHeld(args) {\n            const given = args ?? {};\n";
+        $leaveGiven = "        leaveHeld(episodeId, options) {\n            const { cause, at } = options ?? {};\n";
+
         $plants = [
             'RED 1 (guard removed)' => [$refusalGuard, '', 'unknownEpisodeDefects', 'refusal'],
             'RED 2 (was ever entered)' => ["            open.delete(episodeId);\n", '', 'alreadyLeftDefects', 'refusal'],
             'RED 3 (constant id)' => ['const freshId = () => `ep-${++seq}`;', "const freshId = () => 'ep-1';",
                 'freshIdDefects', 'fresh'],
-            'RED 4 (edge counter)' => ["opening('edge', 'fired', freshId(), args)",
-                "opening('edge', 'fired', `ep-\${written.filter((row) => row.class === 'edge').length + 1}`, args)",
+            'RED 4 (edge counter)' => ["opening('edge', 'fired', freshId(), given)",
+                "opening('edge', 'fired', `ep-\${written.filter((row) => row.class === 'edge').length + 1}`, given)",
                 'edgeIdDefects', 'refusal'],
             'RED 5 (null fallback)' => ['install_id, seat_id, class: klass,',
                 "install_id: install_id ?? 'unknown', seat_id: seat_id ?? 'unknown', class: klass,",
@@ -158,12 +162,18 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             'RED 8 (omitted at, source)' => [$atGuard,
                 "        written.push(Object.freeze({ ...fields, at: at ?? Date.now() }));\n",
                 'callerClockDefects', 'clock:Date'],
-            'RED 8 (no-argument edge)' => ['        edge(args = {}) {', '        edge(args) {',
+            'RED 8 (no-argument edge)' => [$edgeGiven, "        edge(given) {\n", 'callerClockDefects', 'no-argument:refusal'],
+            'RED 8 (no-argument enterHeld)' => [$enterGiven, "        enterHeld(given) {\n", 'callerClockDefects', 'no-argument:refusal'],
+            'RED 8 (leaveHeld with no options)' => [$leaveGiven, "        leaveHeld(episodeId, { cause, at }) {\n",
                 'callerClockDefects', 'no-argument:refusal'],
-            'RED 8 (no-argument enterHeld)' => ['        enterHeld(args = {}) {', '        enterHeld(args) {',
-                'callerClockDefects', 'no-argument:refusal'],
-            'RED 8 (leaveHeld with no options)' => ['        leaveHeld(episodeId, { cause, at } = {}) {',
-                '        leaveHeld(episodeId, { cause, at }) {', 'callerClockDefects', 'no-argument:refusal'],
+            // A parameter default stands in for `undefined` only, so each of these still accepts
+            // the no-argument call and throws a TypeError on a `null` in the argument's place.
+            'RED 8 (null edge, `= {}` default)' => [$edgeGiven, "        edge(given = {}) {\n",
+                'callerClockDefects', 'null-argument:refusal'],
+            'RED 8 (null enterHeld, `= {}` default)' => [$enterGiven, "        enterHeld(given = {}) {\n",
+                'callerClockDefects', 'null-argument:refusal'],
+            'RED 8 (null leaveHeld, `= {}` default)' => [$leaveGiven, "        leaveHeld(episodeId, { cause, at } = {}) {\n",
+                'callerClockDefects', 'null-argument:refusal'],
             'RED 9 (ordering check)' => ["            write('leaveHeld', {\n",
                 "            if (at < entered.at) {\n"
                 ."                throw new AnimationLogRefusal(`leaveHeld: \${episodeId} left before it was entered`);\n"
@@ -204,7 +214,8 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
         // and every scenario that depends on that id's class must name it.
         $reclasses = [
             'A3 → edge' => ['| **A3** | `held` |', '| **A3** | `edge` |', 'stale:A3',
-                ['tupleDefects', 'alreadyLeftDefects', 'leftMotionDefects', 'callerClockDefects', 'orderingDefects']],
+                ['tupleDefects', 'alreadyLeftDefects', 'freshIdDefects', 'leftMotionDefects', 'callerClockDefects', 'orderingDefects']],
+            'A7 → edge' => ['| **A7** | `held` |', '| **A7** | `edge` |', 'stale:A7', ['freshIdDefects']],
             'A5 → held' => ['| **A5** | `edge` |', '| **A5** | `held` |', 'stale:A5', ['edgeIdDefects']],
             'A1 → held' => ['| **A1** | `edge` |', '| **A1** | `held` |', 'tuple:coverage', ['tupleDefects']],
         ];
@@ -324,10 +335,21 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             $this->opening('A5', $md),
         ], $moduleDir);
 
+        // The two returned ids compared below exist only if § 6.2 still classes A3 and A7 `held`:
+        // `edge` returns nothing, and a null beside an id compares as two different ids.
+        $stale = $out['stale'];
+
+        foreach (['A3', 'A7'] as $i => $id) {
+            if ($out['results'][$i]['returned'] === null) {
+                $stale["stale:{$id}"] = "{$id}'s opening returned no episode id — § 6.2 no longer classes {$id} `held`, "
+                    .'and this scenario compares the ids two held entries return';
+            }
+        }
+
         $ids = array_column($out['rows'], 'episode_id');
 
         return $ids === array_unique($ids) && $out['results'][0]['returned'] !== $out['results'][1]['returned']
-            ? $out['stale'] : $out['stale'] + ['fresh' => 'opening rows share an episode_id: '.json_encode($ids)];
+            ? $stale : $stale + ['fresh' => 'opening rows share an episode_id: '.json_encode($ids)];
     }
 
     /** @return array<string, string> */
@@ -454,6 +476,10 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             ['op' => 'edge'],
             ['op' => 'enterHeld'],
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1]],
+            // the same three calls given an explicit null where the argument object goes
+            ['op' => 'edge', 'args' => null],
+            ['op' => 'enterHeld', 'args' => null],
+            ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1], 'args' => null],
             // the refused leaves above must not have closed the episode: this one is accepted
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1], 'args' => ['cause' => 'v-9', 'at' => 1000000000000]],
         ], $moduleDir);
@@ -465,7 +491,7 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             $defects['at-replaced'] = 'rows given at 1000 and 999999999999 carry '.json_encode($stamped);
         }
 
-        foreach (['omitted-at' => [2, 3, 4], 'no-argument' => [5, 6, 7]] as $form => $indices) {
+        foreach (['omitted-at' => [2, 3, 4], 'no-argument' => [5, 6, 7], 'null-argument' => [8, 9, 10]] as $form => $indices) {
             foreach ($indices as $i) {
                 foreach ($this->refusalDefects($out['results'][$i], self::AT_REFUSAL) as $what => $detail) {
                     $defects["{$form}:{$what}"] ??= $detail;
@@ -473,9 +499,9 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             }
         }
 
-        if ($out['results'][8]['error'] !== null) {
+        if ($out['results'][11]['error'] !== null) {
             $defects['refusal-moved-state'] = 'a leave refused for its missing `at` closed the episode anyway: '
-                .$out['results'][8]['error']['message'];
+                .$out['results'][11]['error']['message'];
         }
 
         return $defects + array_filter($this->sourceDefects($moduleDir),

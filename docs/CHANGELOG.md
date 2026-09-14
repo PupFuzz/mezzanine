@@ -26,8 +26,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   row with `motion: false`, and `rows` reads every row in call order as § 11's tuple. The module
   records what it is given, reads no clock and no environment, and throws `AnimationLogRefusal` on
   a `leaveHeld` for an episode that is not open and on any call without an `at`, including a call
-  with no argument object at all, and it exports that class and `createAnimationLog` only. § 11 now
-  states that call surface and the contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
+  with no argument object at all or `null` in its place, and it exports that class and
+  `createAnimationLog` only. § 11 now states that call surface and the contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
   and `Tests\Feature\Floor\AnimationLogClassPopulationMatchesTheDocumentTest` drive the shipped file
   under `node` against each bound, with a planted control for each. FLOOR.md also re-gates
   AT-D3-1 whole at step 6 (its instrument half reads the harness, the client protocol and the

@@ -12,7 +12,8 @@
  *          `{ "row": n }` (the `episode_id` of row n as the log held it when this op ran). A key
  *          left out of `args` reaches the module as `undefined`, which is how an omitted `at` is
  *          expressed in JSON. An op with no `args` key at all is called with no argument object —
- *          `edge()`, `enterHeld()`, `leaveHeld(id)` — which is a different call from `edge({})`.
+ *          `edge()`, `enterHeld()`, `leaveHeld(id)` — which is a different call from `edge({})`, and an
+ *          `"args": null` passes that `null` through as the argument.
  * stdout — JSON: `{ "results": [ { "op", "episode", "returned", "error": null | { "name",
  *                   "message" }, "rows_before", "rows_after" } ], "rows", "exports" }`, where
  *          `exports` is the module's export names as `import()` sees them.

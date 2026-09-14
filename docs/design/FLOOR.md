@@ -3880,10 +3880,12 @@ tests are what check them:
   `leaveHeld(episodeId, {cause, at})`, which writes the episode's `left` row, copying `animation_id`,
   `install_id` and `seat_id` from its `entered` row and writing `motion: false` whatever the entry
   carried; and `rows`, every row written, in call order. `args` carries `animation_id`, `cause`,
-  `install_id`, `seat_id`, `motion` and `at`. The log mints every `episode_id` and the caller supplies
-  every other field. Every refusal throws `AnimationLogRefusal`, and a call with no argument object —
-  `edge()`, `enterHeld()`, or `leaveHeld(episodeId)` on an open episode — is refused for its missing
-  `at` like any other call without one (bound (vi)).
+  `install_id`, `seat_id`, `motion` and `at`. The log mints every `episode_id`, sets `class` and
+  `phase` by the call it receives, and fills a `left` row's copied fields and `motion`; the caller
+  supplies the rest. Every refusal throws `AnimationLogRefusal`, and a call with no argument object,
+  or with `null` in its place — `edge()`, `enterHeld()`, or `leaveHeld(episodeId)` on an open
+  episode, or any of the three given `null` — is refused for its missing `at` like any other call
+  without one (bound (vi)).
 - **(i)** `leaveHeld` refuses an id that is not a currently-open `enterHeld` episode — an unknown id,
   an already-left one, and an `edge` row's id, which is drawn from the same id space and checked
   against the same registry, so an edge id handed to `leaveHeld` is refused on the same code path as
@@ -3899,7 +3901,7 @@ tests are what check them:
   ⚠ **What neither check sees, and what stays a review question on every step that edits this
   module:** a switch that reads its environment through an identifier outside the scanned set, and a
   flag reachable through what IS exported — a property hung on either export, or on the log object a
-  caller holds.
+  caller holds — or a field of the argument object (or options object) a call is given.
 - **(iii)** `edge`/`enterHeld` record exactly what the caller passes for `animation_id` and `cause`,
   with **no validation against this document's table**. This bound is required by the ruling two
   paragraphs above: the closed-set half's RED needs an out-of-table `animation_id` and a `null` `cause`
@@ -5594,9 +5596,9 @@ This table carries the build order and the gates; the rule over them is § 11's 
 here. What this note records is what the rule found once it was enforced over **every** artifact
 rather than over the drill-down alone. The tests that once asserted drill-down content while this
 table gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — were each split.
-Widening the check to every artifact this table names then found the tests named below, none of them
-about the panel, and each was resolved by splitting it, by re-gating it or by relocating the artifact
-it reads. **[AT-D3-1](#at-d3-1-no-animation-without-its-event)'s re-gate is not the same kind of find,
+Widening the check to every artifact this table names then found the tests named below other than
+AT-D3-1, none of them about the panel, and each was resolved by splitting it, by re-gating it or by
+relocating the artifact it reads. **[AT-D3-1](#at-d3-1-no-animation-without-its-event)'s re-gate is not the same kind of find,
 and is not credited to the same mechanism:** it was not caught by widening the check — its
 instrument half's `Reads:` clause understated what its own GREEN needs, and a check that verifies a
 Build bullet against its own stated `Reads:` clause cannot catch a `Reads:` clause that is itself
