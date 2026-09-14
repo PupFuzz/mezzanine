@@ -23,11 +23,17 @@ use Tests\TestCase;
  * lookup — and a check satisfied by any throw passes it. So every refusal check names
  * `AnimationLogRefusal`, matches the refusal's own words, and compares `rows` before and after.
  *
+ * ⛔ NO SCENARIO KNOWS AN ID'S CLASS. A scenario names the § 6.2 id it drives, and `opening()` reads
+ * which entry point that id goes through from `documentAnimationClasses()`, so bound (v) holds for
+ * this test as it does for the population test. A scenario can still depend on the class it was
+ * written for — leaving an episode needs an id § 6.2 classes `held` — so each such dependency is
+ * checked, and a § 6.2 reclass reds it as `stale:<id>` rather than quietly driving something else.
+ *
  * ⚠ WHAT THIS DOES NOT CHECK, so a green is not read as more than it is: that a renderer starts
  * its animations through this module at all (§ 11's NOT MECHANIZED paragraph), and anything a
- * renderer does with a refusal (the steps that build a renderer own that). The source scan in
- * bound (ii) is over identifiers a switch would have to read; a switch built from none of them is
- * a review question.
+ * renderer does with a refusal (the steps that build a renderer own that). Bound (ii) is checked
+ * over the identifiers a switch would have to read and over the module's export set; what neither
+ * sees is stated in § 11 bound (ii), and is not restated here.
  */
 class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
 {
@@ -43,6 +49,9 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
 
     /** Identifiers a module that read its own clock would have to name. */
     private const CLOCKS = ['Date', 'performance', 'setTimeout', 'setInterval', 'requestAnimationFrame'];
+
+    /** The module's whole export set, sorted — § 11's call surface names both. */
+    private const EXPORTS = ['AnimationLogRefusal', 'createAnimationLog'];
 
     // ------------------------------------------------------------------------------ the bounds --
 
@@ -122,13 +131,17 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             ."        }\n"
             ."        written.push(Object.freeze({ ...fields, at }));\n";
 
+        $edgeGiven = "        edge(args) {\n            const given = args ?? {};\n";
+        $enterGiven = "        enterHeld(args) {\n            const given = args ?? {};\n";
+        $leaveGiven = "        leaveHeld(episodeId, options) {\n            const { cause, at } = options ?? {};\n";
+
         $plants = [
             'RED 1 (guard removed)' => [$refusalGuard, '', 'unknownEpisodeDefects', 'refusal'],
             'RED 2 (was ever entered)' => ["            open.delete(episodeId);\n", '', 'alreadyLeftDefects', 'refusal'],
             'RED 3 (constant id)' => ['const freshId = () => `ep-${++seq}`;', "const freshId = () => 'ep-1';",
                 'freshIdDefects', 'fresh'],
-            'RED 4 (edge counter)' => ["opening('edge', 'fired', freshId(), args)",
-                "opening('edge', 'fired', `ep-\${written.filter((row) => row.class === 'edge').length + 1}`, args)",
+            'RED 4 (edge counter)' => ["opening('edge', 'fired', freshId(), given)",
+                "opening('edge', 'fired', `ep-\${written.filter((row) => row.class === 'edge').length + 1}`, given)",
                 'edgeIdDefects', 'refusal'],
             'RED 5 (null fallback)' => ['install_id, seat_id, class: klass,',
                 "install_id: install_id ?? 'unknown', seat_id: seat_id ?? 'unknown', class: klass,",
@@ -149,6 +162,18 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
             'RED 8 (omitted at, source)' => [$atGuard,
                 "        written.push(Object.freeze({ ...fields, at: at ?? Date.now() }));\n",
                 'callerClockDefects', 'clock:Date'],
+            'RED 8 (no-argument edge)' => [$edgeGiven, "        edge(given) {\n", 'callerClockDefects', 'no-argument:refusal'],
+            'RED 8 (no-argument enterHeld)' => [$enterGiven, "        enterHeld(given) {\n", 'callerClockDefects', 'no-argument:refusal'],
+            'RED 8 (leaveHeld with no options)' => [$leaveGiven, "        leaveHeld(episodeId, { cause, at }) {\n",
+                'callerClockDefects', 'no-argument:refusal'],
+            // A parameter default stands in for `undefined` only, so each of these still accepts
+            // the no-argument call and throws a TypeError on a `null` in the argument's place.
+            'RED 8 (null edge, `= {}` default)' => [$edgeGiven, "        edge(given = {}) {\n",
+                'callerClockDefects', 'null-argument:refusal'],
+            'RED 8 (null enterHeld, `= {}` default)' => [$enterGiven, "        enterHeld(given = {}) {\n",
+                'callerClockDefects', 'null-argument:refusal'],
+            'RED 8 (null leaveHeld, `= {}` default)' => [$leaveGiven, "        leaveHeld(episodeId, { cause, at } = {}) {\n",
+                'callerClockDefects', 'null-argument:refusal'],
             'RED 9 (ordering check)' => ["            write('leaveHeld', {\n",
                 "            if (at < entered.at) {\n"
                 ."                throw new AnimationLogRefusal(`leaveHeld: \${episodeId} left before it was entered`);\n"
@@ -157,6 +182,13 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
                 'orderingDefects', 'ordering'],
             'switch (factory option)' => ['export function createAnimationLog() {',
                 'export function createAnimationLog({ swallowRefusals = false } = {}) {', 'switchDefects', 'factory-parameters'],
+            'switch (exported flag)' => ["export function createAnimationLog() {\n",
+                "export const settings = { lenient: false };\n\n"
+                ."export function createAnimationLog() {\n"
+                ."    if (settings.lenient) {\n"
+                ."        return { edge() {}, enterHeld() {}, leaveHeld() {}, get rows() { return []; } };\n"
+                ."    }\n",
+                'switchDefects', 'exports'],
             'switch (environment read)' => ["    const written = [];\n",
                 "    const written = [];\n    const underHarness = typeof process !== 'undefined';\n",
                 'switchDefects', 'environment:process'],
@@ -177,6 +209,29 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
         $this->assertNotSame($this->floorMd(), $amended, 'CONTROL tuple (document) mutated nothing');
         $this->assertArrayHasKey('tuple:edge', $this->tupleDefects(null, $amended),
             'CONTROL tuple (document) did not bite: § 11 gained a field and the module\'s rows still matched');
+
+        // Bound (v) over THIS test's scenarios: § 6.2 reclasses an id a scenario was written for,
+        // and every scenario that depends on that id's class must name it.
+        $reclasses = [
+            'A3 → edge' => ['| **A3** | `held` |', '| **A3** | `edge` |', 'stale:A3',
+                ['tupleDefects', 'alreadyLeftDefects', 'freshIdDefects', 'leftMotionDefects', 'callerClockDefects', 'orderingDefects']],
+            'A7 → edge' => ['| **A7** | `held` |', '| **A7** | `edge` |', 'stale:A7', ['freshIdDefects']],
+            'A5 → held' => ['| **A5** | `edge` |', '| **A5** | `held` |', 'stale:A5', ['edgeIdDefects']],
+            'A1 → held' => ['| **A1** | `edge` |', '| **A1** | `held` |', 'tuple:coverage', ['tupleDefects']],
+        ];
+
+        foreach ($reclasses as $name => [$row, $reclassed, $key, $checks]) {
+            $md = str_replace($row, $reclassed, $this->floorMd());
+            $this->assertNotSame($this->floorMd(), $md, "CONTROL bound (v) {$name} mutated nothing");
+
+            foreach ($checks as $check) {
+                $defects = $this->{$check}(null, $md);
+
+                $this->assertArrayHasKey($key, $defects,
+                    "CONTROL bound (v) {$name} did not bite: {$check}() found ".json_encode($defects)
+                    .' against a § 6.2 table that no longer classes the id the way the scenario needs');
+            }
+        }
     }
 
     // ------------------------------------------------------------------------ the defect lists --
@@ -218,98 +273,132 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
     private function tupleDefects(?string $moduleDir = null, ?string $md = null): array
     {
         $tuple = $this->documentRowTuple($md);
-        $out = $this->drive([
-            ['op' => 'edge', 'args' => $this->seatRow('A1')],
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A3')],
+        $out = $this->scenario([
+            $this->opening('A1', $md),
+            $this->opening('A3', $md),
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1], 'args' => ['cause' => 'v-9', 'at' => 3000]],
         ], $moduleDir);
 
-        $defects = [];
+        $defects = $out['stale'];
+        $written = [];
 
         foreach ($out['rows'] as $row) {
+            $written[] = "{$row['class']}/{$row['phase']}";
+
             if (array_keys($row) !== $tuple) {
                 $defects["tuple:{$row['class']}"] = "{$row['class']}/{$row['phase']} row keys "
                     .json_encode(array_keys($row)).' against § 11\'s '.json_encode($tuple);
             }
         }
 
+        // "On every class and phase" is this scenario's point: a reclass that left it writing one
+        // class only would compare nothing on the other.
+        if ($written !== [] && array_diff(['edge/fired', 'held/entered', 'held/left'], $written) !== []) {
+            $defects['tuple:coverage'] = 'the scenario wrote '.json_encode($written).', not a row of every class and phase';
+        }
+
         return $defects + ($out['rows'] === [] ? ['tuple:edge' => 'no row was written'] : []);
     }
 
     /** @return array<string, string> */
-    private function unknownEpisodeDefects(?string $moduleDir = null): array
+    private function unknownEpisodeDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive([
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A3')],
+        $out = $this->scenario([
+            $this->opening('A3', $md),
             ['op' => 'leaveHeld', 'episode' => 'ep-unknown', 'args' => ['cause' => 'v-9', 'at' => 3000]],
         ], $moduleDir);
 
-        return $this->refusalDefects($out['results'][1], self::EPISODE_REFUSAL);
+        return $out['stale'] + $this->refusalDefects($out['results'][1], self::EPISODE_REFUSAL);
     }
 
     /** @return array<string, string> */
-    private function alreadyLeftDefects(?string $moduleDir = null): array
+    private function alreadyLeftDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive([
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A3')],
+        $out = $this->scenario([
+            $this->opening('A3', $md),
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 0], 'args' => ['cause' => 'v-9', 'at' => 3000]],
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 0], 'args' => ['cause' => 'v-10', 'at' => 4000]],
         ], $moduleDir);
 
         $first = $this->accepted($out['results'][1]);
 
-        return ($first === [] ? [] : ['first-leave' => $first['refused']])
+        return $out['stale'] + ($first === [] ? [] : ['first-leave' => $first['refused']])
             + $this->refusalDefects($out['results'][2], self::EPISODE_REFUSAL);
     }
 
     /** @return array<string, string> */
-    private function freshIdDefects(?string $moduleDir = null): array
+    private function freshIdDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive([
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A3')],
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A7', 'aimla-review')],
-            ['op' => 'edge', 'args' => $this->seatRow('A5')],
+        $out = $this->scenario([
+            $this->opening('A3', $md),
+            $this->opening('A7', $md, ['seat_id' => 'aimla-review']),
+            $this->opening('A5', $md),
         ], $moduleDir);
+
+        // The two returned ids compared below exist only if § 6.2 still classes A3 and A7 `held`:
+        // `edge` returns nothing, and a null beside an id compares as two different ids.
+        $stale = $out['stale'];
+
+        foreach (['A3', 'A7'] as $i => $id) {
+            if ($out['results'][$i]['returned'] === null) {
+                $stale["stale:{$id}"] = "{$id}'s opening returned no episode id — § 6.2 no longer classes {$id} `held`, "
+                    .'and this scenario compares the ids two held entries return';
+            }
+        }
 
         $ids = array_column($out['rows'], 'episode_id');
 
         return $ids === array_unique($ids) && $out['results'][0]['returned'] !== $out['results'][1]['returned']
-            ? [] : ['fresh' => 'opening rows share an episode_id: '.json_encode($ids)];
+            ? $stale : $stale + ['fresh' => 'opening rows share an episode_id: '.json_encode($ids)];
     }
 
     /** @return array<string, string> */
-    private function edgeIdDefects(?string $moduleDir = null): array
+    private function edgeIdDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive([
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A3')],
-            ['op' => 'edge', 'args' => $this->seatRow('A5')],
+        $out = $this->scenario([
+            $this->opening('A3', $md),
+            $this->opening('A5', $md),
             ['op' => 'leaveHeld', 'episode' => ['row' => 1], 'args' => ['cause' => 'v-9', 'at' => 3000]],
         ], $moduleDir);
 
-        return $this->refusalDefects($out['results'][2], self::EPISODE_REFUSAL);
+        // The id handed to leaveHeld must be an EDGE row's, or the refusal below is bound (i)'s
+        // ordinary case and says nothing about the id space the two classes share.
+        $handed = $out['results'][2]['rows_before'][1] ?? null;
+        $stale = ($handed['class'] ?? null) === 'edge' ? [] : ['stale:A5' => 'the row this scenario hands to '
+            .'leaveHeld is '.json_encode($handed).', not an edge row — § 6.2 no longer classes A5 `edge`'];
+
+        return $out['stale'] + $stale + $this->refusalDefects($out['results'][2], self::EPISODE_REFUSAL);
     }
 
     /** @return array<string, string> */
-    private function nullSeatDefects(?string $moduleDir = null): array
+    private function nullSeatDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive(array_map(fn (string $id): array => ['op' => 'edge', 'args' => [
-            'animation_id' => $id, 'cause' => 'hb-1', 'install_id' => null, 'seat_id' => null, 'motion' => true, 'at' => 1000,
-        ]], ['A14', 'A17']), $moduleDir);
+        $out = $this->scenario(array_map(fn (string $id): array => $this->opening($id, $md, [
+            'cause' => 'hb-1', 'install_id' => null, 'seat_id' => null, 'motion' => true, 'at' => 1000,
+        ]), ['A14', 'A17']), $moduleDir);
 
         foreach ($out['rows'] as $row) {
             if ($row['install_id'] !== null || $row['seat_id'] !== null) {
-                return ['null' => "{$row['animation_id']} wrote install_id ".json_encode($row['install_id'])
+                return $out['stale'] + ['null' => "{$row['animation_id']} wrote install_id ".json_encode($row['install_id'])
                     .' and seat_id '.json_encode($row['seat_id']).' for a null it was given'];
             }
         }
 
-        return count($out['rows']) === 2 ? [] : ['null' => 'the heartbeat rows were not written'];
+        return $out['stale'] + (count($out['rows']) === 2 ? [] : ['null' => 'the heartbeat rows were not written']);
     }
 
     /** @return array<string, string> */
     private function switchDefects(?string $moduleDir = null): array
     {
-        return array_filter($this->sourceDefects($moduleDir),
+        // A flag a caller sets has to be reachable from outside the module, and the module's whole
+        // outside is its export set — which an identifier scan of its source cannot see.
+        $exports = $this->probe(['ops' => []], $moduleDir)['exports'];
+        sort($exports);
+
+        $defects = $exports === self::EXPORTS ? [] : ['exports' => 'the module exports '.json_encode($exports)
+            .', not exactly '.json_encode(self::EXPORTS).' — an export beyond those is a switch a caller can set'];
+
+        return $defects + array_filter($this->sourceDefects($moduleDir),
             static fn (string $key): bool => ! str_starts_with($key, 'clock:'), ARRAY_FILTER_USE_KEY);
     }
 
@@ -361,51 +450,58 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
     }
 
     /** @return array<string, string> */
-    private function leftMotionDefects(?string $moduleDir = null): array
+    private function leftMotionDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive([
-            ['op' => 'enterHeld', 'args' => $this->seatRow('A3')],
+        $out = $this->scenario([
+            $this->opening('A3', $md),
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 0], 'args' => ['cause' => 'v-9', 'at' => 3000]],
         ], $moduleDir);
 
         $left = $out['rows'][1] ?? null;
 
-        return $left !== null && $left['motion'] === false
-            ? [] : ['motion' => 'the left row of a moving episode reads '.json_encode($left)];
+        return $out['stale'] + ($left !== null && $left['motion'] === false
+            ? [] : ['motion' => 'the left row of a moving episode reads '.json_encode($left)]);
     }
 
     /** @return array<string, string> */
-    private function callerClockDefects(?string $moduleDir = null): array
+    private function callerClockDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $noAt = $this->seatRow('A3');
-        unset($noAt['at']);
-
-        $out = $this->drive([
-            ['op' => 'edge', 'args' => ['at' => 1000] + $this->seatRow('A5')],
-            ['op' => 'enterHeld', 'args' => ['at' => 999999999999] + $this->seatRow('A3')],
-            ['op' => 'edge', 'args' => ['animation_id' => 'A5'] + $noAt],
-            ['op' => 'enterHeld', 'args' => $noAt],
+        $out = $this->scenario([
+            $this->opening('A5', $md, ['at' => 1000]),
+            $this->opening('A3', $md, ['at' => 999999999999]),
+            $this->withoutAt($this->opening('A5', $md)),
+            $this->withoutAt($this->opening('A3', $md)),
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1], 'args' => ['cause' => 'v-9']],
-            // the refused leave above must not have closed the episode: this one is accepted
+            // the call forms with no argument object at all, and a leave with no options
+            ['op' => 'edge'],
+            ['op' => 'enterHeld'],
+            ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1]],
+            // the same three calls given an explicit null where the argument object goes
+            ['op' => 'edge', 'args' => null],
+            ['op' => 'enterHeld', 'args' => null],
+            ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1], 'args' => null],
+            // the refused leaves above must not have closed the episode: this one is accepted
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 1], 'args' => ['cause' => 'v-9', 'at' => 1000000000000]],
         ], $moduleDir);
 
-        $defects = [];
+        $defects = $out['stale'];
         $stamped = array_column(array_slice($out['results'][1]['rows_after'], 0, 2), 'at');
 
         if ($stamped !== [1000, 999999999999]) {
             $defects['at-replaced'] = 'rows given at 1000 and 999999999999 carry '.json_encode($stamped);
         }
 
-        foreach ([2, 3, 4] as $i) {
-            foreach ($this->refusalDefects($out['results'][$i], self::AT_REFUSAL) as $what => $detail) {
-                $defects["omitted-at:{$what}"] ??= $detail;
+        foreach (['omitted-at' => [2, 3, 4], 'no-argument' => [5, 6, 7], 'null-argument' => [8, 9, 10]] as $form => $indices) {
+            foreach ($indices as $i) {
+                foreach ($this->refusalDefects($out['results'][$i], self::AT_REFUSAL) as $what => $detail) {
+                    $defects["{$form}:{$what}"] ??= $detail;
+                }
             }
         }
 
-        if ($out['results'][5]['error'] !== null) {
+        if ($out['results'][11]['error'] !== null) {
             $defects['refusal-moved-state'] = 'a leave refused for its missing `at` closed the episode anyway: '
-                .$out['results'][5]['error']['message'];
+                .$out['results'][11]['error']['message'];
         }
 
         return $defects + array_filter($this->sourceDefects($moduleDir),
@@ -413,18 +509,72 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
     }
 
     /** @return array<string, string> */
-    private function orderingDefects(?string $moduleDir = null): array
+    private function orderingDefects(?string $moduleDir = null, ?string $md = null): array
     {
-        $out = $this->drive([
-            ['op' => 'enterHeld', 'args' => ['at' => 2000] + $this->seatRow('A3')],
+        $out = $this->scenario([
+            $this->opening('A3', $md, ['at' => 2000]),
             ['op' => 'leaveHeld', 'episode' => ['returned_by' => 0], 'args' => ['cause' => 'v-9', 'at' => 1000]],
         ], $moduleDir);
 
         $left = $out['rows'][1] ?? null;
 
-        return $out['results'][1]['error'] === null && $left !== null && $left['at'] === 1000
+        return $out['stale'] + ($out['results'][1]['error'] === null && $left !== null && $left['at'] === 1000
             ? [] : ['ordering' => 'a left row earlier than its entry was not recorded as given: '
-                .json_encode($out['results'][1]['error'] ?? $left)];
+                .json_encode($out['results'][1]['error'] ?? $left)]);
+    }
+
+    // ------------------------------------------------------------------------------ the scenarios --
+
+    /**
+     * Drive `$ops`, and name every leave that pairs with an op which opened no episode.
+     *
+     * Only `enterHeld` returns an episode id, so a `returned_by` pairing with any other op is a
+     * scenario whose id § 6.2 no longer classes `held`. It is keyed `stale:<id>`, so a reclass reds
+     * by name rather than as a refusal the scenario never meant to provoke.
+     *
+     * @param  list<array<string, mixed>>  $ops
+     * @return array{results: list<array<string, mixed>>, rows: list<array<string, mixed>>, stale: array<string, string>}
+     */
+    private function scenario(array $ops, ?string $moduleDir): array
+    {
+        $stale = [];
+
+        foreach ($ops as $op) {
+            $pair = is_array($op['episode'] ?? null) ? ($op['episode']['returned_by'] ?? null) : null;
+
+            if ($pair !== null && $ops[$pair]['op'] !== 'enterHeld') {
+                $id = $ops[$pair]['args']['animation_id'];
+                $stale["stale:{$id}"] = "a leave pairs with {$id}, which § 6.2's class sends through "
+                    ."`{$ops[$pair]['op']}` — that opens no episode, and this scenario was written for a held one";
+            }
+        }
+
+        return $this->drive($ops, $moduleDir) + ['stale' => $stale];
+    }
+
+    /**
+     * The opening call for a § 6.2 id, through the entry point the document's Class column names.
+     *
+     * @param  array<string, mixed>  $args  the fields that differ from `seatRow()`'s
+     * @return array{op: string, args: array<string, mixed>}
+     */
+    private function opening(string $animationId, ?string $md = null, array $args = []): array
+    {
+        $class = $this->documentAnimationClasses($md)[$animationId]
+            ?? $this->fail("{$animationId} is not a row of § 6.2's table as parsed — a scenario names an id the document does not carry");
+
+        return ['op' => $class === 'held' ? 'enterHeld' : 'edge', 'args' => $args + $this->seatRow($animationId)];
+    }
+
+    /**
+     * @param  array{op: string, args: array<string, mixed>}  $op
+     * @return array{op: string, args: array<string, mixed>}
+     */
+    private function withoutAt(array $op): array
+    {
+        unset($op['args']['at']);
+
+        return $op;
     }
 
     /**

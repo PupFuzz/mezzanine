@@ -25,16 +25,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   opens a held episode and returns its fresh `episode_id`, `leaveHeld` writes that episode's `left`
   row with `motion: false`, and `rows` reads every row in call order as § 11's tuple. The module
   records what it is given, reads no clock and no environment, and throws `AnimationLogRefusal` on
-  a `leaveHeld` for an episode that is not open and on any call without an `at`. § 11 now states
-  that contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
+  a `leaveHeld` for an episode that is not open and on any call without an `at`, including a call
+  with no argument object at all or `null` in its place, and it exports that class and
+  `createAnimationLog` only. § 11 now states that call surface and the contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
   and `Tests\Feature\Floor\AnimationLogClassPopulationMatchesTheDocumentTest` drive the shipped file
   under `node` against each bound, with a planted control for each. FLOOR.md also re-gates
   AT-D3-1 whole at step 6 (its instrument half reads the harness, the client protocol and the
   animation set), names the harness as step 3's artifact, states that the log is the one entry
   point for claim-bearing motion and that motion bypassing it is NOT MECHANIZED, and adds § 14
   items 21–23 on the unstated parts of `fx-clear-trace`, `fx-snapshot-4` and `fx-degraded`, each
-  blocking the lowest Appendix B gate of a test that replays the fixture. No renderer calls the
-  module yet; that is steps 5 and 6. **Installer action:** none; no migration.
+  blocking the lowest Appendix B gate of a test that replays the fixture or a fixture built on it.
+  No renderer calls the module yet; that is steps 5 and 6. **Installer action:** none; no migration.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
   served with every `{}` it was authored with.** The layout reader decoded the document
   associatively, where `{}` and `[]` are one PHP value: `"floors": {}` was accepted as § 4.6's empty
