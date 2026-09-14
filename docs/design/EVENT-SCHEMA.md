@@ -269,9 +269,10 @@ that pass's remaining work — disposing of the batch the ingest just answered, 
 dropping spool buckets past the bounds of [§ 11.3](#113-rotation-and-the-overflow-policy), or deleting
 counter buckets the new owner has not folded. One that finds another owner sends nothing more and
 writes nothing more to either file: it increments `flusher_lost_ownership` once, in the counter sink
-([§ 11.1](#111-layout)) that the new owner folds, logs once, and exits 0. Counters it had folded into
-`state.json`'s totals but never saved go to that sink with it, so a bucket drop counted in a pass that
-could not save is still counted ([§ 0](#0-overview) item 9). Two flushers overlapping is therefore
+([§ 11.1](#111-layout)) that the new owner folds, logs once, and exits 0. The flusher's own
+counters (`count()`) that it had folded into `state.json`'s totals but never saved go to that
+sink with it, so a bucket drop counted in a pass that could not save is still counted
+([§ 0](#0-overview) item 9). Two flushers overlapping is therefore
 **not** a tolerated state. It was, in an earlier draft, on the grounds that server-side dedup absorbs
 the duplicate events — but dedup absorbs *events*, not the `seq` counter. Two flushers each reading
 `next_seq = X` produce either a gap (and the seat renders `lossy` from nothing) or two events sharing

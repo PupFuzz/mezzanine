@@ -29,8 +29,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   spool buckets or delete counter buckets the new owner has not folded. A loss is thrown, not
   returned. The flusher loop catches it, counts
   `flusher_lost_ownership` once into the counter sink the new owner folds, logs once and exits 0.
-  Counters the flusher folded into `state.json`'s totals but never managed to save go to that sink
-  on exit too, so a spool-bucket drop counted by a pass whose save failed still reaches the
+  The flusher's own counters (`count()`) that it folded into `state.json`'s totals but never
+  managed to save go to that sink on exit too, so a spool-bucket drop counted by a pass whose save
+  failed still reaches the
   heartbeat.
   The lock is renewed before every request as well as at the start of every pass, so a live
   flusher's lock ages by at most one request plus one flush interval, not by a whole pass of POSTs.

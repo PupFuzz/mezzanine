@@ -2636,9 +2636,9 @@ async function drainOnce(config, spool, state, atMs) {
   /* EVERY request is preceded by the ownership check and the lock renewal (§ 2.3). The check
    * does not close the race, it narrows it to one request: a new owner can claim state.json
    * after this check and before the ingest answers, and that one in-flight batch then carries
-   * seqs the new owner may also assign. The next ownership check throws — the save after an
-   * accepted batch, or the check before the next send — so no second request follows, and D2's
-   * `seq_collision` counts what the one request can still cause. */
+   * seqs the new owner may also assign. The ownership check after the await throws before
+   * anything acts on the answer, so an ex-owner disposes of nothing and sends no second request,
+   * and D2's `seq_collision` counts what the one request can still cause. */
   const send = async (body) => {
     renewLock(spool, state);
     const res = await postBatch(config, body);

@@ -2370,8 +2370,9 @@ p_send = plant_src((re.escape("    assertOwner(spool, state);   // resumed from 
 r_d = drive_pass(owned_seat("own-send-red", N_EVENTS, corrupt=True), p_send, takeover=True,
                  one_pass=False, exit_within=1.5)
 eq("RED: with no check after the POST's await, the ex-owner quarantines and counts the torn line "
-   "the new owner will dispose of again", (1, 1),
-   (r_d["corrupt_quarantined"], r_d["sink"].get("spool_corrupt_lines")))
+   "the new owner will dispose of again — posts sent, quarantined, and spool-corrupt sink count",
+   (1, 1, 1),
+   (r_d["n_posts"], r_d["corrupt_quarantined"], r_d["sink"].get("spool_corrupt_lines")))
 
 # THE END OF A PASS. The heartbeat, the spool bounds and the bucket reaps run after the pass's
 # awaits; a takeover written while the HEALTH PROBE is held reaches them with no POST in between
@@ -2436,8 +2437,9 @@ r_u = drive_pass(tail_unfold_seat, plant_src((CHECK_AFTER_HEALTH, ""),
                                              (re.escape("  unfoldUnsaved();\n  flushCounters"), "  flushCounters")),
                  takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
 e_ru = tail_effects(tail_unfold_seat, r_u)
-eq("RED: without the unfold, the bucket is dropped and its 3 events are counted nowhere (§ 0 item 9)",
-   (False, None), (e_ru["spool_bucket_kept"], e_ru["spool_dropped_events_in_sink"]))
+eq("RED: without the unfold, the bucket is dropped and its 3 events are counted nowhere (§ 0 item 9) "
+   "— bucket kept, dropped-events in sink, exited, and lost-ownership count",
+   (False, None, True, 1), (e_ru["spool_bucket_kept"], e_ru["spool_dropped_events_in_sink"], e_ru["exited"], e_ru["lost_counted"]))
 T_TAIL = time.time() - T_TAIL
 
 
