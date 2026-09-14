@@ -3487,6 +3487,8 @@ statusLine processes reach the flusher through the counter sink
 | `events_rejected_dropped` | events lost with a permanently-rejected batch — incremented by that batch's event count at quarantine time | seat badge `lossy`; this is the counter that makes `§ 0` item 9's promise true for the rejection path |
 | `oversize_event_dropped` | a single event over the 4 KiB cap, undeliverable, quarantined | seat badge `lossy` |
 | `batches_rejected` | permanent-status rejections | seat badge `degraded`; the last status and error code are shown |
+| `batches_ok` | a batch the server accepted (`202` or `200`) | informational; the denominator the other batch counters are read against |
+| `batches_retried` | a batch that will be sent again: a retryable status (`408`, `429`, any `5xx`) or a transport failure or timeout ([§ 11.5](#115-retry-and-backoff)) | informational — **no loss**, because the batch stays spooled and a retry commits once ([§ 10.4](#104-batch-level-idempotency)). For a `5xx` it is the reporter's side of the server's `batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)) |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
 | `payload_key_missing.<key>` | an expected harness key was absent | `degraded` when > 0 for a key marked required in [§ 6](#6-event-kinds) |
 | `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
@@ -4137,7 +4139,7 @@ the token's binding once step 4 has resolved one, and globally under the same ke
 ([§ 12.1](#121-validation-order)'s attribution rule). It is neither `batches_refused.<error>` nor
 `unattributed_refusals`, because the reporter retries it ([§ 11.5](#115-retry-and-backoff)) and a retry
 commits once ([§ 10.4](#104-batch-level-idempotency)): the reporter's side of the fault is its
-`batches_retried`, not [§ 9.3](#93-degradation-counters)'s `batches_rejected`, and a refusal counter
+[§ 9.3](#93-degradation-counters)'s `batches_retried`, not its `batches_rejected`, and a refusal counter
 would report a stored batch as refused.
 
 **There are two `422` codes, and this table carried one.** [§ 12.1](#121-validation-order) step 8
@@ -4332,7 +4334,7 @@ number that raised it.
 | `seq_collision` | one `(seq_epoch, seq)` carrying two different `event_id`s | seat badge `degraded`; the only mechanism that produces it is two flushers ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) |
 | `seq_epoch_change` | a batch arrived under a new `seq_epoch` | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
 | `batches_refused.<error>` | any 4xx refusal, keyed by error code | counted **against the token's binding** ([§ 12.1](#121-validation-order)). A permanent refusal renders the seat degraded by one route, the reporter's own `batches_rejected` member ([§ 9.3](#93-degradation-counters)), raised when it quarantines the batch; the server raises **no** badge for this counter ([FLEET-STATE.md § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)), so the preamble's server-badge reading does not apply to this row |
-| `batches_failed.<detail>` | a request the server could not finish, answered `server_error` ([§ 12.2](#122-error-responses)), keyed by its `detail` | counted **against the token's binding** once step 4 has resolved one, and globally under the same key before it ([§ 12.1](#121-validation-order)). **Not a refusal, and no badge:** the reporter retries it and counts `batches_retried` ([§ 11.5](#115-retry-and-backoff)), and a retry commits once ([§ 10.4](#104-batch-level-idempotency)) |
+| `batches_failed.<detail>` | a request the server could not finish, answered `server_error` ([§ 12.2](#122-error-responses)), keyed by its `detail` | counted **against the token's binding** once step 4 has resolved one, and globally under the same key before it ([§ 12.1](#121-validation-order)). **Not a refusal, and no badge:** the reporter retries it ([§ 11.5](#115-retry-and-backoff)) and counts [§ 9.3](#93-degradation-counters)'s `batches_retried`, and a retry commits once ([§ 10.4](#104-batch-level-idempotency)) |
 | `unattributed_refusals` | a refusal at validation steps 1–4, before any identity is established; at step 4, a token that resolves to nothing or to a revoked row, on either [§ 4.1](#41-endpoints) endpoint | global only; **no seat is degraded by it**, because no seat is known ([§ 12.1](#121-validation-order)) |
 | `auth_failed_by_ip` | a token that resolves to nothing — incremented at [§ 12.1](#121-validation-order) **step 4**, which is also where the limit it feeds is evaluated | the 60/h limit ([§ 12.3](#123-rate-limits)); log-volume control, not a guessing defence. Counted globally and per source IP; it degrades no seat, because the token named none |
 | `revoked_token_presented` | a token that resolves to a revoked row | **operator alert**: a seat is still holding a dead credential and only the server can see it |
