@@ -58,12 +58,19 @@ final class Outbox
      * inside it. Nested calls join the outermost one (a savepoint for the writes, one flush at the
      * outer end); a nested call that throws discards what it enqueued.
      *
+     * `$attempts` is `DB::transaction()`'s own: the outermost call re-runs `$work` from a clean
+     * rollback when it throws a concurrency error (`1020`/`1205`/`1213`), up to that many times in
+     * all (card#9466). A NESTED call takes no `$attempts`, because Laravel never retries below the
+     * outermost transaction: at depth > 1 it rethrows a concurrency error at once as a
+     * `DeadlockException` (`ManagesTransactions::handleTransactionException()`), so a count passed
+     * there could only be silently inert.
+     *
      * @template T
      *
      * @param  callable(): T  $work
      * @return T
      */
-    public static function transaction(callable $work): mixed
+    public static function transaction(callable $work, int $attempts = 1): mixed
     {
         if (self::$depth > 0) {
             $mark = count(self::$pending);
@@ -81,10 +88,18 @@ final class Outbox
         }
 
         self::$depth = 1;
-        self::$pending = [];
 
         try {
             return DB::transaction(function () use ($work) {
+                // ⛔ RESET ON EVERY ATTEMPT, NOT ONCE BEFORE THEM — card#9466. `DB::transaction()`
+                // runs THIS closure once per attempt, and an attempt that enqueued a message before
+                // it hit a concurrency error leaves that message here while its rows roll back. The
+                // next attempt would then insert it a second time beside its own. The one retrying
+                // caller reaches it: `SeatRetirement::retire()`'s recompute enqueues the seat's
+                // delta (`StateRecompute::settle()` → `Publisher::seatDelta()`) before the
+                // statements that follow it in the same attempt can still fail.
+                self::$pending = [];
+
                 $result = $work();
 
                 if (self::$pending !== []) {
@@ -101,7 +116,7 @@ final class Outbox
                 }
 
                 return $result;
-            });
+            }, $attempts);
         } finally {
             self::$depth = 0;
             self::$pending = [];

@@ -23,6 +23,123 @@ use Illuminate\Support\Facades\DB;
  */
 class PurgeTest extends SweepTestCase
 {
+    /**
+     * Every `Purge::PLAN` table has an index whose LEADING column is its retention column — card#9466.
+     *
+     * The purge's `DELETE … WHERE <column> < ? ORDER BY … LIMIT …` carries no `seat_ref`, so an index
+     * that leads with `seat_ref` does not serve it, and without a leading one the steady-state pass
+     * scans the table to find the few expired rows.
+     *
+     * ⛔ ASKED OF THE SCHEMA, NOT OF A QUERY PLAN. `EXPLAIN`'s chosen plan depends on the rows present
+     * — on MariaDB 11.8.6, the drain's `DELETE` on `calls` with half its rows expired read `ix_orphan`
+     * as a range at 20 rows and at 200,000, and at 2,000 rows walked `PRIMARY` in `id` order or
+     * scanned the whole table, depending on the `ORDER BY` (card#9466 round 1) — so an `EXPLAIN`
+     * assertion would answer about the fixture's row count rather than the schema. The index's existence is a fact about the schema alone. The table list
+     * is `Purge::PLAN` itself, so a table added to the plan without an index reds here.
+     */
+    public function test_every_purge_plan_table_has_a_retention_leading_index(): void
+    {
+        $plan = $this->plan();
+
+        $this->assertNotEmpty($plan);
+
+        foreach ($plan as $table => $column) {
+            $this->assertNotSame([], $this->retentionIndexKeys($table, $column), sprintf(
+                '%s has no index whose leading column is its retention column (%s): the purge\'s '
+                .'DELETE on that column has no index to seek through in the steady state.',
+                $table,
+                $column,
+            ));
+        }
+    }
+
+    /**
+     * The drain deletes each plan table in the order of its retention index's own key — card#9466.
+     *
+     * Ordered by `id`, a batch's `ORDER BY` does not match the order of the index its `WHERE` ranges
+     * over, so with a backlog each 5,000-row batch either sorted the expired range or walked `PRIMARY`
+     * from the start of the table. Ordered by the index's full key, a batch is read off the index in
+     * order and stops at the `LIMIT`.
+     *
+     * ⛔ ASKED OF THE STATEMENT THE PASS SENDS AND OF THE SCHEMA, NOT OF A QUERY PLAN — for the reason
+     * the test above gives: which plan `ORDER BY id` gets depends on how many rows have expired, so an
+     * `EXPLAIN` assertion at the suite's row counts could not red on it reliably. The expected key is
+     * derived here from `information_schema.STATISTICS` — the index's columns, then the primary key,
+     * which InnoDB carries at the end of every secondary index entry — so this test holds no copy of
+     * the order `Purge` declares.
+     */
+    public function test_the_drain_orders_each_table_by_its_retention_index_key(): void
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        try {
+            app(Purge::class)->pass();
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        $sent = [];
+
+        foreach (DB::getQueryLog() as $entry) {
+            if (preg_match('/^delete from `(\w+)` where .+ order by (.+) limit \d+$/', $entry['query'], $m) === 1) {
+                $sent[$m[1]] = array_map(
+                    fn (string $term): string => preg_replace('/^`(\w+)` asc$/', '$1', trim($term)),
+                    explode(',', $m[2]),
+                );
+            }
+        }
+
+        foreach ($this->plan() as $table => $column) {
+            $this->assertArrayHasKey($table, $sent, "the pass sent no ordered, bounded DELETE for {$table}");
+            $this->assertContains($sent[$table], $this->retentionIndexKeys($table, $column), sprintf(
+                '%s is drained in the order (%s), which is not the full key of an index leading with %s: '
+                .'each batch then sorts the expired range, or walks PRIMARY, instead of reading the index in order.',
+                $table,
+                implode(', ', $sent[$table]),
+                $column,
+            ));
+        }
+    }
+
+    /** @return array<string, string> */
+    private function plan(): array
+    {
+        return (new \ReflectionClassConstant(Purge::class, 'PLAN'))->getValue();
+    }
+
+    /**
+     * The full key of every index on `$table` whose leading column is `$column`: the index's own
+     * columns in order, then each primary-key column the index does not already carry.
+     *
+     * @return list<list<string>>
+     */
+    private function retentionIndexKeys(string $table, string $column): array
+    {
+        $columnsOf = fn (string $index): array => DB::table('information_schema.STATISTICS')
+            ->where('TABLE_SCHEMA', DB::raw('DATABASE()'))
+            ->where('TABLE_NAME', $table)
+            ->where('INDEX_NAME', $index)
+            ->orderBy('SEQ_IN_INDEX')
+            ->pluck('COLUMN_NAME')
+            ->all();
+
+        $primary = $columnsOf('PRIMARY');
+
+        return DB::table('information_schema.STATISTICS')
+            ->where('TABLE_SCHEMA', DB::raw('DATABASE()'))
+            ->where('TABLE_NAME', $table)
+            ->where('SEQ_IN_INDEX', 1)
+            ->where('COLUMN_NAME', $column)
+            ->pluck('INDEX_NAME')
+            ->map(function (string $index) use ($columnsOf, $primary): array {
+                $key = $columnsOf($index);
+
+                return [...$key, ...array_values(array_diff($primary, $key))];
+            })
+            ->all();
+    }
+
     public function test_events_and_batches_past_fourteen_days_are_deleted_and_recent_ones_are_not(): void
     {
         $this->deliver($this->cleanTurn());

@@ -6,6 +6,7 @@ use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Http\Controllers\Controller;
 use App\Read\Snapshot;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -84,9 +85,24 @@ class SeatController extends Controller
             ]);
         }
 
-        $outcome = $retirement->retire($installId, $seatId, $by, $validated['reason']);
-
         $seat = $installId.'/'.$seatId;
+
+        try {
+            $outcome = $retirement->retire($installId, $seatId, $by, $validated['reason']);
+        } catch (\Throwable $e) {
+            // card#9466: a seat another writer kept busy past the act's bounded wait and retries
+            // (`SeatRetirement::LOCK_WAIT_TIMEOUT_S`, `LOCK_ATTEMPTS`) rolled back whole, so the
+            // operator is told it is busy and that nothing changed, rather than handed a 500. Any
+            // other error is not this answer's to give.
+            if (! app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
+                throw $e;
+            }
+
+            return redirect()->route('admin.agents.index')->withErrors([
+                'retire' => 'Busy: '.$seat.' was held by another writer for longer than retirement waits. '
+                    .'Nothing was changed — try again.',
+            ]);
+        }
 
         if ($outcome->outcome === SeatRetirementOutcome::NO_SUCH_SEAT) {
             return redirect()->route('admin.agents.index')->withErrors([

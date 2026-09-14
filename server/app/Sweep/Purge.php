@@ -183,30 +183,48 @@ final class Purge
     }
 
     /**
-     * `DELETE … ORDER BY id LIMIT 5000`, looped until it deletes fewer than the limit or the pass
-     * budget expires.
+     * `DELETE … WHERE <retention column> < ? ORDER BY <that table's retention index key> LIMIT 5000`,
+     * looped until it deletes fewer than the limit or the pass budget expires.
      *
      * ⚠ THE ORDER IS PART OF THE BOUND, NOT DECORATION. Deleting the OLDEST rows first is what
      * makes an interrupted pass leave a contiguous retained window rather than holes: a pass that
-     * ran out of budget has deleted a prefix of the expired rows, and the next hour's pass resumes
-     * from where it stopped. An unordered `LIMIT` would let the engine pick, and a purge that
-     * removes rows from the middle of a seat's history is a rebuild that produces a different
-     * answer for a reason nobody can see.
+     * ran out of budget has deleted a prefix of the expired rows in retention-column order, so every
+     * row it kept is at or above every row it deleted, and the next hour's pass resumes from where it
+     * stopped. An unordered `LIMIT` would let the engine pick, and a purge that removes rows from the
+     * middle of a seat's history is a rebuild that produces a different answer for a reason nobody
+     * can see.
+     *
+     * ⛔ THE ORDER IS THE RETENTION INDEX'S OWN KEY, NOT `id` — card#9466. The `WHERE` is a range on
+     * the index that leads with the retention column, and ordering by that index's full key (its
+     * columns, then `id`, which InnoDB carries at the end of every secondary index entry) lets the
+     * engine read each batch off the index in order and stop at the `LIMIT`. `ORDER BY id` over the
+     * same range does not match the index's order, so the engine either read every expired row and
+     * sorted them for each 5,000-row batch or walked `PRIMARY` from the start of the table — which one
+     * depending on the rows present — and that per-batch cost grew with the backlog, on exactly the
+     * pass § 6.7 says falls behind visibly rather than holding a long transaction. Measured on
+     * MariaDB 11.8.6 at 200,000 rows with half expired, on every plan table: `ORDER BY id` planned a
+     * range over the retention index plus a filesort of the whole expired range; this order planned
+     * the same range with no filesort, estimated at 5,000 rows (§ 6.7 carries the timings). `id`
+     * last also makes the order total, so a batch boundary between rows with an equal retention value
+     * is deterministic.
      */
     private function drain(string $table, string $column, string $boundary, int $deadlineMs): int
     {
         $total = 0;
+        $order = $this->orderColumns($table);
 
         while (true) {
             if (Clock::toMs(Clock::sql(now())) >= $deadlineMs) {
                 return $total;
             }
 
-            $rows = DB::table($table)
-                ->where($column, '<', $boundary)
-                ->orderBy($this->orderColumn($table))
-                ->limit(self::BATCH)
-                ->delete();
+            $query = DB::table($table)->where($column, '<', $boundary);
+
+            foreach ($order as $orderColumn) {
+                $query->orderBy($orderColumn);
+            }
+
+            $rows = $query->limit(self::BATCH)->delete();
 
             $total += $rows;
 
@@ -217,16 +235,27 @@ final class Purge
     }
 
     /**
-     * § 6.7 names `id` because every table it lists has one. `seat_predicates` and the counter
-     * tables do not — and they are also never purged, so the plan above never reaches this with a
-     * table that lacks the column. Stated as a lookup rather than a hardcoded `'id'` so that adding
-     * a purgeable table without an `id` fails HERE, loudly, instead of at the database.
+     * The order `drain()` deletes each plan table in: the full key of the index that leads with the
+     * table's retention column, then the primary key. Read off the migrated schema's
+     * `information_schema.STATISTICS`, and held to it by
+     * `PurgeTest::test_the_drain_orders_each_table_by_its_retention_index_key()`, which derives the
+     * same key from the schema and reds when a declaration here stops matching it.
+     *
+     * Stated as a lookup so that adding a purgeable table without declaring its order fails HERE,
+     * loudly, instead of silently falling back to an order no index serves.
+     *
+     * @return list<string>
      */
-    private function orderColumn(string $table): string
+    private function orderColumns(string $table): array
     {
         return match ($table) {
-            'events', 'batches', 'sessions', 'calls', 'attention_requests', 'seat_state_transitions', 'feed_outbox' => 'id',
-            default => throw new \LogicException('no purge order column declared for '.$table),
+            'events', 'batches' => ['received_at', 'id'],                 // ix_purge
+            'sessions' => ['ended_at', 'id'],                             // ix_purge
+            'calls' => ['closed_at', 'orphan_due_at', 'id'],              // ix_orphan
+            'attention_requests' => ['resolved_at', 'ceiling_at', 'id'],  // ix_ceiling
+            'seat_state_transitions' => ['at', 'id'],                     // ix_purge
+            'feed_outbox' => ['created_at', 'id'],                        // ix_created
+            default => throw new \LogicException('no purge order declared for '.$table),
         };
     }
 }
