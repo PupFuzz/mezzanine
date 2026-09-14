@@ -372,6 +372,11 @@ class Ingest:
         # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
         self.gets = 0
         self.get_delay_s = 0.0
+        # What the health surface answers: the accepted schema-version set, and the status. A set
+        # without this reporter's version is an ingest that REFUSES it; a non-200 is an answer
+        # that carries no set at all (a bad token, an outage page) — card#9373 tells those apart.
+        self.accepted: list = [1]
+        self.get_status = 200
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
         subprocess.run(
@@ -399,10 +404,13 @@ class Ingest:
                 outer.gets += 1
                 if outer.get_delay_s:
                     time.sleep(outer.get_delay_s)
-                body = json.dumps({"accepted_schema_versions": [1],
-                                   "server_time": "2026-08-24T00:00:00.000Z",
-                                   "min_reporter_version": "0.1.0"}).encode()
-                self.send_response(200)
+                if outer.get_status == 200:
+                    body = json.dumps({"accepted_schema_versions": outer.accepted,
+                                       "server_time": "2026-08-24T00:00:00.000Z",
+                                       "min_reporter_version": "0.1.0"}).encode()
+                else:
+                    body = json.dumps({"error": "unauthorized"}).encode()
+                self.send_response(outer.get_status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -454,6 +462,7 @@ TMP = tmpdir("fr-suite-")
 INGEST = Ingest(TMP)
 CA = str(INGEST.crt)
 SID = "11111111-2222-4333-8444-000000000000"
+DEAD = "https://127.0.0.1:9/api/ingest/events"          # discard port: refused locally, no DNS, no WAN
 
 
 def seat(name: str, **kw) -> Seat:
@@ -560,7 +569,9 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
 
 print("== 1. The `selftest` subcommand — the checks of § 6.14's member table this build implements, and each one's RED ==")
 s1 = seat("selftest-seat")
+gets_before = INGEST.gets
 r, rep = selftest(s1)
+gets_by_selftest = INGEST.gets - gets_before
 eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
     "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
@@ -569,11 +580,82 @@ eq("config_readable passes on a valid config", "pass", rep["checks"]["config_rea
 eq("sanitizer_fixtures passes", "pass", rep["checks"]["sanitizer_fixtures"])
 eq("harness_payload_keys passes", "pass", rep["checks"]["harness_payload_keys"])
 eq("predicate_discrimination passes", "pass", rep["checks"]["predicate_discrimination"])
-# The offline posture is REPORTED as a fail with its reason, never assumed to pass. D1 § 6.14
-# makes these two network checks; a suite with no ingest reachable at selftest time must not
-# quietly call them green.
-eq("schema_version_accepted is honestly `fail` when unprobed", "fail",
+
+# THE TWO NETWORK CHECKS ARE MEASURED BY THE ONE-SHOT (card#9373). `selftest` is the install-time
+# verification, and it used to leave `schema_version_accepted` false on every seat because only the
+# flusher ever asked the ingest — so a healthy install exited 1, and an operator either concluded the
+# install was broken or learned to ignore the command. The one-shot now runs the flusher's own health
+# probe (`refreshHealth`: same TLS path, same `ca_file`, same deadline), and D1 § 6.14 states what a
+# check it could NOT measure reports and exits: `not_measured`, exit 2 — neither a pass nor a fail.
+eq("GREEN: on a healthy config the one-shot asks the ingest's health surface, once", 1, gets_by_selftest)
+eq("  … schema_version_accepted passes against an ingest that accepts this reporter's version", "pass",
    rep["checks"]["schema_version_accepted"])
+eq("  … tls_verify passes, the ingest reached with verification on through the seat's ca_file", "pass",
+   rep["checks"]["tls_verify"])
+eq("  … and the command exits 0 — a correctly configured seat reads green", 0, r.returncode)
+eq("  … with the set it compared against in the detail", [1],
+   rep["detail"]["schema_version_accepted"].get("accepted_schema_versions"))
+
+# (b) An ingest that answers and does NOT list this reporter's version: measured, and a fail.
+INGEST.accepted = [999]
+try:
+    r_refuse, rep_refuse = selftest(s1)
+finally:
+    INGEST.accepted = [1]
+eq("RED (probed and refused): an ingest whose accepted set lacks this version fails "
+   "schema_version_accepted", "fail", rep_refuse["checks"]["schema_version_accepted"])
+eq("  … tls_verify still passes, because the host answered with verification on", "pass",
+   rep_refuse["checks"]["tls_verify"])
+eq("  … and the command exits 1", 1, r_refuse.returncode)
+
+# (c) An ingest that cannot be reached: nothing was measured, and the report says so by name.
+s_dead = seat("selftest-unreachable", ingest=DEAD)
+r_dead, rep_dead = selftest(s_dead)
+eq("NOT MEASURED: with the ingest unreachable, schema_version_accepted is `not_measured`, never "
+   "`fail`", "not_measured", rep_dead["checks"]["schema_version_accepted"])
+eq("  … and tls_verify is `not_measured` too — no TCP connection, so no TLS verdict", "not_measured",
+   rep_dead["checks"]["tls_verify"])
+eq("  … and the command exits 2, which § 6.14 reserves for no fail and something unmeasured", 2,
+   r_dead.returncode)
+eq("  … naming why the probe measured nothing", True,
+   bool(rep_dead["detail"]["tls_verify"].get("probe_error")))
+
+# (d) An answer with no set in it — a refused token, an outage page — is not a refusal of the version.
+INGEST.get_status = 401
+try:
+    r_401, rep_401 = selftest(s1)
+finally:
+    INGEST.get_status = 200
+eq("NOT MEASURED: a 401 from the health surface leaves schema_version_accepted `not_measured` — the "
+   "error body carries no accepted set, so it cannot refuse the version", "not_measured",
+   rep_401["checks"]["schema_version_accepted"])
+eq("  … with the status in the detail", 401, rep_401["detail"]["schema_version_accepted"].get("http_status"))
+eq("  … and exits 2", 2, r_401.returncode)
+
+# (e) A host reached whose certificate does not verify: THAT is a measured tls_verify fail.
+s_noca = seat("selftest-no-ca", ca=None)
+r_noca, rep_noca = selftest(s_noca)
+eq("RED (probed and refused): without the ca_file the stub's self-signed certificate fails "
+   "verification, and tls_verify is `fail`", "fail", rep_noca["checks"]["tls_verify"])
+eq("  … while schema_version_accepted is `not_measured`, since no answer arrived", "not_measured",
+   rep_noca["checks"]["schema_version_accepted"])
+eq("  … and the command exits 1", 1, r_noca.returncode)
+
+# RED — the defect verbatim, planted on a copy: the one-shot that never asks the ingest.
+p_noprobe = plant(("  if (results.config_readable) {\n    const probe = await refreshHealth(",
+                   "  if (false) {\n    const probe = await refreshHealth("))
+r_np, rep_np = selftest(s1, reporter=p_noprobe)
+eq("RED: a one-shot that never probes cannot pass a healthy seat — schema_version_accepted is "
+   "not_measured and the exit is non-zero", ("not_measured", True),
+   (rep_np["checks"]["schema_version_accepted"], r_np.returncode != 0))
+redgreen("the one-shot selftest measures the ingest, and says when it could not (D1 § 6.14, card#9373)",
+         f'no probe in the one-shot -> schema_version_accepted="{rep_np["checks"]["schema_version_accepted"]}", '
+         f'rc={r_np.returncode} on a healthy seat (before card#9373 the same seat read "fail", rc=1)',
+         f'probe via refreshHealth -> healthy: {rep["checks"]["schema_version_accepted"]}/rc={r.returncode}; '
+         f'set lacks v1: {rep_refuse["checks"]["schema_version_accepted"]}/rc={r_refuse.returncode}; '
+         f'unreachable: {rep_dead["checks"]["schema_version_accepted"]}/rc={r_dead.returncode}; '
+         f'401: {rep_401["checks"]["schema_version_accepted"]}/rc={r_401.returncode}; '
+         f'no ca_file: tls_verify={rep_noca["checks"]["tls_verify"]}/rc={r_noca.returncode}')
 
 # RED — an http:// ingest_url is REFUSED at install (§ 3.5), not downgraded.
 s_http = seat("http-seat", ingest="http://127.0.0.1:9/api/ingest/events")
@@ -590,6 +672,8 @@ p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",
                "({ keepAlive: true, maxSockets: 2, rejectUnauthorized: false })"))
 _, rep_tls = selftest(s1, reporter=p_tls)
 eq("RED: a planted `rejectUnauthorized: false` fails tls_verify", "fail", rep_tls["checks"]["tls_verify"])
+eq("  … even though that copy's probe reached the ingest — reachability never overrides the posture", True,
+   rep_tls["detail"]["tls_verify"].get("reached"))
 eq("  … and names the forbidden spelling", True,
    len(rep_tls["detail"]["tls_verify"]["forbidden_spellings_present"]) == 1)
 eq("GREEN: the real source carries no verification-disabling spelling", [],
@@ -792,7 +876,6 @@ redgreen("never blocks the seat (P-1..P-5, AT-3)",
 
 
 print("\n== 4. SURVIVES THE BRIDGE BEING DOWN (AT-4) ==")
-DEAD = "https://127.0.0.1:9/api/ingest/events"          # discard port: refused locally, no DNS, no WAN
 s4 = seat("outage", ingest=DEAD)
 for i in range(30):
     r = hook(s4, "PreToolUse", pre(tuid=f"out_{i}"))

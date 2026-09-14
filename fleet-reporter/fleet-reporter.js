@@ -2423,6 +2423,8 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
   const predicates = {};
   for (const p of PREDICATES) predicates[p] = state.predicates[p] || { true: 0, false: 0 };
   const st = {};
+  // The wire object carries two values (§ 6.14's field row), so a check this flusher has not
+  // measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`.
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
   makeEmitter(cfg, spool)('reporter.heartbeat', null, {
     uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
@@ -2554,7 +2556,7 @@ async function flusherMain() {
       if (atMs >= waitUntil && configOk && config.enabled !== false) {
         const drained = await drainOnce(config, spool, state, atMs);
         if (drained.retry) { attempt += 1; waitUntil = now() + (drained.retry_after_s !== undefined && drained.retry_after_s !== null ? drained.retry_after_s * 1000 : backoffDelay(attempt)); }
-        else { attempt = 0; if (drained.sent) selftest.tls_verify = true; }
+        else { attempt = 0; if (drained.sent) selftest.tls_verify = tlsVerifyResult(true); }
       }
 
       if (atMs - lastHeartbeat >= K.HEARTBEAT_MS) {
@@ -2754,11 +2756,35 @@ function appendRejectedMarker(spool, line) {
 }
 
 /* GET /api/ingest/health — the accepted schema-version set is read from the RUNNING ingest, and
- * this document deliberately restates no accepted set anywhere (VERSIONING.md rule 2). */
+ * this document deliberately restates no accepted set anywhere (VERSIONING.md rule 2).
+ *
+ * THE ONE PROBE BEHIND BOTH NETWORK CHECKS, for the flusher's heartbeat and for the one-shot
+ * `selftest` alike (card#9373: the one-shot used to run none, so `schema_version_accepted` read
+ * false and the install-time verification exited 1 on every correctly configured seat). It folds a
+ * MEASUREMENT into `selftest` and returns the probe for a caller that reports detail. Each of the
+ * two checks becomes true, false, or null — NOT MEASURED, which § 6.14 keeps distinct from a fail:
+ *   - tls_verify: an HTTP answer arrived with verification on ⇒ reached. A TCP connection whose TLS
+ *     handshake never completed ⇒ refused (false). No TCP connection, a deadline, or a failure after
+ *     the handshake and before an answer ⇒ null: nothing about verification was learned. The source
+ *     posture is the check's other half, and `tlsVerifyResult` composes the two.
+ *   - schema_version_accepted: a 200 carrying an `accepted_schema_versions` array ⇒ whether it holds
+ *     SCHEMA_VERSION. Any other answer (a 401 for a refused token, an outage page) carries no set, so
+ *     it cannot refuse the version ⇒ null. */
 function refreshHealth(config, selftest) {
   return new Promise((resolve) => {
+    const probe = { reached: null, http_status: null, accepted_schema_versions: null, error: null };
+    let settled = false, timer = null, tcp = false, secured = false;
+    const done = (error) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (error) probe.error = error;
+      selftest.tls_verify = tlsVerifyResult(probe.reached);
+      selftest.schema_version_accepted = Array.isArray(probe.accepted_schema_versions)
+        ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null;
+      resolve(probe);
+    };
     let url;
-    try { url = new URL(config.ingest_url); } catch (e) { resolve(); return; }
+    try { url = new URL(config.ingest_url); } catch (e) { done('bad ingest_url'); return; }
     const opts = {
       host: url.hostname, port: url.port || 443,
       path: url.pathname.replace(/\/events$/, '/health'), method: 'GET',
@@ -2766,22 +2792,31 @@ function refreshHealth(config, selftest) {
     };
     if (!(/^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':'))) opts.servername = url.hostname;
     if (config.ca_file) { try { opts.ca = fs.readFileSync(config.ca_file); } catch (e) { /* system store */ } }
-    const timer = setTimeout(() => { try { req.destroy(); } catch (e) { /* gone */ } resolve(); }, K.REQUEST_MS);
     const req = lazy('https').request(opts, (res) => {
+      probe.reached = true; probe.http_status = res.statusCode;
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
-        clearTimeout(timer);
-        try {
-          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          selftest.tls_verify = true;
-          selftest.schema_version_accepted = Array.isArray(body.accepted_schema_versions)
-            && body.accepted_schema_versions.includes(SCHEMA_VERSION);
-        } catch (e) { selftest.schema_version_accepted = false; }
-        resolve();
+        if (res.statusCode === 200) {
+          try {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            if (body && Array.isArray(body.accepted_schema_versions)) probe.accepted_schema_versions = body.accepted_schema_versions;
+          } catch (e) { /* no readable set: schema_version_accepted stays unmeasured */ }
+        }
+        done(null);
       });
     });
-    req.on('error', () => { clearTimeout(timer); selftest.tls_verify = false; selftest.schema_version_accepted = false; resolve(); });
+    timer = setTimeout(() => { done('timeout'); try { req.destroy(); } catch (e) { /* gone */ } }, K.REQUEST_MS);
+    // A kept-alive socket arrives already connected and verified; a fresh one reports each stage.
+    req.on('socket', (sock) => {
+      if (!sock.connecting) { tcp = true; secured = true; return; }
+      sock.once('connect', () => { tcp = true; });
+      sock.once('secureConnect', () => { secured = true; });
+    });
+    req.on('error', (e) => {
+      if (probe.reached === null && tcp && !secured) probe.reached = false;
+      done(String(e && e.code || e && e.message));
+    });
     req.end();
   });
 }
@@ -2937,6 +2972,15 @@ function checkTlsPosture() {
   return { ok: hits.length === 0, detail: { forbidden_spellings_present: hits } };
 }
 
+/* tls_verify = the source posture AND reachability with verification on (§ 6.14's row: "reachable
+ * with certificate verification on, and refuses to proceed without it"). The posture is a property
+ * of this file, constant for the process, so it is linted once. A failing posture is `false` whatever
+ * a probe saw — an answer from the ingest never overrides it — and a passing one leaves the verdict
+ * to reachability: true, false, or null (not measured). Every writer of tls_verify goes through here. */
+let TLS_POSTURE = null;
+function tlsPosture() { return TLS_POSTURE || (TLS_POSTURE = checkTlsPosture()); }
+function tlsVerifyResult(reached) { return tlsPosture().ok ? reached : false; }
+
 function runSelftestChecks(config, cp) {
   const results = {}; const detail = {};
   const cfg = loadConfig(cp);
@@ -2945,26 +2989,38 @@ function runSelftestChecks(config, cp) {
   const s = checkSanitizerFixtures(); results.sanitizer_fixtures = s.ok; detail.sanitizer_fixtures = s.detail;
   const h = checkHarnessPayloadKeys(); results.harness_payload_keys = h.ok; detail.harness_payload_keys = h.detail;
   const p = checkPredicateDiscrimination(); results.predicate_discrimination = p.ok; detail.predicate_discrimination = p.detail;
-  const t = checkTlsPosture();
-  // tls_verify has two halves: the source posture (checkable offline, and the half that can
-  // regress in review) and reachability with verification ON (needs the real host). Offline,
-  // the second half is UNPROVEN and reported as a fail with its reason rather than assumed.
-  results.tls_verify = t.ok && results.config_readable;
-  detail.tls_verify = Object.assign({ reachability: 'not probed in this run — refreshed by the flusher against the real host' }, t.detail);
-  results.schema_version_accepted = false;
-  detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, note: 'read from GET /api/ingest/health by the flusher; unprobed here' };
+  const t = tlsPosture();
+  // The two network checks are measured only by a probe of the real host (`refreshHealth`), which
+  // these synchronous checks do not run. Until one does, both are NOT MEASURED (null) — never
+  // assumed to pass, never reported as a refusal — except that a failing posture already falsifies
+  // tls_verify.
+  results.tls_verify = tlsVerifyResult(null);
+  detail.tls_verify = Object.assign({ reached: null }, t.detail);
+  results.schema_version_accepted = null;
+  detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, accepted_schema_versions: null, http_status: null };
   return { results, detail };
 }
 
-function selftestMain() {
+async function selftestMain() {
   const cp = configPath();
   const { config } = loadConfig(cp);
   registerConfigSecrets(config);   // null-guarded internally
   const { results, detail } = runSelftestChecks(config, cp);
+  // The install-time verification measures the network checks with the flusher's own probe (same
+  // TLS path, `ca_file` and deadline), once — and only on a config that passed validation, because
+  // an invalid one names no ingest this command may trust with the token (card#9373).
+  if (results.config_readable) {
+    const probe = await refreshHealth(config, results);
+    Object.assign(detail.tls_verify, { reached: probe.reached, probe_error: probe.error });
+    Object.assign(detail.schema_version_accepted, { accepted_schema_versions: probe.accepted_schema_versions, http_status: probe.http_status });
+  }
   const report = { reporter_version: REPORTER_VERSION, schema_version: SCHEMA_VERSION, checks: {}, detail };
-  for (const c of SELFTEST_CHECKS) report.checks[c] = results[c] === true ? 'pass' : 'fail';
+  for (const c of SELFTEST_CHECKS) report.checks[c] = results[c] === true ? 'pass' : results[c] === false ? 'fail' : 'not_measured';
   process.stdout.write(redactSecrets(JSON.stringify(report, null, 2)) + '\n');
-  return Object.values(report.checks).every((v) => v === 'pass') ? 0 : 1;
+  // § 6.14's exit rule: 0 every check passed; 1 at least one failed; 2 none failed and at least one
+  // was not measured — a verification that did not happen is neither a pass nor a fail.
+  const verdicts = Object.values(report.checks);
+  return verdicts.includes('fail') ? 1 : verdicts.includes('not_measured') ? 2 : 0;
 }
 
 /* ── main ────────────────────────────────────────────────────────────────────────────────────
@@ -2979,9 +3035,10 @@ function main() {
     return;
   }
   if (cmd === 'selftest') {
-    let code = 1;
-    try { code = selftestMain(); } catch (e) { process.stderr.write(`selftest crashed: ${redactSecrets(String(e && e.stack || e))}\n`); code = 1; }
-    process.exit(code);
+    selftestMain()
+      .catch((e) => { process.stderr.write(`selftest crashed: ${redactSecrets(String(e && e.stack || e))}\n`); return 1; })
+      .then((code) => process.exit(code));
+    return;
   }
   try {
     if (cmd === 'statusline') statuslineMain();

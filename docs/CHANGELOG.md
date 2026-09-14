@@ -19,6 +19,23 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9373** — **`fleet-reporter selftest` now exits 0 on a correctly configured seat.** The one-shot
+  command never asked the ingest, so `schema_version_accepted` read `fail` on every seat and the
+  install-time verification exited 1; its `tls_verify` read `pass` from a check of the source alone.
+  The command now runs the flusher's own health probe (`refreshHealth`: same TLS path, `ca_file` and
+  deadline) once, on a config that passes validation. D1 § 6.14 gains the rule for a check the
+  subcommand could not measure: each network check is `pass`, `fail` or `not_measured` (ingest
+  unreachable, or an answer with no accepted set, such as a `401`), and the exit code is `0` when every
+  check passes, `1` when any fails, and `2` when none fails and one is unmeasured. A TLS handshake that
+  fails against a reached host is a `tls_verify` fail. `tls_verify` is the source posture and
+  reachability together in one place, so a probe answer never turns a failing posture into a pass;
+  that also holds for the heartbeat, where a successful send used to set it. The heartbeat's
+  `selftest` object keeps its two values, and an unmeasured check rides it as `fail`, as before.
+  `fleet-reporter/INSTALL-LINUX.md` Step 6 and the fleet-reporter README follow. The acceptance suite's
+  § 1 drives an accepting stub, a stub whose set lacks the version, an unreachable ingest, a `401`, and
+  a seat with no `ca_file`, with a RED plant of the one-shot that never probes. **Installer action:**
+  none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1).
+
 - **card#9393** — **A flusher that loses ownership of `state.json` now stops sending and exits, as
   D1 § 2.3 requires; before, it detected the loss and kept posting from its in-memory `seq`.** The
   reporter's `saveState` refused the write and every caller ignored the refusal, so on a slow ingest
