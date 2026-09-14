@@ -4,6 +4,7 @@ namespace App\Fold;
 
 use App\Feed\Outbox;
 use App\Ingest\Counters;
+use App\Ingest\IngestPipeline;
 use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -44,6 +45,45 @@ final class Fold
     public const CLAIM = 8;
 
     /**
+     * § 6.5, derived (card#9464): how long one window may hold its seat's `seat_state` lock, alongside
+     * `BATCH` — a window stops at whichever it reaches first.
+     *
+     *     = IngestPipeline::IDLE_TRANSACTION_TIMEOUT_S × 1000 − IngestPipeline::PROCESSING_TARGET_MS
+     *
+     * The ingest's own arithmetic already assumes every unit of server-store work completes inside
+     * `PROCESSING_TARGET_MS`. A window that stops with that much of the idle bound still unspent — for
+     * its commit tail and the one event that may still be in flight when the check fires (`window()`
+     * checks after each applied event, never mid-event) — releases the lock before a post that queued
+     * at the window's lock grant would give up. If `PROCESSING_TARGET_MS` is false under real drain
+     * I/O, the ingest misses its own deadline whatever the fold does; a drain run with no concurrent
+     * ingest can falsify that assumption and cannot confirm it.
+     *
+     * Derived from `IngestPipeline`'s constants by name, so a change there re-flows here;
+     * `FoldWindowBudgetSourcesTest` holds this formula and § 12's row to them.
+     */
+    public const WINDOW_BUDGET_MS = (IngestPipeline::IDLE_TRANSACTION_TIMEOUT_S * 1000)
+        - IngestPipeline::PROCESSING_TARGET_MS;
+
+    /**
+     * Test seam (card#9464): invoked at the top of `lockSeatOrYield()`, before the lock statement, so
+     * a test can hold the seat's row from another connection at exactly one of the fold's lock
+     * attempts — which is the only way to make a recovery or quarantine transaction find the seat
+     * contended while the claim that selected it did not.
+     *
+     * @var null|callable(int): void
+     */
+    public static $beforeLock = null;
+
+    /**
+     * Test seam (card#9464): invoked in `window()` right after `readable()`, before the first
+     * `$before` sample. A write another connection commits from here is the write a stale `$before`
+     * would miss; with the seat lock taken first it cannot commit at all.
+     *
+     * @var null|callable(int): void
+     */
+    public static $afterReadable = null;
+
+    /**
      * Test seam for AT-D2-22's purged-window arm: invoked between the emptiness proof and the
      * guarded cursor write, which is the only window in which an interleaved ingest commit can
      * change the answer. It exists because that interleaving is the branch's entire hazard and a
@@ -56,6 +96,8 @@ final class Fold
     public function __construct(
         private readonly Projector $projector = new Projector,
         private readonly StateRecompute $recompute = new StateRecompute,
+        private readonly int $windowBudgetMs = self::WINDOW_BUDGET_MS,
+        private readonly WindowClock $clock = new WindowClock,
     ) {}
 
     /**
@@ -90,17 +132,45 @@ final class Fold
      */
     private function claim(): Collection
     {
-        $query = DB::table('seat_state')
+        return DB::table('seat_state')
             ->select(['seat_ref', 'fold_cursor_event_id'])
             ->whereColumn('fold_cursor_event_id', '<', 'head_event_id')
             ->orderBy('fold_cursor_received_at')
-            ->limit(self::CLAIM);
+            ->limit(self::CLAIM)
+            ->lock('for update skip locked')
+            ->get();
+    }
 
-        if (in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
-            $query->lock('for update skip locked');
+    /**
+     * The seat's `seat_state` row lock, taken as the FIRST statement of every fold transaction that
+     * samples `$before` — the window, a one-event recovery attempt and the quarantine (card#9464).
+     *
+     * ⛔ THIS IS WHAT MAKES `$before` INDEPENDENT OF HOW THE STORE IS CONFIGURED. `Outbox::transaction()`
+     * issues nothing before its closure, and `START TRANSACTION` reads nothing; a locking read is not a
+     * consistent read, so the transaction's snapshot is fixed by its first PLAIN read, which runs after
+     * this lock is granted. Every `$before` therefore sees every write committed before the grant, and
+     * no same-seat writer that takes this lock can commit until this transaction ends — under either
+     * setting of `innodb_snapshot_isolation` and under REPEATABLE READ or READ COMMITTED
+     * (`FoldLockFirstTest` drives each combination). A plain read placed first instead fixes the
+     * snapshot before the lock, and whether a write landing in between is then refused (`1020`),
+     * silently missed, or read fresh depends on exactly those settings.
+     *
+     * `FOR UPDATE SKIP LOCKED`, the claim's own idiom above: a contended seat yields at once with a
+     * clean miss rather than waiting out a lock timeout, because the fold has no wait budget to spend.
+     * The claim already proved the row exists, so a miss can only mean another transaction holds it.
+     *
+     * @return bool false: another transaction holds the seat, and this transaction must write nothing
+     */
+    private function lockSeatOrYield(int $seatRef): bool
+    {
+        if (self::$beforeLock !== null) {
+            (self::$beforeLock)($seatRef);
         }
 
-        return $query->get();
+        return DB::table('seat_state')
+            ->where('seat_ref', $seatRef)
+            ->lock('for update skip locked')
+            ->value('seat_ref') !== null;
     }
 
     private function foldSeat(int $seatRef, int $cursor): int
@@ -131,16 +201,48 @@ final class Fold
      * The window of one pass, inside one transaction. § 6.5: "the cursor advance is in the same
      * transaction as the projections, so a crash mid-pass rolls back both — an event is applied
      * exactly once."
+     *
+     * ⛔ ITS FIRST STATEMENT IS THE SEAT LOCK (`lockSeatOrYield()`, which argues why), before
+     * `readable()` and before any `$before` sample. A contended seat yields the pass having written
+     * nothing — the same outcome as a lost claim race — and a seat that keeps yielding shows as
+     * `fold_lag`, the fold's one surface.
+     *
+     * BOUNDED BY `BATCH` OR `WINDOW_BUDGET_MS`, WHICHEVER IS REACHED FIRST. The budget clock starts at
+     * the lock grant, when the hold begins, and is checked after each applied event and never before
+     * the first, so every window makes progress. A stopped window advances the cursor to the last
+     * APPLIED row and never to the last row read: ids are a prefix (the class docblock), so no later
+     * window re-selects an id at or below the cursor, and advancing past an unapplied tail would
+     * strand it.
+     *
+     * LOCK ORDER. The window now takes `seat_state` before `sessions` / `calls` /
+     * `attention_requests`. `Sweep::seat()` locks the seat's `sessions` rows before it writes
+     * `seat_state`, so a fold and a sweep pass on one seat can deadlock. That cycle already existed for
+     * a window's second and later events, which ran after the first event's `seat_state` write; taking
+     * the lock first extends it to the first event. The fold is the cheap victim — it has applied at
+     * most that event — and yields through `contended()` (`1213`).
      */
     private function window(int $seatRef, int $cursor): int
     {
+        if (! $this->lockSeatOrYield($seatRef)) {
+            return 0;
+        }
+
+        $windowStartedMs = $this->clock->nowMs();
+
         $rows = $this->readable($seatRef, $cursor);
+
+        if (self::$afterReadable !== null) {
+            (self::$afterReadable)($seatRef);
+        }
 
         if ($rows->isEmpty()) {
             $this->emptyWindow($seatRef, $cursor);
 
             return 0;
         }
+
+        $last = null;
+        $applied = 0;
 
         foreach ($rows as $row) {
             $event = FoldEvent::fromRow($row);
@@ -161,13 +263,18 @@ final class Fold
 
             $this->projector->apply($event);
             $this->recompute->after($event, $before);
-        }
 
-        $last = $rows->last();
+            $last = $row;
+            $applied++;
+
+            if ($this->clock->nowMs() - $windowStartedMs >= $this->windowBudgetMs) {
+                break;
+            }
+        }
 
         $this->advance($seatRef, $cursor, (int) $last->id, $last->received_at);
 
-        return $rows->count();
+        return $applied;
     }
 
     /**
@@ -199,6 +306,11 @@ final class Fold
      * are the same predicate, `id > cursor`, read from the same transaction's read view. Under READ
      * COMMITTED a commit landing between the two statements makes it reachable, and waiting for the
      * next pass is then right, so the branch stays.
+     *
+     * `window()` reaches this with the seat lock held (card#9464), and the ingest — `events`' one
+     * inserter and `head_event_id`'s writer — takes that lock first, so it cannot commit between
+     * `readable()`, the proof and the guarded write. The READ COMMITTED branch and the guard stay: they
+     * keep this correct without resting on that.
      */
     private function emptyWindow(int $seatRef, int $cursor): void
     {
@@ -299,6 +411,10 @@ final class Fold
             foreach ([1, 2] as $attempt) {
                 try {
                     Outbox::transaction(function () use ($event, $seatRef, $cursor, $row) {
+                        if (! $this->lockSeatOrYield($seatRef)) {
+                            throw new SeatLockYielded;
+                        }
+
                         // Card #7837, and sampled INSIDE the transaction rather than above the
                         // retry loop: attempt 1 may have written and rolled back, so the only
                         // fingerprint this attempt can honestly call "before" is the one it reads
@@ -315,6 +431,10 @@ final class Fold
                     break;
                 } catch (CursorRaced) {
                     return $applied;
+                } catch (SeatLockYielded) {
+                    // BEFORE `\Throwable`, which would catch it too: there it would spend this
+                    // attempt and send an innocent event to the quarantine.
+                    return $applied;
                 } catch (\Throwable $e) {
                     if ($this->contended($e)) {
                         return $applied;   // not this event's fault; the next pass retries it whole
@@ -330,6 +450,9 @@ final class Fold
                 try {
                     $this->quarantine($seatRef, $cursor, $event, $row->received_at);
                 } catch (CursorRaced) {
+                    return $applied;
+                } catch (SeatLockYielded) {
+                    // BEFORE `\Throwable`, which would rethrow it out of the pass as a fault.
                     return $applied;
                 } catch (\Throwable $e) {
                     if (! $this->contended($e)) {
@@ -370,8 +493,12 @@ final class Fold
     private function quarantine(int $seatRef, int $cursor, FoldEvent $event, string $receivedAt): void
     {
         Outbox::transaction(function () use ($seatRef, $cursor, $event, $receivedAt) {
-            // ⛔ SAMPLED AT THE TOP OF THE TRANSACTION, AND THE ANSWER TO "WHAT IS `$before` HERE"
-            // IS THAT NOTHING WROTE BEFORE IT — card #7837, stated rather than left to be inferred
+            if (! $this->lockSeatOrYield($seatRef)) {
+                throw new SeatLockYielded;
+            }
+
+            // ⛔ SAMPLED AFTER THE SEAT LOCK AND BEFORE ANY WRITE, AND THE ANSWER TO "WHAT IS `$before`
+            // HERE" IS THAT NOTHING WROTE BEFORE IT — card #7837, stated rather than left to be inferred
             // from the absence of an `apply()` call.
             //
             // This path quarantines an event that RAISED, and both attempts ran inside their own

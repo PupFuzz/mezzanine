@@ -116,6 +116,8 @@ abstract class CommittedSeatTestCase extends TestCase
     {
         BatchWriter::$afterLock = null;
         BatchWriter::$afterFirstChunk = null;
+        Fold::$beforeLock = null;
+        Fold::$afterReadable = null;
         Carbon::setTestNow();
 
         $this->deleteCommittedRows(outbox: true);

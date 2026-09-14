@@ -66,6 +66,8 @@ abstract class FoldTestCase extends TestCase
     protected function tearDown(): void
     {
         Fold::$afterEmptinessProof = null;
+        Fold::$beforeLock = null;
+        Fold::$afterReadable = null;
         Carbon::setTestNow();
 
         parent::tearDown();

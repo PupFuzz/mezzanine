@@ -83,11 +83,11 @@
 #     (`php-tests (8.4)`, `php-tests (8.5)`, …) — a required-check-list question, not a free
 #     change. One version, one context, on purpose.
 #
-#   * **TLS, the session time zone, `down()`, and concurrency on the store.** The engine itself IS
-#     covered; the rest of § 6.1's posture is not. The service container is plaintext on loopback,
-#     so § 6.1's verified-TLS requirement is not exercised, and `server/config/database.php` sets no
-#     session `timezone`, so `SET time_zone = '+00:00'` is not either — both stay card#7523's,
-#     verified at provisioning. Only `up()` runs: `bin/deploy.sh` is forward-only ON PURPOSE (a
+#   * **TLS, `down()`, and concurrency on the store.** The engine itself IS covered, and so is the
+#     session time zone: `server/config/database.php`'s `timezone` key sets it on every connection and
+#     `DatabasePinTest` asserts the resolved value. The service container is plaintext on loopback, so
+#     § 6.1's verified-TLS requirement is not exercised; it stays card#7523's, verified at
+#     provisioning. Only `up()` runs: `bin/deploy.sh` is forward-only ON PURPOSE (a
 #     failed MariaDB migration is half-applied and a rollback is a second guess at an unknown
 #     state), so a `down()` defect is on no production path. And `FOR UPDATE SKIP LOCKED`, the
 #     `Predicates::record()` lost update and the ABBA ordering card#7523 names all need two

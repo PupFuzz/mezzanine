@@ -5,7 +5,7 @@ namespace App\Fold;
 /**
  * `DATETIME(3)` ↔ milliseconds, in one place.
  *
- * Every timestamp in this schema is `DATETIME(3)`, UTC, and never `TIMESTAMP` — because MySQL
+ * Every timestamp this plane stores is `DATETIME(3)`, UTC, and never `TIMESTAMP` — because MySQL
  * converts a `TIMESTAMP` by session time zone and does not convert a `DATETIME`
  * (`docs/design/FLEET-STATE.md § 6.3`). The store hands them back as `Y-m-d H:i:s.v` strings on
  * both engines, so every age arithmetic in the fold goes through here rather than through a
