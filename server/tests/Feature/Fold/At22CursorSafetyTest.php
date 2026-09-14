@@ -29,10 +29,12 @@ use Illuminate\Support\Facades\DB;
  */
 class At22CursorSafetyTest extends FoldTestCase
 {
-    public function test_an_event_inside_the_visibility_lag_is_not_folded_and_the_cursor_does_not_pass_it(): void
+    public function test_a_fresh_event_folds_on_the_next_pass(): void
     {
-        // Delivered WITHOUT the harness's usual ageing, so the batch's `received_at` is `now` and
-        // the whole window is inside the lag.
+        // Delivered WITHOUT the harness's usual ageing, so the batch's `received_at` is `now`. The
+        // fold reads `events` by id alone (card#9398): the seat lock the ingest takes first is what
+        // keeps an uncommitted lower id from existing behind a committed higher one, so there is no
+        // age to wait out and a fresh batch folds on the very next pass.
         $this->deliverFresh($this->cleanTurn());
 
         $head = (int) $this->state()->head_event_id;
@@ -40,19 +42,9 @@ class At22CursorSafetyTest extends FoldTestCase
 
         app(Fold::class)->pass();
 
-        // The pass CLAIMED the seat (the cursor is below the head) and read nothing, and the
-        // purged-window branch must not have fired: the events exist, they are merely young.
-        $this->assertSame(0, (int) $this->state()->fold_cursor_event_id,
-            'the cursor advanced past events younger than the visibility lag');
-        $this->assertSame(0, $this->counter('fold_window_purged'),
-            'a young window was mistaken for a purged one');
-        $this->assertSame('offline', $this->state()->render_state, 'a young event was folded');
-
-        // Aged out, the identical events fold normally — so the lag DELAYS and never DISCARDS.
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
-        $this->fold();
-
-        $this->assertSame($head, (int) $this->state()->fold_cursor_event_id);
+        $this->assertSame($head, (int) $this->state()->fold_cursor_event_id,
+            'a committed event was held back from the fold');
+        $this->assertSame(0, $this->counter('fold_window_purged'), 'a fresh window was mistaken for a purged one');
         $this->assertSame('idle', $this->state()->activity_state);
     }
 

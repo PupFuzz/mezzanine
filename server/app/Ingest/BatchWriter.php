@@ -51,6 +51,20 @@ final class BatchWriter
     private const INSERT_CHUNK = 50;
 
     /**
+     * Test seam: invoked inside the transaction right after the seat lock is taken.
+     *
+     * @var null|callable(int $seatRef): void
+     */
+    public static $afterLock = null;
+
+    /**
+     * Test seam: invoked inside the transaction right after the first `events` chunk is inserted.
+     *
+     * @var null|callable(int $seatRef): void
+     */
+    public static $afterFirstChunk = null;
+
+    /**
      * @param  list<ValidEvent>  $events
      */
     public function write(
@@ -82,6 +96,10 @@ final class BatchWriter
             $binding, $batch, $known, $ignoredUnknownKinds, $coerced, $unknownFields,
             $receivedAt, $receivedAtSql, $clockSkewMs,
         ) {
+            if (self::$afterLock !== null) {
+                (self::$afterLock)($binding->seatRef);
+            }
+
             $batchRef = DB::table('batches')->insertGetId([
                 'seat_ref' => $binding->seatRef,
                 'batch_id' => $batch->batchId,
@@ -103,7 +121,7 @@ final class BatchWriter
 
             $inserted = 0;
 
-            foreach (array_chunk($known, self::INSERT_CHUNK) as $chunk) {
+            foreach (array_chunk($known, self::INSERT_CHUNK) as $chunkIndex => $chunk) {
                 $rows = [];
 
                 foreach ($chunk as $event) {
@@ -134,6 +152,10 @@ final class BatchWriter
                 // an ambiguous timeout and "must be able to converge without operator
                 // involvement".
                 $inserted += DB::table('events')->insertOrIgnore($rows);
+
+                if ($chunkIndex === 0 && self::$afterFirstChunk !== null) {
+                    (self::$afterFirstChunk)($binding->seatRef);
+                }
             }
 
             $duplicates = count($known) - $inserted;
