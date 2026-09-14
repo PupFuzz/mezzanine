@@ -134,8 +134,9 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // ⚠ AND THE DELIVERY IS STILL THE PAGE'S, WHICH IS BUILD SLICE 3's TO MOVE. § 4.6 now reaches
     // the browser from `GET /api/building` (D2 § 8.7) "because a layout an operator saves has to
     // reach a client that is already open, and a page-inlined document reaches only a page that is
-    // loaded after it" — that surface is Appendix B row 12's and the client's fetch is row 13's.
-    // Until then this inlines what the store holds, hallways and all.
+    // loaded after it" — that surface is served since Appendix B row 12 (`routes/fleet.php`) and
+    // the client's fetch is row 13's. Until row 13 this inlines what the store holds, hallways and
+    // all — the same `Layouts::layout()->floors` the surface answers, so the two cannot disagree.
     Route::get('/dashboard', fn () => view('dashboard', ['layout' => Layouts::layout()->floors]))
         ->name('dashboard');
 });

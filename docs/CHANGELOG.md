@@ -19,6 +19,23 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9208** — **The building surface is served: `GET /api/building` and
+  `GET /api/building/rooms/{install_id}/map`** (D2 § 8.7, `docs/design/FLOOR.md` Appendix B row 12,
+  build slice 2). `/api/building` answers the layout the lobby page already inlines
+  (`layout_version` `0` with empty `floors` when none was ever saved) and `rooms[]`, each authored
+  room's `map_version` and `updated_at`. The map endpoint answers a room's authored Tiled document
+  with `source: "authored"`, or the shipped `resources/floor/default.tmj` with `source: "default"`
+  and null version for a room with no current map (never authored, never reported, or removed); an
+  `install_id` outside D1 § 3.1's slug is `404`. Both are browser-only behind the read plane's gate:
+  a `mzr_` token is refused `401 unauthenticated` exactly as on the timeline, and a store that
+  cannot be read is `503 fleet_unavailable` with no document. The map is decoded to objects before
+  it is re-serialised, so an authored `{}` comes back as `{}`. The `room.map` and `building.layout`
+  messages were already committed by the store with the revision they announce (card#9300); a new
+  test fails each of the five writes at its outbox INSERT and asserts neither the revision nor the
+  message survives. `FleetController`'s fail-closed body build moves to
+  `App\Http\Controllers\Concerns\ServesAClosedRead`, shared by both controllers, and D1 § 3.1's slug
+  patterns move from `mezzanine:ingest-token:issue` to `App\Support\Slug`. The lobby page still
+  inlines the layout; its fetch is Appendix B row 13.
 - **card#9471** — **A signed-in account with a confirmed second factor can move to a new
   authenticator again, and keeps its current one until the new one is confirmed.**
   `/two-factor/recovery-codes` (behind `auth` + `mfa` + `password.confirm`) carries a **Move to a

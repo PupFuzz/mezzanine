@@ -16,23 +16,25 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * `docs/design/FLEET-STATE.md § 9`'s read-side authentication, as ONE gate over all four
- * endpoints — because § 9's rules are per-CREDENTIAL, not per-endpoint, and four copies of
- * "revocation is checked per request" is four places for one of them to grow a cache.
+ * `docs/design/FLEET-STATE.md § 9`'s read-side authentication, as ONE gate over every REST
+ * endpoint of the read side — § 8.2's fleet endpoints and § 8.7's building surface — because
+ * § 9's rules are per-CREDENTIAL, not per-endpoint, and a copy of "revocation is checked per
+ * request" per endpoint is a place per endpoint for one of them to grow a cache.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * TWO CREDENTIALS, AND WHICH ENDPOINTS ACCEPT WHICH (§ 8.2's table, § 9's table):
+ * TWO CREDENTIALS, AND WHICH ENDPOINTS ACCEPT WHICH (§ 8.2's table, § 8.7's, § 9's):
  *
- *   session + MFA           the floor, the drill-down, and REST from a browser — i.e. ALL FOUR
- *                           endpoints. (The feed's stream is session + MFA too, but not through this
- *                           gate: § 9 refuses it to machines, so `routes/fleet.php` gives it `auth` +
- *                           `mfa` and no token branch — card#9300.)
- *   `mzr_` fleet_read       `/snapshot`, `/seats/{i}/{s}` and `/health` only.
+ *   session + MFA           the floor, the drill-down, and REST from a browser — i.e. EVERY
+ *                           endpoint behind this gate. (The feed's stream is session + MFA too, but
+ *                           not through this gate: § 9 refuses it to machines, so `routes/fleet.php`
+ *                           gives it `auth` + `mfa` and no token branch — card#9300.)
+ *   `mzr_` fleet_read       every endpoint behind this gate EXCEPT `SESSION_ONLY_ROUTES`.
  *                           `/timeline` is session+MFA ONLY in § 8.2's table, and that asymmetry
  *                           is preserved rather than smoothed: the timeline is D3's drill-down
  *                           window, the known machine consumer is the bridge's autonomy watchdog
  *                           whose interface is the snapshot (§ 8.2), and widening a surface
- *                           nothing asks for is how a read grant grows.
+ *                           nothing asks for is how a read grant grows. § 8.7's building surface is
+ *                           session-only by § 9's own row, "browser-only, like the timeline".
  *
  * ⛔ THE ORDER OF THE THREE CHECKS IS LOAD-BEARING, and it is the token-before-session order.
  *
@@ -79,8 +81,12 @@ class FleetReadGate
 
     public const FAILED_AUTH_RETRY_AFTER_S = TokenResolver::FAILED_AUTH_RETRY_AFTER_S;
 
-    /** § 8.2's table: the one endpoint a `mzr_` token may not read. */
-    public const SESSION_ONLY_ROUTES = ['fleet.timeline'];
+    /**
+     * The routes behind this gate that a `mzr_` token may not read: § 8.2's timeline, and § 8.7's
+     * building surface, which § 9 makes "browser-only, like the timeline: an `mzr_` token presented to
+     * it is refused `401` exactly as the timeline refuses one".
+     */
+    public const SESSION_ONLY_ROUTES = ['fleet.timeline', 'building', 'building.room_map'];
 
     /** § 7.2: the counter pair is snapshot-scoped — "a REST snapshot was served / refused". */
     public const COUNTED_ROUTE = 'fleet.snapshot';
