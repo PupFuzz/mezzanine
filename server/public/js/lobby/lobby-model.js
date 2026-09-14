@@ -370,19 +370,77 @@ export class DiscrepancyBudget {
 }
 
 /**
- * The whole lobby, from one snapshot body and the building layout the page delivered: what
- * § 4.1's table says the screen carries, and nothing else. `main.js` renders these strings and
- * decides none of them.
+ * § 9 F17's statement, from the failed layout request's `{ status }` (`../wire/building.js`):
+ * "**the building layout could not be loaded — HTTP N**".
+ *
+ * ⚠ TWO FAILURES F17 DOES NOT WORD, because it words a status code and neither has one to name: a
+ * request that never reached a status — worded as this file's snapshot twin is in `main.js` — and a
+ * `200` whose body is not a layout, which is F17's own words with what the code does not say added.
+ * Neither string is ratified.
  */
-export function lobbyModel(snapshot, layout = []) {
-    // ONE pass over the installs, and the held count summed from the same rows the floors
-    // render. Calling `heldSeats()` here as well would build the summaries twice and open the
+export function layoutStatement(failure) {
+    if (failure === null || failure === undefined) {
+        return null;
+    }
+
+    if (failure.status === null) {
+        return 'the building layout could not be requested — the browser could not reach the server';
+    }
+
+    return failure.status === 200
+        ? 'the building layout could not be loaded — HTTP 200, and the body is not a layout'
+        : `the building layout could not be loaded — HTTP ${failure.status}`;
+}
+
+/**
+ * § 9 F17's cold start: "there is no layout to keep, so under that statement it lists the snapshot's
+ * installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}`". No floor, no key,
+ * no label and no summary is derived — composing is exactly what the failed document was needed for.
+ * `held` is carried so the lobby's held count still counts every seat the client holds.
+ */
+function unclaimedRooms(snapshot) {
+    const installs = Array.isArray(snapshot?.installs) ? snapshot.installs : [];
+
+    return installs.map((install) => {
+        const install_id = String(install?.install_id);
+
+        return {
+            install_id,
+            href: `/floor/${encodeURIComponent(install_id)}`,
+            held: Array.isArray(install?.seats) ? install.seats.length : 0,
+        };
+    });
+}
+
+/**
+ * The whole lobby, from one snapshot body and the building layout `GET /api/building` answered:
+ * what § 4.1's table says the screen carries, and nothing else. `main.js` renders these strings and
+ * decides none of them.
+ *
+ * `layout` is the floors the client holds — `null` when no layout request has ever succeeded — and
+ * `layoutFailure` is the last layout request's failure, or `null`.
+ *
+ * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING (§ 9 F17). There is deliberately no default for `layout`:
+ * `[]` is the EMPTY layout — a legal document that composes one floor per install — and a caller that
+ * passed nothing would draw that building from a request that failed, which is F17's "Never". Anything
+ * that is not a list of floors takes the uncomposed render.
+ */
+export function lobbyModel(snapshot, layout, layoutFailure = null) {
+    const composed = Array.isArray(layout);
+    // ONE pass over the installs, and the held count summed from the same rows the lobby
+    // renders. Calling `heldSeats()` here as well would build the summaries twice and open the
     // one gap that matters: two counts of one population that can disagree.
-    const rows = floors(snapshot, layout);
-    const held = rows.reduce((n, floor) => n + floor.held, 0);
+    const rows = composed ? floors(snapshot, layout) : [];
+    const unclaimed = composed ? [] : unclaimedRooms(snapshot);
+    const held = [...rows, ...unclaimed].reduce((n, row) => n + row.held, 0);
 
     return {
         floors: rows,
+        unclaimed,
+        layout_statement: layoutStatement(layoutFailure),
+        // F17: "over the floors it already holds, labelled *last known layout*" — and on a cold start
+        // there are none, so nothing is labelled as kept.
+        layout_kept: layoutFailure !== null && composed ? 'last known layout' : null,
         held,
         totals: fleetTotals(snapshot?.fleet),
         // A non-integer `seats_total` is `discrepancyNotice`'s own `null` case: there is no

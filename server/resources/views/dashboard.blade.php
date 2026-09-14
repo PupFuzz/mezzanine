@@ -16,10 +16,12 @@
         "a floor that fails quietly is indistinguishable from a fleet that has gone home."
 
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
-          · the tiled MAP, the camera and the desks — card#9208: the authored floor map is a BUILD
-            ARTIFACT and none is vendored (§ 10.3), so there is no floor screen for a camera to
-            arrive at and `/floor/{floor}` is still an unbuilt route. § 1.3 corollary 2 forbids
-            guessing one.
+          · the tiled MAP, the camera and the desks — the floor screen is `docs/design/FLOOR.md`
+            Appendix B step 7 (card#7341) and is not built, so there is no floor screen for a
+            camera to arrive at and `/floor/{floor}` is still an unbuilt route. The maps it will
+            draw are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7) and held by
+            version in `public/js/wire/building.js`; nothing on this page draws one, because a
+            plate names its rooms and never draws a room interior (§ 4.1).
           · the elevator's DESTINATION, for the same reason — card#7343 builds the elevator as
             § 4.1's way between the stacked plates of THIS screen, and a ride moves the cab and
             nothing else. The plate's own link is still the only thing pointing at that route.
@@ -37,6 +39,15 @@
         <p id="lobby-kept" hidden></p>
 
         {{--
+            § 9 F17's statement region: "the building layout could not be loaded — HTTP N", over
+            the floors the client already holds labelled *last known layout*, or over the
+            uncomposed list of rooms on a cold start. A region of its own because it can stand
+            beside F4/F5's store statement above, which is the snapshot's.
+        --}}
+        <p id="lobby-layout-statement" role="status" hidden></p>
+        <p id="lobby-layout-kept" hidden></p>
+
+        {{--
             § 4.1 row 1: one row per floor, the row being the link to the floor.
 
             ⛔ THE LABEL IS REQUIRED, NOT DECORATION. § 2.1 row 5: the per-floor count "is
@@ -52,18 +63,15 @@
 
         {{--
             THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install
-            and a floor is an operator-composed set of rooms. The composed floors reach the client
-            WITH THE PAGE, validated and normalised by `App\Building\BuildingLayout`. Since
-            card#9208's reversal the same value is also served by `GET /api/building`
-            (`docs/design/FLEET-STATE.md § 8.7`); moving the client onto that fetch is
-            `docs/design/FLOOR.md` Appendix B row 13, and until it lands this page is the delivery.
-            The client adds one floor per install the snapshot carries that no floor here places
-            (§ 4.6's default rule) and composes nothing else.
+            and a floor is an operator-composed set of rooms. ⛔ THIS PAGE CARRIES NONE: the
+            client fetches it from `GET /api/building` (`docs/design/FLEET-STATE.md § 8.7`) after
+            the snapshot (Appendix B row 13, card#9208), because one building on two delivery
+            paths is the *which of the two am I looking at* question D2 § 13 row 41 refuses.
+            `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
 
-            ⚠ A page loaded before the building was rearranged draws the old building until it
-            is reloaded — the same deploy-shaped staleness § 10.3 already accepted for the map.
+            ⚠ The lobby opens no stream yet (Appendix B step 3), so a building rearranged after
+            the fetch is drawn when the viewer presses Refresh or reloads.
         --}}
-        <script type="application/json" id="lobby-layout">@json($layout, JSON_HEX_TAG | JSON_HEX_AMP)</script>
 
         {{--
             § 4.1's ELEVATOR — card#7343. The ratified cross-section stacks one floor plate per

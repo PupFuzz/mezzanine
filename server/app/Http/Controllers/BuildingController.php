@@ -59,9 +59,9 @@ class BuildingController extends Controller
             // ⛔ ONE READ OF THE LAYOUT ROW for both members. `layout_version` and `floors` are one
             // revision's, or a client holding that version treats the `building.layout` message that
             // carries it as already applied (§ 8.7). A stored document the reader now refuses raises
-            // `InvalidBuildingLayout` exactly as the page does (`routes/web.php`'s dashboard reads
-            // through `Layouts::layout()`, which is this same read) — a `500`, not
-            // `fleet_unavailable`, because the store answered.
+            // `InvalidBuildingLayout` — a `500`, not `fleet_unavailable`, because the store answered —
+            // and since Appendix B row 13 this is the only browser read of the layout, so that `500`
+            // is what the lobby renders as D3 § 9 F17.
             $current = Layouts::read();
 
             return [

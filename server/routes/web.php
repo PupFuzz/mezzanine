@@ -1,6 +1,5 @@
 <?php
 
-use App\Building\Layouts;
 use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
@@ -122,24 +121,11 @@ Route::middleware('guest')->group(function () {
  * (§ 9 adds the `mzr_` machine path) and could not be expressed by leaving the route here.
  */
 Route::middleware(['auth', 'mfa'])->group(function () {
-    // The lobby is served WITH the building layout — `docs/design/FLOOR.md § 4.6`. An invalid
-    // layout refuses here, per request, on this surface — never at boot, where it would take
-    // ingest down too.
-    //
-    // ⭐ THE DOCUMENT NOW COMES FROM THE CONSOLE'S STORE (card#9208's reversal, 2026-09-12;
-    // `App\Building\Layouts`, `docs/design/FLEET-STATE.md § 6.11`) rather than from
-    // `config/building.php`. The READER is unchanged, which is § 4.6's promise being kept: "the
-    // SHAPE is the contract; the store is the caller's."
-    //
-    // ⚠ AND THE DELIVERY IS STILL THE PAGE'S, WHICH IS BUILD SLICE 3's TO MOVE. § 4.6 now reaches
-    // the browser from `GET /api/building` (D2 § 8.7) "because a layout an operator saves has to
-    // reach a client that is already open, and a page-inlined document reaches only a page that is
-    // loaded after it" — that surface is served since Appendix B row 12 (`routes/fleet.php`) and
-    // the client's fetch is row 13's. Until row 13 this inlines what the store holds, hallways and
-    // all, through `Layouts::layout()`, which is the `Layouts::read()` the surface answers from, so
-    // both normalise a layout through the same code. A page loaded before a save still shows the
-    // layout it was loaded with (`dashboard.blade.php` says so).
-    Route::get('/dashboard', fn () => view('dashboard', ['layout' => Layouts::layout()->floors]))
+    // The lobby. ⛔ IT CARRIES NO BUILDING LAYOUT (`docs/design/FLOOR.md` Appendix B row 13,
+    // card#9208): the client fetches the layout from `GET /api/building` (D2 § 8.7,
+    // `routes/fleet.php`), so the one place a layout is read for a browser — and refused, per
+    // request, when the stored document no longer passes the reader — is that surface.
+    Route::get('/dashboard', fn () => view('dashboard'))
         ->name('dashboard');
 });
 
