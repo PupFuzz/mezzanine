@@ -13,9 +13,16 @@
             <p role="status">{{ session('status') }}</p>
         @endif
 
-        @if ($errors->any())
+        {{--
+            EVERY error bag, not only the default one. `$errors->any()` and `$errors->all()` read the
+            `default` bag alone, and Fortify reports a rejected enrolment code in the
+            `confirmTwoFactorAuthentication` bag, so the enrolment page used to answer a wrong code
+            with no message at all (card#9445).
+        --}}
+        @php($errorMessages = collect($errors->getBags())->flatMap(fn ($bag) => $bag->all()))
+        @if ($errorMessages->isNotEmpty())
             <ul role="alert">
-                @foreach ($errors->all() as $error)
+                @foreach ($errorMessages as $error)
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
