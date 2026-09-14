@@ -19,6 +19,22 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9393** — **A flusher that loses ownership of `state.json` now stops sending and exits, as
+  D1 § 2.3 requires; before, it detected the loss and kept posting from its in-memory `seq`.** The
+  reporter's `saveState` refused the write and every caller ignored the refusal, so on a slow ingest
+  two live flushers could emit overlapping seqs for one seat. What ships in `fleet-reporter.js`: one
+  ownership check (`assertOwner`) guards each `state.json` and snapshot write, each lock touch and
+  each request, and a loss is thrown, not returned. The flusher loop catches it, counts
+  `flusher_lost_ownership` once into the counter sink the new owner folds, logs once and exits 0.
+  The lock is renewed before every request as well as at the start of every pass, so a live
+  flusher's lock ages by at most one request plus one flush interval, not by a whole pass of POSTs.
+  An exiting flusher removes `flusher.lock` only while the lock still names it; before, an ex-owner
+  deleted the new owner's lock and let a third flusher start. D1 § 2.3 and decision 18, and
+  `fleet-reporter/INSTALL-LINUX.md`'s restart derivation, now state the touch cadence and the exit
+  behaviour. The acceptance suite's new block 18 drives each of these against a slow ingest stub,
+  with a RED plant for each. **Installer action:** none beyond the ordinary artifact update
+  (`INSTALL-LINUX.md` Step 1); a running flusher keeps the code it started with until it restarts.
+
 - **card#9300** — **THE LIVE FEED IS BUILT: Server-Sent Events on `GET /api/fleet/stream`, fed by a
   `feed_outbox` table** (`docs/design/FLEET-STATE.md` Appendix B step 9). ⛔ **Installer action, before the
   next deploy — the deploy now REFUSES a host that cannot serve or drain the stream:** provision a

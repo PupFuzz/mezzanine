@@ -161,7 +161,8 @@ the bursts' own concurrency, the lock's age at the last hook is 22.6 s (AT-10) a
 against `LOCK_STALE_MS` 90 s — a 4x margin, and AT-10 would have to grow ~4x before a hook read
 its own lock as stale. It is left open on purpose: closing it needs a second freeze implementation
 inside generated worker source that could only re-stamp on *wall* time, which is the defect this
-entry exists to remove. § 17 is the guard, and it fails loudly rather than leaking silently.
+entry exists to remove. The suite's last block, the leaked-flusher sweep, is the guard, and it
+fails loudly rather than leaking silently.
 **Do not "fix" a future recurrence by re-freezing more often on wall time:** that
 changes nothing for a pinned invocation, which is where the leak actually was. And the sweep
 stays regardless of the freeze, because prevention that fails is silent: a leaked daemon idles at
