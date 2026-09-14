@@ -621,10 +621,22 @@ config's `ingest_url` and `ca_file` (card#9373). Read its exit code by D1 § 6.1
   empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
   handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
   `ca_file` that does not trust the ingest's certificate.
+- **`rc=1` with `protocol_agent_name_in_roster` failing** — the declared `protocol_agent_name` is not
+  a member of the roster the command read, which D1 § 3.1 calls `disagreed`.
+  `detail.protocol_agent_name_in_roster` names the roster file (`roster`), which site it came from
+  (`read_via`: `$COORD_CONFIG` or `home`) and the names that roster holds (`roster_names`). When
+  `detail.protocol_agent_name_in_roster.malformed_declaration` is not `null`, the check failed for
+  another reason: the declared value is not a valid name by D1 § 3.1, and that field shows the value,
+  or its type for a non-string. The seat still reports, as `undeclared`, until the config is fixed.
 - **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
   (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
   (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,
   D1 § 4.1). Re-run once the ingest answers.
+
+**The roster check reads the environment the command runs in** (D1 § 3.1). The flusher gets
+`$COORD_CONFIG` from Step 5's crontab line, and a shell that has not exported it makes `selftest` read
+the home path instead. `detail.protocol_agent_name_in_roster.read_via` says which it read. To check
+the roster the flusher reads, run the command with the value Step 5 resolved in the environment.
 
 ⚠ **This corrected command has not yet been run on the sandbox seat.** It is exercised against the
 acceptance suite's TLS ingest stub (`fleet-reporter.selftest.py` § 1). The card#9368 run on the sandbox
@@ -721,11 +733,11 @@ processes, as Step 5 reports.
 
 ## What this install does not give you, by name
 
-- **`protocol_agent_name` is written and not yet sent.** `fleet-reporter.js` does not yet read the key
-  or the roster (D1 § 3.1 says so, and card#9375 is the reporter half that would). The heartbeat
-  therefore carries no name, the snapshot shows `protocol_agent_name: null`, and
-  `protocol_agent_name_in_roster` is not among the selftest checks. The config already declares the
-  name a future build will send.
+- **`protocol_agent_name` is sent only by a build that includes card#9375.** That build reads the key
+  and the roster, and sends the name and `protocol_agent_name_check` on every heartbeat. The sandbox's
+  install used a checkout of `4ce0a19` (Step 1), which is older. A seat running an older build sends no
+  name, and the snapshot shows `protocol_agent_name: null`, until Step 1's artifact is replaced and
+  Step 5's flusher restarted.
 - **Every fresh seat is badged `epoch_reset`, and the badge stays.** The flusher's first start finds
   no `state.json`, and the reporter counts that as § 11.4's *unreadable or corrupt* state reset. The
   first heartbeat carries `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10,

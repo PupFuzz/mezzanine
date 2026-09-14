@@ -129,7 +129,7 @@ it, and what it must never draw.
 | **MFA, login, session lifetime** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states what the floor does when a session **expires** ([§ 9](#9-failure-paths-and-their-observables)); it does not specify the second factor |
 | **Prod and sandbox provisioning, deploy** | D-13 and D-15 (`docs/PLAN.md § 5`), owned by the Mezzanine build agent |
 | **Operator ACLs — who may see which install** | [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 7 owns it: **all-or-nothing, for now**, by operator ruling on 2026-09-13, to be reopened before a second organisation's install reports in. Any MFA-authenticated user sees every install ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)), and this document renders exactly what the snapshot returns |
-| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times.** The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is still designed in no document in this repo. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on card#9296) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 carries the question forward |
+| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times.** The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is still designed in no document in this repo. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 carries the question forward |
 | **Sound** | There is no audio in this design. A sound is an animation by another sense and would need its own rows in [§ 6.2](#62-the-animation-table--the-closed-set) with the same totality rule; adding one without them would be adding an un-driven cue. If audio is wanted it is a review decision, not an implementer's |
 | **Historical views, charts, trends** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) rules out the warehouse; the product answers *what is happening now*. The drill-down's timeline is a bounded window over retained events, not a history |
 | **Multi-tenant theming and per-user preferences** | Nobody has asked. ⚠ This row also said *layout customisation* until card#9208's reversal (2026-09-12): a room's design and a floor's composition are now operator-authored at runtime ([§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)), and what stays out is customisation **per viewer**. The one preference honoured is the platform's own `prefers-reduced-motion` ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)), because a state carried only by motion is a state some users cannot read |
@@ -1528,7 +1528,8 @@ section owes that card is the **form**, so that it is not invented at the moment
   several rooms is one plate naming them ([§ 4.1](#41-the-lobby--the-building-summary) row 1,
   card#9267), so the line's endpoints would be **floors** while
   the fact is about **agents** — and the join that exists resolves an agent name to a
-  **desk** and to nothing coarser (card#7957's ruling (d), built on card#9296), so a plate endpoint
+  **desk** and to nothing coarser (card#7957's ruling (d), built on the server's side on card#9296
+  and on the reporter's on card#9375), so a plate endpoint
   would be a guess laid over a resolution that is not one. A lobby line would be drawn from an
   unresolved name, which is [§ 5.7](#57-the-coordination-thread-line) property 1's guessed desk.
 - ⛔ **No row is added to [§ 6.2](#62-the-animation-table--the-closed-set) and none may be** until
@@ -1942,7 +1943,12 @@ declares nothing draws nothing different at its own desk and still takes no part
    unresolved and no line is drawn on any floor. That sentence is now false as a statement about the
    DESIGN and may still be true of a FLEET** — a fleet whose seats declare nothing resolves nothing
    and draws no line, which is the same honest render it always was rather than a degradation of one.
-   What changed is where the answer comes from: it is a property of an install's config, which an
+   So does a fleet whose seats declare a name in config but run a reporter build that does not include
+   card#9375: its heartbeat carries neither declaration member, and the seat object publishes both as
+   `null` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)).
+   What changed is where the answer comes from: it is a property of how an install's seats are
+   provisioned — the declaration in each seat's config, sent by a seat running a build that includes
+   card#9375 ([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6) — which an
    operator can act on, and no longer a property of a missing artifact, which nobody could.
    ⛔ **A resolved endpoint whose declaration was never checked is rendered AS ONE.** Where the
    resolving seat's `protocol_agent_name_check` is `unchecked` — the seat declared, and no roster was
@@ -2001,11 +2007,17 @@ under [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule unchanged
 `coord_thread.lifecycle` for as long as the thread is open;
 [A19](#62-the-animation-table--the-closed-set) is the envelope, an **edge** fired by one applied
 `coord.round`; and [A20](#62-the-animation-table--the-closed-set) is the broadcast pulse, an **edge**
-fired by a `coord.round` whose address carries `all`. ⚠ **All three were unreachable until card#9296
-landed the join** — a line needs two resolved endpoints and nothing resolved — and all three are
-reachable now, wherever the seats a thread names have declared themselves. **What still gates them is
-an install's config rather than this design**: on a fleet whose seats declare nothing, nothing
-resolves and none of the three fires, which is clause 1's permanent arm and not a stub. None of them
+fired by a `coord.round` whose address carries `all`. ⚠ **All three were unreachable until the join
+landed — on the server's side on card#9296, and on the reporter's on card#9375** — a line needs two
+resolved endpoints and nothing resolved — and all three are reachable now, wherever the seats a
+thread names have declared themselves in config **and** run a build that includes card#9375.
+**What still gates them is how an install's seats are provisioned rather than this design** — both
+halves, the config and the build
+([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6): on a fleet whose
+seats declare nothing, nothing resolves and none of the three fires, which is clause 1's permanent
+arm and not a stub; on a fleet whose seats declare but run a build older than card#9375, the
+heartbeat carries no name and the render is the same until each seat's artifact is replaced and its
+flusher restarted. None of them
 was stubbed, softened or given a fallback endpoint while they were unreachable, which is why nothing
 here changes shape now that they are. **A19 and A20 both fire on one broadcast post and that is not one fact drawn twice**: the
 ring is a statement about the **address as written**, the envelopes are a statement about the
@@ -2171,7 +2183,7 @@ it carries the same fact.
 | **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
 | **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) | on arrival | the desk appears in its new slot on the next render | no arrival collided |
 | **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room render** — the drawn interior, and not [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s cross-section renders a per-floor *summary*, and the rooms only by **name**, so it draws no room interior and no wall clock at all; if it draws sky behind the building, that sky is this row's, on this row's driver, and never a second one of its own | `feed.heartbeat` | each `feed.heartbeat` message received on the one stream. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
-| **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` | the last `coord.thread` this client holds for that `thread_ref` says a value other than `closed`, **and at least two of its participants resolve to a desk** — one endpoint is not a line, and a guessed second endpoint is what [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids | when a `coord.thread` arrives whose lifecycle is `closed`, or when the resolved endpoints fall below two | the line is drawn **static** — same line, same endpoints, no travel along it | no open thread on this floor has two participants that resolve to a desk — which is **every** thread on a fleet whose seats declare no protocol agent name, and since card#9296 that is a fact about an install's config rather than about a join nothing owns ([§ 5.7](#57-the-coordination-thread-line) clause 1) |
+| **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` | the last `coord.thread` this client holds for that `thread_ref` says a value other than `closed`, **and at least two of its participants resolve to a desk** — one endpoint is not a line, and a guessed second endpoint is what [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids | when a `coord.thread` arrives whose lifecycle is `closed`, or when the resolved endpoints fall below two | the line is drawn **static** — same line, same endpoints, no travel along it | no open thread on this floor has two participants that resolve to a desk — which is **every** thread on a fleet whose seats declare no protocol agent name or run a reporter build that does not include card#9375, and since card#9296 and card#9375 that is a fact about how an install's seats are provisioned — each seat's config and the build it runs — rather than about a join nothing owns ([§ 5.7](#57-the-coordination-thread-line) clause 1) |
 | **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.targets` | one `coord.round` message applied, whose `install_id` is this floor's, whose origin resolves to a desk and at least one of whose destinations does. A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs | on arrival at the destination desk | the bead is simply present at the destination end, with no travel | no post arrived that this client can draw between two desks. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
 | **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
 
@@ -4959,13 +4971,16 @@ reason to leave two readings live.
    surface at [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)), and it no longer feeds a
    title either, because **tier 2 was retired on card#9234**.
    ✅ **The agent-name→`seat_id` half of this item is DISCHARGED and carries nothing forward.** It
-   had already moved off the task title and onto the **thread line**; card#9296 built card#7957's
-   ruling *(d)* — [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s declared field, carried on
-   [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s heartbeat and published on
-   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s seat object — so
+   had already moved off the task title and onto the **thread line**; card#7957's ruling *(d)* is
+   built on the server's side on card#9296, and on the reporter's on card#9375 —
+   [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s declared field, carried on
+   [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s heartbeat by a seat running a build that
+   includes card#9375, and published on
+   [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s seat object — so, for such a seat,
    [§ 5.7](#57-the-coordination-thread-line)'s resolve arm resolves and no line waits on a missing
    artifact. ⚠ **What is not discharged, and is not this item's:** whether a given fleet's seats
-   actually declare, which is a provisioning act ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)),
+   actually declare and run such a build, which is a provisioning act
+   ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)),
    and the three residuals [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)
    row 6 keeps.
 

@@ -148,6 +148,11 @@ class Seat:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
+        # THE MACHINE RUNNING THIS SUITE IS NOT A SEAT UNDER TEST. A developer's shell or an agent
+        # seat exports `$COORD_CONFIG`, and D1 § 3.1 makes a set variable the whole of the roster
+        # resolution — so an inherited one would put THIS box's coordination roster into every
+        # assertion. § 19 passes the variable explicitly where a case needs it.
+        e.pop("COORD_CONFIG", None)
         e.update({k: str(v) for k, v in extra.items()})
         # THE FREEZE BELONGS HERE, at the one place that knows the invocation's clock, and it is
         # re-applied PER `env()` CALL rather than once per seat. Once per seat also expires: a
@@ -260,8 +265,8 @@ def flush(seat: Seat, *, reporter: Path = REPORTER, **envx):
         seat.freeze_flusher()
 
 
-def selftest(seat: Seat | None = None, *, reporter: Path = REPORTER):
-    env = seat.env() if seat else dict(os.environ)
+def selftest(seat: Seat | None = None, *, reporter: Path = REPORTER, **envx):
+    env = seat.env(**envx) if seat else dict(os.environ)
     if not seat:
         env["FLEET_REPORTER_CONFIG"] = "/nonexistent/config.json"
     r = subprocess.run(["node", str(reporter), "selftest"], capture_output=True, text=True,
@@ -586,7 +591,7 @@ r, rep = selftest(s1)
 gets_by_selftest = INGEST.gets - gets_before
 eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
-    "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
+    "protocol_agent_name_in_roster", "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
    sorted(rep.get("checks", {}).keys()))
 eq("config_readable passes on a valid config", "pass", rep["checks"]["config_readable"])
 eq("sanitizer_fixtures passes", "pass", rep["checks"]["sanitizer_fixtures"])
@@ -1829,16 +1834,18 @@ worst = subprocess.run(
      "const preds={};for(const p of ['attention_source_permission_hook','descriptor_allowlisted',"
      "'clear_reap_by_session_end','agent_scope_subagent','attention_resolved_by_hook'])"
      "preds[p]={true:MAX,false:MAX};"
-     "const st={};for(const c of ['config_readable','tls_verify','schema_version_accepted',"
-     "'sanitizer_fixtures','predicate_discrimination','harness_payload_keys']) st[c]='fail';"
+     "const st={};for(const c of m.SELFTEST_CHECKS) st[c]='fail';"
      "console.log(JSON.stringify({p:JSON.stringify(preds).length,s:JSON.stringify(st).length}));",
      str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
 w = json.loads(worst.stdout)
 eq(f"`predicates` at its worst case is D1's derived 396 B, under the 512 B cap ({w['p']} B)",
    (396, True), (w["p"], w["p"] <= 512))
-eq(f"`selftest` at its worst case over the check names listed above, under D1's 256 B cap ({w['s']} B) "
-   f"— D1 § 6.14 owns the derived worst case over its own member table, which this build does not fully implement",
-   (171, True), (w["s"], w["s"] <= 256))
+# D1 § 6.14 derives the `selftest` worst case over its member table; the figure is READ from there,
+# so a check added to the reporter and not to the table (or the reverse) reds here.
+_d1 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+_st_worst = int(re.search(r"^- \*\*`selftest` — (\d+) B worst case", _d1, re.M).group(1))
+eq(f"`selftest` at its worst case over every check the reporter reports is D1 § 6.14's derived "
+   f"{_st_worst} B, under the 256 B cap ({w['s']} B)", (_st_worst, True), (w["s"], w["s"] <= 256))
 
 # RED — remove the reduction rule and the heartbeat's data blows the 3 KiB cap, which is the
 # liveness signal dying at exactly the moment the seat becomes interesting.
@@ -2783,7 +2790,413 @@ redgreen("an exiting ex-owner leaves the new owner's lock alone (§ 2.3, card#93
          f"{(g_a['lock'] or {}).get('pid')}; a flusher that still owns it releases it (lock={g_b['lock']})")
 
 
-print("\n== 19. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+print("\n== 19. A DECLARED AGENT NAME IS CHECKED, AND A DISAGREEMENT FAILS AN ACT (AT-27, § 3.1, card#9375) ==")
+# card#7957's finding was that NO ACT WOULD FAIL if a seat's declared protocol agent name and the
+# coordination roster disagreed. D1 § 3.1 answers it with four declaration states and one check;
+# AT-27 is where they are made to discriminate. Every case below is one seat and one box: a HOME of its
+# own (so the Linux home-path site is a place this suite controls) and, where the case says so, a
+# `$COORD_CONFIG` pointing into a stand-in coordination repository. Each drives `selftest` and one
+# flush, and reads the heartbeat the flusher spooled.
+AT27_NAME = "magento"
+AT27_ROSTER = {"roster": [{"name": "pm", "role": "pm"}, {"name": AT27_NAME, "role": "impl"},
+                          {"name": "moodle", "role": "impl"}]}
+AT27_ROSTER_WITHOUT = {"roster": [{"name": "pm", "role": "pm"}, {"name": "moodle", "role": "impl"}]}
+ABSENT = object()
+
+
+def at27_box(name: str, *, declare=AT27_NAME, home=None, coord=None, seat_id=None) -> "tuple[Seat, dict]":
+    """`home` / `coord`: a roster document (or raw text) to place at that § 3.1 site, or None for no
+    file there. `coord="missing"` sets `$COORD_CONFIG` to a path holding no file."""
+    s = seat(name)
+    if declare is not ABSENT:
+        s.cfg["protocol_agent_name"] = declare
+    if seat_id:
+        s.cfg["seat_id"] = seat_id
+    s.write_cfg()
+    home_dir = s.root / "home"
+    home_dir.mkdir(exist_ok=True)
+    env = {"HOME": str(home_dir)}
+    for doc, f in ((home, home_dir / ".config" / "coord" / "coordination.config.json"),
+                   (coord, s.root / "coordination-repo" / "coordination.config.json")):
+        if doc is None or doc == "missing":
+            continue
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(doc if isinstance(doc, str) else json.dumps(doc), encoding="utf-8")
+    if coord == "missing":
+        env["COORD_CONFIG"] = str(s.root / "moved-away" / "coordination.config.json")
+    elif coord is not None:
+        env["COORD_CONFIG"] = str(s.root / "coordination-repo" / "coordination.config.json")
+    return s, env
+
+
+def last_heartbeat(s: Seat):
+    hbs = [e for e in s.events() if e["kind"] == "reporter.heartbeat"]
+    return hbs[-1]["data"] if hbs else None
+
+
+def wire(hb) -> "dict | None":
+    """The members AT-27 asserts. An ABSENT member reads `<absent>`, never None: an omitted name and an
+    undeclared seat's `null` are what this test exists to keep apart."""
+    if hb is None:
+        return None
+    c = hb.get("counters", {})
+    return {"name": hb["protocol_agent_name"] if "protocol_agent_name" in hb else "<absent>",
+            "check": hb["protocol_agent_name_check"] if "protocol_agent_name_check" in hb else "<absent>",
+            "in_roster": hb.get("selftest", {}).get("protocol_agent_name_in_roster", "<absent>"),
+            "unchecked": c.get("protocol_agent_name_unchecked", 0),
+            "disagreed": c.get("protocol_agent_name_disagreed", 0)}
+
+
+def drive_at27(box, reporter: Path = REPORTER) -> dict:
+    s, env = box
+    r, rep27 = selftest(s, reporter=reporter, **env)
+    flush(s, reporter=reporter, **env)
+    hb = last_heartbeat(s)
+    checks = rep27.get("checks", {})
+    return {"rc": r.returncode, "selftest": checks.get("protocol_agent_name_in_roster", "<absent>"),
+            "failing": sorted(k for k, v in checks.items() if v == "fail"),
+            "config_readable": checks.get("config_readable"), "wire": wire(hb),
+            "degraded": hb.get("degraded") if hb else None,
+            "fingerprint": hb.get("config_fingerprint") if hb else None,
+            "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster")}
+
+
+def act(d: dict) -> tuple:
+    """What an operator and a consumer see: the act's exit and verdict, and the wire."""
+    return (d["rc"], d["selftest"], d["wire"])
+
+
+def want(name, check, in_roster, unchecked=0, disagreed=0) -> dict:
+    return {"name": name, "check": check, "in_roster": in_roster, "unchecked": unchecked, "disagreed": disagreed}
+
+
+at_a = drive_at27(at27_box("at27-a", home=AT27_ROSTER))
+eq("case A — $COORD_CONFIG unset, a roster at the home path containing the name: selftest exits 0 "
+   "and protocol_agent_name_in_roster passes; the heartbeat carries the name and `checked`, both counters 0",
+   (0, "pass", want(AT27_NAME, "checked", "pass")), act(at_a))
+
+at_b = drive_at27(at27_box("at27-b"))
+eq("case B — $COORD_CONFIG unset and no roster at the home path: the name member is PRESENT beside "
+   "`unchecked`, protocol_agent_name_unchecked is 1, and selftest passes",
+   (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(at_b))
+at_b2 = drive_at27(at27_box("at27-b-set", home=AT27_ROSTER, coord="missing"))
+eq("  … and $COORD_CONFIG naming no file, with a roster CONTAINING the name at the home path, gives "
+   "the same result: a set variable is the whole answer",
+   ((0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(at_b)), (act(at_b2), act(at_b2)))
+for label, doc in (("text that is not JSON", "{ roster: pm"), ("a document with no roster[] array", {"roster": "pm"})):
+    tag = "json" if isinstance(doc, str) else "shape"
+    eq(f"  … and a roster file holding {label} is no readable roster: `unchecked`, never a throw and "
+       f"never `disagreed`", (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)),
+       act(drive_at27(at27_box(f"at27-b-malformed-{tag}", coord=doc))))
+
+at_c = drive_at27(at27_box("at27-c", home=AT27_ROSTER_WITHOUT))
+eq("case C — a readable roster WITHOUT the name: selftest exits non-zero with protocol_agent_name_in_roster "
+   "failing; the heartbeat carries the name exactly as declared, `disagreed`, the check failing, and "
+   "protocol_agent_name_disagreed 1",
+   (1, "fail", want(AT27_NAME, "disagreed", "fail", disagreed=1)), act(at_c))
+eq("  … and the act names that check and no other", ["protocol_agent_name_in_roster"], at_c["failing"])
+eq("  … and its detail names the roster it read and the names it holds, so an operator can fix the typo",
+   ("home", ["pm", "moodle"]),
+   ((at_c["detail"] or {}).get("read_via"), (at_c["detail"] or {}).get("roster_names")))
+
+at_d = drive_at27(at27_box("at27-d", declare=ABSENT, home=AT27_ROSTER))
+eq("case D — no key in the config: protocol_agent_name is null (PRESENT), the check `undeclared`, "
+   "selftest passes and both counters are 0", (0, "pass", want(None, "undeclared", "pass")), act(at_d))
+eq("  … and an explicit null declares nothing either", (0, "pass", want(None, "undeclared", "pass")),
+   act(drive_at27(at27_box("at27-d-null", declare=None, home=AT27_ROSTER))))
+# `degraded` is not literally empty on these seats and cannot be: each is a FRESH seat, whose first
+# flusher start finds no state.json and counts § 11.4's `state_reset` (`epoch_reset`,
+# INSTALL-LINUX.md's "What this install does not give you"). What AT-27 case D asserts is that NO
+# DECLARATION STATE raises a badge (§ 9.3 gives neither counter a member), so every case is held to
+# that one fresh-seat baseline.
+eq("  … and no declaration state raises a badge: A, B, C and D carry the same `degraded`, the fresh "
+   "seat's `epoch_reset` alone", [["epoch_reset"]] * 4,
+   [at_a["degraded"], at_b["degraded"], at_c["degraded"], at_d["degraded"]])
+
+at_e = drive_at27(at27_box("at27-e", coord=AT27_ROSTER))
+# "Identical to case X" is asserted as X's absolute outcome AND as equality with X: equality alone holds
+# between two cases that both omit the members, which is what a reporter predating card#9375 emits.
+eq("case E — the roster only where $COORD_CONFIG points, no file at the home path: identical to case A "
+   "on every member", ((0, "pass", want(AT27_NAME, "checked", "pass")), act(at_a)), (act(at_e), act(at_e)))
+eq("  … read through the variable, not the home path", "$COORD_CONFIG", (at_e["detail"] or {}).get("read_via"))
+
+at_ctl = drive_at27(at27_box("at27-control", declare="magenta", home=AT27_ROSTER))
+eq("discriminating control — case A with the declared name one byte off: case C's outcome exactly",
+   act(at_c), (at_ctl["rc"], at_ctl["selftest"], dict(at_ctl["wire"] or {}, name=AT27_NAME)))
+eq("  … the name carried exactly as declared, typo and all", "magenta", (at_ctl["wire"] or {}).get("name"))
+
+# THE BOUND. § 6.14 states it as a figure because the ingest refuses a heartbeat over it, so a value past
+# it — or any value that is not a valid declaration — never reaches the wire.
+_name_row = [l for l in DOC.splitlines() if l.startswith("| `protocol_agent_name` | slug | — |")][0]
+NAME_BOUND = int(re.search(r"≤ (\d+) B", _name_row).group(1))
+_bound_roster = {"roster": [{"name": "a" * NAME_BOUND}, {"name": "a" * (NAME_BOUND + 1)}, {"name": "Magento"}]}
+at_bnd = drive_at27(at27_box("at27-bound", declare="a" * NAME_BOUND, home=_bound_roster))
+eq(f"a name AT § 6.14's {NAME_BOUND} B bound is a valid declaration: config_readable passes and it is `checked`",
+   ("pass", "checked"), (at_bnd["config_readable"], (at_bnd["wire"] or {}).get("check")))
+
+
+# A MALFORMED NAME DOES NOT SILENCE THE SEAT (D1 § 3.1's state table, card#9375 round 2). A present value
+# that is not a valid declaration declares nothing: the seat keeps reporting, as `undeclared`, and the act
+# that fails is `protocol_agent_name_in_roster`, whose `selftest` detail names the value. It is NOT a config
+# error — `config_invalid` means "spooling and sending nothing" to D1 § 9.3 and to D3's badge, so a seat
+# still sending would render falsely. Each seat runs one hook (whose config read would count
+# `config_invalid`) and two flushes against the suite's ingest, whose batches are the wire: a pass
+# spools its heartbeat after it sends, so the first pass's heartbeat reaches the wire on the second.
+def drive_malformed(name: str, declare, reporter: Path = REPORTER) -> dict:
+    s, env = box = at27_box(name, declare=declare, home=_bound_roster)
+    hook(s, "PreToolUse", pre(), **env)
+    before = len(INGEST.batches)
+    d = drive_at27(box, reporter=reporter)
+    flush(s, reporter=reporter, **env)
+    posted = INGEST.batches[before:]
+    hbs = [e["data"] for b in posted for e in b["batch"].get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    spooled = last_heartbeat(s) or {}
+    logs = "".join(f.read_text(encoding="utf-8") for f in sorted((s.spool / "log").glob("*.log")))
+    d.update(posts=len(posted), posted_wire=wire(hbs[-1]) if hbs else None, posted_text=json.dumps(posted),
+             log=logs, config_invalid=(spooled.get("counters", {}).get("config_invalid", 0),
+                                       s.state().get("counters", {}).get("config_invalid", 0),
+                                       s.counters().get("config_invalid", 0)))
+    return d
+
+
+MALFORMED = ((f"{NAME_BOUND + 1} B, one past the bound", "a" * (NAME_BOUND + 1), "a" * (NAME_BOUND + 1)),
+             ("not a lowercase slug", "Magento", "Magento"),
+             ("not a string", 48, "<number>"))
+malformed_seen = {}
+for label, bad_name, shown in MALFORMED:
+    d_bad = malformed_seen[label] = drive_malformed(f"at27-bad-{type(bad_name).__name__}-{len(str(bad_name))}", bad_name)
+    eq(f"a name {label} leaves the config valid: config_readable passes, and `config_invalid` is counted "
+       f"nowhere — the heartbeat, state.json, the counter sink", ("pass", (0, 0, 0)),
+       (d_bad["config_readable"], d_bad["config_invalid"]))
+    eq("  … and the seat still sends: its flush POSTs a batch whose heartbeat carries null / `undeclared` "
+       "beside a failing protocol_agent_name_in_roster, and no badge beyond the fresh seat's",
+       (True, want(None, "undeclared", "fail"), ["epoch_reset"]),
+       (d_bad["posts"] > 0, d_bad["posted_wire"], d_bad["degraded"]))
+    eq("  … and `selftest` fails that one check (exit 1), its detail naming the value — a non-string by its type",
+       (1, ["protocol_agent_name_in_roster"], shown, None, "undeclared"),
+       (d_bad["rc"], d_bad["failing"], (d_bad["detail"] or {}).get("malformed_declaration"),
+        (d_bad["detail"] or {}).get("declared"), (d_bad["detail"] or {}).get("protocol_agent_name_check")))
+    if isinstance(bad_name, str):
+        eq("  … and the value reaches neither the wire nor the seat's log: `selftest`'s detail is its only home",
+           (False, False, False), (bad_name in d_bad["posted_text"], bad_name in json.dumps(d_bad["wire"]),
+                                   bad_name in d_bad["log"]))
+eq("  … and the flusher's start log says the declaration is malformed and was sent as `undeclared`", True,
+   all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
+
+# RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
+_red_silent = plant(("  return { config: c, errors };\n}",
+                     "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors };\n}"))
+r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
+eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
+   "`config_invalid` counted", (0, "fail", True),
+   (r_silent["posts"], r_silent["config_readable"], any(r_silent["config_invalid"])))
+# RED 2 — the value passed through: the malformed name reaches the wire.
+_red_value = plant(("  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;", "  return v;"))
+r_value = drive_malformed("at27-bad-red-value", "Magento", reporter=_red_value)
+eq("RED: a reporter that sends the malformed value verbatim puts it on the wire", True,
+   "Magento" in r_value["posted_text"])
+# RED 3 — the value in the start log line.
+_red_log = plant(("heartbeating as undeclared; `selftest` names the value');",
+                  "heartbeating as undeclared; `selftest` names the value: ' + JSON.stringify(config.protocol_agent_name));"))
+r_log = drive_malformed("at27-bad-red-log", "Magento", reporter=_red_log)
+eq("RED: a start log line that names the value puts it in the seat's log", True, "Magento" in r_log["log"])
+_slug = malformed_seen["not a lowercase slug"]
+redgreen("a malformed declared name does not silence the seat, and its value stays off the wire (D1 § 3.1, card#9375)",
+         f"refused as a config error -> POSTs {r_silent['posts']}, config_readable={r_silent['config_readable']}, "
+         f"config_invalid (heartbeat, state, sink) {r_silent['config_invalid']}; value passed through -> "
+         f"'Magento' on the wire: {'Magento' in r_value['posted_text']}; value in the start log -> "
+         f"'Magento' in the log: {'Magento' in r_log['log']}",
+         f"POSTs {_slug['posts']}, posted heartbeat {_slug['posted_wire']}, config_readable={_slug['config_readable']}, "
+         f"config_invalid {_slug['config_invalid']}, selftest rc={_slug['rc']} failing {_slug['failing']} with "
+         f"malformed_declaration {[(d['detail'] or {}).get('malformed_declaration') for d in malformed_seen.values()]}")
+
+# CASE F — the SUPERVISED START. The flusher a healthy seat runs is the one its OS start launches, and
+# that start inherits nothing from the harness. On Linux the start definition is the crontab line
+# `INSTALL-LINUX.md` Step 5 writes, so the line is READ OUT OF THE RUNBOOK and expanded by the
+# runbook's own shell assignment — never re-typed here — and run the way cron runs a line: `/bin/sh -c`
+# from an environment holding HOME, LOGNAME, SHELL and PATH, and no `$COORD_CONFIG`. The only addition is
+# `FLEET_REPORTER_ONE_PASS`, the suite's inert one-pass seam. The seat config goes where a seat keeps it,
+# `$HOME/.config/fleet-reporter/config.json`, since cron's line names no config path either.
+INSTALL_LINUX = (HERE / "INSTALL-LINUX.md").read_text(encoding="utf-8")
+START_LINES = re.findall(r'^\s*LINE="(.+)"\s*$', INSTALL_LINUX, re.M)
+CC_ASSIGNMENT = "${CC:+COORD_CONFIG=$CC }"
+NODE_REAL = os.path.realpath(shutil.which("node") or "node")
+
+
+def cron_start(box, cc: "str | None", template: str, reporter: Path = REPORTER):
+    s, env = box
+    home = Path(env["HOME"])
+    (home / ".config" / "fleet-reporter").mkdir(parents=True, exist_ok=True)
+    (home / ".config" / "fleet-reporter" / "config.json").write_text(json.dumps(s.cfg), encoding="utf-8")
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    expanded = subprocess.run(
+        ["/bin/sh", "-c", f'LINE="{template}"; printf %s "$LINE"'], capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "CC": cc or "", "FLOCK": str(s.root / "flusher.flock"),
+             "NODE": NODE_REAL, "JS": str(reporter)}).stdout
+    try:
+        subprocess.run(["/usr/bin/env", "-i", f"HOME={home}", "LOGNAME=fleet-reporter-suite", "SHELL=/bin/sh",
+                        "PATH=/usr/bin:/bin", "FLEET_REPORTER_ONE_PASS=1", "/bin/sh", "-c", expanded],
+                       capture_output=True, text=True, timeout=90)
+    finally:
+        s.freeze_flusher()
+    return expanded, last_heartbeat(s)
+
+
+eq("precondition: INSTALL-LINUX.md Step 5 writes exactly one flusher start line, and it assigns "
+   "COORD_CONFIG through the runbook's own conditional", (1, True),
+   (len(START_LINES), bool(START_LINES) and CC_ASSIGNMENT in START_LINES[0]))
+if shutil.which("flock") is None or not Path("/usr/bin/env").exists() or not START_LINES:
+    skip("AT-27 case F needs `flock`, /usr/bin/env and the runbook's start line — the supervised start's "
+         "delivery of $COORD_CONFIG was NOT measured, and that is not a pass")
+    at_f = at_f_red = None
+else:
+    box_f = at27_box("at27-f", coord=AT27_ROSTER_WITHOUT)
+    line_f, hb_f = cron_start(box_f, box_f[1]["COORD_CONFIG"], START_LINES[0])
+    at_f = wire(hb_f)
+    eq("case F — case C's box, the flusher started ONLY by the runbook's crontab line from an environment "
+       "with no $COORD_CONFIG: the heartbeat is identical to case C's on every member",
+       (want(AT27_NAME, "disagreed", "fail", disagreed=1), at_c["wire"]), (at_f, at_f))
+    eq("  … because the line itself carries the assignment", True, line_f.startswith("COORD_CONFIG="))
+    # F, MOVED: the coordination config now lives elsewhere. With the start definition rewritten the
+    # launch delivers the new path; without it the flusher reads the install-time path. Fresh boxes, since
+    # counters are monotonic across a seat's flusher restarts (state.json keeps them).
+    box_mv = at27_box("at27-f-moved", coord=AT27_ROSTER_WITHOUT)
+    moved = box_mv[0].root / "coordination-repo-moved" / "coordination.config.json"
+    moved.parent.mkdir(parents=True)
+    Path(box_mv[1]["COORD_CONFIG"]).rename(moved)
+    _, hb_mv = cron_start(box_mv, str(moved), START_LINES[0])
+    eq("case F, moved — the config moved and the start line rewritten with the new path: identical to case F",
+       (want(AT27_NAME, "disagreed", "fail", disagreed=1), at_f), (wire(hb_mv), wire(hb_mv)))
+    box_stale = at27_box("at27-f-moved-stale", coord=AT27_ROSTER_WITHOUT)
+    stale_cc = box_stale[1]["COORD_CONFIG"]
+    moved_s = box_stale[0].root / "coordination-repo-moved" / "coordination.config.json"
+    moved_s.parent.mkdir(parents=True)
+    Path(stale_cc).rename(moved_s)
+    _, hb_stale = cron_start(box_stale, stale_cc, START_LINES[0])
+    eq("  … and WITHOUT the rewrite the flusher reads the install-time path and reports `unchecked`, the "
+       "check passing — § 18.13 row 6's residual, which only the rewrite catches",
+       want(AT27_NAME, "unchecked", "pass", unchecked=1), wire(hb_stale))
+
+    # ⛔ RED — the start path. A start line written without the assignment.
+    box_fr = at27_box("at27-f-red", coord=AT27_ROSTER_WITHOUT)
+    line_fr, hb_fr = cron_start(box_fr, box_fr[1]["COORD_CONFIG"], START_LINES[0].replace(CC_ASSIGNMENT, "", 1))
+    at_f_red = wire(hb_fr)
+    eq("RED: a start line without the COORD_CONFIG assignment reads the home path, finds nothing, and reports "
+       "`unchecked` with the check PASSING — the disagreement that fails nothing, on the start path",
+       want(AT27_NAME, "unchecked", "pass", unchecked=1), at_f_red)
+    eq("  … and a heartbeat still arrives in both arms: the fix is the start definition's, never a gate on "
+       "emission", (True, True), (hb_f is not None, hb_fr is not None))
+
+# ⛔ RED — the silent omission: case B's reporter drops the members rather than emit `unchecked`.
+P_EMIT = ("    protocol_agent_name: declaration.name,\n    protocol_agent_name_check: declaration.check,",
+          "    ...(declaration.check === 'unchecked' ? {} : { protocol_agent_name: declaration.name, "
+          "protocol_agent_name_check: declaration.check }),")
+r_omit = drive_at27(at27_box("at27-red-omission"), reporter=plant(P_EMIT))
+eq("RED: a reporter that drops the members on an unchecked seat puts no name on the wire — the omitted "
+   "field an undeclared seat cannot be told apart from", ("<absent>", "<absent>"),
+   ((r_omit["wire"] or {}).get("name"), (r_omit["wire"] or {}).get("check")))
+
+# ⛔ RED — the equality fallback: a declaration synthesized from a `seat_id` equal to a roster name.
+P_EQ = ("  const name = declaredAgentName(cfg);", "  const name = declaredAgentName(cfg) || cfg.seat_id;")
+eq_box = lambda tag: at27_box(f"at27-eq-{tag}", declare=ABSENT, seat_id=AT27_NAME, home=AT27_ROSTER)
+r_eq, g_eq = drive_at27(eq_box("red"), reporter=plant(P_EQ)), drive_at27(eq_box("green"))
+eq("RED: a reporter that falls back to seat_id sends a name no human wrote in that config, `checked`",
+   (AT27_NAME, "checked"), ((r_eq["wire"] or {}).get("name"), (r_eq["wire"] or {}).get("check")))
+eq("GREEN: the real reporter on that seat sends null and `undeclared`", want(None, "undeclared", "pass"), g_eq["wire"])
+
+# ⛔ RED — the disagreement that fails nothing: the check emits `checked`, or selftest passes.
+r_ok = drive_at27(at27_box("at27-red-checked", home=AT27_ROSTER_WITHOUT),
+                  reporter=plant(("  if (roster.names.includes(name)) return", "  if (true) return")))
+eq("RED: a reporter that calls a non-member `checked` exits 0 with the check passing on a disagreeing seat",
+   (0, "pass", "checked"), (r_ok["rc"], r_ok["selftest"], (r_ok["wire"] or {}).get("check")))
+r_pass = drive_at27(at27_box("at27-red-pass", home=AT27_ROSTER_WITHOUT), reporter=plant(
+    ("results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;",
+     "results.protocol_agent_name_in_roster = declaration ? true : null;")))
+eq("RED: a selftest that passes `disagreed` exits 0 and the heartbeat's check passes, though the wire says "
+   "`disagreed`", (0, "pass", "pass", "disagreed"),
+   (r_pass["rc"], r_pass["selftest"], (r_pass["wire"] or {}).get("in_roster"), (r_pass["wire"] or {}).get("check")))
+
+# ⛔ RED — the same failure through the PATH: a reporter that stats only the home path.
+r_path = drive_at27(at27_box("at27-red-path", coord=AT27_ROSTER),
+                    reporter=plant(("  if (process.env.COORD_CONFIG !== undefined) return", "  if (false) return")))
+eq("RED: on case E's box a reporter reading only the home path finds no roster, reports `unchecked`, passes, "
+   "and exits 0 — with the roster readable on the box the whole time",
+   (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(r_path))
+
+# RED — the name in the identity: `config_fingerprint` covering the declaration.
+P_FP = ("    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}`)",
+        "    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}|${cfg.protocol_agent_name}`)")
+at_pm = drive_at27(at27_box("at27-identity-pm", declare="pm", home=AT27_ROSTER))
+p_fp = plant(P_FP)
+r_fp = (drive_at27(at27_box("at27-identity-red-a", home=AT27_ROSTER), reporter=p_fp)["fingerprint"],
+        drive_at27(at27_box("at27-identity-red-pm", declare="pm", home=AT27_ROSTER), reporter=p_fp)["fingerprint"])
+eq("RED: a fingerprint covering the name changes when only the label is edited — a re-identified desk",
+   True, r_fp[0] != r_fp[1])
+eq("GREEN: editing the declared name moves no config_fingerprint", at_a["fingerprint"], at_pm["fingerprint"])
+
+
+# NEVER IN A HOOK. Structural, because a hook's roster read has no observable of its own: resolution is
+# reached only through `runSelftestChecks`, and that only from the flusher and the selftest subcommand.
+def callers(source: str, callee: str) -> list[str]:
+    heads = [(m.start(), m.group(1)) for m in re.finditer(r"^(?:async )?function (\w+)\(", source, re.M)]
+    out = []
+    for m in re.finditer(rf"(?<![\w.]){callee}\(", source):
+        enclosing = [n for at, n in heads if at < m.start()]
+        if enclosing and enclosing[-1] != callee:
+            out.append(enclosing[-1])
+    return sorted(set(out))
+
+
+_src19 = REPORTER.read_text(encoding="utf-8")
+eq("resolution is reached only from runSelftestChecks", ["runSelftestChecks"], callers(_src19, "resolveDeclaration"))
+eq("  … and runSelftestChecks only from the flusher's start and the selftest subcommand — never a hook",
+   ["flusherMain", "selftestMain"], callers(_src19, "runSelftestChecks"))
+_red_hook = plant(("function hookMain(hookName) {", "function hookMain(hookName) { resolveDeclaration({});"))
+eq("RED: a hook that resolves the roster is seen by that structural check", True,
+   "hookMain" in callers(_red_hook.read_text(encoding="utf-8"), "resolveDeclaration"))
+
+
+# NEVER PER FLUSH. A long-lived flusher on the timing-scaled copy (§ 1's FAST_K), over several heartbeats.
+def at27_long_run(name: str, reporter: Path) -> list:
+    s, env = at27_box(name)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    proc = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **env), cwd=str(HERE),
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        t0 = time.time()
+        while time.time() - t0 < 20 and len([e for e in s.events() if e["kind"] == "reporter.heartbeat"]) < 3:
+            time.sleep(0.1)
+    finally:
+        proc.kill()
+        proc.wait()
+        s.freeze_flusher()
+    return [e["data"].get("counters", {}).get("protocol_agent_name_unchecked", 0)
+            for e in s.events() if e["kind"] == "reporter.heartbeat"]
+
+
+g_long = at27_long_run("at27-per-start", fast_flusher())
+r_long = at27_long_run("at27-per-flush", fast_flusher((P_EMIT[0],
+    "    ...(() => { const d = resolveDeclaration(cfg); return { protocol_agent_name: d.name, "
+    "protocol_agent_name_check: d.check }; })(),")))
+eq("GREEN: over a flusher's successive heartbeats protocol_agent_name_unchecked stays 1 — one read per start",
+   (True, {1}), (len(g_long) >= 3, set(g_long)))
+eq("RED: a flusher that re-resolves at each heartbeat counts a read per heartbeat", True,
+   len(r_long) >= 3 and r_long[-1] > 1)
+
+redgreen("a declared agent name is checked, and a disagreement fails an act (D1 § 3.1, AT-27, card#9375)",
+         f"omitted members on an unchecked seat -> name/check {(r_omit['wire'] or {}).get('name')}/"
+         f"{(r_omit['wire'] or {}).get('check')}; seat_id fallback -> {r_eq['wire']}; non-member called checked -> "
+         f"rc={r_ok['rc']} check={(r_ok['wire'] or {}).get('check')}; selftest passing disagreed -> rc={r_pass['rc']} "
+         f"in_roster={r_pass['selftest']}; home path only on case E -> {act(r_path)}; start line without the "
+         f"assignment -> {at_f_red}; name in the fingerprint -> {r_fp[0]} vs {r_fp[1]}; resolution per heartbeat -> "
+         f"unchecked counts {r_long}",
+         f"A {act(at_a)}; B {act(at_b)}; C {act(at_c)}; D {act(at_d)}; E == A: {act(at_e) == act(at_a)}; "
+         f"F {at_f}; control (one byte off) == C; fingerprint unmoved by the name {at_a['fingerprint']}; "
+         f"one read per flusher start {g_long}")
+
+
+print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
 # and that process loops until it is signalled. A teardown that quietly reaped them would leave
