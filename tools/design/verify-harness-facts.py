@@ -685,8 +685,25 @@ for r in src_rows:
                     f"document sites, expected exactly 1 — the site moved or is ambiguous")
         continue
     if is_table:
+        # A `table` locator names a COLUMN by its header, and the line just matched IS that
+        # header row, so the members are that column's own body cells — not every run found
+        # anywhere in the table. Reading the whole table through `value_runs` was equivalent
+        # only while every row happened to list two or more types, and it BREAKS on a
+        # one-member row: `value_runs`' `len(cur) >= 2` threshold is there to keep prose and
+        # the OTHER columns' values out, so a member sitting alone in its cell is silently
+        # dropped from the derived set and this gate then reports the DOCUMENT as missing a
+        # member the document plainly states. Measured on card#9419, which moved `idle_prompt`
+        # to § 6.12's no-emit row and so left `agent_needs_input` alone in the `input_awaited`
+        # row: 15 members derived from a table stating 16. Reading the named column instead is
+        # also STRICTER — a two-member cell in `Emits?` or `notification_kind` can no longer
+        # leak a non-member of the harness's set into the comparison.
         a, b = table_of(hits[0])
-        got = {v for i in range(a, b + 1) for run in value_runs(lines[i]) for v in run}
+        got = set()
+        for i in range(a, b + 1):
+            if i == hits[0] or re.match(r"^\|[\s:|-]+\|$", lines[i]):
+                continue                        # the header row itself, and the rule line
+            cell = re.split(r"(?<!\\)\|", lines[i].strip().strip("|"))[0]
+            got |= {v for v in re.findall(r"`([^`]*)`", cell) if BARE.match(v)}
     else:
         runs = value_runs(lines[hits[0]])
         got = set(max(runs, key=len))

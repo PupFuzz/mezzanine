@@ -127,22 +127,31 @@ const ENUM = {
     'oauth_org_not_allowed', 'account_on_hold', 'unknown'],
 };
 
-/* § 6.12's lookup table — this reporter's one home for the notification_type value set. The
- * three emitting rows produce `notification_kind`; every other declared member is a real
+/* § 6.12's lookup table — this reporter's one home for the notification_type value set. A type
+ * with a row here produces `notification_kind`; every other declared member is a real
  * notification that is NOT a request for human attention, and emitting for it would put the
  * desk into a false `blocked` — the exact mirror of the false-idle defect D1 exists to prevent.
- * The suppression is never silent: `notification_not_attention.<type>` counts each one. */
+ * `idle_prompt` is the member that LOOKED like a wait on a human and is not (card#9419): the
+ * harness fires it about a minute after Claude finishes responding when nobody has typed since,
+ * so it is a timer on human ABSENCE, and the seats it fires on are exactly the ones that just
+ * finished a turn cleanly and are available for work. It emitted `input_awaited` until that
+ * card, which rendered every such seat `blocked` from a minute after it went quiet until its
+ * next event (D2 § 4.3 rule 1) — measured 19 of them against 3 real permission waits on one
+ * seat in one day. It is now in the suppressed list below, which is the same set as § 6.12's
+ * no-emit row. The suppression is never silent: `notification_not_attention.<type>` counts each
+ * one, and membership of that list is what keeps a type the gate DECIDED against from also
+ * being counted as one this reporter has never seen. */
 const NOTIFICATION_KIND = {
   permission_prompt: 'permission_required',
   worker_permission_prompt: 'permission_required',
-  idle_prompt: 'input_awaited',
   agent_needs_input: 'input_awaited',
   elicitation_dialog: 'elicitation',
   elicitation_url_dialog: 'elicitation',
 };
-const NOTIFICATION_NOT_ATTENTION = ['auth_success', 'agent_completed', 'elicitation_complete',
-  'elicitation_response', 'push_notification', 'computer_use_enter', 'computer_use_exit',
-  'quota_auto_resume_fired', 'quota_auto_resume_disabled', 'quota_auto_resume_stale'];
+const NOTIFICATION_NOT_ATTENTION = ['idle_prompt', 'auth_success', 'agent_completed',
+  'elicitation_complete', 'elicitation_response', 'push_notification', 'computer_use_enter',
+  'computer_use_exit', 'quota_auto_resume_fired', 'quota_auto_resume_disabled',
+  'quota_auto_resume_stale'];
 
 /* § 9.3's degradation members, in that section's order — the array's bound IS this list's
  * length (§ 9.3: "Twelve members, and the array's bound is twelve"). Each maps to the counters

@@ -619,7 +619,7 @@ already happened, which staleness does not falsify.
 
 | Direction | Trigger | Note |
 |---|---|---|
-| **enter** | `attention.request` | the **only** entry, per `D2-MUST` #5. Never from `notification_kind` inspection — every member of that three-member field is a wait on a human because D1 gates the hook before emission ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest)); there is no `other` member and **D2 builds no branch for one** |
+| **enter** | `attention.request` | the **only** entry, per `D2-MUST` #5. Never from `notification_kind` inspection — the gate is **upstream**: D1 decides per `notification_type` whether to emit at all, so no member of that three-member field can arrive from a type it suppresses ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest)); there is no `other` member and **D2 builds no branch for one**. That every emitting row of D1's table really is a wait on a human is D1's **judgement**, which no check establishes and which has been wrong once: `idle_prompt` — the harness's ~60-second *finished responding and nobody has typed* timer, a wait on **nothing** — emitted `input_awaited`, so rule 1 here rendered every cleanly-finished seat `blocked` about a minute after it went quiet, ahead of rule 4's `idle`, until D1 moved it to the no-emit row (card#9419). The correction belongs there, not at this edge: a predicate here would make `blocked` depend on two documents agreeing about one fact |
 | **exit** | `attention.resolved` joined on `request_id` | the ordinary exit; records `resolution`, `resolution_source`, `waited_ms` |
 | **exit** | that session's `session.end`, or any reap of it | D1 emits `attention.resolved(session_ended)` **after** the boundary event ([D1 § 8.3](EVENT-SCHEMA.md#83-the-reap-rules)); the server also closes the request when the session closes, so a lost resolution cannot strand the state |
 | **exit** | `link_state` reaches **`stale` or `offline`** — the sweeper **resolves** the request at that boundary with `resolution: seat_left_live` / `resolution_source: server_left_live`, counting `left_live_resolved_attention` ([§ 4.5](#45-link-states)). Stated as the two values rather than as "leaves `live`", which is wider than the rule: a seat heartbeating with `enabled: false` takes `disabled` at [§ 4.5](#45-link-states) rule 4 without crossing either boundary, and nothing clears — correctly, because it is reporting and can still answer | permitted explicitly by `D2-MUST` #5, and discharged by clearing the fact rather than by masking it: a seat returning at 400 s must not re-render a wait whose evidence is five minutes stale |
@@ -4692,7 +4692,9 @@ and the gate on trusting the derived signal at all.*
 - **Discriminating control:** a seat that is never blocked emits neither kind and never renders
   `blocked` — reachable only because D1 gates the `Notification` hook
   ([D1 § 6.12](EVENT-SCHEMA.md#612-attentionrequest)); if it fails, the gate has been lost upstream and
-  every seat is about to render `blocked` on `auth_success`.
+  every seat is about to render `blocked` on `auth_success` — or, far more often, about a minute
+  after each turn it finishes, on the `idle_prompt` timer D1 suppresses for exactly that reason
+  (card#9419).
 
 ### AT-D2-6 stalled is a state with three exits
 
