@@ -969,8 +969,9 @@ proposal's
 `docs/PLAN.md § 2` and nowhere reproduced. **This document does not invent its tiers.** Specifying a
 fallback from the phrase alone would put a guessed rule in a contract, and a guessed rule that reads
 plausibly is worse than an absent one. So: the merge above is derived from what this repo states, and
-[§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers.
-Until that answers, the merge is tier 1 over tier 3, with tier 1 dark until D4 is built.
+[§ 14](#14-open-questions-for-the-review-loop) item 3 asked review for the proposal's actual tiers,
+and the operator closed it on 2026-09-14 without them: the merge above is the definition, tier 1
+over tier 3, with tier 1 dark until D4 is built.
 
 ### 4.10 Retirement is a rendered state
 
@@ -5643,9 +5644,9 @@ is never a reason to leave two readings live.
 **All seven, and item 13's marker convention, were ruled on and landed in D1 (card#7521); each is
 closed below with the D1 anchor its amendment landed at.** Where D2 had stated a reading, the
 amendment adopted that reading, so no rule in this document moved — what changed is that the second
-reading is gone from D1 rather than merely unused here. Items 3, 6 and 9 remain open and are not
-D1's: they need an operator answer, a proposal document, or D3. Item 7, the fourth such item when this
-was written, has since been closed by operator ruling.
+reading is gone from D1 rather than merely unused here. Items 6 and 9 remain open and are not
+D1's: they need an operator answer or D3. Items 3 and 7, also not D1's, have since been closed by
+operator ruling.
 
 1. **✅ CLOSED — the flusher's `inferred_silence` `session.end` carries no `turn.end`.**
    D1 § 6.0's kind table lists `turn.end` as hook-emitted, and § 6.2's turn-closing reap is on the
@@ -5666,7 +5667,14 @@ was written, has since been closed by operator ruling.
    because seat clock skew must not move a server ceiling. It matches
    [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), so no rule here moves.
 
-3. **⇢ Review / operator — the proposal's three-tier status fallback, and the board producer.**
+3. **✅ CLOSED — the proposal's three-tier status fallback, and the board producer.** ⭐ **Operator
+   ruling, 2026-09-14:** *"close"*. **What it changes:** the item's last open part, the proposal's
+   tiers, closes without the proposal's text. The definition is the task-title merge `card#7582`
+   settled — [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s tier 1 over tier 3,
+   numbered non-contiguously because tier 2 was retired on `card#9234` — and this document still
+   does not invent the proposal's tiers. **What remains, and is a build item rather than an open
+   question:** the board poller, which is designed and not built; `BOARD-TASK.md § 10` names the
+   conditions that keep tier 1 dark until it is. **History:**
    `docs/PLAN.md § 2` assigns D2 a three-source merge and names a "three-tier status fallback from the
    proposal"; the proposal is not in this repo and this document **does not invent its tiers**
    ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **All three of this item's producer
@@ -5686,7 +5694,8 @@ was written, has since been closed by operator ruling.
    it. **Blocks:** nothing here any longer — tier 1 has a producer; what it does not have is a BUILT
    one, and `BOARD-TASK.md § 10` names the three conditions that keep it dark and how each one
    reads. A floor built today still shows telemetry-derived titles only, now for that reason rather
-   than for want of a design. **Closes what is left:** the proposal's text.
+   than for want of a design. What was left after *(c)* was the proposal's text, and the operator's
+   2026-09-14 ruling closed the item without it.
 
 4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
    The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was
