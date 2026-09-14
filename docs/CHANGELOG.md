@@ -19,6 +19,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9465** — **A failed ingest write now answers `503 server_error` and is counted, and a hung
+  ingest transaction no longer holds its seat.** A store failure while `POST /api/ingest/events` ran
+  surfaced as Laravel's default error body and incremented nothing, so an operator could not see a
+  write-failure rate. It now answers D1 § 12.2's shape — `503`, `error: server_error`, `detail`
+  `store_contended` or `store_failed`, never the exception's text — and still reports the exception. A
+  defect in the server takes the same shape as a `500` with `detail: internal`. Each one counts the new
+  `batches_failed.<detail>` on the seat, or under the same key in `global_counters` when the fault comes
+  before the token resolves, where `GET /api/fleet/health` reads it. It is not a refusal:
+  `batches_refused.<error>` stays 4xx refusals only and `unattributed_refusals` refusals before identity,
+  because the reporter retries every `5xx` unchanged and a retry commits once. The ingest request now
+  sets `innodb_lock_wait_timeout` = 11 s and `idle_transaction_timeout` = 10 s on its own database
+  session, derived in D2 § 2.2 from the reporter's 15 s request deadline, so when the application stops
+  talking to the store mid-write the server ends that transaction and frees its seat's lock within 10 s,
+  instead of that seat's fold and ingest staying frozen until the connection drops. D1 § 12.1's
+  attribution table and § 12.7's `unattributed_refusals` row now say that counter also counts step 4's
+  refusals, as the ingest always has. D1 § 12.1, § 12.2, § 12.7 and D2 § 2.2, § 6.5, § 7.1, § 8.2.4,
+  § 12 state it. New tests: `IngestServerErrorTest`, and `IngestWriteBoundTest` on real MariaDB
+  connections. **Installer action:** none; no migration. The store must be MariaDB with
+  `idle_transaction_timeout` (present on 11.8.6, the version floor).
 - **card#9208** — **The building surface is served: `GET /api/building` and
   `GET /api/building/rooms/{install_id}/map`** (D2 § 8.7, `docs/design/FLOOR.md` Appendix B row 12,
   build slice 2). `/api/building` answers the layout the lobby page already inlines
