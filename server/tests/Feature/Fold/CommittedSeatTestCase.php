@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Console\Commands\RebuildCommand;
+use App\Fleet\SeatRetirement;
 use App\Fold\Clock;
 use App\Fold\Fold;
 use App\Ingest\Acceptance;
@@ -11,6 +13,7 @@ use App\Ingest\EventValidator;
 use App\Ingest\TokenBinding;
 use App\Ingest\ValidBatch;
 use App\Ingest\ValidEvent;
+use App\Sweep\Predicates;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -54,7 +57,9 @@ abstract class CommittedSeatTestCase extends TestCase
 
     protected const PROBE = 'committed_probe';
 
-    private const CONNECTIONS = [self::FIXTURE, self::WRITER_1, self::WRITER_2, self::FOLD, self::PROBE];
+    protected const SWEEP = 'committed_sweep';
+
+    private const CONNECTIONS = [self::FIXTURE, self::WRITER_1, self::WRITER_2, self::FOLD, self::PROBE, self::SWEEP];
 
     protected const SESSION_ID = 'c4a1e0d2-7b3f-4e9a-8c15-2f6d9b0a7e31';
 
@@ -116,6 +121,10 @@ abstract class CommittedSeatTestCase extends TestCase
     {
         BatchWriter::$afterLock = null;
         BatchWriter::$afterFirstChunk = null;
+        RebuildCommand::$beforeReset = null;
+        RebuildCommand::$afterFirstDelete = null;
+        SeatRetirement::$beforeRetire = null;
+        SeatRetirement::$afterBefore = null;
         Carbon::setTestNow();
 
         $this->deleteCommittedRows(outbox: true);
@@ -226,6 +235,47 @@ abstract class CommittedSeatTestCase extends TestCase
         }
 
         $this->fail('the fold did not converge in '.$maxPasses.' passes');
+    }
+
+    /**
+     * The committed rows a sweep pass writes that carry no `seat_ref` or `install_ref` of this
+     * subclass's: `plane_state` (the sweeper's own stamp) and `seat_predicates` at
+     * `Predicates::FLEET`. `tearDown()`'s cleanup is scoped to this install and cannot see them, so a
+     * test that runs `Sweep::pass()` takes this at `setUp()` and hands it to `restoreFleetState()` at
+     * `tearDown()`, or it leaks them into whatever runs next against the store — card#9466.
+     *
+     * @return array{plane: list<object>, fleetPredicates: list<object>}
+     */
+    protected function snapshotFleetState(): array
+    {
+        $store = DB::connection(self::FIXTURE);
+
+        return [
+            'plane' => $store->table('plane_state')->get()->all(),
+            'fleetPredicates' => $store->table('seat_predicates')->where('seat_ref', Predicates::FLEET)->get()->all(),
+        ];
+    }
+
+    /**
+     * Put back exactly what `snapshotFleetState()` took: delete, then re-insert.
+     *
+     * @param  array{plane: list<object>, fleetPredicates: list<object>}  $snapshot
+     */
+    protected function restoreFleetState(array $snapshot): void
+    {
+        $store = DB::connection(self::FIXTURE);
+
+        $store->table('plane_state')->delete();
+
+        if ($snapshot['plane'] !== []) {
+            $store->table('plane_state')->insert(array_map(fn (object $row) => (array) $row, $snapshot['plane']));
+        }
+
+        $store->table('seat_predicates')->where('seat_ref', Predicates::FLEET)->delete();
+
+        if ($snapshot['fleetPredicates'] !== []) {
+            $store->table('seat_predicates')->insert(array_map(fn (object $row) => (array) $row, $snapshot['fleetPredicates']));
+        }
     }
 
     protected function state(): object

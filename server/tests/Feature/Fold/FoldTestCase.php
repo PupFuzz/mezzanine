@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Console\Commands\RebuildCommand;
 use App\Feed\Outbox;
+use App\Fleet\SeatRetirement;
 use App\Fold\Clock;
 use App\Fold\Fold;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,6 +56,15 @@ abstract class FoldTestCase extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // card#9466's seams, cleared before every test of this rig. `CommittedSeatTestCase` clears
+        // them in its own `tearDown()`, but a test on THIS rig that sets one (`SeatConsoleTest`
+        // does) has only its own `finally` between it and the next test's first rebuild or
+        // retirement in the same process.
+        RebuildCommand::$beforeReset = null;
+        RebuildCommand::$afterFirstDelete = null;
+        SeatRetirement::$beforeRetire = null;
+        SeatRetirement::$afterBefore = null;
 
         // A FIXED SERVER CLOCK, so § 4.5's 300/900 s thresholds and every other age are driven
         // rather than waited for. Every test that cares about an age moves it explicitly.

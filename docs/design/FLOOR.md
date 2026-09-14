@@ -129,7 +129,7 @@ it, and what it must never draw.
 | **MFA, login, session lifetime** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states what the floor does when a session **expires** ([§ 9](#9-failure-paths-and-their-observables)); it does not specify the second factor |
 | **Prod and sandbox provisioning, deploy** | D-13 and D-15 (`docs/PLAN.md § 5`), owned by the Mezzanine build agent |
 | **Operator ACLs — who may see which install** | [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 7 owns it: **all-or-nothing, for now**, by operator ruling on 2026-09-13, to be reopened before a second organisation's install reports in. Any MFA-authenticated user sees every install ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)), and this document renders exactly what the snapshot returns |
-| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times.** The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is still designed in no document in this repo. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 carries the question forward |
+| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times** — and narrowed a third time when card#7582 designed the board poller (ratified 2026-09-12), which this cell also said otherwise about until 2026-09-14. The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (card#7582, ratified 2026-09-12) and is not built. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 records the question closed by operator ruling, 2026-09-14 |
 | **Sound** | There is no audio in this design. A sound is an animation by another sense and would need its own rows in [§ 6.2](#62-the-animation-table--the-closed-set) with the same totality rule; adding one without them would be adding an un-driven cue. If audio is wanted it is a review decision, not an implementer's |
 | **Historical views, charts, trends** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) rules out the warehouse; the product answers *what is happening now*. The drill-down's timeline is a bounded window over retained events, not a history |
 | **Multi-tenant theming and per-user preferences** | Nobody has asked. ⚠ This row also said *layout customisation* until card#9208's reversal (2026-09-12): a room's design and a floor's composition are now operator-authored at runtime ([§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)), and what stays out is customisation **per viewer**. The one preference honoured is the platform's own `prefers-reduced-motion` ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)), because a state carried only by motion is a state some users cannot read |
@@ -3873,6 +3873,19 @@ has not shipped.** `animation-log.js` ([Appendix B](#appendix-b--what-an-impleme
 step 2) keeps the bounds below, and [row 2](#appendix-b--what-an-implementer-builds-from-this)'s gate
 tests are what check them:
 
+- **The call surface.** The module exports `createAnimationLog` and `AnimationLogRefusal`, and
+  nothing else. `createAnimationLog()` takes no argument and returns one log, whose members are:
+  `edge(args)`, which writes one `edge` row with `phase: fired`; `enterHeld(args)`, which writes one
+  `held` row with `phase: entered` and returns that row's fresh `episode_id`;
+  `leaveHeld(episodeId, {cause, at})`, which writes the episode's `left` row, copying `animation_id`,
+  `install_id` and `seat_id` from its `entered` row and writing `motion: false` whatever the entry
+  carried; and `rows`, every row written, in call order. `args` carries `animation_id`, `cause`,
+  `install_id`, `seat_id`, `motion` and `at`. The log mints every `episode_id`, sets `class` and
+  `phase` by the call it receives, and fills a `left` row's copied fields and `motion`; the caller
+  supplies the rest. Every refusal throws `AnimationLogRefusal`, and a call with no argument object,
+  or with `null` in its place — `edge()`, `enterHeld()`, or `leaveHeld(episodeId)` on an open
+  episode, or any of the three given `null` — is refused for its missing `at` like any other call
+  without one (bound (vi)).
 - **(i)** `leaveHeld` refuses an id that is not a currently-open `enterHeld` episode — an unknown id,
   an already-left one, and an `edge` row's id, which is drawn from the same id space and checked
   against the same registry, so an edge id handed to `leaveHeld` is refused on the same code path as
@@ -3882,7 +3895,13 @@ tests are what check them:
   asks where it is running, so it refuses the same way wherever it runs. What a renderer does with a
   refusal, and what the viewer sees when one happens, belongs to the steps that build a renderer
   ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) steps 5 and 6) and is not stated
-  here.
+  here. Step 2's gate checks the no-switch half two ways: the module's source, for the identifiers a
+  read of its environment would have to name, and its export set, which must be exactly the call
+  surface's `createAnimationLog` and `AnimationLogRefusal`, so no flag a caller could set is exported.
+  ⚠ **What neither check sees, and what stays a review question on every step that edits this
+  module:** a switch that reads its environment through an identifier outside the scanned set, and a
+  flag reachable through what IS exported — a property hung on either export, or on the log object a
+  caller holds — or a field of the argument object (or options object) a call is given.
 - **(iii)** `edge`/`enterHeld` record exactly what the caller passes for `animation_id` and `cause`,
   with **no validation against this document's table**. This bound is required by the ruling two
   paragraphs above: the closed-set half's RED needs an out-of-table `animation_id` and a `null` `cause`
@@ -3900,8 +3919,8 @@ episode that pairs an exit with its entry. [§ 6.2](#62-the-animation-table--the
 `edge`/`held` split itself and [decision 20](#13-decisions-taken-revisable-at-review) records the call;
 neither restates what is below.** `episode_id` is what pairs an exit with its entry, and it is the
 third revision of this schema because the first two had nothing that could. An **episode** is one
-continuous run of one render on one seat: the renderer mints a fresh `episode_id` each time it starts an animation or enters a held
-render, and writes that same id on the `left` row that ends it. `(animation_id, install_id, seat_id)`
+continuous run of one render on one seat: the log mints a fresh `episode_id` each time a renderer starts an animation or enters a held
+render through it, and writes that same id on the `left` row that ends it. `(animation_id, install_id, seat_id)`
 is **not** unique per episode and never was — on this document's own headline fixture,
 `fx-clear-trace`, A4 is entered **twice** on `aimla-pm` (the walk is below), so that triple names two
 entries and two exits with nothing to say which pairs with which. Two properties follow and are
@@ -5021,17 +5040,26 @@ reason to leave two readings live.
    configuration is built. `docs/PLAN.md § 2`'s *"current task linked to card/thread"* is answered by
    the title and the reference as text. **Reopens:** a board the floor's viewers can open.
 
-4. **⇢ Review / operator — the proposal's three-tier status fallback (carrying
-   [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 forward).**
-   The proposal is not in this repository and D2 declined to invent its tiers. This document renders
-   whichever tier `task.source` names and does not invent them either. **Blocks:** tier 1 of the
-   task title — a floor built today shows telemetry-derived titles everywhere, which is *visibly* a
-   floor whose board integration is dark rather than one that looks fine ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)).
-   **In the meantime:** tier 3 only, with `task.source` rendered so the tier is legible.
-   **Closes it:** the proposal's text, plus a ruling on where the **board** producer is designed — the
-   GitHub one no longer needs one ([D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), read
-   surface at [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)), and it no longer feeds a
-   title either, because **tier 2 was retired on card#9234**.
+4. **✅ CLOSED — the task title is the merge D2 § 4.9 specifies, and the proposal's three-tier status
+   fallback is not needed to define it (carrying
+   [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 3 forward).** ⭐ **Operator
+   ruling, 2026-09-14:** *"close"*. The proposal is not in this repository, D2 declined to invent its
+   tiers, and this document does not invent them either. **What it changes:** the definition is the
+   task-title merge card#7582 settled —
+   [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)'s tier 1 over
+   tier 3, numbered non-contiguously because **tier 2 was retired on card#9234** — and this document
+   renders whichever tier `task.source` names. **What remains:** building the **board** poller, a
+   build item rather than an open question. Its design is
+   [`docs/design/BOARD-TASK.md`](BOARD-TASK.md), and `BOARD-TASK.md § 10` names the conditions that
+   keep tier 1 dark until it is built; in that state a floor shows telemetry-derived titles with
+   `task.source` rendered, which is *visibly* a floor whose board integration is dark rather than one
+   that looks fine ([D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)).
+   **History:** this item blocked tier 1 of the task title and asked for the proposal's text plus a
+   ruling on where the board producer is designed. The GitHub producer needed no such ruling
+   ([D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), read surface at
+   [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)) and no longer feeds a title; card#7582
+   answered the board half with `BOARD-TASK.md` (ratified 2026-09-12); and the operator's ruling
+   closed the item without the proposal's text.
    ✅ **The agent-name→`seat_id` half of this item is DISCHARGED and carries nothing forward.** It
    had already moved off the task title and onto the **thread line**; card#7957's ruling *(d)* is
    built on the server's side on card#9296, and on the reporter's on card#9375 —
@@ -5575,19 +5603,17 @@ accident).
 **A note on order, and it is the rule [§ 11](#11-acceptance-tests) states rather than a preference.**
 This table carries the build order and the gates; the rule over them is § 11's and is not restated
 here. What this note records is what the rule found once it was enforced over **every** artifact
-rather than over the drill-down alone. Three tests once asserted drill-down content while this table
-gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — and each was split. Widening
-the check to every artifact this table names then found **seven** of the eight below, none of them
-about the panel: four resolved by splitting, one by re-gating and two by relocating the artifact they
-read. **The eighth is not the same kind of find, and is not credited to the same mechanism:**
-[AT-D3-1](#at-d3-1-no-animation-without-its-event)'s re-gate was not caught by widening the check — its
+rather than over the drill-down alone. The tests that once asserted drill-down content while this
+table gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — were each split.
+Widening the check to every artifact this table names then found the tests named below other than
+AT-D3-1, none of them about the panel, and each was resolved by splitting it, by re-gating it or by
+relocating the artifact it reads. **[AT-D3-1](#at-d3-1-no-animation-without-its-event)'s re-gate is not the same kind of find,
+and is not credited to the same mechanism:** it was not caught by widening the check — its
 instrument half's `Reads:` clause understated what its own GREEN needs, and a check that verifies a
 Build bullet against its own stated `Reads:` clause cannot catch a `Reads:` clause that is itself
 wrong. Design review found it by reading the GREEN's prose against the clause; only once the clause
 was corrected to state honestly did the check start enforcing, over this bullet, the rule it had
-enforced over the other seven all along. So what follows is eight names sharing one figure, not eight
-instances of one discovery method, and the figure is still the list's length rather than a claim
-beside it:
+enforced over the others all along. So the names below share one list, not one discovery method:
 [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) split into a
 protocol half (3) and a strip half (8), because *resyncs: N* is a status-strip readout;
 [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) and
@@ -5596,11 +5622,11 @@ and render halves (6), because *no `edge` row* and *without an arrival animation
 animation set and a floor with no animations satisfies both for free; and
 [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) split into a manifest half (0) and a lineage half (1),
 because the lineage file is step 1's artifact.
-That is the four. Two were **re-gated** rather than split, because no half of either is observable
-before its artifact exists: [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), from 5 to 6,
+**Re-gated** rather than split, because no half of the test is observable before its artifact
+exists: [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), from 5 to 6,
 because its whole claim is that no state is carried by motion alone and there is no half of that
 observable before there is any motion; and
-[AT-D3-1](#at-d3-1-no-animation-without-its-event) — the eighth, and the most recent — from a split
+[AT-D3-1](#at-d3-1-no-animation-without-its-event) — the most recent — from a split
 at 2 and 6 to a single unqualified gate at 6, because its instrument half's own GREEN reads the
 **animation set**'s classes and each row's causing `state_version`, so it needs step 6's artifact no
 less than the closed-set half does; an earlier revision of this table gated the instrument half at 2
@@ -5610,17 +5636,17 @@ in the same revision for a reason of its own, not as a consequence of that re-ga
 client on the real apply path, so it is step 3's artifact — the step that builds the real client — and
 is bolded there. Step 2 is left with the artifact it actually builds: the animation-log module, under
 this row's own gate.
-**AT-D3-2 and AT-D3-14 were neither, because neither test was the defect:**
+**Relocated, because neither test was the defect:**
 [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere), gated at step 6, and
 [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s **desk half**, gated at step 5, both read the
 desk's **side table**, and an earlier revision of this table built the side table at step 10 with the
 drill-down. Splitting either would have split a claim that is one claim, and re-gating them to 10
-would have stood two desk assertions behind the panel; what was in the wrong place was the artifact,
+would have stood those desk assertions behind the panel; what was in the wrong place was the artifact,
 so the **side table** moved to step 5 — the step that renders the desk — and step 10 kept the
 drill-down's **uncapped intern list**. [§ 8](#8-interns--subagent-rendering-and-the-cap) owns that
-split and states why it is not bookkeeping. That is the third mechanism, and it is the one to reach
+split and states why it is not bookkeeping. That is relocation, and it is the mechanism to reach
 for when a test reads the right artifact at the right moment and this table has that artifact in the
-wrong row. Three tests asserting the client's **event record** at steps 3
+wrong row. The tests asserting the client's **event record** at steps 3
 and 8 are a different case and not the same defect: the record is the client protocol's artifact and
 step 3 builds it; the lobby at step 9 is its renderer.
 

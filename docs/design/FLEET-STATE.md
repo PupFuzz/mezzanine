@@ -213,6 +213,7 @@ is in neither.
 | **Fold worker** | dead or lagging | **OPEN for ingest, CLOSED for the currency claim** — receipts keep landing, state freezes, seats badge `fold_lag`, `fleet.fold` goes `stalled` | Refusing ingest because *derivation* is broken would discard data we can still store and later derive. Freezing silently is the failure this whole product exists to prevent, so the freeze is announced. See [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation). |
 | **Fold worker** | a single event raises during projection | **OPEN, counted, quarantined-in-place** — the cursor advances past it, `fold_error` increments, the seat badges `derivation_error`; the event stays in `events` for replay | One malformed event must not wedge a seat's derivation forever — the same judgement [D1 § 11.4](EVENT-SCHEMA.md#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson) makes for a torn spool line. Because the log is retained, the fix plus a rebuild recovers the seat exactly. |
 | **Sweep worker** | dead | **OPEN for ingest, CLOSED for the currency claim** — the fleet object's `sweep_last_run_at` keeps its last value and `fleet.sweep` goes `stalled` past **60 s** since it ([§ 8.2.4](#824-the-fleet-health-object)) | Identical reasoning to the fold, and stated separately rather than inherited because the *consequence* differs: a dead fold freezes wire-driven transitions, a dead sweep freezes time-driven ones, and only the second one can leave a dead seat rendering `working`. |
+| **Sweep worker** | a single seat's pass meets another writer — the seat's `seat_state` row held, or a concurrency error (`1020`/`1205`/`1213`) on a row one of its jobs writes | **OPEN, transient** — the seat is skipped for this pass, at once when its row is held (`FOR UPDATE SKIP LOCKED`) or after the classified error, having written nothing, and the next pass retries it ([§ 2.1](#21-processes)'s 15 s cadence). `sweep_seat_contended` is incremented for the seat ([§ 7.2](#72-this-planes-own-counters-and-badges)), the yield is logged below ERROR, and the seat is not one of the pass's failed seats: those are the seats whose pass threw anything else, logged at ERROR, and `sweep_seat_error` is incremented for each (card#9466) | Several writers share a seat's rows ([§ 6.5](#65-the-fold)), so contention is ordinary and clears within a pass or two. Counted as a failure, it would mark a pass partial and log at ERROR for a seat that is fine. It is still counted per seat, because the sweep has no badge like `fold_lag` to show a seat skipped pass after pass. |
 | **Feed backpressure** | a client cannot drain the stream | **CLOSED for that connection** — a tick the handler cannot complete within [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound is detected at the top of the following pass and ends the stream with `feed.close`, and other clients are untouched (that section owns the figure, and its bound is a detector and not a cap on how long the worker is held) | Dropping deltas silently leaves that browser permanently and invisibly wrong. Ending the stream costs one snapshot fetch and is self-healing — and returns the worker, which under SSE is the resource a stalled client actually consumes. |
 | **Feed stream, MID-STREAM** | the store becomes unreachable while the stream is open | **CLOSED** — the tick's read of `feed_outbox` fails, or [§ 9](#9-read-side-authentication)'s 15 s session re-check comes back without an answer about the session, and the handler **ends the stream** with `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)). No cursor is held across the outage, no delivery is resumed from one, and nothing is frozen | Every datum this stream carries comes out of that store, so a stream that cannot read it has nothing left to deliver and no way to tell whether it still may — and a recovery path back to a place with no value is not a posture, it is a pretence. What the viewer gets instead is the truth by name: [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 is the render, and the client retries on the **backed-off** cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns. That backoff — not a held-open stream — is the answer to the reconnect stampede F20 prices, and it is cheap and local where holding streams open was neither |
 | **Read-token verification** | the token store is unreachable | **CLOSED** — `503`, never a cached or assumed grant | A read token gates the whole fleet's activity picture. There is no posture in which "we could not check, so we allowed it" is correct. |
@@ -968,8 +969,9 @@ proposal's
 `docs/PLAN.md § 2` and nowhere reproduced. **This document does not invent its tiers.** Specifying a
 fallback from the phrase alone would put a guessed rule in a contract, and a guessed rule that reads
 plausibly is worse than an absent one. So: the merge above is derived from what this repo states, and
-[§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers.
-Until that answers, the merge is tier 1 over tier 3, with tier 1 dark until D4 is built.
+[§ 14](#14-open-questions-for-the-review-loop) item 3 asked review for the proposal's actual tiers,
+and the operator closed it on 2026-09-14 without them: the merge above is the definition, tier 1
+over tier 3, with tier 1 dark until D4 is built.
 
 ### 4.10 Retirement is a rendered state
 
@@ -1404,7 +1406,8 @@ CREATE TABLE batches (
   reporter_platform ENUM('linux','win32','darwin','other') NOT NULL,
   runtime_version   VARCHAR(24) CHARACTER SET ascii NOT NULL,
   KEY ix_batch_id (seat_ref, batch_id, received_at),   -- NOT unique: see below
-  KEY ix_batch_recv (seat_ref, received_at)
+  KEY ix_batch_recv (seat_ref, received_at),
+  KEY ix_purge      (received_at)                       -- the purge's range scan (§ 6.7)
 ) ENGINE=InnoDB;
 -- D1 § 10.4's 24 h batch-id memory is enforced by COMPARING received_at, never by deleting the
 -- row: a policy expressed as a deletion is indistinguishable from data loss. Rows are retained
@@ -1441,8 +1444,9 @@ CREATE TABLE events (
                                              -- rewritten the survivors' spelling on the way in.
   UNIQUE KEY uq_dedup (seat_ref, event_id),                 -- D2-MUST #3
   KEY ix_seat_seq  (seat_ref, seq_epoch, seq),              -- gap detection, ordering, replay
-  KEY ix_seat_recv (seat_ref, received_at),                 -- purge, timeline, staleness
-  KEY ix_fold      (seat_ref, id)                           -- the fold's cursor scan
+  KEY ix_seat_recv (seat_ref, received_at),                 -- timeline, staleness
+  KEY ix_fold      (seat_ref, id),                          -- the fold's cursor scan
+  KEY ix_purge     (received_at)                            -- the purge's range scan (§ 6.7): it has no seat_ref
 ) ENGINE=InnoDB;
 -- NOT PARTITIONED, deliberately: MariaDB requires every unique key to contain every partitioning
 -- column (DOCS-CITED, MariaDB Knowledge Base on partitioning limitations;
@@ -1500,7 +1504,8 @@ CREATE TABLE sessions (
   applied_seq        BIGINT UNSIGNED NOT NULL,
   updated_at    DATETIME(3) NOT NULL,
   UNIQUE KEY uq_session (seat_ref, session_id),
-  KEY ix_session_open (seat_ref, ended_at)
+  KEY ix_session_open (seat_ref, ended_at),
+  KEY ix_purge (ended_at)                               -- the purge's range scan (§ 6.7)
 ) ENGINE=InnoDB;
 
 CREATE TABLE calls (
@@ -1706,7 +1711,8 @@ CREATE TABLE seat_state_transitions (
   cause_event_ref BIGINT UNSIGNED NULL,      -- events.id, when cause = wire_event
   detail        JSON NULL,                   -- the facts that changed, for the drill-down
   KEY ix_seat_at (seat_ref, at),
-  KEY ix_version (seat_ref, state_version)
+  KEY ix_version (seat_ref, state_version),
+  KEY ix_purge   (at)                           -- the purge's range scan (§ 6.7)
 ) ENGINE=InnoDB;
 -- Not a duplicate of `events`: it records WHICH RULE FIRED and what the state became, which the
 -- event log does not contain. It is what makes "why did this desk go idle at 14:23" answerable
@@ -2150,6 +2156,29 @@ first `seat_state` write (`1020`, with snapshot isolation on), time out on a loc
 (`1213`). **Those errors are transient and never poison:** the pass yields that seat, writes nothing, and
 the next pass folds the window whole. The poison-event rule below is for every other error.
 
+**The rebuild, retirement and the sweep take the same lock first** (card#9466). Each takes the seat's
+`seat_state` row lock as its transaction's first statement. `mezzanine:rebuild`
+([§ 6.6](#66-rebuild-from-the-log)) takes it before `reset()` deletes anything and holds it for the
+whole replay. It waits at the server's default `innodb_lock_wait_timeout`, because it is a console
+command with no request deadline, and on a concurrency error it runs the replay again from a clean
+rollback, up to `RebuildCommand::REPLAY_LOCK_ATTEMPTS` attempts in all. Retirement
+([§ 4.10](#410-retirement-is-a-rendered-state)) takes it before it samples `$before`. An operator is
+waiting on that answer, so the act pins its own session's wait to `SeatRetirement::LOCK_WAIT_TIMEOUT_S`,
+restores the session's previous wait on every exit, and makes up to `SeatRetirement::LOCK_ATTEMPTS`
+attempts. A seat still busy when they are spent is refused, from the console and from the shell,
+as busy with nothing changed. Both bounds are per blocked statement, not per attempt: once the act
+holds the seat lock, only a writer that did not take it first can still hold a row the act touches.
+The sweep takes the lock `FOR UPDATE SKIP LOCKED`, so a seat another writer holds is skipped at once
+and retried on the next pass ([§ 2.2](#22-fail-posture-per-path)).
+
+**This is not a statement that every writer takes the lock first.** None of the fold's transactions
+does: the window, the one-event retry and the quarantine each sample `$before` without it and reach
+`seat_state` only through a later write.
+A transaction that holds a projection row and then needs `seat_state`, meeting one that holds
+`seat_state` and then needs that row, is a deadlock, and MariaDB's detector breaks it with a `1213`.
+That is why rebuild and retirement retry, and why the sweep treats a concurrency error on a row its
+lock does not cover as contention rather than failure.
+
 **Idempotency has two independent mechanisms, and both are load-bearing:**
 
 1. The cursor advance is in the same transaction as the projections, so a crash mid-pass rolls back
@@ -2188,7 +2217,9 @@ projections, resets its cursor — `fold_cursor_event_id` to `0` and `fold_curso
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s lag stays computable and honest for the
 length of the run — and replays `events` in `id` order through the identical `project()`
 path used by the live fold, counting `state_rebuilds`. **The command shares the fold's code, not a copy
-of it** — a rebuild that runs different code is a rebuild that proves nothing.
+of it** — a rebuild that runs different code is a rebuild that proves nothing. The replay's transaction
+takes the seat's `seat_state` row lock as its first statement, before anything is deleted, and is run
+again from a clean rollback on a concurrency error ([§ 6.5](#65-the-fold), card#9466).
 
 This exists for three reasons, in order of weight: it is the recovery path after a `derivation_error`;
 it is the migration path when a projection gains a column; and it is the **strongest available test of
@@ -2234,7 +2265,7 @@ If any of the three moves, all three are re-checked in the same change. A retent
 window silently re-ingests re-sent events as new ones — the single most confusing possible corruption of
 a timeline, and the reason D1 states the first half of this chain at all.
 
-**Purge mechanics.** `DELETE FROM events WHERE received_at < ? ORDER BY id LIMIT 5000`, looped until it
+**Purge mechanics.** `DELETE FROM events WHERE received_at < ? ORDER BY received_at, id LIMIT 5000`, looped until it
 deletes fewer than the limit or a **60-second wall-clock budget** expires, then the next table. Bounded
 batches keep the transaction and the binlog small and keep the store responsive during the pass; the
 budget means a purge that cannot keep up **falls behind visibly** (`purge_backlog_rows` is counted)
@@ -2250,6 +2281,25 @@ unmoved by the rows behind it (EXPLAIN on MariaDB 11.8.6 over 20,000 rows: 0.40 
 fire on a fleet much larger than planned or a purge that has been dead for a long time, either of which
 is worth a human.
 
+**Each table is deleted in the order of its retention index's own key** (card#9466): the columns of the
+index that leads with the retention column, then `id` — `received_at, id` above, and on `calls` the
+whole `ix_orphan` key, `closed_at, orphan_due_at, id`. `App\Sweep\Purge` declares the order per table,
+and its test derives each key from `information_schema.STATISTICS` and reds when a declaration stops
+matching it. The order does two jobs. It deletes the oldest rows first, so a pass the budget interrupts
+has deleted a prefix of the expired rows and every row it kept is at or above every row it deleted.
+And it keeps a backlog's batches cheap: the `WHERE` is a range on that index, and an `ORDER BY` on the
+same key lets the engine read 5,000 rows off it in order and stop, where `ORDER BY id` over that range,
+at the sizes measured here, made it read and sort the whole expired range for every batch. Measured on MariaDB 11.8.6 against each
+plan table at 200,000 rows with half of them expired (card#9466 review round 1, 2026-09-14): with
+`ORDER BY id`, `EXPLAIN` showed the retention index as a range over the whole expired range plus
+`Using filesort`, and a table's first batch took 532–1,140 ms; ordered by the key, it showed the same
+range estimated at 5,000 rows with no filesort, and the first batch took 96–247 ms. The plans held at
+1,000,000 rows with half expired, measured on `events` and `calls` only: 2,406 and 3,738 ms by `id`
+against 190 and 560 ms by the key. With 5 % expired the plans split the same way, but the timings did
+not separate consistently table by table (107–467 ms against 90–332 ms). Below those sizes the plan
+`ORDER BY id` gets depends on the rows present: with half expired it walked `PRIMARY` instead on
+`calls` at 2,000 rows and on `events` at 20,000.
+
 ### 6.8 Sizing
 
 All of it derives from D1's own volume estimate, which is itself an estimate: **10,420 events/seat/day
@@ -2259,14 +2309,14 @@ first week of live data.
 
 | Quantity | Value | Derivation |
 |---|---|---|
-| `events` row cost | **~732 B** | clustered row 479 B (columns 449 B + ~30 B InnoDB header) × 1.05 fill, plus three secondary index entries totalling 153 B × 1.5 for B-tree fill and per-entry overhead |
-| `events` per seat-day | **7.6 MB** | 10,420 × 732 B |
-| projections per seat-day | **~2.1 MB** | calls ~3,000 × 300 B, transitions ~1,400 × 160 B, sessions/attention/heartbeat-derived ~1,740 × 200 B, each × 1.4 for indexes |
-| **total per seat-day** | **~9.7 MB** | the two above |
-| **per seat, 14 days** | **~136 MB** | × 14 |
-| aimla today (4 seats) | **~0.54 GB** | × 4 |
-| a plausible fleet (12 seats) | **~1.6 GB** | × 12 |
-| a large fleet (50 seats) | **~6.8 GB** | × 50 |
+| `events` row cost | **~756 B** | clustered row 479 B (columns 449 B + ~30 B InnoDB header) × 1.05 fill, plus the secondary index entries of `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold` totalling 153 B × 1.5 for B-tree fill and per-entry overhead (below), plus ~24 B **measured** for `ix_purge` (below) |
+| `events` per seat-day | **7.9 MB** | 10,420 × 756 B |
+| projections per seat-day | **~2.1 MB** | calls ~3,000 × 300 B, transitions ~1,400 × 160 B, sessions/attention/heartbeat-derived ~1,740 × 200 B, each × 1.4 for indexes; plus `ix_purge` measured on transitions, 1,400 × 24 B, and on sessions at most 1,740 × 29 B — a bound, because the 1,740 blends three row populations this section does not split. 2.09–2.14 MB |
+| **total per seat-day** | **~10.0 MB** | the two above |
+| **per seat, 14 days** | **~140 MB** | × 14 |
+| aimla today (4 seats) | **~0.56 GB** | × 4 |
+| a plausible fleet (12 seats) | **~1.7 GB** | × 12 |
+| a large fleet (50 seats) | **~7.0 GB** | × 50 |
 | `feed_outbox`, lingering between purges | **~7.5 MB** | ≤ 1 h of ceiling traffic between hourly purges ([§ 6.7](#67-retention-and-purge)): 8,980 × 50 ÷ 24 = 18,708 rows × ~400 B, both in [§ 12](#12-every-number-and-where-it-comes-from). Transient, and outside every per-seat-day figure above |
 
 **Transitions are sized from the render-change rate, not from the delta rate**, and the two are
@@ -2280,6 +2330,27 @@ is emitted whenever a **version-bearing** field of the
 against 8,980 deltas. An earlier draft sized this table at the delta rate; the error was conservative
 (it over-sized the store by 1.7 MB/seat-day) but it made two rows of
 [§ 12](#12-every-number-and-where-it-comes-from) claim a derivation they did not have.
+
+**`ix_purge`'s cost is measured, not modelled** (card#9466). The purge's retention index on `events`,
+`batches`, `sessions` and `seat_state_transitions` ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge)) was
+added to a copy of each table holding 200,000 rows on MariaDB 11.8.6, by the migration's own
+`ALTER … ADD INDEX …, ALGORITHM=INPLACE, LOCK=NONE`, and `information_schema.TABLES.INDEX_LENGTH`
+was read after `ANALYZE TABLE` before and after (2026-09-14). The growth was ~24 B per row on `events`,
+`batches` and `seat_state_transitions`, whose retention column rises with insert order, and ~29 B per
+row on `sessions`. That figure already includes the B-tree's fill, so no × 1.4 or × 1.5 is applied to
+it; `batches` is costed nowhere in this section and moves no figure. `sessions.ended_at` is written when a session closes
+rather than at insert, so its index is maintained out of order in service, and its live figure may sit
+above the one built here.
+
+**The 153 B index-entry figure is taken to cover `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold`** — every
+secondary index `events` carried before `ix_purge`, all of them in [§ 6.4](#64-ddl)'s DDL since this
+section was first written. Until card#9466's review round 1 this section counted them as three. Like
+the 449 B column sum, the figure has no written per-index derivation, so which indexes it covers is
+inferred from a measurement, not recovered: a copy of `events` holding 200,000 rows on
+MariaDB 11.8.6, spread across 50 seats with a pseudo-random 26-character `event_id`, read those indexes
+at ~216 B per row from `mysql.innodb_index_stats` page counts after `ANALYZE TABLE` (2026-09-14),
+against the model's 153 B × 1.5 ≈ 230 B, and the same indexes without `ix_fold` at ~187 B. No figure
+moves. The same read put `ix_purge` at ~24 B per row, as above.
 
 ⚠ **The `data` bytes in the row cost above were modelled on a BINARY `JSON` column, and MariaDB's
 `JSON` is an alias for `LONGTEXT` ([§ 6.1](#61-deployment-posture)).** How the two compare, in
@@ -2309,7 +2380,8 @@ row-cost model above, and they are the largest block of hand-verified arithmetic
 the row-cost model itself, because the 449 B column sum and the 153 B index-entry figure are properties
 of a MariaDB host that does not exist yet ([§ 6.1](#61-deployment-posture)). Both are re-measured at
 provisioning against the real table, which is when they stop being estimates; the closure act is stated
-here rather than left implicit.
+here rather than left implicit. `ix_purge`'s per-row cost is the one term that is measured rather than
+modelled, on copies of the tables and not on a live one, so it is re-measured at provisioning with them.
 
 ### 6.9 Migrations on a live `events` table
 
@@ -2518,6 +2590,8 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
+| `sweep_seat_error` | `seat_counters` | seat detail | a sweep pass's work on that seat threw anything but a concurrency error, and the pass skipped the seat and went on ([§ 2.1](#21-processes)) | that seat's time-derived transitions did not advance that pass; the pass counts it among its failed seats and `mezzanine:sweep` prints the count |
+| `sweep_seat_contended` | `seat_counters` | seat detail | a sweep pass yielded that seat to another writer: its `seat_state` row was held and `FOR UPDATE SKIP LOCKED` skipped it, or a job's write met a concurrency error (`1020`/`1205`/`1213`) on a row that lock does not cover ([§ 6.5](#65-the-fold)) | none for one pass, which the next retries. Rising pass after pass on one seat ⇒ that seat's time-derived transitions are not advancing, and nothing else says so: the sweep has no badge like `fold_lag` ([§ 2.2](#22-fail-posture-per-path)) |
 | `feed_resync_required` | `global_counters` | fleet health | the handler ended a stream on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s **stall bound** — that branch and no other, which is what [§ 8.3](#83-the-websocket-delta-feed)'s loop writes; never on a client that simply went away, and never on the other server-chosen ends. ⚠ **This cell read *or a version mismatch* until the card#9287 maintainer round**, naming a close reason [§ 8.3](#83-the-websocket-delta-feed)'s set did not carry and the loop never counted. ⛔ **A `feed.close{reason:"reload"}` in particular does NOT count it**: a deploy ends every open stream at once, so counting it would move this counter by the number of open browsers on every release and destroy the one reading it exists to support | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
 | `snapshot_served` / `snapshot_denied` | `global_counters` | fleet health | a REST snapshot was served / refused (`503`, `401`) | fleet health |
@@ -3183,7 +3257,7 @@ written in its producer's transaction — so every figure in this paragraph is a
 ceiling, 8,980 rows/seat/day of deltas plus one fleet-wide heartbeat row per 15 s (86,400 ÷ 15 a day,
 not one per install), each carrying its envelope serialized once, whether or not a browser is open to
 read it. That is the cost of a queue with no memory of its own: ~400 B per delta row against the
-~732 B [§ 6.8](#68-sizing) already spends on the event that caused it, retained a minute rather than
+~756 B [§ 6.8](#68-sizing) already spends on the event that caused it, retained a minute rather than
 fourteen days. And on the read side, each open stream is **four reads per second**
 of a table that is almost always empty past the cursor — at ten browsers, forty reads a second, each the
 one statement whose plan [§ 6.7](#67-retention-and-purge) states, over a table whose rows past the cursor are, at the 50-seat ceiling, 5.20 ÷ 4 ≈ **1.3 rows**
@@ -5420,11 +5494,11 @@ document.
 | Fold claim size | 8 seats | **Chosen** — small enough that a second worker partitions cleanly under `SKIP LOCKED`, large enough that a four-seat fleet is one claim | [§ 6.5](#65-the-fold) |
 | Purge batch / budget | 5,000 rows / 60 s | **Chosen** — bounded DELETEs keep the transaction and the binlog small; the wall-clock budget makes a purge that cannot keep up fall behind *visibly* (`purge_backlog_rows`) instead of holding a long transaction | [§ 6.7](#67-retention-and-purge) |
 | `events` table-size alarm | 20 GB | **Derived** — ~2.9× the 50-seat 14-day figure below, so it can only fire on a fleet far larger than planned or a long-dead purge | [§ 6.7](#67-retention-and-purge) |
-| `events` row cost | **~732 B** | **Derived** — 479 B clustered (449 B of columns + ~30 B header) × 1.05, plus 153 B of three secondary index entries × 1.5 for fill and overhead | [§ 6.8](#68-sizing) |
+| `events` row cost | **~756 B** | **Derived** — 479 B clustered (449 B of columns + ~30 B header) × 1.05, plus 153 B of the `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold` index entries × 1.5 for fill and overhead, plus ~24 B measured for `ix_purge` | [§ 6.8](#68-sizing) |
 | Render-state changes per seat-day | **~1,400** | **Derived** — ~1,200 turn boundaries (each `turn.start` enters `working`, each `turn.end` leaves it) + ~200 attention edges + a handful of staleness and ceiling transitions. **Not** the 8,980 delta rate: a transition row is written only on a `render_state` change and the two are different populations ([§ 6.5](#65-the-fold)) | [§ 6.8](#68-sizing) |
-| Store per seat-day | **~9.7 MB** | **Derived** — 7.6 MB of `events` (10,420 × 732 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4) | [§ 6.8](#68-sizing) |
-| Store per seat, 14 days | **~136 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
-| Store, 4 / 12 / 50 seats | **0.54 / 1.6 / 6.8 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
+| Store per seat-day | **~10.0 MB** | **Derived** — 7.9 MB of `events` (10,420 × 756 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4, plus `ix_purge` measured at 24 B a transition and at most 29 B on the 1,740) | [§ 6.8](#68-sizing) |
+| Store per seat, 14 days | **~140 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
+| Store, 4 / 12 / 50 seats | **0.56 / 1.7 / 7.0 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
 | Seat-state object | **1,893 B** typical, **5,684 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
 | Fleet snapshot | **7.9 KB** (4 seats) … **95 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
 | Snapshot pagination trigger | 200 seats (~379 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
@@ -5522,7 +5596,7 @@ review can reverse it deliberately rather than discover it later.
 | 14 | **ULIDs stored as `CHAR(26) ascii_bin`** | `BINARY(16)` | 10 B/row cheaper is ~0.1 MB/seat/day against every diagnostic query needing a conversion function, on a store whose total is single-digit gigabytes. Legibility wins where storage is not scarce | ~1.4 % of the store |
 | 15 | **Integer surrogate keys (`seat_ref`) on every hot table** | natural keys (`install_id`, `seat_id`) everywhere | ~76 B against 4 on every event row *and* in every index entry — the one place in this schema where the storage argument actually binds | one join to render a seat name, on a table with tens of rows |
 | 16 | **No materialized activity table; the timeline is a bounded query over `events`** | a projection table for the drill-down timeline | It would be a second copy of rows already retained for 14 days, with its own retention, backfill and opportunity to disagree with the log | one indexed range scan per drill-down open, on an index the purge needs anyway |
-| 17 | **`seat_state_transitions` exists, and is not a duplicate** | derive "why did it change" from `events` on demand | The transition row records **which rule fired** — including the rules that have no event (orphan, ceiling, sweep) — which the log does not contain. It is new information, and it is what the acceptance tests assert against | ~0.31 MB/seat/day (1,400 render changes × 160 B × 1.4) and a 14-day retention |
+| 17 | **`seat_state_transitions` exists, and is not a duplicate** | derive "why did it change" from `events` on demand | The transition row records **which rule fired** — including the rules that have no event (orphan, ceiling, sweep) — which the log does not contain. It is new information, and it is what the acceptance tests assert against | ~0.35 MB/seat/day (1,400 render changes × (160 B × 1.4 + 24 B measured for `ix_purge`)) and a 14-day retention |
 | 18 | **The server closes facts D1 leaves open: turns at session close, everything at `offline`** | leave them to the wire and render whatever arrives | D1 bounds calls and attention; it does not state whether the flusher's `inferred_silence` close carries a `turn.end`, and an offline seat's facts have no wire-side ceiling at all. An unbounded open fact renders `working` forever | if D1 later states that the flusher does emit a `turn.end`, this server close becomes redundant — harmlessly, because the wire event and the server close converge on the same row through the same idempotent upsert |
 | 19 | **The attention ceiling fires at exactly 60 min from `event_time`, and a late `attention.resolved` relabels without reopening** | 65 min (60 + a delivery allowance) | `D2-MUST` #5 says *never longer than* 60 minutes. Firing at 65 would breach the constraint to buy a tidier counter; firing at 60 on the reporter's own clock basis means the two timers agree, and D1's own late-completion doctrine ("an observation overrides an inference") covers the ordering | `attention_ceiling_expired` fires on merely-slow resolutions; `attention_ceiling_overridden` is the counter that distinguishes slow from lost |
 | 20 | **Orphan ceilings are measured from `received_at`; the attention ceiling from `event_time`** | one clock for both | A timeout is a claim about how long *we* waited, so a skewed seat must not expire its calls early — but the attention ceiling competes with a reporter-side timer on the seat's clock, and using a different basis would make the server win every race on a skewed seat | the two clocks differ by the skew, which is bounded and badged at ±120 s; both choices are stated per ceiling in [§ 4.7](#47-which-clock-each-ceiling-is-measured-from) rather than inherited |
@@ -5570,9 +5644,9 @@ is never a reason to leave two readings live.
 **All seven, and item 13's marker convention, were ruled on and landed in D1 (card#7521); each is
 closed below with the D1 anchor its amendment landed at.** Where D2 had stated a reading, the
 amendment adopted that reading, so no rule in this document moved — what changed is that the second
-reading is gone from D1 rather than merely unused here. Items 3, 6 and 9 remain open and are not
-D1's: they need an operator answer, a proposal document, or D3. Item 7, the fourth such item when this
-was written, has since been closed by operator ruling.
+reading is gone from D1 rather than merely unused here. Items 6 and 9 remain open and are not
+D1's: they need an operator answer or D3. Items 3 and 7, also not D1's, have since been closed by
+operator ruling.
 
 1. **✅ CLOSED — the flusher's `inferred_silence` `session.end` carries no `turn.end`.**
    D1 § 6.0's kind table lists `turn.end` as hook-emitted, and § 6.2's turn-closing reap is on the
@@ -5593,7 +5667,14 @@ was written, has since been closed by operator ruling.
    because seat clock skew must not move a server ceiling. It matches
    [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), so no rule here moves.
 
-3. **⇢ Review / operator — the proposal's three-tier status fallback, and the board producer.**
+3. **✅ CLOSED — the proposal's three-tier status fallback, and the board producer.** ⭐ **Operator
+   ruling, 2026-09-14:** *"close"*. **What it changes:** the item's last open part, the proposal's
+   tiers, closes without the proposal's text. The definition is the task-title merge `card#7582`
+   settled — [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s tier 1 over tier 3,
+   numbered non-contiguously because tier 2 was retired on `card#9234` — and this document still
+   does not invent the proposal's tiers. **What remains, and is a build item rather than an open
+   question:** the board poller, which is designed and not built; `BOARD-TASK.md § 10` names the
+   conditions that keep tier 1 dark until it is. **History:**
    `docs/PLAN.md § 2` assigns D2 a three-source merge and names a "three-tier status fallback from the
    proposal"; the proposal is not in this repo and this document **does not invent its tiers**
    ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **All three of this item's producer
@@ -5613,7 +5694,8 @@ was written, has since been closed by operator ruling.
    it. **Blocks:** nothing here any longer — tier 1 has a producer; what it does not have is a BUILT
    one, and `BOARD-TASK.md § 10` names the three conditions that keep it dark and how each one
    reads. A floor built today still shows telemetry-derived titles only, now for that reason rather
-   than for want of a design. **Closes what is left:** the proposal's text.
+   than for want of a design. What was left after *(c)* was the proposal's text, and the operator's
+   2026-09-14 ruling closed the item without it.
 
 4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
    The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was

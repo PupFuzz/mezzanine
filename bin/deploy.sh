@@ -709,8 +709,10 @@ phase_a() {
   # PRODUCT. D-15's 2026-09-09 amendment repinned the product to MariaDB; the app is still
   # wired to the `mysql` connection — Tests\TestCase and § 6.2's pin guard both key on
   # `database.connections.mysql.database` — and Laravel's `mysql` driver speaks to a MariaDB server.
-  # Whether to move to config/database.php's `mariadb` connection is an OPEN DECISION for the
-  # operator: it changes what this script accepts and what those guards key on. It is not taken here.
+  # The operator ruled on 2026-09-14 that the app keeps the `mysql` connection name (docs/PLAN.md,
+  # D-15's 2026-09-14 amendment). Moving to config/database.php's `mariadb` connection reopens only
+  # for a MariaDB-specific Laravel feature, and would change what this script accepts and what those
+  # guards key on.
   [ "$db_conn" = "mysql" ] || refuse "DB_CONNECTION is '${db_conn:-unset}', not 'mysql'" \
     "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MariaDB on a dedicated host, at" \
     "the version floor § 6.1 states, reached through Laravel's 'mysql' connection. sqlite here" \

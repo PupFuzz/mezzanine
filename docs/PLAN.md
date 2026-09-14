@@ -133,6 +133,19 @@ its date, its decider and the scope of what it moved. The original row above sta
   now key on the connection name `mysql` too. Re-derive the sites rather than trusting a list:
   `git grep -nE "'mysql'|mysql\\||DB_CONNECTION=mysql" -- server .github bin`.
 
+- **D-15 · the Laravel connection keeps the name `mysql` — operator, 2026-09-14.**
+  In the operator's words, answering a decision brief: *"Keep mysql and close the question."* This
+  takes the separate decision the 2026-09-09 amendment left open as the operator's to take, and
+  the 2026-09-13 amendment carried forward: whether the application moves from Laravel's `mysql`
+  connection to `config/database.php`'s `mariadb` connection. **What moves:** the question is
+  closed, and the application stays on the `mysql` connection. **Why:** no defect has been traced
+  to the name; a rename would move `bin/deploy.sh`'s refusal and the test-isolation guards that key
+  on `database.connections.mysql.database`, for a cosmetic gain; and the engine is MariaDB either
+  way, as the 2026-09-09 and 2026-09-13 amendments pin it. **What does NOT move:** the engine,
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the *dedicated DB host*
+  clause, § 6.2's pinned database names and isolation posture, and SQLite's unsupported status.
+  **Reopens:** a MariaDB-specific Laravel feature the application needs.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —

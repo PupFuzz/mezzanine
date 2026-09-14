@@ -46,22 +46,42 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   its ingest through the system store or a file found from its working directory, stops sending after
   the update. Its `selftest` names the file or the rule; make the file readable, or set its absolute
   path or `null`, and restart the flusher.
+- **card#9466** — **Rebuild, retirement and the sweep take the seat's `seat_state` lock first, and every
+  purge table has a retention index.** `mezzanine:rebuild` locks the seat before it deletes its
+  projections and retries the whole replay on a lock timeout, deadlock or changed row
+  (`RebuildCommand::REPLAY_LOCK_ATTEMPTS`). Retirement locks the seat before it samples the state it
+  announces, waits at most `SeatRetirement::LOCK_WAIT_TIMEOUT_S` for any one blocked statement on its own
+  session and restores that session's wait afterwards, and retries up to `SeatRetirement::LOCK_ATTEMPTS`
+  attempts; a seat still busy then is answered as busy with nothing changed — a message on the console's
+  agents page, and a sentence with exit `1` from `mezzanine:retire`. The sweep locks each seat
+  `FOR UPDATE SKIP LOCKED`, skips a seat another writer holds, treats a concurrency error on a
+  downstream row as contention, and counts both per seat as `sweep_seat_contended`, kept out of the
+  pass's failed seats and `sweep_seat_error`. `Outbox::transaction()` takes an attempt count and clears
+  its queued messages at the start of each attempt. A new migration adds `ix_purge` on the retention
+  column of `events`, `batches`, `sessions` and `seat_state_transitions`, each with
+  `ALGORITHM=INPLACE, LOCK=NONE`. The purge deletes every table in the order of its retention index's
+  key (`received_at, id` on `events`; `closed_at, orphan_due_at, id` on `calls`) instead of by `id`, so a
+  backlog drains in batches read off that index with no sort of the expired range. D2 § 2.2, § 6.4,
+  § 6.5, § 6.6, § 6.7, § 6.8, § 7.2 and § 12 state all of it. **Installer action:**
+  none beyond the deploy, which runs the migration; each `ALTER` waits for open transactions on its
+  table before it starts and before it finishes.
 - **card#7341** — **The animation log records every claim-bearing episode, under its own gate
   (`docs/design/FLOOR.md` Appendix B step 2).** `server/public/js/wire/animation-log.js` is the one
   entry point a renderer starts a § 6.2 animation through: `edge` writes a `fired` row, `enterHeld`
   opens a held episode and returns its fresh `episode_id`, `leaveHeld` writes that episode's `left`
   row with `motion: false`, and `rows` reads every row in call order as § 11's tuple. The module
   records what it is given, reads no clock and no environment, and throws `AnimationLogRefusal` on
-  a `leaveHeld` for an episode that is not open and on any call without an `at`. § 11 now states
-  that contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
+  a `leaveHeld` for an episode that is not open and on any call without an `at`, including a call
+  with no argument object at all or `null` in its place, and it exports that class and
+  `createAnimationLog` only. § 11 now states that call surface and the contract bound by bound, and `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`
   and `Tests\Feature\Floor\AnimationLogClassPopulationMatchesTheDocumentTest` drive the shipped file
   under `node` against each bound, with a planted control for each. FLOOR.md also re-gates
   AT-D3-1 whole at step 6 (its instrument half reads the harness, the client protocol and the
   animation set), names the harness as step 3's artifact, states that the log is the one entry
   point for claim-bearing motion and that motion bypassing it is NOT MECHANIZED, and adds § 14
   items 21–23 on the unstated parts of `fx-clear-trace`, `fx-snapshot-4` and `fx-degraded`, each
-  blocking the lowest Appendix B gate of a test that replays the fixture. No renderer calls the
-  module yet; that is steps 5 and 6. **Installer action:** none; no migration.
+  blocking the lowest Appendix B gate of a test that replays the fixture or a fixture built on it.
+  No renderer calls the module yet; that is steps 5 and 6. **Installer action:** none; no migration.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
   served with every `{}` it was authored with.** The layout reader decoded the document
   associatively, where `{}` and `[]` are one PHP value: `"floors": {}` was accepted as § 4.6's empty

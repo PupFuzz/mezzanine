@@ -51,20 +51,26 @@ export function createAnimationLog() {
         return { animation_id, episode_id: episodeId, install_id, seat_id, class: klass, phase, cause, motion };
     }
 
+    // Each `?? {}` is where bound (vi) holds for a call with no argument object or a `null` in its
+    // place: it reaches `write`'s refusal instead of throwing a TypeError while destructuring. A
+    // parameter default would not do it — a default fills in `undefined` only, never `null`.
     return {
         edge(args) {
-            write('edge', opening('edge', 'fired', freshId(), args), args.at);
+            const given = args ?? {};
+            write('edge', opening('edge', 'fired', freshId(), given), given.at);
         },
 
         enterHeld(args) {
+            const given = args ?? {};
             const episodeId = freshId();
-            write('enterHeld', opening('held', 'entered', episodeId, args), args.at);
+            write('enterHeld', opening('held', 'entered', episodeId, given), given.at);
             open.set(episodeId, written[written.length - 1]);
 
             return episodeId;
         },
 
-        leaveHeld(episodeId, { cause, at }) {
+        leaveHeld(episodeId, options) {
+            const { cause, at } = options ?? {};
             const entered = open.get(episodeId);
 
             // Edge ids share `freshId` and are never registered as open, so an edge row's id is
