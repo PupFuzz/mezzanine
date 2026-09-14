@@ -19,6 +19,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-14
+
 - **card#9300** — **THE LIVE FEED IS BUILT: Server-Sent Events on `GET /api/fleet/stream`, fed by a
   `feed_outbox` table** (`docs/design/FLEET-STATE.md` Appendix B step 9). ⛔ **Installer action, before the
   next deploy — the deploy now REFUSES a host that cannot serve or drain the stream:** provision a
