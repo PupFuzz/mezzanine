@@ -686,8 +686,9 @@ for r in src_rows:
         continue
     if is_table:
         # A `table` locator names a COLUMN by its header, and the line just matched IS that
-        # header row, so the members are that column's own body cells — not every run found
-        # anywhere in the table. Reading the whole table through `value_runs` was equivalent
+        # header row, so the members are the body cells UNDER THE HEADER CELL THAT HOLDS THE
+        # LABEL — that cell's index, found here rather than assumed to be 0, and not every run
+        # found anywhere in the table. Reading the whole table through `value_runs` was equivalent
         # only while every row happened to list two or more types, and it BREAKS on a
         # one-member row: `value_runs`' `len(cur) >= 2` threshold is there to keep prose and
         # the OTHER columns' values out, so a member sitting alone in its cell is silently
@@ -698,12 +699,22 @@ for r in src_rows:
         # also STRICTER — a two-member cell in `Emits?` or `notification_kind` can no longer
         # leak a non-member of the harness's set into the comparison.
         a, b = table_of(hits[0])
+        header = re.split(r"(?<!\\)\|", lines[hits[0]].strip().strip("|"))
+        col = next((j for j, c in enumerate(header)
+                    if label in re.findall(r"`([^`]*)`", c)), None)
+        if col is None:
+            fail.append(f"enum-source row {setname}: locator {locator!r} names a column, but the "
+                        f"header row at L{hits[0]+1} has no cell holding `{label}` — there is no "
+                        "named column to read, so NOTHING was derived")
+            continue
         got = set()
         for i in range(a, b + 1):
             if i == hits[0] or re.match(r"^\|[\s:|-]+\|$", lines[i]):
                 continue                        # the header row itself, and the rule line
-            cell = re.split(r"(?<!\\)\|", lines[i].strip().strip("|"))[0]
-            got |= {v for v in re.findall(r"`([^`]*)`", cell) if BARE.match(v)}
+            row_cells = re.split(r"(?<!\\)\|", lines[i].strip().strip("|"))
+            if col >= len(row_cells):
+                continue                        # a short row has no cell in the named column
+            got |= {v for v in re.findall(r"`([^`]*)`", row_cells[col]) if BARE.match(v)}
     else:
         runs = value_runs(lines[hits[0]])
         got = set(max(runs, key=len))
