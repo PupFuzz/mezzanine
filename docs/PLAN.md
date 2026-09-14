@@ -463,33 +463,86 @@ rule violations anyone could have committed at the time.
     deploy can end a stream without root), with `request_terminate_timeout = 0`, a `pm.status_path`,
     a `pm.status_listen` (a status listener the pool's pinned workers cannot block — measured: without
     it the deploy's status read queued behind the streams until it timed out), and a `pm.max_children`
-    sized in open browser tabs, not browsers. The vhost routes `/api/fleet/stream` — and nothing else —
-    to it; every other request stays on the application's pool. Name the pool to the deploy with
-    `MEZZ_STREAM_POOL=<pool name>`. Both are root acts (Virtualmin); the deploy refuses a host without
-    them, and says which part is missing. ⚠ **The first deploy of the release that introduced this check
-    does not refuse — it warns, in the window**: its preconditions ran in the previous release's copy of the
-    script, which never asked, and staying down over a pool nobody was asked for would be the worse outcome.
-    Its streams are then not drained, and the deploy after it refuses until the pool exists.
-  - **`flushpackets=on` for that pool's socket in the vhost**, e.g. `<Proxy
-    "unix:/run/php/<stream pool>.sock|fcgi://mezz-stream"> ProxySet flushpackets=on </Proxy>` with
-    `ProxyPassMatch "^/api/fleet/stream$" "unix:/run/php/<stream pool>.sock|fcgi://mezz-stream<document root>/index.php"`,
-    and no compression filter on `text/event-stream`. ⛔ **The stream worker's name after `fcgi://` must differ
-    from the one in the application pool's `SetHandler`** (Virtualmin writes `fcgi://127.0.0.1` there). Apache
-    reuses a worker by that name, so with both named `fcgi://127.0.0.1` every PHP request on the site goes to
-    the stream pool. Measured 2026-09-13 on this host's Apache 2.4.66, with a throwaway non-root Apache in
-    front of both live pools: with a shared name, 20 of 20 ordinary PHP requests landed on the stream pool;
-    with `fcgi://mezz-stream`, none did, and the stream route still reached its pool. Nothing breaks
-    visibly: the site answers, but ordinary requests compete with open streams for the stream pool's
-    workers, and the deploy's stream drain signals workers that are serving them. **After the reload,
-    check it on the host as the application user**: read the stream pool's `accepted conn` from its
-    status listener (`SCRIPT_NAME=/stream-status SCRIPT_FILENAME=/stream-status REQUEST_METHOD=GET
-    QUERY_STRING= cgi-fcgi -bind -connect <status socket>`), request any ordinary page a few times, and
-    read it again. It must not move. A request to `/api/fleet/stream` must move it. ⛔ **Without it every browser renders *feed down — polling*
-    against a healthy fleet** (FLOOR.md § 9 F19): measured on a throwaway Apache with this host's vhost
-    shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response, headers included, until the
-    request ended. The deploy cannot see the vhost; the check below can.
-  - **A finite client-send timeout on the proxy** (Apache `Timeout`), so a frozen client's worker comes
-    back (R2's teardown clause). The heartbeat keeps a healthy stream writing every 15 s.
+    sized in open browser tabs, not browsers. Name the pool to the deploy with
+    `MEZZ_STREAM_POOL=<pool name>` (`mezz-stream` below). The pool and the vhost lines below are root acts (Virtualmin); the
+    deploy refuses a host without the pool, and says which part is missing. ⚠ **The first deploy of the
+    release that introduced this check does not refuse — it warns, in the window**: its preconditions ran
+    in the previous release's copy of the script, which never asked, and staying down over a pool nobody
+    was asked for would be the worse outcome. Its streams are then not drained, and the deploy after it
+    refuses until the pool exists.
+
+    Append the pool to the site's existing pool file (`/etc/php/8.5/fpm/pool.d/<site id>.conf`, after
+    that file's own `[<site id>]` pool), then reload PHP-FPM with `systemctl reload php8.5-fpm`. The
+    sandbox host has run this pool since 2026-09-13:
+
+    ```ini
+    [mezz-stream]
+    user = mezzanine
+    group = mezzanine
+    listen = /run/php/mezz-stream.sock
+    listen.owner = mezzanine
+    listen.group = mezzanine
+    listen.mode = 0660
+    pm = dynamic
+    pm.max_children = 8
+    pm.start_servers = 2
+    pm.min_spare_servers = 1
+    pm.max_spare_servers = 3
+    pm.status_path = /stream-status
+    pm.status_listen = /run/php/mezz-stream-status.sock
+    request_terminate_timeout = 0
+    php_value[upload_tmp_dir] = /home/mezzanine/tmp
+    php_value[session.save_path] = /home/mezzanine/tmp
+    php_value[error_log] = /home/mezzanine/logs/php_log
+    php_value[log_errors] = On
+    ```
+
+    Substitute the application user and its home for `mezzanine` on another host.
+  - **The vhost routes `/api/fleet/stream`, and nothing else, to that pool, with `flushpackets=on`.** Add
+    these lines to **both** `<VirtualHost>` blocks Virtualmin writes (`*:80` and `*:443`) in
+    `/etc/apache2/sites-available/<domain>.conf`, directly above the block's existing
+    `<FilesMatch \.php$>` / `SetHandler proxy:unix:…|fcgi://127.0.0.1` section and below any
+    `RewriteCond`/`RewriteRule` pair, then `apache2ctl -t && systemctl reload apache2`:
+
+    ```apache
+    <Proxy "unix:/run/php/mezz-stream.sock|fcgi://mezz-stream">
+        ProxySet flushpackets=on
+    </Proxy>
+    ProxyPassMatch "^/api/fleet/stream$" "unix:/run/php/mezz-stream.sock|fcgi://mezz-stream/home/mezzanine/public_html/index.php"
+    ```
+
+    The path after `fcgi://mezz-stream` is the vhost's `DocumentRoot` followed by `/index.php`. Leave the
+    `SetHandler` line exactly as Virtualmin wrote it. These are the lines the sandbox host has run since
+    2026-09-14.
+    - ⛔ **The name after `fcgi://` is `mezz-stream`, never `fcgi://127.0.0.1`.** Virtualmin's `SetHandler`
+      already uses `fcgi://127.0.0.1`, and Apache reuses a worker by that name, so a stream worker named
+      the same sends every PHP request on the site to the stream pool. The site still answers, so nothing
+      looks broken: ordinary requests compete with open streams for the stream pool's workers, and the
+      deploy's stream drain signals workers that are serving them. Measured 2026-09-13 on this host's
+      Apache 2.4.66, with a throwaway non-root Apache in front of both live pools: with the shared name, 20
+      of 20 ordinary PHP requests landed on the stream pool; with `fcgi://mezz-stream`, none did, and the
+      stream route still reached its pool. The live host reproduced it after its first reload and passed
+      after the rename.
+    - ⛔ **`flushpackets=on` is what lets a browser see the stream.** Without it every browser renders
+      *feed down — polling* against a healthy fleet (FLOOR.md § 9 F19): measured on a throwaway Apache
+      with this host's vhost shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response,
+      headers included, until the request ended.
+    - **No compression filter on `text/event-stream`.** This host's `mods-enabled/deflate.conf`
+      does not list it; do not add it.
+    - **After the reload, check the routing on the host as the application user.** Read the stream pool's
+      `accepted conn`, request an ordinary page a few times, and read it again. It must not move while no browser tab has the floor open, since an open tab
+      reconnects to the stream on its own. Then request `/api/fleet/stream` (an unauthenticated `401` is fine); it must move.
+
+      ```
+      SCRIPT_NAME=/stream-status SCRIPT_FILENAME=/stream-status REQUEST_METHOD=GET QUERY_STRING= \
+        cgi-fcgi -bind -connect /run/php/mezz-stream-status.sock | grep 'accepted conn'
+      ```
+
+      The deploy cannot see the vhost. This check proves the routing, and the wire check below proves
+      the flushing.
+  - **A finite client-send timeout on the proxy** (Apache `Timeout`; this host's `apache2.conf` sets 300),
+    so a frozen client's worker comes back (R2's teardown clause). The heartbeat keeps a healthy stream
+    writing every 15 s.
   - **After any deploy that changed the stream path, the proxy or the stream pool — and once when the host
     is stood up — run the R1 wire check as an operator.** Sign in to the site in a browser (MFA
     included), copy the session cookie's `name=value` from the browser's developer tools into a file
