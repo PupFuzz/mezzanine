@@ -44,15 +44,6 @@ final class Fold
     public const CLAIM = 8;
 
     /**
-     * THE FEED OUTBOX'S visibility lag (§ 8.3), in seconds. The fold itself no longer reads
-     * `events` behind a lag (card#9398 — see the class docblock); the constant stays here only
-     * because `App\Feed\Outbox`, `mezzanine:feed-reload` and the tests that age rows past the
-     * outbox's read still name it, and card#9467 is the one that rehomes it with the outbox's own
-     * read.
-     */
-    public const VISIBILITY_LAG_S = 2;
-
-    /**
      * Test seam for AT-D2-22's purged-window arm: invoked between the emptiness proof and the
      * guarded cursor write, which is the only window in which an interleaved ingest commit can
      * change the answer. It exists because that interleaving is the branch's entire hazard and a

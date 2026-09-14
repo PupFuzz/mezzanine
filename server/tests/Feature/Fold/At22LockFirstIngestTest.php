@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Fold;
 
-use App\Fold\Fold;
+use App\Feed\Outbox;
 use App\Ingest\BatchWriter;
 use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Database\QueryException;
@@ -63,9 +63,10 @@ class At22LockFirstIngestTest extends CommittedSeatTestCase
                 $writerTwoFirstAttempt = 'waited for the seat lock and timed out';
             }
 
-            // Past the lag the fold read used to filter on, so a fold that still depends on it reads
+            // Past the lag the fold read used to filter on (the figure the outbox keeps, which is why
+            // the constant is `Outbox`'s since card#9467), so a fold that still depends on it reads
             // writer 2's committed rows here rather than reading nothing for a reason of its own.
-            $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+            $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
             $appliedBetweenTheCommits = $this->foldPass(self::FOLD);
         };

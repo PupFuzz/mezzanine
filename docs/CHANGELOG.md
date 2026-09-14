@@ -36,6 +36,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `App\Http\Controllers\Concerns\ServesAClosedRead`, shared by both controllers, and D1 § 3.1's slug
   patterns move from `mezzanine:ingest-token:issue` to `App\Support\Slug`. The lobby page still
   inlines the layout; its fetch is Appendix B row 13.
+- **card#9467** — **A viewer's floor no longer misses a delta when two feed writers stamp and insert in
+  opposite orders.** The live feed read `feed_outbox` rows older than a 2 s lag and moved each stream's
+  cursor to the highest id it read; the outbox has several independent writers (the fold, the sweeper,
+  retirement, the heartbeat, the console's room-map and layout saves, the deploy's reload), and a
+  writer that stamped its row later but inserted it first left a lower id with a later stamp, which the
+  read skipped while it was young and never delivered — a seat change, retirement or layout change a
+  viewer did not see until the next snapshot. The read is now a visible prefix: it stops below the
+  lowest id still inside the lag and delivers it, in id order, once it ages (`App\Feed\VisiblePrefix`;
+  the lag constant moves from `Fold` to `Outbox::VISIBILITY_LAG_S`). A stream's connect cursor is the
+  highest committed id below that bound. Two new fleet-health counters on `GET /api/fleet/health`:
+  `feed_prefix_future` counts each read held by a row stamped in the reader's future (a clock ahead or
+  stepped back), and `feed_outbox_boundary_stalled` counts a sweep pass that finds a row outside the
+  prefix one lag short of the outbox's purge age. D2 § 2.1, § 2.2, § 6.1 (a new application-clock
+  requirement, not verified: the sandbox host ran 162 s fast on 2026-09-13/14), § 6.4, § 6.7, § 7.2,
+  § 8.2, § 8.2.4, § 8.3, AT-D2-25, § 12 and Appendix B state the property and its conditions. New
+  tests: AT-D2-25's reversed-stamp leg on real MariaDB connections and `VisiblePrefixTest`.
+  **Installer action:** none; no migration. Keep every app host's clock synchronized: a host ahead of
+  another holds every open stream's delivery for the difference, and `feed_prefix_future` rising says
+  so.
 - **card#9471** — **A signed-in account with a confirmed second factor can move to a new
   authenticator again, and keeps its current one until the new one is confirmed.**
   `/two-factor/recovery-codes` (behind `auth` + `mfa` + `password.confirm`) carries a **Move to a

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Feed\Outbox;
 use App\Fold\Fold;
 use Illuminate\Support\Facades\DB;
 
@@ -107,7 +108,7 @@ class At22CursorSafetyTest extends FoldTestCase
 
         // "In BOTH cases the next pass folds the interleaved batch and the seat's final state
         // equals a control run in which the same batch arrived after the purge branch completed."
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
         $this->fold();
 
         $this->assertSame('idle', $this->state()->activity_state);

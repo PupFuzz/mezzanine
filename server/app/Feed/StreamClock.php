@@ -12,7 +12,7 @@ namespace App\Feed;
  * that advances the application clock and performs one scripted server act per tick.
  *
  * ⚠ It is NOT the clock the visibility lag is computed on: that term compares `feed_outbox.created_at`
- * with `now()` (`App\Feed\Outbox`), the application clock every writer stamps with.
+ * with `now()` (`App\Feed\VisiblePrefix`), the application clock every writer stamps with.
  */
 interface StreamClock
 {

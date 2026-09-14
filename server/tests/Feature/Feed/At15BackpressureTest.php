@@ -5,7 +5,6 @@ namespace Tests\Feature\Feed;
 use App\Feed\FeedStream;
 use App\Feed\Outbox;
 use App\Fold\Clock;
-use App\Fold\Fold;
 use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
 
@@ -41,7 +40,7 @@ class At15BackpressureTest extends FeedTestCase
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
         $user = $this->enrolled();
         $head = $this->wire->mark();
@@ -101,7 +100,7 @@ class At15BackpressureTest extends FeedTestCase
      */
     public function test_a_stream_blocked_past_the_outbox_retention_ends_instead_of_reading_past_a_purged_row(): void
     {
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
         $user = $this->enrolled();
         $processes = new Processes;
@@ -147,7 +146,7 @@ class At15BackpressureTest extends FeedTestCase
      */
     public function test_a_frozen_consumer_ends_nothing_while_it_holds_the_write_and_the_healthy_stream_misses_nothing(): void
     {
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
         $user = $this->enrolled();
         $head = $this->wire->mark();

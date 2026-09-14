@@ -3,6 +3,7 @@
 namespace App\Sweep;
 
 use App\Feed\Outbox;
+use App\Feed\VisiblePrefix;
 use App\Fold\Badges;
 use App\Fold\Clock;
 use App\Fold\Derivation;
@@ -146,6 +147,12 @@ final class Sweep
         // JOB 7 proper: the alarms, over every recorded predicate — including the three this
         // process does not evaluate, whose branches the fold records at their own evaluation sites.
         Predicates::alarm($nowMs, $nowSql);
+
+        // NOT ONE OF THE SEVEN JOBS — AN OBSERVATION, riding this loop for its cadence (card#9467). A
+        // committed `feed_outbox` row above the streams' visible prefix and `retention − lag` old is one
+        // lag from § 6.7's purge taking it unread; this is the only process that looks every 15 s
+        // whether or not a browser is open. `VisiblePrefix::countStalled()` owns the predicate.
+        VisiblePrefix::countStalled();
 
         // LAST, AND AFTER THE WORK RATHER THAN BEFORE IT. § 8.2.4 reads this as "the sweeper ran",
         // and a stamp written at the top of a pass that then died would assert a pass that never

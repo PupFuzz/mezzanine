@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  * zeroed one". `withCounters` is therefore a parameter of this builder and not a decision any of
  * the three call sites makes for itself.
  *
- * ⛔ ALL NINE COUNTERS OR NONE. "Whenever the object is present ALL NINE MEMBERS ARE, each at `0`
+ * ⛔ ALL COUNTERS OR NONE. "Whenever the object is present EVERY ONE OF THEM IS, each at `0`
  * before its first increment: a per-member omission is FORBIDDEN, because an omitted counter and
  * a zero counter are the same wire shape to a consumer and only one of them is true." So the
  * member list below is a constant, not the result of a `SELECT … FROM global_counters` whose
@@ -60,7 +60,7 @@ final class FleetHealth
     public const FOLD_STALLED_MS = 300_000;
 
     /**
-     * § 8.2.4's nine fleet-scoped counters, in the order § 7.1 then § 7.2 declare them.
+     * § 8.2.4's fleet-scoped counters, in the order § 7.1 then § 7.2 declare them.
      *
      * The list is a CONSTANT because § 8.2.4 forbids a per-member omission, and the only
      * implementation that cannot omit one is the one that does not read the member list from the
@@ -80,6 +80,8 @@ final class FleetHealth
         'snapshot_denied',
         'token_wrong_surface',
         'purge_backlog_rows',
+        'feed_prefix_future',
+        'feed_outbox_boundary_stalled',
     ];
 
     /**

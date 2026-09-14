@@ -7,9 +7,9 @@ use App\Feed\FeedHeartbeat;
 use App\Feed\FeedStream;
 use App\Feed\FleetHealthMessage;
 use App\Feed\FleetReload;
+use App\Feed\Outbox;
 use App\Feed\SeatDelta;
 use App\Fold\Clock;
-use App\Fold\Fold;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
 use Illuminate\Support\Facades\DB;
@@ -108,7 +108,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertSame('deploy', $reloads[0]['payload']['reason']);
 
         $this->assertGreaterThanOrEqual(
-            Fold::VISIBILITY_LAG_S * 1000 + FeedStream::TICK_MS + FeedReloadCommand::MARGIN_MS,
+            Outbox::VISIBILITY_LAG_S * 1000 + FeedStream::TICK_MS + FeedReloadCommand::MARGIN_MS,
             $elapsedMs,
             'the command returned while every stream was still inside the visibility lag',
         );
@@ -223,18 +223,18 @@ class FeedSurfaceTest extends FeedTestCase
      * ⛔ § 8.2.4's `counters` ASYMMETRY, ON THE SURFACE THE FEED TESTS ABOVE DO NOT REACH: the
      * REST snapshot.
      *
-     * "**`GET /api/fleet/health` only.** The nine fleet-scoped counters … the snapshot and the
+     * "**`GET /api/fleet/health` only.** Every fleet-scoped counter … the snapshot and the
      * feed never do." Both halves are asserted here because a negative assertion alone is passed
      * by an application that has no counters at all — the positive half is what makes the
      * negative one a finding about the ASYMMETRY. § 8.2.4's other term rides the same read: the
-     * nine are all-or-none, "a per-member omission is forbidden, because an omitted counter and a
+     * counters are all-or-none, "a per-member omission is forbidden, because an omitted counter and a
      * zero counter are the same wire shape to a consumer and only one of them is true".
      *
-     * The expected member list is `FleetHealth::COUNTERS` rather than nine literals: the class
+     * The expected member list is `FleetHealth::COUNTERS` rather than literals: the class
      * docblock argues that the closed set must be a constant and not a query result, and a
      * hand-typed list here would be the third copy of it.
      */
-    public function test_the_nine_counters_ride_fleet_health_alone_and_never_the_snapshot(): void
+    public function test_the_fleet_counters_ride_fleet_health_alone_and_never_the_snapshot(): void
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
@@ -244,7 +244,7 @@ class FeedSurfaceTest extends FeedTestCase
         // The positive half — and the control for the negative one below.
         $counters = $this->asMachine($token, '/api/fleet/health')->assertOk()->json('fleet.counters');
 
-        $this->assertSame(FleetHealth::COUNTERS, array_keys($counters), '§ 8.2.4: all nine or none');
+        $this->assertSame(FleetHealth::COUNTERS, array_keys($counters), '§ 8.2.4: every counter or none');
 
         // The negative half. `Snapshot::build()` calls `FleetHealth::build()` WITHOUT
         // `withCounters`, and the default is what carries this contract term — so this assertion

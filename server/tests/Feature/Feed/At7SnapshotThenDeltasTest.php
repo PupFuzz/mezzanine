@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Feed;
 
+use App\Feed\Outbox;
 use App\Feed\SeatDelta;
-use App\Fold\Fold;
 use App\Read\SeatObject;
 
 /**
@@ -160,7 +160,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 
         // …and only NOW does the client open the stream. Nothing written before it is replayed: § 8.5
         // "there is no per-seat delta-replay buffer on the server and deliberately so", and the
-        // handler's cursor starts at the head behind the lag.
+        // handler's cursor starts at the head of the visible prefix.
         $client->subscribe();
         $this->quietPastTheLag();
 
@@ -348,7 +348,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
      */
     private function quietPastTheLag(): void
     {
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
     }
 
     /** A fresh seat state for the next leg of a two-leg test: retire nothing, just move the desk on. */
