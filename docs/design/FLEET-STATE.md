@@ -2341,11 +2341,11 @@ it; `batches` is costed nowhere in this section and moves no figure. `sessions.e
 rather than at insert, so its index is maintained out of order in service, and its live figure may sit
 above the one built here.
 
-**The 153 B index-entry figure covers `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold`** — every
+**The 153 B index-entry figure is taken to cover `uq_dedup`, `ix_seat_seq`, `ix_seat_recv` and `ix_fold`** — every
 secondary index `events` carried before `ix_purge`, all of them in [§ 6.4](#64-ddl)'s DDL since this
 section was first written. Until card#9466's review round 1 this section counted them as three. Like
-the 449 B column sum, the figure has no written per-index derivation, so which indexes it covers was
-settled against a measurement rather than recovered: a copy of `events` holding 200,000 rows on
+the 449 B column sum, the figure has no written per-index derivation, so which indexes it covers is
+inferred from a measurement, not recovered: a copy of `events` holding 200,000 rows on
 MariaDB 11.8.6, spread across 50 seats with a pseudo-random 26-character `event_id`, read those indexes
 at ~216 B per row from `mysql.innodb_index_stats` page counts after `ANALYZE TABLE` (2026-09-14),
 against the model's 153 B × 1.5 ≈ 230 B, and the same indexes without `ix_fold` at ~187 B. No figure
