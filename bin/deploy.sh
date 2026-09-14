@@ -737,10 +737,12 @@ phase_a() {
     "FLEET-STATE.md § 6.1: TLS is REQUIRED to the store, certificate verified, with no" \
     "plaintext fallback — the credential and every descriptor cross a network between hosts."
 
-  # NOT CHECKED HERE, on purpose: § 6.1's MariaDB version floor, the storage engine, the
-  # collations and the session time zone. FLEET-STATE.md § 6.1 assigns every one of them to "verified at
-  # provisioning", and a deploy-time re-check would either duplicate that verification or, worse,
-  # become the place it is believed to happen while checking something weaker.
+  # NOT CHECKED HERE, on purpose: § 6.1's MariaDB version floor, the storage engine and the
+  # collations. FLEET-STATE.md § 6.1 assigns every one of them to "verified at provisioning", and a
+  # deploy-time re-check would either duplicate that verification or, worse, become the place it is
+  # believed to happen while checking something weaker. The session time zone is the app's own: the
+  # `mysql` connection's `timezone` key in server/config/database.php sets it on every connection, and
+  # DatabasePinTest asserts it.
   #
   # The PHP floor is A6, and it is NOT here — it needs $SHA, so it sits after A9. See it there.
 

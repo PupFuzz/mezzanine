@@ -56,6 +56,15 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // docs/design/FLEET-STATE.md § 6.1's session time zone. Laravel's connector
+            // (`Illuminate\Database\Connectors\MySqlConnector::configureConnection()`) issues
+            // `SET time_zone` from this key on every connect, and a reconnect goes back through the
+            // connector. Every column this plane writes is `DATETIME(3)` and is not converted; the
+            // framework's own `TIMESTAMP` columns are, and this is what makes them read and write
+            // UTC whatever the store host's zone. `DatabasePinTest` asserts the resolved session
+            // value. ⚠ The `mariadb` connection below does not carry it: moving the app to that
+            // connection is an OPEN DECISION in bin/deploy.sh, and whoever takes it moves this key.
+            'timezone' => '+00:00',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

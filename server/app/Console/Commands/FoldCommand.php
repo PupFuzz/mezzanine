@@ -35,9 +35,10 @@ class FoldCommand extends Command
                 break;
             }
 
-            // § 2.1: "continuous, ≤ 1 s idle poll". Only an EMPTY pass sleeps — a pass that applied
-            // its full window has more waiting and must not add a second of lag per 500 events
-            // during a drain, which is the one time the batch size binds at all.
+            // § 2.1: "continuous, ≤ 1 s idle poll". Only a pass that applied NOTHING sleeps — a pass
+            // that applied anything may have stopped at `Fold::BATCH` or at `Fold::WINDOW_BUDGET_MS`
+            // with more waiting, and must not add a second of lag per window during a drain. A pass
+            // whose every claimed seat was held by another transaction applied nothing, and sleeps.
             if ($applied === 0) {
                 usleep(1_000_000);
             }
