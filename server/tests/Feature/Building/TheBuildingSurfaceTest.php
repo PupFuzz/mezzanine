@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Building;
 
+use App\Building\BuildingLayout;
 use App\Building\Layouts;
 use App\Building\Revisions;
 use App\Floor\FloorMap;
@@ -10,6 +11,7 @@ use App\Floor\ShippedDefaultMap;
 use App\Fold\Clock;
 use App\Ingest\Counters;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Tests\Feature\Admin\FloorMapFixture;
@@ -23,11 +25,11 @@ use Tests\Feature\Feed\FeedTestCase;
  * slice 2.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ D2 § 11 NUMBERS NO ACCEPTANCE TEST FOR § 8.7. Row 12 calls this "D2's acceptance test for the
- * surface", and the three clauses above are the whole of what either document states for it; this
- * file asserts those three, plus § 8.7's two worked responses member for member. The feed half —
- * `room.map` and `building.layout` committed with the revision they announce — is the store's
- * property and is asserted beside the store, in `TheAuthoredStoreKeepsEveryRevisionTest`.
+ * ⚠ D2 § 11 NUMBERS NO ACCEPTANCE TEST FOR § 8.7, so the gate is row 12's own, and the three clauses
+ * above are the whole of what either document states for it; this file asserts those three, plus
+ * § 8.7's two worked responses member for member. The feed half — `room.map` and `building.layout`
+ * committed with the revision they announce — is the store's property and is asserted beside the
+ * store, in `TheAuthoredStoreKeepsEveryRevisionTest`.
  *
  * ⛔ THE THREE CLAUSES ARE ONE HAZARD SEEN FROM THREE SIDES: a client that cannot tell *the operator
  * authored nothing* from *the store is down* draws the wrong building with confidence (§ 8.7). So the
@@ -132,6 +134,47 @@ class TheBuildingSurfaceTest extends FeedTestCase
             ['install_id' => 'sola', 'map_version' => 2, 'updated_at' => $this->authoredAt('sola', 2)],
             ['install_id' => 'zeta', 'map_version' => 1, 'updated_at' => $this->authoredAt('zeta', 1)],
         ], $response->json('rooms'));
+    }
+
+    /**
+     * ⛔ `layout_version` AND `floors` ARE ONE REVISION'S. A client holds the version it was answered
+     * and treats the `building.layout` message carrying that version as already applied (§ 8.7), so a
+     * body pairing a new version with old floors keeps the old building on screen with nothing left to
+     * replace it.
+     *
+     * The race is planted rather than hoped for: a save commits the instant the surface's first read
+     * of `building_layout` has run. Read once, the body is the revision before that save, whole. Read
+     * twice, the save lands between the two reads and the body pairs one revision's version with the
+     * other's floors, in whichever direction the reads happen to be ordered — so the assertion is the
+     * pairing itself, never one direction of it.
+     */
+    public function test_a_save_committing_during_the_read_never_tears_the_version_from_its_floors(): void
+    {
+        Layouts::save((string) json_encode(['floors' => [['rooms' => ['aimla' => ['form' => 'open']]]]]), self::OPERATOR);
+
+        $user = $this->enrolled();
+        $planted = false;
+
+        DB::listen(function ($query) use (&$planted) {
+            if (! $planted && str_starts_with($query->sql, 'select * from '.$this->wrapTable('building_layout'))) {
+                $planted = true;
+                Layouts::save((string) json_encode(['floors' => [['rooms' => ['zeta' => ['form' => 'office']]]]]), self::OPERATOR);
+            }
+        });
+
+        $response = $this->browse('/api/building', $user)->assertOk();
+
+        $this->assertTrue($planted, 'the planted save never fired, so this proves nothing');
+        $this->assertSame(2, Layouts::version(), 'the planted save did not commit');
+
+        $version = $response->json('layout.layout_version');
+        $floors = BuildingLayout::fromJson((string) Revisions::get(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, $version)->document)->floors;
+
+        $this->assertSame(
+            json_decode((string) json_encode($floors), true),
+            $response->json('layout.floors'),
+            "layout_version $version was answered beside another revision's floors",
+        );
     }
 
     public function test_a_removed_room_leaves_rooms_and_a_room_the_layout_places_is_not_listed_unless_authored(): void

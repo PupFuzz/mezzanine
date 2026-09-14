@@ -136,7 +136,9 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // reach a client that is already open, and a page-inlined document reaches only a page that is
     // loaded after it" — that surface is served since Appendix B row 12 (`routes/fleet.php`) and
     // the client's fetch is row 13's. Until row 13 this inlines what the store holds, hallways and
-    // all — the same `Layouts::layout()->floors` the surface answers, so the two cannot disagree.
+    // all, through `Layouts::layout()`, which is the `Layouts::read()` the surface answers from, so
+    // both normalise a layout through the same code. A page loaded before a save still shows the
+    // layout it was loaded with (`dashboard.blade.php` says so).
     Route::get('/dashboard', fn () => view('dashboard', ['layout' => Layouts::layout()->floors]))
         ->name('dashboard');
 });

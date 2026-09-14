@@ -3,8 +3,9 @@
 namespace App\Support;
 
 /**
- * `docs/design/EVENT-SCHEMA.md § 3.1`'s two identity slugs, stated ONCE for every surface that
- * checks one.
+ * `docs/design/EVENT-SCHEMA.md § 3.1`'s two identity slugs, stated ONCE for every server surface
+ * that checks one. § 3.1 owns the patterns. The fleet reporter carries its own copy
+ * (`fleet-reporter/fleet-reporter.js`, `SLUG_INSTALL` and `SLUG_SEAT`), which nothing here keeps in step.
  *
  * The bodies are UNANCHORED on purpose: a route constraint (`Route::where()`) anchors its pattern
  * itself and takes no delimiters, while `preg_match()` needs both — so `pattern()` builds the second

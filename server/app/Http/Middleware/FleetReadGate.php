@@ -170,8 +170,8 @@ class FleetReadGate
      * branch adjudicates it), and that exclusion is deliberate rather than an oversight: an
      * ordinary browser hitting the floor before logging in is unauthenticated, is not a failed
      * authentication, and throttling it per source IP would refuse a shared office its login page.
-     * A valid token on `/timeline` is excluded for the same reason from the other direction — the
-     * credential authenticated fine, § 8.2's table simply does not admit it on that route.
+     * A valid token on a route in `SESSION_ONLY_ROUTES` is excluded for the same reason from the other
+     * direction — the credential authenticated fine, and that route simply does not admit it.
      *
      * ⛔ INCREMENT FIRST, THEN DECIDE, in D1 § 12.1 step 4's stated order and for its stated
      * reason: "the request that crosses the limit is itself a failure and must be counted before

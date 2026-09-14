@@ -46,32 +46,39 @@ class BuildingController extends Controller
      */
     public function building(): JsonResponse
     {
-        // ⚠ THE READS ARE NOT WRAPPED IN A TRANSACTION, deliberately. A save committing between them
-        // can answer a layout from before it beside room versions from after it — and the message
-        // that save commits (§ 8.7) reaches a client whose stream was open before this fetch, which
-        // snapshot-then-deltas makes every client, so the torn answer is superseded rather than kept.
+        // ⚠ THE LAYOUT READ AND THE ROOMS READ ARE NOT WRAPPED IN A TRANSACTION, deliberately. A save
+        // committing between them can answer a layout from before it beside room versions from after
+        // it — and the message that save commits (§ 8.7) reaches a client whose stream was open before
+        // this fetch, which snapshot-then-deltas makes every client, so the torn answer is superseded
+        // rather than kept.
         // What a transaction would cost instead is the fail-closed posture: Laravel's
         // `createTransaction()` rethrows a failed BEGIN as the raw driver exception rather than a
         // `QueryException`, so a store that cannot be reached would answer `500`, not
         // `503 fleet_unavailable`.
-        return $this->serve(fn () => [
-            'api_version' => self::API_VERSION,
-            'server_time' => $this->serverTime(),
-            'layout' => [
-                // § 8.7: "`layout_version` is `0` with an empty `floors` when no layout was ever saved".
-                'layout_version' => Layouts::version(),
-                // The page's own value (`routes/web.php`'s dashboard), so the two cannot normalise a
-                // layout differently. A stored document the reader now refuses raises
-                // `InvalidBuildingLayout` exactly as the page does — a `500`, not `fleet_unavailable`,
-                // because the store answered.
-                'floors' => Layouts::layout()->floors,
-            ],
-            'rooms' => Floors::versions()->map(fn (object $room) => [
-                'install_id' => (string) $room->install_id,
-                'map_version' => (int) $room->map_version,
-                'updated_at' => Clock::wire($room->updated_at),
-            ])->all(),
-        ]);
+        return $this->serve(function () {
+            // ⛔ ONE READ OF THE LAYOUT ROW for both members. `layout_version` and `floors` are one
+            // revision's, or a client holding that version treats the `building.layout` message that
+            // carries it as already applied (§ 8.7). A stored document the reader now refuses raises
+            // `InvalidBuildingLayout` exactly as the page does (`routes/web.php`'s dashboard reads
+            // through `Layouts::layout()`, which is this same read) — a `500`, not
+            // `fleet_unavailable`, because the store answered.
+            $current = Layouts::read();
+
+            return [
+                'api_version' => self::API_VERSION,
+                'server_time' => $this->serverTime(),
+                'layout' => [
+                    // § 8.7: "`layout_version` is `0` with an empty `floors` when no layout was ever saved".
+                    'layout_version' => $current->version,
+                    'floors' => $current->layout->floors,
+                ],
+                'rooms' => Floors::versions()->map(fn (object $room) => [
+                    'install_id' => (string) $room->install_id,
+                    'map_version' => (int) $room->map_version,
+                    'updated_at' => Clock::wire($room->updated_at),
+                ])->all(),
+            ];
+        });
     }
 
     /**
