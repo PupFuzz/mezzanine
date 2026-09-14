@@ -67,6 +67,29 @@ because a gate can only be proven on a defect of its own class:
                EMPHASIS moved it out of the check's reach".  card#9326's review is why this exists: a
                row match that expected an unbolded figure passed a bolded drifted one at rc 0, and
                bolding the correct figure silently dropped the row from the check.
+  `imperative`
+            -- rewrite a backticked counter WRITER (`counts \`x\``) into the pseudocode fences' idiom
+               (`count x`: the bare name after the bare imperative verb), which is the class "a
+               counter's only writer is spelled the way the fences spell one".  card#9320 is why
+               this exists: G8's writer idiom required the backtick spelling and a closed verb set,
+               so a § 7.2 counter written only as § 8.3's fence writes one reded G8's reverse leg as
+               "nothing increments it" -- and, the harm, an undeclared one written there shipped
+               green.  It is a HOLD plant (below): the correct verdict is that the writer is SEEN.
+  `unwrite` -- rewrite the same writer's verb into one that writes nothing (`names \`x\``), which is
+               the class "a § 7.2 counter lost its writer".  Also card#9320, and paired with the
+               `imperative` hold on the SAME anchor: this plant reds only while the anchored writer
+               is the counter's sole writer, which is what keeps that hold from going vacuous.
+  `noun`    -- rewrite a counter writer into English that uses "count" as a NOUN beside the counter
+               name (`keeps a count of \`x\``), which is the class "the widened idiom reads English as
+               a counter write".  Also card#9320, and also a HOLD: the imperative verb had to enter
+               G8's idiom, and the word is ordinary English all over the document.
+
+TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
+line containing the named substring that the control lacks -- the same differential, pointed the
+other way.  A HOLD is not a pass that cannot fail: each one reds against a specific wrong gate, and
+the comment on each entry names that gate.  The `imperative` hold reds against the backtick-only
+idiom G8 had before card#9320; the `noun` hold reds against the naive widening that makes the
+backtick optional and admits any word after the verb.
 
 An anchor matching NOTHING is a hard error, never a skip -- that is the false-clean shape this whole
 directory exists against.  No kind writes the value it perturbs into this file.
@@ -210,6 +233,34 @@ PLANTS = [
         "rename",
         "the message name in § 8.4's protocol FENCE, which G7 holds against § 8.3's declared table",
         "is used as a feed message type and has no row in",
+    ),
+    (
+        # card#9320.  G7's defect, one gate over: § 8.3's handler fence writes its counter as a bare
+        # name after a bare imperative verb, and G8's writer idiom could see neither half, so a
+        # renamed counter there shipped at rc=0 with no row in § 7.1 or § 7.2.  Placed inside the
+        # fence for the same reason the G7 plant above is: in backticked prose it would red against
+        # the narrow idiom too, and prove nothing about the surface.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(yield feed\.close\{reason:\"stalled\"\} --[^\n]*\n\s*count )([a-z_]+)(; return)",
+        "rename",
+        "the counter § 8.3's handler FENCE writes in the bare-imperative idiom, which G8's forward "
+        "leg holds against § 7.1 / § 7.2 (card#9320)",
+        "is written as a counter and has no row in section",
+    ),
+    (
+        # card#9320.  The `imperative` hold below proves G8's reverse leg reads the fence idiom only if
+        # the writer it rewrites is the counter's ONLY writer outside § 7.2 and § 11 -- with a second
+        # one the hold passes whatever the idiom does.  This plant takes that writer away on the SAME
+        # anchor, and reds only while no other writer exists, so a second writer turns THIS red
+        # instead of leaving the hold silently proving nothing.  Re-pin both together.
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(Every snapshot this plane answers )(counts `[a-z_]+`)(\n\(\[§ 7\.2\])",
+        "unwrite",
+        "the sole writer of the § 7.2 counter the `imperative` hold rewrites, which G8's reverse leg "
+        "must then report as written by nothing (card#9320)",
+        "no rule outside that table names",
     ),
     (
         "verify-fleet-state.py",
@@ -362,6 +413,36 @@ PLANTS = [
     ),
 ]
 
+# Same shape as PLANTS; the substring is the failure a WRONG gate would print, which the mutant must
+# not newly carry.
+HOLDS = [
+    (
+        # card#9320, G8's REVERSE leg.  Rewrites the anchored counter's sole writer outside § 7.2 and
+        # § 11 into the fence idiom, so the bare-imperative form is its ONLY writer -- the `unwrite`
+        # plant on this same anchor is what proves "sole" on every run.  Against the backtick-only
+        # idiom this reds "no rule outside that table names it".
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(Every snapshot this plane answers )(counts `[a-z_]+`)(\n\(\[§ 7\.2\])",
+        "imperative",
+        "a § 7.2 counter whose only writer is the fences' bare-imperative idiom, which G8's reverse "
+        "leg must still find (card#9320)",
+        "no rule outside that table names",
+    ),
+    (
+        # card#9320, G8's FORWARD leg against English.  "count" as a noun in prose, beside a counter
+        # name.  Against a widening that makes the backtick optional and takes any word after the
+        # verb, this reds "`of` is written as a counter".
+        "verify-fleet-state.py",
+        "docs/design/FLEET-STATE.md",
+        r"(exceeds it by more than 1, the server )(increments `[a-z_]+`)( \(\[§ 8\.5\])",
+        "noun",
+        "prose using \"count\" as an English noun beside a counter name, which G8's forward leg "
+        "must not read as a counter write (card#9320)",
+        "is written as a counter and has no row in section",
+    ),
+]
+
 # Each reads group(2) out of the document and transforms it; none carries a value of its own.
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
@@ -369,6 +450,11 @@ MUTATIONS = {
                             + re.sub(r"^\d+", lambda d: str(int(d.group(0)) + 1), m.group(2)) + "**"
                             + m.group(3)),
     "rename": lambda m: m.group(1) + m.group(2) + "_renamed" + m.group(3),
+    "imperative": lambda m: (m.group(1) + "count " + re.search(r"`([a-z_]+)`", m.group(2)).group(1)
+                             + m.group(3)),
+    "unwrite": lambda m: m.group(1) + re.sub(r"^\w+", "names", m.group(2)) + m.group(3),
+    "noun": lambda m: (m.group(1) + "keeps a count of " + re.search(r"`[a-z_]+`", m.group(2)).group(0)
+                       + m.group(3)),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
@@ -517,6 +603,27 @@ for tool, rel, anchor, kind, what, expect in PLANTS:
         print(f"     {new_lines[0][:160]}")
     print()
 
+for tool, rel, anchor, kind, what, wrong in HOLDS:
+    print(f"── {tool}")
+    print(f"   hold [{kind}]: {what}")
+
+    ctl_rc, ctl_out = run_verifier(tool)
+    mut_rc, mut_out = run_verifier(tool, (rel, anchor, kind))
+
+    # The same differential as above, pointed the other way: a line the control already carries is
+    # somebody else's defect, and only a NEW line carrying the wrong gate's failure fails the hold.
+    ctl_lines = [l.strip() for l in ctl_out.splitlines() if wrong in l]
+    new_lines = [l.strip() for l in mut_out.splitlines() if wrong in l and l.strip() not in ctl_lines]
+
+    if new_lines:
+        failures.append(f"{tool}: a HOLD mutant in {rel} newly carries {wrong!r} — the verifier "
+                        f"reds on the correct form this hold plants, so its guard is back to the "
+                        f"wrong population: {new_lines[0][:200]}")
+        print(f"   ✗ mutant rc={mut_rc} and newly carries: {new_lines[0][:160]}")
+    else:
+        print(f"   ✓ control rc={ctl_rc} → mutant rc={mut_rc}, and no new line carries {wrong!r}")
+    print()
+
 if failures:
     print("PLANT FAILURES:")
     for f in failures:
@@ -525,4 +632,6 @@ if failures:
 
 print(f"ALL PLANTS CAUGHT — {len(PLANTS)} plants over {len({p[0] for p in PLANTS})} verifiers, "
        f"each seen to red on a defect of the class its guard exists for "
-       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant")
+       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant; "
+       f"{len(HOLDS)} holds ({', '.join(sorted({p[3] for p in HOLDS}))}), each correct form "
+       f"planted and seen NOT to red")
