@@ -19,7 +19,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
-- **Session cookie** — **A production install now marks the session cookie Secure without a `.env`
+- **card#9543** — **A production install now marks the session cookie Secure without a `.env`
   key.** `server/config/session.php` defaults `session.secure` to `true` when `APP_ENV` is
   `production`, including an unset `APP_ENV`, and `SESSION_SECURE_COOKIE` still overrides it. The
   default was Laravel's null, which sets the flag only on a request PHP sees as HTTPS, so behind a
