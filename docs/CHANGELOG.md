@@ -19,6 +19,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9464** — **A draining seat's fold window now releases the seat within a time budget, and a
+  fold's deltas are computed from what the seat held when its window took the lock, under any session
+  isolation settings.** A fold window held its seat's `seat_state` lock until it had applied up to `Fold::BATCH`
+  events, so during a drain every post for that seat could wait out its lock bound and answer `503`
+  over and over. `App\Fold\Fold` now stops a window at `Fold::BATCH` or at `Fold::WINDOW_BUDGET_MS`,
+  whichever it reaches first, and advances the cursor to the last event it applied. The budget is
+  derived from the ingest's session bounds, `IngestPipeline::IDLE_TRANSACTION_TIMEOUT_S` less
+  `IngestPipeline::PROCESSING_TARGET_MS` (now public), so a post queued behind a window is granted the
+  lock inside its own wait. The window's first statement is now the seat's `seat_state` row lock,
+  `FOR UPDATE SKIP LOCKED`, before it reads events or samples the fingerprint a delta is computed from,
+  so a same-seat writer cannot commit between them; a seat another transaction holds is yielded for the
+  pass with nothing written. The poison-event rule's one-event attempts and its quarantine take the
+  same lock the same way. The `mysql` connection now sets the session time zone to `+00:00` on every
+  connection through its `timezone` key, so the `TIMESTAMP` columns of the auth tables and
+  `failed_jobs` read and write UTC whatever the store host's zone. D2 § 2.2, § 6.1, § 6.3, § 6.5 and
+  § 12 state it. New tests:
+  `FoldLockFirstTest` and `FoldWindowDurationTest` on real MariaDB connections, `FoldWindowTimeBoundTest`,
+  `FoldWindowBudgetSourcesTest`, and a session time-zone assertion in `DatabasePinTest`.
+  **Installer action:** check the store's time zone. There is no migration, and the deploy's daemon
+  restart puts the fold on the new code. Before deploying, run `SELECT @@system_time_zone` on the
+  store. Where it is not UTC, the `TIMESTAMP` values the auth tables and `failed_jobs` already hold were
+  written through that zone, and they read back shifted by its offset once the connection is pinned.
+  On a store west of UTC, a two-factor reset code issued within `TwoFactorReset::TTL_MINUTES` before
+  the deploy stays valid for that offset longer, once.
 - **card#9466** — **Rebuild, retirement and the sweep take the seat's `seat_state` lock first, and every
   purge table has a retention index.** `mezzanine:rebuild` locks the seat before it deletes its
   projections and retries the whole replay on a lock timeout, deadlock or changed row

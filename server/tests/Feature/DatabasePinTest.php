@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\DB;
 use SimpleXMLElement;
 use Tests\TestCase;
 
@@ -85,5 +86,10 @@ class DatabasePinTest extends TestCase
         $this->assertSame('mezzanine_test', config('database.connections.mysql.database'));
         $this->assertSame('11', (string) config('database.redis.default.database'));
         $this->assertSame('10', (string) config('database.redis.cache.database'));
+
+        // AT-D2-14's resolved session time zone (§ 6.1): read from the SESSION, so it reds whether the
+        // config key is removed or stops reaching the connection.
+        $this->assertSame('+00:00', DB::selectOne('SELECT @@session.time_zone AS v')->v,
+            "the store connection's session time zone is not UTC");
     }
 }
