@@ -83,6 +83,17 @@ its date, its decider and the scope of what it moved. The original row above sta
   is untouched and permanent, and nothing here widens the licence allowlist, which remains an
   operator decision taken separately.
 
+- **D-08 · the target is named — operator, 2026-09-14.**
+  D-08 reads *"App deploys to a **separate host** (operator provisions; target TBD)"*. The
+  operator named the target on the 2026-09-14 Decision Docket: the production host is
+  **`mezzanine.neeba.com`**, a clean Virtualmin install. **What moves:** *target TBD* only — the
+  host is identified, and how the application gets onto it is stated: the operator runs the
+  install, from commands this project's build agent supplies (D-13). **What does NOT move, and
+  each is load-bearing:** the host is still *separate* and still the operator's to provision.
+  Nothing has been deployed to it, so `bin/deploy.sh` has still never run against a host and every
+  live-host leg § 5 names stays unexercised. Installing on the host and deploying
+  to it both stay ask-first: this amendment records a target, and clears no act on it.
+
 - **D-12 · the required-check clause only — measured, not re-decided; 2026-09-09 (card#9054).**
   D-12 records *"`card-token-lint` is a required check on both"*. That was the measured state on
   2026-08-23 and it is no longer the whole list — contexts have been added since, and a reader who
@@ -294,7 +305,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | CI lanes for app code (#7344) | first PHP/JS code | required-check list updated the same PR (see `docs/VERSIONING.md` — a new workflow is not auto-required) |
 | **cont.** | changelog + card-entry gate (card#8174, per #344) — ✅ **landed 2026-08-30** as `release-pr-guard` R4 (the card's bullet) and R5 (the size gate § 4 had claimed since D-11) | — | § 4; every arm seen to red on a planted defect first — eight guard mutations, each producing a targeted failure |
 | | `CLAUDE*.md` structure (new card, blocked on #346) | #346 answer | index + chapters per sola-inventory's pattern |
-| | `bin/deploy.sh` prod deploy (#7459) | P2 server host (D-08) | prod moves only via the script; seen to fail on a broken precondition before trusted — `bin/deploy.selftest.sh` is that evidence, and the live-host leg stays unexercised until a host exists |
+| | `bin/deploy.sh` prod deploy (#7459) | P2 server host (D-08) | prod moves only via the script; seen to fail on a broken precondition before trusted — `bin/deploy.selftest.sh` is that evidence, and the live-host leg stays unexercised until the first deploy to the prod host (D-08) |
 
 Deliberately **not** in this plan: the autonomy watchdog (roundtable #341 + our `[WAKE]` prototype
 #659 — separate track; Mezzanine's contribution to it is the REST snapshot), and the aimla
@@ -588,8 +599,8 @@ rule violations anyone could have committed at the time.
   correct for an unproxied host and fails safe either way: behind an untrusted proxy every request
   appears to come from the proxy and the limit is merely coarse, whereas `trustProxies('*')` would
   let any client forge the header and defeat the key entirely — the limit would then be a
-  decoration, which is the one thing § 12.3 says it must not be. The deploy host is not
-  provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
+  decoration, which is the one thing § 12.3 says it must not be. The application is not
+  yet installed on the prod host (D-08), so the value cannot be set now; setting it is part of that install.
   `bin/deploy.sh` enforces the half that is enforceable: it **refuses** a target tree carrying
   `trustProxies('*')` and **warns** when none is configured — this paragraph's own reading of the
   two states, not a stricter one.

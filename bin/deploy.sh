@@ -107,7 +107,7 @@
 #
 # CARD / DECISION TOKENS, kept in the script on purpose (handover item 4 — they make it
 # answerable): card#7459 (this script) · card#9287 (the feed re-pinned to SSE; no Reverb daemon) · card#7344 (CI
-# lanes) · D-08 (separate prod host, unprovisioned) · D-13 (prod moves only by this script) ·
+# lanes) · D-08 (separate prod host; named 2026-09-14, never deployed to) · D-13 (prod moves only by this script) ·
 # D-15 (the store on a dedicated host; MariaDB per its 2026-09-09 amendment) · D-16 (the app
 # lives in server/) · rt#347 (the sample and the binding handover) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.

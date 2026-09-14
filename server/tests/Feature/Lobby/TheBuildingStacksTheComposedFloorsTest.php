@@ -34,8 +34,9 @@ use Tests\Feature\Feed\FeedTestCase;
  * elements; `LobbyPageWiringTest` checks those elements exist in both directions; the last test
  * in this file is the one that reds if the DOM half is deleted outright.
  *
- * ⚠ AND NO INSTALL EXISTS IN ANY DEPLOYMENT OF THIS SERVER. There is no host yet (`docs/PLAN.md`
- * P4: "the live-host leg stays unexercised until a host exists"), so every floor below is a floor
+ * ⚠ AND NO INSTALL EXISTS IN ANY DEPLOYMENT OF THIS SERVER. Nothing has been deployed to the prod host
+ * yet (`docs/PLAN.md` D-08; § 3's `bin/deploy.sh` row: "the live-host leg stays unexercised until
+ * the first deploy to the prod host"), so every floor below is a floor
  * this suite provisioned. The one-floor and no-floor cases are therefore not hypothetical
  * degradations — they are what the building renders as the moment it is first deployed, which is
  * why they get their own tests and their own planted controls rather than a remark.
