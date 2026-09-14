@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Http\Responses\RecoveryCodesGeneratedResponse;
+use App\Http\Responses\TwoFactorConfirmedResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -10,6 +11,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Contracts\RecoveryCodesGeneratedResponse as RecoveryCodesGeneratedResponseContract;
+use Laravel\Fortify\Contracts\TwoFactorConfirmedResponse as TwoFactorConfirmedResponseContract;
 use Laravel\Fortify\Fortify;
 
 /**
@@ -30,6 +32,12 @@ class FortifyServiceProvider extends ServiceProvider
          * Fortify's rather than being copied into this application.
          */
         $this->app->singleton(RecoveryCodesGeneratedResponseContract::class, RecoveryCodesGeneratedResponse::class);
+
+        /*
+         * Card#9445, the same mechanism: where a browser lands once its enrolment code is accepted.
+         * See `App\Http\Responses\TwoFactorConfirmedResponse`.
+         */
+        $this->app->singleton(TwoFactorConfirmedResponseContract::class, TwoFactorConfirmedResponse::class);
     }
 
     public function boot(): void

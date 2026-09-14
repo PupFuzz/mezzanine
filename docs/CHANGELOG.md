@@ -42,6 +42,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   with its intervals scaled, with REDs of a flusher that lets the timeout overwrite on a fixed cadence
   and of one that never replaces a measured value. **Installer action:**
   none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1).
+- **card#9445** — **Two-factor enrolment now says what happened to the code you entered.** A
+  rejected code shows Fortify's message (*"The provided two factor authentication code was
+  invalid."*) above the form, and an accepted code lands on the dashboard under *"Two-factor
+  authentication is on. Each sign-in now asks for a code from your authenticator app."* Before, a
+  correct code returned to `/two-factor-enroll`, which still drew the QR code, the recovery codes,
+  the code form and "Start over" beneath the raw status key `two-factor-authentication-confirmed`,
+  and a wrong code returned to the same page with no message; the first real sign-in read the
+  success as a failure. Three changes carry it: `layouts/app.blade.php` renders the messages of
+  every error bag (Fortify reports this rejection in `confirmTwoFactorAuthentication`, and the
+  layout read only `default`); `auth/two-factor-enroll.blade.php` branches on
+  `hasCompletedTwoFactorEnrolment()` first and shows a confirmed account a confirmed state with
+  links to the floor and to `/two-factor/recovery-codes`; and
+  `App\Http\Responses\TwoFactorConfirmedResponse` is bound over Fortify's contract so a browser
+  lands on the dashboard, with the JSON response kept as Fortify's.
+  `Tests\Feature\TwoFactorEnrolmentStatesTest` drives both answers through Fortify's routes and
+  asserts on the page the browser lands on. A confirmed account's recovery codes are now shown only
+  at `/two-factor/recovery-codes`, behind a password re-entry: `/two-factor-enroll` carries only
+  `auth`, and it used to show a confirmed account's recovery codes and the QR code that encodes its
+  authenticator secret to any signed-in session of that account.
 
 - **card#9393** — **A flusher that loses ownership of `state.json` now stops sending and exits, as
   D1 § 2.3 requires; before, it detected the loss and kept posting from its in-memory `seq`.** The
