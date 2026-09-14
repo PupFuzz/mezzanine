@@ -19,6 +19,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **Session cookie** — **A production install now marks the session cookie Secure without a `.env`
+  key.** `server/config/session.php` defaults `session.secure` to `true` when `APP_ENV` is
+  `production`, including an unset `APP_ENV`, and `SESSION_SECURE_COOKIE` still overrides it. The
+  default was Laravel's null, which sets the flag only on a request PHP sees as HTTPS, so behind a
+  TLS-terminating proxy the app does not trust, or on a request reaching PHP over plain HTTP, the
+  session cookie went out without it. Outside production the default is unchanged. `server/.env.example`
+  documents the key, and `docs/PLAN.md § 5` states the obligation. New test:
+  `SessionCookieSecureDefaultTest`. **Installer action:** none on an HTTPS production host. A production
+  host whose `.env` sets `SESSION_SECURE_COOKIE=true` can keep or remove it. A production host served
+  over plain HTTP sets `SESSION_SECURE_COOKIE=false` before deploying, because its browsers stop
+  returning a Secure cookie over HTTP and sign-in stops working.
 - **card#9500** — **A `ca_file` the seat cannot read, or one that is not an absolute path, now stops
   the seat's requests and fails `selftest` by name.** The reporter caught the read failure and sent the
   request with the default trust store. The seat then trusted every publicly trusted CA instead of the

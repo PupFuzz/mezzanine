@@ -625,6 +625,18 @@ rule violations anyone could have committed at the time.
   and by `::test_the_dummy_hash_survives_the_request_that_minted_it` — the second is the arm that
   reds when the value stops outliving a request, which is exactly what a non-persistent store does
   to it.
+- **A production host's session cookie is Secure by default, with no `.env` key to set.**
+  `server/config/session.php` resolves `session.secure` to `true` when `APP_ENV` is `production` (or
+  unset, which `config/app.php` also reads as production), and `SESSION_SECURE_COOKIE` overrides it
+  either way. Laravel's own default is null, and on null Symfony's `Response::prepare()` sets the flag
+  only when PHP itself sees the request as HTTPS. Behind a TLS-terminating proxy the app does not
+  trust (the state the trusted-proxies bullet above describes until the host is stood up), or on any
+  request that reaches PHP over plain HTTP, a null default sends the session cookie without the flag,
+  and a browser then returns it over plaintext. Outside production the null default is kept, so a local
+  checkout on `http://localhost:8000` still signs in. A production host served only over plain HTTP
+  sets `SESSION_SECURE_COOKIE=false`, and its browsers then send the session over plaintext.
+  `server/tests/Feature/Admin/SessionCookieSecureDefaultTest` holds the default, the override and
+  the resulting cookie on a plain-HTTP request.
 - **A deployed host that wants the two-factor reset sets `MAIL_MAILER` to a real transport and
   PROVES it, and a host that does not sets nothing and the path stays closed** (card#9077). The
   operator ruled that a locked-out user may reset their second factor by email; the code path is
