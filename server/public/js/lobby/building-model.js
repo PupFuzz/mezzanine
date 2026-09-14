@@ -17,7 +17,7 @@
  * floor — and they would agree until the day one of them was edited.
  *
  * ⭐ A PLATE IS A FLOOR, AND SINCE card#9267 A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS
- * (§ 3.1, § 4.6) — one room per floor until the building layout the page delivers says
+ * (§ 3.1, § 4.6) — one room per floor until the building layout `GET /api/building` answers says
  * otherwise. The stack is the composed floors, keyed by floor; the cab's stop is a floor key;
  * and none of that is decided here, because `floors()` already decided it.
  *
@@ -39,8 +39,8 @@
  * ONE floor is the one stop reached with the fleet fully placed (card#9267).
  *
  * ⚠ WHERE THE RIDE ARRIVES IS NOT BUILT. § 4.1: an elevator ride and a zoom-to-floor are § 4.5's
- * camera arriving at the floor route — and that route does not exist (card#9208: the floor map is
- * a build artifact and none is vendored; § 14 item 7's tileset is still open). So a ride moves the
+ * camera arriving at the floor route — and that route does not exist (it is `docs/design/FLOOR.md`
+ * Appendix B step 7, card#7341, and is not built). So a ride moves the
  * cab between the plates of this screen and nothing else, and the plate keeps the published link
  * `floors()` already gives it — D3's own route, never one minted here.
  */

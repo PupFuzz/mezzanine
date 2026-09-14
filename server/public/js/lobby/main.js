@@ -66,12 +66,8 @@ let lastBuilding = null;
  * (`docs/design/FLEET-STATE.md § 8.7`) by `lobby-entry.js`, after the snapshot, and held here with
  * its last failure; the page carries none (Appendix B row 13, card#9208).
  *
- * ⛔ THE BROWSER'S `fetch` IS WRAPPED, NOT PASSED. `Building` calls the function it is given as a
- * method of itself, and the platform's `fetch` called with any `this` but `window` throws
- * *Illegal invocation* — which `request()` would then read as a server nobody could reach.
  */
-const get = (path, init) => fetch(path, init);
-const surface = new Building(get);
+const surface = new Building(fetch);
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node ===
@@ -277,7 +273,7 @@ function render(snapshot) {
  * The route's entry — § 4.4's two fetches, in `lobby-entry.js`'s order — and its render.
  */
 async function load() {
-    await show(await enter(get, surface));
+    await show(await enter(fetch, surface));
 }
 
 /** One snapshot response, rendered — or refused in words. */
@@ -315,7 +311,7 @@ async function show(response) {
     // disagreement still standing after that fetch is rendered and not re-fetched. It is a SNAPSHOT
     // fetch — the layout is not asked for again, and the building held is the one rendered.
     if (model.discrepancy !== null && budget.admits(model.held, body?.fleet?.seats_total)) {
-        await show(await fetchSnapshot(get));
+        await show(await fetchSnapshot(fetch));
     }
 }
 

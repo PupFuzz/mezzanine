@@ -13,7 +13,7 @@
  * ⛔ EVERY RENDERED FACT NAMES ITS D2 MEMBER (§ 1.3 corollary 1: "No rendered fact without a
  * named field"). The map, once, so no function below has to argue it a second time:
  *
- *   floor row .................. the BUILDING LAYOUT the page delivered (§ 4.6), composed
+ *   floor row .................. the BUILDING LAYOUT `GET /api/building` answered (§ 4.6), composed
  *                                against `installs[].install_id`        (§ 4.1 row 1)
  *   a room on the row .......... `installs[].install_id`, and whether the client holds it
  *   per-floor summary counts ... `render_state` over `installs[].seats[]` for every install the
@@ -98,13 +98,13 @@ export function floorSummary(seats) {
  * layout composes, plus one per install it does not place, floor keys ascending.
  *
  * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
- * `layout` is the validated, normalised document the page delivered (`#lobby-layout`): a list of
+ * `layout` is the validated, normalised floors `GET /api/building` answered (D2 § 8.7): a list of
  * `{ floor, label, rooms: [{ install, form }] }`, keys already derived server-side and `label`
  * null on a floor the operator did not name (card#9273, § 4.6). What THIS function
  * adds is § 4.6's one default rule — an install the snapshot carries that no delivered floor
  * places is a floor of its own, alone, `open` — and it adds it HERE and not only on the server
- * because § 4.1's discrepancy check discovers an install AFTER the page was served, and that
- * install owes a floor the page could not have known about. The rule has a second home in
+ * because § 4.1's discrepancy check discovers an install AFTER the layout was fetched, and that
+ * install owes a floor the layout could not have known about. The rule has a second home in
  * `App\Building\Building::compose()` for the console; `tests/fixtures/building/compose-cases.json`
  * is the one statement both are held to.
  *
@@ -114,11 +114,11 @@ export function floorSummary(seats) {
  * subscribed to and never counted. ADMIT's population is the snapshot's, not the layout's.
  *
  * The sort is § 2.1 row 6's ("floors by floor id ascending") and is applied here rather than
- * trusted from the page or the wire: a client that renders in received order is a client whose
+ * trusted from the wire: a client that renders in received order is a client whose
  * order is a property of somebody else's serialiser.
  *
- * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor is
- * card#9208-blocked (no floor map of any kind is vendored). The row is still the link, because
+ * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor screen is
+ * Appendix B step 7 (card#7341). The row is still the link, because
  * § 4.1 says the row IS the link and a lobby whose rows are inert is a different design; what it
  * must not be is a link to an invented endpoint, and this is D3's own published route, not one
  * minted here.
@@ -379,7 +379,7 @@ export class DiscrepancyBudget {
  * Neither string is ratified.
  */
 export function layoutStatement(failure) {
-    if (failure === null || failure === undefined) {
+    if (failure === null) {
         return null;
     }
 

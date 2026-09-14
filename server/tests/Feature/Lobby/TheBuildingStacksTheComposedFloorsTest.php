@@ -372,7 +372,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         $this->assertSame('aimla', $back['destination']);
 
         // ⛔ CONTROL 16 — the label dropped in the shipped client, which is how this feature
-        // half-ships: the page delivers the label, the browser ignores it, and the plate quietly
+        // half-ships: the surface delivers the label, the browser ignores it, and the plate quietly
         // reads its key. `test_the_browsers_composition_agrees_with_the_fixture_case_by_case`
         // reds on the same mutation; what is asserted here is what the VIEWER would see.
         $dropped = $this->mutatedModules([

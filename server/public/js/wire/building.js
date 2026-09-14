@@ -41,6 +41,9 @@ export function roomMapPath(installId) {
  * `status` is `null` when the request never reached a status — the browser could not reach the
  * server — which is a failure with no code to name, and is kept apart from every code so no caller
  * renders it as one. `body` is the parsed JSON object, or `null` when the body is not one.
+ *
+ * `fetchImpl` is called as a plain function, never as a method of anything: the lobby passes the
+ * browser's own `fetch`, unbound.
  */
 export async function request(fetchImpl, path) {
     let response;
