@@ -9,8 +9,9 @@ Route::get('/', fn () => redirect()->route('dashboard'));
 
 /*
  * Reachable once authenticated, deliberately NOT behind `mfa`: it is the screen a user with
- * no second factor is sent to, so gating it would be a redirect loop. It shows nothing but
- * the enrolment controls, which are Fortify's own routes under `password.confirm`.
+ * no second factor is sent to, so gating it would be a redirect loop. It renders one of three
+ * states — the enrolment controls (Fortify's own routes under `password.confirm`), the recovery
+ * codes after enabling, or a confirmed state — and the ⚠ paragraphs below own the last two.
  *
  * ⚠ IT NOW ALSO SHOWS THE RECOVERY CODES (card#9077): the branch that renders them is only
  * reachable after `two-factor.enable` has run, and THAT route is `auth` + `password.confirm`. The

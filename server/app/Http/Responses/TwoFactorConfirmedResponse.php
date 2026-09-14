@@ -24,6 +24,13 @@ use Symfony\Component\HttpFoundation\Response;
  * ⚠ THE JSON BRANCH IS PRESERVED EXACTLY, for the reason `RecoveryCodesGeneratedResponse` gives:
  * overriding a response contract changes it for every caller, and the vendor's shape for an API
  * client is not this card's to alter.
+ *
+ * ⚠ TWO SIBLING STATUS KEYS STILL RENDER RAW. Fortify's enable and disable responses are not
+ * overridden, and `layouts/app.blade.php` prints `session('status')` as-is, so "Generate a secret"
+ * shows `two-factor-authentication-enabled` and "Start over" shows `two-factor-authentication-disabled`.
+ * Declined on card#9445 as cosmetic. This class and `RecoveryCodesGeneratedResponse` are already two
+ * per-status copies: the next status that needs a sentence gets ONE key→sentence map where the layout
+ * renders the status, never a third class.
  */
 final class TwoFactorConfirmedResponse implements FortifyContract
 {
