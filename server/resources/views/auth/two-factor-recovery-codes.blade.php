@@ -37,40 +37,28 @@
         with a confirmed second factor to enrol a replacement device: card#9445 removed "Start over"
         from the enrolment page for confirmed accounts, and the emailed reset needs outbound mail.
 
-        It posts to FORTIFY'S OWN disable route (`DELETE /user/two-factor-authentication`,
-        `two-factor.disable`), which clears the secret, the recovery codes and
-        `two_factor_confirmed_at` together. There is no application-owned copy of that route, for the
-        reason `App\Http\Responses\RecoveryCodesGeneratedResponse` gives. The route carries `auth` and
-        `password.confirm` of its own (`config/fortify.php` sets `confirmPassword => true`), so
-        reaching this page does not stand in for that check: the DELETE is judged on its own request.
-        Where it lands is Fortify's stock `back()`, which is this page, and `mfa` sends an account
-        with no confirmed factor from here to the enrolment page — the same gate that holds every
-        other page. `Tests\Feature\TwoFactorMoveAuthenticatorTest` follows that chain.
-
-        ⚠ NO SECOND CONFIRM STEP, DELIBERATELY. The security control is the password re-entry, which
-        the route enforces. The consequences are stated above the button, and the button is a plain
-        form submit. A mistaken press costs a re-scan and a new set of codes in the same session,
-        which is recoverable. A JavaScript confirm dialog would be neither a security control nor a
-        clearer statement than the paragraph.
+        The button STARTS a move and changes nothing on the account. The current authenticator and
+        these codes keep working until a code from the new authenticator is confirmed on the next
+        page, and only that confirmation replaces them.
+        `App\Http\Controllers\Auth\TwoFactorMoveController` owns why the move never passes through
+        Fortify's disable route. The paragraphs below state both halves before the button.
     --}}
     <h2>Move to a new authenticator</h2>
 
     <p>
         Use this if you have replaced or reset the device your authenticator app is on, or want to use
-        a different app. It turns two-factor authentication off for your account and takes you straight
-        to setting it up again. <strong>As soon as you press it, the entry in your current authenticator
-        app stops working, and every recovery code on this page stops working.</strong> Setting up again
-        gives you a new entry to scan and a new set of recovery codes.
+        a different app. You scan a new entry and enter a code from it. <strong>Your current
+        authenticator keeps working until the new one is confirmed.</strong>
     </p>
 
     <p>
-        Until you finish setting up again, your password alone signs in to this account, so finish it
-        straight away.
+        <strong>Once the move is confirmed, the entry in your current authenticator app stops working,
+        and every recovery code on this page stops working.</strong> You get a new set of recovery
+        codes in their place.
     </p>
 
-    <form method="POST" action="{{ route('two-factor.disable') }}">
+    <form method="POST" action="{{ route('two-factor.move.start') }}">
         @csrf
-        @method('DELETE')
         <button type="submit">Move to a new authenticator</button>
     </form>
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Building\Layouts;
+use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
 use Illuminate\Support\Facades\Route;
@@ -39,15 +40,30 @@ Route::middleware('auth')->group(function () {
  * `Actions\GenerateNewRecoveryCodes`, and `App\Http\Responses\RecoveryCodesGeneratedResponse` is
  * bound so a browser lands back here instead of on a raw translation key.
  *
- * CARD#9471 · THE MOVE TO A NEW AUTHENTICATOR is on this page too, and there is no application-owned
- * route for it either: the form posts to Fortify's `DELETE /user/two-factor-authentication`
- * (`two-factor.disable`), which carries its own `auth` + `password.confirm`. Fortify's stock
- * response returns the browser here, and `mfa` sends the now-unenrolled account on to
- * `two-factor.enroll`. The view states why there is no second confirm step.
+ * ⛔ CARD#9471 · THE MOVE TO A NEW AUTHENTICATOR IS APPLICATION-OWNED, CONFIRM-THEN-SWAP. It starts
+ * from this page and lives under the same three gates. The new secret waits in the session until a
+ * code from it is confirmed, and the account keeps its current second factor until then;
+ * `App\Http\Controllers\Auth\TwoFactorMoveController` owns the argument. The confirm is throttled
+ * by `two-factor-move` (`App\Providers\FortifyServiceProvider`). It replaces the recovery codes by
+ * calling the `Actions\GenerateNewRecoveryCodes` that Fortify's regenerate route calls, so both
+ * routes that replace the codes share one action.
+ *
+ * ⚠ FORTIFY'S `DELETE /user/two-factor-authentication` (`two-factor.disable`) STAYS REGISTERED. It is
+ * part of `Features::twoFactorAuthentication()` and cannot be removed without the feature. It clears
+ * the second factor outright, so no page a CONFIRMED account sees links it: its only form is the
+ * enrolment page's "Start over", which that page draws for an account that has not confirmed.
  */
 Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
     Route::get('/two-factor/recovery-codes', [TwoFactorRecoveryCodeController::class, 'show'])
         ->name('two-factor.codes');
+
+    Route::post('/two-factor/move', [TwoFactorMoveController::class, 'start'])
+        ->name('two-factor.move.start');
+    Route::get('/two-factor/move', [TwoFactorMoveController::class, 'show'])
+        ->name('two-factor.move');
+    Route::post('/two-factor/move/confirm', [TwoFactorMoveController::class, 'confirm'])
+        ->middleware('throttle:two-factor-move')
+        ->name('two-factor.move.confirm');
 });
 
 /*

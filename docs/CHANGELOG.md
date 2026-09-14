@@ -20,20 +20,33 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 ## [Unreleased]
 
 - **card#9471** — **A signed-in account with a confirmed second factor can move to a new
-  authenticator again.** `/two-factor/recovery-codes` (behind `auth` + `mfa` + `password.confirm`)
-  now carries a **Move to a new authenticator** form that posts to Fortify's own
-  `DELETE /user/two-factor-authentication`, under a paragraph stating that the current authenticator
-  entry and every recovery code stop working and that the password alone signs in until enrolment is
-  finished. The disable route carries its own `auth` + `password.confirm`; Fortify's stock response
-  returns the browser to the codes page, and `mfa` sends the now-unenrolled account to
-  `/two-factor-enroll`. Card#9445 removed "Start over" from the enrolment page for confirmed
-  accounts, and that button had been the only in-app way to enrol a replacement device, so a user
-  who replaced their phone or signed in with a recovery code spent one code per sign-in until none
-  were left. The dashboard link, the enrolment page's confirmed state and the two-factor challenge
-  page now point at the move. `Tests\Feature\TwoFactorMoveAuthenticatorTest` drives the form the
-  page renders through to a confirmed new enrolment and checks that an old recovery code is refused
-  afterwards, and pins that the route refuses a session with no recent password confirmation and a
-  guest. `README.md § Losing your authenticator` describes the move.
+  authenticator again, and keeps its current one until the new one is confirmed.**
+  `/two-factor/recovery-codes` (behind `auth` + `mfa` + `password.confirm`) carries a **Move to a
+  new authenticator** button, under a paragraph stating that the current authenticator keeps working
+  until the new one is confirmed, and that confirming stops the old entry and every current recovery
+  code working. The button starts a move at `/two-factor/move`, under the same three gates
+  (`App\Http\Controllers\Auth\TwoFactorMoveController`). A new secret, generated the way Fortify's
+  enable action generates one, is held encrypted in the session, and the page shows its QR code
+  under the issuer the enrolment page uses, and its setup key. A code from the new authenticator,
+  checked with Fortify's provider and throttled per account by the new `two-factor-move` limiter,
+  then writes the new secret, replaces the recovery codes through Fortify's
+  `GenerateNewRecoveryCodes` and stamps `two_factor_confirmed_at`, in one transaction, and the
+  browser lands on the codes page showing the new set. Only that confirmation writes to the users
+  table: a wrong code keeps the pending move, and a move left unfinished leaves the account as it
+  was. The move never passes through Fortify's `DELETE /user/two-factor-authentication`, which
+  clears the second factor at once and would leave an abandoned move signing in on the password
+  alone; that route stays registered, and no page shown to a confirmed account links it. Card#9445
+  removed "Start over" from the enrolment page for confirmed accounts, and that button had been the
+  only in-app way to enrol a replacement device, so a user who replaced their phone or signed in
+  with a recovery code spent one code per sign-in until none were left. The enrolment page and the
+  move page draw their QR codes through one renderer, `App\Models\User::twoFactorQrCodeSvgFor()`.
+  The dashboard link, the enrolment page's confirmed state and the two-factor challenge page point
+  at the move. `Tests\Feature\TwoFactorMoveAuthenticatorTest` drives the pages' own forms through a
+  whole move (the old authenticator still signs in while it is pending; afterwards the old code and
+  an old recovery code are refused and the new ones accepted), an abandoned move, a wrong code, a
+  confirmation with no move in progress, the password-confirmation and guest refusals, the routes'
+  gates and throttle, and a start that leaves the users row unchanged. `README.md § Losing your
+  authenticator` describes the move.
 
 - **card#9146** — **The promote mover's header records the rt#444 ruling: this repo keeps its
   `card#<id>` token mover.** `bin/promote-cards-by-token` § WHY THIS MOVER states the ruling, leaves

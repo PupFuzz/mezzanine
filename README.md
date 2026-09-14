@@ -163,13 +163,13 @@ rename the entry in the authenticator app, or enrol again with **Move to a new a
    and the same page regenerates them, which invalidates the previous set immediately.
 
    **Once you are signed in, move to a new authenticator** — otherwise every later sign-in costs
-   another code until none are left. The same page has a **Move to a new authenticator** button.
-   It turns two-factor off (the old authenticator entry and every current recovery code stop
-   working) and sends you straight to enrolment, where you scan a new entry and get a new set of
-   codes. It is also the way to move a working account to a replacement phone. It uses Fortify's
-   own disable route, which asks for your password again if you have not entered it recently.
-   ⚠ Until you finish enrolling again, your password alone signs in to the account (into the
-   enrolment screen, and nothing else is reachable), so finish in the same sitting.
+   another code until none are left. The same page has a **Move to a new authenticator** button,
+   behind the same password re-entry. It shows a new entry to scan (a QR code and its setup key)
+   and asks for a code from it. **Your current authenticator and recovery codes keep working until
+   that code is confirmed**, so a move you leave unfinished changes nothing on the account.
+   Confirming replaces them in one step: the old authenticator entry and every current recovery
+   code stop working, and the page shows the new set of codes. It is also the way to move a working
+   account to a replacement phone.
 2. **An emailed reset**, at `/two-factor-reset`, linked from the challenge screen. A code goes to
    the address **already on the account** — there is no field that could redirect it — and entering
    it **removes the second factor and signs nobody in**: you then log in with your password and are
