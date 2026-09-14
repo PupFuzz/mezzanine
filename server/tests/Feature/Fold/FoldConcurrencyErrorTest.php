@@ -53,6 +53,36 @@ class FoldConcurrencyErrorTest extends FoldTestCase
         $this->assertTheNextPassFoldsItWhole();
     }
 
+    public function test_a_contended_window_yields_rather_than_refolding_one_event_at_a_time(): void
+    {
+        $this->deliver($this->cleanTurn());
+
+        // Contended once, then free. The one-at-a-time recovery exists to isolate a POISON event;
+        // entered on contention it would refold this window event by event in the same pass. The
+        // window yields instead, and the next pass folds it whole.
+        $contendedOnce = new class extends Projector
+        {
+            private bool $raised = false;
+
+            public function apply(FoldEvent $e): void
+            {
+                if (! $this->raised) {
+                    $this->raised = true;
+
+                    throw ConcurrencyError::raised(1213);
+                }
+
+                parent::apply($e);
+            }
+        };
+
+        $applied = (new Fold($contendedOnce, new StateRecompute))->pass();
+
+        $this->assertSame(0, $applied, 'a contended window was refolded one event at a time instead of yielding');
+        $this->assertNothingFoldedAndNothingQuarantined($applied);
+        $this->assertTheNextPassFoldsItWhole();
+    }
+
     public function test_a_concurrency_error_in_the_one_at_a_time_recovery_yields_and_quarantines_nothing(): void
     {
         $this->deliver($this->cleanTurn());
