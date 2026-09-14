@@ -2560,9 +2560,9 @@ async function flusherMain() {
          * check overwrites it, `false` included; a probe that measured nothing for it (a deadline, a
          * dropped kept-alive socket, an answer carrying no set) has falsified nothing, so the value
          * the last measuring probe left stays. Before any probe has measured a check it is null and
-         * rides as `fail`. While anything went unmeasured the next probe comes one heartbeat interval
-         * after this one began rather than K.HEALTH_MS: the heartbeat is where the result is read, so
-         * probing more often changes nothing on the wire. */
+         * rides as `fail`. While anything went unmeasured the next probe comes no sooner than one
+         * heartbeat interval after this one began rather than K.HEALTH_MS: the heartbeat is where the
+         * result is read, so probing more often changes nothing on the wire. */
         let unmeasured = false;
         for (const c of Object.keys(checks)) {
           if (checks[c] === null) unmeasured = true;

@@ -673,17 +673,60 @@ redgreen("the one-shot selftest measures the ingest, and says when it could not 
 # heartbeat's `selftest` object carries two values, so a check the flusher sends as `fail` is read on
 # the seat as a failure (the ingest folds it into `selftest_failed`). A probe that times out, whose
 # kept-alive socket drops, or that gets an answer carrying no set has falsified nothing: the flusher
-# keeps the value its last probe MEASURED and re-probes on `K.HEARTBEAT_MS` instead of `K.HEALTH_MS`.
+# keeps the value its last probe MEASURED and re-probes after `K.HEARTBEAT_MS` instead of `K.HEALTH_MS`.
 # A probe that did measure overwrites, `false` included.
 #
 # THE TIMING IS SCALED ON A COPY, AND ONLY THE TIMING. The real cadence puts the second probe
 # `K.HEALTH_MS` after the first, which no suite can wait for. The copy rewrites the `K` intervals
 # the scenario runs on (FAST_K's keys) and no line of logic; every RED below is planted on top of
 # the same scaled copy.
-FAST_K = {"FLUSH_MS": 25, "HEARTBEAT_MS": 400, "REQUEST_MS": 800, "HEALTH_MS": 4000}
-HOLD_PAST_DEADLINE_S = 2 * FAST_K["REQUEST_MS"] / 1000
-RETRY_WITHIN_S = FAST_K["HEALTH_MS"] / 2000        # half the full cadence: a retry, not the next round
+#
+# THE SCALE KEEPS PRODUCTION'S ORDER, FLUSH_MS < REQUEST_MS < HEARTBEAT_MS < HEALTH_MS, because the
+# retry is only told apart by the gaps between those intervals. The next probe after one that measured
+# nothing begins, counted from when that probe began:
+#   - on EVERY pass (the defect): about REQUEST_MS + FLUSH_MS later, the deadline plus one sleep;
+#   - on K.HEARTBEAT_MS (the fix): no sooner than HEARTBEAT_MS later, and about one pass after it;
+#   - on K.HEALTH_MS (round 1): no sooner than HEALTH_MS later.
+# A scale with REQUEST_MS above HEARTBEAT_MS (round 2's) makes the first two the same number: the pass
+# that waits out the deadline has already overrun the heartbeat interval, and an every-pass flusher
+# passed every assertion here. So the order is asserted below, on the copy AND on the reporter itself.
+FAST_K = {"FLUSH_MS": 25, "REQUEST_MS": 300, "HEARTBEAT_MS": 1200, "HEALTH_MS": 4800}
+K_ORDER = ["FLUSH_MS", "REQUEST_MS", "HEARTBEAT_MS", "HEALTH_MS"]
+POLL_S = 0.01                                      # drive_probes' poll of the stub's GET count
+HOLD_PAST_DEADLINE_S = 2 * FAST_K["REQUEST_MS"] / 1000   # probes 2 and 3: answered only after the deadline
+# Probe 4 answers after a third of the deadline: many POLL_S polls see it ARRIVE before it answers, so
+# the heartbeat split is taken before the heartbeat that follows the answer unless the suite stalls for
+# the whole hold; and it still answers inside the deadline, so it measures.
+REFUSAL_HOLD_S = FAST_K["REQUEST_MS"] / 3000
+# LOWER BOUND on the retry. The flusher counts from `atMs`, taken at the start of the pass; the suite
+# times ARRIVALS at the stub, each noticed by a POLL_S poll. An arrival trails its pass's `atMs` by
+# that pass's pre-probe work (index fold, snapshot) and a fresh TLS handshake, and those lags differ
+# between two passes. Measured for card#9373 round 3, the retry landed up to a few tens of milliseconds
+# past HEARTBEAT_MS on an idle machine, and as far as a few tens UNDER it with the suite and the flusher
+# pinned to one CPU. RETRY_SLACK_S is sized for a loaded CI runner stalling one of those lags or one
+# poll, and is asserted to stay under half the gap to the every-pass retry, so the slack can never
+# admit the defect the bound exists to catch.
+RETRY_SLACK_S = 0.25
+RETRY_AT_LEAST_S = FAST_K["HEARTBEAT_MS"] / 1000 - RETRY_SLACK_S
+EVERY_PASS_RETRY_S = (FAST_K["REQUEST_MS"] + FAST_K["FLUSH_MS"]) / 1000
+RETRY_WITHIN_S = FAST_K["HEALTH_MS"] / 2000        # UPPER BOUND: half the full cadence, a retry and not the next round
 WINDOW_S = 0.9 * FAST_K["HEALTH_MS"] / 1000        # past this a fixed-cadence flusher could probe again
+
+_prod_src = REPORTER.read_text(encoding="utf-8")
+PROD_K = {k: int(re.search(rf"\b{k}: (\d+),", _prod_src).group(1)) for k in K_ORDER}
+eq(f"precondition: the reporter's own intervals are in the order the retry bounds rely on "
+   f"({' < '.join(K_ORDER)}; {PROD_K})", True,
+   all(PROD_K[a] < PROD_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
+eq(f"precondition: the scaled copy keeps that order ({FAST_K})", True,
+   all(FAST_K[a] < FAST_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
+eq(f"precondition: the lower bound ({RETRY_AT_LEAST_S:.2f} s) sits above an every-pass retry "
+   f"(~{EVERY_PASS_RETRY_S:.3f} s) by more than twice the slack", True,
+   RETRY_AT_LEAST_S - EVERY_PASS_RETRY_S > 2 * RETRY_SLACK_S)
+eq(f"precondition: the upper bound ({RETRY_WITHIN_S:.2f} s) sits above a heartbeat-interval retry plus one "
+   f"pass (~{(FAST_K['HEARTBEAT_MS'] + FAST_K['FLUSH_MS']) / 1000:.3f} s) by more than twice the slack, "
+   f"and inside the window", True,
+   RETRY_WITHIN_S - (FAST_K["HEARTBEAT_MS"] + FAST_K["FLUSH_MS"]) / 1000 > 2 * RETRY_SLACK_S
+   and RETRY_WITHIN_S < WINDOW_S)
 
 
 def fast_flusher(*defects) -> Path:
@@ -714,7 +757,7 @@ def drive_probes(name: str, reporter: Path) -> dict:
     (s.spool / "flusher.lock").unlink(missing_ok=True)
     INGEST.gets = 0
     INGEST.get_script = [{}, {"hold": HOLD_PAST_DEADLINE_S}, {"hold": HOLD_PAST_DEADLINE_S},
-                         {"accepted": [999]}]
+                         {"accepted": [999], "hold": REFUSAL_HOLD_S}]
     p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False),
                          cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     arrived: dict[int, float] = {}
@@ -730,7 +773,7 @@ def drive_probes(name: str, reporter: Path) -> dict:
                 break
             if 2 in arrived and 4 not in arrived and time.time() - arrived[2] > WINDOW_S:
                 break
-            time.sleep(0.01)
+            time.sleep(POLL_S)
     finally:
         if p.poll() is None:
             p.kill()
@@ -754,8 +797,11 @@ eq("precondition: the flusher's first probe measured both network checks, and a 
 eq("GREEN: after probes that timed out, every heartbeat still reports the last measured values — "
    "no false `schema_version_accepted` fail", (True, {("pass", "pass")}),
    (bool(g_f["after_timeouts"]), {pair(x) for x in g_f["after_timeouts"]}))
-eq(f"GREEN: a probe that measured nothing re-probes on K.HEARTBEAT_MS, well inside the K.HEALTH_MS "
-   f"cadence (under {RETRY_WITHIN_S} s at the scaled {FAST_K['HEALTH_MS']} ms)", True,
+eq(f"GREEN: a probe that measured nothing re-probes no sooner than K.HEARTBEAT_MS (at least "
+   f"{RETRY_AT_LEAST_S:.2f} s at the scaled {FAST_K['HEARTBEAT_MS']} ms)", True,
+   g_f["retry_s"] is not None and g_f["retry_s"] >= RETRY_AT_LEAST_S)
+eq(f"GREEN: … and well inside the K.HEALTH_MS cadence (under {RETRY_WITHIN_S} s at the scaled "
+   f"{FAST_K['HEALTH_MS']} ms)", True,
    g_f["retry_s"] is not None and g_f["retry_s"] < RETRY_WITHIN_S)
 eq("GREEN: a later probe that DID measure overwrites — an answer lacking this version turns the kept "
    "pass into a fail", ("pass", "fail"), pair(g_f["after_refusal"][-1]) if g_f["after_refusal"] else None)
@@ -778,15 +824,27 @@ r_k = drive_probes("flusher-keeps-last-red-keepfirst", fast_flusher(
 eq("RED: a flusher that never replaces a measured value keeps reporting pass after the ingest "
    "measurably refuses the version", ("pass", "pass"),
    pair(r_k["after_refusal"][-1]) if r_k["after_refusal"] else None)
+# RED 3 — a re-probe on EVERY pass while a check is unmeasured, instead of one heartbeat interval on.
+# In production that is a probe on every flush pass, one K.FLUSH_MS sleep (10 s) plus the probe itself,
+# for as long as the ingest does not measure. The heartbeats cannot show it, since a kept value rides
+# the wire either way; only the lower bound can.
+r_e = drive_probes("flusher-keeps-last-red-everypass", fast_flusher(
+    ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = unmeasured ? 0 : K.HEALTH_MS;")))
+eq(f"RED: a flusher that re-probes on every pass while a check is unmeasured fails the lower bound "
+   f"(retry under {RETRY_AT_LEAST_S:.2f} s)", True,
+   r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_AT_LEAST_S)
+eq("  … while its retry sits under the upper bound too, so the lower bound is the assertion that catches it",
+   True, r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_WITHIN_S)
 redgreen("the flusher keeps the last MEASURED network checks and re-probes sooner when a probe measured "
-         "nothing (§ 6.14, card#9373 round 2; timing scaled on a copy)",
+         "nothing, but no sooner than one heartbeat interval (§ 6.14, card#9373 rounds 2-3; timing scaled on a copy)",
          f"null overwrites + fixed cadence -> heartbeats after the timed-out probes "
          f"{sorted({pair(x) for x in r_f['after_timeouts']})}, re-probe after {r_f['retry_s']} s; "
          f"never replacing a measured value -> heartbeat after a refusing answer "
-         f"{pair(r_k['after_refusal'][-1]) if r_k['after_refusal'] else None}",
+         f"{pair(r_k['after_refusal'][-1]) if r_k['after_refusal'] else None}; "
+         f"re-probe on every pass -> re-probe after {r_e['retry_s']} s (lower bound {RETRY_AT_LEAST_S:.2f} s)",
          f"keep-last + K.HEARTBEAT_MS retry -> before {pair(g_f['before'][-1]) if g_f['before'] else None}, "
          f"after timeouts {sorted({pair(x) for x in g_f['after_timeouts']})}, re-probe after "
-         f"{g_f['retry_s']} s (HEALTH_MS scaled to {FAST_K['HEALTH_MS']} ms), after a refusal "
+         f"{g_f['retry_s']} s (bounds [{RETRY_AT_LEAST_S:.2f}, {RETRY_WITHIN_S}) s at {FAST_K}), after a refusal "
          f"{pair(g_f['after_refusal'][-1]) if g_f['after_refusal'] else None}")
 
 # RED — an http:// ingest_url is REFUSED at install (§ 3.5), not downgraded.

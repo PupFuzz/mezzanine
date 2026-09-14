@@ -2574,10 +2574,10 @@ check's value, `fail` included. A probe that measures nothing for a check (its `
 above: a deadline, a dropped connection, an answer carrying no set) leaves the value the last measuring
 probe set, so a probe that falsified nothing never puts a `fail` on the wire. A check no probe has
 measured yet rides the wire as `fail`. While the last probe left either check unmeasured, the flusher
-probes again one heartbeat interval ([§ 9.1](#91-the-cadence-and-the-alarm)) after that probe began,
-instead of at its ordinary cadence (`K.HEALTH_MS` in `fleet-reporter/fleet-reporter.js`). The heartbeat
-is where the result is read, so a shorter interval would change nothing on the wire. A kept value is
-the last measurement, not a current one.
+probes again no sooner than one heartbeat interval ([§ 9.1](#91-the-cadence-and-the-alarm)) after that
+probe began, instead of at its ordinary cadence (`K.HEALTH_MS` in `fleet-reporter/fleet-reporter.js`).
+The heartbeat is where the result is read, so a shorter interval would change nothing on the wire. A
+kept value is the last measurement, not a current one.
 
 **The keys are declared, not closed at the ingest, and the difference is deliberate.** The field-table
 row above is where this object's *shape* is stated — the value set, the key pattern, the per-key bound
