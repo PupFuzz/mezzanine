@@ -22,7 +22,8 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                build order gates every artifact a test reads, and
                                                every Build bullet of a test the harness drives
                                                declares the harness, while a test naming no fixture
-                                               and not the harness may name an instrument instead; the
+                                               and not the harness may name an instrument whose own
+                                               Appendix B row gates the test; the
                                                animation-log schema's two homes; the episode walk's
                                                own episode and row counts
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
