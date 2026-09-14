@@ -38,6 +38,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   § 12 state it. New tests: `IngestServerErrorTest`, and `IngestWriteBoundTest` on real MariaDB
   connections. **Installer action:** none; no migration. The store must be MariaDB with
   `idle_transaction_timeout` (present on 11.8.6, the version floor).
+- **card#9374** — **A new seat is no longer badged `epoch_reset`.** The flusher counted a missing
+  `state.json` as a state reset, so every first start counted `state_reset` and, because the badge is
+  derived from a running total, every new seat carried `epoch_reset` for good. `loadState` now counts
+  a reset only for a `state.json` that exists and cannot be used: a read error other than a missing
+  file, or empty, truncated, unparseable, or the wrong shape. A missing file is a first start, or state
+  lost with the file. Both mint a new `seq_epoch` and re-send the spool from its oldest bucket, as
+  before, and count nothing; the flusher log names the missing file. A hook spools its event before it
+  respawns the flusher, so a first start usually finds data waiting, and the spool cannot tell a first
+  start from lost state. Lost state on a seat that has already reported is still badged, by the
+  server's `seq_epoch_change`. D1 § 9.3, § 10.2, § 11.4 (retitled *a missing or unreadable
+  `state.json`*), § 12.7 and AT-17 now say so, and D2 § 7.2 says which cause each side's badge
+  observes. The selftest drives a crontab first start, a hook first start and a deleted `state.json`
+  through a start and a restart, and keeps the empty, truncated, unparseable, wrong-shaped and
+  unreadable cases as resets, each with a RED planted on a copy. § 19's fresh-seat baseline, which
+  asserted `["epoch_reset"]`, now asserts an empty `degraded`. This corrects the limitation 0.4.0's
+  card#9368 entry names. **Installer action:** none for a new seat. A seat installed from an earlier
+  build keeps its badge, because the total lives in its `state.json`; `fleet-reporter/INSTALL-LINUX.md`
+  says why neither replacing the artifact nor deleting `state.json` clears it, and card#9491 owns
+  whether it should.
 
 - **card#9320** — **G8 sees a counter written the way D2's pseudocode fences write one.**
   `verify-fleet-state.py`'s G8 holds every counter a rule writes against § 7.1 / § 7.2, and in the
