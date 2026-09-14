@@ -185,10 +185,11 @@ const DEGRADED = [
 const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted',
   'clear_reap_by_session_end', 'agent_scope_subagent', 'attention_resolved_by_hook'];
 
-/* The six `selftest` checks § 6.14's member table declares — the same set the subcommand runs
- * and the heartbeat reports, so the two cannot drift apart. */
+/* The `selftest` checks § 6.14's member table declares — the same set the subcommand runs and
+ * the heartbeat reports, so the two cannot drift apart. */
 const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted',
-  'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys'];
+  'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys',
+  'protocol_agent_name_in_roster'];
 
 /* Always-present delivery counters — serialized FIRST under § 6.14's reduction rule, so a seat
  * with too many kinds of trouble to fit 1.5 KiB still reports the ones delivery depends on. */
@@ -258,6 +259,11 @@ function configPath() {
 const SLUG_INSTALL = /^[a-z0-9][a-z0-9-]{1,31}$/;
 const SLUG_SEAT = /^[a-z0-9][a-z0-9-]{1,47}$/;
 const TOKEN_RE = /^mzn_[A-Za-z0-9_-]{43}$/;
+/* § 3.1's `protocol_agent_name`: the `slug` vocabulary of § 6.0 (lowercase `[a-z0-9-]`, so a
+ * character is a byte) and the 48 B bound § 6.14's row states as a figure because the ingest refuses
+ * a heartbeat over it (§ 12.1 step 10). The acceptance suite re-reads that figure out of § 6.14 and
+ * drives a name at it and one byte past it, so this literal cannot drift from the row unseen. */
+const AGENT_NAME_RE = /^[a-z0-9-]{1,48}$/;
 
 /* Returns {config, errors[]}. NEVER throws: a hook with an unreadable config still exits 0 and
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
@@ -284,7 +290,74 @@ function loadConfig(p) {
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
   }
+  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) {
+    errors.push('protocol_agent_name must be null or a slug of at most 48 B (§ 3.1)');
+  }
   return { config: c, errors };
+}
+
+/* ── The declared protocol agent name, and its roster check (§ 3.1) ─────────────────────────
+ * A DECLARATION, NEVER AN IDENTITY: nothing here reaches the token binding, `config_fingerprint`
+ * or anything seeding a character, and a seat that declares nothing is `undeclared` — never a
+ * name synthesized from `seat_id`, which would forge the join's weaker end out of its stronger one.
+ *
+ * RESOLVED AT FLUSHER START AND ON `selftest`, NEVER PER FLUSH AND NEVER IN A HOOK. Its one caller
+ * is `runSelftestChecks`, which only the flusher (once, before its loop) and the `selftest`
+ * subcommand run. A roster read is a file read of another product's config, and a hook has no
+ * budget for it (P-5).
+ *
+ * D1-SILENT: a `protocol_agent_name` that is PRESENT AND MALFORMED — not a string, not a slug, over
+ * 48 B. § 3.1's state table has no row for it. `loadConfig` refuses it like any other row's bound
+ * (so `config_readable` fails and the flusher sends nothing, as for every invalid row), and the value
+ * resolves as `undeclared` here, so a heartbeat spooled while the config is wrong never carries a
+ * value the ingest would refuse once the config is fixed and the spool drains: one over-bound name
+ * would cost its whole 200-event batch (§ 12.4). */
+function declaredAgentName(cfg) {
+  const v = cfg.protocol_agent_name;
+  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;
+}
+
+/* § 3.1's resolution order. `$COORD_CONFIG` SET IS THE WHOLE ANSWER — an empty value included, since
+ * a set-but-empty variable names no roster the coordination framework could use either, and falling
+ * through to the home path would check against a list nothing else on the box reads. The home path
+ * is Linux only: § 3.1 sources no other platform's. */
+function rosterSite() {
+  if (process.env.COORD_CONFIG !== undefined) return { path: process.env.COORD_CONFIG, via: '$COORD_CONFIG' };
+  if (process.platform !== 'linux') return { path: null, via: null };
+  let home;
+  try { home = os.homedir(); } catch (e) { return { path: null, via: null, error: 'no home directory' }; }
+  return { path: path.join(home, '.config', 'coord', 'coordination.config.json'), via: 'home' };
+}
+
+/* The roster's member names, or null when NO ROSTER IS READABLE — a missing file, an unreadable
+ * one, invalid JSON, or a document with no `roster` array all map to § 3.1's `unchecked`. D1 names
+ * the roster and not its member key: `roster[].name` is the coordination framework's own spelling
+ * (its orientation templates: "`COORD_AGENT` … must match a `roster[].name`"), and
+ * `fleet-reporter/INSTALL-LINUX.md` Step 2 lists a roster the same way. Never throws. */
+function readRosterNames(file) {
+  let doc;
+  try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { names: null, error: e.code || 'not valid JSON' }; }
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roster)) return { names: null, error: 'no roster[] array' };
+  return { names: doc.roster.filter((r) => r && typeof r.name === 'string').map((r) => r.name), error: null };
+}
+
+/* One row of § 3.1's state table, and its § 9.3 counter. The counter is counted once per resolution:
+ * in the flusher that is once per start, so the heartbeat's monotonic value reads 1 for a flusher
+ * that found the state; in the `selftest` subcommand nothing flushes the counters, so it costs no
+ * count on the seat. */
+function resolveDeclaration(cfg) {
+  const name = declaredAgentName(cfg);
+  if (name === null) return { name: null, check: 'undeclared', roster: null, via: null, error: null };
+  const site = rosterSite();
+  const roster = site.path === null ? { names: null, error: site.error || 'no roster site on this platform' } : readRosterNames(site.path);
+  if (roster.names === null) {
+    count('protocol_agent_name_unchecked');
+    return { name, check: 'unchecked', roster: site.path, via: site.via, error: roster.error };
+  }
+  if (roster.names.includes(name)) return { name, check: 'checked', roster: site.path, via: site.via, error: null };
+  count('protocol_agent_name_disagreed');
+  return { name, check: 'disagreed', roster: site.path, via: site.via, error: null, roster_names: roster.names };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -2418,7 +2491,7 @@ function spoolLag(spool, state) {
   return { lines, oldest };
 }
 
-function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
+function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
   const all = state.counters;
   const { counters, counters_omitted } = buildCounters(all);
   if (counters_omitted > 0) all['data_truncated.reporter.heartbeat.counters'] = (all['data_truncated.reporter.heartbeat.counters'] || 0) + 1;
@@ -2442,6 +2515,11 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
     // emitting and the flusher keeps heartbeating with enabled:false, so the desk renders
     // *disabled* rather than sliding through stale into offline and looking broken.
     enabled: cfg.enabled !== false,
+    // § 6.14's declaration pair: one row of § 3.1's state table on EVERY heartbeat, so the check is
+    // never omitted and the name is null exactly when the check is `undeclared`. Resolved once, at
+    // flusher start — never per flush.
+    protocol_agent_name: declaration.name,
+    protocol_agent_name_check: declaration.check,
     degraded: buildDegraded(all).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
@@ -2534,7 +2612,9 @@ async function flusherMain() {
     reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', atStart);
   }
 
-  let selftest = runSelftestChecks(config, cp).results;
+  const started = runSelftestChecks(config, cp);
+  let selftest = started.results;
+  const declaration = started.declaration;   // § 3.1: read at flusher start, and never again per flush
   let lastHeartbeat = 0, lastHealth = 0, healthEveryMs = K.HEALTH_MS, attempt = 0, waitUntil = 0, running = true;
   const stop = () => { running = false; };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
@@ -2579,7 +2659,7 @@ async function flusherMain() {
 
       if (atMs - lastHeartbeat >= K.HEARTBEAT_MS) {
         lastHeartbeat = atMs;
-        emitHeartbeat(config, spool, state, ix, selftest, atMs);
+        emitHeartbeat(config, spool, state, ix, selftest, declaration, atMs);
       }
 
       enforceSpoolBounds(spool, state, atMs);
@@ -3019,7 +3099,17 @@ function runSelftestChecks(config, cp) {
   detail.tls_verify = Object.assign({ reached: null }, t.detail);
   results.schema_version_accepted = null;
   detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, accepted_schema_versions: null, http_status: null };
-  return { results, detail };
+  // § 6.14: `fail` on `disagreed` and on nothing else — a `pass` states that no disagreement was
+  // found, and `protocol_agent_name_check` says whether a roster was read at all. With no config
+  // there is no declaration to check, so nothing was measured (only the subcommand can reach that:
+  // the flusher never starts without a config).
+  const declaration = config ? resolveDeclaration(config) : null;
+  results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' : null;
+  detail.protocol_agent_name_in_roster = declaration
+    ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
+      read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names }
+    : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
+  return { results, detail, declaration };
 }
 
 async function selftestMain() {
@@ -3085,4 +3175,4 @@ if (require.main === module) main();
  * reproduces only by luck. A RED that reproduces by luck is not evidence. The stress harness
  * calls the primitive directly, in a tight loop, from concurrent processes. */
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
-  appendLine, K, ENUM, SANITIZER_FIXTURES };
+  appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS };

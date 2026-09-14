@@ -46,8 +46,13 @@ Linux/macOS `~/.config/fleet-reporter/config.json` (0600), Windows
 from the environment, so a wrong path is a loud `config_readable` failure rather than a silently
 different identity.
 
-Two keys are additions to § 3.1's table and are marked as such in the code:
-`harness_label` (see "What D1 left open", below) and nothing else.
+The one key the reporter reads beyond § 3.1's table is marked as such in the code:
+`harness_label` (see "What D1 left open", below).
+
+`protocol_agent_name` (§ 3.1) is optional. When a seat declares one, the reporter checks it against
+the coordination roster at flusher start and on `selftest`, found by § 3.1's resolution order. The name and the check's state ride every
+heartbeat, and `selftest`'s `protocol_agent_name_in_roster` fails when a readable roster does not hold
+the name.
 
 ## Running the acceptance suite
 
@@ -95,6 +100,10 @@ unilateral divergences left standing, and each says what would have broken.
 | Which of the two `/clear` signals emits the boundary events when both fire | whichever reaps first emits them; the second finds the session tombstoned, counts `reap_noop_second_signal`, and emits nothing — so no call is closed twice |
 | Rule 6's rejoin separator on Windows | `/` for `~`, `.` and root-relative tokens (D1's own `~/…/design/…` output), `\` for a `X:` root (D1's own named root prefix) |
 | Order of `attention.resolved` vs `turn.start` on `UserPromptSubmit` | resolution first, matching every close-before-trigger ordering in § 8.3 |
+| A `protocol_agent_name` that is present and malformed — not a string, not a lowercase slug, or over § 6.14's 48 B (§ 3.1's state table has no row for it) | refused by config validation like any other § 3.1 row's bound, so `config_readable` fails and the flusher sends nothing; and resolved as `undeclared`, so a heartbeat spooled meanwhile never carries a value the ingest would refuse once the config is fixed and the spool drains (card#9375) |
+| The roster's member key (§ 3.1 names the roster, not its shape) | `roster[].name`, the coordination framework's own spelling, which `INSTALL-LINUX.md` Step 2 lists the same way. A file that is not JSON, or holds no `roster` array, is no readable roster: `unchecked`, never a throw (card#9375) |
+| `$COORD_CONFIG` set to an empty string | set, so it is the whole of the resolution: no roster is readable and the check is `unchecked`. The home path is not consulted, because a set-but-empty variable names no roster the coordination framework could use either (card#9375) |
+| `protocol_agent_name_in_roster` when `selftest` finds no readable config | `not_measured`: there is no declaration to check. The flusher never starts without a config, so the heartbeat never carries this case (card#9375) |
 
 ## Decisions a maintainer should not silently reverse
 
