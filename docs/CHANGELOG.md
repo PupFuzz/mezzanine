@@ -24,8 +24,14 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   reporter's `saveState` refused the write and every caller ignored the refusal, so on a slow ingest
   two live flushers could emit overlapping seqs for one seat. What ships in `fleet-reporter.js`: one
   ownership check (`assertOwner`) guards each `state.json` and snapshot write, each lock touch and
-  each request, and a loss is thrown, not returned. The flusher loop catches it, counts
+  each request, and runs again on resuming from each awaited request, so a flusher taken over while
+  it waited on the ingest does not go on to dispose of the answered batch, spool a heartbeat, drop
+  spool buckets or delete counter buckets the new owner has not folded. A loss is thrown, not
+  returned. The flusher loop catches it, counts
   `flusher_lost_ownership` once into the counter sink the new owner folds, logs once and exits 0.
+  Counters the flusher folded into `state.json`'s totals but never managed to save go to that sink
+  on exit too, so a spool-bucket drop counted by a pass whose save failed still reaches the
+  heartbeat.
   The lock is renewed before every request as well as at the start of every pass, so a live
   flusher's lock ages by at most one request plus one flush interval, not by a whole pass of POSTs.
   An exiting flusher removes `flusher.lock` only while the lock still names it; before, an ex-owner

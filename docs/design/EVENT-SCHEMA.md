@@ -262,17 +262,25 @@ also an immediate exit 0.
 
 **The lock is not the correctness mechanism, though — ownership is.** `state.json` carries
 `owner_pid` and `owner_started_at`. Before every write of `state.json` (and of `index/snapshot.json`),
-before every lock touch, and before every request it sends, the flusher re-reads it and proceeds only if
-it still names itself as owner. One that finds another owner sends nothing more and writes nothing
-more to either file: it increments `flusher_lost_ownership` once, in the counter sink
-([§ 11.1](#111-layout)) that the new owner folds, logs once, and exits 0. Two flushers overlapping is therefore
+before every lock touch, before every request it sends, and on resuming from every request it awaited
+(the health probe and each batch POST), the flusher re-reads it and proceeds only if it still names
+itself as owner. The check on resuming is what keeps a flusher taken over while it waited from acting on
+that pass's remaining work — disposing of the batch the ingest just answered, spooling a heartbeat,
+dropping spool buckets past the bounds of [§ 11.3](#113-rotation-and-the-overflow-policy), or deleting
+counter buckets the new owner has not folded. One that finds another owner sends nothing more and
+writes nothing more to either file: it increments `flusher_lost_ownership` once, in the counter sink
+([§ 11.1](#111-layout)) that the new owner folds, logs once, and exits 0. Counters it had folded into
+`state.json`'s totals but never saved go to that sink with it, so a bucket drop counted in a pass that
+could not save is still counted ([§ 0](#0-overview) item 9). Two flushers overlapping is therefore
 **not** a tolerated state. It was, in an earlier draft, on the grounds that server-side dedup absorbs
 the duplicate events — but dedup absorbs *events*, not the `seq` counter. Two flushers each reading
 `next_seq = X` produce either a gap (and the seat renders `lossy` from nothing) or two events sharing
 one `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing. Two residual windows
 remain: the microseconds between a re-read and the `rename`, and one request — a new owner can take
 over between the check before a send and the ingest's answer, and that one batch is not recalled.
-Neither is assumed away. **D2:** the
+Neither is assumed away. A third window is local: a new owner can claim `state.json` during the
+synchronous work between a pass's last check and its save, and a counter bucket that pass deletes in
+it loses the hook counter lines the new owner had not folded. **D2:** the
 server treats a repeated `(seq_epoch, seq)` carrying two different `event_id`s as `seq_collision`,
 counted and badged ([§ 10.2](#102-ordering-seq-and-gap-detection)).
 

@@ -437,6 +437,7 @@ function atomicWrite(file, text) {
  * an implementer could not construct.                                                        */
 const C = Object.create(null);   // counter deltas for THIS process
 const P = Object.create(null);   // predicate branch deltas for THIS process
+const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null) };   // the flusher's folds not yet saved: see foldLocalCounters
 
 /* A DIAGNOSTIC MUST NOT MOVE AN OPERATIONAL COUNTER. `selftest` runs § 7.5's thirteen fixtures
  * through the real sanitizer, and the flusher runs `selftest` at startup — so without this the
@@ -1848,12 +1849,14 @@ function sampleContext(config, spool, payload, atMs) {
  *
  * THE LOCK IS NOT THE CORRECTNESS MECHANISM — OWNERSHIP IS. flusher.lock is an atomic
  * exclusive-create so exactly one process can win it, but state.json carries owner_pid and
- * owner_started_at, and every write AND every send re-reads it and proceeds only if it still
- * names itself. A flusher that finds another owner stops at once: it sends nothing more, writes
- * nothing more, and exits (`assertOwner`, `LostOwnership`). The residual windows — between that
- * re-read and the rename, and between the re-read and the ingest's answer to the one request
- * already in flight — are narrowed, not assumed away: the server counts a repeated
- * (seq_epoch, seq) as `seq_collision`.
+ * owner_started_at, and every write, every send AND every resume from an awaited request re-reads
+ * it and proceeds only if it still names itself. A flusher that finds another owner stops at
+ * once: it sends nothing more, writes nothing more, and exits (`assertOwner`, `LostOwnership`).
+ * The residual windows — between that re-read and the rename, and between the re-read and the
+ * ingest's answer to the one request already in flight — are narrowed, not assumed away: the
+ * server counts a repeated (seq_epoch, seq) as `seq_collision`. The third, local window, the
+ * synchronous end of a pass after its last check, costs no seq; what it can cost is stated at
+ * the exit path in `flusherMain`.
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const statePath = (spool) => path.join(spool, 'state.json');
@@ -1909,7 +1912,18 @@ function loadState(spool, atMs) {
  * `if` away from that again; an exception unwinds the pass to the flusher loop whatever the call
  * site remembers, and the loop is the one place that counts it, logs it and exits (`flusherMain`).
  * Every ownership-sensitive act goes through here: each state.json and snapshot write, the lock
- * renewal, and each request the drain sends. */
+ * renewal, and each request the drain sends.
+ *
+ * AND EVERY AWAIT IN A PASS IS FOLLOWED BY IT. A pass is synchronous local work except where it
+ * awaits the network — the health probe and each batch POST — and an await is where a takeover
+ * lands: a new owner claims state.json while this process is suspended. What the pass does on
+ * resuming is ownership-sensitive whether or not it writes state.json: it disposes of corrupt
+ * lines and quarantines rejected batches the new owner will dispose of too, drops spool buckets,
+ * reaps counter buckets by offsets the new owner has not folded, and spools a heartbeat. So the
+ * check runs on resuming from each await (`refreshHealth` in `flusherMain`, `send` in
+ * `drainOnce`), before any of those. What remains is the synchronous work after a check: no
+ * await, local file operations only, but a new owner can still claim state.json inside it — see
+ * the exit path in `flusherMain` for what that window can and cannot cost. */
 class LostOwnership extends Error {}
 
 function assertOwner(spool, state) {
@@ -1922,7 +1936,9 @@ function assertOwner(spool, state) {
 
 function saveState(spool, state) {
   assertOwner(spool, state);
-  return atomicWrite(statePath(spool), JSON.stringify(state));
+  if (!atomicWrite(statePath(spool), JSON.stringify(state))) return false;
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
+  return true;
 }
 
 /* § 2.3 — exclusive create, atomic on both platforms. A starting flusher that loses the create
@@ -2431,14 +2447,39 @@ function writeSnapshot(spool, state, ix) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* The flusher's own process-local counters are part of the same totals the hook processes
- * contribute through the sink. */
+ * contribute through the sink.
+ *
+ * A FOLD IS NOT DELIVERY UNTIL A STATE.JSON WRITE LANDS. Folding moves a count out of `C`, the
+ * one place the exit path can still flush it from, into `state.counters`, which reaches the
+ * heartbeat only through a later `saveState`. A pass that folds and then never saves — a
+ * takeover between its last ownership check and its save, or a pass that fails and a shutdown
+ * before the next — used to take those counts with it, and the count most exposed is the one
+ * that reports a loss: `spool_dropped_events` from `enforceSpoolBounds` is folded immediately
+ * before the save (§ 0 item 9). `FOLDED_UNSAVED` records what has been folded since the last
+ * write that landed; `saveState` clears it, and `unfoldUnsaved` hands it back to `C`/`P` for the
+ * exit flush. */
 function foldLocalCounters(state) {
-  for (const [k, v] of Object.entries(C)) { state.counters[k] = (state.counters[k] || 0) + v; delete C[k]; }
+  for (const [k, v] of Object.entries(C)) {
+    state.counters[k] = (state.counters[k] || 0) + v;
+    FOLDED_UNSAVED.c[k] = (FOLDED_UNSAVED.c[k] || 0) + v;
+    delete C[k];
+  }
   for (const [k, v] of Object.entries(P)) {
     if (!state.predicates[k]) state.predicates[k] = { true: 0, false: 0 };
     state.predicates[k].true += v.true; state.predicates[k].false += v.false;
+    if (!FOLDED_UNSAVED.p[k]) FOLDED_UNSAVED.p[k] = { true: 0, false: 0 };
+    FOLDED_UNSAVED.p[k].true += v.true; FOLDED_UNSAVED.p[k].false += v.false;
     delete P[k];
   }
+}
+
+function unfoldUnsaved() {
+  for (const [k, v] of Object.entries(FOLDED_UNSAVED.c)) C[k] = (C[k] || 0) + v;
+  for (const [k, v] of Object.entries(FOLDED_UNSAVED.p)) {
+    if (!P[k]) P[k] = { true: 0, false: 0 };
+    P[k].true += v.true; P[k].false += v.false;
+  }
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
 }
 
 async function flusherMain() {
@@ -2495,7 +2536,11 @@ async function flusherMain() {
       expireOpenFacts(ctx, ix, atMs);
       writeSnapshot(spool, state, ix);
 
-      if (configOk && atMs - lastHealth > 600000) { lastHealth = atMs; renewLock(spool, state); await refreshHealth(config, selftest); }
+      if (configOk && atMs - lastHealth > 600000) {
+        lastHealth = atMs; renewLock(spool, state);
+        await refreshHealth(config, selftest);
+        assertOwner(spool, state);   // resumed from an await: see assertOwner's header
+      }
 
       if (atMs >= waitUntil && configOk && config.enabled !== false) {
         const drained = await drainOnce(config, spool, state, atMs);
@@ -2533,13 +2578,24 @@ async function flusherMain() {
     if (process.env.FLEET_REPORTER_ONE_PASS) break;
     await sleep(K.FLUSH_MS);
   }
-  /* Counters raised since the last fold never reached a state.json this process wrote, so they
-   * go to the counter sink the next owner folds, the path hook processes use. After a clean pass
-   * that is nothing, because the pass folds before its save. After a lost-ownership exit it is the
-   * loss itself plus whatever the abandoned pass counted. Some of that may describe work the new
-   * owner redoes and counts again (a corrupt line it re-disposes); that over-count is the
-   * tolerable direction, because discarding them would also discard losses nobody redoes, such as
-   * a spool bucket this pass already deleted (§ 0 item 9). */
+  /* Counts that never reached a state.json this process wrote go to the counter sink the next
+   * owner folds, the path hook processes use: those still in `C`, and those folded out of it since
+   * the last save that landed (`unfoldUnsaved`). After a clean pass that is nothing, because the
+   * pass folds before its save. After a lost-ownership exit it is the loss itself plus whatever
+   * the abandoned passes counted. Some of that may describe work the new owner redoes and counts
+   * again (a corrupt line it re-disposes); that over-count is the tolerable direction, because
+   * discarding it would also discard losses nobody redoes.
+   *
+   * WHAT THE OWNERSHIP CHECKS DO NOT COVER. Every await is followed by one (see assertOwner's
+   * header), so an ex-owner resuming from a request acts on nothing. The synchronous work between
+   * a pass's last check and its save — the heartbeat, `enforceSpoolBounds`, `reapOldBuckets` — has
+   * no await and does local file operations only, but a new owner can still claim state.json
+   * inside it, and the save then throws. Of what that pass did: a spool bucket it dropped is
+   * still COUNTED, because the fold's count comes back here and reaches the sink. A counter
+   * bucket it reaped by offsets the new owner had not folded is LOST, and uncounted: the hook
+   * counter lines in it reach no total. A heartbeat it spooled, carrying this process's totals,
+   * is sent by the new owner. That window is narrowed to one pass's local work, not closed. */
+  unfoldUnsaved();
   flushCounters(spool, 'flusher');
   releaseLock(spool, state);
 }
@@ -2583,7 +2639,12 @@ async function drainOnce(config, spool, state, atMs) {
    * seqs the new owner may also assign. The next ownership check throws — the save after an
    * accepted batch, or the check before the next send — so no second request follows, and D2's
    * `seq_collision` counts what the one request can still cause. */
-  const send = (body) => { renewLock(spool, state); return postBatch(config, body); };
+  const send = async (body) => {
+    renewLock(spool, state);
+    const res = await postBatch(config, body);
+    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner
+    return res;
+  };
   for (let round = 0; round < 8; round++) {
     const items = collectPending(spool, state, K.BATCH_EVENTS);
     if (!items.length) return { retry: false, sent };
