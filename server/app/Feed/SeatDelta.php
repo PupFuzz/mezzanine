@@ -17,8 +17,9 @@ namespace App\Feed;
  *
  * ORDER IS STILL THE CONTRACT (§ 8.5's `== local + 1`), and it is now the outbox's `id` order: one
  * seat is folded by one worker at a time (§ 6.5's `FOR UPDATE SKIP LOCKED` claim), each pass's row is
- * inserted in its own COMMIT's last statement, and every stream delivers rows in `id` order behind
- * the visibility lag that makes an id below its cursor impossible (AT-D2-25).
+ * inserted in its own COMMIT's last statement, and every stream delivers rows in `id` order as a
+ * visible prefix that never moves its cursor past an id still to become visible (AT-D2-25,
+ * `App\Feed\VisiblePrefix`).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ NO COALESCING — ONE DELTA PER `state_version` INCREMENT.

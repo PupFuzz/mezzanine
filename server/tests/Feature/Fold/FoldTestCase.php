@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Feed\Outbox;
 use App\Fold\Clock;
 use App\Fold\Fold;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -98,7 +99,7 @@ abstract class FoldTestCase extends TestCase
     // ── driving ──────────────────────────────────────────────────────────────────────────────
 
     /**
-     * POST a batch through the real ingest, then move the SERVER clock past `Fold::VISIBILITY_LAG_S`.
+     * POST a batch through the real ingest, then move the SERVER clock past `Outbox::VISIBILITY_LAG_S`.
      *
      * The fold does not need the move to read the batch — it reads `events` by id (card#9398). The
      * move stays the default because the suite's clock arithmetic was derived on top of it
@@ -161,7 +162,7 @@ abstract class FoldTestCase extends TestCase
         // `age: false` leaves the clock where the POST found it, for a test whose subject is the
         // batch's own age — AT-D2-22's control, a fresh batch folding on the very next pass.
         if ($age) {
-            $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+            $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
         }
     }
 

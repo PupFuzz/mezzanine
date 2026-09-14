@@ -5,7 +5,6 @@ namespace Tests\Feature\Feed;
 use App\Feed\BuildingLayoutChanged;
 use App\Feed\Outbox;
 use App\Fold\Clock;
-use App\Fold\Fold;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -60,7 +59,7 @@ class At25ConcurrentWriterTest extends FeedTestCase
         $user = $this->enrolled();
 
         for ($iteration = 1; $iteration <= 20; $iteration++) {
-            $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+            $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
             $t0 = $this->nowMs();
             $processes = new Processes;
             $tag = 'it'.$iteration;
@@ -113,7 +112,7 @@ class At25ConcurrentWriterTest extends FeedTestCase
     public function test_a_writer_that_enqueues_early_and_commits_late_is_not_stranded(): void
     {
         $user = $this->enrolled();
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
         $t0 = $this->nowMs();
         $processes = new Processes;
 
@@ -122,7 +121,7 @@ class At25ConcurrentWriterTest extends FeedTestCase
         $processes->spawn('slow_writer', function (Processes $p) {
             Outbox::transaction(function () use ($p) {
                 Outbox::enqueue(new BuildingLayoutChanged(1, 'slow-writer'));
-                $p->waitMs((Fold::VISIBILITY_LAG_S + 1) * 1000);    // the rest of a long transaction
+                $p->waitMs((Outbox::VISIBILITY_LAG_S + 1) * 1000);    // the rest of a long transaction
             });
         }, $t0 + 500, 'feed_writer_1');
 
@@ -143,11 +142,70 @@ class At25ConcurrentWriterTest extends FeedTestCase
         $this->assertSame(['quick', 'slow-writer'], $got, 'the long writer\'s message was stranded or reordered');
     }
 
-    /** A raw committed-on-commit outbox row on the calling process's connection. */
-    private function insertRow(string $type, ?string $installId, array $body): void
+    /**
+     * ⛔ THE REVERSED-STAMP LEG (card#9467): writer A STAMPS EARLIER but INSERTS and COMMITS LATER than
+     * writer B, so the LOWER id (B's) carries the LATER `created_at`. Nothing is uncommitted when the
+     * streams read the pair — both writers are done by `t0 + 1100` — so this is not the open-transaction
+     * race above: it is two committed rows whose id order and stamp order disagree, which a
+     * stamp-to-INSERT gap on one writer produces, and so does a second app host whose clock runs behind.
+     *
+     * Between `t0 + 2300` and `t0 + 2900` A's row is past the lag and B's is not. A read that FILTERS on
+     * the lag returns A alone and moves the cursor past B's lower id; a read that is a PREFIX stops below
+     * B. Stream A is open throughout and ticks inside that window (the TICK's arm); stream B CONNECTS
+     * inside it (the CONNECT's arm, `visiblePrefixHead()`). Both must deliver B, then A.
+     */
+    public function test_a_writer_that_stamps_earlier_but_commits_later_reaches_every_stream(): void
+    {
+        $user = $this->enrolled();
+
+        for ($iteration = 1; $iteration <= 20; $iteration++) {
+            $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
+            $t0 = $this->nowMs();
+            $processes = new Processes;
+            $tag = 'rev'.$iteration;
+
+            $processes->spawn('stream_a', $this->streamProcess($user), $t0, 'feed_stream_a');
+
+            // Writer A: takes its stamp, and its INSERT lands 800 ms later — after writer B's whole write.
+            $processes->spawn('writer_a', function (Processes $p) use ($tag) {
+                $stamp = Clock::sql(now());
+                $p->waitMs(800);
+                DB::transaction(fn () => $this->insertRow('coord.round', self::INSTALL, ['coord_round' => ['post_ref' => $tag.'-writer-a']], $stamp));
+            }, $t0 + 300, 'feed_writer_1');
+
+            // Writer B: stamps, inserts and commits through the primitive, inside writer A's gap.
+            $processes->spawn('writer_b', function () use ($tag) {
+                Outbox::transaction(fn () => Outbox::enqueue(new BuildingLayoutChanged(2, $tag.'-writer-b')));
+            }, $t0 + 900, 'feed_writer_2');
+
+            // Stream B connects while A's row is past the lag and B's is not.
+            $processes->spawn('stream_b', $this->streamProcess($user), $t0 + 2600, 'feed_stream_b');
+
+            $processes->spawn('reload', fn () => $this->writeReload(), $t0 + 4000, 'feed_writer_2');
+
+            $processes->run($t0 + 20_000);
+
+            foreach (['stream_a', 'stream_b'] as $stream) {
+                $this->assertTrue($processes->finished($stream), "iteration $iteration: $stream never ended");
+
+                $frames = $processes->results[$stream];
+                $marks = array_values(array_filter(array_map(
+                    fn ($e) => $e['coord_round']['post_ref'] ?? (str_starts_with((string) ($e['at'] ?? ''), $tag.'-') ? $e['at'] : null),
+                    $frames,
+                )));
+
+                $this->assertSame([$tag.'-writer-b', $tag.'-writer-a'], $marks,
+                    "iteration $iteration: $stream did not receive both messages, in id order");
+                $this->assertSame('reload', end($frames)['reason']);
+            }
+        }
+    }
+
+    /** A raw committed-on-commit outbox row on the calling process's connection, stamped now unless given a stamp. */
+    private function insertRow(string $type, ?string $installId, array $body, ?string $createdAt = null): void
     {
         DB::table('feed_outbox')->insert([
-            'created_at' => Clock::sql(now()),
+            'created_at' => $createdAt ?? Clock::sql(now()),
             't' => $type,
             'install_id' => $installId,
             'message' => json_encode(['feed_version' => 1, 't' => $type, 'server_time' => Clock::wire(Clock::sql(now()))] + $body),

@@ -7,7 +7,6 @@ use App\Feed\FeedStream;
 use App\Feed\FleetReload;
 use App\Feed\Outbox;
 use App\Feed\StreamClock;
-use App\Fold\Fold;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -77,7 +76,7 @@ class StreamHandlerTest extends FeedTestCase
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);   // every row so far is visible
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);   // every row so far is visible
 
         $this->assertNotEmpty($this->wire->ofType('seat.delta'), 'the fixture wrote no row to not replay');
 
@@ -97,7 +96,7 @@ class StreamHandlerTest extends FeedTestCase
 
         $stream = $this->openStream($user, [
             $this->reloadLikeRowStep(),                    // a building.layout row at tick 1
-            ...$this->idle(Fold::VISIBILITY_LAG_S * 4 - 2), // still inside the lag on every one of these
+            ...$this->idle(Outbox::VISIBILITY_LAG_S * 4 - 2), // still inside the lag on every one of these
             ...$this->idle(4),
             $this->reloadStep(),
             ...$this->idle(10),
@@ -107,7 +106,7 @@ class StreamHandlerTest extends FeedTestCase
 
         $layout = array_values(array_filter($seen, fn ($s) => $s[0] === 'building.layout'));
         $this->assertCount(1, $layout, 'the row was lost or duplicated');
-        $this->assertGreaterThanOrEqual(1 + Fold::VISIBILITY_LAG_S * 4, $layout[0][1],
+        $this->assertGreaterThanOrEqual(1 + Outbox::VISIBILITY_LAG_S * 4, $layout[0][1],
             'a row was delivered before it was 2 s old — the lag did not hold it');
         $this->assertContains('feed.close', $stream->types());
     }

@@ -169,7 +169,7 @@ class FleetController extends Controller
         });
     }
 
-    /** § 8.2: "fleet-level health only, NO SEAT DATA … plus the nine fleet-scoped counters". */
+    /** § 8.2: "fleet-level health only, NO SEAT DATA … plus the fleet-scoped counters". */
     public function health(): JsonResponse
     {
         try {
