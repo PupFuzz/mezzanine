@@ -68,19 +68,19 @@ because a gate can only be proven on a defect of its own class:
                row match that expected an unbolded figure passed a bolded drifted one at rc 0, and
                bolding the correct figure silently dropped the row from the check.
   `imperative`
-            -- rewrite a backticked counter WRITER (`counts \`x\``) into the pseudocode fences' idiom
+            -- rewrite a backticked counter WRITER (`counts \\`x\\``) into the pseudocode fences' idiom
                (`count x`: the bare name after the bare imperative verb), which is the class "a
                counter's only writer is spelled the way the fences spell one".  card#9320 is why
                this exists: G8's writer idiom required the backtick spelling and a closed verb set,
                so a § 7.2 counter written only as § 8.3's fence writes one reded G8's reverse leg as
                "nothing increments it" -- and, the harm, an undeclared one written there shipped
                green.  It is a HOLD plant (below): the correct verdict is that the writer is SEEN.
-  `unwrite` -- rewrite the same writer's verb into one that writes nothing (`names \`x\``), which is
+  `unwrite` -- rewrite the same writer's verb into one that writes nothing (`names \\`x\\``), which is
                the class "a § 7.2 counter lost its writer".  Also card#9320, and paired with the
                `imperative` hold on the SAME anchor: this plant reds only while the anchored writer
                is the counter's sole writer, which is what keeps that hold from going vacuous.
   `noun`    -- rewrite a counter writer into English that uses "count" as a NOUN beside the counter
-               name (`keeps a count of \`x\``), which is the class "the widened idiom reads English as
+               name (`keeps a count of \\`x\\``), which is the class "the widened idiom reads English as
                a counter write".  Also card#9320, and also a HOLD: the imperative verb had to enter
                G8's idiom, and the word is ordinary English all over the document.
   `backtick` -- put backticks round every counter name the anchored span writes BARE after a
