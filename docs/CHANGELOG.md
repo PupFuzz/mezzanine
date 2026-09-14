@@ -47,7 +47,6 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   confirmation with no move in progress, the password-confirmation and guest refusals, the routes'
   gates and throttle, and a start that leaves the users row unchanged. `README.md § Losing your
   authenticator` describes the move.
-
 - **card#9373** — **`fleet-reporter selftest` now exits 0 on a correctly configured seat.** The one-shot
   command never asked the ingest, so `schema_version_accepted` read `fail` on every seat and the
   install-time verification exited 1; its `tls_verify` read `pass` from a check of the source alone.
