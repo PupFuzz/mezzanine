@@ -43,17 +43,18 @@ final class IngestPipeline
 
     public function handle(Request $request): JsonResponse
     {
-        // ONE CLOCK PER REQUEST, and it is the APPLICATION's — `now()`, not `new DateTimeImmutable`.
+        // THE REQUEST'S ARRIVAL, on the APPLICATION's clock — `now()`, not `new DateTimeImmutable`,
+        // because `travel()` is how the 24-hour batch-id window (§ 10.4) is exercised at all and a
+        // timestamp taken from PHP's clock is one no test can reach.
         //
-        // This is not a testing convenience. `received_at` is the clock D1 § 10.1 makes
-        // authoritative for liveness, retention and every cross-seat comparison, and
-        // `docs/design/FLEET-STATE.md § 6.5` requires the value stamped here to be the same one
-        // `Counters` and `TokenResolver::touch()` write inside the same request — the fold's
-        // 2-second visibility rule reads `received_at` and a second clock in the same transaction
-        // makes that comparison meaningless. It also has to be movable: `travel()` is how the
-        // 24-hour batch-id window (§ 10.4) and the retention chain are exercised at all, and a
-        // timestamp taken from PHP's clock is a timestamp no test can reach.
-        $receivedAt = now()->utc()->toDateTimeImmutable();
+        // It is NOT the ingest's receipt stamp. `received_at` is stamped inside
+        // `BatchWriter::write()`, after the seat lock its transaction takes first
+        // (`docs/design/FLEET-STATE.md § 6.5`). This value answers exactly two questions: whether
+        // `batch_id` was accepted within the last 24 h (`previousResponse()`), and — handed to the
+        // writer — D1 § 10.1's `clock_skew_ms`, which measures arrival against `sent_at` and must
+        // not grow by however long the write waited for the lock. `TokenResolver::touch()` and
+        // `Counters` read their own `now()`.
+        $arrivedAt = now()->utc()->toDateTimeImmutable();
 
         // ── steps 1, 2, 3 — before any identity exists ───────────────────────────────────────
         $read = $this->bodyReader->read($request);
@@ -116,7 +117,7 @@ final class IngestPipeline
         // It is a memory of ACCEPTED batches only. A refused batch is never retried (§ 11.5's
         // poison-pill rule), so there is nothing for a replay memory to answer, and `batches`
         // rows are written on the `202` path alone — see the note in `BatchWriter`.
-        if ($previous = $this->previousResponse($seatRef, $batch->batchId, $receivedAt)) {
+        if ($previous = $this->previousResponse($seatRef, $batch->batchId, $arrivedAt)) {
             return $previous->toResponse();
         }
 
@@ -141,7 +142,7 @@ final class IngestPipeline
         }
 
         // ── step 11 ─────────────────────────────────────────────────────────────────────────
-        return $this->writer->write($binding, $batch, $validated, $receivedAt)->toResponse();
+        return $this->writer->write($binding, $batch, $validated, $arrivedAt)->toResponse();
     }
 
     /**
