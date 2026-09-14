@@ -2205,12 +2205,28 @@ statement.** `git grep -n "versionBearing(" -- server/app` lists every sample: t
 one-event retry and quarantine, the rebuild's replay, retirement, and the sweep's per-seat pass, each
 inside a transaction that opens with the seat's `seat_state` row lock, as the ingest's does. Two of them
 on one seat therefore meet at that lock, where the later one waits or skips, and none of them holds a
-row of the seat's while it is still to take `seat_state`. The seat lock does not cover a statement that runs outside those transactions: the
-ingest's refusal and failure counters (`Counters::batchRefused()`, `Counters::batchFailed()`) write the
-seat's `seat_counters` row with no seat lock, before the batch transaction or after its rollback. A
-lock-first transaction that writes that row can still wait on it or find it changed. That is why rebuild
-and retirement retry, and why the sweep treats a concurrency error on a row its lock does not cover as
-contention rather than failure.
+row of the seat's while it is still to take `seat_state`. The seat lock does not cover a statement that
+runs outside those transactions, and seat rows are written there too.
+`git grep -nE -e '->(insert|insertOrIgnore|insertGetId|update|upsert|delete)\(|Counters::(seat|seatMany|batchRefused|batchFailed)\(|Predicates::(record|alarm)\(' -- server/app`
+lists every write statement; no command tells a write inside the lock from one outside it, so which
+transaction a write runs in is read from its caller. Read that way, the seat rows written outside the lock are:
+
+- **`Predicates::alarm()`'s updates of `seat_predicates.alarm_since`**, run by the sweep after its per-seat
+  loop. The fold's window upserts those same rows under the lock (`Projector` → `Predicates::record()`),
+  so this is a same-row writer: the window can wait on a row `alarm()` holds, or find it changed (`1020`).
+- **`Purge`'s deletes** of the expired rows of the seat tables `Purge::PLAN` names. A rebuild's reset deletes
+  the same seat's `sessions`, `calls` and `attention_requests` rows under the lock, so this is a same-row
+  writer as well.
+- **The sweep's `sweep_seat_error` and `sweep_seat_contended` counters**, written to `seat_counters` after
+  the seat's transaction has rolled back or yielded.
+- **The ingest's refusal and failure counters** (`Counters::batchRefused()`, `Counters::batchFailed()`),
+  written to `seat_counters` before the batch transaction or after its rollback.
+
+The two counter writers touch rows no lock-first transaction writes: `seat_counters` is keyed
+`(seat_ref, name)`, and only these writers use those names. A lock-first transaction that writes a row
+another writer holds can still wait on it or find it changed. That is why rebuild and retirement retry, and
+why the fold and the sweep treat a concurrency error on a row their lock does not cover as contention rather
+than failure, yielding the seat through their `contended()`.
 
 **Idempotency has two independent mechanisms, and both are load-bearing:**
 

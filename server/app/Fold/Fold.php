@@ -219,9 +219,9 @@ final class Fold
      * transaction that samples `SeatFacts::versionBearing()` (`git grep -n "versionBearing(" --
      * server/app` lists them; § 6.5 states the rule), so none of them holds a row of this seat's while
      * it is still to take `seat_state`. This window takes the lock `SKIP LOCKED` and never waits for
-     * it. A row written outside those transactions — the ingest's refusal and failure counters on
-     * `seat_counters` — can still raise a concurrency error here, and the pass yields through
-     * `contended()`.
+     * it. A row written outside those transactions can still raise a concurrency error here, and the
+     * pass yields through `contended()`. § 6.5 names the writers outside the lock, among them
+     * `Predicates::alarm()`, which updates the `seat_predicates` rows this window upserts.
      */
     private function window(int $seatRef, int $cursor): int
     {
