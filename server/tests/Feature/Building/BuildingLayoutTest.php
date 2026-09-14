@@ -31,7 +31,7 @@ class BuildingLayoutTest extends TestCase
     private function refuses(array $document, string $expect): void
     {
         try {
-            BuildingLayout::parse($document);
+            LayoutFixture::read($document);
         } catch (InvalidBuildingLayout $e) {
             $this->assertStringContainsString($expect, $e->getMessage());
 
@@ -43,7 +43,7 @@ class BuildingLayoutTest extends TestCase
 
     public function test_the_control_document_is_accepted_so_every_refusal_below_discriminates(): void
     {
-        $layout = BuildingLayout::parse(self::ACCEPTED);
+        $layout = LayoutFixture::read(self::ACCEPTED);
 
         // Member order is the document's — floor, label, rooms (card#9273) — and `assertSame` is
         // order-sensitive, which is what holds the delivered shape rather than merely its content.
@@ -65,7 +65,7 @@ class BuildingLayoutTest extends TestCase
         // `zeta` first in the document; the key is still `sola`, and the rooms come out in
         // § 2.1 row 6's order rather than the author's — the document's key order never reaches
         // the screen, so no desk moves when a room is re-listed.
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]]);
+        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]]);
 
         $this->assertSame('sola', $layout->floors[0]['floor']);
         $this->assertSame(['sola', 'zeta'], array_column($layout->floors[0]['rooms'], 'install'));
@@ -74,7 +74,7 @@ class BuildingLayoutTest extends TestCase
 
     public function test_the_floors_come_out_keys_ascending_not_in_authored_order(): void
     {
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => ['form' => 'open']]], ['rooms' => ['aimla' => ['form' => 'open']]]]]);
+        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'open']]], ['rooms' => ['aimla' => ['form' => 'open']]]]]);
 
         $this->assertSame(['aimla', 'zeta'], array_column($layout->floors, 'floor'));
     }
@@ -84,7 +84,7 @@ class BuildingLayoutTest extends TestCase
         // The property the derived key buys, asserted rather than argued: an install the layout
         // does NOT place can never equal a floor key, which is what lets `Building::compose()`
         // mint the implicit floor under the install's own id with no disambiguation rule at all.
-        $layout = BuildingLayout::parse(self::ACCEPTED);
+        $layout = LayoutFixture::read(self::ACCEPTED);
 
         foreach ($layout->floors as $floor) {
             $this->assertSame($floor['floor'], $layout->floorOf($floor['floor']),
@@ -184,7 +184,7 @@ class BuildingLayoutTest extends TestCase
         // that by type would make the promise false for the one store it was made for. Null is
         // therefore ABSENT — the floor reads as its key — and every other non-string is still
         // refused by type, which is what the arm above holds.
-        $layout = BuildingLayout::parse(
+        $layout = LayoutFixture::read(
             ['floors' => [['label' => null, 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
         );
 
@@ -304,7 +304,7 @@ class BuildingLayoutTest extends TestCase
         // THE CONTROL for the reads-alike arms above: the same collision shape with the two plates being
         // ONE plate. It reads `sola` and links to `sola`, which is what it would have done
         // unlabelled — a refusal here would be the rule fired on a document nobody can misread.
-        $layout = BuildingLayout::parse(
+        $layout = LayoutFixture::read(
             ['floors' => [['label' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
         );
 
@@ -319,7 +319,7 @@ class BuildingLayoutTest extends TestCase
         // The reader refuses what it cannot accept and repairs nothing it can (§ 4.6). A trim
         // here would be a second, silent normalisation the author never sees and the document
         // never records — and the blank refusal above is only honest if `' the solos '` is kept.
-        $layout = BuildingLayout::parse(
+        $layout = LayoutFixture::read(
             ['floors' => [['label' => ' the solos ', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
         );
 
@@ -335,12 +335,12 @@ class BuildingLayoutTest extends TestCase
         // label would red here and nowhere else in this file.
         $rooms = ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']];
 
-        $unlabelled = BuildingLayout::parse(['floors' => [['rooms' => $rooms], ['rooms' => ['aimla' => ['form' => 'open']]]]]);
-        $labelled = BuildingLayout::parse(['floors' => [
+        $unlabelled = LayoutFixture::read(['floors' => [['rooms' => $rooms], ['rooms' => ['aimla' => ['form' => 'open']]]]]);
+        $labelled = LayoutFixture::read(['floors' => [
             ['label' => 'the solos', 'rooms' => $rooms],
             ['label' => 'reception', 'rooms' => ['aimla' => ['form' => 'open']]],
         ]]);
-        $renamed = BuildingLayout::parse(['floors' => [
+        $renamed = LayoutFixture::read(['floors' => [
             ['label' => 'the hallway', 'rooms' => $rooms],
             ['label' => 'the lobby', 'rooms' => ['aimla' => ['form' => 'open']]],
         ]]);
@@ -366,7 +366,7 @@ class BuildingLayoutTest extends TestCase
 
     public function test_an_empty_floors_list_is_a_legal_layout_and_composes_nothing(): void
     {
-        $layout = BuildingLayout::parse(['floors' => []]);
+        $layout = LayoutFixture::read(['floors' => []]);
 
         // § 4.6: "An empty layout is therefore a legal and meaningful document — it is today's
         // building". What that building looks like is the fixture's first case.
@@ -418,19 +418,19 @@ class BuildingLayoutTest extends TestCase
         BuildingLayout::fromJson('[{"rooms": {"sola": {"form": "office"}}}]');
     }
 
-    public function test_an_empty_document_is_refused_for_the_member_it_lacks_and_never_as_not_being_an_object(): void
+    public function test_an_empty_document_is_refused_for_what_it_is_and_never_as_not_being_an_object(): void
     {
         // ⛔ card#9295's defect shape, on this reader (card#9208 comment 4794 records it against
-        // `App\Floor\FloorMap`; the sibling audit found it here too). `json_decode('{}', true)`
-        // and `json_decode('[]', true)` are the same PHP value and `array_is_list()` is true of
-        // it, so `{}` — a JSON object — was refused as *"not a JSON object (No error)"*. Both
-        // spellings are still refused; the refusal now names the member the author has to add.
-        foreach (['{}', '[]'] as $document) {
+        // `App\Floor\FloorMap`; the sibling audit found it here too): decoded associatively, `{}`
+        // and `[]` were one PHP value, so `{}` — a JSON object — was refused as *"not a JSON
+        // object (No error)"*. Both spellings are refused; since card#9322's object-mode decode
+        // each refusal says what is true of its own spelling.
+        foreach (['{}' => 'declares no `floors` key', '[]' => 'This is a JSON array, and a layout is a JSON object'] as $document => $expect) {
             try {
                 BuildingLayout::fromJson($document);
                 $this->fail('an empty document was accepted as a layout: '.$document);
             } catch (InvalidBuildingLayout $e) {
-                $this->assertStringContainsString('declares no `floors` key', $e->getMessage());
+                $this->assertStringContainsString($expect, $e->getMessage());
                 $this->assertStringNotContainsString('No error', $e->getMessage());
             }
         }
@@ -496,7 +496,7 @@ class BuildingLayoutTest extends TestCase
     {
         // THE CONTROL for every plan refusal below: the operator's own worked floor from § 4.6,
         // accepted, with `origin` carried in the room record and in member order.
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => [
+        $layout = LayoutFixture::read(['floors' => [['rooms' => [
             'zeta' => ['form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
         ]]]]);
@@ -551,7 +551,7 @@ class BuildingLayoutTest extends TestCase
         // a floor the camera must pan across … a bound would be a number with no derivation
         // behind it". Asserted so that adding one later is a deliberate change to this document's
         // rule and not a tidy-up.
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => [
+        $layout = LayoutFixture::read(['floors' => [['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 4000000, 'y' => 0]],
         ]]]]);
@@ -566,9 +566,9 @@ class BuildingLayoutTest extends TestCase
         // THE CONTROL: the same hallway on a planned floor is accepted and kept byte for byte —
         // it is part of the layout document, so it has no `map_version` and no `room.map` of its
         // own (§ 4.6, D2 § 6.11).
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => $planned, 'hallway' => FloorMapFixture::hallway()]]]);
+        $layout = LayoutFixture::read(['floors' => [['rooms' => $planned, 'hallway' => FloorMapFixture::hallway()]]]);
 
-        $this->assertSame(FloorMapFixture::hallway(), $layout->floors[0]['hallway']);
+        $this->assertSame(json_encode(FloorMapFixture::hallway()), json_encode($layout->floors[0]['hallway']));
 
         // § 4.6: "on a floor whose rooms carry no `origin`: refused by name — a corridor with no
         // rooms placed along it is a picture of nothing".
@@ -622,13 +622,69 @@ class BuildingLayoutTest extends TestCase
         );
     }
 
+    // ── card#9322: the decode keeps `{}` and `[]` apart, so the two spellings can end differently ──
+
+    public function test_an_object_for_floors_is_refused_and_the_empty_list_is_still_the_empty_building(): void
+    {
+        // THE CONTROL, and § 4.6's legal document: `"floors": []` is the empty building.
+        $this->assertSame([], BuildingLayout::fromJson('{"floors": []}')->floors);
+
+        // ⛔ The typo this reader could not see while it decoded associatively: `{}` and `[]` were
+        // one PHP value, so `"floors": {}` was accepted as the building it cannot be told apart from.
+        try {
+            BuildingLayout::fromJson('{"floors": {}}');
+            $this->fail('`"floors": {}` was accepted as the empty building');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString('`floors` is a JSON object', $e->getMessage());
+            $this->assertStringContainsString('`"floors": []`', $e->getMessage());
+        }
+    }
+
+    public function test_a_hallway_list_spelled_as_an_empty_object_is_refused_and_the_empty_list_is_not(): void
+    {
+        // A hallway is a Tiled document inside the layout (§ 4.6, § 10.3), and its `layers` and
+        // `tilesets` are LISTS. Each pair below differs by the spelling of one member alone.
+        $planned = ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]];
+
+        $document = function (string $member, mixed $value) use ($planned): string {
+            $hallway = FloorMapFixture::hallway();
+            $hallway[$member] = $value;
+
+            return (string) json_encode(['floors' => [['rooms' => $planned, 'hallway' => $hallway]]]);
+        };
+
+        foreach (['layers' => 'declares no `layers` array', 'tilesets' => 'something other than a list of tilesets'] as $member => $expect) {
+            $this->assertCount(1, BuildingLayout::fromJson($document($member, []))->floors, "`$member: []` was refused");
+
+            try {
+                BuildingLayout::fromJson($document($member, new \stdClass));
+                $this->fail("a hallway whose `$member` is `{}` was accepted");
+            } catch (InvalidBuildingLayout $e) {
+                $this->assertStringContainsString($expect, $e->getMessage());
+            }
+        }
+    }
+
+    public function test_a_rooms_list_is_refused_because_a_room_is_keyed_by_its_install(): void
+    {
+        // THE CONTROL: `rooms` is a mapping of `install_id` to its record.
+        $this->assertSame('sola', BuildingLayout::fromJson('{"floors": [{"rooms": {"sola": {"form": "open"}}}]}')->floors[0]['floor']);
+
+        // Decoded associatively, a LIST of records arrived keyed `0`, `1`, … and was placed as rooms
+        // named by their positions — a floor of installs nobody has.
+        $this->expectException(InvalidBuildingLayout::class);
+        $this->expectExceptionMessage('declares `rooms` as a JSON list');
+
+        BuildingLayout::fromJson('{"floors": [{"rooms": [{"form": "open"}]}]}');
+    }
+
     public function test_an_all_digit_id_survives_phps_integer_key_cast(): void
     {
         // `install_id` is `^[a-z0-9][a-z0-9-]{1,31}$` (docs/design/EVENT-SCHEMA.md § 3.1), so an
         // all-digit install id is legal — and PHP, like `json_decode(…, true)`, turns such a key
         // into an int. The cast has to round-trip it or the key would be an int the browser
         // compares as a string and `floorOf('42')` would answer for a room nobody placed.
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['42' => ['form' => 'open']]]]]);
+        $layout = LayoutFixture::read(['floors' => [['rooms' => ['42' => ['form' => 'open']]]]]);
 
         $this->assertSame('42', $layout->floorOf('42'));
         $this->assertSame([['floor' => '42', 'label' => null, 'rooms' => [['install' => '42', 'form' => 'open']]]], $layout->floors);

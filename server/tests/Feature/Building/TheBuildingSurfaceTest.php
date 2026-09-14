@@ -137,6 +137,84 @@ class TheBuildingSurfaceTest extends FeedTestCase
     }
 
     /**
+     * The `layout` member of a `GET /api/building` body, as the BYTES the server wrote — never
+     * re-encoded, because a re-encoding is exactly where `{}` and `[]` would be decided a second time.
+     */
+    private function layoutBytes(TestResponse $response): string
+    {
+        $this->assertSame(1, preg_match('/"layout":(\{.*\}),"rooms":/s', (string) $response->getContent(), $match));
+
+        return $match[1];
+    }
+
+    public function test_a_layout_with_all_digit_install_ids_is_served_byte_for_byte_as_before_card_9322(): void
+    {
+        // ⛔ PINNED against the output of `dev` before card#9322's object-mode decode. An all-digit
+        // `install_id` is legal (EVENT-SCHEMA § 3.1) and a PHP array key turns it into an int, so
+        // this is the document where a decode change could move the keys, the floor order (`100`
+        // sorts before `42` as a STRING) or the key's JSON type.
+        Layouts::save('{"floors": [{"rooms": {"42": {"form": "open"}, "sola": {"form": "office"}}}, {"rooms": {"100": {"form": "office"}}}]}', self::OPERATOR);
+
+        $this->assertSame(
+            '{"layout_version":1,"floors":['
+            .'{"floor":"100","label":null,"rooms":[{"install":"100","form":"office"}]},'
+            .'{"floor":"42","label":null,"rooms":[{"install":"42","form":"open"},{"install":"sola","form":"office"}]}'
+            .']}',
+            $this->layoutBytes($this->browse('/api/building')->assertOk()),
+        );
+    }
+
+    public function test_a_planned_labelled_layout_with_a_hallway_is_served_byte_for_byte_as_before_card_9322(): void
+    {
+        // ⛔ PINNED against the output of `dev` before card#9322: § 8.7's worked building — a label,
+        // origins, and a hallway carried whole — whose every object is non-empty, so nothing in it
+        // is a spelling the associative decode lost.
+        $this->author('sola', FloorMapFixture::sized(8, 5));
+        $this->author('zeta', FloorMapFixture::sized(8, 5));
+
+        $hallway = FloorMapFixture::hallway();
+
+        Layouts::save((string) json_encode(['floors' => [
+            ['rooms' => ['aimla' => ['form' => 'open']]],
+            ['label' => 'the solos', 'hallway' => $hallway, 'rooms' => [
+                'zeta' => ['form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
+                'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
+            ]],
+        ]]), self::OPERATOR);
+
+        $this->assertSame(
+            '{"layout_version":1,"floors":['
+            .'{"floor":"aimla","label":null,"rooms":[{"install":"aimla","form":"open"}]},'
+            .'{"floor":"sola","label":"the solos","rooms":['
+            .'{"install":"sola","form":"office","origin":{"x":0,"y":160}},'
+            .'{"install":"zeta","form":"office","origin":{"x":288,"y":160}}'
+            .'],"hallway":'.json_encode($hallway).'}'
+            .']}',
+            $this->layoutBytes($this->browse('/api/building')->assertOk()),
+        );
+    }
+
+    public function test_a_hallway_member_authored_as_an_empty_object_is_served_as_one(): void
+    {
+        // card#9322 comment 5265: the hallway is served whole, and an associative decode turned an
+        // authored `{}` in it into `[]` — a document the operator did not write, which is the room
+        // map endpoint's own rule below (§ 8.7, "byte for byte what was authored").
+        $this->author('sola', FloorMapFixture::sized(8, 5));
+
+        $hallway = FloorMapFixture::hallway();
+        $hallway['editorsettings'] = new \stdClass;
+
+        Layouts::save((string) json_encode(['floors' => [
+            ['hallway' => $hallway, 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]],
+        ]]), self::OPERATOR);
+
+        $layout = $this->layoutBytes($this->browse('/api/building')->assertOk());
+
+        $this->assertStringContainsString('"editorsettings":{}', $layout);
+        $this->assertStringNotContainsString('"editorsettings":[]', $layout);
+    }
+
+    /**
      * ⛔ `layout_version` AND `floors` ARE ONE REVISION'S. A client holds the version it was answered
      * and treats the `building.layout` message carrying that version as already applied (§ 8.7), so a
      * body pairing a new version with old floors keeps the old building on screen with nothing left to

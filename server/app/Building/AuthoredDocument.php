@@ -31,36 +31,4 @@ final class AuthoredDocument
     {
         return str_replace("\r\n", "\n", $text);
     }
-
-    /**
-     * ⛔ IS THIS ASSOCIATIVELY-DECODED DOCUMENT A JSON **OBJECT** — the console's ONE copy of the
-     * question, asked by the room map's reader and the layout's alike (card#9295's defect shape,
-     * recorded against `App\Floor\FloorMap` on card#9208 comment 4794).
-     *
-     * `json_decode($text, true)` decodes `{}` and `[]` to the SAME PHP value, `[]`, for which
-     * `array_is_list()` is true — so the obvious spelling refuses `{}`, a document that IS a JSON
-     * object, and the refusal it earns says the opposite of what is true of it.
-     *
-     * ⚠ `App\Ingest\Wire::isJsonObject` calls this one-clause form "also wrong", and it is RIGHT
-     * ABOUT THE INGEST, where `{}` must be ACCEPTED and `[]` REFUSED — two outcomes from a value
-     * that can no longer tell them apart, which is why that fix had to be at the decode. **On this
-     * side both spellings are refused either way**: an empty document is neither a Tiled map nor a
-     * layout, and all that differed was the WORDING. So this predicate is exact for what it is
-     * asked, and what it buys is that the ambiguous value stops earning a FALSE sentence and
-     * reaches the check with something true to say — *a floor map is a Tiled MAP and this declares
-     * none*, *this document declares no `floors` key*.
-     *
-     * ⛔ IF EITHER READER EVER NEEDS THE TWO SPELLINGS TO END DIFFERENTLY, this is not enough —
-     * and the answer is the one the ingest reached, at the DECODE and on this side: read the
-     * document with `json_decode($text, false, …)`, so `{}` arrives as `stdClass` and can be told
-     * from `[]`. Not a wider clause here, and not `App\Ingest\Wire::isJsonObject` borrowed — that
-     * predicate is exact for an object-mode value and false of every value this one is handed.
-     * (`App\Building` reaching into `App\Ingest` is also against a layering convention this tree
-     * keeps BY HAND; nothing checks it, so it is a reason to ask, not a refusal that already
-     * happened.) Until then this stays the console's ONE copy rather than one per reader.
-     */
-    public static function isJsonObject(mixed $decoded): bool
-    {
-        return is_array($decoded) && ($decoded === [] || ! array_is_list($decoded));
-    }
 }

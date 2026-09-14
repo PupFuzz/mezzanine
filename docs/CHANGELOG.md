@@ -19,6 +19,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
+  served with every `{}` it was authored with.** The layout reader decoded the document
+  associatively, where `{}` and `[]` are one PHP value: `"floors": {}` was accepted as § 4.6's empty
+  building with no error, an authored `{}` inside a hallway came back from `GET /api/building` as
+  `[]`, and `rooms` written as a list was placed as rooms named by their positions.
+  `App\Building\BuildingLayout` and the store's per-request read in `App\Building\Layouts` now decode
+  in object mode, the decode card#9295 gave the ingest, so each member is checked against its own
+  shape. `"floors": []` is the empty building; `"floors": {}` is refused with a sentence that gives
+  `"floors": []` as the empty building's spelling; `rooms` as a list is refused naming the mapping it
+  is. `App\Floor\FloorMap` reads room maps and hallways in the same mode, so for both a `layers`,
+  `tilesets`, tile layer `data` or `desks` `objects` that is not a JSON array, and a layer, tileset
+  entry or desk object that is not a JSON object, is refused naming the shape it has; a document that
+  is `[]` is refused as a JSON array. `GET /api/building` writes
+  the same bytes as before for a layout with no empty object in it, pinned against the pre-change
+  output for an all-digit `install_id` layout and a planned, labelled floor with a hallway.
+  `AuthoredDocument::isJsonObject` is removed, and the migration seeding `config/building.php`
+  validates the text it seeds through `BuildingLayout::fromJson()`, which also measures it against
+  the console's write bound. `docs/design/FLOOR.md` § 4.6 (the floor and rooms rows, the empty
+  building, the shape contract) and § 10.3 (the `tilesets[]`, `layers[]` and `desks` rows) state it.
+  New tests in `BuildingLayoutTest`, `TheBuildingSurfaceTest` and `FloorMapTest`. **Installer action:** none; no migration. A
+  stored layout or room map written by hand with a list spelled `{}` or a record spelled `[]` (Tiled
+  writes neither) is refused where it is read: `GET /api/building` answers `500` for such a layout
+  and the floors console names such a map; restoring an earlier revision or saving a corrected
+  document repairs it.
 - **card#9465** — **A failed ingest write now answers `503 server_error` and is counted, and a hung
   ingest transaction no longer holds its seat.** A store failure while `POST /api/ingest/events` ran
   surfaced as Laravel's default error body and incremented nothing, so an operator could not see a
