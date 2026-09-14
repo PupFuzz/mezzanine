@@ -372,6 +372,16 @@ class Ingest:
         # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
         self.gets = 0
         self.get_delay_s = 0.0
+        # What the health surface answers: the accepted schema-version set, and the status. A set
+        # without this reporter's version is an ingest that REFUSES it; a non-200 is an answer
+        # that carries no set at all (a bad token, an outage page) — card#9373 tells those apart.
+        self.accepted: list = [1]
+        self.get_status = 200
+        # A per-GET script, consumed in arrival order before the defaults above apply: an entry may
+        # set `hold` (seconds) and `accepted`. It lets one flusher's successive probes answer
+        # differently without the suite racing that flusher to change a default between two of them.
+        # A held answer closes its connection: the reporter has usually abandoned it by then.
+        self.get_script: list[dict] = []
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
         subprocess.run(
@@ -397,16 +407,26 @@ class Ingest:
 
             def do_GET(self):
                 outer.gets += 1
-                if outer.get_delay_s:
-                    time.sleep(outer.get_delay_s)
-                body = json.dumps({"accepted_schema_versions": [1],
-                                   "server_time": "2026-08-24T00:00:00.000Z",
-                                   "min_reporter_version": "0.1.0"}).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                step = outer.get_script.pop(0) if outer.get_script else {}
+                hold = step.get("hold", outer.get_delay_s)
+                if hold:
+                    time.sleep(hold)
+                if outer.get_status == 200:
+                    body = json.dumps({"accepted_schema_versions": step.get("accepted", outer.accepted),
+                                       "server_time": "2026-08-24T00:00:00.000Z",
+                                       "min_reporter_version": "0.1.0"}).encode()
+                else:
+                    body = json.dumps({"error": "unauthorized"}).encode()
+                try:
+                    self.send_response(outer.get_status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except OSError:   # the probe's deadline passed and the reporter dropped the socket
+                    pass
+                if step.get("hold"):
+                    self.close_connection = True
 
             def do_POST(self):
                 raw = self._read()
@@ -454,6 +474,7 @@ TMP = tmpdir("fr-suite-")
 INGEST = Ingest(TMP)
 CA = str(INGEST.crt)
 SID = "11111111-2222-4333-8444-000000000000"
+DEAD = "https://127.0.0.1:9/api/ingest/events"          # discard port: refused locally, no DNS, no WAN
 
 
 def seat(name: str, **kw) -> Seat:
@@ -560,7 +581,9 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
 
 print("== 1. The `selftest` subcommand — the checks of § 6.14's member table this build implements, and each one's RED ==")
 s1 = seat("selftest-seat")
+gets_before = INGEST.gets
 r, rep = selftest(s1)
+gets_by_selftest = INGEST.gets - gets_before
 eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
     "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
@@ -569,11 +592,260 @@ eq("config_readable passes on a valid config", "pass", rep["checks"]["config_rea
 eq("sanitizer_fixtures passes", "pass", rep["checks"]["sanitizer_fixtures"])
 eq("harness_payload_keys passes", "pass", rep["checks"]["harness_payload_keys"])
 eq("predicate_discrimination passes", "pass", rep["checks"]["predicate_discrimination"])
-# The offline posture is REPORTED as a fail with its reason, never assumed to pass. D1 § 6.14
-# makes these two network checks; a suite with no ingest reachable at selftest time must not
-# quietly call them green.
-eq("schema_version_accepted is honestly `fail` when unprobed", "fail",
+
+# THE TWO NETWORK CHECKS ARE MEASURED BY THE ONE-SHOT (card#9373). `selftest` is the install-time
+# verification, and it used to leave `schema_version_accepted` false on every seat because only the
+# flusher ever asked the ingest — so a healthy install exited 1, and an operator either concluded the
+# install was broken or learned to ignore the command. The one-shot now runs the flusher's own health
+# probe (`refreshHealth`: same TLS path, same `ca_file`, same deadline), and D1 § 6.14 states what a
+# check it could NOT measure reports and exits: `not_measured`, exit 2 — neither a pass nor a fail.
+eq("GREEN: on a healthy config the one-shot asks the ingest's health surface, once", 1, gets_by_selftest)
+eq("  … schema_version_accepted passes against an ingest that accepts this reporter's version", "pass",
    rep["checks"]["schema_version_accepted"])
+eq("  … tls_verify passes, the ingest reached with verification on through the seat's ca_file", "pass",
+   rep["checks"]["tls_verify"])
+eq("  … and the command exits 0 — a correctly configured seat reads green", 0, r.returncode)
+eq("  … with the set it compared against in the detail", [1],
+   rep["detail"]["schema_version_accepted"].get("accepted_schema_versions"))
+
+# (b) An ingest that answers and does NOT list this reporter's version: measured, and a fail.
+INGEST.accepted = [999]
+try:
+    r_refuse, rep_refuse = selftest(s1)
+finally:
+    INGEST.accepted = [1]
+eq("RED (probed and refused): an ingest whose accepted set lacks this version fails "
+   "schema_version_accepted", "fail", rep_refuse["checks"]["schema_version_accepted"])
+eq("  … tls_verify still passes, because the host answered with verification on", "pass",
+   rep_refuse["checks"]["tls_verify"])
+eq("  … and the command exits 1", 1, r_refuse.returncode)
+
+# (c) An ingest that cannot be reached: nothing was measured, and the report says so by name.
+s_dead = seat("selftest-unreachable", ingest=DEAD)
+r_dead, rep_dead = selftest(s_dead)
+eq("NOT MEASURED: with the ingest unreachable, schema_version_accepted is `not_measured`, never "
+   "`fail`", "not_measured", rep_dead["checks"]["schema_version_accepted"])
+eq("  … and tls_verify is `not_measured` too — no TCP connection, so no TLS verdict", "not_measured",
+   rep_dead["checks"]["tls_verify"])
+eq("  … and the command exits 2, which § 6.14 reserves for no fail and something unmeasured", 2,
+   r_dead.returncode)
+eq("  … naming why the probe measured nothing", True,
+   bool(rep_dead["detail"]["tls_verify"].get("probe_error")))
+
+# (d) An answer with no set in it — a refused token, an outage page — is not a refusal of the version.
+INGEST.get_status = 401
+try:
+    r_401, rep_401 = selftest(s1)
+finally:
+    INGEST.get_status = 200
+eq("NOT MEASURED: a 401 from the health surface leaves schema_version_accepted `not_measured` — the "
+   "error body carries no accepted set, so it cannot refuse the version", "not_measured",
+   rep_401["checks"]["schema_version_accepted"])
+eq("  … with the status in the detail", 401, rep_401["detail"]["schema_version_accepted"].get("http_status"))
+eq("  … and exits 2", 2, r_401.returncode)
+
+# (e) A host reached whose certificate does not verify: THAT is a measured tls_verify fail.
+s_noca = seat("selftest-no-ca", ca=None)
+r_noca, rep_noca = selftest(s_noca)
+eq("RED (probed and refused): without the ca_file the stub's self-signed certificate fails "
+   "verification, and tls_verify is `fail`", "fail", rep_noca["checks"]["tls_verify"])
+eq("  … while schema_version_accepted is `not_measured`, since no answer arrived", "not_measured",
+   rep_noca["checks"]["schema_version_accepted"])
+eq("  … and the command exits 1", 1, r_noca.returncode)
+
+# RED — the defect verbatim, planted on a copy: the one-shot that never asks the ingest.
+p_noprobe = plant(("  if (results.config_readable) {\n    const probe = await refreshHealth(",
+                   "  if (false) {\n    const probe = await refreshHealth("))
+r_np, rep_np = selftest(s1, reporter=p_noprobe)
+eq("RED: a one-shot that never probes cannot pass a healthy seat — schema_version_accepted is "
+   "not_measured and the exit is non-zero", ("not_measured", True),
+   (rep_np["checks"]["schema_version_accepted"], r_np.returncode != 0))
+redgreen("the one-shot selftest measures the ingest, and says when it could not (D1 § 6.14, card#9373)",
+         f'no probe in the one-shot -> schema_version_accepted="{rep_np["checks"]["schema_version_accepted"]}", '
+         f'rc={r_np.returncode} on a healthy seat (before card#9373 the same seat read "fail", rc=1)',
+         f'probe via refreshHealth -> healthy: {rep["checks"]["schema_version_accepted"]}/rc={r.returncode}; '
+         f'set lacks v1: {rep_refuse["checks"]["schema_version_accepted"]}/rc={r_refuse.returncode}; '
+         f'unreachable: {rep_dead["checks"]["schema_version_accepted"]}/rc={r_dead.returncode}; '
+         f'401: {rep_401["checks"]["schema_version_accepted"]}/rc={r_401.returncode}; '
+         f'no ca_file: tls_verify={rep_noca["checks"]["tls_verify"]}/rc={r_noca.returncode}')
+
+# (f) THE FLUSHER KEEPS ITS LAST MEASUREMENT, AND RE-PROBES SOONER WHEN A PROBE MEASURED NOTHING. The
+# heartbeat's `selftest` object carries two values, so a check the flusher sends as `fail` is read on
+# the seat as a failure (the ingest folds it into `selftest_failed`). A probe that times out, whose
+# kept-alive socket drops, or that gets an answer carrying no set has falsified nothing: the flusher
+# keeps the value its last probe MEASURED and re-probes after `K.HEARTBEAT_MS` instead of `K.HEALTH_MS`.
+# A probe that did measure overwrites, `false` included.
+#
+# THE TIMING IS SCALED ON A COPY, AND ONLY THE TIMING. The real cadence puts the second probe
+# `K.HEALTH_MS` after the first, which no suite can wait for. The copy rewrites the `K` intervals
+# the scenario runs on (FAST_K's keys) and no line of logic; every RED below is planted on top of
+# the same scaled copy.
+#
+# THE SCALE KEEPS PRODUCTION'S ORDER, FLUSH_MS < REQUEST_MS < HEARTBEAT_MS < HEALTH_MS, because the
+# retry is only told apart by the gaps between those intervals. The next probe after one that measured
+# nothing begins, counted from when that probe began:
+#   - on EVERY pass (the defect): about REQUEST_MS + FLUSH_MS later, the deadline plus one sleep;
+#   - on K.HEARTBEAT_MS (the fix): no sooner than HEARTBEAT_MS later, and about one pass after it;
+#   - on K.HEALTH_MS (round 1): no sooner than HEALTH_MS later.
+# A scale with REQUEST_MS above HEARTBEAT_MS (round 2's) makes the first two the same number: the pass
+# that waits out the deadline has already overrun the heartbeat interval, and an every-pass flusher
+# passed every assertion here. So the order is asserted below, on the copy AND on the reporter itself.
+FAST_K = {"FLUSH_MS": 25, "REQUEST_MS": 300, "HEARTBEAT_MS": 1200, "HEALTH_MS": 4800}
+K_ORDER = ["FLUSH_MS", "REQUEST_MS", "HEARTBEAT_MS", "HEALTH_MS"]
+POLL_S = 0.01                                      # drive_probes' poll of the stub's GET count
+HOLD_PAST_DEADLINE_S = 2 * FAST_K["REQUEST_MS"] / 1000   # probes 2 and 3: answered only after the deadline
+# Probe 4 answers after a third of the deadline: many POLL_S polls see it ARRIVE before it answers, so
+# the heartbeat split is taken before the heartbeat that follows the answer unless the suite stalls for
+# the whole hold; and it still answers inside the deadline, so it measures.
+REFUSAL_HOLD_S = FAST_K["REQUEST_MS"] / 3000
+# LOWER BOUND on the retry. The flusher counts from `atMs`, taken at the start of the pass; the suite
+# times ARRIVALS at the stub, each noticed by a POLL_S poll. An arrival trails its pass's `atMs` by
+# that pass's pre-probe work (index fold, snapshot) and a fresh TLS handshake, and those lags differ
+# between two passes. Measured for card#9373 round 3, the retry landed up to a few tens of milliseconds
+# past HEARTBEAT_MS on an idle machine, and as far as a few tens UNDER it with the suite and the flusher
+# pinned to one CPU. RETRY_SLACK_S is sized for a loaded CI runner stalling one of those lags or one
+# poll, and is asserted to stay under half the gap to the every-pass retry, so the slack can never
+# admit the defect the bound exists to catch.
+RETRY_SLACK_S = 0.25
+RETRY_AT_LEAST_S = FAST_K["HEARTBEAT_MS"] / 1000 - RETRY_SLACK_S
+EVERY_PASS_RETRY_S = (FAST_K["REQUEST_MS"] + FAST_K["FLUSH_MS"]) / 1000
+RETRY_WITHIN_S = FAST_K["HEALTH_MS"] / 2000        # UPPER BOUND: half the full cadence, a retry and not the next round
+WINDOW_S = 0.9 * FAST_K["HEALTH_MS"] / 1000        # past this a fixed-cadence flusher could probe again
+
+_prod_src = REPORTER.read_text(encoding="utf-8")
+PROD_K = {k: int(re.search(rf"\b{k}: (\d+),", _prod_src).group(1)) for k in K_ORDER}
+eq(f"precondition: the reporter's own intervals are in the order the retry bounds rely on "
+   f"({' < '.join(K_ORDER)}; {PROD_K})", True,
+   all(PROD_K[a] < PROD_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
+eq(f"precondition: the scaled copy keeps that order ({FAST_K})", True,
+   all(FAST_K[a] < FAST_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
+eq(f"precondition: the lower bound ({RETRY_AT_LEAST_S:.2f} s) sits above an every-pass retry "
+   f"(~{EVERY_PASS_RETRY_S:.3f} s) by more than twice the slack", True,
+   RETRY_AT_LEAST_S - EVERY_PASS_RETRY_S > 2 * RETRY_SLACK_S)
+eq(f"precondition: the upper bound ({RETRY_WITHIN_S:.2f} s) sits above a heartbeat-interval retry plus one "
+   f"pass (~{(FAST_K['HEARTBEAT_MS'] + FAST_K['FLUSH_MS']) / 1000:.3f} s) by more than twice the slack, "
+   f"and inside the window", True,
+   RETRY_WITHIN_S - (FAST_K["HEARTBEAT_MS"] + FAST_K["FLUSH_MS"]) / 1000 > 2 * RETRY_SLACK_S
+   and RETRY_WITHIN_S < WINDOW_S)
+
+
+def fast_flusher(*defects) -> Path:
+    return plant_src(*[(rf"\b{k}: \d+,", f"{k}: {v},") for k, v in FAST_K.items()],
+                     *[(re.escape(old), new) for old, new in defects])
+
+
+def heartbeat_selftests(s: Seat) -> list[dict]:
+    """The `selftest` object of every heartbeat spooled so far — complete lines only, because the
+    flusher under observation may be mid-append."""
+    out = []
+    for f in sorted(s.spool.glob("*.jsonl")):
+        raw = f.read_bytes()
+        for line in raw[: raw.rfind(b"\n") + 1].splitlines():
+            e = json.loads(line)["e"] if line.strip() else {}
+            if e.get("kind") == "reporter.heartbeat":
+                out.append(e["data"]["selftest"])
+    return out
+
+
+def drive_probes(name: str, reporter: Path) -> dict:
+    """A long-lived flusher on an `enabled: false` seat (no drain, so the probe is its only request)
+    against scripted health answers: probe 1 accepts this version; probes 2 and 3 are held past the
+    probe deadline; probe 4 answers with a set that lacks the version. Heartbeats are split at the
+    moment a probe ARRIVES at the stub. The flusher is single-threaded and awaits each probe, so a
+    heartbeat spooled after probe k arrived was spooled after probe k-1 resolved."""
+    s = seat(name, enabled=False)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    INGEST.gets = 0
+    INGEST.get_script = [{}, {"hold": HOLD_PAST_DEADLINE_S}, {"hold": HOLD_PAST_DEADLINE_S},
+                         {"accepted": [999], "hold": REFUSAL_HOLD_S}]
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False),
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    arrived: dict[int, float] = {}
+    split: dict[int, int] = {}
+    try:
+        started = time.time()
+        while p.poll() is None and time.time() - started < 30:
+            for k in (2, 3, 4):
+                if k not in arrived and INGEST.gets >= k:
+                    arrived[k] = time.time()
+                    split[k] = len(heartbeat_selftests(s))
+            if 4 in arrived and len(heartbeat_selftests(s)) > split[4]:
+                break
+            if 2 in arrived and 4 not in arrived and time.time() - arrived[2] > WINDOW_S:
+                break
+            time.sleep(POLL_S)
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        INGEST.get_script = []
+        s.freeze_flusher()
+    hbs = heartbeat_selftests(s)
+    return {"before": hbs[: split.get(2, len(hbs))],
+            "after_timeouts": hbs[split.get(2, len(hbs)): split.get(4, len(hbs))],
+            "after_refusal": hbs[split[4]:] if 4 in arrived else [],
+            "retry_s": round(arrived[3] - arrived[2], 2) if 3 in arrived and 2 in arrived else None}
+
+
+def pair(st: dict) -> tuple:
+    return (st.get("tls_verify"), st.get("schema_version_accepted"))
+
+
+g_f = drive_probes("flusher-keeps-last", fast_flusher())
+eq("precondition: the flusher's first probe measured both network checks, and a heartbeat says so",
+   ("pass", "pass"), pair(g_f["before"][-1]) if g_f["before"] else None)
+eq("GREEN: after probes that timed out, every heartbeat still reports the last measured values — "
+   "no false `schema_version_accepted` fail", (True, {("pass", "pass")}),
+   (bool(g_f["after_timeouts"]), {pair(x) for x in g_f["after_timeouts"]}))
+eq(f"GREEN: a probe that measured nothing re-probes no sooner than K.HEARTBEAT_MS (at least "
+   f"{RETRY_AT_LEAST_S:.2f} s at the scaled {FAST_K['HEARTBEAT_MS']} ms)", True,
+   g_f["retry_s"] is not None and g_f["retry_s"] >= RETRY_AT_LEAST_S)
+eq(f"GREEN: … and well inside the K.HEALTH_MS cadence (under {RETRY_WITHIN_S} s at the scaled "
+   f"{FAST_K['HEALTH_MS']} ms)", True,
+   g_f["retry_s"] is not None and g_f["retry_s"] < RETRY_WITHIN_S)
+eq("GREEN: a later probe that DID measure overwrites — an answer lacking this version turns the kept "
+   "pass into a fail", ("pass", "fail"), pair(g_f["after_refusal"][-1]) if g_f["after_refusal"] else None)
+
+# RED 1 — the defect verbatim, as #143 round 1 shipped it: every probe's result overwrites, null
+# included, and the cadence is K.HEALTH_MS whatever the probe measured.
+r_f = drive_probes("flusher-keeps-last-red-overwrite", fast_flusher(
+    ("          if (checks[c] === null) unmeasured = true;\n          else selftest[c] = checks[c];",
+     "          selftest[c] = checks[c];"),
+    ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = K.HEALTH_MS;")))
+eq("RED: a flusher that lets a timed-out probe overwrite heartbeats a false fail after it",
+   True, ("fail", "fail") in {pair(x) for x in r_f["after_timeouts"]})
+eq("  … and, on a fixed K.HEALTH_MS cadence, does not re-probe inside half of it", True,
+   r_f["retry_s"] is None or r_f["retry_s"] >= RETRY_WITHIN_S)
+
+# RED 2 — keep-last read as keep-FIRST: a measured value is never replaced, so a refusal that arrives
+# after a pass is hidden behind it.
+r_k = drive_probes("flusher-keeps-last-red-keepfirst", fast_flusher(
+    ("else selftest[c] = checks[c];", "else if (selftest[c] === null) selftest[c] = checks[c];")))
+eq("RED: a flusher that never replaces a measured value keeps reporting pass after the ingest "
+   "measurably refuses the version", ("pass", "pass"),
+   pair(r_k["after_refusal"][-1]) if r_k["after_refusal"] else None)
+# RED 3 — a re-probe on EVERY pass while a check is unmeasured, instead of one heartbeat interval on.
+# In production that is a probe on every flush pass, one K.FLUSH_MS sleep (10 s) plus the probe itself,
+# for as long as the ingest does not measure. The heartbeats cannot show it, since a kept value rides
+# the wire either way; only the lower bound can.
+r_e = drive_probes("flusher-keeps-last-red-everypass", fast_flusher(
+    ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = unmeasured ? 0 : K.HEALTH_MS;")))
+eq(f"RED: a flusher that re-probes on every pass while a check is unmeasured fails the lower bound "
+   f"(retry under {RETRY_AT_LEAST_S:.2f} s)", True,
+   r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_AT_LEAST_S)
+eq("  … while its retry sits under the upper bound too, so the lower bound is the assertion that catches it",
+   True, r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_WITHIN_S)
+redgreen("the flusher keeps the last MEASURED network checks and re-probes sooner when a probe measured "
+         "nothing, but no sooner than one heartbeat interval (§ 6.14, card#9373 rounds 2-3; timing scaled on a copy)",
+         f"null overwrites + fixed cadence -> heartbeats after the timed-out probes "
+         f"{sorted({pair(x) for x in r_f['after_timeouts']})}, re-probe after {r_f['retry_s']} s; "
+         f"never replacing a measured value -> heartbeat after a refusing answer "
+         f"{pair(r_k['after_refusal'][-1]) if r_k['after_refusal'] else None}; "
+         f"re-probe on every pass -> re-probe after {r_e['retry_s']} s (lower bound {RETRY_AT_LEAST_S:.2f} s)",
+         f"keep-last + K.HEARTBEAT_MS retry -> before {pair(g_f['before'][-1]) if g_f['before'] else None}, "
+         f"after timeouts {sorted({pair(x) for x in g_f['after_timeouts']})}, re-probe after "
+         f"{g_f['retry_s']} s (bounds [{RETRY_AT_LEAST_S:.2f}, {RETRY_WITHIN_S}) s at {FAST_K}), after a refusal "
+         f"{pair(g_f['after_refusal'][-1]) if g_f['after_refusal'] else None}")
 
 # RED — an http:// ingest_url is REFUSED at install (§ 3.5), not downgraded.
 s_http = seat("http-seat", ingest="http://127.0.0.1:9/api/ingest/events")
@@ -590,6 +862,8 @@ p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",
                "({ keepAlive: true, maxSockets: 2, rejectUnauthorized: false })"))
 _, rep_tls = selftest(s1, reporter=p_tls)
 eq("RED: a planted `rejectUnauthorized: false` fails tls_verify", "fail", rep_tls["checks"]["tls_verify"])
+eq("  … even though that copy's probe reached the ingest — reachability never overrides the posture", True,
+   rep_tls["detail"]["tls_verify"].get("reached"))
 eq("  … and names the forbidden spelling", True,
    len(rep_tls["detail"]["tls_verify"]["forbidden_spellings_present"]) == 1)
 eq("GREEN: the real source carries no verification-disabling spelling", [],
@@ -792,7 +1066,6 @@ redgreen("never blocks the seat (P-1..P-5, AT-3)",
 
 
 print("\n== 4. SURVIVES THE BRIDGE BEING DOWN (AT-4) ==")
-DEAD = "https://127.0.0.1:9/api/ingest/events"          # discard port: refused locally, no DNS, no WAN
 s4 = seat("outage", ingest=DEAD)
 for i in range(30):
     r = hook(s4, "PreToolUse", pre(tuid=f"out_{i}"))

@@ -15,7 +15,7 @@ use Illuminate\Console\Command;
  * WHAT IT DOES: writes one `fleet.reload` row to `feed_outbox`, carrying the release's `feed_version`
  * whether or not it changed, and then WAITS — lag + tick + margin — before returning.
  *
- * ⛔ WHY IT WAITS. A row is invisible to every handler for § 6.5's 2 s visibility lag and is delivered
+ * ⛔ WHY IT WAITS. A row is invisible to every handler for § 8.3's 2 s visibility lag and is delivered
  * on the tick after that. A deploy that wrote the row and moved on in the next line would do so while
  * every stream is still inside the lag window: it has seen no stream end and cannot tell a stream that
  * took the message from one that missed it. So this returns no sooner than the moment every draining

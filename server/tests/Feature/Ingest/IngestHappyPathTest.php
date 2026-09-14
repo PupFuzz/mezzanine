@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Ingest;
 
+use App\Ingest\BatchWriter;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -9,6 +11,14 @@ use Illuminate\Support\Facades\DB;
  */
 class IngestHappyPathTest extends IngestTestCase
 {
+    protected function tearDown(): void
+    {
+        BatchWriter::$afterLock = null;
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
     public function test_a_valid_batch_is_accepted_with_the_section_4_6_body(): void
     {
         $batch = $this->validBatch();
@@ -119,6 +129,34 @@ class IngestHappyPathTest extends IngestTestCase
 
         // `sent_at` in the fixture is in the past, so the server clock is ahead: a positive skew.
         $this->assertGreaterThan(0, (int) $row->clock_skew_ms);
+    }
+
+    public function test_a_wait_for_the_seat_lock_moves_received_at_and_leaves_the_skew_gauge_on_the_arrival_clock(): void
+    {
+        // card#9398: `received_at` is stamped AFTER the seat lock, and `clock_skew_ms` keeps D1
+        // § 10.1's meaning — the request's ARRIVAL against the seat's `sent_at`. Were the gauge read
+        // off the post-lock stamp, a post that waited out a fold window for this seat would carry
+        // the wait into the skew and could cross the ±120 s `clock_skew` badge on a correct clock.
+        Carbon::setTestNow(Carbon::parse('2026-08-23 14:07:20.000', 'UTC'));
+        $waitS = 30;
+
+        // The wait itself is simulated at the seam that fires once the lock is held.
+        BatchWriter::$afterLock = function () use ($waitS) {
+            BatchWriter::$afterLock = null;
+            Carbon::setTestNow(Carbon::now()->addSeconds($waitS));
+        };
+
+        $this->postBatch($this->validBatch(overrides: ['sent_at' => '2026-08-23T14:07:11.482Z']))->assertStatus(202);
+
+        $batch = DB::table('batches')->where('seat_ref', $this->seatRef)->first();
+        $state = DB::table('seat_state')->where('seat_ref', $this->seatRef)->first();
+        $arrivalSkewMs = (int) round((Carbon::parse('2026-08-23 14:07:20.000', 'UTC')->getPreciseTimestamp(3)
+            - Carbon::parse('2026-08-23 14:07:11.482', 'UTC')->getPreciseTimestamp(3)));
+
+        $this->assertSame('2026-08-23 14:07:50.000', substr((string) $batch->received_at, 0, 23),
+            'received_at was not stamped after the seat lock');
+        $this->assertSame($arrivalSkewMs, (int) $batch->clock_skew_ms, 'the lock wait moved the batch skew gauge');
+        $this->assertSame($arrivalSkewMs, (int) $state->clock_skew_ms, 'the lock wait moved the seat skew gauge');
     }
 
     public function test_health_reports_the_one_declared_accepted_set(): void

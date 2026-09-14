@@ -48,6 +48,50 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   gates and throttle, and a start that leaves the users row unchanged. `README.md § Losing your
   authenticator` describes the move.
 
+- **card#9373** — **`fleet-reporter selftest` now exits 0 on a correctly configured seat.** The one-shot
+  command never asked the ingest, so `schema_version_accepted` read `fail` on every seat and the
+  install-time verification exited 1; its `tls_verify` read `pass` from a check of the source alone.
+  The command now runs the flusher's own health probe (`refreshHealth`: same TLS path, `ca_file` and
+  deadline) once, on a config that passes validation. D1 § 6.14 gains the rule for a check the
+  subcommand could not measure: each network check is `pass`, `fail` or `not_measured` (ingest
+  unreachable, or an answer with no accepted set, such as a `401`), and the exit code is `0` when every
+  check passes, `1` when any fails, and `2` when none fails and one is unmeasured. A TLS handshake that
+  fails against a reached host is a `tls_verify` fail. `tls_verify` is the source posture and
+  reachability together in one place, so a probe answer never turns a failing posture into a pass;
+  that also holds for the heartbeat, where a successful send used to set it. The heartbeat's
+  `selftest` object keeps its two values, and the flusher keeps each network check at its last measured
+  value: a probe that measures nothing for a check (a deadline, a dropped connection, an answer with no
+  set) leaves the previous value in place, so it never sends a false `fail`. A check no probe has
+  measured yet rides the heartbeat as `fail`, as before. While a check is unmeasured the flusher probes
+  again no sooner than one heartbeat interval after that probe began, instead of at its ordinary
+  `K.HEALTH_MS` cadence.
+  `fleet-reporter/INSTALL-LINUX.md` Step 6 and the fleet-reporter README follow. The acceptance suite's
+  § 1 drives an accepting stub, a stub whose set lacks the version, an unreachable ingest, a `401`, and
+  a seat with no `ca_file`, with a RED plant of the one-shot that never probes. It also drives a
+  long-lived flusher whose probes time out after a measured pass and then meet a refusal, on a copy
+  with its intervals scaled in the reporter's own order, and asserts the retry's lower and upper bounds,
+  with REDs of a flusher that lets the timeout overwrite on a fixed cadence, of one that never replaces
+  a measured value, and of one that re-probes on every pass. **Installer action:**
+  none beyond the ordinary artifact update (`INSTALL-LINUX.md` Step 1).
+- **card#9398** — **Two overlapping posts for one seat can no longer leave events permanently
+  unfolded.** The fold read `events` behind a 2 s lag on `received_at`, and the ingest stamped
+  `received_at` when the request arrived — before validation and before its transaction — so a post
+  that arrived first but inserted second could hold a lower id than a batch the fold had already read
+  past, and those events were never folded and nothing reported it. The ingest transaction now takes
+  the seat's `seat_state` row lock as its first statement and stamps `received_at` after it, so for one
+  seat id order and commit order are the same order, and the fold reads `events` by id alone, with no
+  lag. `clock_skew_ms` still measures the request's arrival against `sent_at` (D1 § 10.1), so a post
+  that waits for the lock does not badge `clock_skew`. The fold now treats MariaDB's concurrency errors
+  (`1020`, `1205`, `1213`) as transient: the pass yields that seat and retries it whole on the next pass,
+  where before, contention on both attempts could quarantine an innocent event as poison
+  (`fold_error`, `derivation_error`). D2 § 6.5, AT-D2-22 and the number and decision tables restate
+  the property and its conditions; the feed outbox keeps its own 2 s lag (card#9467). New tests drive
+  the overlap on real MariaDB connections (`At22LockFirstIngestTest`) and the transient path at both
+  transaction depths, and `EventsHaveOneWriterTest` fails on any write to `events` outside the
+  ingest's `BatchWriter`, the condition the lock argument rests on. **Installer action:** none; no
+  migration. A post for a seat whose row another transaction holds — the fold's window, or an
+  overlapping post for the same seat — now waits for it before inserting anything rather than at its
+  final `seat_state` update, bounded as before by the store connection's `innodb_lock_wait_timeout`.
 - **card#9146** — **The promote mover's header records the rt#444 ruling: this repo keeps its
   `card#<id>` token mover.** `bin/promote-cards-by-token` § WHY THIS MOVER states the ruling, leaves
   the body's provenance and pin unchanged, carries runnable commands that measure both correlation

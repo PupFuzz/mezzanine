@@ -613,14 +613,27 @@ went stale, and it took over. It kept the existing `state.json`, so no second st
 node /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js selftest; echo "selftest rc=$?"
 ```
 
-On the sandbox, five checks passed: `config_readable`, `tls_verify`, `sanitizer_fixtures`,
-`predicate_discrimination` and `harness_payload_keys`. `harness_payload_keys` passed for every hook in
-the fixture set. **`schema_version_accepted` was `fail`, so the command exited `rc=1`.** This build
-fails that check on every seat. The one-shot `selftest` never probes the ingest; its detail says
-`read from GET /api/ingest/health by the flusher; unprobed here`. So a non-zero exit from this command
-alone does not mean the install is broken. What says so is the heartbeat's `selftest` object, which the
-flusher refreshes against the real host. Step 7 reads it, and on the sandbox every check there was
-`pass`. Anything *other* than `schema_version_accepted` failing here is a real failure.
+The command measures both network checks itself, with the flusher's own health probe against the
+config's `ingest_url` and `ca_file` (card#9373). Read its exit code by D1 § 6.14:
+
+- **`rc=0`** — every check passed. The install is verified.
+- **`rc=1`** — a check failed; `checks` names it and `detail` says why. A `tls_verify` fail with an
+  empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
+  handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
+  `ca_file` that does not trust the ingest's certificate.
+- **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
+  (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
+  (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,
+  D1 § 4.1). Re-run once the ingest answers.
+
+⚠ **This corrected command has not yet been run on the sandbox seat.** It is exercised against the
+acceptance suite's TLS ingest stub (`fleet-reporter.selftest.py` § 1). The card#9368 run on the sandbox
+used the build before card#9373. There five checks passed: `config_readable`, `tls_verify`,
+`sanitizer_fixtures`, `predicate_discrimination` and `harness_payload_keys`, the last for every hook in
+the fixture set. `schema_version_accepted` was `fail` and the command exited `rc=1`, because that build's
+one-shot never probed the ingest and so failed the check on every seat. Its `tls_verify` pass checked
+the source alone. Step 7 reads the heartbeat's `selftest` object, which the flusher measures against the
+real host, and on the sandbox every check there was `pass`.
 
 ## Step 7 — verify that events arrive
 
