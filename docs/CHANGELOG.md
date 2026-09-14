@@ -19,6 +19,15 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9499** — **The PHP suite runs only against the `app/` of the tree under test.** Composer
+  computes the `App\` base from the autoloader's own location, resolved through symlinks, so a
+  `server/vendor` linked in from another checkout ran that checkout's `app/` under this tree's tests.
+  `server/phpunit.xml` now bootstraps `server/tests/bootstrap.php`, which reads Composer's PSR-4 map
+  and exits `1` before any test runs when an `App\` base resolves outside the directory holding
+  `phpunit.xml`, naming both paths and the fix: `server/vendor` must be a real directory inside the
+  tree, installed with `composer install`. `composer test`, `php artisan test` and `vendor/bin/phpunit`
+  all load that bootstrap. The README's local-run section states the requirement. **Installer
+  action:** none; no migration.
 - **card#9465** — **A failed ingest write now answers `503 server_error` and is counted, and a hung
   ingest transaction no longer holds its seat.** A store failure while `POST /api/ingest/events` ran
   surfaced as Laravel's default error body and incremented nothing, so an operator could not see a
