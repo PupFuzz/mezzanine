@@ -14,6 +14,10 @@ $loader = require __DIR__.'/../vendor/autoload.php';
 
 $root = realpath(dirname(__DIR__));
 
+// array_filter drops bases that do not exist on disk (Pint registers an unshipped
+// vendor/laravel/pint/app). It is load-bearing: realpath returns false for them, and
+// false.'/' is '/', which would refuse every tree, CI's included.
+
 foreach (array_filter(array_map('realpath', $loader->getPrefixesPsr4()['App\\'])) as $base) {
     if (! str_starts_with($base.'/', $root.'/')) {
         fwrite(STDERR, sprintf(
