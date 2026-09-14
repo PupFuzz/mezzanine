@@ -125,10 +125,11 @@ class User extends Authenticatable
     /**
      * The otpauth URL a QR code encodes, for any plaintext secret this account is being shown.
      *
-     * Differs from Fortify's `TwoFactorAuthenticatable::twoFactorQrCodeUrl()` in ONE argument: the
-     * issuer comes from `App\Auth\TwoFactorIssuer` (the site's hostname label) instead of
-     * `config('app.name')`. ⚠ The rest restates Fortify 1.x's body, so a Fortify upgrade that
-     * changes that method must be re-read against this one.
+     * Differs from Fortify's `TwoFactorAuthenticatable::twoFactorQrCodeUrl()` in two ways: the secret
+     * is a parameter rather than the stored column, and the issuer comes from
+     * `App\Auth\TwoFactorIssuer` (the site's hostname label) instead of `config('app.name')`.
+     * ⚠ The rest restates Fortify 1.x's body, so a Fortify upgrade that changes that method must be
+     * re-read against this one.
      */
     public function twoFactorQrCodeUrlFor(string $secret): string
     {

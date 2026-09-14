@@ -53,7 +53,7 @@ use Laravel\Fortify\Fortify;
  * `TwoFactorAuthenticationConfirmed` fires once the swap commits, because a secret has just been
  * proven with a code — Fortify's meaning for it. `TwoFactorAuthenticationEnabled` and
  * `TwoFactorAuthenticationDisabled` do not fire, because two-factor authentication stays on for the
- * whole move. No code in `app/` listens to a Fortify event today.
+ * whole move.
  */
 class TwoFactorMoveController extends Controller
 {
