@@ -123,8 +123,9 @@
 
     {{-- And the recovery codes from here, for the same reason (card#9077): a page nobody can find
          is the same defect as a page that does not exist, which is how the codes came to be stored,
-         accepted at the challenge, and never once displayed. --}}
-    <p><a href="{{ route('two-factor.codes') }}">Two-factor recovery codes</a></p>
+         accepted at the challenge, and never once displayed. The same page hosts the move to a new
+         authenticator (card#9471). --}}
+    <p><a href="{{ route('two-factor.codes') }}">Two-factor recovery codes and authenticator</a></p>
 
     <form method="POST" action="{{ route('logout') }}">
         @csrf

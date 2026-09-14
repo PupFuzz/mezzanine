@@ -61,6 +61,17 @@ class FortifyServiceProvider extends ServiceProvider
         });
 
         /*
+         * Card#9471 · THE MOVE-TO-A-NEW-AUTHENTICATOR CONFIRM. `two-factor` above cannot serve it: it
+         * keys on the PENDING login id, which a signed-in session does not carry, so every account
+         * would share one bucket. This keys on the signed-in account (`auth` runs before it) with the
+         * challenge's budget. `App\Http\Controllers\Auth\TwoFactorMoveController` states what it is
+         * for, which is not stopping a guessed code.
+         */
+        RateLimiter::for('two-factor-move', function (Request $request) {
+            return Limit::perMinute(5)->by('two-factor-move:user:'.$request->user()->getAuthIdentifier());
+        });
+
+        /*
          * ⛔ CARD#9077 · THE EMAILED RESET REQUEST — TWO LIMITS, BOTH APPLIED, because the endpoint
          * has two distinct abuses and one key cannot answer both.
          *

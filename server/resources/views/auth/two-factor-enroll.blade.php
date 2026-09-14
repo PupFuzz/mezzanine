@@ -21,7 +21,7 @@
 
         <p>
             Your recovery codes are on <a href="{{ route('two-factor.codes') }}">the recovery codes page</a>,
-            behind your password.
+            behind your password. That page is also where you move to a new authenticator.
         </p>
 
         <p><a href="{{ route('dashboard') }}">On to the floor</a></p>

@@ -150,7 +150,8 @@ and its fallbacks: a whole IPv4 address, and `APP_NAME` when the URL gives nothi
 ⚠ **The name is fixed when you enrol, not when you sign in.** An account enrolled before this
 change keeps its old `Mezzanine` label, and so does one enrolled before a host changes
 `TWO_FACTOR_ISSUER`. The secret is the same, so its codes keep working. To change the label,
-rename the entry in the authenticator app or enrol again.
+rename the entry in the authenticator app, or enrol again with **Move to a new authenticator**
+(below).
 
 ### Losing your authenticator
 
@@ -160,6 +161,15 @@ rename the entry in the authenticator app or enrol again.
    *write them down there*. Each signs you in once at the two-factor challenge. They are
    re-displayable at `/two-factor/recovery-codes` (linked from the dashboard) behind your password,
    and the same page regenerates them, which invalidates the previous set immediately.
+
+   **Once you are signed in, move to a new authenticator** — otherwise every later sign-in costs
+   another code until none are left. The same page has a **Move to a new authenticator** button,
+   behind the same password re-entry. It shows a new entry to scan (a QR code and its setup key)
+   and asks for a code from it. **Your current authenticator and recovery codes keep working until
+   that code is confirmed**, so a move you leave unfinished changes nothing on the account.
+   Confirming replaces them in one step: the old authenticator entry and every current recovery
+   code stop working, and the page shows the new set of codes. It is also the way to move a working
+   account to a replacement phone.
 2. **An emailed reset**, at `/two-factor-reset`, linked from the challenge screen. A code goes to
    the address **already on the account** — there is no field that could redirect it — and entering
    it **removes the second factor and signs nobody in**: you then log in with your password and are

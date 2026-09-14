@@ -20,6 +20,12 @@
         <button type="submit">Verify</button>
     </form>
 
+    {{-- Card#9471: a recovery code is single-use, so a user who keeps signing in with them runs out. --}}
+    <p>
+        Each recovery code works once. After signing in with one, use <strong>Move to a new
+        authenticator</strong> on the recovery codes page so the next sign-in does not cost another.
+    </p>
+
     {{--
         Card#9077. Until this link existed, the sentence above named the only way out of a lost
         device and the codes were never displayed anywhere, so for most accounts there was no way

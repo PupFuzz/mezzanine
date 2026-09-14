@@ -1,6 +1,7 @@
 <?php
 
 use App\Building\Layouts;
+use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
 use Illuminate\Support\Facades\Route;
@@ -38,10 +39,41 @@ Route::middleware('auth')->group(function () {
  * There is no application-owned REGENERATE route: Fortify's POST on that same path already calls
  * `Actions\GenerateNewRecoveryCodes`, and `App\Http\Responses\RecoveryCodesGeneratedResponse` is
  * bound so a browser lands back here instead of on a raw translation key.
+ *
+ * ⛔ CARD#9471 · THE MOVE TO A NEW AUTHENTICATOR IS APPLICATION-OWNED, CONFIRM-THEN-SWAP. It starts
+ * from this page and lives under the same three gates. The new secret waits in the session until a
+ * code from it is confirmed, and the account keeps its current second factor until then;
+ * `App\Http\Controllers\Auth\TwoFactorMoveController` owns the argument. The confirm is throttled
+ * by `two-factor-move` (`App\Providers\FortifyServiceProvider`). It replaces the recovery codes by
+ * calling the `Actions\GenerateNewRecoveryCodes` that Fortify's regenerate route calls, so both
+ * routes that replace the codes share one action.
+ *
+ * ⚠ FORTIFY'S `DELETE /user/two-factor-authentication` (`two-factor.disable`) STAYS REGISTERED. It is
+ * part of `Features::twoFactorAuthentication()` and cannot be removed without the feature. It clears
+ * the second factor outright, so no page a CONFIRMED account sees links it: its only form is the
+ * enrolment page's "Start over", which that page draws for an account that has not confirmed.
+ *
+ * ⚠ SO DOES FORTIFY'S `POST /user/two-factor-authentication` (`two-factor.enable`), AND WITH `force=1`
+ * IT REPLACES A CONFIRMED ACCOUNT'S SECOND FACTOR. `TwoFactorAuthenticationController::store` calls
+ * `EnableTwoFactorAuthentication` with `force` true, which writes a new secret and a new set of
+ * recovery codes and leaves `two_factor_confirmed_at` set (read at laravel/fortify v1.38.0,
+ * `routes/routes.php` and `Actions\EnableTwoFactorAuthentication`). It is gated by `auth` +
+ * `password.confirm` (`confirmPassword => true` in `config/fortify.php`), without `mfa`. No page a
+ * confirmed account sees links it: its only form is the enrolment page's "Generate a secret", which
+ * that page draws for an account with no secret. It adds no capability beyond the move: a session
+ * inside the password-confirmation window can already replace the secret and codes through the move.
  */
 Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
     Route::get('/two-factor/recovery-codes', [TwoFactorRecoveryCodeController::class, 'show'])
         ->name('two-factor.codes');
+
+    Route::post('/two-factor/move', [TwoFactorMoveController::class, 'start'])
+        ->name('two-factor.move.start');
+    Route::get('/two-factor/move', [TwoFactorMoveController::class, 'show'])
+        ->name('two-factor.move');
+    Route::post('/two-factor/move/confirm', [TwoFactorMoveController::class, 'confirm'])
+        ->middleware('throttle:two-factor-move')
+        ->name('two-factor.move.confirm');
 });
 
 /*
