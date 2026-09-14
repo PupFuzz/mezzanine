@@ -38,6 +38,12 @@ Route::middleware('auth')->group(function () {
  * There is no application-owned REGENERATE route: Fortify's POST on that same path already calls
  * `Actions\GenerateNewRecoveryCodes`, and `App\Http\Responses\RecoveryCodesGeneratedResponse` is
  * bound so a browser lands back here instead of on a raw translation key.
+ *
+ * CARD#9471 · THE MOVE TO A NEW AUTHENTICATOR is on this page too, and there is no application-owned
+ * route for it either: the form posts to Fortify's `DELETE /user/two-factor-authentication`
+ * (`two-factor.disable`), which carries its own `auth` + `password.confirm`. Fortify's stock
+ * response returns the browser here, and `mfa` sends the now-unenrolled account on to
+ * `two-factor.enroll`. The view states why there is no second confirm step.
  */
 Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
     Route::get('/two-factor/recovery-codes', [TwoFactorRecoveryCodeController::class, 'show'])
