@@ -3,10 +3,6 @@
 namespace Tests\Feature\Lobby;
 
 use App\Building\BuildingLayout;
-use App\Building\InvalidBuildingLayout;
-use App\Building\Layouts;
-use App\Fold\Clock;
-use Illuminate\Support\Facades\DB;
 use Tests\Feature\Feed\FeedTestCase;
 
 /**
@@ -18,9 +14,11 @@ use Tests\Feature\Feed\FeedTestCase;
  * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
  * This file was `TheBuildingStacksOneFloorPerInstallTest` while a floor WAS an install; the
  * one-floor-per-install building is now the EMPTY layout's case and is still asserted below as
- * exactly that. The composed cases hand the probe a `layout` — the same normalised document the
- * page delivers in `#lobby-layout`, produced by the same `App\Building\BuildingLayout` — so what
- * is driven is the real seam and not a hand-written stand-in for it.
+ * exactly that. The composed cases hand the probe a `layout` — the same normalised floors
+ * `GET /api/building` answers, produced by the same `App\Building\BuildingLayout` — so what is
+ * driven is the real seam and not a hand-written stand-in for it. That the lobby takes its layout
+ * from that request, and what it renders when the request fails, is
+ * `TheLobbyFetchesTheBuildingTest`'s.
  *
  * ⭐ THE SECOND AND THIRD FLOORS ARE REAL INSTALLS, NOT FIXTURE ROWS. `docs/PLAN.md`'s P4 accept
  * line is "second floor renders from a second install's feed", and the only way to answer it is
@@ -374,7 +372,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         $this->assertSame('aimla', $back['destination']);
 
         // ⛔ CONTROL 16 — the label dropped in the shipped client, which is how this feature
-        // half-ships: the page delivers the label, the browser ignores it, and the plate quietly
+        // half-ships: the surface delivers the label, the browser ignores it, and the plate quietly
         // reads its key. `test_the_browsers_composition_agrees_with_the_fixture_case_by_case`
         // reds on the same mutation; what is asserted here is what the VIEWER would see.
         $dropped = $this->mutatedModules([
@@ -486,99 +484,6 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
 
             $this->assertSame($case['floors'], $composed, 'fixture case: '.$case['name']);
         }
-    }
-
-    /**
-     * The page delivers the layout — § 4.6: "with the page, not from an endpoint" — as the
-     * normalised floors the reader produced, in the element `main.js` reads. Composed here so
-     * the assertion is about a NON-EMPTY document reaching the page and not about `[]`.
-     */
-    public function test_the_page_delivers_the_composed_floors_the_reader_produced(): void
-    {
-        $this->composeTheBuilding([['label' => 'the solos', 'rooms' => [
-            'zeta' => ['form' => 'office'],
-            'sola' => ['form' => 'office'],
-        ]]]);
-
-        // The delivered record is the reader's, member for member — including the LABEL, which is
-        // the member `main.js` has no other way to learn (card#9273).
-        $this->assertSame(
-            [['floor' => 'sola', 'label' => 'the solos', 'rooms' => [
-                ['install' => 'sola', 'form' => 'office'],
-                ['install' => 'zeta', 'form' => 'office'],
-            ]]],
-            $this->deliveredLayout(),
-        );
-    }
-
-    /**
-     * ⛔ THE LABEL IS THE FIRST FREE OPERATOR TEXT TO REACH `#lobby-layout`, WHICH MAKES THAT
-     * ELEMENT'S ENCODING LOAD-BEARING (card#9273). Every member delivered there before it was an
-     * `install_id` or a member of a closed set, and neither can carry a `<`; a label is whatever
-     * the operator typed. A label containing `</script>` is therefore the first string that could
-     * end the element early — the page would serve markup out of a config file and the client
-     * would parse a truncated document.
-     *
-     * ⚠ WHAT ACTUALLY STOPS IT IS TWO INDEPENDENT ESCAPES, and this test asserts the PROPERTY
-     * rather than either mechanism, because either one alone is enough and a check written on one
-     * would read green while the other carried it. `json_encode`'s default escapes `/` as `\/`,
-     * so the byte sequence `</script>` cannot appear at all; `JSON_HEX_TAG` on the view's `@json`
-     * additionally escapes `<` and `>`. **Seen to fail** with the element emitted as
-     * `json_encode($layout, JSON_UNESCAPED_SLASHES)` — both escapes gone: the regex below then
-     * captures markup instead of JSON and the decode dies on *Control character error*.
-     */
-    public function test_a_label_carrying_markup_round_trips_through_the_layout_element(): void
-    {
-        $label = '</script><b>the solos</b> & co';
-
-        $this->composeTheBuilding([['label' => $label, 'rooms' => [
-            'zeta' => ['form' => 'office'],
-            'sola' => ['form' => 'office'],
-        ]]]);
-
-        $delivered = $this->deliveredLayout();
-
-        $this->assertSame($label, $delivered[0]['label'],
-            'the label the operator authored is not the label the page delivered — either the '
-            .'element was closed early by the markup inside it, or the JSON reached the client as '
-            .'a different string');
-        $this->assertSame('sola', $delivered[0]['floor']);
-    }
-
-    /**
-     * The layout as `main.js` takes it: the `#lobby-layout` element's own text, decoded. The
-     * regex is half the assertion — it must capture EXACTLY the JSON, so a label that closed the
-     * element early would either fail to decode or decode to less than was put in.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function deliveredLayout(): array
-    {
-        $html = $this->lobbyPage();
-        $pattern = '/<script type="application\/json" id="lobby-layout">(.+?)<\/script>/s';
-
-        $this->assertMatchesRegularExpression($pattern, $html);
-        preg_match($pattern, $html, $m);
-
-        return json_decode($m[1], true, 512, JSON_THROW_ON_ERROR);
-    }
-
-    public function test_an_invalid_layout_refuses_the_lobby_loudly_rather_than_composing_a_partial_building(): void
-    {
-        // § 4.6 / the reader's header: a bad document is a refusal on the surfaces that read it,
-        // per request — the lobby is one — and never a repair. The seat side is untouched by it.
-        //
-        // ⚠ SINCE card#9208 THE STORE REFUSES THIS AT THE WRITE, so the row is planted rather than
-        // saved: the state is reachable exactly as `App\Floor\FloorInventory`'s unreadable-map row
-        // is — a rule TIGHTENED after a document was stored, or a writer that is not the console —
-        // and the per-request refusal is the backstop behind the write-time one, not a duplicate
-        // of it.
-        $this->storeALayoutTheReaderWillRefuse('{"floors":[{"rooms":{"sola":{"form":"cubicle"}}}]}');
-
-        $this->withoutExceptionHandling();
-        $this->expectException(InvalidBuildingLayout::class);
-
-        $this->actingAs($this->enrolled())->get('/dashboard');
     }
 
     public function test_a_cab_standing_on_a_floor_the_building_no_longer_has_is_never_moved_quietly(): void
@@ -751,32 +656,6 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     }
 
     /** The rendered page, as an MFA-satisfied session actually receives it. */
-    /**
-     * ⭐ THE LAYOUT COMES FROM THE CONSOLE'S STORE (card#9208's reversal): these arms used to set
-     * `config(['building.floors' => …])` and `config/building.php` is gone. Written through the
-     * real write path, so what the page delivers is what an operator's save would have produced.
-     *
-     * @param  list<array<string, mixed>>  $floors
-     */
-    private function composeTheBuilding(array $floors): void
-    {
-        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com');
-    }
-
-    /** A row no writer in this application would produce — see the caller for why it is planted. */
-    private function storeALayoutTheReaderWillRefuse(string $document): void
-    {
-        $now = Clock::sql(now());
-
-        DB::table('building_layout')->insert([
-            'id' => 1,
-            'document' => $document,
-            'layout_version' => 1,
-            'updated_by' => 'ops@example.com',
-            'updated_at' => $now,
-        ]);
-    }
-
     private function lobbyPage(): string
     {
         return $this->actingAs($this->enrolled())
