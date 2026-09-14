@@ -59,10 +59,10 @@
 #   `bin/promote-cards-by-token.selftest.sh`.
 #
 # WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — RULED 2026-09-14: KEEP THIS ONE.
-# Record: PupFuzz/agent-roundtable#444 (the disposition comment carries every derivation) and
-# card#9146. This repo keeps its own token mover rather than adopting agent-board-toolkit's
-# `promote-released-cards`; the file is repo-owned and maintained here. The ruling leaves the
-# body's provenance and pin, declared at the top of this header, as they are.
+# Record: PupFuzz/agent-roundtable#444 (disposition 5661169892 carries every derivation; its
+# correction 5661266111 is part of the ruling) and card#9146. This repo keeps this vendored
+# token mover rather than adopting agent-board-toolkit's `promote-released-cards`. Provenance,
+# pin and the upstream-first rule stay exactly as declared at the top of this header.
 #   THE KEY. The generic mover correlates a card's `payload.pr_number` / `payload.dl_number`
 #   stamp against the trailing `(#NNN)` squash markers in the released range's subjects (no
 #   board-14 card carries a DL). This one correlates `CARD_RE` (below) over those same subjects,
@@ -77,22 +77,23 @@
 #   R=d5b65bc7872dfdc943763b7c8fa944fa9a6bcc1b..3b2e41323ee79380a13812e085d45d950420e113
 #   (= v0.3.0..v0.4.0). On both, the stamp set is a STRICT SUBSET of the token set. Re-derive,
 #   from the repo root (board 14 is the BOARD: `--swimlane 14` matches nothing):
-#     kbcard --board mezzanine list > cards.json
+#     T="$(mktemp -d)"
+#     kbcard --board mezzanine list > "$T/cards.json"
 #     CARD_RE="$(sed -n "s/^CARD_RE='\(.*\)'$/\1/p" bin/promote-cards-by-token)"
 #     git log "$R" --no-merges --format=%s | grep -oiE "$CARD_RE" | grep -oE '[0-9]+' \
-#       | sort -u > token
+#       | sort -u > "$T/token"
 #     git log "$R" --no-merges --format=%s | grep -oE '\(#[0-9]+\)[[:space:]]*$' \
 #       | grep -oE '[0-9]+' | jq -s . | jq -r --slurpfile p /dev/stdin \
 #       '.[] | select(.pr != null and (.pr as $x | $p[0] | index($x) != null)) | .id' \
-#       cards.json | sort -u > stamp
-#     comm -23 stamp token   # empty = no card the stamp key names that the token key misses
-#     comm -13 stamp token   # non-empty = cards only the token key reaches
+#       "$T/cards.json" | sort -u > "$T/stamp"
+#     comm -23 "$T/stamp" "$T/token"   # empty = no card the stamp key names that the token key misses
+#     comm -13 "$T/stamp" "$T/token"   # non-empty = cards only the token key reaches
 #   Measure on a RELEASED RANGE, never on the cards awaiting promotion: a stamp is a property of
 #   the card and a token of the range, so a backlog released before this chain worked scores the
 #   token key low by construction.
 #   REOPENS on a measurement, either of: a card in `released_to_main` whose commit `origin/main`
 #   does not carry (`git log origin/main -E --grep="card([-#]<id>|<id>)([^0-9]|$)"` is empty),
-#   or a released range where `comm -23 stamp token` above prints a card.
+#   or a released range where `comm -23 "$T/stamp" "$T/token"` above prints a card.
 #   THE BRIDGE'S OWN `merged_to_main` writeback leg IS unreachable here, for a reason about
 #   EVENTS rather than subjects: it keys on a PR merged into `main`, which a card PR never is —
 #   every `main`-based PR is headed `dev` or `release/v<version>`:
