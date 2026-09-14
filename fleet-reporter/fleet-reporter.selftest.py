@@ -386,7 +386,9 @@ class Ingest:
         # A per-GET script, consumed in arrival order before the defaults above apply: an entry may
         # set `hold` (seconds) and `accepted`. It lets one flusher's successive probes answer
         # differently without the suite racing that flusher to change a default between two of them.
-        # A held answer closes its connection: the reporter has usually abandoned it by then.
+        # A held answer closes its connection: the reporter has usually abandoned it by then. An entry's
+        # `run` (a callable) runs when that GET arrives, before it is answered: it changes the seat's
+        # files between the probe and the batch POST of one flusher pass.
         self.get_script: list[dict] = []
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
@@ -414,6 +416,8 @@ class Ingest:
             def do_GET(self):
                 outer.gets += 1
                 step = outer.get_script.pop(0) if outer.get_script else {}
+                if step.get("run"):
+                    step["run"]()
                 hold = step.get("hold", outer.get_delay_s)
                 if hold:
                     time.sleep(hold)
@@ -862,6 +866,113 @@ eq("  … and says why, naming the rule", True,
 redgreen("transport posture (§ 3.5)",
          f'http:// ingest_url  -> config_readable="fail", errors={rep_http["detail"]["config_readable"]["errors"]}',
          f'https:// ingest_url -> config_readable="{rep["checks"]["config_readable"]}"')
+
+# AN UNREADABLE `ca_file` IS A CONFIG ERROR, NEVER A SILENT FALL-BACK TO THE DEFAULT TRUST STORE
+# (card#9500). `ca` replaces the default store, so a seat with `ca_file` set trusts only that file
+# (§ 3.5). The reporter used to catch the read failure and send with the default store: the seat's
+# trust widened from one pinned CA to every publicly trusted one, and nothing said so. The widening is
+# made observable with NODE_EXTRA_CA_CERTS, which adds the stub's certificate to Node's DEFAULT store —
+# the stand-in for a publicly trusted certificate for the ingest's name. A reporter that falls back
+# therefore DELIVERS to the stub, and one that refuses delivers nothing.
+EXTRA_TRUST = {"NODE_EXTRA_CA_CERTS": CA}
+s_extra = seat("ca-default-store-control", ca=None, enabled=False)
+_, rep_extra = selftest(s_extra, **EXTRA_TRUST)
+eq("precondition: with NODE_EXTRA_CA_CERTS the stub verifies through the default store alone (no ca_file), so "
+   "a fall-back to that store is observable as a delivery", "pass", rep_extra["checks"]["tls_verify"])
+
+
+def seat_log(s: Seat) -> str:
+    d = s.spool / "log"
+    return "".join(f.read_text(encoding="utf-8") for f in sorted(d.glob("*.log"))) if d.exists() else ""
+
+
+# (b) `selftest`, and the flusher's start, on a config whose ca_file cannot be read.
+def drive_ca_missing(name: str, reporter: Path = REPORTER) -> dict:
+    missing = TMP / name / "no-such-ca.pem"
+    s = seat(name, ca=str(missing))
+    g0 = INGEST.gets
+    r, rep_ = selftest(s, reporter=reporter, **EXTRA_TRUST)
+    d = dict(path=str(missing), rc=r.returncode, gets=INGEST.gets - g0,
+             check=rep_.get("checks", {}).get("config_readable"),
+             errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_start"), reporter=reporter)
+    b0 = len(INGEST.batches)
+    flush(s, reporter=reporter, **EXTRA_TRUST)
+    d.update(posts=len(INGEST.batches) - b0, log=seat_log(s),
+             config_invalid=s.state().get("counters", {}).get("config_invalid", 0))
+    return d
+
+
+ca_missing = drive_ca_missing("ca-unreadable-selftest")
+eq("an unreadable ca_file fails config_readable in `selftest`", "fail", ca_missing["check"])
+eq("  … and the error names the path and the errno", True,
+   any(ca_missing["path"] in e and "ENOENT" in e for e in ca_missing["errors"]))
+eq("  … the command exits 1, and asks the ingest nothing under a config that failed", (1, 0),
+   (ca_missing["rc"], ca_missing["gets"]))
+eq("a flusher started on it sends nothing, even to an ingest the default store trusts", 0, ca_missing["posts"])
+eq("  … logs the path and the errno, and counts config_invalid", (True, True),
+   (ca_missing["path"] in ca_missing["log"] and "ENOENT" in ca_missing["log"], ca_missing["config_invalid"] > 0))
+
+
+# (a) The request itself: a ca_file readable when the flusher started and gone when the batch is sent —
+# removed while the ingest answers the pass's health probe, which runs before the drain.
+def drive_ca_vanishes(name: str, reporter: Path = REPORTER) -> dict:
+    root = TMP / name
+    root.mkdir(parents=True, exist_ok=True)
+    ca_copy = root / "pinned-ca.pem"
+    shutil.copyfile(CA, ca_copy)
+    s = seat(name, ca=str(ca_copy))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_gone"), reporter=reporter)
+    b0 = len(INGEST.batches)
+    INGEST.get_script = [{"run": ca_copy.unlink}]
+    try:
+        flush(s, reporter=reporter, **EXTRA_TRUST)
+    finally:
+        INGEST.get_script = []
+    counters = s.state().get("counters", {})
+    d = dict(path=str(ca_copy), posts=len(INGEST.batches) - b0, log=seat_log(s), removed=not ca_copy.exists(),
+             config_invalid=counters.get("config_invalid", 0), retried=counters.get("batches_retried", 0),
+             rejected=counters.get("batches_rejected", 0))
+    # The refusal is the file's: restored, the same seat delivers the event it kept.
+    shutil.copyfile(CA, ca_copy)
+    b1 = len(INGEST.batches)
+    flush(s, reporter=reporter, **EXTRA_TRUST)
+    d["recovered"] = any(e.get("kind") == "tool.start" for b in INGEST.batches[b1:] for e in b["batch"].get("events", []))
+    return d
+
+
+ca_gone = drive_ca_vanishes("ca-vanishes")
+eq("precondition: the pinned ca_file was removed during the pass's health probe", True, ca_gone["removed"])
+eq("a batch request whose ca_file cannot be read is refused — nothing reaches an ingest the default store "
+   "trusts", 0, ca_gone["posts"])
+eq("  … the seat's log names the path and the errno", True,
+   ca_gone["path"] in ca_gone["log"] and "ENOENT" in ca_gone["log"])
+eq("  … it is a config failure: config_invalid counted, never a retryable batch and never a rejected one",
+   (True, 0, 0), (ca_gone["config_invalid"] > 0, ca_gone["retried"], ca_gone["rejected"]))
+eq("  … and the event is kept: with the file restored, the next pass delivers it", True, ca_gone["recovered"])
+
+# RED — each leg against the defect verbatim, planted on a copy: the request that catches the read failure
+# and sends with the default store, and the config check that never reads the file.
+p_ca_fallback = plant(("    if (caError) { out.invalid = caError; done(out.invalid); return; }",
+                       "    if (caError) { /* fall back to the system store, still verifying */ }"))
+red_gone = drive_ca_vanishes("ca-vanishes-red", reporter=p_ca_fallback)
+eq("RED: a request that falls back to the default store delivers the batch to an ingest the pinned ca_file "
+   "never trusted, and its log never names the file", (True, 1, False),
+   (red_gone["removed"], red_gone["posts"], red_gone["path"] in red_gone["log"]))
+p_ca_unchecked = plant(("  if (typeof c.ca_file === 'string') { const { error } = readCaFile(c); if (error) errors.push(error); }", ""))
+red_missing = drive_ca_missing("ca-unreadable-selftest-red", reporter=p_ca_unchecked)
+eq("RED: a config check that never reads ca_file passes config_readable in `selftest`, and its errors name "
+   "nothing", ("pass", False),
+   (red_missing["check"], any(red_missing["path"] in e for e in red_missing["errors"])))
+redgreen("an unreadable ca_file is a config error, never a fall-back to the default trust store (§ 3.5, card#9500)",
+         f"fall back in the request -> ca_file removed mid-pass: {red_gone['posts']} batch delivered through the "
+         f"default store, path in log {red_gone['path'] in red_gone['log']}; no read in the config check -> "
+         f"selftest config_readable={red_missing['check']}, rc={red_missing['rc']}, flusher start delivered "
+         f"{red_missing['posts']}",
+         f"refused -> ca_file removed mid-pass: {ca_gone['posts']} delivered, config_invalid "
+         f"{ca_gone['config_invalid']}, path and errno logged, delivered after restore {ca_gone['recovered']}; "
+         f"selftest config_readable={ca_missing['check']}, rc={ca_missing['rc']}, errors={ca_missing['errors']}, "
+         f"flusher start delivered {ca_missing['posts']}")
 
 # RED — the TLS posture lint AT-15 asks for, made mechanical.
 p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",

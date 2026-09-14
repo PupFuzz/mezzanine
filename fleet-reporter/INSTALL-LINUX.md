@@ -622,6 +622,13 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
   handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
   `ca_file` that does not trust the ingest's certificate.
+- **`rc=1` with `config_readable` failing** — `detail.config_readable.errors` names each rule the
+  config breaks, and the command runs no probe. `ca_file unreadable at <path>: <errno>` means the seat
+  cannot read the CA file its config pins: it was moved, its permissions changed, or the path has a
+  typo. The reporter never falls back to the system trust store (D1 § 3.5): the flusher sends nothing
+  and keeps spooling, and logs the same path and errno. Make the file readable by the seat's user and
+  re-run this step. A flusher that started while the file was unreadable sends nothing until it
+  restarts. A clean stop (SIGTERM) removes its lock, so the next start takes over.
 - **`rc=1` with `protocol_agent_name_in_roster` failing** — the declared `protocol_agent_name` is not
   a member of the roster the command read, which D1 § 3.1 calls `disagreed`.
   `detail.protocol_agent_name_in_roster` names the roster file (`roster`), which site it came from

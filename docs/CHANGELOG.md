@@ -19,6 +19,27 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9500** — **A `ca_file` the seat cannot read now stops the seat's requests and fails
+  `selftest` by name.** The reporter caught the read failure and sent the request with the default
+  trust store. The seat then trusted every publicly trusted CA instead of the one file its config pins,
+  and nothing logged it. Against a private-CA ingest every request failed verification, and `selftest`
+  reported `tls_verify` `fail`, which points at the certificate rather than the file. One read,
+  `readCaFile`, now serves both the config check and each request. The config check adds
+  `ca_file unreadable at <path>: <errno>` to `config_readable`'s errors, so `selftest` exits 1 naming
+  the path and runs no probe, and a flusher started on that config spools and sends nothing, as for an
+  `http://` `ingest_url`. A file that becomes unreadable while the flusher runs ends that request before
+  any socket opens: the batch is `refused` (counted in `config_invalid`, never `batches_retried` and
+  never quarantined), the log names the path and the errno, and the spooled events are delivered once
+  the file is readable again. D1 § 3.5 (a row for the unreadable `ca_file`), § 6.14's `config_readable`
+  row, § 9.3's `config_invalid` row, `INSTALL-LINUX.md` Step 6 and the reporter's transport comments
+  now say so. The acceptance suite's block 1 drives `selftest` and a flusher start on a missing
+  `ca_file`, and a flusher pass whose `ca_file` is removed between the health probe and the batch, with
+  the stub's certificate added to Node's default store (`NODE_EXTRA_CA_CERTS`) so that a fallback
+  shows up as a delivery. It carries REDs of the request that falls back and of the config check that
+  never reads the file. **Installer action:** none beyond the ordinary artifact update
+  (`INSTALL-LINUX.md` Step 1). A seat whose `ca_file` is unreadable, and that reached its ingest through
+  the system store, stops sending after the update. Its `selftest` names the file; make it readable and
+  restart the flusher.
 - **card#7341** — **The animation log records every claim-bearing episode, under its own gate
   (`docs/design/FLOOR.md` Appendix B step 2).** `server/public/js/wire/animation-log.js` is the one
   entry point a renderer starts a § 6.2 animation through: `edge` writes a `fired` row, `enterHeld`
