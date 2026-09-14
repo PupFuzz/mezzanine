@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Lobby;
 
-use App\Building\BuildingLayout;
+use Tests\Feature\Building\LayoutFixture;
 use Tests\Feature\Feed\FeedTestCase;
 
 /**
@@ -205,7 +205,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     public function test_two_rooms_composed_onto_one_floor_are_one_plate_and_an_unplaced_install_is_its_own(): void
     {
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
+        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
 
         $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
         $plates = $probe['building']['plates'];
@@ -275,7 +275,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         // The served body of `threeFloors()` with `aimla` — the install the layout does not
         // place — dropped, so the two composed rooms are the whole building.
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
+        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
 
         $body['installs'] = array_values(array_filter(
             $body['installs'],
@@ -311,7 +311,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     {
         $this->issueToken('sola', 'sola-solo');
         $body = $this->oneFloor();
-        $layout = BuildingLayout::parse(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]])->floors;
+        $layout = LayoutFixture::read(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]])->floors;
 
         $plates = $this->probe(['snapshot' => $body, 'layout' => $layout])['building']['plates'];
 
@@ -338,7 +338,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     public function test_a_labelled_floor_reads_as_its_label_and_links_by_its_key(): void
     {
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(
+        $layout = LayoutFixture::read(
             ['floors' => [['label' => 'the solos', 'rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]],
         )->floors;
 
@@ -412,7 +412,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     public function test_a_stranded_cab_names_the_floor_it_left_by_key_and_the_floor_it_stands_on_by_name(): void
     {
         $body = $this->threeFloors();
-        $layout = BuildingLayout::parse(['floors' => [
+        $layout = LayoutFixture::read(['floors' => [
             ['label' => 'reception', 'rooms' => ['aimla' => ['form' => 'open']]],
             ['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
         ]])->floors;
@@ -456,7 +456,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
                     $case['installs'],
                 ),
             ];
-            $layout = BuildingLayout::parse(['floors' => $case['layout']])->floors;
+            $layout = LayoutFixture::read(['floors' => $case['layout']])->floors;
 
             $rows = $this->probe(['snapshot' => $snapshot, 'layout' => $layout])['model']['floors'];
 
