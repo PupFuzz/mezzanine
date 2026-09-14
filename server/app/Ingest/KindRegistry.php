@@ -339,9 +339,10 @@ final class KindRegistry
                     'unknown' => null,
                     'array' => false,
                 ],
-                // Reporter-minted, three members, no unknown member and no fourth: § 6.12 deletes
-                // `other` as structurally unreachable because the emission gate means every
-                // surviving member IS a wait on a human.
+                // Reporter-minted, three members, no unknown member and no fourth: D1 § 15
+                // decision 36 deletes `other` as a member no path can emit — § 6.12's lookup
+                // suppresses an unrecognised `notification_type` before rule 4 could coerce a
+                // kind onto it, so the unknown case lives in `enum_value_unknown.notification_type`.
                 'notification_kind' => [
                     'members' => ['permission_required', 'input_awaited', 'elicitation'],
                     'unknown' => null,

@@ -42,6 +42,38 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   with a RED plant for each. **Installer action:** none beyond the ordinary artifact update
   (`INSTALL-LINUX.md` Step 1); a running flusher keeps the code it started with until it restarts.
 
+- **card#9419** — **A seat that finishes a turn cleanly no longer renders *blocked* a minute
+  later.** Claude Code's `Notification` hook fires `notification_type: "idle_prompt"` when *"Claude
+  finished responding about 60 seconds ago and you haven't typed since"* — a timer on human ABSENCE,
+  not a request for a human. `fleet-reporter` mapped it to `attention.request` with
+  `notification_kind: input_awaited`, and D2 § 4.3's rule 1 renders any open attention request
+  `blocked` ahead of every other rule, so every seat flipped *idle → blocked* about a minute after
+  it went quiet and stayed there until its next event. On one seat in one day that produced 19
+  `input_awaited` requests against 3 real `permission_required` ones. ⛔ **Installer action, on every
+  seat that reports — the fleet-reporter runs on the agent machine, not on the server, and nothing
+  in `bin/supervision.sh` touches it:** copy the new `fleet-reporter/fleet-reporter.js` over that
+  seat's install location (`fleet-reporter/INSTALL-LINUX.md` Step 1) and then stop that seat's
+  running flusher with the runbook's `stop-flusher.js` helper (Step 5 saves it, Step 8 item 3 shows
+  the invocation), because a flusher already running keeps the code it started with; cron's next
+  minute boundary starts it on the new artifact. Any *blocked* a seat is already stranded in clears
+  at D2's 60-minute ceiling without help. What ships: `idle_prompt` moves to the no-emit row of
+  D1 § 6.12's gate table and into the reporter's `NOTIFICATION_NOT_ATTENTION` list, so it takes the
+  counted suppression path (`notification_not_attention.idle_prompt`) and is NOT also counted as an
+  undeclared type; `agent_needs_input` keeps `input_awaited`, being a genuine wait. D1 § 12
+  constraint 5's premise ("every member of `notification_kind` *is* a wait on a human, because the
+  gate emits nothing for anything else") was FALSE for `idle_prompt` and is rewritten to say what it
+  actually rests on: a per-row judgement in D1's table that no check establishes, instrumented by
+  the `input_awaited`-to-`permission_required` ratio rather than gated. D2 § 4.4's `blocked` enter
+  row, D1 § 6.0 rule 2's carve-out, AT-20's and AT-D2-5's discriminating controls and D1 § 15
+  decision 29 carry the same correction. The fleet-reporter acceptance suite gains the case (seen
+  RED on dev head) with a `permission_prompt` control. Also fixed, because the doc edit exposed it:
+  `tools/design/verify-harness-facts.py`'s `table` locator derived a value set from *any*
+  two-or-more run anywhere in the table, so a one-member row (which `agent_needs_input` now is)
+  silently dropped that member and the gate would have reported the DOCUMENT as missing a member it
+  plainly states — it now reads the column its locator names, which is also stricter.
+
+## [0.4.0] — 2026-09-14
+
 - **card#9300** — **THE LIVE FEED IS BUILT: Server-Sent Events on `GET /api/fleet/stream`, fed by a
   `feed_outbox` table** (`docs/design/FLEET-STATE.md` Appendix B step 9). ⛔ **Installer action, before the
   next deploy — the deploy now REFUSES a host that cannot serve or drain the stream:** provision a
