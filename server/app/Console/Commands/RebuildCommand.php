@@ -31,6 +31,32 @@ class RebuildCommand extends Command
 
     protected $description = 'Replay a seat\'s events through the fold (docs/design/FLEET-STATE.md § 6.6)';
 
+    /**
+     * Attempts at the whole replay transaction when it throws a concurrency error
+     * (`1020`/`1205`/`1213`) — card#9466. 3 = the first attempt and two retries.
+     *
+     * ⚠ THE RETRY IS NOT THE LOCK ORDER, AND IT IS NOT WHAT ABSORBS AN ORDINARY COLLISION. A holder
+     * that releases inside the wait raises nothing: the blocked statement waits and proceeds, and
+     * `DB::transaction()` retries only a callback that THREW. What the retry is for is the rarer
+     * pair: a real `1213`, which MariaDB's deadlock detector breaks in milliseconds so the retry is
+     * nearly free, and a `1205` against a holder that releases before the next attempt's own wait
+     * runs out — a same-seat replay already in progress, or a fold window, which today is bounded by
+     * `Fold::BATCH` events rather than by a clock.
+     *
+     * THE WAIT IS THE SERVER'S DEFAULT `innodb_lock_wait_timeout` (50 s), NOT A PINNED ONE. This is
+     * a console command with no HTTP deadline in front of it; `SeatRetirement` pins a short wait
+     * because an operator's browser is waiting on that one. The bound is per BLOCKED STATEMENT, not
+     * per attempt: 3 × 50 s bounds the wait for the seat lock, and once `reset()` holds that lock
+     * only a writer that does not lock the seat first can still hold a row the replay touches.
+     */
+    public const REPLAY_LOCK_ATTEMPTS = 3;
+
+    /** Test seam: runs at the top of `reset()`, before the seat lock, once per attempt. */
+    public static $beforeReset = null;
+
+    /** Test seam: runs right after `reset()`'s first DELETE. */
+    public static $afterFirstDelete = null;
+
     public function handle(Projector $projector): int
     {
         // ⚠ NOT the container's `StateRecompute`. A rebuild replays the seat's whole retained
@@ -137,7 +163,7 @@ class RebuildCommand extends Command
             ]);
 
             $this->info(sprintf('rebuilt %s from %d event(s)%s', $seatRef, $count, $truncated ? ' (truncated)' : ''));
-        });
+        }, self::REPLAY_LOCK_ATTEMPTS);
 
         return self::SUCCESS;
     }
@@ -161,10 +187,28 @@ class RebuildCommand extends Command
      * `state_version` is PRESERVED and keeps climbing: § 8.5 makes it the feed's ordering key and a
      * version that went backwards would make every connected client's gap check fire. AT-D2-10
      * excludes it from the comparison by name.
+     *
+     * ⛔ THE SEAT'S `seat_state` ROW LOCK IS THE FIRST STATEMENT, BEFORE THE DELETES — card#9466,
+     * § 6.5's lock-first rule, which the ingest follows. Taken after them, the replay would already
+     * hold `attention_requests`/`calls`/`sessions` rows while it waited for `seat_state`, and a
+     * writer holding `seat_state` that then needed one of those rows would close the cycle. The
+     * lock is held for the whole replay: `reset()` runs inside the replay's transaction, which
+     * already wrote `seat_state` from here to its commit, so what moved is only WHEN it is taken.
      */
     private function reset(int $seatRef, ?string $oldest): void
     {
+        if (self::$beforeReset !== null) {
+            (self::$beforeReset)($seatRef);
+        }
+
+        DB::table('seat_state')->where('seat_ref', $seatRef)->lockForUpdate()->value('seat_ref');
+
         DB::table('attention_requests')->where('seat_ref', $seatRef)->delete();
+
+        if (self::$afterFirstDelete !== null) {
+            (self::$afterFirstDelete)($seatRef);
+        }
+
         DB::table('calls')->where('seat_ref', $seatRef)->delete();
         DB::table('sessions')->where('seat_ref', $seatRef)->delete();
 

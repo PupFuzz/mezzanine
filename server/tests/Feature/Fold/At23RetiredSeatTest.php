@@ -4,8 +4,11 @@ namespace Tests\Feature\Fold;
 
 use App\Feed\Outbox;
 use App\Feed\SeatRetired;
+use App\Fleet\SeatRetirement;
 use App\Fold\Clock;
 use App\Sweep\Sweep;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Feed\OutboxWire;
 use Tests\Feature\Sweep\SweepTestCase;
@@ -261,6 +264,41 @@ class At23RetiredSeatTest extends SweepTestCase
                 ->assertExitCode(2);
         }
 
+        $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
+    }
+
+    /**
+     * A seat another writer kept busy past retirement's bounded wait and retries is refused in a
+     * sentence with a non-zero exit, as the console's retire route refuses it — card#9466.
+     *
+     * At transaction level 2 here (`RefreshDatabase`, then `Outbox::transaction()`), where a
+     * concurrency error is rethrown at once without a retry, so a seam that throws the `1205`
+     * message is the whole fixture. The exception is caught rather than left to fail the test, so
+     * that a command which lets it escape fails on the assertion that names that.
+     */
+    public function test_a_busy_seat_refuses_the_retirement_with_a_sentence_and_a_failing_exit(): void
+    {
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        SeatRetirement::$beforeRetire = fn () => throw ConcurrencyError::raised(1205);
+
+        $exit = null;
+        $thrown = null;
+
+        try {
+            $exit = Artisan::call('mezzanine:retire', [
+                '--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'operator@aimla', '--reason' => 'decommissioned',
+            ]);
+        } catch (\Throwable $e) {
+            $thrown = $e;
+        } finally {
+            SeatRetirement::$beforeRetire = null;
+        }
+
+        $this->assertNull($thrown, 'the refusal escaped as an exception: '.$thrown?->getMessage());
+        $this->assertSame(Command::FAILURE, $exit);
+        $this->assertStringContainsString('nothing was changed', Artisan::output());
         $this->assertNull(DB::table('seats')->where('id', $this->seatRef)->value('retired_at'));
     }
 

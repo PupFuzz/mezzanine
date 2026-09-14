@@ -23,6 +23,42 @@ use Illuminate\Support\Facades\DB;
  */
 class PurgeTest extends SweepTestCase
 {
+    /**
+     * Every `Purge::PLAN` table has an index whose LEADING column is its retention column — card#9466.
+     *
+     * The purge's `DELETE … WHERE <column> < ? ORDER BY id LIMIT …` carries no `seat_ref`, so an index
+     * that leads with `seat_ref` does not serve it, and without a leading one the steady-state pass
+     * walks the whole table in `id` order to find the few expired rows.
+     *
+     * ⛔ ASKED OF THE SCHEMA, NOT OF A QUERY PLAN. `EXPLAIN`'s chosen key depends on the rows present
+     * — with a backlog of expired rows the optimizer rightly walks `PRIMARY` on every one of these
+     * tables, index or not — so an `EXPLAIN` assertion could red on a correct schema. The index's
+     * existence is a fact about the schema alone. The table list is `Purge::PLAN` itself, so a table
+     * added to the plan without an index reds here.
+     */
+    public function test_every_purge_plan_table_has_a_retention_leading_index(): void
+    {
+        $plan = (new \ReflectionClassConstant(Purge::class, 'PLAN'))->getValue();
+
+        $this->assertNotEmpty($plan);
+
+        foreach ($plan as $table => $column) {
+            $hasLeadingIndex = DB::table('information_schema.STATISTICS')
+                ->where('TABLE_SCHEMA', DB::raw('DATABASE()'))
+                ->where('TABLE_NAME', $table)
+                ->where('SEQ_IN_INDEX', 1)
+                ->where('COLUMN_NAME', $column)
+                ->exists();
+
+            $this->assertTrue($hasLeadingIndex, sprintf(
+                '%s has no index whose leading column is its retention column (%s): the purge\'s '
+                .'DELETE on that column has no index to seek through in the steady state.',
+                $table,
+                $column,
+            ));
+        }
+    }
+
     public function test_events_and_batches_past_fourteen_days_are_deleted_and_recent_ones_are_not(): void
     {
         $this->deliver($this->cleanTurn());

@@ -19,6 +19,23 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9466** — **Rebuild, retirement and the sweep take the seat's `seat_state` lock first, and every
+  purge table has a retention index.** `mezzanine:rebuild` locks the seat before it deletes its
+  projections and retries the whole replay on a lock timeout, deadlock or changed row
+  (`RebuildCommand::REPLAY_LOCK_ATTEMPTS`). Retirement locks the seat before it samples the state it
+  announces, waits at most `SeatRetirement::LOCK_WAIT_TIMEOUT_S` for any one blocked statement on its own
+  session and restores that session's wait afterwards, and retries up to `SeatRetirement::LOCK_ATTEMPTS`
+  attempts; a seat still busy then is answered as busy with nothing changed — a message on the console's
+  agents page, and a sentence with exit `1` from `mezzanine:retire`. The sweep locks each seat
+  `FOR UPDATE SKIP LOCKED`, skips a seat another writer holds, treats a concurrency error on a
+  downstream row as contention, and counts both per seat as `sweep_seat_contended`, kept out of the
+  pass's failed seats and `sweep_seat_error`. `Outbox::transaction()` takes an attempt count and clears
+  its queued messages at the start of each attempt. A new migration adds `ix_purge` on the retention
+  column of `events`, `batches`, `sessions` and `seat_state_transitions`, each with
+  `ALGORITHM=INPLACE, LOCK=NONE`. D2 § 2.2, § 6.4, § 6.5, § 6.6, § 6.8, § 7.2 and § 12 state all of it. **Installer action:**
+  none beyond the deploy, which runs the migration; each `ALTER` waits for open transactions on its
+  table before it starts and before it finishes.
+
 - **card#9499** — **The PHP suite runs only against the `app/` of the tree under test.** Composer
   computes the `App\` base from the autoloader's own location, resolved through symlinks, so a
   `server/vendor` linked in from another checkout ran that checkout's `app/` under this tree's tests.
