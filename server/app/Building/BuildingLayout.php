@@ -123,7 +123,7 @@ final class BuildingLayout
          * `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape
          * `GET /api/building` delivers to the browser, so the client is handed keys and never derives one.
          *
-         * @var list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: array<mixed>}>
+         * @var list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: \stdClass}>
          */
         public readonly array $floors,
 
@@ -164,8 +164,17 @@ final class BuildingLayout
             ));
         }
 
+        // ⛔ DECODED IN OBJECT MODE, AND THAT IS THE WHOLE OF card#9322. `json_decode(…, true)`
+        // decodes `{}` and `[]` to the same PHP value, and this document has a member where the two
+        // spellings must END DIFFERENTLY: `"floors": []` is § 4.6's empty building and
+        // `"floors": {}` is a typo, which that decode accepted as the building it could not be told
+        // apart from. Read this way a JSON object is a `stdClass` and a JSON array is a PHP list
+        // everywhere in the tree, so every member below is asked its question of what the author
+        // wrote — and a `hallway` is served with every `{}` it was authored with (card#9322 comment
+        // 5265). It is the decode card#9295 gave the ingest, for the same reason; no predicate
+        // written after an associative decode could recover the distinction it had destroyed.
         try {
-            $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($document, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new InvalidBuildingLayout(
                 'This is not JSON ('.$e->getMessage().'). A layout is a document with a `floors` '
@@ -175,13 +184,10 @@ final class BuildingLayout
             );
         }
 
-        // ⛔ card#9295's DEFECT SHAPE — `json_decode(…, true)` decodes `{}` and `[]` to the same
-        // PHP value, so `{}` was refused here as *"not a JSON object (No error)"*: a false
-        // sentence about a document that IS one. Both spellings are refused either way and only
-        // the WORDING differed — `{}` now reaches the `floors` refusal in `parse()`, which names
-        // the member the author has to add. `App\Building\AuthoredDocument` owns the predicate
-        // and the argument, for this reader and the room map's alike.
-        if (! AuthoredDocument::isJsonObject($decoded)) {
+        // card#9295's defect shape is unrepresentable here: `{}` is a `stdClass`, so it reaches the
+        // `floors` refusal in `parse()`, which names the member the author has to add, and never a
+        // false *not a JSON object (No error)*.
+        if (! $decoded instanceof \stdClass) {
             throw new InvalidBuildingLayout(sprintf(
                 'This is %s, and a layout is a JSON object with a `floors` list in it: '
                 .'`{"floors": []}` is the empty building — one floor per install — and is what '
@@ -194,11 +200,12 @@ final class BuildingLayout
     }
 
     /**
-     * @param  array<mixed>  $document  the decoded layout — see the class header
+     * @param  \stdClass  $document  the layout, decoded in OBJECT mode as `fromJson()` decodes it —
+     *                               see the class header
      *
      * @throws InvalidBuildingLayout naming the floor, the room and the rule
      */
-    public static function parse(array $document): self
+    public static function parse(\stdClass $document): self
     {
         // ⛔ AN ABSENT `floors` IS REFUSED HERE, WHERE EVERY CALLER REACHES IT — the console's
         // text intake, the store's per-request read, and the migration's seed. It was `fromJson()`'s
@@ -206,12 +213,12 @@ final class BuildingLayout
         // document with no `floors` key, and a reader that defaulted it to `[]` would draw
         // *today's building* on a store nobody authored that.
         //
-        // ⚠ And the value is read with `array_key_exists` rather than `??`, because the difference
+        // ⚠ And the value is read with `property_exists` rather than `??`, because the difference
         // is a document that says `"floors": null`: coalesced away, that reads as the EMPTY
         // building — a deliberate authoring choice this reader would be inventing on the author's
         // behalf. It is NOT the `label => null` case: there, absent is legal and null is how a
         // JSON column spells it; here, absent is itself a refusal.
-        if (! array_key_exists('floors', $document)) {
+        if (! property_exists($document, 'floors')) {
             throw new InvalidBuildingLayout(
                 'This document declares no `floors` key. An EMPTY `floors` list is a legal layout '
                 .'and is the default building — one floor per install — but an absent one is a '
@@ -220,16 +227,24 @@ final class BuildingLayout
             );
         }
 
-        $floors = $document['floors'];
+        $floors = $document->floors;
 
-        // ⚠ THIS ONE ASKS THE OPPOSITE QUESTION — `floors` is a LIST — so it is not
-        // `AuthoredDocument::isJsonObject()`'s. ⛔ And it carries that predicate's residue,
-        // named rather than left to be discovered: after an associative decode `"floors": {}` is
-        // indistinguishable from `"floors": []`, which is a LEGAL and meaningful document (§ 4.6's
-        // empty building), so the typo is accepted as the building it cannot be told apart from.
-        // No clause here can close that; only a decode that keeps `{}` and `[]` apart could —
-        // `AuthoredDocument::isJsonObject`'s note names that condition and what the answer is.
-        if (! is_array($floors) || ! array_is_list($floors)) {
+        // ⛔ `floors` IS A LIST, and a JSON object in its place is refused by name — empty or keyed
+        // (card#9322). `"floors": []` is § 4.6's legal empty building, so `"floors": {}` must not
+        // be read as it: the sentence says which spelling is the empty building.
+        if ($floors instanceof \stdClass) {
+            throw new InvalidBuildingLayout(
+                '`floors` is a JSON object and is not a LIST of floors. docs/design/FLOOR.md § 4.6: '
+                .'the empty building — one floor per install — is `"floors": []`, and `{}` is not a '
+                .'spelling of it; and a floor has no authored id — it is its rooms, and its key is '
+                .'derived (the lexically least `install_id` among them) — so a keyed entry here '
+                .'would be a name the design does not have, and is refused rather than silently '
+                .'ignored.'
+            );
+        }
+
+        // In this decode a PHP array IS a JSON list, so what is left to refuse is a scalar or null.
+        if (! is_array($floors)) {
             throw new InvalidBuildingLayout(
                 '`floors` is not a LIST of floors. docs/design/FLOOR.md § 4.6: a floor has no '
                 .'authored id — it is its rooms, and its key is derived (the lexically least '
@@ -242,7 +257,7 @@ final class BuildingLayout
         $floorByRoom = [];
 
         foreach ($floors as $position => $entry) {
-            if (! is_array($entry)) {
+            if (! $entry instanceof \stdClass) {
                 throw new InvalidBuildingLayout(sprintf(
                     "Floor #%d is not a mapping — a floor's entry is ['rooms' => [install => "
                     ."['form' => …], …]], optionally with 'label' and, on a planned floor, "
@@ -255,7 +270,7 @@ final class BuildingLayout
             // member an author reaches for is an id." It is also where the PRE-LABEL shape
             // (`['sola' => 'office']`) now lands, and it has to land loudly: read past, those
             // rooms would be unknown members quietly dropped and the floor would draw nothing.
-            $unknown = array_map(strval(...), array_diff(array_keys($entry), self::FLOOR_MEMBERS));
+            $unknown = array_map(strval(...), array_diff(array_keys(get_object_vars($entry)), self::FLOOR_MEMBERS));
 
             if ($unknown !== []) {
                 throw new InvalidBuildingLayout(sprintf(
@@ -271,7 +286,7 @@ final class BuildingLayout
                 ));
             }
 
-            if (! array_key_exists('rooms', $entry)) {
+            if (! property_exists($entry, 'rooms')) {
                 throw new InvalidBuildingLayout(sprintf(
                     'Floor #%d declares no `rooms`. A floor IS its rooms (docs/design/FLOOR.md '
                     .'§ 4.6), so the member is the floor itself and not an optional part of one.',
@@ -279,9 +294,22 @@ final class BuildingLayout
                 ));
             }
 
-            $rooms = $entry['rooms'];
+            $rooms = $entry->rooms;
 
-            if (! is_array($rooms) || $rooms === []) {
+            // ⚠ `rooms` is a MAPPING of each room's `install_id` to its record, and a non-empty LIST
+            // is refused by name (card#9322): decoded associatively it arrived keyed `0`, `1`, … and
+            // was placed as rooms named by their positions. An EMPTY one, spelled either way, is the
+            // floor that draws nothing, and the refusal after this one says so.
+            if (is_array($rooms) && $rooms !== []) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floor #%d declares `rooms` as a JSON list. A floor\'s rooms are a mapping of '
+                    .'each room\'s `install_id` to its record — `{"sola": {"form": "office"}}` '
+                    .'(docs/design/FLOOR.md § 4.6) — so an entry in a list has no install to be.',
+                    $position,
+                ));
+            }
+
+            if (! $rooms instanceof \stdClass || get_object_vars($rooms) === []) {
                 throw new InvalidBuildingLayout(sprintf(
                     'Floor #%d declares no rooms. A floor is a composed set of rooms '
                     .'(docs/design/FLOOR.md § 4.6) and an empty one is a floor that draws nothing.',
@@ -294,11 +322,9 @@ final class BuildingLayout
             $onThisFloor = [];
 
             foreach ($rooms as $installId => $record) {
-                // PHP (and `json_decode(..., true)`) turn a canonical-integer key into an int, and
-                // an `install_id` may be all digits (`^[a-z0-9][a-z0-9-]{1,31}$`). The cast
-                // round-trips such a key exactly, so it is a normalisation rather than a coercion.
-                $installId = (string) $installId;
-
+                // Iterating an object yields its member names as STRINGS, an all-digit
+                // `install_id` (`^[a-z0-9][a-z0-9-]{1,31}$`) included. The PHP arrays below are
+                // where such a key becomes an int, and each read of one casts it back.
                 if (isset($floorByRoom[$installId])) {
                     throw new InvalidBuildingLayout(sprintf(
                         'Room `%s` is on floor `%s` and again on floor #%d. A room is in one place '
@@ -319,7 +345,9 @@ final class BuildingLayout
             ksort($onThisFloor, SORT_STRING);
 
             // § 4.6's derived key: the lexically least install id on the floor. `ksort` above
-            // put it first, so the key and the room order are one sort and cannot disagree.
+            // put it first, so the key and the room order are one sort and cannot disagree. PHP
+            // turns a canonical-integer array key into an int, so the key is cast back to the
+            // string it was authored as — a round trip, not a coercion.
             $floorKey = (string) array_key_first($onThisFloor);
 
             foreach (array_keys($onThisFloor) as $installId) {
@@ -380,16 +408,14 @@ final class BuildingLayout
     /**
      * § 4.6's optional `label`, refused by type, by blankness, and (across floors, below) by
      * reading the same as another floor.
-     *
-     * @param  array<mixed>  $entry
      */
-    private static function label(array $entry, int $position): ?string
+    private static function label(\stdClass $entry, int $position): ?string
     {
         // § 4.6: "The SHAPE is the contract; the store is the caller's". An explicit `null`
         // is read as an ABSENT label rather than refused by type, because a JSON column — the
         // store card#9208's reversal moved this document into — is how an unnamed floor is
         // encoded there, and a reader that refused it would have made the promise false for it.
-        $label = $entry['label'] ?? null;
+        $label = $entry->label ?? null;
 
         if ($label === null) {
             return null;
@@ -435,7 +461,7 @@ final class BuildingLayout
      */
     private static function room(mixed $record, string $installId, int $position): array
     {
-        if (! AuthoredDocument::isJsonObject($record)) {
+        if (! $record instanceof \stdClass) {
             throw new InvalidBuildingLayout(sprintf(
                 'Room `%s` (floor #%d) declares %s where a record belongs. Since card#9292 a '
                 ."room's value is `['form' => 'open'|'office']`, optionally with "
@@ -448,7 +474,7 @@ final class BuildingLayout
             ));
         }
 
-        $unknown = array_map(strval(...), array_diff(array_keys($record), self::ROOM_MEMBERS));
+        $unknown = array_map(strval(...), array_diff(array_keys(get_object_vars($record)), self::ROOM_MEMBERS));
 
         if ($unknown !== []) {
             throw new InvalidBuildingLayout(sprintf(
@@ -464,7 +490,7 @@ final class BuildingLayout
             ));
         }
 
-        $form = $record['form'] ?? null;
+        $form = $record->form ?? null;
 
         if (! is_string($form) || ! in_array($form, self::FORMS, true)) {
             throw new InvalidBuildingLayout(sprintf(
@@ -473,15 +499,15 @@ final class BuildingLayout
                 .'than mapped to the nearest one.',
                 $installId,
                 $position,
-                isset($record['form']) && is_scalar($form) ? '`'.$form.'`' : 'none',
+                isset($record->form) && is_scalar($form) ? '`'.$form.'`' : 'none',
                 '`'.implode('`, `', self::FORMS).'`',
             ));
         }
 
         $room = ['install' => $installId, 'form' => $form];
 
-        if (array_key_exists('origin', $record)) {
-            $room['origin'] = self::origin($record['origin'], $installId, $position);
+        if (property_exists($record, 'origin')) {
+            $room['origin'] = self::origin($record->origin, $installId, $position);
         }
 
         return $room;
@@ -499,7 +525,7 @@ final class BuildingLayout
      */
     private static function origin(mixed $origin, string $installId, int $position): array
     {
-        if (! AuthoredDocument::isJsonObject($origin)) {
+        if (! $origin instanceof \stdClass) {
             throw new InvalidBuildingLayout(sprintf(
                 'Room `%s` (floor #%d) declares an `origin` that is not a mapping of `x` and `y` '
                 .'(docs/design/FLOOR.md § 4.6).',
@@ -508,7 +534,7 @@ final class BuildingLayout
             ));
         }
 
-        $unknown = array_map(strval(...), array_diff(array_keys($origin), ['x', 'y']));
+        $unknown = array_map(strval(...), array_diff(array_keys(get_object_vars($origin)), ['x', 'y']));
 
         if ($unknown !== []) {
             throw new InvalidBuildingLayout(sprintf(
@@ -526,7 +552,7 @@ final class BuildingLayout
         $point = [];
 
         foreach (['x', 'y'] as $axis) {
-            $value = $origin[$axis] ?? null;
+            $value = $origin->$axis ?? null;
 
             if (! is_int($value)) {
                 throw new InvalidBuildingLayout(sprintf(
@@ -537,7 +563,7 @@ final class BuildingLayout
                     $installId,
                     $position,
                     $axis,
-                    isset($origin[$axis]) && is_scalar($value) ? '`'.$value.'`' : 'nothing at all',
+                    isset($origin->$axis) && is_scalar($value) ? '`'.$value.'`' : 'nothing at all',
                 ));
             }
 
@@ -569,18 +595,18 @@ final class BuildingLayout
      * document at all. A second structural validator here would be the defect the one-predicate
      * rule at the top of this class exists to prevent.
      *
-     * @param  array<mixed>  $entry
-     * @return array<mixed>|null
+     * ⭐ IT IS RETURNED AS THE OBJECT THE DECODE PRODUCED (card#9322), and that is what
+     * `GET /api/building` encodes: a hallway is served as authored, with every `{}` in it still `{}`.
      */
-    private static function hallway(array $entry, int $position, string $floorKey, bool $planned): ?array
+    private static function hallway(\stdClass $entry, int $position, string $floorKey, bool $planned): ?\stdClass
     {
-        if (! array_key_exists('hallway', $entry)) {
+        if (! property_exists($entry, 'hallway')) {
             return null;
         }
 
-        $hallway = $entry['hallway'];
+        $hallway = $entry->hallway;
 
-        if (! AuthoredDocument::isJsonObject($hallway)) {
+        if (! $hallway instanceof \stdClass) {
             throw new InvalidBuildingLayout(sprintf(
                 'Floor `%s` (#%d) declares a `hallway` that is not a Tiled document '
                 .'(docs/design/FLOOR.md § 4.6, § 10.3). It is the same JSON map a room takes, '

@@ -173,7 +173,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // today's building, one floor per install." Nothing seeds a row to say that — a seeded
         // revision 1 would claim an operator pressed save.
         $this->assertSame(0, Layouts::version());
-        $this->assertSame(['floors' => []], Layouts::document());
+        $this->assertEquals((object) ['floors' => []], Layouts::document());
         $this->assertSame([], Layouts::layout()->floors);
         $this->assertNull(Layouts::current());
     }

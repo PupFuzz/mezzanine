@@ -64,12 +64,8 @@ final class Layouts
         return self::textOf(self::current());
     }
 
-    /**
-     * The stored document, decoded — `['floors' => []]` when no layout was ever saved.
-     *
-     * @return array<mixed>
-     */
-    public static function document(): array
+    /** The stored document, decoded as `BuildingLayout` reads it — `{"floors": []}` when no layout was ever saved. */
+    public static function document(): \stdClass
     {
         return self::decode(self::documentText());
     }
@@ -101,24 +97,26 @@ final class Layouts
     }
 
     /**
-     * A stored document's text, decoded — `['floors' => []]` for no row.
+     * A stored document's text, decoded — `{"floors": []}` for no row.
      *
-     * @return array<mixed>
+     * ⛔ IN OBJECT MODE, as `BuildingLayout::fromJson()` decodes the console's text (card#9322). A
+     * rule tightened after a document was written is re-asked per request (§ 4.6), and a stored
+     * `"floors": {}` can only reach its refusal through a decode that kept it apart from `[]`.
      */
-    private static function decode(?string $text): array
+    private static function decode(?string $text): \stdClass
     {
         if ($text === null) {
-            return ['floors' => []];
+            return (object) ['floors' => []];
         }
 
         try {
-            $decoded = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($text, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new InvalidBuildingLayout(self::storedDocumentIsNot('JSON at all ('.$e->getMessage().')'), previous: $e);
         }
 
-        if (! is_array($decoded)) {
-            // No JSON error to report — the decode succeeded and answered with a scalar. Saying
+        if (! $decoded instanceof \stdClass) {
+            // No JSON error to report — the decode succeeded and answered with an array or a scalar. Saying
             // so is the news; a `json_last_error_msg()` here would print *(No error)* beside a
             // sentence that says something went wrong (card#9295's shape, one surface over).
             throw new InvalidBuildingLayout(self::storedDocumentIsNot('a document at all, but a JSON '.get_debug_type($decoded)));

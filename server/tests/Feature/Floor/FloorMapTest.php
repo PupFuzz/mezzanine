@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Floor;
 
+use App\Building\BuildingLayout;
+use App\Building\InvalidBuildingLayout;
 use App\Floor\FloorAssets;
 use App\Floor\FloorMap;
 use App\Floor\InvalidFloorMap;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Admin\FloorMapFixture;
 use Tests\TestCase;
 
@@ -58,13 +61,13 @@ class FloorMapTest extends TestCase
 
     public function test_an_empty_document_is_refused_as_a_map_and_never_as_not_being_an_object(): void
     {
-        // ⛔ `json_decode('{}', true)` and `json_decode('[]', true)` are the SAME PHP value, and
-        // `array_is_list()` is true of it — so a map pasted as `{}` earned *"This is not a JSON
-        // object (No error)"*: a false sentence about a document that IS a JSON object, with a
-        // parenthetical saying the decode succeeded. Both spellings are still refused; what is
-        // asserted here is that the refusal is the one an operator can act on.
+        // ⛔ Decoded associatively, `{}` and `[]` were the SAME PHP value, and `array_is_list()` is
+        // true of it — so a map pasted as `{}` earned *"This is not a JSON object (No error)"*: a
+        // false sentence about a document that IS a JSON object, with a parenthetical saying the
+        // decode succeeded. Both spellings are still refused; since card#9322's object-mode decode
+        // each refusal says what is true of its own spelling.
         $this->refuses('{}', 'its `type` must be "map"');
-        $this->refuses('[]', 'its `type` must be "map"');
+        $this->refuses('[]', 'This is a JSON array, and a Tiled map is a JSON object');
     }
 
     public function test_a_document_that_parsed_and_is_not_an_object_says_what_it_is_and_reports_no_json_error(): void
@@ -177,17 +180,92 @@ class FloorMapTest extends TestCase
         $this->assertNull(FloorAssets::resolve('tiles/nobody-vendored-this.tsx'));
     }
 
+    // ── card#9322: object-mode decode — a list spelled `{}` is refused naming what it is ─────
+
+    public function test_a_tile_layers_data_or_the_desks_objects_as_a_json_object_is_refused_naming_it(): void
+    {
+        // Decoded associatively, `{}` arrived as an empty array and a keyed object as an array too,
+        // so both read as lists. Each map below is the valid control with one member re-spelled.
+        $data = FloorMapFixture::decoded();
+        $data['layers'][0]['data'] = new \stdClass;
+        $this->refuses(FloorMapFixture::encode($data), 'stores its `data` as a JSON object rather than as the array');
+
+        $objects = FloorMapFixture::decoded();
+        $objects['layers'][1]['objects'] = (object) ['1' => $objects['layers'][1]['objects'][0]];
+        $this->refuses(FloorMapFixture::encode($objects), 'stores its `objects` as a JSON object rather than as the list of slots');
+
+        $this->assertSame(12, FloorMap::parse(FloorMapFixture::valid())->slots);
+    }
+
+    /**
+     * ⛔ A GROUP's `layers` IS A LIST TOO, at every level Tiled nests it. Read as `[]` when it was
+     * not a PHP list, a keyed object hid its layers from the encoding check — so the base64 layer
+     * `base64LayerInsideAGroup()` is refused for was accepted, one re-spelling away.
+     *
+     * @return array<string, array{\stdClass}>
+     */
+    public static function groupLayersSpelledAsAnObject(): array
+    {
+        $empty = json_decode(FloorMapFixture::base64LayerInsideAGroup(), false);
+        $empty->layers[0]->layers = new \stdClass;
+
+        $keyed = json_decode(FloorMapFixture::base64LayerInsideAGroup(), false);
+        $keyed->layers[0]->layers = (object) ['k' => $keyed->layers[0]->layers[0]];
+
+        return ['`{}`' => [$empty], 'keyed, holding a base64 tile layer' => [$keyed]];
+    }
+
+    #[DataProvider('groupLayersSpelledAsAnObject')]
+    public function test_a_group_layers_layers_as_a_json_object_is_refused_naming_it(\stdClass $map): void
+    {
+        // THE CONTROL: the same group with its `layers` a list is refused for the base64 layer in
+        // it, so the refusal below is earned by the spelling of `layers` and not by the layer.
+        $this->refuses(FloorMapFixture::base64LayerInsideAGroup(), 'declares encoding "base64"');
+
+        $this->refuses(
+            FloorMapFixture::encode((array) $map),
+            'Group layer "scenery" stores its `layers` as a JSON object rather than as the list of layers',
+        );
+    }
+
+    #[DataProvider('groupLayersSpelledAsAnObject')]
+    public function test_a_group_layers_layers_as_a_json_object_inside_a_hallway_is_refused_naming_it(\stdClass $map): void
+    {
+        // The same group, moved into a floor's hallway: a hallway is read by the same table
+        // (§ 10.3), and it arrives through the layout's own decode rather than through `parse()`.
+        $hallway = FloorMapFixture::asDecoded(FloorMapFixture::hallway());
+        $hallway->layers = [$map->layers[0]];
+
+        $layout = fn (\stdClass $hallway) => (string) json_encode(['floors' => [[
+            'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
+            'hallway' => $hallway,
+        ]]]);
+
+        // THE CONTROL: the valid hallway, on the same planned floor, is accepted.
+        BuildingLayout::fromJson($layout(FloorMapFixture::asDecoded(FloorMapFixture::hallway())));
+
+        try {
+            BuildingLayout::fromJson($layout($hallway));
+            $this->fail('a hallway whose group `layers` is a JSON object was accepted');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString(
+                'Group layer "scenery" stores its `layers` as a JSON object rather than as the list of layers',
+                $e->getMessage(),
+            );
+        }
+    }
+
     // ── card#9292's HALLWAY: § 10.3's table with one row inverted ────────────────────────────
 
     public function test_a_hallway_is_accepted_without_a_desks_layer_and_refused_with_one(): void
     {
         // The pair differs by exactly the `desks` layer, which is the whole of the inversion.
-        FloorMap::hallway(FloorMapFixture::hallway());
+        FloorMap::hallway(FloorMapFixture::asDecoded(FloorMapFixture::hallway()));
 
         $this->addToAssertionCount(1);
 
         try {
-            FloorMap::hallway(FloorMapFixture::decoded());
+            FloorMap::hallway(FloorMapFixture::asDecoded(FloorMapFixture::decoded()));
             $this->fail('a hallway declaring a `desks` layer was accepted');
         } catch (InvalidFloorMap $e) {
             $this->assertStringContainsString('declares an object layer named `desks`', $e->getMessage());
@@ -202,7 +280,7 @@ class FloorMapTest extends TestCase
         unset($hallway['tilewidth']);
 
         try {
-            FloorMap::hallway($hallway);
+            FloorMap::hallway(FloorMapFixture::asDecoded($hallway));
             $this->fail('a hallway with no `tilewidth` was accepted');
         } catch (InvalidFloorMap $e) {
             $this->assertStringContainsString("This floor's hallway declares `tilewidth`", $e->getMessage());

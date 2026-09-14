@@ -2,8 +2,6 @@
 
 namespace App\Floor;
 
-use App\Building\AuthoredDocument;
-
 /**
  * A room's Tiled map, read for the facts the rest of the system needs from it: **`S`, the number
  * of desk slots it declares**, and — since card#9292 — **its GRID, which is the room's footprint
@@ -141,27 +139,28 @@ final class FloorMap
             ));
         }
 
+        // ⛔ DECODED IN OBJECT MODE (card#9322). `json_decode(…, true)` decodes `{}` and `[]` to the
+        // same PHP value, and this reader asks LIST questions — `layers` (a group's included),
+        // `tilesets`, a layer's `data`, the `desks` layer's `objects` — where `[]` is a legal list and
+        // `{}` is not one. It is also the reader of a floor's `hallway`, which arrives inside the
+        // layout document already decoded this way (`App\Building\BuildingLayout`), so one decode
+        // mode is what lets § 10.3's table be read by one `structure()` for both. A JSON object is
+        // `stdClass` and a JSON array is a PHP list, everywhere in the tree.
         try {
-            $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($document, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new InvalidFloorMap(self::notJsonMessage($document, $e->getMessage()), previous: $e);
         }
 
-        // ⛔ card#9295's DEFECT SHAPE, HERE — recorded against this line on card#9208 (comment
-        // 4794) and left for this slice because it holds this file. `json_decode($document, true)`
-        // decodes `{}` and `[]` to the same PHP value, so a map pasted as `{}` was refused as
-        // *"This is not a JSON object (No error)"*: a false sentence about a document that IS one.
-        // The predicate — and the whole argument for why the ingest's answer does not transfer to
-        // a reader where both spellings are refused anyway — is the console's one copy, in
-        // `App\Building\AuthoredDocument`, so the layout's reader and this one cannot come to
-        // answer it differently.
-        if (! AuthoredDocument::isJsonObject($decoded)) {
+        // card#9295's defect shape is unrepresentable here: `{}` is a `stdClass` and reaches the
+        // refusal that names what it lacks (*not a Tiled MAP*), never a false *not a JSON object*.
+        if (! $decoded instanceof \stdClass) {
             throw new InvalidFloorMap(self::notAnObjectMessage($decoded));
         }
 
         $grid = self::structure($decoded, 'This map');
 
-        return new self($document, self::countSlots($decoded['layers'], $grid), $grid);
+        return new self($document, self::countSlots($decoded->layers, $grid), $grid);
     }
 
     /**
@@ -174,15 +173,16 @@ final class FloorMap
      * and no revision (the layout's is its). Its size is covered by the layout's write bound,
      * which is measured on the document it is part of.
      *
-     * @param  array<mixed>  $decoded
+     * ⚠ The document is OBJECT-mode decoded, as `parse()` decodes a room's (card#9322): a JSON
+     * object is a `stdClass` and a JSON array a PHP list.
      *
      * @throws InvalidFloorMap naming the clause, in the same words a room's map earns
      */
-    public static function hallway(array $decoded): void
+    public static function hallway(\stdClass $decoded): void
     {
         self::structure($decoded, "This floor's hallway");
 
-        $desks = self::deskLayers($decoded['layers']);
+        $desks = self::deskLayers($decoded->layers);
 
         if ($desks !== []) {
             throw new InvalidFloorMap(sprintf(
@@ -200,25 +200,24 @@ final class FloorMap
      * Every read § 10.3's table makes of a Tiled document REGARDLESS of whether it is a room's
      * map or a floor's hallway, in one place so the two can never be checked differently.
      *
-     * @param  array<mixed>  $decoded
      * @param  string  $what  how the refusals name this document to the operator
      * @return array{width: int, height: int, tilewidth: int, tileheight: int}
      */
-    private static function structure(array $decoded, string $what): array
+    private static function structure(\stdClass $decoded, string $what): array
     {
-        if (($decoded['type'] ?? null) !== 'map') {
+        if (($decoded->type ?? null) !== 'map') {
             throw new InvalidFloorMap(sprintf(
                 '%s is not a Tiled MAP: its `type` must be "map" and this document declares '
                 .'%s. A tileset is referenced BY the map (docs/design/FLOOR.md § 10.1 clause 3), '
                 .'not stored in its place.',
                 $what,
-                isset($decoded['type']) && is_scalar($decoded['type'])
-                    ? '"'.$decoded['type'].'"'
+                isset($decoded->type) && is_scalar($decoded->type)
+                    ? '"'.$decoded->type.'"'
                     : 'none',
             ));
         }
 
-        if (($decoded['infinite'] ?? false) === true) {
+        if (($decoded->infinite ?? false) === true) {
             throw new InvalidFloorMap(sprintf(
                 '%s is INFINITE, so Tiled stores its tile data in `chunks` rather than in '
                 .'each layer\'s `data` — an encoding this check does not read, and § 10.1 clause 3 '
@@ -231,7 +230,8 @@ final class FloorMap
         self::refuseEmbeddedBytes($decoded);
         self::refuseUnshippedTilesets($decoded, $what);
 
-        $layers = $decoded['layers'] ?? null;
+        // A PHP array IS a JSON list in this decode, so `{}` — empty or keyed — is refused here.
+        $layers = $decoded->layers ?? null;
 
         if (! is_array($layers)) {
             throw new InvalidFloorMap($what.' declares no `layers` array, so it declares no room at all.');
@@ -283,12 +283,11 @@ final class FloorMap
      * ELEVATION drawn from the tileset's `Side/` renders, and no other projection is asked for or
      * vendored, so a map in one is refused by name rather than drawn flat.
      *
-     * @param  array<mixed>  $decoded
      * @return array{width: int, height: int, tilewidth: int, tileheight: int}
      */
-    private static function grid(array $decoded, string $what): array
+    private static function grid(\stdClass $decoded, string $what): array
     {
-        $orientation = $decoded['orientation'] ?? null;
+        $orientation = $decoded->orientation ?? null;
 
         if ($orientation !== 'orthogonal') {
             throw new InvalidFloorMap(sprintf(
@@ -304,7 +303,7 @@ final class FloorMap
         $grid = [];
 
         foreach (self::GRID_MEMBERS as $member) {
-            $value = $decoded[$member] ?? null;
+            $value = $decoded->$member ?? null;
 
             // Tiled writes these as JSON numbers, so an integer-valued float (`10.0`) is the
             // same authored value and is normalised rather than refused; anything that is not a
@@ -318,7 +317,7 @@ final class FloorMap
                     .'refused rather than stored.',
                     $what,
                     $member,
-                    isset($decoded[$member]) && is_scalar($value) ? '`'.$value.'`' : 'nothing at all',
+                    isset($decoded->$member) && is_scalar($value) ? '`'.$value.'`' : 'nothing at all',
                 ));
             }
 
@@ -349,14 +348,14 @@ final class FloorMap
      * manifest row, therefore no provenance"), and a `data:` URI in a tile property or a custom
      * property is that same asset.
      *
-     * @param  array<mixed>  $node
+     * @param  array<mixed>|\stdClass  $node  a JSON array or a JSON object — the walk reads both
      */
-    private static function refuseEmbeddedBytes(array $node, string $path = ''): void
+    private static function refuseEmbeddedBytes(array|\stdClass $node, string $path = ''): void
     {
         foreach ($node as $key => $value) {
             $here = $path === '' ? (string) $key : $path.'.'.$key;
 
-            if (is_array($value)) {
+            if (is_array($value) || $value instanceof \stdClass) {
                 self::refuseEmbeddedBytes($value, $here);
 
                 continue;
@@ -388,19 +387,17 @@ final class FloorMap
      * caller. What no check here can do is stated by § 10.3 the way § 10.1 states its own
      * residue: this says the file is one the repository ships, never that the picture in it is
      * the picture its manifest row describes.
-     *
-     * @param  array<mixed>  $decoded
      */
-    private static function refuseUnshippedTilesets(array $decoded, string $what): void
+    private static function refuseUnshippedTilesets(\stdClass $decoded, string $what): void
     {
-        $tilesets = $decoded['tilesets'] ?? [];
+        $tilesets = $decoded->tilesets ?? [];
 
         if (! is_array($tilesets)) {
             throw new InvalidFloorMap($what.' declares `tilesets` as something other than a list of tilesets.');
         }
 
         foreach ($tilesets as $position => $tileset) {
-            if (! is_array($tileset)) {
+            if (! $tileset instanceof \stdClass) {
                 throw new InvalidFloorMap(sprintf('%s declares a `tilesets` entry (#%s) that is not an object.', $what, (string) $position));
             }
 
@@ -408,11 +405,11 @@ final class FloorMap
             // the walk above when it carries one; refusing it here as well would name the wrong
             // clause for a tileset that merely declares its tiles inline, which § 10.3 does not
             // ask this table to refuse.
-            if (! array_key_exists('source', $tileset)) {
+            if (! property_exists($tileset, 'source')) {
                 continue;
             }
 
-            $source = $tileset['source'];
+            $source = $tileset->source;
 
             if (! is_string($source) || $source === '') {
                 throw new InvalidFloorMap(sprintf(
@@ -468,15 +465,31 @@ final class FloorMap
     private static function refuseUnreadableLayerData(array $layers): void
     {
         foreach ($layers as $layer) {
-            if (! is_array($layer)) {
+            if (! $layer instanceof \stdClass) {
                 throw new InvalidFloorMap('A layer in this map is not an object — the document is not a Tiled map.');
             }
 
-            $type = $layer['type'] ?? null;
-            $name = is_scalar($layer['name'] ?? null) ? (string) $layer['name'] : '(unnamed)';
+            $type = $layer->type ?? null;
+            $name = is_scalar($layer->name ?? null) ? (string) $layer->name : '(unnamed)';
 
             if ($type === 'group') {
-                self::refuseUnreadableLayerData(is_array($layer['layers'] ?? null) ? $layer['layers'] : []);
+                // ⛔ A GROUP's `layers` IS A LIST, and a JSON object in its place is refused by name
+                // (card#9322). Read as an empty group instead, a keyed `{"k": …}` hid every layer in
+                // it from the checks below — a base64 layer one re-spelling away from its refusal.
+                $children = $layer->layers ?? [];
+
+                if (! is_array($children)) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Group layer "%s" stores its `layers` as %s rather than as the list of layers '
+                        .'a group carries. docs/design/FLOOR.md § 10.3 reads `layers` as a JSON array '
+                        .'at every level Tiled nests it, so a layer inside a group is held to every '
+                        .'rule a top-level one is.',
+                        $name,
+                        self::jsonShape($children),
+                    ));
+                }
+
+                self::refuseUnreadableLayerData($children);
 
                 continue;
             }
@@ -485,7 +498,7 @@ final class FloorMap
                 continue;
             }
 
-            $compression = is_scalar($layer['compression'] ?? null) ? (string) $layer['compression'] : '';
+            $compression = is_scalar($layer->compression ?? null) ? (string) $layer->compression : '';
 
             if ($compression !== '') {
                 throw new InvalidFloorMap(sprintf(
@@ -497,7 +510,7 @@ final class FloorMap
                 ));
             }
 
-            $encoding = is_scalar($layer['encoding'] ?? null) ? (string) $layer['encoding'] : 'csv';
+            $encoding = is_scalar($layer->encoding ?? null) ? (string) $layer->encoding : 'csv';
 
             if ($encoding !== 'csv') {
                 throw new InvalidFloorMap(sprintf(
@@ -509,13 +522,19 @@ final class FloorMap
                 ));
             }
 
-            if (! is_array($layer['data'] ?? null)) {
+            $data = $layer->data ?? null;
+
+            if (! is_array($data)) {
+                // The sentence names what the layer DOES carry: a string is the base64 or
+                // compressed form under another name, and since card#9322's object-mode decode a
+                // `{}` arrives as the object it is rather than as an empty array.
                 throw new InvalidFloorMap(sprintf(
-                    'Tile layer "%s" stores its `data` as a string rather than as the array a CSV '
-                    .'layer carries — a base64 or compressed layer under another name. '
-                    .'docs/design/FLOOR.md § 10.1 clause 3 admits one layer form per format, and '
-                    .'for JSON that form is the array.',
+                    'Tile layer "%s" stores its `data` as %s rather than as the array a CSV '
+                    .'layer carries%s. docs/design/FLOOR.md § 10.1 clause 3 admits one layer form '
+                    .'per format, and for JSON that form is the array.',
                     $name,
+                    self::jsonShape($data),
+                    is_string($data) ? ' — a base64 or compressed layer under another name' : '',
                 ));
             }
         }
@@ -555,9 +574,18 @@ final class FloorMap
             ));
         }
 
-        $objects = $desks[0]['objects'] ?? null;
+        $objects = $desks[0]->objects ?? null;
 
-        if (! is_array($objects) || $objects === []) {
+        if ($objects !== null && ! is_array($objects)) {
+            throw new InvalidFloorMap(sprintf(
+                'The `%s` layer stores its `objects` as %s rather than as the list of slots '
+                .'docs/design/FLOOR.md § 10.3 counts.',
+                self::SLOT_LAYER,
+                self::jsonShape($objects),
+            ));
+        }
+
+        if ($objects === null || $objects === []) {
             throw new InvalidFloorMap(sprintf(
                 'The `%s` layer declares no objects, so this floor has no desk slots at all and '
                 .'every seat on it would be in § 3.2\'s overflow row.',
@@ -569,11 +597,11 @@ final class FloorMap
         $pixelHeight = $grid['height'] * $grid['tileheight'];
 
         foreach (array_values($objects) as $index => $object) {
-            $named = is_array($object) && isset($object['id']) && is_scalar($object['id'])
-                ? 'id '.$object['id']
+            $named = $object instanceof \stdClass && isset($object->id) && is_scalar($object->id)
+                ? 'id '.$object->id
                 : 'object #'.($index + 1).' (it declares no `id`)';
 
-            if (! is_array($object)) {
+            if (! $object instanceof \stdClass) {
                 throw new InvalidFloorMap(sprintf('The `%s` layer carries %s, which is not an object.', self::SLOT_LAYER, $named));
             }
 
@@ -581,7 +609,7 @@ final class FloorMap
             // § 10.3 makes it an allowlist of NONE — "because the property an author reaches for
             // is a seat's name" — so the refusal is on `properties` existing at all rather than
             // on any list of property names, which would be a list one edit behind the author.
-            if (array_key_exists('properties', $object)) {
+            if (property_exists($object, 'properties')) {
                 throw new InvalidFloorMap(sprintf(
                     'Desk slot %s carries `properties`, and a desk slot may carry NONE '
                     .'(docs/design/FLOOR.md § 10.3, card#9071). The property an author reaches '
@@ -619,12 +647,10 @@ final class FloorMap
      * A Tiled object's geometry member. Tiled writes them as JSON numbers and a hand-edited map
      * may carry an integer, so both are read; anything else is a map this store cannot place a
      * desk from, which is a refusal rather than a zero.
-     *
-     * @param  array<mixed>  $object
      */
-    private static function objectNumber(array $object, string $member, string $named): float
+    private static function objectNumber(\stdClass $object, string $member, string $named): float
     {
-        $value = $object[$member] ?? 0;
+        $value = $object->$member ?? 0;
 
         if (! is_int($value) && ! is_float($value)) {
             throw new InvalidFloorMap(sprintf(
@@ -639,29 +665,39 @@ final class FloorMap
         return (float) $value;
     }
 
+    /** What a decoded value IS, in JSON's own words, for a refusal to name. */
+    private static function jsonShape(mixed $value): string
+    {
+        return match (true) {
+            $value instanceof \stdClass => 'a JSON object',
+            is_array($value) => 'a JSON array',
+            is_string($value) => 'a string',
+            $value === null => 'null',
+            default => 'a JSON '.get_debug_type($value),
+        };
+    }
+
     /**
      * @param  array<mixed>  $layers
-     * @return list<array<mixed>>
+     * @return list<\stdClass>
      */
     private static function deskLayers(array $layers): array
     {
         $found = [];
 
         foreach ($layers as $layer) {
-            if (! is_array($layer)) {
+            if (! $layer instanceof \stdClass) {
                 continue;
             }
 
-            if (($layer['type'] ?? null) === 'group') {
-                $found = array_merge(
-                    $found,
-                    self::deskLayers(is_array($layer['layers'] ?? null) ? $layer['layers'] : []),
-                );
+            if (($layer->type ?? null) === 'group') {
+                // `structure()` has already refused a group whose `layers` is not a list.
+                $found = array_merge($found, self::deskLayers($layer->layers ?? []));
 
                 continue;
             }
 
-            if (($layer['type'] ?? null) === 'objectgroup' && ($layer['name'] ?? null) === self::SLOT_LAYER) {
+            if (($layer->type ?? null) === 'objectgroup' && ($layer->name ?? null) === self::SLOT_LAYER) {
                 $found[] = $layer;
             }
         }
