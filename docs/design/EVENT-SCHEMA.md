@@ -621,10 +621,10 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 | A `http://` `ingest_url` | **refused** at install (`selftest` fails) and at runtime (flusher refuses to send, sets `config_invalid`, keeps spooling) | fail closed, loudly, on the client's own surface |
 | TLS | ≥ 1.2, certificate verification **always on** | — |
 | Disabling verification | **forbidden**: no `rejectUnauthorized:false`, no `NODE_TLS_REJECT_UNAUTHORIZED=0` | a sandbox host with a private CA is supported by `ca_file` → `NODE_EXTRA_CA_CERTS`. Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it ships to production seats |
-| Connection reuse | keep-alive, ≤ 2 sockets | a TLS handshake is 2 RTTs; at 6 flushes/min a fresh handshake each time is ~12 avoidable RTTs/min/seat |
+| Connection reuse | keep-alive, ≤ 2 sockets, on the direct route; through `proxy_url` each request opens its own `CONNECT` tunnel | a TLS handshake is 2 RTTs; at 6 flushes/min a fresh handshake each time is ~12 avoidable RTTs/min/seat |
 | Total request deadline | **15 s** | 256 KiB on a 1 Mbit/s uplink is 2.1 s; plus TLS setup (~1 s pathological) plus server processing (target < 500 ms) ≈ 4 s worst realistic case. 15 s ≈ 3.5× that — past it, retrying beats waiting |
-| Connect deadline | **5 s** | a cross-continent TLS connect is ~300 ms typical, ~2 s pathological; 5 s ≈ 2.5× pathological. *Enforceable only via `https.request` + `socket.setTimeout`; with global `fetch` only the 15 s total deadline is enforceable. Either implementation is acceptable — the binding requirement is the 15 s ceiling.* |
-| Proxies | `config.proxy_url` only; `HTTP(S)_PROXY` environment variables are **ignored** | § 3.4 rule 1 — no transport decision from ambient environment |
+| Connect deadline | **5 s** | a cross-continent TLS connect is ~300 ms typical, ~2 s pathological; 5 s ≈ 2.5× pathological. *It runs from the start of a request to a verified TLS session with the ingest: DNS, the TCP connect, the proxy's `CONNECT` answer when `proxy_url` is set, and the handshake all spend it, and a kept-alive socket spends none. It bounds the batch POST and the health probe alike, so a proxy that accepts TCP and never answers `CONNECT` holds a flusher pass for 5 s, never 15 s. Enforceable with `https.request` and a timer; with global `fetch` only the 15 s total deadline is enforceable. Either implementation is acceptable — the binding requirement is the 15 s ceiling.* |
+| Proxies | `config.proxy_url` only, for **every** request to the ingest: the batch POST and the health probe (the flusher's and `selftest`'s) take one route, with the same TLS options and both deadlines above. `HTTP(S)_PROXY` environment variables are **ignored** | § 3.4 rule 1 — no transport decision from ambient environment. One route, because a probe that takes another path measures a path the batches never use (card#9473) |
 | Compression | `Content-Encoding: gzip` permitted, at the flusher's discretion, when the body exceeds 8 KiB | below 8 KiB gzip's CPU and header cost outweighs the saving on a WAN; the server must accept both |
 
 ---
@@ -2567,14 +2567,14 @@ against `degraded` — a member set stated nowhere is not implementable — one 
 **A check the subcommand could not measure is `not_measured`, and it is neither a pass nor a fail.**
 `tls_verify` and `schema_version_accepted` are measured by one `GET /api/ingest/health`
 ([§ 4.1](#41-endpoints)) against the configured ingest — the probe the flusher runs for the heartbeat,
-with the same TLS path, `ca_file` and deadline — and the subcommand runs it once, only when
+with the same route (`proxy_url` included), TLS path, `ca_file` and deadlines ([§ 3.5](#35-transport-is-wan-always)) — and the subcommand runs it once, only when
 `config_readable` passes. Each result is one of three values:
 
 | Result | `tls_verify` | `schema_version_accepted` |
 |---|---|---|
 | `pass` | the health surface answered over TLS with verification on, **and** the source carries no verification-disabling spelling ([AT-15](#at-15-transport-posture)) | a `200` answer carries an `accepted_schema_versions` set that contains this reporter's `schema_version` |
-| `fail` | the source carries a verification-disabling spelling, whatever the probe saw; **or** a TCP connection to the ingest was made and the TLS handshake then failed | a `200` answer carries a set that does **not** contain this reporter's `schema_version` |
-| `not_measured` | no probe ran (the config is not readable), no TCP connection was made, or no answer arrived for any other reason — a deadline, or a failure after the handshake completed | no `200` answer carrying a set arrived — no probe ran, the ingest was unreachable, or it answered with another status (a refused token, an outage page), whose body carries no set to refuse the version with |
+| `fail` | the source carries a verification-disabling spelling, whatever the probe saw; **or** a connection to the ingest was made (through `proxy_url`, the proxy answered `CONNECT` with `200`) and the TLS handshake then failed | a `200` answer carries a set that does **not** contain this reporter's `schema_version` |
+| `not_measured` | no probe ran (the config is not readable), no connection to the ingest was made (a proxy that refused or never answered `CONNECT` included), or no answer arrived for any other reason — a deadline, or a failure after the handshake completed | no `200` answer carrying a set arrived — no probe ran, the ingest was unreachable, or it answered with another status (a refused token, an outage page), whose body carries no set to refuse the version with |
 
 **The subcommand's exit code:** `0` when every check is `pass`; `1` when any check is `fail`; `2` when
 none is `fail` and at least one is `not_measured`. An installer reading `2` has an install nothing

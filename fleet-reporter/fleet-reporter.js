@@ -2333,83 +2333,134 @@ function buildBatch(config, state, items, maxEvents) {
 let _agent = null;
 const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAlive: true, maxSockets: 2 })));
 
-function proxyConnect(proxyUrl, targetHost, targetPort) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(proxyUrl);
-    const mod = lazy(u.protocol === 'https:' ? 'https' : 'http');
-    const req = mod.request({
-      host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
-      method: 'CONNECT', path: `${targetHost}:${targetPort}`,
-      headers: { Host: `${targetHost}:${targetPort}` },
-      timeout: K.CONNECT_MS,
+/* THE ONE OUTBOUND REQUEST PRIMITIVE (card#9473). Every request this process makes to the ingest
+ * goes through here — the batch POST (`postBatch`) and the health probe (`refreshHealth`), which the
+ * flusher and the one-shot `selftest` both run. Before card#9473 they were two HTTPS clients, and a
+ * seat whose egress requires `proxy_url` was broken on both: the probe had no proxy leg (and no
+ * connect deadline), so it went direct and measured nothing; the sender opened the tunnel and then
+ * sent over a direct connection anyway (see `delete opts.agent` below).
+ *
+ * What it owns, so no caller restates it (§ 3.5):
+ *   - ROUTE: `config.proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
+ *     null ⇒ direct, on the shared keep-alive agent. `config.proxy_url` ONLY — HTTP(S)_PROXY
+ *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
+ *   - TLS: `https://` ingest only, verification on, `ca_file` as an ADDITIONAL trust anchor. The host
+ *     name is verified on both routes; SNI carries it only when it is a name (RFC 6066 forbids an IP
+ *     literal there, and Node warns, DEP0123, that it will stop honouring one).
+ *   - THE CONNECT DEADLINE, K.CONNECT_MS, from the start of the request to a verified TLS session
+ *     with the ingest: DNS, the TCP connect, the proxy's CONNECT answer and the handshake all spend
+ *     it. A kept-alive socket arrives verified and spends none. A proxy that accepts TCP and never
+ *     answers CONNECT therefore costs the flush loop K.CONNECT_MS, not K.REQUEST_MS.
+ *   - THE TOTAL DEADLINE, K.REQUEST_MS, from the start of the request to the end of the response.
+ *
+ * It always RESOLVES, never rejects, with what it observed: `status`/`headers`/`body` for an answer
+ * (`body` is set only once the response ended), `error` otherwise, `deadline` ('connect' | 'request')
+ * when a deadline ended it, `invalid` when the config named no request to make, and the two stages a
+ * caller needs to tell a refused certificate from nothing learned: `tcp` (a connection to the ingest
+ * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
+function ingestRequest(config, { method, path: pathOf, headers, body }) {
+  return new Promise((resolve) => {
+    const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false };
+    let settled = false, connectTimer = null, requestTimer = null;
+    const live = [];   // every request and socket this call opened, destroyed when a deadline ends it
+    const done = (error) => {
+      if (settled) return;
+      settled = true; clearTimeout(connectTimer); clearTimeout(requestTimer);
+      if (error) out.error = error;
+      resolve(out);
+    };
+    let url;
+    try { url = new URL(config.ingest_url); } catch (e) { out.invalid = 'bad ingest_url'; done(out.invalid); return; }
+    if (url.protocol !== 'https:') { out.invalid = 'ingest_url is not https'; done(out.invalid); return; }
+
+    const endByDeadline = (which, error) => {
+      if (settled) return;
+      out.deadline = which; done(error);
+      for (const x of live) { try { x.destroy(); } catch (e) { /* already gone */ } }
+    };
+    requestTimer = setTimeout(() => endByDeadline('request', 'timeout'), K.REQUEST_MS);
+    connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);
+    const established = () => { out.tcp = true; out.secured = true; clearTimeout(connectTimer); };
+
+    const port = Number(url.port || 443);
+    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':');
+    let ca;
+    if (config.ca_file) { try { ca = fs.readFileSync(config.ca_file); } catch (e) { /* fall back to the system store, still verifying */ } }
+    const opts = {
+      host: url.hostname, port, path: pathOf(url), method,
+      headers: Object.assign({ Authorization: `Bearer ${config.token}` }, headers), agent: getAgent(),
+    };
+    if (!isIp) opts.servername = url.hostname;
+    if (ca) opts.ca = ca;
+
+    const send = () => {
+      const req = lazy('https').request(opts, (res) => {
+        out.status = res.statusCode; out.headers = res.headers;
+        const chunks = [];
+        res.on('data', (c) => { if (chunks.length < 64) chunks.push(c); });
+        res.on('end', () => { out.body = Buffer.concat(chunks); done(null); });
+      });
+      live.push(req);
+      // A kept-alive socket, or the tunnel's socket below, arrives already connected and verified;
+      // a fresh direct one reports each stage.
+      req.on('socket', (sock) => {
+        if (!sock.connecting) { established(); return; }
+        sock.once('connect', () => { out.tcp = true; });
+        sock.once('secureConnect', established);
+      });
+      req.on('error', (e) => done(String(e && e.code || e && e.message)));
+      req.end(body);
+    };
+
+    if (!config.proxy_url) { send(); return; }
+    let connect;
+    try {
+      const u = new URL(config.proxy_url);
+      connect = lazy(u.protocol === 'https:' ? 'https' : 'http').request({
+        host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
+        method: 'CONNECT', path: `${url.hostname}:${port}`, headers: { Host: `${url.hostname}:${port}` }, agent: false,
+      });
+    } catch (e) { done(`proxy: ${e && e.message}`); return; }
+    live.push(connect);
+    connect.on('error', (e) => done(`proxy: ${e && e.message}`));
+    connect.on('connect', (res, tunnel) => {
+      live.push(tunnel);
+      tunnel.on('error', (e) => done(String(e && e.code || e && e.message)));
+      if (settled) { tunnel.destroy(); return; }
+      if (res.statusCode !== 200) { tunnel.destroy(); done(`proxy: proxy CONNECT ${res.statusCode}`); return; }
+      out.tcp = true;
+      const tlsOpts = { socket: tunnel, host: url.hostname };
+      if (!isIp) tlsOpts.servername = url.hostname;
+      if (ca) tlsOpts.ca = ca;
+      const secure = lazy('tls').connect(tlsOpts);
+      live.push(secure);
+      secure.on('error', (e) => done(String(e && e.code || e && e.message)));
+      secure.once('secureConnect', () => {
+        if (settled) return;
+        established();
+        // NO AGENT, NOT `agent: false`: Node answers `agent: false` with a fresh Agent, which ignores
+        // `createConnection` and dials the ingest direct — the tunnel then carries nothing (card#9473).
+        delete opts.agent; opts.createConnection = () => secure;
+        send();
+      });
     });
-    req.on('connect', (res, socket) => {
-      if (res.statusCode !== 200) { socket.destroy(); reject(new Error(`proxy CONNECT ${res.statusCode}`)); return; }
-      resolve(socket);
-    });
-    req.on('timeout', () => { req.destroy(new Error('proxy connect timeout')); });
-    req.on('error', reject);
-    req.end();
+    connect.end();
   });
 }
 
 function postBatch(config, body) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
-    let url;
-    try { url = new URL(config.ingest_url); } catch (e) { done({ kind: 'permanent', status: 0, error: 'bad ingest_url' }); return; }
-    if (url.protocol !== 'https:') { done({ kind: 'refused', status: 0, error: 'ingest_url is not https' }); return; }
-
-    const headers = { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${config.token}` };
-    let payload = Buffer.from(body, 'utf8');
-    if (payload.length > K.GZIP_MIN) {
-      try { payload = lazy('zlib').gzipSync(payload); headers['Content-Encoding'] = 'gzip'; } catch (e) { payload = Buffer.from(body, 'utf8'); }
-    }
-    headers['Content-Length'] = String(payload.length);
-
-    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':');
-    const opts = {
-      host: url.hostname, port: url.port || 443, path: url.pathname + url.search,
-      method: 'POST', headers, agent: getAgent(),
-    };
-    // SNI is a HOSTNAME extension: RFC 6066 forbids an IP literal there, and Node warns
-    // (DEP0123) that it will stop honouring one. Verification is unaffected either way.
-    if (!isIp) opts.servername = url.hostname;
-    if (config.ca_file) { try { opts.ca = fs.readFileSync(config.ca_file); } catch (e) { /* fall back to the system store, still verifying */ } }
-
-    // The TOTAL request deadline. 256 KiB on a 1 Mbit/s uplink is 2.1 s; plus TLS setup plus
-    // server processing is ~4 s worst realistic case, and 15 s is ~3.5x that — past it,
-    // retrying beats waiting.
-    const timer = setTimeout(() => { try { req.destroy(new Error('request deadline')); } catch (e) { /* already gone */ } done({ kind: 'retryable', status: 0, error: 'timeout' }); }, K.REQUEST_MS);
-
-    const start = (socketOverride) => {
-      if (socketOverride) { opts.agent = false; opts.createConnection = () => lazy('tls').connect({ socket: socketOverride, servername: url.hostname, ca: opts.ca }); }
-      const r = lazy('https').request(opts, (res) => {
-        const chunks = [];
-        res.on('data', (c) => { if (chunks.length < 64) chunks.push(c); });
-        res.on('end', () => {
-          clearTimeout(timer);
-          const text = Buffer.concat(chunks).toString('utf8').slice(0, 4096);
-          done(classify(res.statusCode, res.headers, text));
-        });
-      });
-      r.on('error', (e) => { clearTimeout(timer); done({ kind: 'retryable', status: 0, error: String(e && e.code || e && e.message) }); });
-      // The CONNECT deadline is enforceable only via socket.setTimeout; § 3.5 makes the 15 s
-      // total the binding requirement and this the refinement.
-      r.on('socket', (s) => { s.setTimeout(K.CONNECT_MS, () => { if (!s.destroyed && !settled) r.destroy(new Error('connect deadline')); }); });
-      r.end(payload);
-      return r;
-    };
-
-    let req;
-    if (config.proxy_url) {
-      // config.proxy_url ONLY. HTTP(S)_PROXY environment variables are IGNORED — § 3.4 rule 1,
-      // no transport decision from ambient environment.
-      proxyConnect(config.proxy_url, url.hostname, url.port || 443)
-        .then((sock) => { req = start(sock); })
-        .catch((e) => { clearTimeout(timer); done({ kind: 'retryable', status: 0, error: `proxy: ${e && e.message}` }); });
-    } else { req = start(null); }
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  let payload = Buffer.from(body, 'utf8');
+  if (payload.length > K.GZIP_MIN) {
+    try { payload = lazy('zlib').gzipSync(payload); headers['Content-Encoding'] = 'gzip'; } catch (e) { payload = Buffer.from(body, 'utf8'); }
+  }
+  headers['Content-Length'] = String(payload.length);
+  return ingestRequest(config, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
+    if (r.invalid) return { kind: r.invalid === 'ingest_url is not https' ? 'refused' : 'permanent', status: 0, error: r.invalid };
+    // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
+    // cut off before its end: all transient by nature (§ 11.5).
+    if (r.error) return { kind: 'retryable', status: 0, error: r.error };
+    return classify(r.status, r.headers, r.body.toString('utf8').slice(0, 4096));
   });
 }
 
@@ -2885,65 +2936,35 @@ function appendRejectedMarker(spool, line) {
  * `selftest` alike (card#9373: the one-shot used to run none, so `schema_version_accepted` read
  * false and the install-time verification exited 1 on every correctly configured seat). It returns the
  * probe, whose `checks` is the MEASUREMENT; each caller decides what to do with it (the one-shot
- * reports it as it stands, the flusher keeps a previous value over a null). Each of the two checks is
- * true, false, or null — NOT MEASURED, which § 6.14 keeps distinct from a fail:
- *   - tls_verify: an HTTP answer arrived with verification on ⇒ reached. A TCP connection whose TLS
- *     handshake never completed ⇒ refused (false). No TCP connection, a deadline, or a failure after
+ * reports it as it stands, the flusher keeps a previous value over a null). It asks through
+ * `ingestRequest`, the sender's own primitive, so it takes the seat's route — `proxy_url` included —
+ * and its deadlines (card#9473). Each of the two checks is true, false, or null — NOT MEASURED, which
+ * § 6.14 keeps distinct from a fail:
+ *   - tls_verify: an HTTP answer arrived with verification on ⇒ reached. A connection to the ingest
+ *     (through a proxy: a CONNECT answered 200) whose TLS handshake failed ⇒ refused (false). No such
+ *     connection (a proxy that refused or never answered included), a deadline, or a failure after
  *     the handshake and before an answer ⇒ null: nothing about verification was learned. The source
  *     posture is the check's other half, and `tlsVerifyResult` composes the two.
  *   - schema_version_accepted: a 200 carrying an `accepted_schema_versions` array ⇒ whether it holds
  *     SCHEMA_VERSION. Any other answer (a 401 for a refused token, an outage page) carries no set, so
  *     it cannot refuse the version ⇒ null. */
 function refreshHealth(config) {
-  return new Promise((resolve) => {
-    const probe = { reached: null, http_status: null, accepted_schema_versions: null, error: null, checks: null };
-    let settled = false, timer = null, tcp = false, secured = false;
-    const done = (error) => {
-      if (settled) return;
-      settled = true; clearTimeout(timer);
-      if (error) probe.error = error;
-      probe.checks = {
-        tls_verify: tlsVerifyResult(probe.reached),
-        schema_version_accepted: Array.isArray(probe.accepted_schema_versions)
-          ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null,
-      };
-      resolve(probe);
+  return ingestRequest(config, { method: 'GET', path: (u) => u.pathname.replace(/\/events$/, '/health') }).then((r) => {
+    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null };
+    if (r.status !== null) probe.reached = true;
+    else if (r.error && !r.deadline && r.tcp && !r.secured) probe.reached = false;
+    if (r.status === 200 && r.body) {
+      try {
+        const body = JSON.parse(r.body.toString('utf8'));
+        if (body && Array.isArray(body.accepted_schema_versions)) probe.accepted_schema_versions = body.accepted_schema_versions;
+      } catch (e) { /* no readable set: schema_version_accepted stays unmeasured */ }
+    }
+    probe.checks = {
+      tls_verify: tlsVerifyResult(probe.reached),
+      schema_version_accepted: Array.isArray(probe.accepted_schema_versions)
+        ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null,
     };
-    let url;
-    try { url = new URL(config.ingest_url); } catch (e) { done('bad ingest_url'); return; }
-    const opts = {
-      host: url.hostname, port: url.port || 443,
-      path: url.pathname.replace(/\/events$/, '/health'), method: 'GET',
-      headers: { Authorization: `Bearer ${config.token}` }, agent: getAgent(),
-    };
-    if (!(/^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':'))) opts.servername = url.hostname;
-    if (config.ca_file) { try { opts.ca = fs.readFileSync(config.ca_file); } catch (e) { /* system store */ } }
-    const req = lazy('https').request(opts, (res) => {
-      probe.reached = true; probe.http_status = res.statusCode;
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
-        if (res.statusCode === 200) {
-          try {
-            const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-            if (body && Array.isArray(body.accepted_schema_versions)) probe.accepted_schema_versions = body.accepted_schema_versions;
-          } catch (e) { /* no readable set: schema_version_accepted stays unmeasured */ }
-        }
-        done(null);
-      });
-    });
-    timer = setTimeout(() => { done('timeout'); try { req.destroy(); } catch (e) { /* gone */ } }, K.REQUEST_MS);
-    // A kept-alive socket arrives already connected and verified; a fresh one reports each stage.
-    req.on('socket', (sock) => {
-      if (!sock.connecting) { tcp = true; secured = true; return; }
-      sock.once('connect', () => { tcp = true; });
-      sock.once('secureConnect', () => { secured = true; });
-    });
-    req.on('error', (e) => {
-      if (probe.reached === null && tcp && !secured) probe.reached = false;
-      done(String(e && e.code || e && e.message));
-    });
-    req.end();
+    return probe;
   });
 }
 
@@ -3143,9 +3164,10 @@ async function selftestMain() {
   const { config } = loadConfig(cp);
   registerConfigSecrets(config);   // null-guarded internally
   const { results, detail } = runSelftestChecks(config, cp);
-  // The install-time verification measures the network checks with the flusher's own probe (same
-  // TLS path, `ca_file` and deadline), once — and only on a config that passed validation, because
-  // an invalid one names no ingest this command may trust with the token (card#9373).
+  // The install-time verification measures the network checks with the flusher's own probe (the
+  // sender's route and TLS path — `proxy_url`, `ca_file` — and deadlines, card#9473), once — and
+  // only on a config that passed validation, because an invalid one names no ingest this command
+  // may trust with the token (card#9373).
   if (results.config_readable) {
     const probe = await refreshHealth(config);
     Object.assign(results, probe.checks);
