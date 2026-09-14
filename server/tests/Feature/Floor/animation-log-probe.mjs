@@ -11,9 +11,11 @@
  *          where `<ref>` is a literal id, `{ "returned_by": n }` (the id op n returned) or
  *          `{ "row": n }` (the `episode_id` of row n as the log held it when this op ran). A key
  *          left out of `args` reaches the module as `undefined`, which is how an omitted `at` is
- *          expressed in JSON.
+ *          expressed in JSON. An op with no `args` key at all is called with no argument object —
+ *          `edge()`, `enterHeld()`, `leaveHeld(id)` — which is a different call from `edge({})`.
  * stdout — JSON: `{ "results": [ { "op", "episode", "returned", "error": null | { "name",
- *                   "message" }, "rows_before", "rows_after" } ], "rows" }`
+ *                   "message" }, "rows_before", "rows_after" } ], "rows", "exports" }`, where
+ *          `exports` is the module's export names as `import()` sees them.
  *
  * ⛔ A THROW IS AN OUTCOME HERE, NOT A CRASH. Each op's error is caught into its own result with
  * its class NAME and message, so a test can require the module's refusal by name and reject any
@@ -32,7 +34,8 @@ if (typeof dir !== 'string' || dir === '') {
     process.exit(2);
 }
 
-const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
+const exported = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
+const { createAnimationLog } = exported;
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const log = createAnimationLog();
@@ -51,9 +54,10 @@ for (const step of payload.ops ?? []) {
     const result = { op: step.op, episode: episode ?? null, returned: null, error: null };
 
     try {
+        const given = 'args' in step;
         const returned = step.op === 'leaveHeld'
-            ? log.leaveHeld(episode, step.args ?? {})
-            : log[step.op](step.args ?? {});
+            ? (given ? log.leaveHeld(episode, step.args) : log.leaveHeld(episode))
+            : (given ? log[step.op](step.args) : log[step.op]());
         result.returned = returned ?? null;
     } catch (error) {
         result.error = { name: error?.name ?? typeof error, message: String(error?.message ?? error) };
@@ -64,4 +68,4 @@ for (const step of payload.ops ?? []) {
     results.push(result);
 }
 
-console.log(JSON.stringify({ results, rows: log.rows }, null, 2));
+console.log(JSON.stringify({ results, rows: log.rows, exports: Object.keys(exported) }, null, 2));

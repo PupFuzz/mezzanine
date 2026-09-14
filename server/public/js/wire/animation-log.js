@@ -51,12 +51,14 @@ export function createAnimationLog() {
         return { animation_id, episode_id: episodeId, install_id, seat_id, class: klass, phase, cause, motion };
     }
 
+    // The `= {}` defaults are where bound (vi) holds for a call with no argument object: it reaches
+    // `write`'s refusal instead of throwing a TypeError while destructuring `undefined`.
     return {
-        edge(args) {
+        edge(args = {}) {
             write('edge', opening('edge', 'fired', freshId(), args), args.at);
         },
 
-        enterHeld(args) {
+        enterHeld(args = {}) {
             const episodeId = freshId();
             write('enterHeld', opening('held', 'entered', episodeId, args), args.at);
             open.set(episodeId, written[written.length - 1]);
@@ -64,7 +66,7 @@ export function createAnimationLog() {
             return episodeId;
         },
 
-        leaveHeld(episodeId, { cause, at }) {
+        leaveHeld(episodeId, { cause, at } = {}) {
             const entered = open.get(episodeId);
 
             // Edge ids share `freshId` and are never registered as open, so an edge row's id is

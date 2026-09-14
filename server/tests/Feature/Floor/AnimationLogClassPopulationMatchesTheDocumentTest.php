@@ -13,7 +13,8 @@ use Tests\TestCase;
  * is called through — `edge` writes `edge`, `enterHeld`/`leaveHeld` write `held` — and bound (iii)
  * forbids it from checking an `animation_id` against § 6.2. So which entry point an id belongs to
  * is a fact only the document holds, and every test that drives the log for a § 6.2 row (this
- * one now; the closed-set half of AT-D3-1 at step 6) reads it from
+ * one and `TheAnimationLogRecordsEveryClaimBearingEpisodeTest` now; the closed-set half of AT-D3-1
+ * at step 6) reads it from
  * `DrivesTheAnimationLogModule::documentAnimationClasses()` rather than from a list of its own.
  * A table edit in § 6.2 is then what moves every such test, and a stale copy has nowhere to live.
  *

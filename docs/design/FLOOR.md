@@ -3873,6 +3873,17 @@ has not shipped.** `animation-log.js` ([Appendix B](#appendix-b--what-an-impleme
 step 2) keeps the bounds below, and [row 2](#appendix-b--what-an-implementer-builds-from-this)'s gate
 tests are what check them:
 
+- **The call surface.** The module exports `createAnimationLog` and `AnimationLogRefusal`, and
+  nothing else. `createAnimationLog()` takes no argument and returns one log, whose members are:
+  `edge(args)`, which writes one `edge` row with `phase: fired`; `enterHeld(args)`, which writes one
+  `held` row with `phase: entered` and returns that row's fresh `episode_id`;
+  `leaveHeld(episodeId, {cause, at})`, which writes the episode's `left` row, copying `animation_id`,
+  `install_id` and `seat_id` from its `entered` row and writing `motion: false` whatever the entry
+  carried; and `rows`, every row written, in call order. `args` carries `animation_id`, `cause`,
+  `install_id`, `seat_id`, `motion` and `at`. The log mints every `episode_id` and the caller supplies
+  every other field. Every refusal throws `AnimationLogRefusal`, and a call with no argument object —
+  `edge()`, `enterHeld()`, or `leaveHeld(episodeId)` on an open episode — is refused for its missing
+  `at` like any other call without one (bound (vi)).
 - **(i)** `leaveHeld` refuses an id that is not a currently-open `enterHeld` episode — an unknown id,
   an already-left one, and an `edge` row's id, which is drawn from the same id space and checked
   against the same registry, so an edge id handed to `leaveHeld` is refused on the same code path as
@@ -3882,7 +3893,13 @@ tests are what check them:
   asks where it is running, so it refuses the same way wherever it runs. What a renderer does with a
   refusal, and what the viewer sees when one happens, belongs to the steps that build a renderer
   ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) steps 5 and 6) and is not stated
-  here.
+  here. Step 2's gate checks the no-switch half two ways: the module's source, for the identifiers a
+  read of its environment would have to name, and its export set, which must be exactly the call
+  surface's `createAnimationLog` and `AnimationLogRefusal`, so no flag a caller could set is exported.
+  ⚠ **What neither check sees, and what stays a review question on every step that edits this
+  module:** a switch that reads its environment through an identifier outside the scanned set, and a
+  flag reachable through what IS exported — a property hung on either export, or on the log object a
+  caller holds.
 - **(iii)** `edge`/`enterHeld` record exactly what the caller passes for `animation_id` and `cause`,
   with **no validation against this document's table**. This bound is required by the ruling two
   paragraphs above: the closed-set half's RED needs an out-of-table `animation_id` and a `null` `cause`
@@ -3900,8 +3917,8 @@ episode that pairs an exit with its entry. [§ 6.2](#62-the-animation-table--the
 `edge`/`held` split itself and [decision 20](#13-decisions-taken-revisable-at-review) records the call;
 neither restates what is below.** `episode_id` is what pairs an exit with its entry, and it is the
 third revision of this schema because the first two had nothing that could. An **episode** is one
-continuous run of one render on one seat: the renderer mints a fresh `episode_id` each time it starts an animation or enters a held
-render, and writes that same id on the `left` row that ends it. `(animation_id, install_id, seat_id)`
+continuous run of one render on one seat: the log mints a fresh `episode_id` each time a renderer starts an animation or enters a held
+render through it, and writes that same id on the `left` row that ends it. `(animation_id, install_id, seat_id)`
 is **not** unique per episode and never was — on this document's own headline fixture,
 `fx-clear-trace`, A4 is entered **twice** on `aimla-pm` (the walk is below), so that triple names two
 entries and two exits with nothing to say which pairs with which. Two properties follow and are
@@ -5575,19 +5592,17 @@ accident).
 **A note on order, and it is the rule [§ 11](#11-acceptance-tests) states rather than a preference.**
 This table carries the build order and the gates; the rule over them is § 11's and is not restated
 here. What this note records is what the rule found once it was enforced over **every** artifact
-rather than over the drill-down alone. Three tests once asserted drill-down content while this table
-gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — and each was split. Widening
-the check to every artifact this table names then found **seven** of the eight below, none of them
-about the panel: four resolved by splitting, one by re-gating and two by relocating the artifact they
-read. **The eighth is not the same kind of find, and is not credited to the same mechanism:**
-[AT-D3-1](#at-d3-1-no-animation-without-its-event)'s re-gate was not caught by widening the check — its
+rather than over the drill-down alone. The tests that once asserted drill-down content while this
+table gated them at steps 4, 5 and 8 — a gate on an artifact built at step 10 — were each split.
+Widening the check to every artifact this table names then found the tests named below, none of them
+about the panel, and each was resolved by splitting it, by re-gating it or by relocating the artifact
+it reads. **[AT-D3-1](#at-d3-1-no-animation-without-its-event)'s re-gate is not the same kind of find,
+and is not credited to the same mechanism:** it was not caught by widening the check — its
 instrument half's `Reads:` clause understated what its own GREEN needs, and a check that verifies a
 Build bullet against its own stated `Reads:` clause cannot catch a `Reads:` clause that is itself
 wrong. Design review found it by reading the GREEN's prose against the clause; only once the clause
 was corrected to state honestly did the check start enforcing, over this bullet, the rule it had
-enforced over the other seven all along. So what follows is eight names sharing one figure, not eight
-instances of one discovery method, and the figure is still the list's length rather than a claim
-beside it:
+enforced over the others all along. So the names below share one list, not one discovery method:
 [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) split into a
 protocol half (3) and a strip half (8), because *resyncs: N* is a status-strip readout;
 [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) and
@@ -5596,11 +5611,11 @@ and render halves (6), because *no `edge` row* and *without an arrival animation
 animation set and a floor with no animations satisfies both for free; and
 [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) split into a manifest half (0) and a lineage half (1),
 because the lineage file is step 1's artifact.
-That is the four. Two were **re-gated** rather than split, because no half of either is observable
-before its artifact exists: [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), from 5 to 6,
+**Re-gated** rather than split, because no half of the test is observable before its artifact
+exists: [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), from 5 to 6,
 because its whole claim is that no state is carried by motion alone and there is no half of that
 observable before there is any motion; and
-[AT-D3-1](#at-d3-1-no-animation-without-its-event) — the eighth, and the most recent — from a split
+[AT-D3-1](#at-d3-1-no-animation-without-its-event) — the most recent — from a split
 at 2 and 6 to a single unqualified gate at 6, because its instrument half's own GREEN reads the
 **animation set**'s classes and each row's causing `state_version`, so it needs step 6's artifact no
 less than the closed-set half does; an earlier revision of this table gated the instrument half at 2
@@ -5610,17 +5625,17 @@ in the same revision for a reason of its own, not as a consequence of that re-ga
 client on the real apply path, so it is step 3's artifact — the step that builds the real client — and
 is bolded there. Step 2 is left with the artifact it actually builds: the animation-log module, under
 this row's own gate.
-**AT-D3-2 and AT-D3-14 were neither, because neither test was the defect:**
+**Relocated, because neither test was the defect:**
 [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere), gated at step 6, and
 [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s **desk half**, gated at step 5, both read the
 desk's **side table**, and an earlier revision of this table built the side table at step 10 with the
 drill-down. Splitting either would have split a claim that is one claim, and re-gating them to 10
-would have stood two desk assertions behind the panel; what was in the wrong place was the artifact,
+would have stood those desk assertions behind the panel; what was in the wrong place was the artifact,
 so the **side table** moved to step 5 — the step that renders the desk — and step 10 kept the
 drill-down's **uncapped intern list**. [§ 8](#8-interns--subagent-rendering-and-the-cap) owns that
-split and states why it is not bookkeeping. That is the third mechanism, and it is the one to reach
+split and states why it is not bookkeeping. That is relocation, and it is the mechanism to reach
 for when a test reads the right artifact at the right moment and this table has that artifact in the
-wrong row. Three tests asserting the client's **event record** at steps 3
+wrong row. The tests asserting the client's **event record** at steps 3
 and 8 are a different case and not the same defect: the record is the client protocol's artifact and
 step 3 builds it; the lobby at step 9 is its renderer.
 
