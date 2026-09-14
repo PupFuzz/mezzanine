@@ -1947,13 +1947,43 @@ hook(s12, "Notification", {"session_id": SID, "hook_event_name": "Notification",
                            "notification_type": "brand_new_type_nobody_declared"})
 eq("an UNDECLARED type is counted separately from a known non-attention one", 1,
    s12.counters().get("enum_value_unknown.notification_type"))
+
+# `idle_prompt` IS NOT A WAIT ON A HUMAN, and it is the one member of the table that looked
+# like one (card#9419). The harness fires it about a minute after Claude finishes responding
+# when the human has not typed since — a timer on human ABSENCE, which is the ordinary shape of
+# a seat that finished its turn cleanly and is available for work. Emitting for it flipped every
+# such seat from `idle` to `blocked` (D2 § 4.3 rule 1 renders any open request `blocked`, ahead
+# of every other rule) about a minute after it went quiet, and held it there until its next
+# event: measured on one seat in one day, 19 `input_awaited` requests against 3
+# `permission_required`. So it takes the same counted suppression path as `auth_success`, and it
+# must NOT also raise `enum_value_unknown.notification_type` — it is a declared type the gate
+# decides against, not a type this reporter has never seen, and § 6.12 requires those two to
+# never be one number.
+s12i = seat("notification-idle")
+hook(s12i, "Notification", {"session_id": SID, "hook_event_name": "Notification",
+                            "notification_type": "idle_prompt", "message": "hi"})
+eq("`idle_prompt` is a timer on human absence and emits NOTHING (card#9419)", [],
+   [e for e in s12i.events() if e["kind"] == "attention.request"])
+eq("  … suppressed through the counted path, not dropped silently", 1,
+   s12i.counters().get("notification_not_attention.idle_prompt"))
+eq("  … and NOT counted as an undeclared type — it is declared, and decided against", None,
+   s12i.counters().get("enum_value_unknown.notification_type"))
+s12p = seat("notification-permission")
+hook(s12p, "Notification", {"session_id": SID, "hook_event_name": "Notification",
+                            "notification_type": "permission_prompt", "message": "hi"})
+arp = [e for e in s12p.events() if e["kind"] == "attention.request"]
+eq("CONTROL: a genuine wait on a human still opens a request", 1, len(arp))
+eq("  … so the row above measures the `idle_prompt` decision and not a dead gate",
+   "permission_required", arp[0]["data"]["notification_kind"])
 redgreen("unknown enum values (AT-18) and the blocked pair (AT-20)",
          "passing an unknown value through verbatim -> 422 invalid_event, all 200 events in the "
          "batch rejected, quarantined permanently (D1 § 6.0 rule 4's stated cost)",
          "source=teleport -> coerced to `unknown`, counted as "
          "enum_value_unknown.session.start.source, raw value absent from the wire; control "
          "source=fork passes through with no coercion counted; auth_success emits nothing and is "
-         "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves")
+         "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves; "
+         "idle_prompt emits nothing, is counted notification_not_attention.idle_prompt and is NOT "
+         "counted as an undeclared type, while the permission_prompt control still opens one")
 
 
 print("\n== 15. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
