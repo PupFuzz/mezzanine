@@ -265,7 +265,7 @@ const TOKEN_RE = /^mzn_[A-Za-z0-9_-]{43}$/;
  * drives a name at it and one byte past it, so this literal cannot drift from the row unseen. */
 const AGENT_NAME_RE = /^[a-z0-9-]{1,48}$/;
 
-/* Returns {config, errors[]}. NEVER throws: a hook with an unreadable config still exits 0 and
+/* Returns {config, errors[], caError}. NEVER throws: a hook with an unreadable config still exits 0 and
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
  * (the log, `config_invalid`, `selftest`) — never on the agent's. */
 function loadConfig(p) {
@@ -293,10 +293,12 @@ function loadConfig(p) {
   // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
   // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
   // the default trust store (card#9500).
-  if (typeof c.ca_file === 'string') { const { error } = readCaFile(c); if (error) errors.push(error); }
+  // `caError` is that error, also in `errors`: the one a running flusher re-checks (flusherMain).
+  const caError = typeof c.ca_file === 'string' ? readCaFile(c).error : null;
+  if (caError) errors.push(caError);
   // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
   // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
-  return { config: c, errors };
+  return { config: c, errors, caError };
 }
 
 /* THE ONE READ OF `ca_file` (card#9500): the config check above and every request (`ingestRequest`)
@@ -307,7 +309,8 @@ function loadConfig(p) {
  * `ca`, the default store). A string that is not an absolute path is the same config error, the empty
  * string included (§ 3.1 types the field "absolute path or `null`"): "" would otherwise read as unset and
  * widen the trust the same way, and a relative path would be read against the process's working
- * directory, which a flusher inherits from the hook that forks it — the agent's project directory. */
+ * directory, which a flusher inherits from whatever starts it: the agent's project directory through the
+ * hook that forks it, the account's home directory through the crontab entry that supervises it. */
 function readCaFile(config) {
   const f = config.ca_file;
   if (f === null || f === undefined) return { ca: null, error: null };
@@ -2680,7 +2683,7 @@ function unfoldUnsaved() {
 
 async function flusherMain() {
   const cp = configPath();
-  const { config, errors } = loadConfig(cp);
+  const { config, errors, caError } = loadConfig(cp);
   if (!config || !config.spool_dir) { return; }
   registerConfigSecrets(config);
   const spool = config.spool_dir;
@@ -2704,7 +2707,14 @@ async function flusherMain() {
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
   else if (minted) logLine(spool, 'flusher', 'no state.json (a first start, or lost state) — new seq_epoch, sending from the oldest bucket');
   if (errors.length) { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${errors.join('; ')} — spooling, sending nothing`); }
-  const configOk = errors.length === 0;
+  let configOk = errors.length === 0;
+  /* A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
+   * changes is the file — a delete-and-recreate rotation, a mount that comes up late — and not the config
+   * this process loaded, so each pass re-reads it through `readCaFile`, the read every request makes, and
+   * the first pass that finds it readable probes and drains. This is the recovery a file that vanishes
+   * mid-run already has, at the request. Any other config error holds until the flusher restarts on a
+   * corrected config, and so does a `ca_file` that is not an absolute path: its re-check fails every pass. */
+  let caPending = errors.length === 1 && caError !== null;
 
   const emit = makeEmitter(config, spool);
   const ctx = { config, spool, emit };
@@ -2737,6 +2747,12 @@ async function flusherMain() {
       for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', atMs);
       expireOpenFacts(ctx, ix, atMs);
       writeSnapshot(spool, state, ix);
+
+      if (caPending && readCaFile(config).error === null) {
+        caPending = false; configOk = true;
+        selftest.config_readable = true;   // its one error is gone: the heartbeat stops reporting the refusal
+        logLine(spool, 'flusher', `ca_file readable at ${config.ca_file} — probing and sending resume`);
+      }
 
       if (configOk && atMs - lastHealth > healthEveryMs) {
         lastHealth = atMs; renewLock(spool, state);

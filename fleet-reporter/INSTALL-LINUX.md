@@ -629,8 +629,13 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   empty string or a relative path: set the file's absolute path, or `null` for a seat that trusts the
   system store. The reporter never falls back to the system trust store (D1 § 3.5): the flusher sends
   nothing and keeps spooling, and logs the same error. Fix the file or the config and re-run this step.
-  A flusher that started on a refused `ca_file` sends nothing until it restarts. A clean stop (SIGTERM)
-  removes its lock, so the next start takes over.
+  A running flusher re-reads an unreadable `ca_file` on each pass: once the file is readable it probes
+  and sends the spooled events, logs `ca_file readable at <path>`, and needs no restart. The flusher
+  reads its config only when it starts, so after a config change (an absolute path, or `null`) stop it
+  with Step 5's `stop-flusher.js`, as Step 8 item 3 runs it:
+  `node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js`.
+  A clean stop removes its lock, so the next start, at cron's next minute boundary or from a sooner
+  hook, reads the corrected config.
 - **`rc=1` with `protocol_agent_name_in_roster` failing** — the declared `protocol_agent_name` is not
   a member of the roster the command read, which D1 § 3.1 calls `disagreed`.
   `detail.protocol_agent_name_in_roster` names the roster file (`roster`), which site it came from

@@ -954,11 +954,91 @@ eq("  … it is a config failure: config_invalid counted, never a retryable batc
    (True, 0, 0), (ca_gone["config_invalid"] > 0, ca_gone["retried"], ca_gone["rejected"]))
 eq("  … and the event is kept: with the file restored, the next pass delivers it", True, ca_gone["recovered"])
 
+
+# (d) A flusher STARTED while its ca_file is unreadable — a delete-and-recreate rotation, a mount that is
+# not up yet — recovers the way (a)'s does, with no restart. The file is the one config error a running
+# flusher can outlive, because what changes is the file and not the config the flusher loaded: each pass
+# re-reads it, and once it is readable the same process probes, drains and heartbeats `config_readable`
+# `pass`. Refusing it at start and never looking again left a flusher that renewed its lock, so nothing
+# replaced it, and sent nothing until an operator restarted it. Driven on the timing-scaled copy (§ 1's
+# FAST_K) so the passes before and after the file appears take milliseconds, not K.FLUSH_MS each.
+CA_APPEARS_PASSES = 20                                  # passes run on the missing file before it is created
+CA_APPEARS_WITHIN_S = 10.0                              # the bound on the recovery; met in well under a second
+
+
+def drive_ca_appears(name: str, reporter: Path) -> dict:
+    root = TMP / name
+    root.mkdir(parents=True, exist_ok=True)
+    ca_later = root / "pinned-ca.pem"
+    s = seat(name, ca=str(ca_later))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_appears"), reporter=reporter)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    b0, g0 = len(INGEST.batches), INGEST.gets
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **EXTRA_TRUST), cwd=str(HERE),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    d: dict = {"pid": p.pid, "path": str(ca_later)}
+    try:
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and "config invalid" not in seat_log(s):
+            time.sleep(0.02)
+        time.sleep(CA_APPEARS_PASSES * FAST_K["FLUSH_MS"] / 1000)
+        d.update(refused_at_start="config invalid" in seat_log(s) and "ENOENT" in seat_log(s),
+                 posts_before=len(INGEST.batches) - b0, gets_before=INGEST.gets - g0)
+        shutil.copyfile(CA, ca_later)
+        t1, b1 = time.time(), len(INGEST.batches)
+
+        def events_since() -> list[dict]:
+            return [e for b in INGEST.batches[b1:] for e in b["batch"].get("events", [])]
+
+        while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S:
+            ev = events_since()
+            if any(e.get("kind") == "tool.start" for e in ev) and any(
+                    e.get("kind") == "reporter.heartbeat" and e["data"]["selftest"].get("config_readable") == "pass"
+                    for e in ev):
+                break
+            time.sleep(0.02)
+        ev = events_since()
+        d.update(alive=p.poll() is None, owner_pid=s.state().get("owner_pid"),
+                 delivered=any(e.get("kind") == "tool.start" for e in ev),
+                 heartbeat_readable=[e["data"]["selftest"].get("config_readable") for e in ev
+                                     if e.get("kind") == "reporter.heartbeat"],
+                 recovery_s=round(time.time() - t1, 2))
+    finally:
+        if p.poll() is None:
+            p.kill()
+        p.wait()
+        s.freeze_flusher()
+    return d
+
+
+ca_appears = drive_ca_appears("ca-appears", fast_flusher())
+eq("a flusher started on a missing ca_file refuses the config at start, and sends and probes nothing while "
+   "the file is missing", (True, 0, 0), (ca_appears["refused_at_start"], ca_appears["posts_before"], ca_appears["gets_before"]))
+eq(f"  … once the file is created, the SAME flusher delivers the spooled event within {CA_APPEARS_WITHIN_S} s, "
+   "with no restart", (True, True, ca_appears["pid"]),
+   (ca_appears["alive"], ca_appears["delivered"], ca_appears["owner_pid"]))
+eq("  … and a heartbeat it sends after that carries config_readable `pass`", True,
+   "pass" in ca_appears["heartbeat_readable"])
+# RED — the flusher that refuses the file at start and never looks again (the defect verbatim, planted on the
+# scaled copy): the file appears and nothing is delivered.
+red_appears = drive_ca_appears("ca-appears-red", fast_flusher(("      if (caPending && readCaFile(config).error === null) {",
+                                                               "      if (false) {")))
+eq("RED: a flusher that checks ca_file only at start is still alive and delivers nothing after the file appears",
+   (True, True, False), (red_appears["refused_at_start"], red_appears["alive"], red_appears["delivered"]))
+redgreen("a flusher started on an unreadable ca_file resumes once the file is readable, with no restart (§ 3.5, card#9500)",
+         f"checked only at start -> refused at start {red_appears['refused_at_start']}, file created, "
+         f"{CA_APPEARS_WITHIN_S} s later alive {red_appears['alive']}, delivered {red_appears['delivered']}, "
+         f"heartbeat config_readable {red_appears['heartbeat_readable']}",
+         f"re-checked each pass -> refused at start {ca_appears['refused_at_start']} (posts {ca_appears['posts_before']}, "
+         f"probes {ca_appears['gets_before']} while missing), file created, same pid {ca_appears['owner_pid'] == ca_appears['pid']}, "
+         f"delivered {ca_appears['delivered']} in {ca_appears['recovery_s']} s, heartbeat config_readable "
+         f"{ca_appears['heartbeat_readable']}")
+
 # (c) A `ca_file` that is a string but not an absolute path is the same config error: § 3.1 types the
 # field "absolute path or `null`", and only `null` or an absent key leaves it unset. The empty string used
 # to count as unset, so the seat trusted the whole default store. A relative path was read against the
-# process's working directory, which is not the config's to choose: a flusher inherits it from the hook
-# that forks it, the agent's project directory. Both legs run where a fall-back to the default store, or
+# process's working directory, which is not the config's to choose: a flusher inherits it from whatever
+# starts it, the agent's project directory through a hook or the account's home under cron. Both legs run where a fall-back to the default store, or
 # a read of the relative path, shows up as a delivery: the relative path names the stub's own
 # certificate from the suite's working directory.
 def ca_not_absolute_errors(d: dict) -> bool:
@@ -983,7 +1063,7 @@ red_gone = drive_ca_vanishes("ca-vanishes-red", reporter=p_ca_fallback)
 eq("RED: a request that falls back to the default store delivers the batch to an ingest the pinned ca_file "
    "never trusted, and its log never names the file", (True, 1, False),
    (red_gone["removed"], red_gone["posts"], red_gone["path"] in red_gone["log"]))
-p_ca_unchecked = plant(("  if (typeof c.ca_file === 'string') { const { error } = readCaFile(c); if (error) errors.push(error); }", ""))
+p_ca_unchecked = plant(("  if (caError) errors.push(caError);\n", ""))
 red_missing = drive_ca_missing("ca-unreadable-selftest-red", reporter=p_ca_unchecked)
 eq("RED: a config check that never reads ca_file passes config_readable in `selftest`, and its errors name "
    "nothing", ("pass", False),
@@ -3491,9 +3571,9 @@ eq("  … and the flusher's start log says the declaration is malformed and was 
    all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
 
 # RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
-_red_silent = plant(("  return { config: c, errors };\n}",
+_red_silent = plant(("  return { config: c, errors, caError };\n}",
                      "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
-                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors };\n}"))
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError };\n}"))
 r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
 eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
    "`config_invalid` counted", (0, "fail", True),
