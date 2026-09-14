@@ -1982,19 +1982,30 @@ function loadState(spool, atMs) {
     s.counters = s.counters || {}; s.predicates = s.predicates || {};
     s.counter_offsets = s.counter_offsets || {}; s.cursors = s.cursors || {};
     s.last_session_activity = s.last_session_activity || {};
-    return { state: s, reset: false };
+    return { state: s, reset: false, minted: false };
   } catch (e) {
-    /* § 11.4 — THE STATE RESET RE-SENDS; IT DOES NOT SKIP. A fresh seq_epoch, and the cursor
-     * set to the start of the OLDEST bucket still on disk, not the newest. An earlier draft of
-     * D1 did the opposite and the cost was severe and silent: up to a full spool of unsent
-     * events — days of them — discarded with no counter incremented, while § 0 item 9 promises
-     * a counter for every discarded event and seq_epoch_change is explicitly never alarmed. A
-     * corrupt 200-byte file would have deleted a week of a seat's history invisibly.
-     * Re-sending is nearly free and provably safe: every event carries a unique event_id and
-     * the server's 10-day dedup window exceeds the spool's 8-day residency BY DESIGN. */
+    /* § 11.4 — A MINTED STATE RE-SENDS; IT DOES NOT SKIP. Both branches below get the same
+     * state: a fresh seq_epoch, and the cursor set to the start of the OLDEST bucket still on
+     * disk, not the newest. An earlier draft of D1 did the opposite and the cost was severe and
+     * silent: up to a full spool of unsent events — days of them — discarded with no counter
+     * incremented, while § 0 item 9 promises a counter for every discarded event and
+     * seq_epoch_change is explicitly never alarmed. A corrupt 200-byte file would have deleted a
+     * week of a seat's history invisibly. Re-sending is nearly free and provably safe: every
+     * event carries a unique event_id and the server's 10-day dedup window exceeds the spool's
+     * 8-day residency BY DESIGN.
+     *
+     * WHICH BRANCH IS A RESET (§ 9.3's `state_reset` row, card#9374). A state.json that EXISTS
+     * and cannot be used (a read error other than ENOENT, empty, truncated, unparseable, the
+     * wrong shape) is a reset, counted `state_reset` and badged `epoch_reset`. A MISSING one is
+     * a first start, or state lost with the file, and counts nothing. Counting it badged every
+     * new seat `epoch_reset` for good, because the badge is derived from a running total. The
+     * spool cannot tell a first start from lost state: a hook spools its event before it
+     * respawns the flusher, so a first start usually finds data waiting. Lost state on a seat
+     * that has already reported is still visible, as the server's `seq_epoch_change` on the new
+     * epoch minted here (§ 10.2). */
     const st = newState(spool, atMs);
     st.cursors = {};   // every bucket from byte 0 — the re-send § 11.4 requires
-    return { state: st, reset: true };
+    return { state: st, reset: e.code !== 'ENOENT', minted: true };
   }
 }
 
@@ -2593,7 +2604,7 @@ async function flusherMain() {
   const spool = config.spool_dir;
   ensureDir(spool);
   const atStart = now();
-  const { state, reset } = loadState(spool, atStart);
+  const { state, reset, minted } = loadState(spool, atStart);
   state.owner_pid = process.pid; state.owner_started_at = rfc3339(atStart); state.started_at = rfc3339(atStart);
   if (!acquireLock(spool, state)) { logLine(spool, 'flusher', 'another flusher owns the lock; exiting'); return; }
   /* CLAIM state.json before any ownership-checked write. Winning the exclusive create IS the
@@ -2609,6 +2620,7 @@ async function flusherMain() {
     return;
   }
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
+  else if (minted) logLine(spool, 'flusher', 'no state.json (a first start, or lost state) — new seq_epoch, sending from the oldest bucket');
   if (errors.length) { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${errors.join('; ')} — spooling, sending nothing`); }
   const configOk = errors.length === 0;
 
