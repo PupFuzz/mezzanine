@@ -2,6 +2,7 @@
 
 namespace App\Fold;
 
+use App\Feed\Outbox;
 use App\Ingest\Counters;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -80,11 +81,11 @@ final class Fold
      * column is never NULL for a seat this WHERE clause can select: it is NULL only for a seat
      * that has never received an event, and such a seat has `head_event_id = 0`.
      *
-     * ⚠ `FOR UPDATE SKIP LOCKED` IS MySQL-ONLY AND SQLITE EXERCISES NONE OF IT. It is what makes
-     * two fold workers partition themselves — another worker's seats are skipped rather than
-     * waited on — and it is the fold's concurrency correctness. SQLite has no row locks and no
-     * such syntax, so on the test store this claim is an ordinary read and the property is
-     * UNTESTED, not merely untested-here. See the PR body.
+     * ⚠ `FOR UPDATE SKIP LOCKED` IS THE FOLD'S CONCURRENCY CORRECTNESS, AND THE SUITE EXERCISES
+     * NONE OF IT. It is what makes two fold workers partition themselves — another worker's seats
+     * are skipped rather than waited on. The suite runs it on MariaDB but over ONE connection, so
+     * no row is ever locked by anyone else and nothing is ever skipped: the property is UNTESTED,
+     * not merely untested-here (card#7523 owns the two-connection case).
      *
      * @return Collection<int, object>
      */
@@ -106,7 +107,7 @@ final class Fold
     private function foldSeat(int $seatRef, int $cursor): int
     {
         try {
-            return DB::transaction(fn () => $this->window($seatRef, $cursor));
+            return Outbox::transaction(fn () => $this->window($seatRef, $cursor));
         } catch (CursorRaced) {
             // Another worker folded this seat's window while this pass was working on it. The
             // transaction rolled back, so nothing was applied twice — the projections are
@@ -289,7 +290,7 @@ final class Fold
             // would then be replaying against a cursor that had already skipped it.
             foreach ([1, 2] as $attempt) {
                 try {
-                    DB::transaction(function () use ($event, $seatRef, $cursor, $row) {
+                    Outbox::transaction(function () use ($event, $seatRef, $cursor, $row) {
                         // Card #7837, and sampled INSIDE the transaction rather than above the
                         // retry loop: attempt 1 may have written and rolled back, so the only
                         // fingerprint this attempt can honestly call "before" is the one it reads
@@ -333,7 +334,7 @@ final class Fold
 
     private function quarantine(int $seatRef, int $cursor, FoldEvent $event, string $receivedAt): void
     {
-        DB::transaction(function () use ($seatRef, $cursor, $event, $receivedAt) {
+        Outbox::transaction(function () use ($seatRef, $cursor, $event, $receivedAt) {
             // ⛔ SAMPLED AT THE TOP OF THE TRANSACTION, AND THE ANSWER TO "WHAT IS `$before` HERE"
             // IS THAT NOTHING WROTE BEFORE IT — card #7837, stated rather than left to be inferred
             // from the absence of an `apply()` call.

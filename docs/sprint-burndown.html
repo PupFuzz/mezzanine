@@ -4,64 +4,178 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="sprint-burndown.py">
-<meta name="sprint-state-sha256" content="eb20e15ea03b1c53f5e78de0047ee22d24e0d21161805ca78b2be00e0bc291dc">
+<meta name="sprint-state-sha256" content="2bf903c1e9b8acbb11ab0a82895b104264f72073e942601064a48f6be9760fb3">
 <title>Sprint burn-down — mezzanine</title>
 <style>
 :root { color-scheme: light dark;
-        --bg:#ffffff; --fg:#111418; --muted:#5b6672; --line:#d8dee5; --head:#f2f5f8;
-        --chip:#eef2f6; --accent:#0b5fff; --warn:#a8500a; --warnbg:#fdf3e6; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg:#14171a; --fg:#e6eaee; --muted:#9aa6b2; --line:#2b3238; --head:#1c2126;
-          --chip:#232a30; --accent:#7fa9ff; --warn:#e6b478; --warnbg:#2a2018; } }
-* { box-sizing: border-box; }
-body { background:var(--bg); color:var(--fg); margin:0; padding:1.6rem 1.4rem 4rem;
-       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-h1 { font-size:1.5rem; margin:0 0 .3rem; }
-h2 { font-size:1.15rem; margin:2.2rem 0 .2rem; border-top:1px solid var(--line); padding-top:1rem; }
+  --ground:#f4f6f4; --surface:#ffffff; --surface2:#eef1ee;
+  --ink:#14181a; --ink2:#3d474c; --muted:#66727a; --line:#d7ddd8; --line2:#c3ccc5;
+  --accent:#0b4fd8;
+  --live:#0f6e58; --live-bg:#e2f0ea;
+  --held:#8a5a12; --held-bg:#f6ecdc;
+  --idle:#a3243f; --idle-bg:#fae7ea;
+  --gone:#5d6a72; --gone-bg:#eaeeeb;
+  --unk:#5c3d97; --unk-bg:#efeaf8;
+  --warn:#8a5a12; --warn-bg:#f6ecdc;
+  --tone:var(--gone); --tone-bg:var(--gone-bg);
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,
+         "Noto Sans",sans-serif;
+  --cond:"Roboto Condensed","Helvetica Neue Condensed","Arial Narrow",ui-sans-serif,
+         system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+  --ground:#0f1315; --surface:#161b1d; --surface2:#1c2325;
+  --ink:#e6ebe7; --ink2:#b4bfb9; --muted:#8b978f; --line:#28312f; --line2:#37423e;
+  --accent:#87b0ff;
+  --live:#54c3a3; --live-bg:#12302a;
+  --held:#d69f52; --held-bg:#302512;
+  --idle:#f0899f; --idle-bg:#3a1a22;
+  --gone:#93a09a; --gone-bg:#1f2624;
+  --unk:#b79bec; --unk-bg:#241d33;
+  --warn:#d69f52; --warn-bg:#302512;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#0f1315; --surface:#161b1d; --surface2:#1c2325;
+  --ink:#e6ebe7; --ink2:#b4bfb9; --muted:#8b978f; --line:#28312f; --line2:#37423e;
+  --accent:#87b0ff;
+  --live:#54c3a3; --live-bg:#12302a;
+  --held:#d69f52; --held-bg:#302512;
+  --idle:#f0899f; --idle-bg:#3a1a22;
+  --gone:#93a09a; --gone-bg:#1f2624;
+  --unk:#b79bec; --unk-bg:#241d33;
+  --warn:#d69f52; --warn-bg:#302512;
+}
+* { box-sizing:border-box; }
+body { background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.5;
+       margin:0; padding:clamp(1rem,3vw,2.5rem) clamp(1rem,4vw,2rem) 4rem; }
+.wrap { max-width:74rem; margin:0 auto; display:flex; flex-direction:column; gap:1.5rem; }
 a { color:var(--accent); }
-.stamp, .rule { color:var(--muted); font-size:.85rem; margin:.15rem 0; }
-.rule { margin:.2rem 0 .55rem; }
-.chip { display:inline-block; border:1px solid var(--line); background:var(--chip);
-        border-radius:999px; padding:.05rem .55rem; font-size:.78rem; margin-right:.4rem;
-        white-space:nowrap; }
-.warn { background:var(--warnbg); color:var(--warn); border:1px solid var(--warn);
-        border-radius:6px; padding:.5rem .7rem; margin:.6rem 0; font-size:.87rem; }
-table { border-collapse:collapse; width:100%; margin:.4rem 0 .3rem; font-size:.88rem; }
-th, td { border:1px solid var(--line); padding:.38rem .5rem; text-align:left;
-         vertical-align:top; }
-th { background:var(--head); font-weight:600; white-space:nowrap; }
-td.card { white-space:nowrap; font-variant-numeric:tabular-nums; }
-td.desc { color:var(--muted); }
-.remaining { font-weight:600; margin:.15rem 0 .2rem; }
-.empty { color:var(--muted); font-style:italic; margin:.3rem 0; }
-footer { margin-top:2.6rem; border-top:1px solid var(--line); padding-top:1rem;
-         color:var(--muted); font-size:.85rem; }
-footer table { font-size:.85rem; }
+code { font-family:var(--mono); }
+
+.top { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between;
+       gap:.6rem 1.1rem; border-block-end:2px solid var(--ink); padding-block-end:.7rem; }
+.top h1 { font-family:var(--cond); font-weight:700; font-size:clamp(1.5rem,4vw,2.2rem);
+          letter-spacing:-.01em; margin:0; }
+.tot { font-family:var(--mono); font-size:.9rem; color:var(--ink2);
+       font-variant-numeric:tabular-nums; }
+.tot b { font-size:1.3rem; color:var(--ink); }
+.meta { font-family:var(--mono); font-size:.74rem; color:var(--muted); margin:0;
+        display:flex; flex-wrap:wrap; gap:.2rem .9rem; }
+.rule { font-size:.88rem; color:var(--ink2); margin:0; max-width:70ch; }
+.rule b { color:var(--ink); }
+.warn { background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn);
+        border-radius:3px; padding:.55rem .7rem; margin:0; font-size:.85rem; }
+.warn ul { margin:.3rem 0 0; padding-inline-start:1.1rem; }
+
+.race { display:grid; gap:.5rem; grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr)); }
+.rl { display:grid; gap:.3rem; text-decoration:none; color:inherit; padding:.65rem .75rem;
+      background:var(--surface); border:1px solid var(--line); border-radius:3px;
+      border-block-start:3px solid var(--tone); }
+.rl:hover, .rl:focus-visible { border-color:var(--line2); background:var(--surface2); }
+.rl:focus-visible { outline:2px solid var(--tone); outline-offset:2px; }
+.rl__k { font-family:var(--cond); font-weight:700; font-size:.82rem; letter-spacing:.06em; }
+.rl__n { font-family:var(--mono); font-size:1.55rem; font-weight:600; line-height:1;
+         font-variant-numeric:tabular-nums; }
+.rl__t { font-size:.72rem; color:var(--ink2); line-height:1.25; min-inline-size:0;
+         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rl__of { font-family:var(--mono); font-size:.62rem; font-weight:400; letter-spacing:.05em;
+          color:var(--muted); margin-inline-start:.35rem; }
+.rl__bar { display:block; block-size:3px; background:var(--line); border-radius:2px; }
+.rl__bar i { display:block; block-size:3px; background:var(--tone); border-radius:2px; }
+.rl__g { font-family:var(--mono); font-size:.62rem; letter-spacing:.05em; color:var(--tone); }
+
+.lab { font-family:var(--mono); font-weight:600; font-size:.78em; letter-spacing:.04em;
+       color:var(--tone); border:1px solid currentColor; border-radius:2px;
+       padding:0 .28rem; margin-inline-end:.35rem; }
+
+.lane { background:var(--surface); border:1px solid var(--line); border-radius:3px;
+        border-inline-start:4px solid var(--tone); padding:1rem 1.1rem 1.1rem;
+        display:flex; flex-direction:column; gap:.7rem; scroll-margin-block-start:1rem; }
+.lane--live { --tone:var(--live); --tone-bg:var(--live-bg); }
+.lane--held { --tone:var(--held); --tone-bg:var(--held-bg); }
+.lane--idle { --tone:var(--idle); --tone-bg:var(--idle-bg); }
+.lane--gone { --tone:var(--gone); --tone-bg:var(--gone-bg); }
+.lane--unmeasured { --tone:var(--unk); --tone-bg:var(--unk-bg); }
+.lane__h { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between;
+           gap:.6rem; }
+.lane__h h2 { font-family:var(--cond); font-weight:700; font-size:1.25rem; letter-spacing:.04em;
+              margin:0; }
+.lane__h h2 span.t { font-family:var(--sans); font-weight:500; font-size:.95rem;
+                     letter-spacing:0; color:var(--ink2); }
+.lane__where { margin:.15rem 0 0; font-family:var(--mono); font-size:.72rem; color:var(--muted); }
+.lane__count { display:flex; align-items:baseline; gap:.35rem; font-family:var(--mono); }
+.lane__count b { font-size:1.45rem; font-variant-numeric:tabular-nums; }
+.lane__count span { font-size:.7rem; color:var(--muted); letter-spacing:.04em; }
+
+.gate { margin:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:.4rem .6rem;
+        font-size:.83rem; background:var(--tone-bg); border-radius:3px; padding:.5rem .65rem; }
+.gate__chip { font-family:var(--mono); font-size:.68rem; font-weight:600; letter-spacing:.06em;
+              color:var(--tone); border:1px solid currentColor; border-radius:2px;
+              padding:.05rem .35rem; white-space:nowrap; }
+.gate__why { color:var(--ink2); flex:1 1 18rem; min-inline-size:0; }
+.done { margin:0; font-size:.82rem; color:var(--muted); max-width:80ch; }
+.done span { font-family:var(--cond); font-weight:700; letter-spacing:.05em; font-size:.7rem;
+             color:var(--ink2); margin-inline-end:.45rem; }
+.empty { margin:0; font-size:.85rem; color:var(--muted); font-style:italic; }
+
+.tw { overflow-x:auto; }
+table { border-collapse:collapse; inline-size:100%; font-size:.85rem; }
+th { font-family:var(--cond); font-weight:700; font-size:.68rem; letter-spacing:.08em;
+     text-align:start; color:var(--muted); padding:.3rem .55rem;
+     border-block-end:1px solid var(--line2); white-space:nowrap; }
+td { padding:.5rem .55rem; border-block-end:1px solid var(--line); vertical-align:top; }
+tbody tr:last-child td { border-block-end:none; }
+.cid { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:.82rem; }
+.c-id { white-space:nowrap; }
+.c-title { min-inline-size:20rem; }
+.c-stage, .c-pr { white-space:nowrap; }
+.stg { font-family:var(--mono); font-size:.7rem; color:var(--muted); }
+.c-pr { font-family:var(--mono); font-size:.78rem; }
+.none { color:var(--line2); }
+details { margin-block-start:.3rem; }
+summary { font-family:var(--mono); font-size:.68rem; color:var(--muted); cursor:pointer;
+          letter-spacing:.04em; inline-size:max-content; }
+summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+details p { margin:.35rem 0 0; font-size:.79rem; color:var(--muted); max-width:78ch; }
+details p b { color:var(--ink2); font-weight:600; }
+
+footer { border-block-start:1px solid var(--line); padding-block-start:.9rem;
+         display:flex; flex-direction:column; gap:.6rem; }
+footer h2 { font-family:var(--cond); font-weight:700; font-size:.9rem; letter-spacing:.08em;
+            color:var(--muted); margin:0; }
+footer p { margin:0; font-family:var(--mono); font-size:.72rem; color:var(--muted);
+           max-width:90ch; }
+footer table { font-size:.78rem; }
+footer td { font-family:var(--mono); }
 </style>
 </head>
 <body>
-<h1>Sprint burn-down — mezzanine</h1>
-<p class="stamp">Derived at <strong>2026-09-09T19:12:49Z</strong> from board 14 · config <code>/home/sandboxmezzanine/.config/coord/coordination.config.json</code> · generated by <code>sprint-burndown.py</code> — <strong>do not edit by hand</strong>; a card leaves this page by MOVING on the board.</p>
-<h2>A · MEZZANINE - next release to main</h2>
-<p class="rule"><span class="chip">IDLE-WITH-WORK</span>no live dispatch; pullable work behind this lane</p>
-<p class="rule"><strong>Done when:</strong> no card carries lane:A — every committed card has shipped to dev</p>
-<p class="remaining">10 remaining</p>
-<table><thead><tr><th>Card</th><th>Title</th><th>Stage (live)</th><th>Owner</th><th>Open PR / thread</th><th>Blocker / next action</th><th>What it is</th></tr></thead><tbody>
-<tr><td class="card">card#7341</td><td>Office floor v1: Tiled map, camera, desks, status glyphs</td><td>Blocked/Gated</td><td></td><td></td><td></td><td class="desc">One floor rendering live desks from the feed. Tiled .tmj map so editing the office is a design task, not a code change. Guiding rule: an avatar walking IS the status - every motion driven by a real event, nothing canned.…</td></tr>
-<tr><td class="card">card#7523</td><td>MySQL provisioning on the dedicated DB host (D-15)</td><td>Blocked/Gated</td><td></td><td></td><td></td><td class="desc">MySQL provisioning for the mezzanine fleet-state store (D-15).…</td></tr>
-<tr><td class="card">card#7582</td><td>Board + GitHub task-title producers (FLEET-STATE §14 Q3: own card per operator ruling)</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">OPERATOR-RULED (2026-08-24, s556, via FLEET-STATE §14 Q3): the board + GitHub task-title producers are their OWN card (this one), NOT a D2 addendum — new scope, not an amendment to a shipped design. The three-tier status-fallback proposal PLAN §2 cites is NOT in the repo and was not supplied at the ruling; per D2 §4.9 the doc does not invent its tiers, so the floor shows telemetry-derived titles o…</td></tr>
-<tr><td class="card">card#7833</td><td>D2 § 5&#x27;s rolling-window predicate criteria are not expressible by § 6.4&#x27;s seat_predicates — extend the store or restate the criteria</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">D2 DESIGN DEFECT — the store cannot express the criteria the design states. Owner: mezzanine design. Queue: NEXT. Escalated from a BLOCKER on PR#21.…</td></tr>
-<tr><td class="card">card#9054</td><td>asset-provenance IS a required check on dev and main — two docs say it is not, and the false claim reached a pm brief</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">Filed by aimla-pm 2026-09-08, from the card#8301 build. **A live false claim on two operator/reviewer-facing surfaces, measured at source.**…</td></tr>
-<tr><td class="card">card#9071</td><td>RULING NEEDED: may the console author what D3 derives — pinning a seat to a desk, and creating a seat by hand</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">Deferred by operator ruling 2026-09-08 (*&quot;Build (a) now and treat (b) as its own decision&quot;*), split out of `card#9070` so the decision has an owner and a queue position rather than living in a thread.…</td></tr>
-<tr><td class="card">card#7344</td><td>CI lanes for PHP + JS once application code exists</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">Deliberately deferred: there is no application code yet, so a test lane would be a decoration. Add when the Laravel skeleton and the floor bundle land.</td></tr>
-<tr><td class="card">card#8075</td><td>D3 § 7.1&#x27;s `blocked` row renders `since 14:31` from NO D2 MEMBER — the field does not exist, the preview already invented `blocked_since`, and card#7341 would mint it again</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">Owner: mezzanine design. Queue: NOW — it blocks card#7341 and the invented field is ALREADY SHIPPED once. SOURCE OF TRUTH: card#7966 comments 1719 (RULING 1) and 1729 (RULING 2 § 3). Read those; this card does not restate the derivation.…</td></tr>
-<tr><td class="card">card#9181</td><td>FLEET-STATE § 2.1 omits mezzanine:feed-heartbeat — a host provisioned from that table renders every client&#x27;s feed dead after 45s</td><td>Backlog</td><td></td><td></td><td></td><td class="desc">## FLEET-STATE § 2.1&#x27;s process table omits `mezzanine:feed-heartbeat` — a host built from it renders every feed dead…</td></tr>
-<tr><td class="card">card#8300</td><td>card#7897 part 2 slices 2 and 3 — the D3 thread-line renderer and the coord.* bridge producer — were built by neither PR and had no card</td><td>Prioritized</td><td></td><td></td><td></td><td class="desc">Owner: mezzanine. Queue: NEXT. Parent: card#7897.…</td></tr>
-</tbody></table>
-<footer><h2>Ledger</h2><table><thead><tr><th>Lane</th><th>Title</th><th>Remaining</th><th>Enforcement</th></tr></thead><tbody>
-<tr><td>A</td><td>MEZZANINE - next release to main</td><td>10</td><td>IDLE-WITH-WORK</td></tr>
-<tr><td><strong>total</strong></td><td></td><td><strong>10</strong></td><td></td></tr></tbody></table>
-<p>State digest <code>eb20e15ea03b1c53f5e78de0047ee22d24e0d21161805ca78b2be00e0bc291dc</code> — <code>sprint-burndown.py --check</code> reds when the board no longer agrees with this page. The lanes, their membership rules and their done rules are declared in <code>sprint</code> in the config above; see the framework's <code>docs/SPRINT.md</code>.</p>
+<div class="wrap">
+<header class="top"><h1>Sprint burn-down — mezzanine</h1><span class="tot"><b>3</b> remaining · <b>19</b> done · <b>22</b> total</span></header>
+<p class="meta"><span>Derived at <strong>2026-09-14T00:28:47Z</strong></span><span>board 14</span><span>config <code>/home/mezzanine/.config/coord/coordination.config.json</code></span><span>digest 2bf903c1e9b8</span><span>1 lane(s), in declaration order</span><span>sprint-burndown.py</span></p>
+<p class="rule">A burn-down, not a plan — <strong>do not edit by hand</strong>. <b>A card leaves this page by MOVING on the board</b>, never by being edited off it. The page and the lane-enforcement config are two projections of the board reads the lanes declare, so they cannot drift apart.</p>
+<nav class="race" aria-label="Lanes">
+<a class="rl lane--unmeasured" href="#lane-1-a"><span class="rl__k">A</span><span class="rl__t">MEZZANINE - next release to main</span><span class="rl__n">3<span class="rl__of">of 22</span></span><span class="rl__bar" role="img" aria-label="19 of 22 done"><i style="inline-size:86%"></i></span><span class="rl__g">STAFFING-UNMEASURED</span></a>
+</nav>
+<section class="lane lane--unmeasured" id="lane-1-a">
+<header class="lane__h"><div class="lane__id"><h2>A <span class="t">MEZZANINE - next release to main</span></h2></div><div class="lane__count"><b>3</b><span>remaining of 22 · 19 done</span></div></header>
+<p class="gate"><span class="gate__chip">STAFFING-UNMEASURED</span><span class="gate__why">a live dispatch could not be placed on any lane, so idle is suppressed fleet-wide; pullable work behind this lane</span></p>
+<p class="done"><span>Done when</span>no card carries lane:A — every committed card has shipped to dev</p>
+<div class="tw"><table><thead><tr><th>Card</th><th>Title</th><th>Stage (live)</th><th>Open PR / thread</th></tr></thead><tbody>
+<tr><td class="c-id"><span class="cid">card#7343</span></td><td class="c-title">The building: elevator, floor-per-PM, shared solo floor<details><summary>context</summary><p>One floor per PM install, solo agents sharing a floor, a lobby summarising the building. Feed schema is multi-install from day one; cross-install federation wires up later.</p></details></td><td class="c-stage"><span class="stg">Blocked/Gated</span></td><td class="c-pr"><span class="none">—</span></td></tr>
+<tr><td class="c-id"><span class="cid">card#7341</span></td><td class="c-title">Office floor v1: Tiled map, camera, desks, status glyphs<details><summary>context</summary><p>One floor rendering live desks from the feed. Tiled .tmj map so editing the office is a design task, not a code change. Guiding rule: an avatar walking IS the status - every motion driven by a real event, nothing canned.…</p></details></td><td class="c-stage"><span class="stg">In Progress</span></td><td class="c-pr"><span class="none">—</span></td></tr>
+<tr><td class="c-id"><span class="cid">card#7342</span></td><td class="c-title">Drill-down panel + subagents as interns<details><summary>context</summary><p>Click an agent: current task (linked to card/thread), recent activity, context gauge. Subagents render as interns at a side table; their task summary comes from the Task dispatch itself, so it is programmatic. Upstream never built this - it is our own design.</p></details></td><td class="c-stage"><span class="stg">In Progress</span></td><td class="c-pr"><span class="none">—</span></td></tr>
+</tbody></table></div>
+</section>
+<footer><h2>Ledger</h2><div class="tw"><table><thead><tr><th>Lane</th><th>Title</th><th>Remaining</th><th>Done</th><th>Total</th><th>Enforcement</th></tr></thead><tbody>
+<tr><td class="lane--unmeasured">A</td><td>MEZZANINE - next release to main</td><td>3</td><td>19</td><td>22</td><td>STAFFING-UNMEASURED</td></tr>
+<tr><td><strong>total</strong></td><td></td><td><strong>3</strong></td><td><strong>19</strong></td><td><strong>22</strong></td><td></td></tr></tbody></table></div>
+<p><strong>Remaining</strong> is what the board still has open in the lane — the cards in the tables above. <strong>Done</strong> is what the lane selects and the board has moved OUT of the sprint's open stages. <strong>Total</strong> is the lane's whole selected population, i.e. the burn-down's denominator, so <code>N of T</code> on a tile reads as progress. A card whose stage this board does not publish is <strong>unclassified</strong>: counted in the total, never in done, and shown as its own figure — a card this tool cannot place must not read as shipped. <strong>Each tile's bar is that lane's progress</strong> — done ÷ total — so it fills as the lane burns down; a lane that selects nothing reads empty, never complete; and a lane whose membership filters on the <code>column</code> reads <strong>0 done</strong> with an empty bar BY CONSTRUCTION — a card that ships leaves the column, so it leaves the selection rather than crossing to done.</p>
+<p>State digest <code>2bf903c1e9b8acbb11ab0a82895b104264f72073e942601064a48f6be9760fb3</code> — <code>sprint-burndown.py --check</code> reds when the board no longer agrees with this page. It compares the MEMBER SET — the REMAINING cards, in order — and not this markup: a re-titled or re-labelled lane, or an already-shipped card later archived off the board, is not a change to what is LEFT and does not red it. The lanes, their membership rules and their done rules are declared in <code>sprint</code> in the config above; see the framework's <code>docs/SPRINT.md</code>.</p>
 </footer>
+</div>
 </body>
 </html>

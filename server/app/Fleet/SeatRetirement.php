@@ -2,7 +2,8 @@
 
 namespace App\Fleet;
 
-use App\Events\SeatRetired;
+use App\Feed\Outbox;
+use App\Feed\SeatRetired;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
@@ -41,13 +42,20 @@ use Illuminate\Support\Facades\DB;
  * of the last three. "The sweeper's own recompute then AGREES with it on every later pass rather
  * than racing it, because § 4.2 makes `retired` a function of `retired_at`, which by then is set."
  *
- * The publish is `ShouldDispatchAfterCommit`, so "in the transaction" is literal — it is ordered by
- * the transaction — while a rollback still reaches no client. `App\Events\SeatRetired`'s docblock
- * owns that argument; it is not restated here.
+ * The publish is an outbox row enqueued inside `App\Feed\Outbox::transaction()`, which inserts it
+ * as the transaction's LAST statement (card#9300) — so "in the transaction" is literal, and a
+ * rollback leaves no row for any client to read. `App\Feed\SeatRetired`'s docblock owns that
+ * argument; it is not restated here.
  *
  * ⛔ AND WHAT IS NOT A DELETION. "Is it purged? **No.** `seats` is retained forever (§ 6.7); the
  * disappearance is a READ FILTER, not a deletion, so an operator query can still find the row and
- * its reason." Nothing here deletes anything, and `Purge` has no plan row for `seats`.
+ * its reason." The `seats` row survives, every ledger row survives, and `Purge` has no plan row
+ * for `seats`. ⚠ **This paragraph used to say "nothing here deletes anything", and since
+ * card#7582 that is no longer literally true**: the act deletes the seat's `seat_board_task` row
+ * and nulls `seats.board_user_id` (§ 4.10, § 6.7), which is a JOIN KEY into a live board rather
+ * than a record of anything. The old sentence is recorded rather than quietly replaced, because
+ * the property it was protecting — the retirement RECORD is never deleted — is the one a reader
+ * must still be able to rely on, and the way to keep relying on it is to know which clause moved.
  *
  * ⛔ WHAT card#9078's OPERATOR RULING CHANGED, AND WHAT IT DID NOT TOUCH IN THIS CLASS. The desk
  * now goes at `retired_at` instead of fourteen days later — a change to `App\Read\RetirementFilter`
@@ -115,7 +123,7 @@ final class SeatRetirement
         $seatRef = (int) $row->id;
         $at = Clock::sql(now());
 
-        return DB::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason): SeatRetirementOutcome {
+        return Outbox::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason): SeatRetirementOutcome {
             // ⛔ SAMPLED BEFORE THE `seats` WRITE BELOW — card #7837, and this is a SIBLING of that
             // card's fold defect rather than a precaution.
             //
@@ -183,6 +191,34 @@ final class SeatRetirement
                 return SeatRetirementOutcome::alreadyRetired((string) $already);
             }
 
+            // ⛔ THE BOARD-USER MAPPING GOES WITH THE SEAT, IN THIS TRANSACTION — § 4.10 and
+            // § 6.7, ratified on card#7582 (2026-09-12). § 6.7 states the invariant this holds up:
+            // a `seat_board_task` row "leaves in exactly two ways", any write of
+            // `seats.board_user_id` and the seat's retirement, and until this the SECOND WAY HAD
+            // NO WRITER — the sentence was true of nothing.
+            //
+            // ⚠ AND THE COST OF LEAVING IT IS NOT TIDINESS. `board_user_id` is UNIQUE (§ 6.4), so
+            // a retired seat that keeps it holds that board user against the whole fleet: the
+            // replacement seat cannot be mapped to the same person until an operator runs
+            // `mezzanine:seat-board-user --clear` on a seat that has left every read surface, and
+            // the only symptom is that command's bare non-zero exit. The alternative resolution —
+            // make the sentence true by declaring retirement leaves the row in place — was put to
+            // the operator and refused for exactly that reason.
+            //
+            // ⛔ IT IS NOT A DELETION OF ANYTHING THE RECORD NEEDS, which is the one thing § 4.10
+            // is emphatic about ("the disappearance is a READ FILTER, not a deletion"). The three
+            // retirement columns and every ledger row are untouched; what goes is a JOIN KEY into
+            // a live board, which is the thing a retired seat must stop holding. `seat_board_task`
+            // is an INPUT (§ 6.4) and not a projection, so nothing derives a fact from its absence
+            // — the poll that would rewrite it skips retired seats anyway (BOARD-TASK.md § 7.2).
+            //
+            // NOT FOLDED INTO THE GUARDED UPDATE ABOVE, deliberately: that UPDATE's affected count
+            // IS the § 2.1 no-op decision ("Re-running it on an already-retired seat is a no-op"),
+            // and widening its SET list would leave the decision reading the same while a second
+            // act's worth of columns rode along with it. This runs only on the branch that wrote.
+            DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => null]);
+            DB::table('seat_board_task')->where('seat_ref', $seatRef)->delete();
+
             // The recompute is the SHARED one (§ 6.5's per-writer rule names this act as one of
             // the three writers), so `render_state` collapses through § 4.2's precedence rather
             // than being assigned here — `retired` is a FUNCTION of `retired_at`, which the line
@@ -205,18 +241,10 @@ final class SeatRetirement
 
             $version = (int) DB::table('seat_state')->where('seat_ref', $seatRef)->value('state_version');
 
-            // IN THE TRANSACTION, WHICH IS WHERE § 4.10 PUTS IT — and delivered only if that
-            // transaction commits, because `SeatRetired` is `ShouldDispatchAfterCommit`. That
-            // contract is the whole resolution: the publish is ordered by the same act that sets
-            // the columns, so no crash can land one without the other, and a rollback invokes no
-            // listener, so no client is ever told a seat retired when it did not. `SeatRetired`'s
-            // own docblock carries the argument; a rollback arm in the suite drives it.
-            //
-            // ⚠ AN EARLIER REVISION PUBLISHED HERE FROM OUTSIDE THE TRANSACTION AND ITS COMMENT
-            // SAID THE DEPARTURE WAS "FLAGGED IN THE PR BODY". IT WAS NOT FLAGGED ANYWHERE. The
-            // departure is now gone rather than better-disclosed, but the false pointer is recorded
-            // because it is the more dangerous half: a reviewer who reads "flagged" stops looking.
-            SeatRetired::dispatch($seatRef, $installId, $seatId, $at, $by, $reason, $version);
+            // IN THE TRANSACTION, WHICH IS WHERE § 4.10 PUTS IT — enqueued here and inserted as the
+            // transaction's LAST statement by `Outbox::transaction()` (card#9300), after the delta
+            // `forSeat()` above enqueued, at the one version both carry. A rollback leaves neither row.
+            Outbox::enqueue(new SeatRetired($seatRef, $installId, $seatId, $at, $by, $reason, $version));
 
             return SeatRetirementOutcome::retired($at, $version);
         });

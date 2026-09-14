@@ -1,7 +1,12 @@
 @extends('console.layout')
 @section('title', 'Edit a floor map')
 @section('console')
-    <p>The map for <strong>{{ $installId }}</strong>. Replacing it replaces the room.</p>
+    <p>
+        The map for <strong>{{ $installId }}</strong>, revision <strong>{{ $version }}</strong>.
+        Replacing it replaces the room — and records a new revision, so this one stays restorable
+        (<code>docs/design/FLEET-STATE.md § 6.11</code>).
+        <a href="{{ route('admin.floors.revisions', $installId) }}">Revisions, diffs and restores</a>
+    </p>
 
     <form method="POST" action="{{ route('admin.floors.update', $installId) }}">
         @csrf

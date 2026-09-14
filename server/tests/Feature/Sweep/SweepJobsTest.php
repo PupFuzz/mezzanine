@@ -608,13 +608,12 @@ class SweepJobsTest extends SweepTestCase
 
         $this->sweep();
 
-        // ⚠ THIS LINE NO LONGER MEANS WHAT IT USED TO SAY, AND THE COMMENT IS CORRECTED RATHER THAN
-        // THE ASSERTION REMOVED. It used to read "a mixed distribution does not alarm" — but
-        // `turn_clean` is a windowed criterion and § 6.4 carries no windowed count, so it now
-        // reports `cannot_evaluate` on EVERY distribution and can never set `alarm_since` at all.
-        // The null here is therefore evidence that the refusal writes nothing, not evidence that
-        // the criterion discriminated. `PredicateAlarmsTest` owns the discrimination.
-        $this->assertNull($this->predicate('turn_clean')->alarm_since, 'a refusal writes no verdict');
+        // AT-D2-13's NEGATIVE CONTROL, and it means what it says again: card #7833 gave § 6.4 the
+        // run columns `turn_clean`'s criterion asks for, so a MIXED distribution is now evaluated
+        // and does not alarm — one `true` and one `false` is a run of 1, against a floor of 200.
+        // `PredicateAlarmsTest` owns the positive half and the 199/200 boundary.
+        $this->assertNull($this->predicate('turn_clean')->alarm_since, 'a mixed distribution does not alarm');
+        $this->assertSame(1, (int) $this->predicate('turn_clean')->run_length, 'the run broke at the `/clear`');
     }
 
     public function test_job_7_call_closed_by_wire_separates_the_wire_from_the_server(): void

@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.50.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.52.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -115,31 +115,14 @@ cut, loudly, with a `sed` range that recovers the rest. An index that points at 
 this doc costs a session almost nothing; the section itself, in here, costs it every turn.
 
 <!-- BEGIN coord:install-rules -->
-**Merge authority (operator, 2026-09-09).** All work targets `dev`. Three rungs, tightest first:
-- **Merging to `main` — OPERATOR ONLY.** Never this seat, whatever `permissions.admin` the shared
-  `PupFuzz` identity reports.
-- **CREATING a PR to `main` — ASK FIRST.** The gate is on opening it, not only on merging it.
-- **Merge to `dev` — this seat's own call, NO ask**, once the PR passes quality check
-  (`solo-self-merge <N>`). Stalling on a green, reviewed, integration-targeted PR is the defect.
+Operator 2026-09-09. Roles + burn-down: § Read at session start.
 
-**Work autonomously (operator, 2026-09-09).** Do NOT ask permission to start the next queued item,
-and do NOT announce a next action instead of doing it — both are idling. Finish, report, continue in
-the same turn. Ask ONLY what needs an operator decision (a product/priority call, an authority
-boundary, an irreversible or outward-facing act). Anything readable from code, docs, the board or a
-thread is not a question.
+**Autonomy.** Never ask permission to start the next queued item; never announce one instead of
+doing it. Finish, report, continue in one turn. Ask ONLY operator decisions (product/priority,
+authority, irreversible or outward-facing acts).
 
-**Roles (operator, 2026-09-09).** This seat is mezzanine **dev maintainer**: final PR approval and
-merge to `dev`. `aimla-pm` works cards and submits PRs here to rule on. Upstream owners for bug
-reports: `sola-pm` = agent-board-framework (coord plugin) · `kanban-solo` = agent-webhook-bridge +
-agent-board-toolkit.
-
-**Burn-down (operator, 2026-09-09).** ONE lane, keyed `A`, holding exactly the cards tagged
-`lane:A` — its title and members live in `sprint.lanes[]` / `lanes.definitions`, never here. A
-request for the page always means REGENERATE, never `cat`. Full rule: § Burn-down below the
-PROJECT ADDENDUM divider.
-
-⚠ This block is injected verbatim every session and is cut at ~1900 B, gates first so a cut can only
-remove elaboration. Keep it under that: `awk '/BEGIN coord:install-rules/,/END coord:install-rules/' CLAUDE.md | wc -c`
+**Merge.** Work targets `dev`. Merging `main` is OPERATOR ONLY; OPENING a PR to it is ask-first.
+`dev` is this seat's call — `solo-self-merge <N>` once green.
 <!-- END coord:install-rules -->
 
 ## Your work loop
@@ -157,8 +140,8 @@ item regardless of which repo it lives in. Work it. Then move to the next.
    trivial / mechanical work needs no formal loop; a feature gets one fresh-adversarial pass
    on your plan; security-significant / cross-cutting / irreversible work runs the full N-pass
    loop — see `design-review-loop.md`). Reference findings + resolutions on the tracking issue
-   or card for the item — not in the PR body (see **PR bodies — write them like a senior dev**,
-   below).
+   or card for the item — not in the PR body (see **PR bodies — write them for the software
+   installer**, below).
 4. **Doc-sync every code PR** (per `doc-sync.md`). Every PR that changes code audits and
    updates affected docs in the same PR — doc drift is not a follow-up. For an
    architecture-state change, first ask whether the change **mints** an obligation no doc has
@@ -196,20 +179,19 @@ never reverted by your PR. A tip-to-tip (`A..B`) diff that appears to delete it 
 these two tips differ", not "what will this merge do" — rebasing quiets that noise; it is not
 undoing a reversion.
 
-**PR bodies — write them like a senior dev (roundtable #255).** *"A human coder would submit a
-merge with a comprehensive list of what the merge includes, and any upgrade warnings / gotchas to
-be aware of (if applicable). A human coder would not write an essay or make comments about what
-isn't included or what still needs to be done."* Body = scope line + highlights + applicable
-gotchas + the machine-read lines; self-review narration, the doc-sync audit trail, and to-dos go
-on the item's tracking issue or card (your install has no coordination thread — that issue/card is
-its stand-in). Full IN/OUT tables: **`coord:release-pr` skill § PR body — write it like a senior
-dev**. Nothing is dropped; only the home moves.
+**PR bodies — write them for the software installer (roundtable #255; operator 2026-09-09).** The
+audience is the person who deploys or upgrades to what the PR ships — not you, and on a solo
+install nobody else will re-aim it for you — so every line answers what is in it in THEIR terms,
+what they must DO, and what changes for them under the config they already have. The standard
+itself — the IN/OUT tables, the home named for everything it keeps out, and how a solo install
+reads a home that says "the review-request round": **`coord:release-pr` skill § PR body — write it
+for the software installer**. Nothing is dropped; only the home moves.
 
 **Declare how you built it — the `Built:` line (card#4870).** Every PR body you open carries a
 REQUIRED one-line `Built:` field declaring how the work was produced — one of the legitimate values
 defined in `built-line.md`, which is **canonical for
 the value set and for the conditions on the restricted value**; read them there rather than
-restating them. It is one of the machine-read, process-native lines the senior-dev standard above
+restating them. It is one of the machine-read, process-native lines the PR-body standard above
 explicitly preserves, so trimming a body never removes it. You are your own reviewer here, which is
 exactly why the field has to be right without one: nobody else will catch a wrong count.
 
@@ -530,14 +512,15 @@ genuine question / gate → banner. The banner spends your human's attention —
   cutting a release PR on any owned repo.
 
 **Sprint burn-down (if this install declares a `sprint` block).** Your sprint plan is
-generated, not authored: lanes are declared once in the config, membership is a board query (a tag,
-a gate card's blockers, a swimlane, a filter), and one board read produces both the HTML page you
-read and the `lanes.definitions` the lane census reads — so they cannot drift. The default shape is
-one lane, `current`, holding every open card tagged `sprint:current`. A card leaves the plan by
-MOVING on the board, never by editing the page; re-render with `sprint-burndown.py --html <path>
---write-config` instead. The SessionStart check reds when the committed page no longer matches the
+generated, not authored: lanes are declared once in the config and membership is a board query (a
+tag, a gate card's blockers, a swimlane, a filter). The default shape is one lane, `current`,
+holding every open card tagged `sprint:current`. A card leaves the plan by MOVING on the board,
+never by editing the page; re-render with `sprint-burndown.py --html <path> --write-config`
+instead. The SessionStart check reds when the committed page no longer matches the
 board, and its UNMEASURED verdict means a read did not happen, not that the sprint is finished.
-Vocabulary, worked configs, and the exit codes: **`docs/SPRINT.md`**.
+Vocabulary, worked configs, why the page and the `lanes.definitions` the census reads cannot drift
+apart, and the exit codes: **`docs/SPRINT.md`** — which owns those claims; do not restate them
+here.
 
 The **manual board-state check** is the documented fallback when the SessionStart hook is
 unavailable (new machine, hook misconfigured): query each board via the board API —
@@ -720,6 +703,24 @@ setup and must not be applied here:
 
 # PROJECT ADDENDUM — mezzanine
 
+## Install-rules budget — the number in the hook's notice is NOT the slot
+
+⛔ **Do not size the `coord:install-rules` block against 1900 B.** That is the ritual hook's whole
+SessionStart share; the ritual pointer and the section-headings list are reserved out of it first,
+and what is left for the block on this install is **~545 B**. Measured 2026-09-12: a 1817 B block
+emitted 545 B and silently dropped three of four operator standing rules, the cut landing at byte
+544 — inside `**Work autonomously`. A `wc -c` against 1900 was green the whole time.
+
+**Never measure this block with `wc -c`. Run the emit and read what the session receives:**
+
+```
+bash <coord-plugin>/hooks/bin/coordination-ritual-load.sh | grep -o 'coord-digest-truncated[^]]*'
+```
+
+No output = nothing was cut. Any output names `bytes=<kept>/<payload>`. Rules that do not fit go to
+`§ Read at session start` with a pointer from the block — which is where Roles and burn-down live,
+and where they were already stated verbatim while the block duplicated them.
+
 > Below the managed block. This survives `orientation-sync` and **never auto-loads** — a session
 > must open this file to read it. Reference and rationale only; standing rules that must reach a
 > session belong between the `coord:install-rules` markers above.
@@ -757,7 +758,7 @@ select into a lane — the tool matches `lane:now`, never `now` (`sprint-burndow
 "the race-to-release HTML file" are the SAME ask and both mean run it fresh:
 
 ```
-sprint-burndown.py --html /home/sandboxmezzanine/mezzanine/docs/sprint-burndown.html --write-config
+sprint-burndown.py --html ~/mezzanine/docs/sprint-burndown.html --write-config
 ```
 
 The page is a render of one live board read, so a stale copy is the exact drift adopting the tool

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
  * `duplicates` equal to the batch size and `accepted: 0`" — belongs to the ingest and is already
  * asserted by card #7338's own suite; it is re-asserted here only as the precondition of the half
  * this card owns. The RED — "set event retention to 7 days, purge, then re-deliver an 8-day-old
- * event" — needs `mezzanine:purge` (§ 2.1's fourth process), which neither half of card #7339
+ * event" — needs `mezzanine:purge` (§ 2.1's scheduled process), which neither half of card #7339
  * builds. Named in the PR body.
  *
  * What this card owes is the second half: THE DERIVED STATE IS BYTE-IDENTICAL BEFORE AND AFTER,

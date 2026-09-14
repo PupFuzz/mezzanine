@@ -3,6 +3,8 @@
 namespace App\Fold;
 
 use App\Ingest\Counters;
+use App\Ingest\KindRegistry;
+use App\Ingest\Wire;
 use App\Sweep\Predicates;
 use Illuminate\Support\Facades\DB;
 
@@ -337,7 +339,7 @@ class Projector
             'stop_hook', 'api_error', 'session_cleared', 'session_ended',
         ]);
 
-        $aborted = $e->data['aborted_call_ids'] ?? [];
+        $aborted = Wire::field($e->data, 'aborted_call_ids') ?? [];
 
         $update = [
             'turn_open' => false,
@@ -415,11 +417,11 @@ class Projector
             'session_ref' => $e->sessionId === null ? null : $this->sessionRef($e),
             'tool_name' => $e->str('tool_name', 64),
             'descriptor' => $e->str('descriptor', 200),
-            'descriptor_truncated' => (bool) ($e->data['descriptor_truncated'] ?? false),
+            'descriptor_truncated' => (bool) Wire::field($e->data, 'descriptor_truncated'),
             'agent_scope' => $e->enum('agent_scope', ['main', 'subagent']),
             'parent_call_id' => $e->str('parent_call_id', 26),
             'harness_call_ref' => $e->str('harness_call_ref', 64),
-            'synthesized' => (bool) ($e->data['synthesized'] ?? false),
+            'synthesized' => (bool) Wire::field($e->data, 'synthesized'),
             'opened_at' => $e->eventTime,
             'opened_received_at' => $e->receivedAt,
         ];
@@ -738,7 +740,7 @@ class Projector
         }
 
         DB::table('seat_state')->where('seat_ref', $e->seatRef)->update([
-            'context_used_pct' => $e->data['used_pct'] ?? null,
+            'context_used_pct' => Wire::field($e->data, 'used_pct'),
             'context_used_tokens' => $e->int('used_tokens'),
             'context_total_tokens' => $e->int('total_tokens'),
             'context_source' => $e->enum('used_pct_source', ['harness', 'computed']),
@@ -875,10 +877,29 @@ class Projector
             return;
         }
 
-        $selftest = $e->data['selftest'] ?? [];
-        $failed = is_array($selftest)
-            ? array_values(array_keys(array_filter($selftest, fn ($v) => $v === 'fail')))
+        $selftest = Wire::field($e->data, 'selftest');
+
+        // D1 § 6.14 declares `selftest` an OBJECT, so since card#9297 it arrives as a `stdClass`.
+        // The `(array)` cast is the one place on this method where casting is safe, and the reason
+        // is that NOTHING CAST HERE IS RE-ENCODED: only the KEYS leave this expression, as § 6.4's
+        // "names whose value was `fail`" — a list, which is what that column declares and what
+        // `[]` is the right spelling of. The array arm is kept because it is what a pre-card#9295
+        // row decodes to, and because dropping it would change what a (non-conforming) JSON array
+        // in this field folds to, which is not this card's question.
+        $failed = is_array($selftest) || Wire::isJsonObject($selftest)
+            ? array_values(array_keys(array_filter((array) $selftest, fn ($v) => $v === 'fail')))
             : [];
+
+        // ⛔ AN EXPLICIT `null` AND A MISSING KEY MUST REACH THE SAME COLUMN VALUE, and until
+        // card#9297 they did not. D1 § 6.0: "a missing key and an explicit `null` are the same
+        // thing" — yet `array_key_exists('enabled', …)` was TRUE for an explicit null, whose
+        // `(bool)` cast is `false`, and a stored `false` is not "unknown" on this plane: § 8.2.1
+        // reads `null` as "null before the first heartbeat" and § 4.5 rule 4 renders a `false` as
+        // **disabled**. One reporter spelling of "I said nothing" therefore minted the rendered
+        // state § 4.8 exists to forbid minting, while the other correctly minted nothing.
+        // `Wire::field` collapses the two, as § 6.0 requires; the null test below is what keeps
+        // "no heartbeat has said" out of the boolean.
+        $enabled = Wire::field($e->data, 'enabled');
 
         DB::table('seat_state')->where('seat_ref', $e->seatRef)->update([
             'last_heartbeat_received_at' => $e->receivedAt,
@@ -887,16 +908,43 @@ class Projector
             // The flag is ONLY ever learned from a heartbeat (§ 4.5 rule 4), so no other event can
             // move it — which is why § 6.5 lists it as one of the facts a heartbeat moves that IS
             // version-bearing, against the ordinary "a heartbeat emits no delta".
-            'enabled' => array_key_exists('enabled', $e->data) ? (bool) $e->data['enabled'] : null,
+            'enabled' => $enabled === null ? null : (bool) $enabled,
+            // § 8.2.1 / § 6.4: the seat's DECLARED protocol agent name and D1 § 3.1's check outcome,
+            // each "last heartbeat's value", verbatim. Like `enabled` they are only ever learned from
+            // a heartbeat (D1 § 6.14), and like it a heartbeat that OMITS a key writes `null` rather
+            // than keeping the previous value: D1 § 6.0 makes a missing key and an explicit `null`
+            // the same thing, so that heartbeat's value is `null`, and a kept declaration would
+            // publish a name the seat has stopped sending as though it still sent it. `null`
+            // resolves no participant (§ 8.3.3), which is the direction a stale claim must fail in.
+            //
+            // Through `str()` / `enum()` rather than raw: the ingest bounds the name and refuses an
+            // out-of-set check, but type-checks neither, so a non-string reaches the column as
+            // `null`. The name's bound and the check's member set are READ from the ingest's
+            // registry, not restated here — `EventSchemaDriftTest` holds that registry to D1 § 6.14.
+            'protocol_agent_name' => $e->str(
+                'protocol_agent_name',
+                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_name'],
+            ),
+            'protocol_agent_name_check' => $e->enum(
+                'protocol_agent_name_check',
+                KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],
+            ),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
             // `seat_counters`. They are monotonic since flusher start, so last-write-wins is the
             // only correct handling: adding two heartbeats' values would double-count, and a value
             // that decreases means the flusher restarted rather than that a counter went backwards.
-            'heartbeat_counters' => json_encode($e->data['counters'] ?? null),
-            'heartbeat_predicates' => json_encode($e->data['predicates'] ?? null),
+            //
+            // ⭐ VERBATIM NOW INCLUDES THE OBJECT/ARRAY DISTINCTION (card#9297). These two values
+            // are `stdClass` when the seat sent an object, so a heartbeat's `counters: {}` is
+            // stored as `{}` and not as the JSON array `[]`. `reporter_degraded` below is
+            // § 6.4's "D1's 12-member ARRAY, verbatim" and is correct spelling `[]` — it is the
+            // control that proves this is a distinction being preserved rather than a cast being
+            // applied to everything in reach.
+            'heartbeat_counters' => json_encode(Wire::field($e->data, 'counters')),
+            'heartbeat_predicates' => json_encode(Wire::field($e->data, 'predicates')),
             'selftest_failed' => json_encode($failed),
-            'reporter_degraded' => json_encode($e->data['degraded'] ?? []),
+            'reporter_degraded' => json_encode(Wire::field($e->data, 'degraded') ?? []),
         ]);
     }
 

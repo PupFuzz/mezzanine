@@ -32,8 +32,8 @@ use Illuminate\Support\Facades\Route;
  */
 class IngestAuthSeparationTest extends IngestTestCase
 {
-    /** The three surfaces card #7334 gates (`routes/web.php`, `bootstrap/app.php`). */
-    private const MFA_GATED = ['/dashboard', '/api/fleet/snapshot', '/broadcasting/auth'];
+    /** The three surfaces card #7334 gates (`routes/web.php`, `routes/fleet.php`) — the stream replaced the websocket handshake on card#9300. */
+    private const MFA_GATED = ['/dashboard', '/api/fleet/snapshot', '/api/fleet/stream'];
 
     // ── DIRECTION 1: an MFA session cannot post a batch ──────────────────────────────────────
 

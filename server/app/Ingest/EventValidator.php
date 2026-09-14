@@ -13,16 +13,24 @@ namespace App\Ingest;
  *   genuine reporter bug — which is exactly what it should mean. Without the producer-side clamp
  *   this step would convert any bound overrun into 200 permanently-quarantined events."
  *
- * That licence covers the bounds § 12.1 step 9 names and nothing else. Every check below is one
- * of them, or a storage type the batch could not otherwise be written under.
+ * That licence covers the bounds § 12.1 step 9 names and nothing else. Every check in the step-9
+ * block below is one of them, or a storage type the batch could not otherwise be written under.
+ * The per-field byte bounds are step 10's and are further down, under their own heading.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * STEP 10 NEVER REFUSES EXCEPT ON A REPORTER-MINTED ENUM. See `KindRegistry` for the full
- * derivation; the short form is that an unknown kind, an unknown `data` key and an unrecognised
- * HARNESS-sourced enum value are each absorbed and counted, because under § 12.4's atomic
- * rejection "treating an additive change as invalid would convert one new harness value into the
- * permanent loss of 200 good events, which is the exact trade this rule exists to avoid making by
- * accident".
+ * STEP 10 REFUSES ON EXACTLY TWO THINGS: a REPORTER-MINTED ENUM outside its set, and a `data`
+ * field over the BYTE BOUND § 6 publishes for it (card#9283's operator ruling — reject, never
+ * truncate and never accept-and-count). See `KindRegistry` for the full derivation; the short
+ * form is that an unknown kind, an unknown `data` key and an unrecognised HARNESS-sourced enum
+ * value are each absorbed and counted instead, because under § 12.4's atomic rejection "treating
+ * an additive change as invalid would convert one new harness value into the permanent loss of
+ * 200 good events, which is the exact trade this rule exists to avoid making by accident".
+ *
+ * A bound overrun is not an additive change and takes the other answer: the value is one the
+ * producer's own contract says it may not send, every consumer that sized to the published bound
+ * is exposed while it is accepted, and the cost — an outdated or non-conforming reporter's events
+ * disappearing at upgrade — is accepted ON THE RECORD on card#9283 because a refusal is visible,
+ * counted and attributable where both alternatives fail quietly.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * TWO THINGS THIS VALIDATOR DELIBERATELY DOES NOT DO, both of which look like omissions:
@@ -40,7 +48,7 @@ final class EventValidator
 {
     public function validate(mixed $event, int $index, ValidBatch $batch, TokenBinding $binding): ValidEvent|Refusal
     {
-        if (! is_array($event) || array_is_list($event)) {
+        if (! Wire::isJsonObject($event)) {
             return Refusal::invalidEvent($index, '', 'must be a JSON object');
         }
 
@@ -101,10 +109,24 @@ final class EventValidator
 
         $data = Wire::field($event, 'data');
 
-        if (! is_array($data) || array_is_list($data)) {
+        // ⭐ `{}` IS AN OBJECT AND `[]` IS NOT, AND card#9295 IS THE DIFFERENCE BETWEEN THEM.
+        // D1 § 6.0 — "a missing key and an explicit `null` are the same thing" — makes `{}` the
+        // legal spelling of an event every one of whose `data` fields is null, so refusing it is
+        // the server declining a document its own published contract permits, and § 12.4 charges
+        // that refusal the batch's ≤ 199 valid neighbours, permanently (§ 11.5). What made the
+        // old check refuse it was not a rule anybody wrote: `array_is_list([])` is `true`, and
+        // `[]` was the associative decode of BOTH documents. `BodyReader` no longer erases the
+        // difference, so this is now a question with an answer — see `Wire::isJsonObject`.
+        if (! Wire::isJsonObject($data)) {
             return Refusal::invalidEvent($index, 'data', 'must be a JSON object');
         }
 
+        // From here `$data` IS a `stdClass` — `Wire::isJsonObject` accepts nothing else — which
+        // is what lets the step-10 block below read it with `Wire::field`, mutate enum members on
+        // it, and hand it to `BatchWriter` in one spelling. There was a `(object) $data` cast
+        // here; with the predicate narrowed to `instanceof` it was a provable no-op on a value
+        // that is already an object, and a cast that can never convert anything is a defence
+        // against a state the line above has already refused.
         $serialized = Wire::serialize($data);
 
         if (strlen($serialized) > Wire::DATA_MAX_BYTES) {
@@ -130,13 +152,68 @@ final class EventValidator
         $coerced = 0;
         $unknownFields = 0;
 
+        // ── the per-field BYTE bounds § 6 publishes (card#9283) ──────────────────────────────
+        //
+        // BEFORE the enum loop, because that loop MUTATES `$data` to coerce harness-sourced
+        // values: a refusal must be a function of what arrived on the wire, not of what this
+        // validator had already rewritten. D1 orders the two nowhere, so the order is chosen
+        // here and stated rather than inherited.
+        //
+        // ⛔ `strlen` AND NEVER `mb_strlen`. § 6.0: "all string bounds are **bytes** of UTF-8."
+        // `mb_strlen` counts CHARACTERS, so it passes a 200-byte value against a 120-byte bound
+        // whenever the value is multibyte — which is card#9282, one layer over, shipped and
+        // reviewed twice before anyone noticed. The unit is the defect, not the comparison.
+        //
+        // ⚠ A NON-STRING, NON-OBJECT VALUE IS NOT MEASURED AND IS NOT REFUSED. There is no byte
+        // length to compare for an int, a bool or a null, and inventing a type check here is the
+        // permanent-outage trade the docblock above and § 12.1's own note on step 9 both refuse:
+        // this check enforces the published BOUND, and nothing else about the value.
+        foreach ($spec['bounds'] as $field => $maxBytes) {
+            $value = Wire::field($data, $field);
+
+            $bytes = match (true) {
+                // `≤ 1.5 KiB serialized` (§ 6.14's three open-keyed objects) is measured on the
+                // serialized form, in the SAME serialization every other cap in D1 is measured
+                // on — `Wire::serialize`, whose docblock owns why PHP's defaults are not it.
+                //
+                // ⛔ `is_object` IS LOAD-BEARING AND IS NOT A BELT-AND-BRACES ARM (card#9295).
+                // Those three fields ARE objects on the wire, so since `BodyReader` stopped
+                // decoding associatively they arrive here as `stdClass` and `is_array` alone
+                // would stop measuring them — card#9283's bound silently unenforced on exactly
+                // the three fields it was hardest to get right. TWO tests hold it, and the class
+                // and method names are written whole on their own lines so they are greppable
+                // from this comment:
+                //
+                //   Tests\Feature\Ingest\IngestFieldByteBoundsTest
+                //     test_a_serialized_object_bound_is_enforced_at_the_http_surface
+                //   Tests\Unit\Ingest\EventFieldByteBoundsTest
+                //     test_one_byte_over_its_bound_is_refused_by_name
+                //
+                // The Feature one measures through the real decode. The Unit one reds too only
+                // because its object-shaped fixtures are now `(object)` casts; while they were
+                // hand-built PHP associative arrays it stayed green through a missing `is_object`
+                // arm, which is why the Feature guard was written and why it stays.
+                is_array($value), is_object($value) => strlen(Wire::serialize($value)),
+                is_string($value) => strlen($value),
+                default => null,
+            };
+
+            if ($bytes !== null && $bytes > $maxBytes) {
+                return Refusal::fieldOverBound($index, $kind, $field, $maxBytes, $bytes);
+            }
+        }
+
         foreach ($spec['enums'] as $field => $enum) {
             $value = Wire::field($data, $field);
 
             if ($value === null) {
-                // Every enum field on this wire is either nullable by its own row or absent when
-                // its kind does not carry it. § 6.0: "A missing key and an explicit `null` are
-                // the same thing." Nothing in § 12.1 makes an absent enum a refusal.
+                // A null or absent enum is skipped for EVERY enum field, whatever its row's `Null?`
+                // column says: this loop checks membership only. § 6.0: "A missing key and an
+                // explicit `null` are the same thing." Nothing in § 12.1 makes an absent enum a
+                // refusal. Most enum fields are nullable by their own row or absent when their kind
+                // does not carry them. `reporter.heartbeat.protocol_agent_name_check` is nullable by
+                // its own row: D1 § 6.14 makes it optional at the ingest and owed only by a current
+                // reporter, so a heartbeat from a reporter that predates it is ingested, not refused.
                 continue;
             }
 
@@ -166,9 +243,9 @@ final class EventValidator
 
                 // HARNESS-SOURCED. Coerce and count — never reject.
                 if ($enum['array']) {
-                    $data[$field][$position] = $enum['unknown'];
+                    $data->{$field}[$position] = $enum['unknown'];
                 } else {
-                    $data[$field] = $enum['unknown'];
+                    $data->{$field} = $enum['unknown'];
                 }
 
                 $coerced++;
@@ -180,7 +257,7 @@ final class EventValidator
         // `docs/VERSIONING.md` rule 3's row claims, "counted per seat so 'a newer reporter' is a
         // visible state rather than a silent one". TOP-LEVEL keys only: the three open-keyed
         // heartbeat objects are not descended into (§ 6.14).
-        foreach (array_keys($data) as $key) {
+        foreach (array_keys(get_object_vars($data)) as $key) {
             if (! in_array($key, $spec['fields'], true)) {
                 $unknownFields++;
             }

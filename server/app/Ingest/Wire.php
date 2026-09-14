@@ -89,13 +89,58 @@ final class Wire
     }
 
     /**
+     * Is this decoded value a JSON **object** (`{…}`) rather than a JSON **array** (`[…]`)?
+     *
+     * ⛔ THE WHOLE REASON THIS PREDICATE EXISTS, AND WHY THE OBVIOUS SPELLING IS WRONG (card#9295).
+     * `json_decode($raw, true)` decodes `{}` and `[]` TO THE SAME PHP VALUE — `[]`, for which
+     * `array_is_list()` is `true`. Measured, not recalled:
+     *
+     *     json_decode('{}', true) === json_decode('[]', true)   // true
+     *     array_is_list(json_decode('{}', true))                // true
+     *
+     * So `! is_array($v) || array_is_list($v)` refuses `{}` — a document D1 § 6.0 permits, since
+     * "a missing key and an explicit `null` are the same thing" makes `{}` the legal spelling of
+     * an event every one of whose `data` fields is null. Under § 12.4 that refusal takes the
+     * batch's ≤ 199 valid neighbours with it, permanently (§ 11.5).
+     *
+     * ⭐ AND THE ONE-CLAUSE REPAIR IS ALSO WRONG, WHICH IS WHY THE FIX IS AT THE DECODE.
+     * `$v !== [] && array_is_list($v)` accepts `{}` — and accepts `"data":[]` with it, because
+     * after an associative decode THERE IS NOTHING LEFT TO TELL THEM APART. The distinction the
+     * wire makes was destroyed one layer up, so no predicate written here can recover it. That is
+     * why `BodyReader` now decodes objects as `stdClass` (see its own note) and why this test is
+     * an `instanceof` and nothing else: the ingest stopped erasing the distinction rather than
+     * trying to guess it back.
+     *
+     * ⛔ THERE IS NO ARRAY ARM, AND ADDING ONE BACK RE-OPENS THE BUG. Every value this predicate
+     * ever sees came out of `BodyReader`'s `json_decode($raw, false, …)`, and that decoder emits
+     * exactly three things: `stdClass` for a JSON object, a PHP LIST for a JSON array, and a
+     * scalar. Measured over a document carrying every shape the wire can carry — including the
+     * numeric-keyed object `{"0":1}` that is the classic counter-example — it produced no
+     * non-list PHP array anywhere in the tree, so an `is_array(…) && ! array_is_list(…)` arm is
+     * true of nothing that can reach here. An arm like that only ever answers for a HAND-BUILT
+     * PHP associative array, i.e. for a test fixture, and a production predicate widened to keep
+     * a fixture green is the fixture's bug moved into the code under test. A test that means
+     * "the empty object" writes `(object) []`, the same value the decoder produces for `{}`.
+     */
+    public static function isJsonObject(mixed $value): bool
+    {
+        return $value instanceof \stdClass;
+    }
+
+    /**
      * § 6.0: "A missing key and an explicit `null` are the same thing. The server normalises
      * missing → `null` before validation."
      *
-     * @param  array<mixed>  $subject
+     * `object` as well as `array` since card#9295: the decoded wire document is a `stdClass` tree
+     * (`BodyReader`), and this is the ONE accessor every step of § 12.1 reads a field through, so
+     * teaching it both shapes is what kept that change from becoming an `(array)` cast at each of
+     * the twenty call sites — each of which would have re-erased the object/array distinction the
+     * decode change exists to preserve.
+     *
+     * @param  array<mixed>|object  $subject
      */
-    public static function field(array $subject, string $key): mixed
+    public static function field(array|object $subject, string $key): mixed
     {
-        return $subject[$key] ?? null;
+        return is_array($subject) ? ($subject[$key] ?? null) : ($subject->{$key} ?? null);
     }
 }

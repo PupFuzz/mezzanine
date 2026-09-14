@@ -28,10 +28,12 @@ final class Clock
         }
 
         $dt = \DateTimeImmutable::createFromFormat('!'.self::FORMAT, $sql, new \DateTimeZone('UTC'))
-            // A `DATETIME(3)` whose fractional part is exactly zero comes back from SQLite as
-            // `Y-m-d H:i:s` with no `.000`, which the strict format above will not parse. This is
-            // not a tolerance for arbitrary shapes — it is the one documented second form of the
-            // same column, and letting it return null would put a hole in a total function.
+            // A `DATETIME(3)` whose fractional part is exactly zero came back from SQLite — the
+            // suite's store until card#9328 — as `Y-m-d H:i:s` with no `.000`, which the strict
+            // format above will not parse. This is not a tolerance for arbitrary shapes — it is the
+            // one documented second form of the same value, and letting it return null would put a
+            // hole in a total function. MariaDB returns the `.000`; whether any caller still hands
+            // this function the second form is not established, so the arm stays.
             ?: \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $sql, new \DateTimeZone('UTC'));
 
         if ($dt === false) {
@@ -56,7 +58,7 @@ final class Clock
      * It lives here, beside the two conversions it is the third of, because a second spelling of
      * "how this project writes a timestamp on the wire" is a second thing free to disagree — and
      * the first thing the two would disagree about is whether a whole second carries `.000`,
-     * which is exactly the SQLite second form `toMs()` above already had to absorb.
+     * which is exactly the second form `toMs()` above already absorbs.
      */
     public static function wire(?string $sql): ?string
     {

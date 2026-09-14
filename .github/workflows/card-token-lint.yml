@@ -1,5 +1,9 @@
 # card-token-lint.yml — reject card-token spellings the correlators cannot parse, at PR time.
 #
+# IT ALSO GUARDS THE TWO VENDORED FILES' DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, first
+# step below) — the mover this gate extracts its grammar from declares in its header exactly
+# what its body is, and until PupFuzz/agent-roundtable#463 nothing checked that declaration.
+#
 # WHAT IT DOES. Reads this PR's TITLE and HEAD BRANCH — the two surfaces the kanban webhook
 # bridge parses — and fails if either carries something that LOOKS like a card reference but
 # does not match the accept grammar (`cards #7343`, `card_7343`, single-digit glued `card4`).
@@ -47,6 +51,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # BEFORE the lint, because the lint's authority is one of the files this pins. Both
+      # vendored files declare in their headers what their bodies are; `bin/promote-cards-by-token`
+      # declared BYTE-FOR-BYTE while carrying two edits from #51, and nothing noticed for eleven
+      # days. This pins each body by sha256 AND requires each declared local edit to still be
+      # in the body, so neither half of the declaration can go stale silently again.
+      # `--selftest` runs FIRST and mutates a body line to watch the check go red, deletes a
+      # declared edit to watch it go red the other way, and mutates a header comment to watch
+      # it stay green — a pin nobody has seen fail is a decoration.
+      - name: Vendored-body pins (selftest reds on a body mutation, then the real check)
+        run: |
+          bash bin/vendor-pin-check.sh --selftest
+          bash bin/vendor-pin-check.sh
 
       # The lint's own prove-it-can-fail fixtures run HERE, against THIS checkout. A gate's
       # verdict is worth something only if the fixtures showing it CAN fail ran against the

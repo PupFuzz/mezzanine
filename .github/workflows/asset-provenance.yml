@@ -29,9 +29,9 @@
 # NO `paths:` FILTER, DELIBERATELY. Two reasons, and the second is the load-bearing one:
 #   1. The gate is Python stdlib over a handful of files — a couple of seconds, not a lane.
 #   2. A path-filtered workflow that produces NO RUN AT ALL reads as *pending*, not *passed*
-#      (`docs/VERSIONING.md § Branch model`). If this check is ever promoted to required, a
-#      filter would silently wedge every PR that happened not to touch the filtered paths. The
-#      filter would be a trap set today and sprung by somebody else months from now.
+#      (`docs/VERSIONING.md § Branch model`). For as long as this context is required, a filter
+#      would silently wedge every PR that happened not to touch the filtered paths. The filter
+#      would be a trap set today and sprung by somebody else months from now.
 #
 # NEEDS NO CREDENTIAL AND NO NETWORK. Pure filesystem analysis against the checkout.
 

@@ -3,16 +3,54 @@
 # "released" stage, correlating by the `card#<id>` token in the RELEASED RANGE's
 # commit subjects.
 #
-# ⚑ VENDORED, NOT AUTHORED HERE. Everything BELOW THIS HEADER BLOCK is a BYTE-FOR-BYTE
-# copy of `bin/promote-cards-by-token` in PupFuzz/agent-board-framework at commit
-# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27). Only this header was rewritten, and
-# only to state MEZZANINE's facts instead of that repo's. Fix a defect UPSTREAM and re-vendor;
-# a local edit to the body forks a security-sensitive tool away from the copy that has the
-# review history, and nothing here would notice. The upstream repo is private, so the whole
-# tool ships here rather than being fetched at run time — a public CI job cannot clone it.
-#   RE-VENDOR = `sed -n '154,$p' <upstream>/bin/promote-cards-by-token > <this file's body>`,
-#   keeping this header. That the body is unmodified is therefore a one-diff check, which is
-#   the whole reason not one comment inside it was "tidied".
+# ⚑ VENDORED, NOT AUTHORED HERE — AND FORKED AT EXACTLY TWO DECLARED SITES. Everything BELOW
+# THIS HEADER BLOCK is `bin/promote-cards-by-token` from PupFuzz/agent-board-framework at commit
+# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27), byte for byte, EXCEPT the two sites
+# listed next. Both arrived in this repo's #51 (2026-08-31) and both exist for one reason:
+# upstream's "first-ever release" wording is FALSE here — mezzanine HAS released, so explaining
+# an empty range as a first-ever release misdirects the only person who will ever read it. Each
+# site is located by a distinctive unbroken fragment of its own text, NEVER by a line number:
+# line numbers rot, and this list has to survive the next re-vendor.
+#   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
+#     (1) the false-all-clear COMMENT on the `..HEAD` refusal — the three lines carrying
+#         `nothing to do" and exit 0 on a release whose cards`. Upstream's reads "…on a
+#         first-ever release whose cards…"; this one drops those words and reflows the three.
+#     (2) the `no range base` DIE STRING — the line carrying
+#         `Likeliest live causes: a shallow or tagless clone`. This one is longer than
+#         upstream's: it names the causes that are actually live here (a shallow or tagless
+#         clone; a deliberate re-promote of the EARLIEST release, which has no predecessor tag
+#         to derive from), says a force-pushed or rewritten `main` is NOT this error, and
+#         points at `docs/KANBAN.md § G-2`.
+# ⛔ THIS HEADER USED TO CLAIM THE WHOLE BODY WAS BYTE-FOR-BYTE and called that "a one-diff
+# check". Nobody ran the diff. #51's two edits had been sitting in the body for eleven days and
+# the claim went on reading as true — a declaration with NO CHECK, which is worse than silence:
+# it hands the next reader confidence where a question was owed. Found by
+# PupFuzz/agent-roundtable#463 (2026-09-11). The two edits are CORRECT and were KEPT; what was
+# wrong was the declaration, so the declaration was made true and given a check.
+# ⚑ THE CHECK: `bin/vendor-pin-check.sh` pins the sha256 of this file's BODY (the first line
+# after the shebang that is neither blank nor a comment, through EOF — so this header may grow
+# freely) and runs on EVERY PR, in the `card-token-lint` workflow, behind a `--selftest` that
+# first proves it reds on a mutated body. Any edit below this header reds CI until the pin AND
+# the list above are updated in the SAME commit. That list is ENFORCED, not a courtesy — in ONE
+# direction, stated exactly: the check carries (1) and (2)'s fragments itself and reds if
+# either is no longer in the body, so the pin cannot be bumped past a list that has gone stale.
+# It CANNOT tell you that a THIRD, undeclared edit has appeared — that comparison needs
+# upstream, which is private and unreachable from a public runner; what catches that is the sha
+# going red and a human reading the diff. A green means "the body is what this repo last
+# DECLARED", never "the body matches upstream".
+# The upstream repo is private, so the whole tool ships here rather than being fetched at run
+# time — a public CI job cannot clone it. A defect in the SHARED text still goes UPSTREAM first
+# and arrives here by re-vendoring; forking the body further is not the escape hatch.
+#   RE-VENDOR = replace everything below this header with upstream's BODY, where "body" is
+#   the same rule the pin uses — so DERIVE the start line, never write one down (upstream's
+#   header grows too, and a copied-out number is wrong the moment it does). The ONE spelling of
+#   that rule is `BODY_AWK` in `bin/vendor-pin-check.sh`; apply it to upstream's file and take
+#   everything from the line it prints to EOF. It is not restated here so it cannot drift.
+#   Then re-apply (1) and (2), or drop either ON PURPOSE and delete it from the list above AND
+#   from the FRAGMENTS table; then re-pin the sha in `bin/vendor-pin-check.sh`. ⚠ UPSTREAM HAS
+#   MOVED ON: by
+#   v0.50.0 (d3fd558) the `api` helper lives in `bin/_api_seam.sh`, so a re-vendor from HEAD
+#   ships a SECOND file and this one-file recipe no longer describes it.
 #   ⚑ READING THE BODY'S COMMENTS: every relative path they cite (`.githooks/…`,
 #   `templates/…`, `plugins/…`) and every `card#NNNN` / `#NNN` they cite resolves in the
 #   UPSTREAM repo — NOT in this one. Do not go looking for those files here. What plays their
@@ -20,15 +58,55 @@
 #   `bin/card-token-lint.py`, and the pin on this script's accept-set is
 #   `bin/promote-cards-by-token.selftest.sh`.
 #
-# WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — the card-first correlation gap.
+# WHY THIS MOVER AND NOT THE TOOLKIT'S GENERIC ONE — ⛔ THE STATED REASON WAS FALSE AND THE
+# CHOICE IS OPEN. `card#9146` holds the live disposition (also PupFuzz/agent-roundtable#444).
+# What follows is what is MEASURED. It is not a defence of this script: do not re-derive one
+# from it, which is the mistake the paragraphs below exist to stop being repeated.
 #   agent-board-toolkit's `promote-released-cards` correlates ONLY on `payload.dl_number` /
-#   `payload.pr_number`. Board 14 is CARD-FIRST: cards are the front door, they carry no
-#   `dl_number`, and this repo mints no DLs — so that mover has NO key to match on here and
-#   its "Released to main" stage would be structurally unreachable. The webhook bridge's own
-#   `merged_to_main` writeback leg is unreachable for the same shape: individual card PRs
-#   squash-merge to `dev`, and the only PR that reaches `main` is the release PR, which names
-#   no cards. The key that DOES exist is the `card#<id>` token already present in the
-#   squash-commit subjects that `dev` carries onto `main`.
+#   `payload.pr_number`, matched against the refs the RELEASED RANGE shipped. Board 14 is
+#   CARD-FIRST: cards are the front door. The `dl_number` leg is genuinely empty — no card
+#   carries one and this repo mints no DLs.
+#   ⚠ THE `pr_number` LEG IS NOT EMPTY, and this header's claim that it was is what the whole
+#   preference rested on. Cards ARE stamped with the PR that closed them — a large minority of
+#   board 14, and deliberately NO count here: the one this header carried went stale between
+#   two review rounds. Derive it — `kbcard --board mezzanine list`, count the rows whose `pr`
+#   is non-null. ⚠ Board 14 IS that board, not a lane on it: `--swimlane 14` answers
+#   "0 of 70 board cards matched", which reads exactly like the claim being corrected here.
+#   ⚠ NOR DO THE STAMPS CORRELATE TO NOTHING ON `main` — the second false step. That mover takes
+#   its PR set from the TRAILING `(#NNN)` squash marker on the subjects of
+#   `git log <base>..<head> --no-merges` (`agent-board-toolkit@0c256c4`
+#   `bin/promote-released-cards`, the shipped-refs derivation), and `dev`'s squash subjects carry
+#   that marker ONTO `main` when the release merges — so a `dev` PR number sits inside a range
+#   computed on `main`, by the ORDINARY flow.
+#   ⛔ AND NO CARD BRANCH HAS EVER MERGED DIRECT TO `main`. An earlier version of this header
+#   said PR #39 had; #39 merged to `dev`. Of every PR this repo has opened, every one based on
+#   `main` is headed `dev` or `release/v<version>` (the list below re-derives it), and R1 in
+#   `bin/release-pr-guard.py` refuses a `main`-targeted PR with any other head:
+#     coord-gh mezzanine api --paginate 'repos/PupFuzz/mezzanine/pulls?state=all&per_page=100' \
+#       --jq '.[]|select(.base.ref=="main")|"\(.number) \(.head.ref)"'
+#   The direct-to-`main` route is not how a card stamp reaches a released range. The ordinary
+#   flow already does it, which is why that route never needed to be invoked.
+#   MEASURED LIKE FOR LIKE on the one released range this repo has, both keys off the SAME
+#   subjects (`v0.1.0..v0.2.0`):
+#     git log v0.1.0..v0.2.0 --no-merges --format=%s | grep -oE '\(#[0-9]+\)[[:space:]]*$'
+#     git log v0.1.0..v0.2.0 --no-merges --format=%s | grep -oiE "$CARD_RE"
+#   23 trailing markers, naming 20 stamped cards; 25 distinct card tokens; those 20 are
+#   a STRICT SUBSET of the 25. The five the stamps miss are missed three different ways — a
+#   REBASE-merged PR leaves no marker at all (#27 → card#7913, #28 → card#7912); a MERGE-COMMIT
+#   PR leaves it only on the commit `--no-merges` discards (#39 → card#8174); and one `pr` field
+#   names ONE PR where several shipped the card (card#7456 is stamped `8`, but #14 is what
+#   carries it in this range) or names none (card#7583, the release card itself).
+#   ⚠ THAT IS ONE RANGE, AND IT IS NOT THE POPULATION THE CHOICE TURNS ON. `card#9146` measures a
+#   different one — the cards awaiting promotion — and orders the two keys the other way. The
+#   figures are not comparable: a STAMP is a property of the CARD, a TOKEN is a property of the
+#   RANGE, so a backlog of cards released before this chain ever worked scores the token key near
+#   zero by construction, which that card's own 403 finding says in as many words. Whoever rules
+#   on this owes ONE population with BOTH keys measured on it. This file does not rule on it.
+#   What this script's key does not depend on, and is the only claim made for it here: a card
+#   being stamped, and a PR having landed as a squash. The `card#<id>` token is in the commit
+#   subjects that `dev` carries onto `main` either way.
+#   (The bridge's own `merged_to_main` writeback leg IS unreachable here, for a reason about
+#   EVENTS rather than subjects: it keys on a PR merged into `main`, which a card PR never is.)
 #
 # CARD-TOKEN GRAMMAR — NOT OWNED HERE. The accept-set is owned by the webhook bridge's
 # `GitHubPrCardMoveClassifier::CARD_TOKEN_PATTERN` (prose: agent-board-framework

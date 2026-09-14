@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D3 verification gate: docs/design/FLOOR.md.
 
-ELEVEN guard classes, G1-G11, one per defect class this document can carry that a reader will not
+TWELVE guard classes, G1-G12, one per defect class this document can carry that a reader will not
 reliably catch.  Every population below is RE-DERIVED on each run -- from this document's own
 tables, or from docs/design/FLEET-STATE.md (D2) and docs/design/EVENT-SCHEMA.md (D1) -- and never
 from a list stored here.  A number or a member list written into a checker is one free to disagree
@@ -25,7 +25,13 @@ with the document it is checking, and it survives exactly the pass that falsifie
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
   G7  state and badge render closure            a D2 enum member with no render, or a render for a
                                                member D2 does not declare
-  G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key
+  G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key;
+                                               `S` against the SHIPPED DEFAULT map file -- present,
+                                               its `desks` objects are counted; absent, section
+                                               10.3 must SAY so and no map may exist in the tree;
+                                               the desk sprite's size against its PNG; and the
+                                               READ PATHS section 10.3 says a room's map is fetched
+                                               from must be exactly the ones D2 section 8.7 declares
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -45,6 +51,14 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                other, and every worked instance elsewhere -- found
                                                structurally, by a *was:* span or the words `activity
                                                state` -- must state the placement they agree on
+  G12 the duration format                      section 2.4's clauses re-implemented as a function
+                                               and its boundary table REPRODUCED row by row; then
+                                               every duration inside a PUBLISHED RENDERED SPAN --
+                                               section 2.4's Verbatim column and section 7.1's Label
+                                               line -- held to it as a FIXED POINT, and section 7.1's
+                                               two dark rows re-derived ARITHMETICALLY from the
+                                               timestamp in their own span and the corrected clock
+                                               their own prose states
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -69,9 +83,12 @@ Each check that can be silent about its own subject carries a CONTROL that abort
 reporting clean when its extractor finds nothing (canon: a check that cannot fail is a decoration).
 """
 import ast
+import json
 import re
+import struct
 import sys
 import pathlib
+import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).parent.parent.parent
 DOC = ROOT / "docs/design/FLOOR.md"
@@ -183,6 +200,26 @@ def table_rows(text, header_re):
                 j += 1
             return out
     return None
+
+
+def table_rows_all(text, header_re):
+    """EVERY matching table's data rows in `text`, not just the first.
+
+    `table_rows` returns the first table only, which is right where a section declares one.  D2
+    § 8.3.3 declares TWO objects under one header, and reading the first would publish half a
+    surface while reporting clean over the other half -- the same under-read `all_tables` below
+    exists to prevent for this document's own tables."""
+    src, out, i = text.split("\n"), [], 0
+    while i < len(src):
+        if re.search(header_re, src[i].lstrip()):
+            j = i + 2
+            while j < len(src) and src[j].lstrip().startswith("|"):
+                out.append(src[j].lstrip())
+                j += 1
+            i = j
+        else:
+            i += 1
+    return out
 
 
 def all_tables(src_lines):
@@ -330,12 +367,31 @@ else:
     if len(d2_msgs) < 4:
         fail.append(f"CONTROL: only {len(d2_msgs)} feed message types parsed from D2 § 8.3")
 
+# D2 § 8.3.3's coordination objects -- the FIFTH surface D2 declares a field on, added when D2
+# gained it (card#9212).  It is read the same way as the four above: from D2's own table, on every
+# run, so a field that leaves D2 leaves this set with it.
+sec_833 = section_text("833-the-coordination-objects", d2_lines, d2_by_anchor)
+d2_coord = set()
+rows = table_rows_all(sec_833 or "", r"^\| Field \| Type \| Null\? \| Bounds \| Example \|")
+if not rows:
+    fail.append("CONTROL: D2 § 8.3.3's coordination field tables did not parse — every coordination "
+                "field this document renders would then be checked against an empty set and red as "
+                "invented, which is a failure that names the wrong cause")
+else:
+    for r in rows:
+        m = re.match(r"^\|\s*`([A-Za-z_][\w.\[\]]*)`\s*\|", r)
+        if m:
+            d2_coord.add(m.group(1))
+    if len(d2_coord) < 20:
+        fail.append(f"CONTROL: only {len(d2_coord)} coordination field names parsed from D2 § 8.3.3, "
+                    f"which declares two objects — the reader is under-reading one of them")
+
 d2_detail = {t for t in re.findall(r"`([a-z_]+)`", sec_823 or "")}
 if "detail" not in d2_detail:
     fail.append("CONTROL: D2 § 8.2.3's `detail` member did not parse; the drill-down's source "
                 "column would then read as an invented field")
 
-ALLOWED = (d2_fields | d2_msgs | d2_detail
+ALLOWED = (d2_fields | d2_msgs | d2_detail | d2_coord
            | d2_fleet | {"fleet." + f for f in d2_fleet})
 
 
@@ -418,6 +474,12 @@ SOURCE_TABLES = [
     (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1"),
     (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2"),
     (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3"),
+    # § 5.7's coordination render map (card#8300).  Its header is DELIBERATELY not § 5.1's shape:
+    # `table_rows` returns the FIRST table whose header matches, so a second table sharing § 5.1's
+    # four column names would be read by G9 (which walks every table) and skipped by this loop --
+    # checked for its markers and not for whether its fields exist.  A distinct header makes the
+    # two populations the same population.
+    (r"^\| Rendered element \| D2 field \| Example \| Null / unresolved render \|", 1, "5.7"),
     (ANIM_HEADER, ANIM_DRIVER_COL, "6.2"),
     (r"^\| Panel section \| Contents \| Source \|", 2, "4.3"),
 ]
@@ -438,8 +500,8 @@ for header, col, where in SOURCE_TABLES:
                 fail.append(
                     f"G2: section {where} renders a fact whose source is `{t}`, which D2 declares "
                     f"nowhere — not in § 8.2.1's seat object, § 8.2.4's fleet object, § 8.2.3's "
-                    f"detail member or § 8.3's message table. A rendered fact with no field is a "
-                    f"fact the client invented")
+                    f"detail member, § 8.3's message table or § 8.3.3's coordination objects. A "
+                    f"rendered fact with no field is a fact the client invented")
 if g2_checked < 40:
     fail.append(f"G2 CONTROL: only {g2_checked} source tokens extracted from the render map — the "
                 f"extractor is broken and this check reports clean over an unread population")
@@ -497,8 +559,38 @@ else:
                         f"cited figure that its source does not contain is a figure this document "
                         f"minted and labelled Cited")
 
-# --------------------------- G4. section 12 <-> definition site, with perturbation ---
 sec12 = section_text("12-every-number-and-where-it-comes-from") or ""
+
+# ---- G2, THE RULE'S OWN SCOPE.  Section 12's G2 row ENUMERATES the tables half (a) reads, which
+# makes SOURCE_TABLES above one fact with two homes -- and this is the home that has already gone
+# false once: it claimed "section 5, section 6.2 or section 7" while the map held five headers and
+# none of them was in section 7, and the whole of the check was the claim.  The repair then was to
+# rewrite the prose.  Prose nothing re-derives goes false again at the next table added, so the two
+# are set-differenced here in BOTH directions, exactly as G9's marker-rule scope is.  Neither side
+# is stored: the map is the list above, the claim is read out of the document on every run.
+_i = sec12.find("**G2 source-field closure**")
+_j = sec12.find("*(b)*", _i) if _i >= 0 else -1
+if _i < 0 or _j < 0:
+    fail.append("G2 CONTROL: section 12's G2 row, or the *(a)* half of it that enumerates the "
+                "source tables, did not parse. That enumeration is this gate's population written "
+                "down in prose, and unparsed it would agree with the map by never being read")
+else:
+    _claimed = set(re.findall(r"\[§ (\d+(?:\.\d+)?)\]\(#", sec12[_i:_j]))
+    _mapped = {t[2] for t in SOURCE_TABLES}
+    if not _claimed:
+        fail.append("G2 CONTROL: section 12's G2 row names no in-document section in its *(a)* "
+                    "half, so its scope claim is empty and would set-difference clean against any "
+                    "map")
+    for w in sorted(_mapped - _claimed):
+        fail.append(f"G2: this gate reads the source column of section {w} and section 12's G2 row "
+                    f"does not name it. A reader auditing which tables are closed against D2 would "
+                    f"be told a smaller set than the tool actually reads")
+    for w in sorted(_claimed - _mapped):
+        fail.append(f"G2: section 12's G2 row claims the source column of section {w} is closed "
+                    f"against D2 and this gate has no entry for that table, so nothing checks it. "
+                    f"That is the over-claim this row already shipped once")
+
+# --------------------------- G4. section 12 <-> definition site, with perturbation ---
 g4_rows = g4_nums = g4_disc = 0
 g4_residue = []
 rows = table_rows(sec12, r"^\| Value \| Number \| Basis \| Where \|")
@@ -1304,7 +1396,7 @@ if not m or (int(m.group(1)), int(m.group(2))) != (2166136261, 16777619):
     fail.append("G8 CONTROL: section 3.2's FNV-1a constants did not parse or do not match the "
                 "function this check implements — the worked example would be checked against a "
                 "different hash than the document specifies")
-m = re.search(prose(r"the shipped `aimla` map, S = (\d+)"), sec32)
+m = re.search(prose(r"the shipped default map, S = (\d+)"), sec32)
 S = int(m.group(1)) if m else 0
 if not S:
     fail.append("G8 CONTROL: section 3.2's slot count did not parse")
@@ -1367,6 +1459,226 @@ else:
             fail.append("G8: section 3.3 says the arriving seat takes the slot, but it does not "
                         "sort lower in the (h, seat_id) order the function uses")
 
+# ---- G8b. `S` against the SHIPPED DEFAULT map file, and its absence declared rather than implied ----
+# WHAT MOVED UNDER card#9208's REVERSAL (2026-09-12) AND WHAT DID NOT.  The file this leg counts is no
+# longer "the client's build artifact": it is the SHIPPED DEFAULT, the one map every room renders until
+# an operator authors one, and an authored room's `S` lives in a database column this gate cannot read.
+# The three branches are unchanged, because the claim they hold is unchanged -- section 10.3 declares
+# a path and either the file is there (COUNTED), or it is not and the document says so (ABSENT), or the
+# two disagree (CONTRADICTED / MISPLACED).  What is NEW is G8d below: the document used to be required
+# to say there was NO read path, and now it is required to NAME the ones D2 declares.
+# WHAT THIS REPLACES.  The leg above reads `S` out of section 3.2's prose and re-derives the worked
+# table from it -- which checks the document against itself and nothing else.  Until card#9208 the
+# sentence it read called the map SHIPPED while NO Tiled map existed anywhere in this repository, so
+# the one figure in this document that is a COUNT OF A FILE was asserted by the prose citing it: a
+# gate satisfying itself out of the document it is judging.  Both populations below are re-derived --
+# the two admitted map spellings from section 10.1 clause 1's own allowlist, the object layer's name
+# and the artifact's path from section 10.3 -- because a spelling or a path stored here is one free to
+# disagree with the document while this check reports clean.
+sec103 = section_text("103-the-floor-map") or ""
+sec101 = section_text("101-the-manifest-and-the-two-gates") or ""
+
+ABSENCE = prose(r"No floor map is vendored in this repository today")
+# The sweep looks for a map ANYWHERE, because "no map is vendored" is a claim about the
+# repository and not about one path.  What it skips is named rather than filtered silently,
+# and each member is a tree this repository does not author: the object store, an installed
+# dependency tree, and runtime scratch.  A map placed in one of them is outside the claim.
+SWEEP_SKIP = {".git", "node_modules", "vendor", "storage"}
+
+m_sp = re.search(prose(r"\*\*`(\.tm[a-z])`, `(\.tm[a-z])`\*\* — Tiled's map"), sec101)
+m_layer = re.search(prose(r"object layer named `([a-z_]+)`"), sec103)
+m_path = re.search(prose(r"the \*\*shipped default\*\*, `([^`]+)`"), sec103)
+m_s103 = re.search(prose(r"The shipped default map declares \*\*(\d+)\*\*"), sec103)
+g8_branch = "NOT MEASURED"
+if not m_sp:
+    fail.append("G8 CONTROL: section 10.1 clause 1 no longer names Tiled's two map spellings in the "
+                "form this leg re-derives them from, so the map file could not be resolved in either "
+                "spelling and its absence would read as a clean")
+elif not m_layer:
+    fail.append("G8 CONTROL: section 10.3 no longer names the object layer the slots live on, so a "
+                "map file could be counted on the wrong layer or on none")
+elif not m_path:
+    fail.append("G8 CONTROL: section 10.3 declares no path for the shipped default map — the one map "
+                "the repository ships is the one every unauthored room renders, and a file nothing "
+                "names the location of is one no gate can ever read")
+else:
+    SPELLINGS = {m_sp.group(1), m_sp.group(2)}
+    layer_name = m_layer.group(1)
+    declared = m_path.group(1)
+    absence_declared = re.search(ABSENCE, sec103) is not None
+    if not any(declared.endswith(s) for s in SPELLINGS):
+        fail.append(f"G8: section 10.3 declares the shipped default at `{declared}`, whose suffix is "
+                    f"none of Tiled's map spellings {sorted(SPELLINGS)} that section 10.1 clause 1 "
+                    f"admits — the declared path could not be a map")
+    stem = re.sub(r"\.[^.]+$", "", declared)
+    candidates = [ROOT / (stem + s) for s in sorted(SPELLINGS)]
+    in_tree = sorted(
+        str(q.relative_to(ROOT))
+        for q in ROOT.rglob("*")
+        if q.is_file() and q.suffix in SPELLINGS and not (SWEEP_SKIP & set(q.relative_to(ROOT).parts))
+    )
+    present = [q for q in candidates if q.is_file()]
+
+    def desks_in(q):
+        """Objects on the named object layer, read from the file in its own spelling."""
+        if q.suffix == ".tmj":
+            doc = json.loads(q.read_text())
+            hit = [l for l in doc.get("layers", [])
+                   if l.get("name") == layer_name and l.get("type") == "objectgroup"]
+            if len(hit) != 1:
+                return None
+            return len(hit[0].get("objects", []))
+        root = ET.parse(q).getroot()
+        hit = [g for g in root.iter("objectgroup") if g.get("name") == layer_name]
+        if len(hit) != 1:
+            return None
+        return len(hit[0].findall("object"))
+
+    if in_tree and absence_declared:
+        g8_branch = "CONTRADICTED"
+        fail.append(f"G8: section 10.3 declares that no floor map is vendored in this repository, and "
+                    f"these Tiled maps are in the tree: {in_tree}. One of the two is false, and the "
+                    f"document is the copy nothing re-derives")
+    elif in_tree and not present:
+        g8_branch = "MISPLACED"
+        fail.append(f"G8: Tiled maps exist in this repository — {in_tree} — and none of them is at "
+                    f"the path section 10.3 declares ({[str(q.relative_to(ROOT)) for q in candidates]}), "
+                    f"so the shipped default is not where this document says it is — a floor-v1 map "
+                    f"landing at the per-room path the reversed ruling declared is this branch by name")
+    elif present:
+        g8_branch = f"COUNTED from {', '.join(str(q.relative_to(ROOT)) for q in present)}"
+        # A stray map BESIDE the default is the same claim broken -- section 10.3 declares ONE shipped
+        # map -- and until this leg existed it was not detected at all: `present` took the branch and
+        # the strays went uncounted, so the sentence "the gate holds the tree in both directions" was
+        # true only while no default existed (found by the third review pass of card#9208's reversal).
+        strays = sorted(set(in_tree) - {str(q.relative_to(ROOT)) for q in present})
+        if len(present) > 1:
+            # Section 10.3 admits either spelling of the ONE default, never both: two files at one
+            # stem are two shipped maps free to disagree, with nothing saying which is served.
+            g8_branch += "; TWO SPELLINGS"
+            fail.append(f"G8: the shipped default exists in both Tiled spellings — "
+                        f"{[str(q.relative_to(ROOT)) for q in present]} — and section 10.3 declares "
+                        f"one map in either spelling, not one in each; two files at one stem are two "
+                        f"answers to *where does a room's map come from*")
+        if strays:
+            g8_branch += f"; MISPLACED beside it: {strays}"
+            fail.append(f"G8: section 10.3 declares one shipped map, at "
+                        f"{[str(q.relative_to(ROOT)) for q in present]}, and these Tiled maps sit "
+                        f"beside it at paths it does not declare: {strays} — a second shipped map is "
+                        f"a second answer to *where does a room's map come from*, which is what the "
+                        f"one-default rule (D2 § 13 row 44) exists to refuse")
+        for q in present:
+            try:
+                n_desks = desks_in(q)
+            except Exception as exc:                      # a map this gate cannot read is a RED
+                fail.append(f"G8: `{q.relative_to(ROOT)}` could not be parsed as a Tiled map "
+                            f"({type(exc).__name__}: {exc}) — `S` cannot be checked against a file "
+                            f"nothing can read, and a skip here is how the count went unchecked before")
+                continue
+            if n_desks is None:
+                fail.append(f"G8: `{q.relative_to(ROOT)}` declares no single object layer named "
+                            f"`{layer_name}`, which section 10.3 requires and section 3.2's slot "
+                            f"function reads its slots from")
+            elif S and n_desks != S:
+                fail.append(f"G8: `{q.relative_to(ROOT)}` declares {n_desks} objects on its "
+                            f"`{layer_name}` layer and this document states S = {S} — the map and the "
+                            f"slot count disagree, and every worked assignment above is computed "
+                            f"against the wrong modulus")
+    else:
+        g8_branch = "ABSENT"
+        if not absence_declared:
+            fail.append(f"G8: no map file exists at either spelling of the path section 10.3 declares "
+                        f"({[str(q.relative_to(ROOT)) for q in candidates]}), and section 10.3 does "
+                        f"not declare the absence either — so S = {S} is a count of a file that does "
+                        f"not exist, stated by the only document that cites it")
+    if m_s103 and S and int(m_s103.group(1)) != S:
+        fail.append(f"G8: section 10.3 states the shipped default declares {m_s103.group(1)} slots and "
+                    f"section 3.2 states S = {S} — one count, two homes, and the map is not there to "
+                    f"settle which is right")
+    elif not m_s103:
+        fail.append("G8 CONTROL: section 10.3 no longer restates the shipped default's slot count in "
+                    "the form this leg closes against section 3.2, so the two homes are unguarded")
+
+# ---- G8c. the desk sprite's declared size, against the FILE -----------------------------------
+# Section 12's viewport row waited on "a desk's rendered width [being] a measured number rather than
+# a design intent" (section 14 item 7).  The tileset landed on 2026-09-12 and section 10.3 now states
+# that width -- which makes it a number with two homes, a document and a PNG, and the document is the
+# copy nothing re-derives.  G4 already binds section 12's row to section 10.3's sentence; this leg
+# binds that sentence to the bytes, so the pair cannot drift from the file together.
+#
+# BOTH POPULATIONS ARE READ OUT OF THE DOCUMENT: the dimensions AND the path come from section 10.3's
+# own sentence, so re-curating the tileset or renaming the file moves this check with it rather than
+# leaving a stored `116` behind.  The PNG header is the authority -- IHDR width/height at a fixed
+# offset, which is the format's own declaration about itself and needs no decoder.
+#
+# Two branches, and the summary prints which one ran.  DECLARED: the file must exist, be a PNG, and
+# agree.  UNDECLARED: section 10.3 states no sprite measurement, which is the correct state while no
+# tileset is vendored -- and it is not a silent skip, because section 12 cannot then carry the row
+# either: G4 reds any figure that is not a whole token at the section it cites.
+SPRITE_DECL = prose(r"A desk sprite is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
+m_sprite = re.search(SPRITE_DECL, sec103)
+g8c_branch = "UNDECLARED — section 10.3 measures no sprite, so section 12 may cite none (G4 holds that half)"
+if m_sprite:
+    _dw, _dh, _rel = int(m_sprite.group(1)), int(m_sprite.group(2)), m_sprite.group(3)
+    _sprite = ROOT / _rel
+    if not _sprite.is_file():
+        g8c_branch = f"MISSING — `{_rel}`"
+        fail.append(f"G8: section 10.3 states a desk sprite is {_dw}x{_dh} px and names "
+                    f"`{_rel}`, and no such file exists — a measurement of a file that is not "
+                    f"there is the defect card#9208 found in `S`, in a second number")
+    else:
+        _hdr = _sprite.read_bytes()[:24]
+        if _hdr[:8] != b"\x89PNG\r\n\x1a\n" or len(_hdr) < 24:
+            g8c_branch = f"UNREADABLE — `{_rel}`"
+            fail.append(f"G8: `{_rel}` is not a PNG this gate can read a size out of — clause 1 of "
+                        f"section 10.1 admits the suffix and nothing established the dimensions, "
+                        f"and a size this gate could not establish is a red rather than a skip")
+        else:
+            _aw, _ah = struct.unpack(">II", _hdr[16:24])
+            g8c_branch = f"MEASURED from {_rel}: {_aw}x{_ah} px"
+            if (_aw, _ah) != (_dw, _dh):
+                fail.append(f"G8: section 10.3 states the desk sprite is {_dw}x{_dh} px and "
+                            f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
+                            f"section 12's viewport row rests on the document's copy")
+
+# ---- G8d. THE READ PATHS section 10.3 names must be EXACTLY the ones D2 § 8.7 declares -------------
+# Under the 2026-09-09 ruling this document was required to say the map had NO read path, and D2 was
+# required to say so too (its section 8.2 declared "no fifth endpoint ... none that serves a floor
+# map").  card#9208's reversal inverted both: the map is served, so section 10.3 must NAME the surface
+# it is fetched from -- and a path this document names that D2 does not declare is card#8075's defect
+# in its exact shape, a renderer fetching from a surface nobody designed.  The closure runs BOTH ways
+# against D2 section 8.7's own table: every path 10.3 names must be a `GET` row somewhere in D2, and
+# every `GET` row of section 8.7 must be named by 10.3 -- so dropping the map path while the layout
+# path stays is a red, not a quieter green.  Every population is re-derived: 10.3's paths from its own
+# backticked `GET /api/...` spans, D2's rows from its tables on every run, so a surface D2 moves or
+# renames moves this check with it.
+d3_paths = set(re.findall(r"`GET (/api/[^`\s]+)`", sec103))
+d2_paths, d2_87_paths = set(), set()
+for _m in re.finditer(r"^\|\s*`GET`\s*\|\s*`([^`\s?]+)", d2_raw, re.M):
+    d2_paths.add(_m.group(1))
+_sec87 = section_text("87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed",
+                      d2_lines, d2_by_anchor) or ""
+for _m in re.finditer(r"^\|\s*`GET`\s*\|\s*`([^`\s?]+)", _sec87, re.M):
+    d2_87_paths.add(_m.group(1))
+if len(d2_paths) < 4:
+    fail.append(f"G8d CONTROL: only {len(d2_paths)} `GET` rows parsed out of D2's endpoint tables — the "
+                f"declared set is under-read, and every path section 10.3 names would red as undeclared")
+if len(d2_87_paths) < 2:
+    fail.append(f"G8d CONTROL: D2 § 8.7's table yields {len(d2_87_paths)} `GET` rows — the building "
+                f"surface's own population did not parse, so the equality below would be vacuous")
+if not d3_paths:
+    fail.append("G8d CONTROL: section 10.3 names no `GET /api/...` read path for a room's map — under "
+                "card#9208's reversal the map is served, so a section that names no surface is the "
+                "silence card#8075's renderer filled in with a surface of its own")
+for _p in sorted(d3_paths - d2_paths):
+    fail.append(f"G8d: section 10.3 fetches from `GET {_p}` and no D2 endpoint table declares that path "
+                f"(D2 declares {sorted(d2_paths)}) — a read surface this document names and the "
+                f"contract does not, which is card#8075's shape")
+for _p in sorted(d2_87_paths - d3_paths):
+    fail.append(f"G8d: D2 § 8.7 declares `GET {_p}` for the building and section 10.3 no longer names "
+                f"it — the document has stopped saying where that document comes from, which is the "
+                f"silence this leg exists to refuse")
+
 # --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
 # G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
 # why G2 was clean over a receipt age that freezes on every live desk: a field-existence check cannot
@@ -1427,6 +1739,9 @@ G9_TABLES = [
     (r"^\| Rendered element \| D2 field \| Example \| When null / absent \|", 1, "5.1", True),
     (r"^\| Rendered element \| Source \| Example \| Rule \|", 1, "5.2", False),
     (r"^\| Rendered element \| Source \| Rule \|", 1, "5.3", False),
+    # § 5.7 renders BETWEEN desks and not on one, so `dark-only` -- a permission on the desk -- is
+    # not its to claim; `is_desk` is False for the same reason § 5.2's and § 5.3's are.
+    (r"^\| Rendered element \| D2 field \| Example \| Null / unresolved render \|", 1, "5.7", False),
     (r"^\| Rendered narration \| The client's own record \| Rule \|", None, "5.5", False),
     (r"^\| D2 member \| What renders when it is null \|", 0, "5.6", False),
     (ANIM_HEADER, ANIM_DRIVER_COL, "6.2", False),
@@ -1969,10 +2284,239 @@ else:
                     "was found anywhere in this document, so this leg is clean over an empty "
                     "population — which is what a silently-narrowed recognizer looks like")
 
+# ---- G12. the duration format: section 2.4's function, and every rendered duration ----
+# Until card#9209 this document rendered durations and published no format for them.  Section 7.1's
+# Label cells carried `4m 12s`, `11m` and `2h 06m` -- three exemplars NO SINGLE RULE PRODUCES -- and
+# section 2.4's own fourth row carried `117 s`, a fourth form again.  Nothing could red, because
+# there was no rule for an example to contradict: the class G11 catches (a worked example against
+# the rule that governs it) needs a rule at one end of it.  Section 2.4 now publishes the function;
+# this gate is the other end.
+#
+# NOTHING BELOW STORES A DURATION STRING.  The function is re-implemented from section 2.4's
+# clauses -- the same standing G8 has for the desk-slot hash, which is likewise re-computed here
+# from the document's stated function rather than compared to a table of answers -- and every
+# expected output is READ OUT of the document, either as a boundary-table row or as the arithmetic
+# a section 7.1 cell states about itself.
+_s24 = section_text("24-the-clock-and-every-age-on-the-page") or ""
+
+# The clause COUNT is a restatement of the clause list, so it is guarded rather than trusted: the
+# prose says how many clauses the function has, and the clauses are counted.
+_clause_nos = re.findall(r"^  (\d+)\. \*\*", _s24, re.M)
+_m_stated = re.search(r"those (\w+) clauses", _s24)
+if not _clause_nos:
+    fail.append("G12 CONTROL: no numbered clause parsed out of section 2.4's duration rule, so the "
+                "function below was re-implemented from nothing this gate can see")
+elif not _m_stated:
+    fail.append("G12 CONTROL: section 2.4 no longer states how many clauses the duration rule has, "
+                "so the count that binds the prose to the list is gone and a dropped clause is "
+                "silent")
+elif NUM.get(_m_stated.group(1)) != len(_clause_nos):
+    fail.append(f"G12: section 2.4 says the duration rule has {_m_stated.group(1)} clauses and "
+                f"{len(_clause_nos)} are written. One of the two moved without the other")
+elif [int(n) for n in _clause_nos] != list(range(1, len(_clause_nos) + 1)):
+    fail.append(f"G12: section 2.4's duration clauses are numbered {_clause_nos} — not contiguous "
+                f"from 1, so a clause cited by number elsewhere now points at a different one")
+
+
+def render_duration(seconds, cap=2, drop=True, pad=True):
+    """Section 2.4's function, re-implemented from its clauses.  The three keyword arguments are
+    NOT options the document offers -- they exist so the capability control below can build the
+    string each clause FORBIDS and prove the check rejects it, per clause.  Called with defaults,
+    this is the published function and nothing else."""
+    s = int(seconds) if seconds > 0 else 0          # clause 1: truncate, never negative
+    parts = [("h", s // 3600), ("m", s // 60 % 60), ("s", s % 60)]
+    first = next((i for i, (_, v) in enumerate(parts) if v), None)
+    if first is None:                                # clause 7: zero renders `0s`
+        return "0s"
+    out = [f"{parts[first][1]}{parts[first][0]}"]    # clause 5: the first value is unpadded
+    for unit, val in parts[first + 1:first + cap]:   # clause 3: at most `cap` units
+        if val == 0 and drop:                        # clause 4: a zero second unit is dropped
+            continue
+        out.append(f"{val:02d}{unit}" if pad else f"{val}{unit}")  # clause 5: the second is padded
+    return " ".join(out)                             # clause 6: one space, no plural
+
+
+# The boundary table IS the document's statement of what the function returns, so reproducing it is
+# the check that this implementation is the published one.  A parse that finds nothing is the
+# failure, never a clean run over an empty table.
+_bnd = table_rows(_s24, r"^\| Seconds in \| Renders \| The clause it is here for \|") or []
+_bnd_pairs = []
+for _r in _bnd:
+    _c = cells(_r)
+    if len(_c) < 2:
+        continue
+    _in = _c[0].replace("−", "-").replace(",", "").strip("*` ")
+    _outm = re.match(r"^`([^`]+)`$", _c[1])
+    if not _outm:
+        fail.append(f"G12 CONTROL: section 2.4's boundary row for {_c[0]!r} states its output as "
+                    f"{_c[1]!r} rather than as a backticked string, so this gate cannot tell the "
+                    f"rendered string from the prose around it")
+        continue
+    try:
+        _bnd_pairs.append((float(_in), _outm.group(1)))
+    except ValueError:
+        fail.append(f"G12 CONTROL: section 2.4's boundary row input {_c[0]!r} is not a number of "
+                    f"seconds, so the row asserts nothing this gate can evaluate")
+if len(_bnd_pairs) < 2:
+    fail.append(f"G12 CONTROL: {len(_bnd_pairs)} boundary rows parsed out of section 2.4 — the "
+                f"function below was reproduced against nothing, and an empty population passes "
+                f"in silence")
+for _sec, _want in _bnd_pairs:
+    _got = render_duration(_sec)
+    if _got != _want:
+        fail.append(f"G12: section 2.4 says {_sec:g} seconds renders {_want!r} and its own clauses, "
+                    f"re-implemented, return {_got!r}. EITHER END may be the one that moved — a "
+                    f"clause edited without its outputs, or an output edited without its clause")
+
+DUR_RE = re.compile(r"(?<![\w:.−-])\d+ ?[hms](?: \d+ ?[hms])*(?![\w:])")
+
+
+def parse_duration(tok):
+    """Seconds in a duration-shaped token, or None.  Deliberately LOOSER than the format: it reads
+    `2h 6m`, `11m 00s` and `117 s` too, because the strings this gate exists to catch are exactly
+    the ones the format would never emit, and a parser that only read legal strings would report
+    clean by failing to see them."""
+    total, seen = 0, False
+    for val, unit in re.findall(r"(\d+) ?([hms])", tok):
+        total += int(val) * {"h": 3600, "m": 60, "s": 1}[unit]
+        seen = True
+    return total if seen else None
+
+
+SPAN_RE = re.compile(r"\s*(\*{1,3})(.+?)\1(?!\*)")
+
+
+def published_span(cell):
+    """The rendered string a cell publishes, and where it ENDS: its LEADING emphasis span,
+    `*x*` / `**x**` / `***x***`.  Same convention G11 reads, widened to the doubled and tripled
+    delimiters section 2.4's Verbatim column uses.  Prose AFTER the span is not a rendered string
+    and is not read -- section 7.1's dark cells argue about `300 s` and `900 s` thresholds in
+    theirs, and neither is drawn, so the end offset is returned rather than recovered with an
+    `index()` the backtick-stripping above can make raise."""
+    m = SPAN_RE.match(cell or "")
+    return (m.group(2).replace("`", ""), m.end()) if m else (None, 0)
+
+
+# THE CAPABILITY CONTROL, run every pass and PER CLAUSE.  A fixed-point test whose function agreed
+# with nothing would reject every string and this gate would fire on the document for reasons that
+# have nothing to do with it; one whose function agreed with everything would accept `11m 00s`.
+# Both directions are proven from the document's own boundary rows: the canonical output must be
+# accepted, and each per-clause perturbation of it -- the undropped zero unit, the unpadded second
+# unit, the third unit -- must be rejected.
+_cap_pos = _cap_neg = 0
+for _sec, _want in _bnd_pairs:
+    if render_duration(_sec) != _want:
+        continue                                     # already failed above; not a control result
+    _cap_pos += 1
+    for _label, _variant in (("clause 4, the zero unit undropped", render_duration(_sec, drop=False)),
+                             ("clause 5, the second unit unpadded", render_duration(_sec, pad=False)),
+                             ("clause 3, a third unit", render_duration(_sec, cap=3))):
+        if _variant == _want:
+            continue                                 # this row does not exercise that clause
+        _cap_neg += 1
+        if render_duration(parse_duration(_variant)) == _variant:
+            fail.append(f"G12 CONTROL: the fixed-point test ACCEPTS {_variant!r} — {_label} — which "
+                        f"section 2.4 forbids and which is the shape this gate exists to catch. A "
+                        f"check that admits its own defect is a decoration")
+if _bnd_pairs and _cap_neg == 0:
+    fail.append("G12 CONTROL: section 2.4's boundary table exercises none of clauses 3, 4 and 5 — "
+                "no row of it can be perturbed into a string the format forbids, so the "
+                "discrimination this gate rests on was never demonstrated on this run")
+
+# ---- G12 leg A: every duration inside a PUBLISHED RENDERED SPAN is a fixed point ---------------
+_dur_rows = table_rows(_s24, r"^\| Duration \| Field \| The string, verbatim \| Where it may appear \|") or []
+if not _dur_rows:
+    fail.append("G12 CONTROL: section 2.4's four-wording duration table did not parse, so half of "
+                "this gate's population was never read")
+_spans = []                                          # (where, the published string)
+for _r in _dur_rows:
+    _c = cells(_r)
+    if len(_c) >= 3:
+        _sp, _ = published_span(_c[2])
+        if _sp is None:
+            fail.append(f"G12 CONTROL: section 2.4's duration row {_c[0]!r} publishes no emphasised "
+                        f"string in its Verbatim column, so the wording it fixes cannot be read")
+        else:
+            _spans.append((f"section 2.4 row {_c[0]}", _sp))
+for _r in state_rows:
+    _c = cells(_r)
+    if len(_c) >= 3 and re.match(r"^`[a-z_]+`$", _c[0]):
+        _sp, _ = published_span(_c[2])
+        if _sp is not None:
+            _spans.append((f"section 7.1 `{_c[0].strip('`')}` Label line", _sp))
+if not state_rows:
+    fail.append("G12 CONTROL: section 7.1's per-state table did not parse, so the Label line cells "
+                "this class was opened over were never read")
+
+_g12_tokens = 0
+for _where, _sp in _spans:
+    for _tok in DUR_RE.findall(_sp):
+        _secs = parse_duration(_tok)
+        if _secs is None:
+            continue
+        _g12_tokens += 1
+        _canon = render_duration(_secs)
+        if _tok != _canon:
+            fail.append(
+                f"G12: {_where} renders the duration {_tok!r}, and section 2.4's format returns "
+                f"{_canon!r} for the same {_secs} seconds. A worked example that contradicts the "
+                f"rule governing it is read AS the rule, because it is the concrete half — and "
+                f"before card#9209 there was no rule here for one to contradict, which is how "
+                f"three mutually inconsistent exemplars stood. EITHER END may be the one that "
+                f"moved: read section 2.4's clauses and this cell before editing either")
+if _g12_tokens == 0:
+    fail.append("G12 CONTROL: no duration token was found in ANY published rendered span, so leg A "
+                "is clean over an empty population — which is what a silently-narrowed recognizer "
+                "looks like, and this document renders at least four")
+
+# ---- G12 leg B: section 7.1's dark rows re-derived ARITHMETICALLY from their own worked moment --
+# The `stale` and `offline` cells each state a *since* timestamp INSIDE the rendered span and the
+# corrected clock they were read at in the prose AFTER it.  The age is then not an opinion: it is
+# the subtraction, formatted.  A cell that keeps its age while its timestamps move -- or the
+# reverse -- stops describing one moment, which is what the `offline` row's own prose ("at the same
+# 14:29 so the two rows describe one moment rather than two") claims and nothing checked.
+HHMM = re.compile(r"(?<![\d:])([0-2]?\d):([0-5]\d)(?![\d:])")
+_g12_arith = 0
+for _r in state_rows:
+    _c = cells(_r)
+    if len(_c) < 3 or not re.match(r"^`[a-z_]+`$", _c[0]):
+        continue
+    _sp, _span_end = published_span(_c[2])
+    if _sp is None:
+        continue
+    _toks = [t for t in DUR_RE.findall(_sp) if parse_duration(t) is not None]
+    _in_span = HHMM.findall(_sp)
+    if not _toks or not _in_span:
+        continue                                     # not a worked since/age pair
+    _member = _c[0].strip("`")
+    _prose = _c[2][_span_end:]
+    _read_at = HHMM.findall(strip_code(_prose))
+    if len(_in_span) != 1 or len(_read_at) != 1:
+        fail.append(f"G12 CONTROL: section 7.1's `{_member}` cell carries {len(_in_span)} clock "
+                    f"times in its rendered span and {len(_read_at)} in the prose after it. This "
+                    f"leg needs exactly one of each — the instant the age is measured FROM, and "
+                    f"the corrected clock it is read AT — and cannot tell which is which "
+                    f"otherwise")
+        continue
+    _since = int(_in_span[0][0]) * 3600 + int(_in_span[0][1]) * 60
+    _now = int(_read_at[0][0]) * 3600 + int(_read_at[0][1]) * 60
+    _want = render_duration((_now - _since) % 86400)
+    _g12_arith += 1
+    if _toks[0] != _want:
+        fail.append(
+            f"G12: section 7.1's `{_member}` row is worked at {_read_at[0][0]}:{_read_at[0][1]} over "
+            f"a seat dark since {_in_span[0][0]}:{_in_span[0][1]}, which section 2.4's format renders "
+            f"{_want!r} — and the cell reads {_toks[0]!r}. The row no longer describes one moment")
+if _g12_arith == 0:
+    fail.append("G12 CONTROL: no section 7.1 cell was found stating both a *since* timestamp and an "
+                "age, so leg B measured nothing. The `stale` and `offline` rows are the two this "
+                "leg exists for")
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
       f"{len(d2_fields)} seat fields, {len(d2_fleet)} fleet fields, {len(d2_msgs)} message types, "
+      f"{len(d2_coord)} coordination fields, "
       f"{len(render_m)} render_state / {len(link_m)} link / {len(act_m)} activity / "
       f"{len(ur_m)} unknown_reason members, {len(badge_m)} badges")
 print(f"G1  animations: {len(anim_ids)} rows, {len(mentioned)} referred to elsewhere, "
@@ -2019,7 +2563,19 @@ print(f"G7  render closure, both directions: {len(state_rendered)}/{len(render_m
       f"{len(ur_rendered)}/{len(ur_m)} unknown_reason, {len(badge_rendered)}/{len(badge_m)} badges, "
       f"{len(link_rendered)}/{len(link_m)} link_state, {len(act_rendered)}/{len(act_m)} "
       f"activity_state, {len(aet_rendered)}/{len(aet_m)} api_error_type (the last from D1 § 6.4)")
-print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair")
+print(f"G8d the read paths: section 10.3 names {len(d3_paths)} `GET /api/...` path(s) for the building, "
+      f"held to set-equality with D2 § 8.7's {len(d2_87_paths)} `GET` rows and to membership of D2's "
+      f"{len(d2_paths)} — the INVERSE of the rule this leg held under the 2026-09-09 ruling, which "
+      f"required the document to say there was none")
+print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's collision pair; "
+      f"the map artifact: {g8_branch}. The two branches are different claims and the output says "
+      f"which one ran — COUNTED means S was held against the shipped default's `desks` layer; ABSENT means it "
+      f"was held against nothing but this document's own declaration that there is no file, "
+      f"which is the strongest true claim available and is NOT evidence about the number. The "
+      f"tree sweep for a map skips {sorted(SWEEP_SKIP)}.")
+print(f"    G8 the desk sprite section 12's viewport row waited on: {g8c_branch}. MEASURED means "
+      f"the size was read out of the PNG's own IHDR header and held against section 10.3's "
+      f"sentence, both the dimensions and the path re-derived from that sentence.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "
@@ -2039,6 +2595,12 @@ else:
           f"read and agreeing on {next(iter(_act_placements))!r}; worked instances found elsewhere "
           f"in the document by structure and held against it: {_instances}; the predicate was fed "
           f"its own defect on this run and rejected it")
+print(f"G12 the duration format: {len(_clause_nos)} clauses re-implemented from section 2.4 and "
+      f"{len(_bnd_pairs)} boundary rows reproduced from it; the fixed-point test was ACCEPTED on "
+      f"{_cap_pos} of the document's own outputs and fed {_cap_neg} per-clause perturbations of "
+      f"them on this run, rejecting each; durations held inside a published rendered span: "
+      f"{_g12_tokens}; section 7.1 rows re-derived arithmetically from their own worked moment: "
+      f"{_g12_arith}. NOT reached: a duration in PROSE, which is the same residue G9 has")
 print(f"G10 null-render closure: {len(d2_nullable)} members D2 § 8.2.1 marks nullable, "
       f"{len(null_rendered)} given a null render by section 5.6, "
       f"{len(d2_nullable ^ null_rendered)} in symmetric difference")

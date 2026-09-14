@@ -125,6 +125,19 @@ function sliceBetween(md, open, close) {
   }
   return md.slice(i, j);
 }
+/**
+ * Seconds in a duration-shaped token. Deliberately LOOSER than D3 § 2.4's format: it reads
+ * `2h 6m`, `11m 00s` and `0m 50s` too, because those are exactly the strings the format would
+ * never emit and a parser that only read legal ones would report clean by failing to see them.
+ * @param {string} tok @returns {number}
+ */
+function parseDur(tok) {
+  let total = 0;
+  for (const [, val, unit] of String(tok).matchAll(/(\d+) ?([hms])/g)) {
+    total += Number(val) * { h: 3600, m: 60, s: 1 }[unit];
+  }
+  return total;
+}
 let controls = 0;
 /**
  * A planted mutation's anchor, asserted present exactly once. Every control in this file goes
@@ -1500,6 +1513,165 @@ section('10. the lobby count is derived from FLEET, not written beside it');
     const moved = MOVED.dom.byId.get('fleetcount');
     check(!!moved && moved.textContent !== want && /^\d+ seats · \d+ live$/.test(moved.textContent),
       `…and it MOVES when the fleet does — ${JSON.stringify(want)} becomes ${JSON.stringify(moved ? moved.textContent : null)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 11. THE DURATION FORMAT. D3 § 2.4 publishes ONE function — a number of seconds in, one string
+//     out — and every duration and every age on the page is its output. It did not, until
+//     card#9209: the document rendered durations and published no format for them, § 7.1's cells
+//     carried `4m 12s` / `11m` / `2h 06m` (three exemplars no single rule produces), and THIS
+//     ARTIFACT sidestepped the whole question by carrying pre-formatted sample strings — never a
+//     duration and a formatter — so it rendered the cells correctly WITHOUT EVER OWNING THE RULE
+//     and shipped `0m 50s` and `0m 21s`, a fourth form again, with everything green.
+//
+//     ⛔ THE FUNCTION IS NOT WRITTEN HERE. It is re-implemented from § 2.4's clauses and then
+//     REPRODUCED against § 2.4's own boundary table — read out of the document on every run — so
+//     an implementation that disagreed with the document could not reach the two legs below. The
+//     `cap` / `drop` / `pad` arguments are not options the document offers; they exist so the
+//     controls can build the string each clause FORBIDS and require the check to reject it.
+// ---------------------------------------------------------------------------------------------
+section("11. every duration the artifact carries, against D3 § 2.4's published format");
+{
+  const S24_ANCHORS = ['### 2.4 The clock, and every age on the page', '### 2.5 What re-renders'];
+  const s24 = sliceBetween(FLOOR_MD, ...S24_ANCHORS);
+  check(s24 !== null, `§ 2.4's own bounds were both found — ${s24 === null ? 'THEY WERE NOT' : `${s24.length} chars`}`);
+  const BND_HDR = '| Seconds in | Renders | The clause it is here for |';
+
+  /** § 2.4's boundary table, as [seconds, string] pairs. An empty parse is a measurement that
+   *  never happened, and the check below treats it as one. */
+  const boundsOf = (md) => {
+    const block = md === null ? null : sliceBetween(md, BND_HDR, null);
+    if (block === null) return [];
+    const lines = block.split('\n');
+    const sep = lines.findIndex((l) => /^\s*\|\s*-{3,}/.test(l));
+    if (sep < 0) return [];
+    const out = [];
+    for (const line of lines.slice(sep + 1)) {
+      const row = line.trim();
+      if (!row.startsWith('|')) break;
+      const cells = row.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+      const secs = Number(cells[0].replace('−', '-').replace(/,/g, ''));
+      const rendered = (cells[1] || '').match(/^`([^`]+)`$/);
+      if (!Number.isFinite(secs) || !rendered) break;
+      out.push([secs, rendered[1]]);
+    }
+    return out;
+  };
+  const BOUNDS = boundsOf(s24);
+  check(BOUNDS.length > 1,
+    `§ 2.4's boundary table parsed — ${BOUNDS.length} rows of it, each an input and the string the rule returns`);
+
+  /** D3 § 2.4's duration format, re-implemented from its seven clauses. */
+  const fmt = (seconds, { cap = 2, drop = true, pad = true } = {}) => {
+    const s = seconds > 0 ? Math.trunc(seconds) : 0;              // clause 1
+    const parts = [['h', Math.floor(s / 3600)], ['m', Math.floor(s / 60) % 60], ['s', s % 60]];
+    const first = parts.findIndex(([, v]) => v > 0);
+    if (first < 0) return '0s';                                    // clause 7
+    const out = [`${parts[first][1]}${parts[first][0]}`];          // clause 5, first unit unpadded
+    for (const [unit, val] of parts.slice(first + 1, first + cap)) {  // clause 3
+      if (val === 0 && drop) continue;                             // clause 4
+      out.push(`${pad ? String(val).padStart(2, '0') : val}${unit}`);  // clause 5
+    }
+    return out.join(' ');                                          // clause 6
+  };
+  const reproduce = (bounds) => bounds.filter(([secs, want]) => fmt(secs) === want).length;
+  check(BOUNDS.length > 0 && reproduce(BOUNDS) === BOUNDS.length,
+    `…and every row of it is reproduced by the function re-implemented from its clauses — ${reproduce(BOUNDS)}/${BOUNDS.length}`);
+
+  // THE DISCRIMINATION CONTROL, both ways and per clause. A formatter that agreed with everything
+  // would accept `11m 00s`; one that agreed with nothing would reject the artifact's whole sample
+  // set for reasons that have nothing to do with the artifact. Each perturbation is built from the
+  // document's OWN outputs by disabling one clause.
+  let perturbed = 0;
+  for (const [secs, want] of BOUNDS) {
+    for (const variant of [fmt(secs, { drop: false }), fmt(secs, { pad: false }), fmt(secs, { cap: 3 })]) {
+      if (variant === want) continue;
+      perturbed++;
+      if (fmt(parseDur(variant)) === variant) {
+        check(false, `the fixed-point test ACCEPTS ${JSON.stringify(variant)}, which § 2.4 forbids`);
+      }
+    }
+  }
+  check(perturbed > 0,
+    `…and the test was fed ${perturbed} per-clause perturbations of the document's own outputs on this run, rejecting each`);
+
+  // ---- leg A: every duration-shaped sample the artifact carries is a FIXED POINT of the format.
+  // The population is DERIVED — every string value anywhere in `FLEET`, whatever key holds it —
+  // not a list of keys written here. A sample under a key this suite never heard of is in.
+  const offenders = (probe) => {
+    const bad = [];
+    let seen = 0;
+    const walk = (node, where) => {
+      if (node === null || node === undefined) return;
+      if (typeof node === 'string') {
+        if (!/^\d+ ?[hms](?: \d+ ?[hms])*$/.test(node)) return;
+        seen++;
+        const canon = fmt(parseDur(node));
+        if (canon !== node) bad.push(`${where} = ${JSON.stringify(node)} (§ 2.4 renders ${JSON.stringify(canon)})`);
+        return;
+      }
+      if (Array.isArray(node)) { node.forEach((v, i) => walk(v, `${where}[${i}]`)); return; }
+      if (typeof node === 'object') for (const k of Object.keys(node)) walk(node[k], `${where}.${k}`);
+    };
+    for (const inst of probe.FLOORS || []) for (const s of probe.FLEET[inst] || []) walk(s, `${inst}/${s.seat}`);
+    return { bad, seen };
+  };
+  const A = offenders(P);
+  check(A.seen > 0,
+    `the artifact's sample fleet carries ${A.seen} duration-shaped values, found by SHAPE and not by key`);
+  check(A.bad.length === 0,
+    `…and every one of them is a string § 2.4's format returns${A.bad.length ? ` — ${A.bad.join('; ')}` : ''}`);
+
+  // ---- leg B: the dark desk's age is the SUBTRACTION, not a string somebody typed beside it.
+  // The page states the instant its sample fleet is frozen at; `delivery.last_receipt_at` is the
+  // basis § 2.4's `dark-only` marker names. Both ends are the server clock, so the age is derivable
+  // and is derived. ⛔ `action.running` is deliberately NOT derived from `action.started_at`: that
+  // is the SEAT's clock, and subtracting it from the server's is the one arithmetic § 2.4 forbids
+  // outright — a check that did it would enshrine the defect the document exists to prevent.
+  const frozen = HTML.match(/frozen sample at (\d{2}):(\d{2}):(\d{2})Z/);
+  check(!!frozen, `the artifact states the instant its sample fleet is frozen at — ${frozen ? frozen[0] : 'IT DOES NOT'}`);
+  const clockOf = (hms) => {
+    const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(hms || '');
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3] || 0) : null;
+  };
+  const ages = (probe) => {
+    if (!frozen) return { bad: ['the frozen clock was never read'], seen: 0 };
+    const now = clockOf(`${frozen[1]}:${frozen[2]}:${frozen[3]}`);
+    const bad = [];
+    let seen = 0;
+    for (const inst of probe.FLOORS || []) for (const s of probe.FLEET[inst] || []) {
+      const basis = clockOf(s.delivery && s.delivery.last_receipt_at);
+      if (basis === null || typeof s.no_data_for !== 'string' || !/\d/.test(s.no_data_for)) continue;
+      seen++;
+      const want = fmt(((now - basis) % 86400 + 86400) % 86400);
+      if (s.no_data_for !== want) {
+        bad.push(`${inst}/${s.seat}: dark since ${s.delivery.last_receipt_at}, read at ${frozen[1]}:${frozen[2]}:${frozen[3]} — § 2.4 renders ${JSON.stringify(want)}, the sample says ${JSON.stringify(s.no_data_for)}`);
+      }
+    }
+    return { bad, seen };
+  };
+  const B = ages(P);
+  check(B.seen > 0, `${B.seen} dark seat(s) carry both a receipt basis and an age, so the age can be DERIVED rather than compared`);
+  check(B.bad.length === 0,
+    `…and each one's age is the subtraction its own basis and the page's frozen clock produce${B.bad.length ? ` — ${B.bad.join('; ')}` : ''}`);
+
+  // ---- the controls: each leg re-run against something that MUST make it red -------------------
+  const SAMPLE_ANCHOR = 'quiet_for:"4m 12s"';
+  if (control(hitsOf(SCRIPT, SAMPLE_ANCHOR), 'a sample duration rewritten into a form § 2.4 drops the zero unit of')) {
+    const MUT = offenders(load(SCRIPT.replace(SAMPLE_ANCHOR, 'quiet_for:"11m 00s"')).probe);
+    check(MUT.bad.length > 0, `…and leg A goes red on it — ${MUT.bad.length ? MUT.bad.join('; ') : 'IT DID NOT'}`);
+  }
+  const BASIS_ANCHOR = 'last_receipt_at:"14:18:02"';
+  if (control(hitsOf(SCRIPT, BASIS_ANCHOR), "a dark seat's receipt basis moved eight minutes earlier")) {
+    const MUT = ages(load(SCRIPT.replace(BASIS_ANCHOR, 'last_receipt_at:"14:10:02"')).probe);
+    check(MUT.bad.length > 0, `…and leg B goes red on it, which is what says the age is derived from the basis and not read beside it — ${MUT.bad.length ? MUT.bad.join('; ') : 'IT DID NOT'}`);
+  }
+  const BOUND_ANCHOR = '| 660 | `11m` |';
+  if (control(hitsOf(FLOOR_MD, BOUND_ANCHOR), "§ 2.4's own boundary row for 660 s rewritten to the form clause 4 drops")) {
+    const MUT = boundsOf(sliceBetween(FLOOR_MD.replace(BOUND_ANCHOR, '| 660 | `11m 00s` |'), ...S24_ANCHORS));
+    check(MUT.length === BOUNDS.length && reproduce(MUT) < MUT.length,
+      `…and the reproduction goes red on it — ${reproduce(MUT)}/${MUT.length} rows reproduced, so the function is being held against the document rather than against itself`);
   }
 }
 

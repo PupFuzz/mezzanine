@@ -1,5 +1,6 @@
 compiled.php
 config.php
+daemon-*.lock
 down
 events.scanned.php
 lsp-*.php

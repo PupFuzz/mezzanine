@@ -2,12 +2,11 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Events\SeatRetired;
 use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
+use Tests\Feature\Feed\OutboxWire;
 use Tests\Feature\Sweep\SweepTestCase;
 
 /**
@@ -28,6 +27,21 @@ use Tests\Feature\Sweep\SweepTestCase;
  */
 class SeatConsoleTest extends SweepTestCase
 {
+    /**
+     * The competing retirement's `retired_at`, spelled as a `DATETIME(3)` — `Clock::FORMAT`,
+     * fractional part included.
+     *
+     * ⛔ THE `.000` IS LOAD-BEARING AND card#9250 MEASURED WHY. This read
+     * `'2026-01-01 00:00:00'`. SQLite hands back the literal it was given, so the round trip was
+     * exact there; MariaDB parses it into the `DATETIME(3)` that `§ 6.4` declares and hands back
+     * `2026-01-01 00:00:00.000`, and the assertion below failed on the first run of the
+     * `php-tests-mariadb` lane. Neither engine is wrong and neither is the application —
+     * `App\Fold\Clock::toMs()` already absorbs both spellings by name, and every wire value goes
+     * through `Clock::wire()`. What was wrong was a FIXTURE that was not a `DATETIME(3)` value,
+     * and writing one removes the engine from the assertion rather than weakening it.
+     */
+    private const COMPETING_AT = '2026-01-01 00:00:00.000';
+
     private function operator(string $email = 'ops@example.com'): User
     {
         return User::factory()->twoFactorConfirmed()->create(['email' => $email]);
@@ -101,7 +115,7 @@ class SeatConsoleTest extends SweepTestCase
 
     public function test_retiring_through_the_console_performs_the_whole_act(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
@@ -137,11 +151,12 @@ class SeatConsoleTest extends SweepTestCase
         // 4 — the version bump and the publish, both in the same transaction.
         $this->assertGreaterThan($before, (int) $state->state_version);
 
-        Event::assertDispatched(SeatRetired::class, fn (SeatRetired $e) => $e->seatRef === $this->seatRef
-            && $e->installId === self::INSTALL
-            && $e->seatId === self::SEAT
-            && $e->retiredBy === $operator->email
-            && $e->stateVersion === (int) $state->state_version);
+        $retired = $wire->ofType('seat.retired');
+        $this->assertCount(1, $retired, 'the console act published no seat.retired');
+        $this->assertSame(self::INSTALL, $retired[0]['install_id']);
+        $this->assertSame(self::SEAT, $retired[0]['payload']['seat_id']);
+        $this->assertSame('the box was decommissioned', $retired[0]['payload']['reason']);
+        $this->assertSame((int) $state->state_version, $retired[0]['payload']['state_version']);
     }
 
     public function test_a_reason_is_required_and_nothing_is_written_without_one(): void
@@ -262,14 +277,14 @@ class SeatConsoleTest extends SweepTestCase
      * ⚠ WHAT THIS DRIVES AND WHAT IT CANNOT. It drives the guard's PLACE: the other act is
      * committed on the connection immediately before the UPDATE is executed, so the UPDATE's
      * predicate is the only thing that can still see it — the old code passes its guard here and
-     * writes, this one matches zero rows. It does NOT drive concurrency: `lockForUpdate()` is a
-     * no-op on the SQLite this suite runs on and SQLite serialises writers anyway, so two genuinely
-     * interleaved transactions are not producible here on any store the suite has. That leg is
-     * reasoned in `App\Fleet\SeatRetirement`, not executed.
+     * writes, this one matches zero rows. It does NOT drive concurrency: the suite runs on ONE
+     * connection to MariaDB, the only store it runs on — the lock is real but has no second
+     * session to exclude — so two genuinely interleaved transactions are not producible here. That leg is reasoned in
+     * `App\Fleet\SeatRetirement`, not executed.
      */
     public function test_a_retirement_that_lands_after_another_one_writes_nothing(): void
     {
-        Event::fake([SeatRetired::class]);
+        $wire = new OutboxWire;
 
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
@@ -277,15 +292,20 @@ class SeatConsoleTest extends SweepTestCase
         $seatRef = $this->seatRef;
         $injected = false;
 
-        DB::beforeExecuting(function (string $query) use (&$injected, $seatRef): void {
-            if ($injected || ! str_contains($query, 'update "seats"')) {
+        // ⛔ THE TABLE IS QUOTED BY THE CONNECTED STORE'S GRAMMAR, NEVER BY HAND — card#9250.
+        // This read `update "seats"`, which is SQLite's quoting; on MariaDB it is backticks, the
+        // hook never fired, and `$injected` below is what caught it on the new lane's first run.
+        $updateSeats = 'update '.$this->wrapTable('seats');
+
+        DB::beforeExecuting(function (string $query) use (&$injected, $seatRef, $updateSeats): void {
+            if ($injected || ! str_contains($query, $updateSeats)) {
                 return;
             }
 
             $injected = true;
 
             DB::table('seats')->where('id', $seatRef)->update([
-                'retired_at' => '2026-01-01 00:00:00',
+                'retired_at' => self::COMPETING_AT,
                 'retired_by' => 'first@example.com',
                 'retired_reason' => 'the first act',
             ]);
@@ -302,15 +322,15 @@ class SeatConsoleTest extends SweepTestCase
 
         $this->assertSame('first@example.com', $seat->retired_by, 'who retired a seat is written once');
         $this->assertSame('the first act', $seat->retired_reason);
-        $this->assertSame('2026-01-01 00:00:00', (string) $seat->retired_at);
+        $this->assertSame(self::COMPETING_AT, (string) $seat->retired_at);
 
         $this->assertSame(SeatRetirementOutcome::ALREADY_RETIRED, $outcome->outcome);
         $this->assertSame(
-            '2026-01-01 00:00:00',
+            self::COMPETING_AT,
             $outcome->at,
             'and the caller is told WHEN it was retired — both callers print this value',
         );
 
-        Event::assertNotDispatched(SeatRetired::class);
+        $this->assertSame([], $wire->ofType('seat.retired'));
     }
 }

@@ -11,15 +11,16 @@ use Illuminate\Support\Facades\DB;
  *
  * § 6.1 requires "all identifier columns `ascii_bin`", because "ULIDs, slugs and session ids are
  * ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly". Both halves of
- * that are about MySQL: its default `utf8mb4_0900_ai_ci` is case- and accent-INSENSITIVE, so
- * without the override two ULIDs differing only in case would compare equal and `uq_dedup` would
- * silently merge two distinct events.
+ * that are about the deployed store: its configured collation is `utf8mb4_unicode_ci`
+ * (`config/database.php`), which is case-INSENSITIVE, so without the override two ULIDs differing
+ * only in case would compare equal and `uq_dedup` would silently merge two distinct events.
+ * (§ 6.1 named `utf8mb4_0900_ai_ci` until the 2026-09-09 MariaDB repin, card#7523; that collation
+ * is not native to MariaDB and is no longer named anywhere.)
  *
- * SQLite — the store `phpunit.xml` pins the suite to — has no `ascii_bin`, and emitting it is a
- * hard error. It also does not need it: SQLite's default `BINARY` collation is already exact, so
- * omitting the clause there preserves the comparison semantics § 6.1 is actually buying rather
- * than dropping them. What is lost on SQLite is the byte-per-character storage win, which is a
- * MySQL sizing argument (§ 6.8) and not a correctness one.
+ * The skip exists for SQLite — the suite's store until card#9328 — which has no `ascii_bin`
+ * (emitting it is a hard error) and whose default `BINARY` collation is already exact. SQLite is no
+ * longer a supported configuration (`docs/PLAN.md` D-15), so every supported store takes the
+ * branch below; the skip arm is retained code, not a supported path.
  *
  * This exists as one helper rather than a driver check repeated at each of the ~25 identifier
  * columns, because the version of this that gets it wrong is the one where a column is added
@@ -47,11 +48,13 @@ final class Ddl
      *
      * INDEX NAMES ARE PER-TABLE ON MySQL AND PER-DATABASE ON SQLITE, and § 6.4 uses one name on
      * two tables: `ix_open` is declared on both `calls` ("WHERE seat_ref=? AND closed_at IS NULL")
-     * and `attention_requests`. That is legal MySQL and a hard error on SQLite, which is where the
-     * suite runs — so the *production* engine gets the document's names verbatim, and the test
-     * store gets them qualified. Qualifying everywhere instead would have been simpler and would
-     * have shipped MySQL a set of index names § 6.4 does not contain, which is the one thing that
-     * section says a builder may not do.
+     * and `attention_requests`. That is legal MySQL and a hard error on SQLite — so the engine
+     * family production runs gets the document's names verbatim, and SQLite gets them qualified.
+     * Since card#9328 only the verbatim arm runs anywhere supported: SQLite is not a supported
+     * configuration, so the qualified arm is retained code, not a supported path. Qualifying
+     * everywhere instead would have been simpler
+     * and would have shipped MySQL a set of index names § 6.4 does not contain, which is the one
+     * thing that section says a builder may not do.
      *
      * The branch lives here rather than at each call site for the same reason `ascii()` does: the
      * version of this that gets it wrong is the one where an index is added later and its author

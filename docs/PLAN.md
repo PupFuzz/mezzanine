@@ -68,6 +68,71 @@ its date, its decider and the scope of what it moved. The original row above sta
   [`§ 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates): they move from asserting an
   absence to asserting declared provenance, at a named cost.
 
+- **D-07 · the first clause EXERCISED, not superseded — operator, 2026-09-12 (card#7341).**
+  D-07's *"floor art from **CC0 tilesets**"* now names one: Kenney's **Furniture Kit**
+  (<https://kenney.nl/assets/furniture-kit>, `CC0-1.0`), vendored under `resources/floor/` with a
+  `docs/ATTRIBUTION.md` row per file and its terms, archive hash and omissions recorded in
+  `resources/floor/LINEAGE.md`. This closes
+  [`docs/design/FLOOR.md § 14`](design/FLOOR.md#14-open-questions-for-the-review-loop) item 7, whose
+  generator half closed on 2026-08-25. **The decision is recorded as an append rather than left
+  implicit because of the clause attached to it:** the operator chose this pack **explicitly as a
+  bridge to first-party vector art**, and being pre-rendered raster it does **not** meet the
+  2026-08-27 amendment's resolution-independence requirement. So the two appends stand together —
+  the ported pixel art is interim, and so is this — and neither is a reading of the other.
+  **What does NOT move:** the last clause (*the upstream's commercial tilesets are never vendored*)
+  is untouched and permanent, and nothing here widens the licence allowlist, which remains an
+  operator decision taken separately.
+
+- **D-12 · the required-check clause only — measured, not re-decided; 2026-09-09 (card#9054).**
+  D-12 records *"`card-token-lint` is a required check on both"*. That was the measured state on
+  2026-08-23 and it is no longer the whole list — contexts have been added since, and a reader who
+  takes the row for the current list reads *the only one* into it — the same reading that told
+  reviewers a red `asset-provenance` did not block a merge while it did. **What moves:**
+  nothing that was *decided*. The branch model, the merge methods and ruleset enforcement all
+  stand as written. Only the membership of the list has moved, and it is **not this register's to
+  carry**: it is a repository-settings fact no document in this repo can verify.
+  [`docs/VERSIONING.md § Branch model`](VERSIONING.md) is its one home and carries the API command
+  that re-derives it. Read the list there, never here.
+
+- **D-15 · the engine only — operator, 2026-09-09 (card#7523).**
+  D-15 reads *"The fleet-state store is **MySQL on a dedicated DB host**; provisioning it is a
+  deployment task downstream of D2's schema, owned by the Mezzanine build agent (D-13)"*. The
+  operator repinned the engine on **2026-09-09**: the store is **MariaDB**, at the version floor
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) pins, replacing MySQL ≥ 8.0.12.
+  **What moves:** the engine and its version floor, and nothing else. **What does NOT move,
+  and each is load-bearing:** the *dedicated DB host* clause is untouched; provisioning
+  is still downstream of D2's schema and still the build agent's (D-13); the pinned database names
+  and the test-isolation posture of
+  [`docs/design/FLEET-STATE.md § 6.2`](design/FLEET-STATE.md#62-database-names-pinned-and-published)
+  are untouched. **Where the consequence is worked out:**
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) — it re-argues every requirement against
+  MariaDB rather than carrying it across, records the engine divergences that were checked and
+  found unreachable from this schema, and records the one item that is **UNSOURCED** (quantified
+  whole-column JSON read/write performance, which needs a benchmark and has not had one).
+  ⚠ **Not settled by this amendment:** whether the application moves from Laravel's `mysql`
+  connection to `config/database.php`'s `mariadb` connection. The app is wired to `mysql` today,
+  `bin/deploy.sh` refuses anything else, and the test-isolation guards key on
+  `database.connections.mysql.database` — so that is a separate decision with its own blast radius,
+  and it is the operator's to take.
+
+- **D-15 · SQLite is not a supported configuration — operator, 2026-09-13 (card#9328).**
+  In the operator's words: *"website should use mysql, not sqlite. In fact, CI should be testing
+  mysql and not sqlite"*, *"We will always use mariadb for the DB."* and *"sqllite will not be a
+  supported configuration for website."* D-15 and its 2026-09-09 amendment pinned the PRODUCTION
+  store; the test suite, CI's `php-tests` lane and a fresh local checkout still defaulted to
+  SQLite. **What moves:** MariaDB is the only engine anywhere this application runs —
+  production, sandbox, CI and local development — and SQLite is unsupported in all of them.
+  `server/phpunit.xml`, `server/.env.example`, `server/config/database.php` and
+  `.github/workflows/php-tests.yml` default to and run on it, and `Tests\TestCase`'s store guard
+  now also aborts a suite whose default connection is anything but `mysql`. **This reverses
+  card#9250's ruling** that MariaDB coverage in CI be an additional lane beside SQLite rather than
+  a changed one. **What does NOT move:** the *dedicated DB host* clause, § 6.1's floor and § 6.2's
+  pinned database names and isolation posture. ⚠ **Still not settled, and still the operator's:**
+  the `mysql`-versus-`mariadb` Laravel connection question the 2026-09-09 amendment records. Its
+  blast radius grew with this change — the guards, the CI template check and the round-trip harness
+  now key on the connection name `mysql` too. Re-derive the sites rather than trusting a list:
+  `git grep -nE "'mysql'|mysql\\||DB_CONNECTION=mysql" -- server .github bin`.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
@@ -106,8 +171,13 @@ producer, clean boundary, either side deployable alone.
 
 ## 2. Design-first gates — the order is the plan
 
-Three design artifacts precede their builds, in strict order, because each is the contract the
-next consumes. Each is a PR into `dev` reviewed like code.
+Design artifacts precede their builds. The **D1 → D2 → D3 chain** below runs in strict order,
+because each of the three is the contract the next consumes; a document that consumes the chain
+rather than extending it (D4) is listed after it and is not in that ordering. Each is a PR into
+`dev` reviewed like code. **No count is written here** — this section is the set a reader works
+from, and a figure beside a set it counts is a second copy of that set, false at the next addition
+(`docs/design/FLEET-STATE.md § 2.1` takes the same position about its process table, for the same
+measured reason).
 
 **The bar (D-14): every design doc must be implementable by an AI agent that has ONLY the
 document.** The implementing agent — plan for a capable frontier model (Opus-class) — will not
@@ -152,7 +222,8 @@ Status: **merged 2026-08-23** (PR #7).
 
 **D2 — fleet-state model + feed contract (`docs/design/FLEET-STATE.md`).** What the store keeps
 (per-seat current state + a short activity window, keyed by install/seat), retention, and what
-the browser receives: **snapshot-on-connect, deltas after**, over Reverb; the REST snapshot for
+the browser receives: **snapshot-on-connect, deltas after**, over native Server-Sent Events
+(card#9287; Reverb until then); the REST snapshot for
 non-browser consumers (the watchdog). Merge rules for the three sources (telemetry supplies the
 live *action*; GitHub/board events supply the human-readable *task title*; the three-tier status
 fallback from the proposal).
@@ -171,6 +242,21 @@ actually rests on and what the operator ruled on card#7953.
 
 Status: **in review** — drafted; the adversarial review loop runs before merge.
 
+**D4 — the board task-title producer (`docs/design/BOARD-TASK.md`).** Not part of the chain above:
+it **consumes** D2 and extends nothing. It designs the producer behind tier 1 of D2 § 4.9's
+task-title merge — the kanban poller, the seat→board-user join, the credential posture, and the
+input table the fold derives the title from rather than a value written into `seat_state`, which is
+what keeps a board-sourced title reproducible by D2 § 6.6's rebuild. **It exists as a document of
+its own because D2 puts it there:** D2 § 1.2 lists the kanban poller among its non-goals by name,
+and D2 § 14 item 3 asked for a ruling on where the board producer is designed — a question that item
+now answers with this document's name, the ratification of 2026-09-12 having written the answer into
+it. It is held to the D-14 bar above like every document listed before it.
+
+Status: **designed and ratified; the poller is not built** — card#7582. The D2 amendments every
+structural piece needed were ratified and applied on 2026-09-12, and the store shape shipped with
+them because retirement now clears the board-user mapping; `docs/design/BOARD-TASK.md § 13` records
+where each landed and what remains unbuilt.
+
 ## 3. Work breakdown
 
 Board 14 is the queue; this table is the map. Order within a phase is by dependency; phases
@@ -182,12 +268,12 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | D2 fleet-state + feed (new card) | D1 | review; snapshot+delta contract explicit |
 | | D3 floor UI spec (card#7457) | D2 draft | review; identity mapping defined |
 | **P1 telemetry** | `fleet-reporter` core: spool + flusher (#7335) | D1 | hermetic selftest; **never blocks the agent**; survives server down; sanitizer has RED fixtures |
-| | installer, Linux + **Windows validated** (#7336) | #7335 | real install on a Windows seat before anything trusts the signal |
+| | installer, Linux + **Windows validated** (#7336) — **won't-do**; Linux seats install by hand with `fleet-reporter/INSTALL-LINUX.md` (card#9368). A Windows procedure is owed when the Windows agent seat onboards | #7335 | a real install on a seat before anything trusts the signal. **Operator ruling 2026-09-13:** Windows validation is not required now, the validated Linux install satisfies this for the present, and Windows validation is owed at the Windows agent seat's onboarding (D1 § 16) |
 | | kill-vs-idle proof (#7337) | #7335 | the D1-specified test, run for real against a `/clear` |
-| **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **websocket handshake**, and REST snapshot; seat-token ingest is separate and never browser-facing |
+| **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
-| | fleet-state store + Reverb feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
-| | MySQL provisioning on the dedicated DB host (new card, D-15) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
+| | fleet-state store + SSE feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
+| | MariaDB provisioning on the dedicated DB host (new card, D-15, as amended 2026-09-09) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
@@ -279,32 +365,141 @@ rule violations anyone could have committed at the time.
   ee7df9b9` — **was not reachable from this seat** (no such path on this host; the roundtable repo
   answers 404 to this credential), so the fleet's deploy scripts are *not* yet demonstrably one
   shape and no line of the sample was copied. What was adopted is rt#347's own enumeration of the
-  sample's load-bearing properties: forward-only migrations (MySQL DDL is non-transactional), the
-  load-bearing cache-rebuild order, down-and-stay-down on failure for operator review,
+  sample's load-bearing properties: forward-only migrations (the store's DDL is
+  non-transactional), the load-bearing cache-rebuild order, down-and-stay-down on failure for operator review,
   re-exec-after-checkout, and every "fails once then silently succeeds on a bare re-run" state made
   loud. **Two things are outstanding**: rt#347 item 5 — take the adapted script to kanban-solo on a
   fresh thread once the P2 host exists — and the first real run, which is the only place the
-  live-host leg (systemd units, sudo posture, MySQL, PHP-FPM, `/up` through the real proxy) is
-  exercised at all.
+  live-host leg (the installed crontab and a real daemon restart, the FPM pool's opcache posture,
+  MariaDB, `/up` through the real proxy) is exercised at all.
 - **One divergence from the sample's topology, ruled binding by rt#347 item 1:** the deploy
-  restarts the long-lived daemons *inside* the window — `mezzanine:fold`, `mezzanine:sweep`,
-  `mezzanine:feed-heartbeat` and, once card#7339 makes Reverb the broadcaster, Reverb. The sample's
+  restarts the long-lived daemons *inside* the window — the set `bin/supervision.sh` lists — and no
+  feed daemon: card#9287 re-pinned the feed to Server-Sent Events served by PHP-FPM, whose workers the
+  deploy does not restart; they pick up a release's code through opcache revalidation (next bullet),
+  and a stream already open when the code moves holds the previous release until something ends it,
+  which is `mezzanine:feed-reload`'s job (`docs/design/FLEET-STATE.md § 2.1`). The sample's
   host runs a host-scoped shared daemon serving several tenants and is silent about restarting it;
   this host is single-tenant, so every long-lived PHP process on it holds *this* app's code, and
-  copying that silence would leave every deploy serving stale broadcast code invisibly — sockets
-  up, floor rendering, payloads one release old. Reverb's membership in the restart set is
-  **derived** from `BROADCAST_CONNECTION` rather than asserted, so it becomes mandatory the moment
-  #7339 flips it with nobody having to remember.
+  copying that silence would leave every deploy serving stale code invisibly — daemons up, floor
+  rendering, payloads one release old. The Reverb unit `bin/deploy.sh` used to derive from
+  `BROADCAST_CONNECTION` is retired, with systemd (next bullet), and the key itself went on
+  card#9300. **The stream is built (card#9300)**: the window runs `mezzanine:feed-reload`
+  immediately before the opcache wait and then ends the streams that missed it (the stream bullet
+  below), and § 8.3's host checks that need no credential — R1's ini half and R2's pool half — are
+  deploy refusals, each written only after its value was measured on this host.
+- **No root, no sudo, no systemd — on prod as on the sandbox (operator ruling 2026-09-13).** *"The
+  web app should not need root access"*; asked whether that binds prod: *"yes. prod is set up the
+  same way as sandbox"* — a Virtualmin sub-server account with no sudo, no lingering systemd user
+  manager, and a per-domain PHP-FPM pool whose workers run as that account under a master that is
+  root's. `bin/deploy.sh` refuses to run as root and has no escalation mode. What follows from that is
+  argued at each step in the script:
+  - **Supervision is the application user's crontab.** `bin/supervision.sh` is the one statement of
+    what is supervised — the long-lived daemons of `docs/design/FLEET-STATE.md § 2.1`, plus the
+    `schedule:run` entry that drives `mezzanine:purge` — and renders their entries: every minute
+    under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
+    `@reboot`. **Install it as the application user when the host is stood up: `bin/supervision.sh
+    install`.** Each deploy then installs its own release's block inside the window — a crontab missing
+    an entry or carrying another release's lines included, which the dry run names line by line — so a
+    release that adds or drops a daemon brings its crontab with it; a crontab that install would refuse
+    is refused by the deploy before anything is touched. **The lock files do not move between
+    releases:** they are how the deploy finds the daemons that are running, and it refuses a release
+    that would change their path. Install replaces only its own marked block, and refuses —
+    writing nothing — a crontab it cannot read, or one that already runs a supervised command outside
+    that block. **Moving a hand-staged crontab onto it** (the sandbox's case) has an order that never
+    runs two copies of a daemon — remove the hand-staged lines, stop the daemons they started by their
+    own lock files, then install — and `bin/supervision.sh`'s header (§ MOVING A HAND-STAGED CRONTAB)
+    owns it, with the sandbox's command.
+    `bin/deploy.selftest.sh` reds when the list and § 2.1's long-lived daemon rows disagree.
+  - **A restart is a signal, and it is proven.** Inside the window the deploy sends SIGTERM to
+    whatever holds any of the checkout's daemon lock files — whichever release's crontab started it: a
+    daemon the new release dropped, and, on a re-run after a deploy that failed in the window, every
+    daemon the previous release still has up — relaunches the command cron runs, and fails the window
+    unless each of its locks is held, a settle later, only by processes that started after the restart
+    (their start read with `ps`; a holder whose start cannot be read fails it), and every other lock
+    file is held by nothing. No daemon registers a signal handler, so a kill
+    mid-pass is a crash — which § 2.1 already requires every process to survive; a daemon added later
+    must keep that property, and `bin/deploy.sh § restart_daemons` says how to re-measure it. The fold's guarantee is § 6.5's (the cursor advance is in the
+    projections' transaction; every projection is an idempotent upsert), and a SIGTERM'd client's
+    open transaction was measured rolled back on MariaDB. ⚠ AT-D2-9's real `SIGKILL`-the-fold build
+    is still not driven; its test says why.
+  - **PHP-FPM is not reloaded — the account cannot reload it.** Workers read the new code through
+    opcache's timestamp validation. Measured on the sandbox host with its own FPM binary and php.ini,
+    across an in-place `git checkout`: the old code 0.1 s later, the new code 3.1 s later at PHP's
+    defaults (`validate_timestamps=1`, `revalidate_freq=2`); with `validate_timestamps=0`, still the
+    old code 8 s later. So the deploy reads the FPM SAPI's opcache settings, every pool running as
+    the deploy user, and every `.user.ini` over the app's scripts — in the vhost's document root
+    (`MEZZ_DOCROOT`, default `$HOME/public_html`, warned about by name when it does not exist) and in
+    the release's `server/public/` — refuses timestamps off or `opcache.preload` set, and waits out the
+    longest `revalidate_freq` after the last code write before `php artisan up` — the previous
+    release's `server/public/.user.ini` counted, because FPM keeps a directory's `.user.ini` values for
+    `user_ini.cache_ttl` after the file changes. A long-lived request
+    already open when the code moves keeps the old code until it ends, which is
+    `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
-  `APP_DEBUG=true`, empty `APP_KEY`, non-MySQL, TLS-less, a non-persistent `CACHE_STORE`), the PHP
-  floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
+  non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
-  *"the deploy checks it"*, and this is that check), and a systemd unit that is missing or
-  disabled. It warns, rather than refusing, where the doc's own reading is that the state is
+  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
+  or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
+  release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
+  release that would move the daemons' lock files, a PHP-FPM whose opcache would not re-read changed files (timestamps
+  off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM
+  binary), a missing `cgi-fcgi` or `timeout`, a malformed `MEZZ_FEED_DRAIN_CEILING_S`, and a host
+  that cannot serve or drain the feed's stream (card#9300): no `MEZZ_STREAM_POOL`, or one naming no
+  pool, another user's pool, a `request_terminate_timeout` other than 0, no `pm.status_path` or
+  `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
+  pool `zlib.output_compression`, `output_handler` or `ignore_user_abort` set in the ini, the pool
+  or a `.user.ini`. `output_buffering` is reported and **not** refused — measured, the handler's
+  flush defeats this host's 4096. It warns, rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
-  host's `.env` does not set.
+  host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
+  from does not exist — a gap it says out loud rather than a state it calls safe.
+- **The feed's stream needs three things from the host, and one check after a deploy that only an
+  operator can run** (card#9300; `docs/design/FLEET-STATE.md § 8.3` R1 and R2 own the requirements
+  and their measurements — this bullet is the runbook, not a second copy of them).
+  - **A dedicated PHP-FPM pool for `GET /api/fleet/stream`**, running as the application user (so the
+    deploy can end a stream without root), with `request_terminate_timeout = 0`, a `pm.status_path`,
+    a `pm.status_listen` (a status listener the pool's pinned workers cannot block — measured: without
+    it the deploy's status read queued behind the streams until it timed out), and a `pm.max_children`
+    sized in open browser tabs, not browsers. The vhost routes `/api/fleet/stream` — and nothing else —
+    to it; every other request stays on the application's pool. Name the pool to the deploy with
+    `MEZZ_STREAM_POOL=<pool name>`. Both are root acts (Virtualmin); the deploy refuses a host without
+    them, and says which part is missing. ⚠ **The first deploy of the release that introduced this check
+    does not refuse — it warns, in the window**: its preconditions ran in the previous release's copy of the
+    script, which never asked, and staying down over a pool nobody was asked for would be the worse outcome.
+    Its streams are then not drained, and the deploy after it refuses until the pool exists.
+  - **`flushpackets=on` for that pool's socket in the vhost**, e.g. `<Proxy
+    "unix:/run/php/<stream pool>.sock|fcgi://127.0.0.1"> ProxySet flushpackets=on </Proxy>`, and no
+    compression filter on `text/event-stream`. ⛔ **Without it every browser renders *feed down — polling*
+    against a healthy fleet** (FLOOR.md § 9 F19): measured on a throwaway Apache with this host's vhost
+    shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response, headers included, until the
+    request ended. The deploy cannot see the vhost; the check below can.
+  - **A finite client-send timeout on the proxy** (Apache `Timeout`), so a frozen client's worker comes
+    back (R2's teardown clause). The heartbeat keeps a healthy stream writing every 15 s.
+  - **After any deploy that changed the stream path, the proxy or the stream pool — and once when the host
+    is stood up — run the R1 wire check as an operator.** Sign in to the site in a browser (MFA
+    included), copy the session cookie's `name=value` from the browser's developer tools into a file
+    holding the single line `Cookie: <name>=<value>`, `chmod 600` it — it is a live session: never paste
+    it on a command line, where it lands in `ps` and in shell history — and run from a checkout:
+
+    ```
+    bin/feed-stream-check.sh https://<origin> <cookie-header-file>
+    ```
+
+    It listens 50 s and asserts on timing — the on-connect `fleet.health` within 2 s, no heartbeat gap over
+    20 s, no `Content-Encoding` — and exits 0 on PASS, 1 naming each failure. A FAIL that says *not even the
+    response headers arrived* is the missing `flushpackets`; *Content-Encoding* is a compression filter; a
+    `401`/`403` is the cookie. Delete the cookie file afterwards. The script's header records the
+    PASS/FAIL/FAIL/PASS run it was seen to give against a deliberately broken proxy before it was
+    trusted. It needs `mezzanine:feed-heartbeat` running on the host, as every deploy leaves it.
+  - **What a deploy does to open streams, for the operator reading its log**: `mezzanine:feed-reload`
+    writes `fleet.reload`; every stream that is draining delivers it and ends with
+    `feed.close{reason:"reload"}`, and its browser reconnects on its own once the window closes. The
+    deploy then waits up to `MEZZ_FEED_DRAIN_CEILING_S` (30 s) for the streams the previous release opened
+    to finish, and SIGTERMs the rest — the log names their pids and the closing banner's `streams :` line
+    says what happened. A stream it could not end is a warning, never a failed deploy.
 - **The handoff milestone:** when D1–D3 are merged, the project moves to its own agent seat
   (sandbox owner + implementer); aimla-pm drops to coordinator (reviews, cross-project routing,
   this plan's upkeep). The new seat inherits this plan as its orientation — which is a reason
@@ -367,7 +562,8 @@ rule violations anyone could have committed at the time.
   still need the password to sign in). That is inherent to the mechanism and was accepted
   knowingly; it is why the destination is read from the user row and is never a request parameter,
   and it is why an install that does not want the property simply leaves `MAIL_MAILER` alone.
-- Plan-side obligations, host-agnostic: Laravel + Reverb behind the web server, served from
+- Plan-side obligations, host-agnostic: Laravel behind the web server, the feed served as SSE by
+  PHP-FPM (card#9287), from
   `server/` (D-16); `.env` copied from `server/.env.example` and filled in on the host, with
   `php artisan key:generate` run there — the example ships an empty `APP_KEY` and no
   credential; **`php artisan mezzanine:user:create` run there too, because nothing else creates a

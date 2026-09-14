@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Feed;
 
+use App\Console\Commands\FeedReloadCommand;
 use App\Feed\FeedHeartbeat;
+use App\Feed\FeedStream;
 use App\Feed\FleetHealthMessage;
 use App\Feed\FleetReload;
 use App\Feed\SeatDelta;
 use App\Fold\Clock;
+use App\Fold\Fold;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
 use Illuminate\Support\Facades\DB;
@@ -17,46 +20,43 @@ use Illuminate\Support\Facades\Schema;
  * `docs/design/FLEET-STATE.md § 8.3`'s message table and § 8.2.4's object, as contracts — the
  * things a consumer is told to expect and would otherwise discover by inspection.
  *
- * ⚠ See `CapturingBroadcaster` for what a broadcast assertion in this suite is and is not evidence
- * of. In particular AT-D2-15 (per-connection backpressure) is NOT here and is NOT claimed: it is a
- * property of a socket server that is not installed, and a "backpressure test" written against
- * this rig would close a queue the rig itself invented.
+ * ⚠ See `OutboxWire` for what a `feed_outbox` assertion in this suite is and is not evidence of: it
+ * reads what the WRITERS committed. What a stream DELIVERS is `StreamClient`'s, in `StreamHandlerTest`
+ * and the AT-D2-7/-8/-15/-19/-25 files (card#9300).
  */
 class FeedSurfaceTest extends FeedTestCase
 {
     /**
-     * ⛔ THE CHANNEL NAME HAS TWO SPELLINGS THAT MUST AGREE, AND NEITHER IS § 8.3's LITERAL TEXT.
-     *
-     * § 8.3 declares `private-fleet.{install_id}`. Laravel's `PrivateChannel` adds the `private-`
-     * prefix on the wire and `Broadcast::channel()` registers the name WITHOUT it, so both halves
-     * of this application must spell it `fleet.{install}` and the WIRE must read
-     * `private-fleet.…`. Getting either literal-minded produces `private-private-fleet.…`, which
-     * fails silently: the publisher publishes to a channel nothing has authorised, and the client
-     * subscribes to one nothing publishes to.
+     * ⭐ ONE STREAM, FLEET-WIDE — § 8.3 (card#9287) retired the per-install `private-fleet.{install_id}`
+     * channel with the transport that needed it. What replaces the channel NAME as a contract is the
+     * row's `install_id`: § 9's per-subscriber filter keys on it, so it must be the message's own
+     * install where the message has one and `NULL` on a fleet-wide message — never a second copy that
+     * disagrees with the payload.
      */
-    public function test_the_wire_channel_is_private_fleet_install_and_the_authorisation_matches(): void
+    public function test_every_row_carries_its_messages_install_and_a_fleet_wide_one_carries_none(): void
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
+        $this->artisan('mezzanine:feed-heartbeat', ['--once' => true])->assertSuccessful();
+        $this->retire();
 
-        foreach ($this->wire->sent as $message) {
-            $this->assertSame(['private-fleet.'.self::INSTALL], $message['channels'],
-                '§ 8.3: one channel per install, and the wire name carries the private- prefix');
+        $rows = $this->wire->all();
+        $this->assertNotEmpty($rows, 'the control failed: nothing was written');
+
+        $scoped = ['seat.delta', 'seat.retired', 'room.map', 'coord.thread', 'coord.round'];
+
+        foreach ($rows as $row) {
+            if (in_array($row['t'], $scoped, true)) {
+                $this->assertSame($row['payload']['install_id'], $row['install_id'],
+                    $row['t'].': the row\'s install_id is not the message\'s own');
+                $this->assertSame(self::INSTALL, $row['install_id']);
+            } else {
+                $this->assertNull($row['install_id'], $row['t'].' is fleet-wide and carries no install');
+            }
         }
 
-        $this->assertNotEmpty($this->wire->sent, 'the control failed: nothing was published');
-
-        // The AUTHORISATION half spells the same name, unprefixed. Read off the router's
-        // registered channel rather than restated, so the two cannot drift: `routes/channels.php`
-        // registers `fleet.{install}` and `FeedEnvelope::broadcastOn()` builds
-        // `new PrivateChannel('fleet.'.$install)`, and it is `PrivateChannel` that adds the
-        // prefix seen above.
-        $this->actingAs($this->enrolled())
-            ->postJson('/broadcasting/auth', [
-                'channel_name' => 'private-fleet.'.self::INSTALL,
-                'socket_id' => '1234.5678',
-            ])
-            ->assertOk();
+        $this->assertContains(null, array_column($rows, 'install_id'), 'no fleet-wide row was exercised');
+        $this->assertContains(self::INSTALL, array_column($rows, 'install_id'), 'no install-scoped row was exercised');
     }
 
     /** § 8.3's envelope: "every message: `{"feed_version":1,"t":…,"server_time":"…", …}`". */
@@ -69,20 +69,19 @@ class FeedSurfaceTest extends FeedTestCase
 
         $types = [];
 
-        foreach ($this->wire->sent as $message) {
+        foreach ($this->wire->all() as $message) {
             $this->assertSame(1, $message['payload']['feed_version']);
             $this->assertArrayHasKey('t', $message['payload']);
             $this->assertArrayHasKey('server_time', $message['payload']);
 
-            // The event name a client binds to IS `t`. A message whose broadcast name and whose
-            // declared type differ is one no consumer can subscribe to from the document.
-            $this->assertSame($message['payload']['t'], $message['event']);
+            // The row's `t` — what § 9's filter and the reload check read without parsing JSON — IS
+            // the envelope's `t`, the one a client dispatches on. Two values that could disagree
+            // would be a stream whose handler and whose client read different messages.
+            $this->assertSame($message['payload']['t'], $message['t']);
 
             $types[$message['payload']['t']] = true;
         }
 
-        // The four of § 8.3's five this card can produce. `fleet.reload`'s producer is a deploy
-        // step that does not exist — see `App\Feed\FleetReload`.
         $seen = array_keys($types);
         sort($seen);
 
@@ -90,11 +89,36 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * § 8.3's `feed.heartbeat`: "every **15 s**, per channel, **UNCONDITIONALLY**".
+     * § 2.1's feed reload: one `fleet.reload` row carrying the release's `feed_version`, and the command
+     * returns no sooner than lag + tick + margin — the wait is what lets a deploy know every draining
+     * stream has read it. Measured on the REAL clock, because the wait is real.
+     */
+    public function test_feed_reload_writes_one_fleet_wide_row_and_waits_out_lag_tick_and_margin(): void
+    {
+        $started = hrtime(true);
+
+        $this->artisan('mezzanine:feed-reload')->assertSuccessful();
+
+        $elapsedMs = intdiv(hrtime(true) - $started, 1_000_000);
+
+        $reloads = $this->wire->ofType('fleet.reload');
+        $this->assertCount(1, $reloads);
+        $this->assertNull($reloads[0]['install_id']);
+        $this->assertSame(FleetReload::FEED_VERSION, $reloads[0]['payload']['feed_version']);
+        $this->assertSame('deploy', $reloads[0]['payload']['reason']);
+
+        $this->assertGreaterThanOrEqual(
+            Fold::VISIBILITY_LAG_S * 1000 + FeedStream::TICK_MS + FeedReloadCommand::MARGIN_MS,
+            $elapsedMs,
+            'the command returned while every stream was still inside the visibility lag',
+        );
+    }
+
+    /**
+     * § 8.3's `feed.heartbeat`: "every **15 s**, one row fleet-wide, **UNCONDITIONALLY**".
      *
      * The unconditional half is the one worth a test: a heartbeat that is suppressed when nothing
-     * is happening stops exactly when a client most needs it, and "a socket that has silently died
-     * is indistinguishable from a fleet where nothing is happening".
+     * is happening stops exactly when a client most needs it.
      */
     public function test_the_heartbeat_is_published_on_a_fleet_where_nothing_at_all_has_happened(): void
     {
@@ -106,7 +130,7 @@ class FeedSurfaceTest extends FeedTestCase
         $beats = $this->wire->ofType('feed.heartbeat');
 
         $this->assertCount(1, $beats, 'a quiet fleet published no heartbeat');
-        $this->assertSame(['private-fleet.'.self::INSTALL], $beats[0]['channels']);
+        $this->assertNull($beats[0]['install_id'], 'one row fleet-wide, not one per install');
 
         // § 8.2.4: the eight health fields ride it, and `counters` NEVER does — "nine monotonic
         // integers on that path would be permanent bytes carrying, almost always, no news".
@@ -154,13 +178,11 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
-     * § 2.2's WebSocket-connect row: with the store unreachable the connection is "accepted and
-     * IMMEDIATELY SENT `fleet.health` WITH `db: "down"`, … which is the whole reason the socket
-     * stays up in that posture".
-     *
-     * The connect half needs a socket server this card does not install; what IS driven is that
-     * the daemon reaches the `db: "down"` object rather than exiting, which is the half that would
-     * take the messenger down with the message.
+     * The heartbeat daemon, with the store READABLE BUT DEGRADED — a table it reads is gone and the
+     * outbox still takes writes: it reaches the `db: "down"` object rather than exiting, and that
+     * object reaches the outbox (§ 2.1's heartbeat row). The stream-connect half of § 2.2's row — a
+     * connecting browser told `db: "down"` by the handler's first frame — is
+     * `At19StreamReadAuthTest`'s, where the handler is.
      */
     public function test_a_store_failure_publishes_db_down_rather_than_killing_the_daemon(): void
     {
@@ -257,7 +279,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->deliver($this->cleanTurn());       // no open call, no title
         $this->stayAlive();                       // settles `enabled` and the reporter fields
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         for ($i = 0; $i < 20; $i++) {
             $this->stayAlive();
@@ -277,7 +299,7 @@ class FeedSurfaceTest extends FeedTestCase
 
         $deltas = $this->wire->ofTypeFrom('seat.delta', $mark);
         $this->assertCount(1, $deltas, 'a heartbeat carrying news emitted no delta');
-        $this->assertSame('disabled', $deltas[0]['payload']['patch']->render_state);
+        $this->assertSame('disabled', $deltas[0]['payload']['patch']['render_state']);
     }
 
     /**
@@ -325,7 +347,7 @@ class FeedSurfaceTest extends FeedTestCase
         $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
 
         // ── ARM 1: `context` and `model_label`, written by `Projector::contextSample()` ───────
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver([$this->event('context.sample', [
             'used_pct' => 73.2, 'used_tokens' => 146401, 'total_tokens' => 200000,
@@ -346,9 +368,9 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertContains('model_label', $changed,
             '§ 6.5: `model_label` moves with the sample that carries it');
 
-        $this->assertSame(73.2, $patch->context['used_pct']);
-        $this->assertSame(146401, $patch->context['used_tokens']);
-        $this->assertSame('claude-opus-5', $patch->model_label);
+        $this->assertSame(73.2, $patch['context']['used_pct']);
+        $this->assertSame(146401, $patch['context']['used_tokens']);
+        $this->assertSame('claude-opus-5', $patch['model_label']);
 
         // The SNAPSHOT was already correct and stays correct — the control that keeps this fix
         // from having traded one defect for a worse one.
@@ -357,7 +379,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertSame('claude-opus-5', $seat['model_label']);
 
         // ── ARM 2: `enabled`, written by `Projector::heartbeat()` ────────────────────────────
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver([$this->disablingHeartbeat()]);
         $this->fold();
@@ -367,7 +389,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertCount(1, $deltas);
         $this->assertContains('enabled', $deltas[0]['payload']['changed'],
             '§ 6.5: `enabled` is version-bearing and an `enabled` flip must ride the delta');
-        $this->assertFalse($deltas[0]['payload']['patch']->enabled);
+        $this->assertFalse($deltas[0]['payload']['patch']['enabled']);
 
         // …and the store agrees it really flipped, so the assertion above is about the WIRE and
         // not about a fixture that never disabled anything.
@@ -400,7 +422,7 @@ class FeedSurfaceTest extends FeedTestCase
         $seatPath = '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT;
 
         // ── THE HAND GOES UP: the request alone, so `blocked` is a FOLDED state ──────────────
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver(array_slice($events, 0, 3));
         $this->fold();
@@ -424,10 +446,10 @@ class FeedSurfaceTest extends FeedTestCase
         ));
 
         $this->assertCount(1, $up, 'entering `blocked` emitted no delta carrying `blocked_since`');
-        $this->assertSame($events[2]['event_time'], $up[0]['payload']['patch']->blocked_since);
+        $this->assertSame($events[2]['event_time'], $up[0]['payload']['patch']['blocked_since']);
 
         // ── AND COMES DOWN: the resolution clears the state, so the member must clear WITH it ─
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->deliver(array_slice($events, 3));
         $this->fold();
@@ -442,7 +464,7 @@ class FeedSurfaceTest extends FeedTestCase
         ));
 
         $this->assertCount(1, $down, 'the resolution emitted no delta carrying `blocked_since`');
-        $this->assertNull($down[0]['payload']['patch']->blocked_since);
+        $this->assertNull($down[0]['payload']['patch']['blocked_since']);
     }
 
     /**
@@ -486,7 +508,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->advanceServerClock(1000);          // past § 4.5's 900 s `offline`
         $this->fold();
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->sweep();
 
@@ -499,8 +521,8 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertContains('subagents', $quiesce['changed'],
             '§ 6.5: `subagents` is version-bearing and quiescence closing the dispatch moved it');
         $this->assertContains('subagents_open', $quiesce['changed']);
-        $this->assertSame([], $quiesce['patch']->subagents);
-        $this->assertSame(0, $quiesce['patch']->subagents_open);
+        $this->assertSame([], $quiesce['patch']['subagents']);
+        $this->assertSame(0, $quiesce['patch']['subagents_open']);
 
         // The snapshot agrees, on the surface that was already correct.
         $this->assertSame(0, $this->asMachine($token, $seatPath)->assertOk()->json('subagents_open'));
@@ -545,7 +567,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->advanceServerClock(61 * 60);
         $this->stayAlive();
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->sweep();
 
@@ -563,8 +585,8 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertContains('subagents', $orphan['changed'],
             '§ 6.5: the orphan ceiling closing a dispatch moved `subagents` and it must ride');
         $this->assertContains('subagents_open', $orphan['changed']);
-        $this->assertSame([], $orphan['patch']->subagents);
-        $this->assertSame(0, $orphan['patch']->subagents_open);
+        $this->assertSame([], $orphan['patch']['subagents']);
+        $this->assertSame(0, $orphan['patch']['subagents_open']);
 
         $this->assertSame(0, $this->asMachine($token, $seatPath)->assertOk()->json('subagents_open'));
     }
@@ -590,7 +612,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->deliver($this->cleanTurn());
         $this->fold();
 
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         $this->retire();
 
@@ -604,11 +626,11 @@ class FeedSurfaceTest extends FeedTestCase
             '§ 6.5: `retired` is version-bearing and the retirement act is what moves it');
         $this->assertContains('render_state', $changed);
 
-        $retired = $deltas[0]['payload']['patch']->retired;
+        $retired = $deltas[0]['payload']['patch']['retired'];
 
         $this->assertSame('operator@aimla', $retired['by']);
         $this->assertSame('decommissioned', $retired['reason']);
-        $this->assertSame('retired', $deltas[0]['payload']['patch']->render_state);
+        $this->assertSame('retired', $deltas[0]['payload']['patch']['render_state']);
     }
 
     /**
@@ -625,6 +647,12 @@ class FeedSurfaceTest extends FeedTestCase
      * ⚠ THIS IS `test_an_ordinary_heartbeat_emits_no_delta`'s RULE ON THE FIXTURE THAT ONE HAD TO
      * AVOID. Two tests rather than a widened one, because they fail for different reasons: that
      * one goes red if the SUBTRACTION drifts, this one if the re-stamp comes back.
+     *
+     * ⚠ CARD #9214 MADE THE PROPERTY STRUCTURAL RATHER THAN GUARDED, and this case is unchanged
+     * by that on purpose. `as_of` is now read off the answering call's own `opened_received_at`
+     * (which is IN THE LOG, so a rebuild reproduces it — AT-D2-10), and #7837's `$unmoved` guard
+     * is deleted rather than kept beside it. The assertion below is what would red if a clock ever
+     * got back into that column, whichever of the two mechanisms put it there.
      */
     public function test_a_seat_with_an_open_call_is_as_quiet_as_one_without(): void
     {
@@ -638,7 +666,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertNotNull($this->state()->task_as_of);
 
         $stamped = $this->state()->task_as_of;
-        $mark = count($this->wire->sent);
+        $mark = $this->wire->mark();
 
         for ($i = 0; $i < 20; $i++) {
             $this->stayAlive();
@@ -663,7 +691,9 @@ class FeedSurfaceTest extends FeedTestCase
         $this->fold();
 
         foreach ($this->wire->ofType('seat.delta') as $message) {
-            $this->assertIsObject($message['payload']['patch'],
+            // Read off the BYTES a stream writes (`feed_outbox.message` is the frame's `data:`),
+            // because an associative decode cannot tell `{}` from `[]`.
+            $this->assertIsObject(json_decode($message['raw'])->patch,
                 'a patch serialized as a JSON array — a client merging it gets a type error');
 
             // `changed` is exactly `patch`'s keys (§ 8.3.1), and sorted so the wire is diffable.
@@ -679,7 +709,7 @@ class FeedSurfaceTest extends FeedTestCase
                 $this->assertSame(
                     ['last_receipt_at', 'last_heartbeat_at', 'no_data_since', 'clock_skew_ms',
                         'spool_lag_events', 'oldest_unsent_age_s', 'seq_epoch', 'last_seq'],
-                    array_keys((array) $message['payload']['patch']->delivery),
+                    array_keys($message['payload']['patch']['delivery']),
                 );
             }
         }
@@ -723,8 +753,9 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertNotEmpty($body['detail']['open_calls']);
         $this->assertNotNull($body['detail']['attention']);
 
-        // ⚠ `predicates` — card #7833's `cannot_evaluate` reaches a consumer here, and § 8.2.3
+        // ⚠ `predicates` — `Predicates::alarm()`'s verdict reaches a consumer here, and § 8.2.3
         // does not declare the member. Reported in card #7827's PR body; § 8.2.4 was NOT its home.
+        // Since card #7833 there is no third outcome to lose: `alarm_since` below IS the verdict.
         $names = array_column($body['detail']['predicates'], 'name');
         $this->assertContains('fold_current', $names);
         $this->assertContains('ingest_receiving', $names);
@@ -736,6 +767,107 @@ class FeedSurfaceTest extends FeedTestCase
         // card #7832's `sweep_seat_error` needs no new home: it is a `seat_counters` row, and
         // "this plane's `seat_counters` rows" is already what this member returns.
         $this->assertIsArray($body['detail']['counters']);
+    }
+
+    /**
+     * ⛔ EVERY TIMESTAMP `detail` CARRIES IS § 8.2.1's `rfc3339_ms`, AND UNTIL card#7342 SIX WERE
+     * THE STORE'S `DATETIME(3)`. `open_calls`, `attention` and `session` were handed out as raw
+     * selected rows, so `opened_at`, `orphan_due_at`, `ceiling_at`, `turn_started_at` and
+     * `last_turn_ended_at` reached the drill-down as `2026-08-23 14:23:31.004` while every other
+     * timestamp on this plane was `2026-08-23T14:23:31.004Z` (§ 6.3 is why the store's spelling
+     * is what it is; § 8.2.1 is why the wire's is what it is).
+     *
+     * ⛔ THE CONSUMER'S FAILURE IS SILENT, WHICH IS WHAT MAKES THIS WORTH A CHECK RATHER THAN A
+     * TIDY-UP: `Date.parse` does not refuse a space-separated datetime, it reads it as a LOCAL
+     * time — so an intern's start age would be wrong by the viewer's UTC offset with no error
+     * anywhere on the path.
+     *
+     * ⛔ THE POPULATION IS DERIVED FROM THE RESPONSE, NOT LISTED HERE. A written list of member
+     * paths is a copy of the response's shape that goes stale the first time a column is added
+     * to one of those three selects — which is exactly how the six got out. The walk below finds
+     * every `…_at` / `…_since` member at any depth and asserts the shape of each.
+     */
+    public function test_every_timestamp_the_seat_detail_carries_is_the_wire_spelling(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+        $this->sweep();
+
+        $body = $this->asMachine($this->readToken(),
+            '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT)->assertOk()->json();
+
+        // The three members that carried the store's spelling are all populated by this fixture,
+        // so the walk below has something to find in each of them. Asserted first: a walk over
+        // three empty members would report clean having read nothing.
+        $this->assertNotEmpty($body['detail']['open_calls']);
+        $this->assertNotNull($body['detail']['attention']);
+        $this->assertNotNull($body['detail']['session']);
+
+        $found = [];
+        $this->collectTimestamps($body['detail'], 'detail', $found);
+
+        $this->assertGreaterThan(4, count($found),
+            'the timestamp walk found almost nothing — every assertion below would then be clean '
+            .'over an unread population');
+
+        foreach ($found as $path => $value) {
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/', $value,
+                $path.' is not § 8.2.1’s `rfc3339_ms` — a consumer computing an age from it gets '
+                .'the viewer’s timezone applied to a server-clock fact, and nothing errors');
+        }
+
+        // ⛔ THE SAME FACT, TWICE, IN ONE RESPONSE. § 8.2.1's `blocked_since` IS the open
+        // attention request's `opened_at` — "a PROMOTION out of § 8.2.3, not a new fact to
+        // source" — so the two members must be the same string. They were not: one went through
+        // `Clock::wire()` and the other did not, which is the defect at its most legible.
+        $this->assertSame($body['blocked_since'], $body['detail']['attention']['opened_at'],
+            '§ 8.2.1: `blocked_since` is the promotion of the attention request’s `opened_at`, '
+            .'and one response is carrying two spellings of one instant');
+
+        // ⛔ THE DISCRIMINATING CONTROL. The predicate above is only evidence if it can fail, so
+        // feed it the spelling the store hands back — the exact value this endpoint used to
+        // serve — and require it to be refused.
+        $this->assertDoesNotMatchRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/',
+            Clock::sql(now()),
+            'the control failed: the shape assertion admits the store’s own `DATETIME(3)` '
+            .'spelling, so it would have passed against the defect it exists to catch');
+    }
+
+    /**
+     * Every `…_at` / `…_since` member of `$node`, at any depth, keyed by its path.
+     *
+     * ⚠ `heartbeat_counters` and `heartbeat_predicates` are SKIPPED, and the reason is a
+     * boundary rather than a convenience: they are the REPORTER's objects, stored and returned
+     * verbatim (§ 7.3, D1 § 6.14). Their spelling is D1's to state and this plane's to leave
+     * alone, so asserting this plane's wire form over them would be this test claiming ownership
+     * of a contract it does not hold.
+     *
+     * @param  array<string, string>  $found
+     */
+    private function collectTimestamps(mixed $node, string $path, array &$found): void
+    {
+        if (! is_array($node)) {
+            return;
+        }
+
+        foreach ($node as $key => $value) {
+            if (in_array($key, ['heartbeat_counters', 'heartbeat_predicates'], true)) {
+                continue;
+            }
+
+            $here = $path.'.'.$key;
+
+            if (is_array($value)) {
+                $this->collectTimestamps($value, $here, $found);
+
+                continue;
+            }
+
+            if (is_string($key) && (str_ends_with($key, '_at') || str_ends_with($key, '_since')) && $value !== null) {
+                $found[$here] = (string) $value;
+            }
+        }
     }
 
     /** § 8.2's timeline: renderable kinds only, newest first, `limit` ≤ 200, default 50. */

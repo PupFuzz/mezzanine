@@ -19,6 +19,2000 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-14
+
+- **card#9300** — **THE LIVE FEED IS BUILT: Server-Sent Events on `GET /api/fleet/stream`, fed by a
+  `feed_outbox` table** (`docs/design/FLEET-STATE.md` Appendix B step 9). ⛔ **Installer action, before the
+  next deploy — the deploy now REFUSES a host that cannot serve or drain the stream:** provision a
+  DEDICATED PHP-FPM pool for `/api/fleet/stream` running as the application user, with
+  `request_terminate_timeout = 0`, `pm.status_path` and `pm.status_listen` set; route that path to it in the
+  vhost with `ProxySet flushpackets=on` on its socket (without it this host's Virtualmin vhost shape was
+  measured holding the whole stream, and every browser renders *feed down*); and export
+  `MEZZ_STREAM_POOL=<pool name>` to `bin/deploy.sh`. `cgi-fcgi` and `timeout` are now required on the host.
+  (The deploy that first ships this runs its preconditions in the previous release's script, so it only
+  warns about a missing pool, in the window, and skips the drain; the one after it refuses.)
+  After a deploy that changed the stream path, the proxy or the pool, run `bin/feed-stream-check.sh
+  https://<origin> <cookie file>` as an operator (`docs/PLAN.md § 5` has the steps). What ships:
+  `App\Feed\Outbox` writes every feed message as its writer's LAST statement before COMMIT (the fold, the
+  sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — the
+  heartbeat and `fleet.health` are now ONE fleet-wide row each, not one per install); `App\Feed\FeedStream`
+  is D2 § 8.3's handler (first frame `fleet.health`, cursor behind the 2 s lag, stall check before the read,
+  15 s session + MFA re-check, `fleet.reload` → `feed.close{reason:"reload"}`); `mezzanine:feed-reload`
+  runs in the deploy immediately before the opcache wait, and the deploy then SIGTERMs the streams that
+  missed it after `MEZZ_FEED_DRAIN_CEILING_S` (30 s) — D2 § 14 item 17, closed by measurement;
+  `mezzanine:purge` keeps outbox rows 60 s. The deploy refuses `zlib.output_compression`,
+  `output_handler` or `ignore_user_abort` on the stream pool; `output_buffering` is measured harmless
+  (the handler's flush defeats 4096) and only reported. **Retired:** `/broadcasting/auth`,
+  `routes/channels.php`, `->withBroadcasting()`, the `ShouldBroadcastNow` markers and
+  `BROADCAST_CONNECTION` (delete it from a host's `.env` at leisure; nothing reads it) — the session + MFA
+  gate moved to the stream route with its tests. `App\Events\SeatRetired` is now `App\Feed\SeatRetired`.
+  Gates: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15, AT-D2-19's stream legs, AT-D2-12's
+  connect leg and AT-D2-25 (a real race on four MariaDB connections) are new — AT-D2-15's worker return
+  by the proxy and its RSS leg need a real deployment and say so.
+
+- **card#9300** — **D3 follows operator ruling A4: a deploy that does not change `feed_version` shows
+  the floor's viewer nothing.** Docs, plus one COMMENT in `bin/deploy.sh`; no behaviour changes.
+  - **D3 § 14 item 20, closed.** § 2.5's `fleet.reload` row and § 9 F8 raise the reload banner only on
+    a `feed_version` the client does not know. F3's `reload` cells render nothing. A stream the
+    deploy's drain ends with SIGTERM carries no `feed.close`, so it takes F1's path.
+  - **§ 2.2 now owns a 60 s reload grace.** After `feed.close{reason:"reload"}` the client re-opens on
+    its 10 s cadence and renders nothing while the deploy's maintenance window refuses it. § 12 derives
+    the figure from D2 § 2.1's feed-reload row, `bin/deploy.sh`'s drain and `docs/PLAN.md § 5`'s
+    opcache wait. Past the grace the client renders the failure, so a deploy that failed with the app
+    down is not drawn as a healthy floor. AT-D3-8 and `fx-refusals` gain the legs for both sides.
+  - **D3 no longer describes the retired per-install channel.** § 3.1, § 4.3, § 4.6, § 6.2's A17 row,
+    AT-D3-9 and Appendix B step 3 now describe the one fleet-wide stream.
+  - **D2, corrected:** § 8.3 no longer says a per-install ACL attaches "when item 7 is ruled", because
+    item 7 was ruled and recorded. § 8.7 and § 13 row 42 no longer describe per-install channels or say
+    every `fleet.reload` demands a reload.
+  - **Review round 2.** § 2.2's protocol block, step 8, now carries the exception the prose, F3 and F8
+    already carried: after F8's banner nothing is re-opened. § 2.2's grace paragraph gains a fourth
+    clause — the grace also suppresses F6 for the reads the client issues on its own, because an
+    `EventSource` open failure carries no status code and the client issues no poll of its own inside
+    it, so a session that expires there waits for the grace's end; F6's
+    **Detected by** column and AT-D3-8 point at it. And **the drain ceiling's consumer is now named at
+    both ends**: `bin/deploy.sh`'s env-var block and D2 § 2.1's feed-reload row say that raising
+    `MEZZ_FEED_DRAIN_CEILING_S` can push the window past the client's grace, which no client can read.
+  - **Review round 3.** The 45 s silence path — § 2.2 step 7, § 9 F1 and D2 § 2.2's Stream row — carries
+    the reload-grace exception: inside the grace, clause (2) applies in place of the *feed down —
+    polling* render and its poll. Clause (4), F6 and AT-D3-8 now claim only that the client issues no
+    read **of its own** inside the grace; a read the user causes (§ 4.3's drill-down, § 4.4's
+    navigation, F10/F11's retry) is suppressed by nothing, and a `401` from it fires F6 as usual.
+    Appendix A's T14 and T15 carry the same exception.
+  **Installer action:** none — the `bin/deploy.sh` change is a comment.
+
+- **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
+  questions, and two false claims are corrected.** Docs only; no code changes.
+  - **D2 § 14 item 7, closed:** fleet-read is all-or-nothing, for now. Any MFA user and any
+    `fleet_read` token sees every install. It reopens before a second organisation's install
+    reports in. D2 § 9 and D3 § 1.2 say so.
+  - **D2 § 14 item 15, closed:** a machine consumer may not hold the stream, for now. The known one
+    polls REST at a cadence of minutes. D2 § 9's surface table and § 13 row 10 rest the refusal on
+    the ruling.
+  - **D2 § 14 item 16, deferred:** a floor left open still re-authenticates every
+    `SESSION_LIFETIME`. The operator will revisit it once the floor exists, likely as a kiosk
+    credential. D2 § 9 and D3 § 9 say so.
+  - **D3 § 14 item 3, closed:** `card#N` renders as plain text, because the board is private and no
+    link base URL is configured. § 4.3 and § 5.2 no longer describe a configured link.
+  - **D3 § 14 item 18, closed:** no in-browser room editor. Tiled stays the editor; § 10.3 and
+    § 13 row 28 say so.
+  - **`docs/VERSIONING.md`, corrected:** card#9328 step 2's *"FALSE AS MEASURED"* notes are removed
+    from § Branch model and core rule 5. `dev` is squash-only for everyone, and ruleset `21953633`'s
+    admin bypass (mode `always`) exists so the `main` → `dev` back-merge lands as a merge commit. The
+    admin identity merges it with `gh pr merge <N> --merge`, not `solo-self-merge`, which squashes.
+    Release-flow step 11 and card#9328's entry below say so too.
+  - **D1, corrected:** § 6.0 said the reporter config's `harness_label` is *"written by the
+    installer"*. There is no installer, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key
+    unset on purpose. § 6.0 and § 6.1 now say the field is `null` on such a seat.
+  **Installer action:** none.
+
+- **card#9368** — **A Linux agent seat can report without an installer and without root.** The new
+  `fleet-reporter/INSTALL-LINUX.md` is a by-hand runbook, performed on the sandbox host to connect
+  `mezzanine` / `mezzanine-solo` as the first reporting seat. Its steps: issue the seat token straight
+  into a `0600` config, wire the hooks, supervise the flusher, run selftest, verify, and roll back.
+  **The flusher's supervised start on Linux is now the user crontab**, an `@reboot` entry plus a
+  minutely `flock -n` entry that carries `COORD_CONFIG=` on its own command line. It is no longer a
+  `systemd --user` unit, which without lingering neither starts at boot nor outlives logout. D1 § 2.3,
+  § 3.1's `$COORD_CONFIG` delivery contract, AT-27 case F and § 18.13 row 6 now say so. The fleet-reporter
+  README and `docs/PLAN.md § 3` record the installer, card #7336, as won't-do. **Installer action:**
+  nothing on the server. To connect a Linux seat, follow the runbook. Its closing section names what
+  it does not give you: `selftest` exits 1 on every seat because this build never probes
+  `schema_version_accepted` there; a fresh seat starts badged `epoch_reset`; and the reporter does not
+  yet send `protocol_agent_name`.
+  **Review round 2.** The runbook stages every file in its own `0700` attempt directory, never the
+  shared `/tmp`, and runs each stage-then-use pair under `set -euo pipefail`. Before this, another
+  account on the host could have pre-created the script that receives the token, or the crontab that
+  gets installed. Step 5 now replaces its crontab block instead of appending a second one, and a second
+  identical run changes nothing. On a changed value it stops the running flusher, and it checks that
+  cron, and not a hook, started the flusher. `node` and `$COORD_CONFIG` are resolved when the step
+  runs, with `settings.local.json` over `settings.json`. Step 4 derives the hook set from the vendored
+  fixtures, and it gives two procedures: (a) hooks only, which is what is live on the sandbox seat, and
+  (b) with the statusLine wrap, which is optional and deferred. D1 § 2.3 scopes the crontab to seats
+  without root or lingering, and it corrects the lock's touch cadence to every flush pass. § 3.1 now
+  requires a rewrite *and restart*. By operator ruling, § 16's Windows validation is owed when the
+  Windows agent seat onboards and is not required now. § 18.13 row 6 separates the built server half
+  from the unbuilt reporter half, card#9375. **Installer action:** none on a seat that is already
+  running. To change a value in the start line, re-run Step 5.
+
+- **card#9326** — **The feed stream's two bounds each have ONE statement, every other site points
+  at it, and the copies that cannot point are held to it by `verify-fleet-state.py` — design documents
+  and their verifiers only; nothing an installer runs changes.** card#9287's stall bound
+  (`docs/design/FLEET-STATE.md` § 8.5) and enforcement bound (§ 9) were stated in full at six or more
+  sites across D2 and `docs/design/FLOOR.md` (D3) with nothing checking that the copies agreed, and
+  the duplication minted the same ~4×-short defect in two consecutive review rounds. **DELETE, the
+  default:** every D3 site now points at D2 and carries no figure for either bound — § 9 F7, § 12's
+  session re-check row and § 13 decision 36 (§ 9's note and § 14 item 5 already pointed; § 2.5 and
+  `docs/PLAN.md` state neither) — and inside D2 each bound is stated once, at § 8.5 and § 9 case (a),
+  with § 2.2's backpressure row, § 6.7's `feed_outbox` row, § 8.3's `feed.close` row, § 9's case (b)
+  and tick note, § 12's two basis cells, AT-D2-15 and AT-D2-19 pointing at it. **That deletion is what
+  prevents a drifted copy; no tool searches the documents for one.** **GUARD, exactly, for the two
+  copies that cannot point:** **G3**, which already held § 8.5's stall bound to § 8.3's dead-feed
+  figure and § 6.7's retention, now also holds it to the `tick_started > N s` comparison in § 8.3's
+  handler fence and to § 12's `Stream stall bound` row — its figure read bolded or not — and reds by
+  CONTROL when either copy cannot be found or read. **G14** re-derives § 9 case (a)'s two figures —
+  *under* as the handler's re-check interval plus the stall bound, the draining figure as that interval
+  plus one tick — and reds when either disagrees. **G12b** no longer holds one close reason by name:
+  the member set is read off § 8.3's `feed.close` row and held to the size the row states, every member
+  must be written by a pseudocode fence *inside § 8.3* (any fence in the document used to satisfy it),
+  and G12's ruling token is read off that row by its member's description — so a new reason declared
+  in the row and used only in prose, which ran green before, reds. D2 § 12's status table gains G14's
+  row and names G3's stall-bound checks, § 14 item 8 moves to G1–G14 under the verifier's own count
+  guard, and `verify-design-docs.selftest.py` gains plants for a drifted fence figure, a drifted § 12
+  row figure bolded and unbolded, a renamed § 12 row, and each drifted § 9 case (a) figure. **Not built
+  here:** a quoted-sentence drift guard over `server/**` and `tools/**` comments (the card's comments
+  4852 and 4876), whose instances were fixed on card#9296; it is returned to the card as a proposal.
+
+- **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
+  as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
+  prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: a host
+  whose crontab runs the daemons outside `bin/supervision.sh`'s managed block must move off it** — the
+  deploy refuses that crontab — in the order that script's header gives (remove those lines, stop the
+  daemons they started by their own lock files, then `bin/supervision.sh install` as the application
+  user), which never runs two copies of a daemon. Otherwise nothing: each deploy installs its own
+  release's crontab block inside the maintenance window — a missing entry included, named by the dry
+  run — so a release that adds or drops a daemon brings its crontab with it. `MEZZ_SYSTEMCTL`,
+  `MEZZ_DAEMON_SERVICES`, `MEZZ_REVERB_SERVICE` and `MEZZ_FPM_SERVICE` are gone; `MEZZ_FPM_BIN`,
+  `MEZZ_DAEMON_STOP_TIMEOUT_S`, `MEZZ_DAEMON_SETTLE_S` (whole seconds, refused before the window
+  otherwise) and `MEZZ_DOCROOT` (the vhost's document root,
+  default `$HOME/public_html`) replace them. Supervision is cron +
+  `flock -n` (new `bin/supervision.sh`, the one list of supervised daemons, held equal to
+  `FLEET-STATE.md § 2.1` by the selftest). A restart is SIGTERM to the holders of any of the
+  checkout's daemon lock files — a path the deploy refuses to let a release move, so a re-run after a
+  deploy that failed in the window stops the previous release's daemons too — plus cron's own command,
+  proven by each lock being held by new processes after a settle (`ps` is now required) and every
+  other lock file being held by nothing. PHP-FPM is not reloaded: the
+  deploy refuses an FPM whose opcache would not revalidate changed files — a `.user.ini` in the
+  document root or in the release's `server/public/` included — and waits out the longer of the
+  previous and the deployed release's `revalidate_freq` before `up` (a leading zero read in base 10,
+  never shorter than PHP reads it) — measured on the sandbox host, new code was served 3.1 s after an
+  in-place checkout at PHP's defaults, and stale code 8 s after it with `validate_timestamps=0`.
+  The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description.
+  `docs/design/FLEET-STATE.md` (D2) follows it: § 2.1's daemon rows name the crontab;
+  `mezzanine:feed-reload` runs before the opcache wait rather than an FPM reload (§ 2.1, § 8.3,
+  Appendix B step 9); R2 drops `process_control_timeout`, whose one purpose was that reload, and keeps
+  `pm.status_path`; and what ends a stream that misses `fleet.reload` — FPM's reload escalation did —
+  is now an owed decision, D2 § 14 item 17, its candidate (SIGTERM to the residual stream workers)
+  unmeasured. ⚠ Not run
+  against any real host; `mezzanine:feed-reload` stays a named gap there.
+
+- **card#9296** — **BUILT `card#7957`'s ruling (d): a seat DECLARES its own protocol agent name,
+  and a disagreement between the two identity surfaces now FAILS AN ACT.** `card#7957` established
+  that nothing joined a protocol agent name (`pm`, `magento`) to a `seat_id`, ruled option (d) —
+  the seat declares its own — and left the CHECK leg open with the finding that **no act would
+  fail today**. This lands both. **D1:** [§ 3.1](docs/design/EVENT-SCHEMA.md) gains one optional
+  seat-config row, `protocol_agent_name`, with its four states and the roster check; the
+  declaration and `protocol_agent_name_check` ride `reporter.heartbeat` (§ 6.14) — the only event
+  a seat is guaranteed to emit, so an **idle** seat still declares; § 9.3 gains two counters, § 6.14
+  a seventh `selftest` member `protocol_agent_name_in_roster`, and § 13 the acceptance test AT-27.
+  **D2:** two nullable columns on `seat_state`, two members on the seat object, and
+  [§ 8.3.3](docs/design/FLEET-STATE.md) rewritten — the mapping EXISTS, it is DECLARED, it lives
+  on the seat object, and the coordination objects still carry **no desk reference**. **D3:**
+  § 5.7's resolve arm resolves.
+  ⛔ **Three refusals survive unchanged, and they are the point of the change rather than caveats
+  on it.** *(1)* An unresolved participant is still first-class and permanent — no line to a
+  guessed desk, no line to nothing, reported as unresolved — which is the honest render for every
+  seat that declares nothing. *(2)* Equality with a `seat_id` is still **not** a join: only a
+  declaration resolves, and AT-D2-24's byte-identical control stays discriminating. *(3)* A
+  `disagreed` or `undeclared` declaration resolves to nothing.
+  ⚠ **The act that fails:** `fleet-reporter selftest` exits non-zero naming
+  `protocol_agent_name_in_roster` when the declared name is absent from a roster readable on that
+  box, and the failure rides every heartbeat in `selftest` → `reporter.selftest_failed`. Where no
+  roster is readable the reporter **says so** (`unchecked`) rather than omitting the field — the
+  name-what-you-cannot-verify leg, and an omitted field would be byte-identical to a seat that
+  declares nothing.
+  ⚠ **This supersedes the standing claims that no join exists** — D3 § 5.7's *"No join exists
+  today … no line is drawn on any floor"*, D1 § 18.13 row 6's UNVERIFIED, D2 § 8.3.3's *"this
+  plane publishes no mapping"*, and D3's *"all three are unreachable today"* for A18/A19/A20. Each
+  is rewritten in this change; earlier changelog entries stating them are historical records and
+  are left standing, superseded by this one.
+  ⚠ **NOT built here, and named rather than left to be discovered:** no CODE constructs the join
+  yet. `server/public/js/coord/main.js` still passes no `options.join` and
+  `CoordDrawsNoLineWithoutAJoinTest` still pins that — both assert what the code does, which this
+  change does not move, and both now say what the follow-up build slice owes (build the map from
+  the seats of the floor's `install_id` whose check is `checked` or `unchecked`, and split the
+  test's subject in two). **Gates:** `tools/design/verify-fleet-state.py` gains **G13**, which
+  re-derives the check's value set from all three of its homes across two documents and reds when
+  they disagree, and holds the coordination objects to declaring no seat→desk member; the plant
+  harness gains a rename plant against it, watched red before it was trusted.
+  ⭐ **Round 2 — an independent review found the fix had re-minted `card#7957`'s own finding, twice.**
+  *(1)* **The roster path made `disagreed` unreachable on the install shape (d) exists for.** § 3.1
+  read the roster from `~/.config/coord/coordination.config.json` and *"no environment variable"*,
+  but the coordination framework resolves its config from `$COORD_CONFIG` alone, and on a
+  multi-agent install that points into the coordination repository; the home path is the solo
+  shape. A pm/impl fleet would find no roster, emit `unchecked`, pass `protocol_agent_name_in_roster`
+  and exit `selftest` zero with the roster readable on the box. § 3.1 now resolves `$COORD_CONFIG`
+  first — set, it is the whole answer — and the home path only when it is unset, says why § 3.4
+  rule 1 does not forbid that, and withdraws the unsourced `%APPDATA%` Windows location. AT-27 gains
+  case E (the roster only where `$COORD_CONFIG` points) with a ⛔ RED for a home-path-only reporter,
+  and case B a set-but-missing variant. Canon #7's legs: DECLARED at § 3.1; CHECKED by a new
+  `verify-event-schema.py` check that re-derives the resolution order from § 3.1 and holds AT-27,
+  § 18.13 row 6 and every roster-location mention in D1 to it; NAMED on § 18.13 row 6, whose
+  closing act — carrying the contract to the framework's owner — is recorded as not yet performed.
+  *(2)* ⭐ **OPERATOR RULING: a protocol agent name is UNIQUE per install.** Surfaces that legalised a
+  set-valued resolution while A18 and `resolve()` are singular made the map a builder was told to
+  build last-writer-wins over an unordered seat population. A duplicate is now a misconfiguration:
+  resolution is 0 or 1 desks, a name more than one resolving seat carries resolves to nothing *(that
+  scope is superseded in round 3 (3): every DECLARING seat counts, `disagreed` included)*, the
+  consumer never picks, and the name is reported with its own reason (`duplicate_declaration`, beside
+  `no_declaring_seat`). No seat can detect it — both duplicates pass their own check — so D2 declares
+  the invariant, says why no `UNIQUE KEY` enforces it, and the consumer enforces it; AT-D2-24 gains
+  a RED for the pick. A18 and A19 needed no change. **Also:** D1 § 6.14 now says the heartbeat
+  carrier is CHOSEN, and names and prices the batch envelope, which its three facts do not rule out;
+  the 2,852 B composition states that the declared-name pair is taken at its reachable joint maximum
+  and why D2's independently composed worked block is also right; D1 prose quoted with a stale
+  ordinal is deleted from D2 § 8.2.1, `KindRegistry.php` and `At18UnknownEnumTest.php`, the class
+  member being recorded on `card#9326`; D3 § 2.1's heading and lede say what the closed list is closed
+  over; and D1 § 3.1's *"every other shape"* is narrowed to the shapes `card#7957` weighed.
+  **Gates:** G13's no-desk-reference leg was a name-equality test that a `coord_thread.desk`, a
+  `coord_round.from_seat` or a nested `…[].seat_ref` each passed; it now also matches the seat/desk
+  shape over every segment of every field name, reads nested rows, and takes its under-read
+  control's denominator from the tables' own row counts instead of a written figure. Every new or
+  changed leg was watched red on a hand mutant, with the control clean.
+  ⭐ **Round 3 — a second independent review.** *(1)* **`KindRegistry.php` had not taken the two new
+  heartbeat fields**, so `EventSchemaDriftTest` was red and a D1-conformant reporter would have had
+  both counted as `ignored_unknown_fields` on every heartbeat. The registry now carries both and the
+  reporter-minted `protocol_agent_name_check` enum; and D1 § 6.14's name row states its bound as a
+  `≤ 48 B` figure rather than a pointer, because the ingest refuses only a stated figure and an
+  over-long name would otherwise have passed it and failed at the fold — `verify-event-schema.py`
+  check 12 holds that figure equal to § 18.6's. *(2)* **The OS-supervised flusher never received
+  `$COORD_CONFIG`**, and it is the flusher that heartbeats on a healthy seat, so `disagreed` was still
+  unreachable on a multi-agent install through the start path. § 3.1's delivery contract now reaches
+  the supervised start (the installer writes the variable into the unit's or task's environment,
+  mechanics on `card#7336`), the flusher is barred from gating emission on its absence, AT-27 gains
+  case F and its RED, § 18.13 row 6 names the installer half as not established, and check 11 reds
+  when the contract or AT-27 stops naming one of § 2.3's start paths. *(3)* ⭐ **OPERATOR RULING:
+  every seat that declares a name counts toward a duplicate, whatever its check state** — a `checked`
+  and a `disagreed` seat declaring one name resolve to nothing as `duplicate_declaration`. D2 § 8.3.3
+  rule 1 states that scope once and decides the duplicate before rule 2's filter; the other surfaces
+  point at it, and AT-D2-24 gains a seventh RED for the pair. **Also:** two hand-written counts in D1
+  are replaced by the command that prints them or dropped; stale D1 figures and check counts quoted
+  in the reporter's self-test, comments and README and in the plant harness are removed, the
+  remaining members recorded on `card#9326`; and D1 § 3.1's home-path site is scoped to Linux.
+  ⭐ **Round 4 — the CODE half of the two seat-object members**, without which CI was red:
+  `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's field list and `App\Read\SeatObject`
+  carried neither member. A migration adds § 6.4's two nullable `seat_state` columns;
+  `Projector::heartbeat` stores both as the last heartbeat's value verbatim, so a heartbeat that
+  omits a key stores `null` (D1 § 6.0: missing is null), exactly as `enabled` does; the object
+  publishes both. Both are VERSION-BEARING (§ 6.5's heartbeat-exceptions table), so
+  `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` take them together, and
+  `mezzanine:rebuild` resets them with the rest of the heartbeat group. The consumer join is still
+  not built. **Also, from round 3's independent review:** the protocol agent name's byte bound is
+  one guarded population — `verify-event-schema.py` check 12 holds D2 § 6.4's column, D2 § 8.2.1's
+  row and the width the last migration's `up()` gives the column to § 18.6's figure beside § 6.14's,
+  with a plant per new home, and refuses any migration whose `up()` touches the column in a form it
+  cannot read (raw SQL, a rename, a drop, a width-less `string()`) rather than passing it, and the
+  fold reads the bound from `KindRegistry` instead of restating it; D1 § 3.1's contract sentence and
+  § 18.13 row 6 scope the home path to Linux; the supervised start's contract says its LAUNCH
+  delivers the value, with the route left to `card#7336`, rather than promising a per-start
+  environment, and it names the staleness when the coordination config moves (rewrite-on-change in
+  the contract, the residual on row 6, a moved variant of AT-27 case F); and D2 § 8.3.3's empty arm
+  is renamed *no seat may resolve it*, because a lone `disagreed` seat does declare the name — the
+  `no_declaring_seat` token is unchanged, and D3 § 5.7 and `coord-model.js` follow.
+  ⭐ **Round 4 review's minors.** *(1)* **A `null` declaration pair has a third reading**: the fold
+  writes `null` for a heartbeat that carries neither member, and the shipped reporter sends neither,
+  so D2 § 6.4's column comments, D2 § 8.2.1's rows and D3 § 5.6's and § 5.7's rows now name it
+  beside *no heartbeat yet* and *declares none*; `EventValidator`'s comment states that an absent
+  enum is skipped whatever its row's `Null?` says, `protocol_agent_name_check` included. *(2)*
+  **Check 12 read `down()`'s width**: it took the last width match in the last file, so a later
+  narrowing that restored the width in `down()`, and a raw-SQL narrowing, both passed. It now reads
+  `up()` alone and refuses a form it cannot read, and the plant harness gains a `narrow-up` and a
+  `narrow-sql` plant that add such a migration. *(3)* D3 § 5.7's last copy of *an absent
+  declaration* reads *no seat may resolve it*, as the rest of round 4 does.
+  ⭐ **Round 5 — D1 § 6.14 no longer declares the check non-null.** It marked
+  `protocol_agent_name_check` `Null? no` on a field added at the same schema version, which
+  `docs/VERSIONING.md` rule 3 allows only for an optional field, while the ingest accepted and the
+  fold stored its absence. D1 was the side in the wrong. Both rows now read as the ingest behaves,
+  and a new paragraph under the table separates the ingest contract from the obligation on a
+  current reporter; the worst-case composition, `EventValidator`'s comment and `FoldTestCase`'s
+  fixture comment now point at that obligation rather than at a non-null row.
+
+
+- **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
+  development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded
+  as `docs/PLAN.md` D-15's new amendment, and it **reverses card#9250's** "an additional lane, not a
+  changed one". `server/phpunit.xml` now declares `DB_CONNECTION=mysql` — still unforced, and its
+  comment re-argues why for one engine — and drops `DB_SQLITE_DATABASE`; `config/database.php` and
+  `config/queue.php` default to `mysql`, and the app's customised `sqlite` connection block is gone.
+  ⚠ **Laravel still merges the framework's stock `sqlite` connection back in** (measured on this
+  tree), so nothing relies on its absence and the comment left in its place says so.
+  `server/.env.example` selects `mysql` with placeholder `DB_HOST`/`DB_PORT`/`DB_DATABASE`/
+  `DB_USERNAME` values and an empty `DB_PASSWORD`; `README.md` § Running the server locally now
+  creates the MariaDB databases and account and says outright that SQLite is unsupported.
+  `server/tests/roundtrip/ingest-roundtrip.py` runs on `mezzanine_test` and refuses to rebuild it
+  unless the RESOLVED connection is `mysql` → `mezzanine_test` on a server naming MariaDB, and
+  `server/composer.json`'s create-project hook no longer creates a `database.sqlite`.
+  ⭐ **`php-tests` IS NOW THE MARIADB LANE** — the same pinned service container, exports,
+  store-probe control pairs and `pdo_mysql`-only PHP that `php-tests-mariadb` runs. The step that
+  asserted `.env.example` sets `DB_CONNECTION=sqlite` is **moved, not deleted**: it now asserts
+  `mysql`, because the lane's own export hides a template flip from everything the lane runs.
+  ⚠ **`php-tests-mariadb` stays for now, as a temporary duplicate.** Its context is required, and
+  removing the job before the ruleset stops requiring it would block every PR on a check that never
+  reports; the job and that requirement go together in this card's next step. Its body is
+  untouched, and a header above it marks its inline two-engine comments as superseded.
+  ⭐ **The store guard got stronger, not weaker.** `Tests\TestCase` now also pins
+  `database.default` to `mysql`: the database pin alone proved only that the `mysql` connection
+  pointed at `mezzanine_test`, while the suite writes through the DEFAULT connection — which could
+  not be pinned while that was SQLite. ⛔ **Re-deriving the guard also found its resolved-value
+  premise false for `DB_URL`:** `config()` keeps reporting the pinned database because Laravel
+  applies a URL's path only when it builds the connection, so with both `DB_URL` pin entries removed
+  and a `DB_URL` exported the guard stayed GREEN while the connection pointed at another database —
+  the pin was the only thing standing there. The guard now also asks the connection itself which
+  database it resolves to (lazily, opening nothing). `Tests\Feature\DatabasePinTest` asserts the DECLARED value
+  as well, because CI's export would hide a flip of it from the resolved guard, and its SQLite-only
+  test goes with the connection it guarded. Each changed guard was seen red under the defect it
+  exists to catch before being trusted green.
+  Present-tense claims that the suite runs on SQLite are corrected in comments under `server/app`,
+  `server/tests`, `server/database/migrations` and in `tools/ci-store-probe.php`; statements that are
+  history — what card#9250's first MariaDB run measured — stay as history.
+  **D2 doc-sync:** `docs/design/FLEET-STATE.md § 6.2` now describes one engine, pointing at D-15's
+  amendment, and names the guard's two reads and what each catches, including that `REDIS_URL` has
+  no connection-level read and is refused by nothing (unreached today). AT-D2-14's Second RED was
+  false: an intact `DB_URL` pin defeats the export, so it cannot abort. It is rewritten to delete
+  the `DB_URL` pin and export a URL naming a nonexistent database, which the connection read aborts.
+  The Third RED no longer claims the shape test runs under an export.
+  ⚠ **Not done here, by name:** application code still branches for stores other than
+  MySQL/MariaDB — `App\Support\Ddl::ascii()` and `::index()`, `App\Fold\Fold::claim()`,
+  `App\Ingest\Counters::upsert()` and the building-store migration's CHECK constraint. Those arms
+  are unreachable in any supported configuration and are left in place.
+  ⭐ **Step 2: `php-tests-mariadb` is gone; `php-tests` is the one PHP lane.** The duplicate job, its
+  temporary-duplicate header and every comment that existed only because there were two jobs are
+  removed from `.github/workflows/php-tests.yml`. The context was taken out of both rulesets'
+  required checks first (2026-09-13), and the job was removed only after reading both rulesets and
+  classic protection on `dev` and `main` and finding it required nowhere.
+  `docs/VERSIONING.md § Branch model` claimed the rulesets required *"the SAME FIVE contexts"*;
+  that count had gone false, and the section's only word on classic branch protection was a
+  superseded 2026-08-23 reading that there was none. It now states no count: it names both layers,
+  says both apply and that their lists differ (`php-tests` is required by the rulesets and not by
+  classic protection), and gives one command that prints both layers for both branches. The
+  contexts it lists are marked as measured on 2026-09-13. Two historical mentions of the old job in
+  `Tests\TestCase` and `SeatConsoleTest` stay as they are: they record card#9250's first MariaDB
+  run. ⚠ **Corrected 2026-09-13 (operator ruling):** this step also read ruleset `21953633`
+  (`dev` squash-only) as making rule 5's merge-commit back-merge unsatisfiable, and marked
+  § Branch model and core rule 5 *"FALSE AS MEASURED"*. That reading was wrong: the ruleset has an
+  admin bypass in mode `always`, which exists so the back-merge lands as a merge commit. The marks
+  are removed; see the *Operator rulings recorded* entry above.
+
+- **2FA issuer (no card)** — **an authenticator app now names this site's entry after the
+  site's own hostname instead of `Mezzanine` on every host.** The operator asked for the sandbox's
+  entry to read `sandboxmezzanine` rather than the hardcoded name. Fortify's stock
+  `twoFactorQrCodeUrl()` passes `config('app.name')` as the otpauth issuer.
+  `App\Models\User` now overrides it to call `App\Auth\TwoFactorIssuer::resolve()`, the one
+  derivation. It returns `TWO_FACTOR_ISSUER` (new, optional, `config/fortify.php`) if set;
+  otherwise the first DNS label of `APP_URL`'s host, lowercased, with an IPv4 address kept whole;
+  otherwise `APP_NAME`. `:` is removed from the free-form values, because it is the otpauth label
+  separator. ⛔ `APP_NAME` itself was left alone: it derives the session cookie name and the cache
+  prefix, so renaming it per host would sign everybody out. ⚠ Existing enrolments keep their old
+  label (the secret is unchanged, so codes still work). README § The authenticator entry's name
+  says how to relabel. Tests: `tests/Feature/TwoFactorIssuerTest.php`.
+
+
+- **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
+  are asked two different questions, and the comments that promised to fold them into one are
+  removed.** The card proposed hoisting a shared predicate out of `App\Ingest\Wire` so `App\Floor`
+  and `App\Building` could reach it. ⛔ **The requirement difference is what keeps them two.** The
+  ingest must end `{}` and `[]` DIFFERENTLY — `{}` is D1 § 6.0's legal all-null event and is
+  ACCEPTED, `[]` is REFUSED — so the distinction has to survive the decode, which FORCES object
+  mode (card#9295's fix, one entry below). The console refuses BOTH spellings, because an empty
+  document is neither a Tiled map nor a layout and all that differed was the WORDING — one
+  outcome, so the distinction buys it nothing and associative mode is exact there. A single shared
+  predicate could span that only through a per-caller mode flag: the duplication wearing a
+  parameter, not its removal.
+  ⚠ **This supersedes the card#9295 entry's closing sentence**, which said the four object/array
+  checks needed the predicate hoisted "because `App\Floor` cannot depend on that namespace, and
+  that is card#9299". Both halves are false. Nothing blocks the reach — `App\Floor\FloorMap`
+  already calls `App\Building\AuthoredDocument::isJsonObject` — and the layering is a **convention
+  nothing in this repo enforces**: measured at this branch point, there is no deptrac, no
+  static-analysis config, no architecture test under `server/tests/`, no lint script in
+  `server/composer.json`, and PSR-4 maps `App\` flat onto `app/`. It is worth keeping; it is not a
+  mechanism, and "cannot" read as a constraint that had already refused the option.
+  ⛔ **COMMENT-ONLY — no executable line changed.** `BodyReader`'s note claimed a hand-kept
+  call-site count that `grep -rn isJsonObject server/app/` refutes; the grep replaces it rather
+  than a freshly-counted number, which is what would go stale next. `AuthoredDocument`'s and
+  `BuildingLayout`'s pointers at the now-closed card are replaced by the requirement difference
+  and, where a console reader genuinely needs the two spellings to end differently, by the answer
+  that would apply then — a decode change on the console side, mirroring the ingest's, not a
+  borrowed predicate and not a wider clause. `BuildingLayout`'s `"floors": {}`/`"floors": []`
+  conflation is UNCHANGED and still named where it sits; only its pointer moved.
+- **card#9303** — **G7's population is what D2 DOES with a token, not how it spells one.**
+  `verify-fleet-state.py`'s G7 held D2's feed-message types against § 8.3's table but its population
+  was **delimiter-bound** — it saw a message type only inside backticks, so a use inside one of the
+  document's own fenced protocol blocks was invisible to it and an undeclared message could sit in a
+  fence with the gate green. The population is now decided by two classifiers that each read a fact a
+  section already owns: **TOKEN BOUNDARY** (a message type is a whole token, so `building.php` and
+  `private-fleet.aimla-win` are excluded by the characters against them rather than by an exception,
+  and a `.member` chain is a path whose *root* is the message) and **FIELD FORM** (a token given a
+  **scalar** — `= "lagging"`, `: "degraded"` — is a field, § 8.2.4's subject; a token carrying a
+  payload **object**, `fleet.health{db:"up"}`, is a message).
+  ⭐ **The polarity is the point:** every token in a namespace **§ 8.3's own table declares** is a
+  message type **unless** the document demonstrably uses it otherwise, so an unseen spelling fails
+  **loud** instead of leaving the gate. The namespace set is the ROOTS of that table's types,
+  re-derived per run and printed — never a list stored in the checker, which is what it was until
+  the review round below.
+  ⚠ **Why not a wider regex:** § 8.2.4's `` `fleet.status: "degraded"` `` is a deliberately REJECTED
+  alternative with no § 8.3 row by construction, and § 2.3 writes `` `fleet.fold = "stalled"` ``. Any
+  alternation that reaches the fences also reaches those and reds on correct prose.
+  The plant is seen to red with the pre-change verifier **green on the same bytes** — that
+  differential is what attributes the red to the population rather than to the plant — and a new
+  `G7 CONTROL` fails if no undelimited use is found at all. Coverage is monotone: the uses the gate
+  gained are exactly the fenced bare ones, and the field-form exclusions were never in it.
+  ⛔ **One reachable sibling is reported and NOT fixed here:** G8's forward leg (`WRITER_RE`) is blind
+  to `count feed_resync_required; return` on both of its legs. Its verb leg is binding, so that is a
+  change to G8's own population and its own round — filed on the card rather than folded in.
+  `tools/design/README.md` and the verifier workflow's plant-harness comment move with it, and the
+  workflow's `"527 checks, 30 planted controls"` — the one bare count those two surfaces carried
+  that this change had in hand — gave way to the derivation the artifact gate prints itself.
+  🔎 **Review round (PupFuzz/mezzanine#116), two blocking findings, both about a CLAIM that outran
+  the code:**
+  **(1) the polarity claim was false.** The checker hard-coded six namespace prefixes, so the real
+  rule was "everything with one of six stored prefixes" while this entry, the code comment and
+  `tools/design/README.md` all stated the polarity above verbatim. A maintainer who added a
+  namespace to § 8.3 and read any of the three would believe G7 covered its uses; it did not, and
+  the code's own comment recorded it biting twice (card#9212 added `coord`, card#9208 added `room`
+  and `building`). The prefixes are now derived from the declared-types table G7 already parses —
+  a **no-op** against today's document, which is the point: the claim becomes true as written
+  without the verdict moving. ⚠ The residue is now **stated** on every surface instead of claimed
+  away: a namespace with no declared row at all is still invisible, and the obvious widening to
+  every `word.word` token is the worse gate (it reaches D1's event names, D2's SQL column paths and
+  its object member paths).
+  **(2) the declared `name: scalar` hole had no observability and escaped on the protected
+  surface.** The skip was a bare `continue` — the occurrence was not merely forgiven but
+  **uncounted** — and the comment closed on "no such site exists in this document", a claim nothing
+  evaluated and nothing printed. Reproduced: that spelling planted **inside § 8.4's fence** yielded
+  `ALL D2 CHECKS PASS` at rc=0 with the population unmoved. Skips are now **counted and printed**
+  beside the population, and a skip **inside a fenced block is a failure** — the fence/prose split
+  the comment already argued for and did not use, which bounds the hole to prose without touching
+  the operator that would red on § 8.2.4's rejected aggregate. Both halves of the widening now have
+  a decay control; the asymmetry was the finding.
+  Seen to fail, each against a scratch copy of the whole tree with the **pre-change verifier green
+  on the same bytes**: the fence escape, an undeclared member of a newly declared namespace, and
+  both new `G7 CONTROL`s (no fenced block; an unclosed fence). Two controls that must NOT red were
+  held green: the same field-form spelling in prose, and the declared residue.
+  Doc-sync owed by this round: § 12's guard row (which still claimed "every `t` value named
+  anywhere", with no hole marker), the workflow **step name** that shows in the CI UI (it read "a
+  planted defect per verifier" against four plants over three verifiers), and the two bare guard-
+  class counts this diff had in hand — `tools/design/README.md`'s and the verifier docstring's
+  "eleven" — each replaced by the derivation that re-prints it rather than by a fresh figure.
+
+- **card#9269** — **the shipped default map is a FILE**: `resources/floor/default.tmj`, an office
+  interior drawn with the vendored Kenney tileset, its `desks` layer carrying the slot count
+  `docs/design/FLOOR.md § 12` declares (the gate now counts the file rather than reading the row).
+  ⭐ **Its content is an office by operator ruling (2026-09-12), and that ruling closed
+  `docs/design/FLOOR.md § 13` row 33's open question by refusing a SECOND shipped default**: the
+  `office` form selects no file of its own, `docs/design/FLEET-STATE.md § 13` row 44's one-default
+  rule stands unamended, and an unauthored room of either form now renders a plausible office
+  rather than a bare grid. The map is an ELEVATION — the tileset's `Side/` renders, § 4.1's
+  cross-section — so its desks are one row along the floor in two banks with an aisle, its walls
+  are the back plane with a doorway onto the floor's hallway (card#9292's, not drawn here), and
+  every sprite lands inside the grid, because the grid is the room's footprint on a planned floor
+  and art drawn past it would cover a neighbour no check refused.
+  ⛔ **The file's landing turned two live states over, and both moved in this PR rather than
+  later.** (1) `verify-floor.py`'s G8 was already written for both arms and switched itself: `S` is
+  now COUNTED from the map's `desks` objects instead of being asserted by the prose that cites it,
+  so § 12's row for it reads **Measured** — a perturbed map reds the gate by name. (2)
+  `App\Building\RoomExtents` no longer refuses a plan that places an unauthored room: there is a
+  grid to read, so the check card#9292 built is the one that runs, and the three tests that
+  encoded the absence now assert the geometry instead — each with its control, and each bound to
+  the shipped file's own pixel width rather than to a constant typed beside it.
+  ⚠ **The refusal naming the missing file is KEPT rather than deleted with its cause**: the default
+  is a file, and a deployment that ships without one is a real state whose honest answer is still a
+  named refusal instead of an invented size.
+  Re-points `default.tmj`'s authorship from card#7341 to card#9269 on every surface that named that
+  card as its author — § 10.3, § 3.2, § 4.6 and § 14's D-07 closure item, which is what a grep for
+  the claim returns rather than a list kept by hand —
+  the operator ruling that made this card's subject that file's content landed after the text that
+  said otherwise — which is also what discharges card#7341's orphaned deliverable. `ATTRIBUTION.md`
+  carries the map's `first-party` row, and `resources/floor/LINEAGE.md` says what its provenance is
+  NOT: the tileset's vendoring vouches for the tiles, never for the room drawn with them.
+
+- **card#9297** — **A heartbeat's `counters: {}` is stored and served as `{}` rather than as the
+  JSON array `[]`** — the READ half of card#9295, one plane downstream.
+  `docs/design/FLEET-STATE.md § 6.4` declares `seat_state.heartbeat_counters` and
+  `heartbeat_predicates` "last heartbeat's … object, verbatim", and **two** associative decodes
+  were erasing that, one per plane: `FoldEvent::fromRow` — so `Projector::heartbeat` re-encoded a
+  stored `{}` into the column as `[]` — and `FleetController::detail`, which decoded the column
+  associatively AGAIN and re-encoded it into § 8.2.3's response, so fixing the fold alone would
+  still have served an array to every consumer. An object went in and an array came out, on a
+  published surface.
+  ⛔ **Fixed at both DECODES and at neither encode site.** After an associative decode `{}` and
+  `[]` are one PHP value and no predicate downstream can recover the difference (`App\Ingest\Wire`
+  measures it), while an `(object)` cast at an encode site converts a genuine wire ARRAY with
+  equal enthusiasm — which is what the two controls in the new test pin: `reporter_degraded`,
+  § 6.4's "D1's 12-member array, verbatim", and a `counters` a seat really sent as `[]` both still
+  serve `[]`. `FoldEvent::$data` is now the `stdClass` tree the wire sent, and all twelve reads of
+  it go through `App\Ingest\Wire::field()` — the SAME primitive card#9295 put the ingest's twenty
+  § 12.1 field reads behind, rather than a second divergent one. Pre-card#9295 rows, which hold
+  `[]` where the wire sent `{}`, still fold: `field()` answers for both shapes.
+  ⭐ **This is also what makes card#9295's `events.data` guarantee observable at all** — until now
+  the column's only reader destroyed the distinction on read, so nothing in the repo could tell
+  whether the guarantee held.
+  ⚠ **One behaviour change beyond the spelling: a heartbeat carrying `"enabled": null` no longer
+  renders the seat *disabled*.** The old line tested `array_key_exists`, so an explicit `null`
+  took the `(bool)` cast to `false` while a missing key stored `null` — and D1 § 6.0 ("a missing
+  key and an explicit `null` are the same thing") was therefore false of this column in the one
+  direction that mints a state, since § 8.2.1 reads `null` as "null before the first heartbeat"
+  and § 4.5 rule 4 renders a stored `false` as *disabled*. Both spellings now store `null`.
+  `heartbeat.selftest` keeps today's behaviour exactly, by an `(array)` cast whose result is never
+  re-encoded — only the failing NAMES leave it, which is the list `selftest_failed` declares.
+- **card#9208** — **THE AUTHORED BUILDING STORE IS BUILT, AND THE BUILDING LAYOUT HAS LEFT THE
+  DEPLOY** (`docs/design/FLOOR.md` Appendix B row 11, build slice 1). Two tables and a column
+  behind `docs/design/FLEET-STATE.md § 6.11`: `authored_revisions` (append-only, one row per save,
+  per `(kind, subject)`), `building_layout` (the layout that is current) and `floors.map_version`
+  (the revision the room's current map IS). Every save is a revision, a **restore** is a forward revision copying an
+  old one, a **removal** is a revision with a `document NULL` — so a removed map is as retrievable
+  as an edited one — and a byte-identical save is **refused** rather than recorded, so a revision
+  always records a change. `server/config/building.php` is **deleted**: the console's new
+  **building layout** module owns the document, and the migration seeds it from that file where a
+  deployment still declares one, validated first and failing the deploy loudly rather than seeding
+  a document the reader would refuse on every request. One `room_map` revision 1 is seeded per
+  existing `floors` row from that row's own map, author and time, so § 6.11's *no current row
+  without a revision behind it* holds from the first migration.
+  ⭐ **Operator ruling, 2026-09-12 — *"keep it in the console"*:** D3 § 4.6 flagged the layout's
+  move as this design's INFERENCE rather than a clause of the reversal, and it is now ratified; the
+  note says so, so a later reader does not re-raise a settled call.
+  ⭐ **card#9292's floor plan lands with it**: a room's value in `rooms` is a RECORD carrying its
+  `form` and, on a planned floor, its `origin`; a floor may carry a `hallway`, read by § 10.3's
+  table with the `desks` row inverted; and **two rooms whose footprints would intersect are refused
+  by name, naming both** — at the layout's save **and restore**, and at a room map's save, restore
+  **and removal**, which § 6.11 calls the write site an implementer misses. Both paths take the
+  `building_layout` current row `FOR UPDATE` first, in one place, so the two writes serialise. A
+  restore is re-checked against **today's** room maps, so *undo* cannot re-create an overlap a
+  later map made. § 10.3's table gained the refusals it states and the code did not have: the
+  grid (which is the room's footprint), a desk object wholly inside it, a desk object carrying
+  **any** property (card#9071's ruling, enforced at the write), and a `tilesets[]` `source` that
+  resolves to a tileset this repository ships — the residue the reversal said it closed.
+  ⚠ **One refusal is a BUILD-ORDER fact rather than a rule, and it is stated in § 4.6 rather than
+  worked around:** a plan that places a room with **no authored map** needs the shipped default's
+  grid for its extent, and Appendix B step 7's `resources/floor/default.tmj` is not in the tree —
+  step 11 landed first. That save is refused **by name**, naming the room and the file, rather than
+  measured against a size invented in the reader.
+  ⛔ **Not in this slice, and each exclusion has a reason:** the console's **preview** (it draws
+  with step 7's renderer, which does not exist — so restore is the only thing between a bad save
+  and every viewer, which § 6.11's review row already says); `GET /api/building` and
+  `GET /api/building/rooms/{install_id}/map` (row 12); and the `room.map` / `building.layout` feed
+  messages — row 12's, and additionally blocked on card#9287's open transport ruling, so what
+  lands is **one named seam**, `App\Building\BuildingChanged`, called on commit with the payload
+  § 8.7 publishes and no publisher behind it.
+- **card#9295** — **An event whose `data` is `{}` is now ACCEPTED, and the fix is at the DECODE
+  rather than at the check.** D1 § 6.0 — "a missing key and an explicit `null` are the same thing"
+  — makes `{}` the legal spelling of an event every one of whose `data` fields is null, and the
+  ingest refused it `422 invalid_event`, taking the batch's ≤ 199 valid neighbours with it (§ 12.4)
+  permanently (§ 11.5). The cause was not a rule anyone wrote: `json_decode($raw, true)` maps **both
+  `{}` and `[]` onto the same PHP value**, `[]`, for which `array_is_list()` is `true`, so § 12.1
+  step 9's "`data` an object" test had nothing left to test.
+  ⛔ **The one-clause repair is wrong, and was measured being wrong** — `$data !== [] &&
+  array_is_list($data)` accepts `{}` and accepts `"data": []` with it, because after an associative
+  decode the two documents are one value and no predicate downstream can recover the difference. So
+  `BodyReader` stopped erasing it: the body is decoded with PHP's associative mode **off**, objects
+  arrive as `stdClass`, and `Wire::isJsonObject()` answers the question wherever an event or a
+  `data` is tested. **Two of the four object/array checks call that predicate** (`EventValidator`'s
+  event and its `data`); the other two are hand-rolled where they sit — `BodyReader`'s
+  `instanceof \stdClass` on the envelope and `BatchValidator`'s `is_array`/`array_is_list` on
+  `events`, which asks the opposite question. Putting all four behind one predicate needs it
+  hoisted out of `App\Ingest` first, because `App\Floor` cannot depend on that namespace, and that
+  is **card#9299**.
+  `Wire::field()` reads both shapes, which is what kept the change from becoming an `(array)` cast
+  at each of § 12.1's twenty field reads — each of which would have re-erased the distinction.
+  ⭐ **Three more copies of the same conflation went with it, found by the card's sibling audit.**
+  `"events": {}` was refused as an EMPTY array rather than as a non-array; an event of `{}` was
+  refused for "not being a JSON object" rather than for the `event_id` it actually lacks; and a
+  body of `{}` took `400 malformed_body` instead of reaching step 6's version answer, which
+  § 12.1's own closing note requires be "reachable even for a batch that is wrong in other ways".
+  All three are the same `422`/`400` as before with a diagnosis a reporter's operator can act on;
+  the body case additionally moves that refusal's attribution from `unattributed_refusals` to the
+  seat the token binds, which is § 12.1's attribution table applied rather than amended.
+  ⚠ **The wire's spelling now survives into the store**: `events.data` holds `{}` where an
+  associative decode wrote `[]` (D2 § 6.4). ⚠ **`EventValidator`'s byte-bound loop measures
+  `is_object` as well as `is_array`** — § 6.14's three open-keyed objects arrive as `stdClass`
+  now, and without that arm card#9283's bound would have stopped being enforced on exactly those
+  three fields while `Tests\Unit\Ingest\EventFieldByteBoundsTest`, which drove the validator with
+  hand-built PHP arrays, stayed green. Those fixtures are now `(object)` casts — the shape the
+  decode actually produces — so the Unit suite reds on a missing `is_object` arm too (seen to fail,
+  three reds), and `Wire::isJsonObject()` dropped the associative-array arm it had been carrying
+  for them: `json_decode(…, false, …)` emits `stdClass`, lists and scalars only, so that arm was
+  true of nothing reachable from the wire. The HTTP-surface guard stays, because it is the one that
+  measures through the real decode.
+  ⚠ **`{"events": {"0": e0, "1": e1}}` was ACCEPTED before this change and is now `422
+  invalid_batch`** — permanent under § 11.5. An associative decode turned numeric-string keys into
+  a PHP list (`array_is_list(json_decode('{"0":1,"1":2}', true))` is `true`, measured), so an
+  `events` **object** walked through the array test. It is a JSON object, § 12.1 step 8 requires an
+  array, and the new answer is the one the document always specified. `fleet-reporter.js` builds a
+  real JS array and cannot emit that shape, so no conforming producer is affected — stated because
+  it is a batch that used to be stored and no longer is.
+  ⚠ **D1 gained two rules it had always enforced but never written** — § 12.1 step 3 now reads
+  "body parses as JSON **and is a JSON object**" and § 12.2's `malformed_body` row now reads
+  "unparseable **or non-object** body", because `[]`, `"x"`, `1`, `true` and `null` all parse and
+  are all refused, and this change relies on that distinction to accept `{}` while keeping `[]`
+  refused. The **VERSIONING-compliance table's rule-1 row** was corrected with them: it said a
+  batch with no `schema_version` is `400 malformed_body`, and `{}` was the last body that made that
+  true — no batch envelope reaches `malformed_body` for a missing version any more. It is
+  `400 unsupported_schema_version`, naming the accepted set. D1 § 6.0 and
+  § 12.1 step 9 were already right and the code was the wrong party; D2 § 6.4's `events.data`
+  column gained the spelling guarantee the fix mints.
+  ⚠ **The § 12.1 step 3 amendment had an un-audited SIBLING, and it is now amended too.** The
+  coordination-webhook receipt (§ 18.8) states its validation order in the same construct and its
+  step 5 still read the unamended "body parses as JSON → else `400`" — the same under-specification
+  in the same document, missed because the audit that found the amendment searched the INGEST's
+  steps rather than the claim's shape. It now reads "parses as JSON **and is a JSON object**",
+  with step 6's `repository.full_name` read named as the thing that already presupposed it.
+  ⭐ **No code changed and none was owed**: that endpoint is unbuilt (no `X-Hub-Signature-256`
+  anywhere in `server/`), so this is an under-specified spec being closed BEFORE it is built,
+  not a false claim about shipped code. It was deliberately not minted as its own card — there is
+  no user-visible harm to reach while nothing serves the route (canon #18's gate), and the surface
+  that owns the subject is the document itself.
+- **card#9287** — **THE FEED'S TRANSPORT IS RE-PINNED TO NATIVE SERVER-SENT EVENTS — design only, no
+  application code.** The card priced four ways to keep a Pusher-protocol daemon (`laravel/reverb`
+  pins `guzzlehttp/psr7 ^2.6` against this tree's 3.1.0) and never asked whether the daemon was
+  needed; the operator's challenge was right: **the feed is one-way** — every row of D2 § 8.3's
+  message table is `server → client`, § 8.5 refuses a client→server channel, § 9 refuses the feed to
+  machines — so a bidirectional daemon was surplus and its dependency pin the price of it. D2 § 8.3
+  now pins `GET /api/fleet/stream` served by PHP-FPM through the framework's own `eventStream()`
+  (verified in this tree), **one stream fleet-wide** with the handler filtering per subscriber —
+  which retires the per-install channel, the browser's six-connection limit it would have hit, and
+  FLOOR.md § 14 item 14's cold-start window (closed). Fan-in is a **`feed_outbox` table** (§ 6.4)
+  polled at the design's own 250 ms tick behind § 6.5's 2 s visibility lag — transient, retained
+  60 s (§ 6.7), **never resumed from**: no `id:`/`Last-Event-ID`, a cursor that starts at the head,
+  and a row nobody consumed is purged unread. **Two host conditions are written as named, checked
+  deploy requirements with observables, not assumptions** — R1 the proxy must not buffer the stream
+  (its signature: *feed down* against a green fleet with REST fine; FLOOR § 9 F19), R2 the FPM pool
+  must hold a worker per browser and release a dead one (its signature: the console, not the feed,
+  goes dark; F20). **Two things SSE unlocks are built in:** the on-connect `fleet.health` is the
+  handler's first yield (`FleetHealthMessage`'s *cannot be built* claim retired), and § 9 re-checks
+  the session **from the store** every 15 s, closing FLOOR § 14 item 5 and F7's residual — with the
+  consequence stated rather than discovered: an open stream refreshes no session, so a floor left open
+  is signed out at `SESSION_LIFETIME` (120 min here) and F7/F6 render it, with the ruling filed as D2
+  § 14 item 16 — ⚠ without opening
+  the feed to machine consumers, which is filed as D2 § 14 item 15 and not taken. **F1 answered:**
+  the 256-message / 512 KiB bound has no referent under SSE (a draining client is never behind; a
+  non-draining one blocks the handler), so the bound is a **45 s stall bound on the tick**, measured
+  from the tick's START and tested BEFORE the read — both placements load-bearing: stamped at the
+  tick's end the bound never fires, and tested after the read a blocked stream advances its cursor
+  over rows the purge took. It ends a **slow** consumer on the server's clock and a **frozen** one at
+  the moment its write returns, which is the host's to bring about (R2's teardown clause) and is
+  stated as a requirement rather than promised; memory stays flat structurally; what is not provided
+  is stated. The card's F1 sentence *provided by no candidate transport* is corrected on
+  D2 § 13 row 46 (Centrifugo and Mercure bound it; the sentence exists nowhere in this repo — grep
+  audited). `coalescing` withdrawn from § 8.3 as never legal under § 8.5's plus-one rule. D2 § 13
+  rows 46–48, FLOOR § 13 rows 34–36; AT-D2-15 rewritten, AT-D2-25 added; `verify-fleet-state.py`
+  G3's retired queue check replaced by the stall/retention equalities, seen red on two plants and
+  wired into the selftest harness. Round-1 adversarial review (two fresh reviewers, mechanism and coherence) returned 4 BLOCKER-class
+  findings between them, all fixed here and all with a test: the stall bound's two placements
+  (AT-D2-15 gains a slow-consumer leg, a frozen-consumer leg and REDs for both wrong placements), the
+  connect cursor's missing visibility lag (AT-D2-25 gains the connect arm — a tick-only test passes
+  over it), `eventStream()`'s `endStreamWith` default appending `event: update`/`data: </stream>`
+  after every `feed.close` (pinned to `null`), and R2's sizing unit (per open **stream/tab**, not per
+  browser; the dedicated pool is now required, since `request_terminate_timeout: 0` on a shared pool
+  removes the runaway kill for every request). ⛔ **R1's shell commands were then REMOVED
+  altogether in round 2, and that reversal is the single most important thing in this entry.** Two
+  independent reviews found that all three commands — added by round 1 to make the check *able to
+  fail* — were written from reading the primitive rather than from running anything: `php -i` reads
+  the CLI SAPI, which force-overrides `output_buffering` to `0` and so could not fail for the setting
+  it named; `grep -c` asserts an equality against a figure that is phase-dependent — 125 s ÷ 15 s =
+  8.33, so a correct 125-second window holds 8 **or** 9 heartbeats; `head -c 400` is exhausted by
+  the response headers before any body byte. A check that cannot fail is a decoration and one that cannot
+  pass gets weakened until it does — so R1 is now a **condition, an instrument and an observable**,
+  and card#9300 owns writing the commands on a host where they can be run and **seen to fail once**.
+  R1/R2 ownership also split: the credential-free config checks gate `bin/deploy.sh`; R1's wire half
+  needs a signed-in MFA session no unattended deploy can hold, so it is an operator runbook step.
+  Round 2 also fixed three mechanism errors: a store outage under an **open** stream had no specified
+  behaviour and would have ended every stream silently (the primitive swallows the exception),
+  putting the whole fleet on a 10 s reconnect cadence and taking the console down by F20 — the tick
+  read now holds its cursor and the stream becomes the messenger, and a failed **connect** read ends
+  with a new third `feed.close{reason:"unavailable"}`; the frozen-consumer story was false in two
+  sections, because the primitive's `break` abandons a suspended generator, so no `feed.close` and no
+  `feed_resync_required` ever fire on that path; and `eventStream()` writes an `event:` line on every
+  message, which means `EventSource.onmessage` can **never** fire — a builder writing `es.onmessage`
+  would have got zero messages on a healthy stream — so `event:` is pinned to the literal `mezzanine`
+  and FLOOR § 2.2 now names the single listener and the unknown-`t` branch. ⚠ **Left for the sweep after
+  card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
+  prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; **§ 13 decision row 42**,
+  whose *Alternatives* and *Cost if wrong* cells are written entirely in the retired channel model — a
+  `private-building` channel, both messages fanning out to every channel, N publishes per save — in a
+  table this amendment added rows to, and deferred with the § 8.7 prose it describes rather than
+  half-rewritten here, because the row's subject is that section's (added to this list in the card#9287
+  maintainer round, which found the list short by it); § 8.3's heading anchor keeps the word *WebSocket*
+  until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
+  `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed as **card#9300**
+  (Backlog) together with the build of D2 Appendix B step 9 and the retirement of the broadcast
+  wiring — a card this PR created, because reviewing it found the work had no open home (#7459 is
+  released, #7827 shipped) and a "filed" claim naming no card is an abandoned finding. ⭐ **This
+  amendment also discharges card#7838's first two items** — settle the coalescing contradiction, and
+  restate AT-D2-15 in terms something can drive — and the coalescing withdrawal reconciles the
+  document to code that already shipped (`server/app/Feed/SeatDelta.php` emits one delta per version
+  increment), so a doc-vs-code divergence closes here rather than opening. #7838's remaining items are
+  untouched and it is not reopened.
+  ⛔ **Round 3 (two fresh reviewers again) found that round 2's own fix had left the document
+  contradicting itself, and four independent defects are fixed here.** **(1)** § 8.3 stated the
+  framing rule twice and incompatibly — `event:` carries `t`, and then `event:` carries the fixed
+  literal `mezzanine` — so the wrong half is **deleted** rather than reworded, leaving the ruling as
+  the only statement of it; the round-2 entry above said the same wrong thing and is corrected with
+  it, which is the only sibling the claim had (FLOOR § 2.2 and D2 § 8.3's primitive sentence were
+  audited and are correct). **(2)** That fix did not reach the **buildable** surface: § 8.3's
+  pseudocode yields bare values, and `eventStream()` names the event `update` unless the yield is a
+  `StreamedEvent` — so a builder following the block ships `event: update` on every message and the
+  client's one listener never fires. Every yield is now stated as
+  `new StreamedEvent('mezzanine', $json)`, in the block and under it. **(3)** R1's instrument was
+  named from reading for the **second** time: `php-fpm -tt` exits `failed to open error_log …
+  Permission denied` before printing anything, and dumps FPM's configuration rather than ini
+  directives. Replaced by **`php-fpm -i`**, which was RUN — `output_buffering => 4096 => 4096`,
+  `Loaded Configuration File => /etc/php/8.5/fpm/php.ini`, with nothing under `pool.d/` setting it —
+  and the rule restated as baseline-then-pool-override. **(4)** Appendix B step 9's list of tests to
+  re-point before `CapturingBroadcaster` is deleted was **provably short**: the row's own
+  `-i broadcast` grep cannot see a test that drives `$this->wire` without spelling the word, so the
+  population is now stated as the grep that re-derives it, and `FeedTestCase::setUp()`'s inherited
+  breakage is named. That exposed an **ordering** defect: AT-D2-23 is in that set and is step 11's
+  gate, while step 11 runs after step 9 — so step 9 would delete the class its own successor's gate
+  is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned was NOT
+  touched by those four fixes** — it was separate design work, and round 4 below is where it is settled.
+  ⛔ **ROUND 4 IS SUPERSEDED BY ROUND 6 BELOW and is kept as the record of what was tried, not as a
+  statement of the design.** Every posture the next paragraph settles — the already-open row, the third
+  auth outcome, the frozen cursor, AT-D2-19's *still open at 60 s* leg — was WITHDRAWN by the operator
+  on 2026-09-12. Read it for why the reversal was needed; read round 6 for what the design says.
+  ⛔ **Round 4 settled it as a CONTRADICTION BETWEEN TWO SECTIONS rather than an open
+  product question.** § 2.2's *feed stream, ALREADY OPEN* row rules that a store outage under an open
+  stream keeps it **open as the messenger** — `fleet.health{db:"down"}`, no cursor advance, no end —
+  while § 9 re-checked the session every **15 s by re-reading the user record from that same store**
+  and gave that check only **two** outcomes. A read that *failed* therefore landed on *invalid* and
+  fired `feed.close{reason:"session"}`, and 15 s beats § 8.5's 45 s stall bound, **so § 2.2's ruling
+  was unreachable in practice**: every viewer on the fleet was sent to a sign-in page within 15 s of a
+  store outage — one that **cannot be completed, because authenticating reads the same tables the check
+  just failed on**. § 9's re-check now has **THREE outcomes — valid, invalid, and *unverifiable***,
+  where *unverifiable* is *the check could not reach the store* and is explicitly **not a verdict about
+  the session**: it takes § 2.2's messenger path, the stream stays **open**, and no `feed.close` of any
+  reason is sent. ⭐ **The closed set of three `feed.close` reasons is UNCHANGED** — *unverifiable* is
+  not a fourth member, because nothing is being ended — and `session` keeps exactly its meaning, now
+  said in those words on § 8.3's `feed.close` row, in § 2.1's process-table row, on R2's *declared*
+  sentence and at FLOOR § 9 F3 and § 14 item 5: **the store answered, and said the session or its MFA
+  is gone**. FLOOR § 9 gains **F21** for the mid-stream case it did not carry — F5 covers the
+  **connect**-time one — which **points at F5 for its render rather than restating it** (a restatement
+  drifts) and is **appended, not inserted**, so no existing F-id moves under the cross-references to it.
+  ⚠ **What is NOT resolvable is named rather than engineered around:** while the store is down an
+  *expired* session and an *unverifiable* one are indistinguishable, and an outage outlasting
+  `SESSION_LIFETIME` (120 min here) leaves every open stream in that state. No timer, no heuristic and
+  no client-side guess is specified, because each would be a verdict invented from an absence of
+  evidence — the very defect the third outcome removes. The first re-check after the store answers again
+  resolves it truthfully and ends the stream with `feed.close{reason:"session"}` if the session really
+  had expired: late by the length of the outage, and correct. § 9's *15 s + one 250 ms tick*
+  enforcement bound is therefore now stated as holding **on a re-check that can reach the store**, which
+  is the one existing sentence this change made false. ⭐ **AT-D2-19 gains the leg that keeps the defect
+  out** — the store made unreadable under an already-open stream, `fleet.health{db:"down"}` inside one
+  auth interval, **no `feed.close` of ANY reason** (asserted against the reason SET, so a fourth member
+  invented for this posture reds too), the stream still open at 60 s past the 45 s stall bound, and
+  `db: "up"` with delivery resumed on restore; its REDs are the two-outcome re-check itself and that
+  fourth reason, and its discriminating control is the existing expiry leg, which must still close with
+  `session` against a READABLE store — without it the absence assertion could pass over a test that
+  watched nothing. ⚠ **One thing this change does NOT carry, and it is deliberate:** `verify-fleet-state.py`
+  G7's message-type closure only sees BACKTICK-DELIMITED tokens, so § 8.3's pseudocode fence and every
+  braced prose token sit outside its population — a real gap, filed as its own card rather than bundled
+  into this design change, where it would inherit this entry's review.
+  ⭐⭐ **ROUND 6 — OPERATOR RULING, 2026-09-12: the premise under rounds 1-5 is WITHDRAWN. When the
+  store is unreachable the stream ENDS and the client says so.** Five review rounds circled one
+  assumption — *the fleet dashboard should stay useful while the store is unreachable* — and the fifth
+  round's own stopping criterion fired (a fix re-minting the class it existed to prevent, twice) rather
+  than converging. The operator took it as a product question and answered it: with the store gone
+  there is nothing to show, nothing to advance a cursor past and nothing a session re-check can be
+  checked against, so the design stops and says so instead of building a recovery path back to a place
+  with no value. **`feed.close{reason:"unavailable"}` · FLOOR renders *fleet data unavailable* · the
+  client retries on a BACKED-OFF cadence.**
+  **What this DELETED rather than answered — each one removed, not qualified beside its replacement:**
+  **(1)** D2 § 2.2's *feed stream, ALREADY OPEN* row and its whole posture; the row is now
+  **Feed stream, MID-STREAM**, posture **CLOSED**. **(2)** § 9's *unverifiable* outcome as a state that
+  keeps a stream alive — the re-check now continues the stream on ONE outcome and ends it on every
+  other, and § 8.3's loop writes the non-answer branch as `default` so that no exception escapes the
+  switch into the primitive's `catch (Throwable)` and ends the response with no `feed.close` at all.
+  **(3)** The frozen cursor, everywhere it was stated: nothing holds a cursor across an outage, so
+  recovery is a reconnect and a fresh snapshot. **(4)** § 6.7's 60 s retention arithmetic **did not
+  move and did not need to**: 45 + 15 was always derived from § 8.5's stall bound — a SLOW consumer
+  blocked in a write — and never from a stream outliving a store outage; what the frozen cursor did was
+  falsify it, and deleting the cursor restores § 8.5's *no row is ever skipped for any client* rather
+  than amending either. **(5)** AT-D2-19's *still open at 60 s* leg and its two runs, rewritten against
+  the close.
+  **Which reason a failed session re-check sends is now a stated RENDER decision, not an implementer's
+  guess:** `unavailable`, never `session` — a sign-in cannot be completed while the store is
+  unreadable, because authenticating reads the tables the check just failed on, and *your session is
+  gone* is the wrong sentence when what is true is *the store is down*. The closed set of three
+  `feed.close` reasons is unchanged and this mints no fourth member.
+  **The cost the operator is buying, stated so nobody re-litigates it:** F20's reconnect stampede is
+  real, and the answer is **client backoff**, which D3 § 2.2 now owns — after a
+  `feed.close{reason:"unavailable"}` the retry interval doubles from the 10 s cadence to an **80 s**
+  ceiling, that being the first interval at which a browser makes fewer than one request a minute
+  against a store refusing all of them, with the ceiling derived from the cadence rather than minted.
+  ⛔ **F1's 10 s poll is NOT backed off**: that path is a dead stream over a READABLE store, where the
+  polled floor is the product working.
+  **Also in this round, the four review findings the ruling left standing as ordinary work.** **F3** —
+  AT-D2-19's restore assertion was unproducible in its run 2 and the leg claimed *"the assertions below
+  hold in both"*; recovery is now its own leg, producible in both runs, and what differs between them is
+  stated as the BOUND (one tick where the tick read fails, one auth interval where only the re-check
+  does) rather than as the cursor. **F4** — `db: "up"` is not a member of § 8.2.4's `db` enum; every
+  site that introduced it is deleted by the ruling except AT-D2-19's, which now **cites § 8.2.4 for the
+  value instead of restating it**, because a vocabulary with two homes is one that drifts. **F7** —
+  `routes/channels.php` and `.env.example` each claimed `BROADCAST_CONNECTION`'s *"only occurrences"*
+  were those two, and `server/phpunit.xml` carries one they missed. Two hand-kept copies of one
+  enumeration are two copies free to drift, and D2 Appendix B step 9's retirement is exactly the act
+  that reads one and orphans the rest — so **both are replaced by the derivation**
+  (`git grep -n BROADCAST_CONNECTION`, **unscoped** — the `-- server` pathspec this round first wrote
+  excludes `bin/deploy.sh`, which D2 Appendix B step 9 requires editing, and `bin/deploy.selftest.sh`
+  with it, so the replacement derivation was itself scoped past the files it commands) rather than by
+  a corrected list. **F8** — Appendix B
+  step 8 gated on AT-D2-19 while step 9 builds the handler its stream legs drive, and step 9's gate
+  named it nowhere: step 8's citation is scoped to the REST, token and MFA legs and step 9 gains the
+  stream legs.
+  **And one carried doc-sync debt (canon #16), held out of `PupFuzz/mezzanine#115` because this branch
+  is live in the file:** D2 § 13 row 44's *Cost if wrong* cell said card#7341's floor-v1 map was *still
+  that card's to author* and its tileset pull *vendored no map*. Both were false once card#9269
+  authored `resources/floor/default.tmj` (#115). The row's RULE is untouched; the cell no longer
+  restates the tree's state at all — it points at `git ls-files resources/floor` and at
+  `verify-floor.py`'s two-directional hold on § 10.3, because a state written into a cell is a state
+  free to drift from the tree.
+  ⚠ **One deviation from the ruling's letter, named rather than absorbed:** the ruling said D2 § 2.1's
+  heartbeat-daemon row *stays as it is*. Its *"told … by the heartbeat's ABSENCE … the one case where
+  silence is the message"* clause was written for an outage the stream survived, and under the close it
+  is false — the close is the messenger within one 250 ms tick. That one clause is corrected; the row's
+  ruling (a daemon writing to the same store is not the messenger of that store's outage) is untouched,
+  and silence keeps its one remaining meaning: a stream that ended without saying so.
+  ⭐ **ROUND 7 — the first INDEPENDENT review of this amendment (maintainer round, 2026-09-12), and the
+  yield is why five self-reviews are not one outside read.** Two blockers, and both were the same
+  shape: **a rule stated in prose and CONTRADICTED by the artifact that gates it.** *(1)* The two
+  acceptance tests that decide whether the store-down ruling shipped — AT-D3-8 and AT-D2-12 — both
+  certified the held-open stream the ruling withdrew, AT-D3-8 in the words *"while the connection
+  indicator stays connected"* on the line directly below one this diff edited, and FLOOR § 9 F5's
+  **Never** column forbids that render by name. Both fixed, `fx-refusals` carries the stream's end,
+  and each gained a RED for the held-open stream. **The root defect was G12's population, not the
+  tests:** the guard held the three PROSE sites and neither test, so it could only ever agree with the
+  prose it read — its population is now the RULING's sites, AT-D3-8 included, which is the one check
+  in this file that reads `docs/design/FLOOR.md`; both new legs seen red on a plant and reverted
+  byte-identically, with a CONTROL that reds by name on an anchor that stops resolving. *(2)* The
+  handler returned on `fleet.reload` writing no `feed.close`, which F3 reads as *"a reason the server
+  did not choose"* — so **every routine deploy rendered *feed down — polling* against a healthy
+  fleet**. `reload` is now the fourth member of the close set — which **supersedes the two *closed set
+  of three … UNCHANGED* sentences earlier in this bullet**, and supersedes only their arithmetic: what
+  those rounds ruled is that the *unverifiable* outcome mints no member, and that still stands, because
+  it sends `unavailable` and ends nothing new. ⛔ **What is NOT ruled here and went to
+  the operator: whether a viewer sees a banner on a deploy that does not change `feed_version`.** D2
+  says the wire did not move so nothing should interrupt; FLOOR § 2.5, F8 and AT-D3-8's reload leg say
+  banner, unconditionally. Both are written up with their costs and the sites each answer moves at
+  **FLOOR § 14 item 20**, and neither document was edited toward the other — picking whichever is
+  easier to edit IS the ruling. The stream's END was fixed without waiting on it, because under both
+  answers an unexplained end renders *feed down* first. **Security:** § 9's revocation bound was
+  ~4× short — the re-check fires on a loop PASS and a pass contains the write loop, which § 8.5 lets
+  block for 45 s, so the bound is the auth interval plus that, under 60 s rather than 15.25 s; a
+  revoked session that drains slowly buys the difference. FLOOR F7 and **decision 36 — an acceptance
+  taken on the record at a figure 4× short** — moved with it, and the hoist that would have made
+  250 ms true is refused on the record with its reason, so the next round does not re-propose it. Step
+  9's hand-listed `/broadcasting/auth` tests were short by one (`git grep -ln "broadcasting/auth" --
+  server/tests` returns four) and are now the grep. **And the derivation that replaced round 6's wrong
+  list was itself scoped past the files it commands** — `-- server` hides `bin/deploy.sh`, which step
+  9 requires editing — so all three sites drop the pathspec. **MAJOR-6/8/9/10 dissolve into one
+  edit rather than four debates, because R1 already takes the right position:** *what is true on a
+  real FPM host is UNMEASURED and this document does not assert it either way.* R2 and step 9 did not
+  honour it — R2 named `php-fpm -tt`, the instrument R1 disqualifies eight paragraphs above and which
+  measurably cannot run as the deploy user; step 9 ordered the ini gate R1 forbids building until
+  card#9300 measures it; `pm.status_path` sat as a caveat on a check while § 2.1's feed-reload wait
+  loop depends on it; and the frozen-consumer story cited a `break` the primitive contradicts, when
+  what governs it is **`ignore_user_abort`** — unnamed anywhere, and on this box present and
+  **commented** in the FPM ini with the distribution suggesting `On`, one character from making
+  AT-D2-15's GREEN (b) red against a correct handler. All four now honour R1: named, handed to
+  card#9300, and no instrument prescribed that has not been run. The three minors were each a live
+  inconsistency rather than a taste call and all three are fixed — `feed_resync_required`'s cell named
+  a close reason the loop never counts, § 8.3's latency bound was measured from the commit while its
+  predicate reads `created_at` at INSERT, and this list omitted § 13 row 42, now deferred with the
+  § 8.7 prose it is written in.
+  ⭐ **ROUND 8 — the second independent review (2026-09-12), run over the ROUND-7 FIX DELTA only.**
+  Eleven findings, **no blocker**: every mechanism a builder implements was already correct. What is
+  fixed here is the round-7 delta's own residue, on canon #16's rule that a change owes the docs it
+  invalidates — **this delta is what made these clauses false.** *(1)* **Round 7's own root-cause
+  lesson was applied to one of its two blockers.** G12's population became the RULING's sites for
+  `unavailable`, and the `reload` member round 7 MINTED got no guard at all. Measured, not reasoned:
+  deleting the handler's `yield feed.close{reason:"reload"}` left every gate at **rc 0** — because
+  `_used` is derived over the whole document and the `fleet.reload` row's own prose (lines 2439, 2977)
+  keeps the close table's *exactly four* cardinal matching while the handler regresses. The new **G12b**
+  holds the close at the **FENCE** rather than at a section, since section 8.3's pseudocode is what an
+  implementer builds from and a close surviving only in prose is a close no build emits; seen red on
+  that exact plant, naming both prose lines, and reverted byte-identically. *(2)* **The enforcement
+  bound moved at six sites and stayed 4× short at two more** — FLOOR § 9's *"up to one tick — 15 s"*,
+  the phrasing D2 § 9 forbids by name three lines below the row round 7 did fix, and § 13's F7 note
+  citing **decision 36** as authority for a figure decision 36 itself records as retired. Both now point
+  at D2 § 9's guarantee instead of restating a figure. *(3)* **The stall bound was corrected at every
+  CONSUMER and not at its OWNER.** § 8.5 still read *"that worker, for up to the bound"* — in the very
+  clause that hands the figure to R2's `pm.max_children` arithmetic — while § 9 case (b), written by
+  round 7, rules it *"a DETECTOR, not a cap"*. A pool sized from the owner's clause is sized short;
+  § 8.5 and the § 2 backpressure row now say detector, and name R2's teardown as what actually caps
+  occupancy. *(4)* Appendix A's second cardinal stayed at *thirty-nine* against forty T-rows, outside
+  G6's regex; the restatement is deleted rather than re-synced by hand (canon #16). ⚠ **Filed, not
+  fixed here:** the enforcement bound is still restated at ≥ 6 sites across two documents with no
+  guard — fixing N copies in place is what let the N+1th survive round 7 — and G12b guards one reason
+  by name where the site loop should derive its reasons from the declared set; both are consolidation
+  items in their own right. § 8.3's split ruling still assigns card#9300 the R1/R2 ini gate that R1
+  itself forbids building unmeasured, § 14 item 20's site inventory is short by one (§ 13 row 42 takes
+  a position on the parked question), and AT-D3-8 asserts on an input round 7's own fixture edit made
+  unproducible. All five gates rc 0, floor-preview included.
+- **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
+  report that the configurable unit was the room: the floor is configurable too — a hallway with
+  five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
+  space between and offered an authored position member — and still priced itself *Blocks: nothing
+  that ships*, parked the hallway on card#9269 and designed neither extent nor overlap; it is closed
+  as under-scoped from the one-room case, with what it got right kept as the default. The plan is two members of the floor's layout entry
+  (D3 § 4.6): a room's `origin` — a position, never a size, because a room's extent is its map's grid
+  and has that one home (§ 10.3) — and a floor's `hallway`, a Tiled document for the space no room
+  occupies, read by § 10.3's table with `desks` refused; two rooms whose footprints would intersect
+  are refused at every write, naming both (D2 § 6.11), and the one read-time case is § 9 F18. A
+  floor with no plan keeps item 19's interim rule as its default (side by side, key order, the
+  § 12 gap). No new table, subject, surface or message: the plan inherits the layout's revisions,
+  `building.layout` and `GET /api/building` (D2 § 8.7, § 13 row 45). D3 § 13 rows 31–33, rows 25 and 27
+  amended, D2 § 8.3's `building.layout` row; card#9269 re-scoped to the office's interior, the hallway being the plan's. Both
+  operator floors are worked in § 4.6. ⚠ Not built: a room's value in `rooms` becomes a record
+  there, and the shipped `BuildingLayout` refuses `hallway` by name and a room record as a
+  non-scalar form until Appendix B step 11 — which also owes the code comments and refusal messages the record shape makes stale,
+  re-derived by `grep -rn -E "install(_id| id)? =>" server/config server/app server/tests` rather
+  than listed here, and not edited here because this PR is design-only.
+- **card#9283** — **Per-field BYTE bounds are now ENFORCED at the ingest; an event carrying a field
+  over one is REFUSED.** D1 publishes a byte bound per `data` field — `tool.start.descriptor` ≤ 200 B,
+  `tool_name` ≤ 64 B, `subagent.spawn.title` ≤ 120 B, the heartbeat's three capped objects, and the
+  rest — and **nothing on the server re-checked any of them**: `EventValidator` bounded only the
+  serialized `data` blob (§ 4.3's 3 KiB cap), so a holder of a valid per-seat ingest token could put
+  a descriptor at ~20× its published bound on the wire and the server stored and served it. Every
+  consumer that sized to a published bound — D2 § 8.3.2's worst-case seat object is *built from*
+  these numbers — was relying on producer-side discipline alone.
+  ⭐ **The ruling (operator, 2026-09-12) was REJECT, LOUDLY** — not truncate, not accept-and-count.
+  Truncating would put the server in the business of silently editing telemetry, which D1 § 7's
+  sanitize-at-the-reporter rule exists to keep in exactly one place; accepting-and-counting turns the
+  bound into a suggestion. ⚠ **BEHAVIOUR CHANGE, and the cost is accepted on the record: an outdated
+  or non-conforming reporter's events start disappearing at upgrade.** A field over its bound is
+  `422 invalid_event` and, under § 12.4's existing atomic rule, takes its ≤ 199 conforming neighbours
+  with it — the whole batch is refused and nothing is stored. That is chosen because a refusal is
+  visible, counted against the seat and attributable, where both alternatives fail quietly.
+  ⛔ **The refusal names the field, the bound and what arrived** — `field: "data.descriptor"`, dotted
+  so it cannot be read as the common field of the same name, plus `kind`, `max_bytes` and
+  `received_bytes` in the body and all three in `message`. A bare status re-mints card#9146's shape
+  one layer down: it changes the question from *which field, and by how much* to *what is wrong with
+  the request*, and sends the reader into the wrong subsystem.
+  **The bound population is DERIVED, never listed.** `KindRegistry::KINDS[$kind]['bounds']` is a
+  transcription of D1 § 6's field tables, and `EventSchemaDriftTest` re-derives it from those tables
+  on every run — a bound added to D1 reds the registry until it carries it, so a field cannot become
+  unchecked silently. The unit is **bytes**: `strlen`, never `mb_strlen`, and every fixture is
+  multibyte and *inside* its bound when measured in characters, so the suite cannot pass against the
+  character-counting implementation card#9282 fixed one layer over.
+
+- **card#9282** — **The tier-3 task title truncated by CHARACTERS against a BYTE contract, and up
+  to 200 B reached a 120 B wire member.** `StateRecompute::taskTier3()` held `task.title` to
+  `mb_substr($title, 0, 120)`. D2 § 8.2.1 declares that member `≤ 120 B`; on the branch that answers
+  from `calls.descriptor`, the input arrives byte-capped at the descriptor's own **200 B** (D1
+  § 7.4), so a multibyte descriptor shorter than 120 CHARACTERS — an accented path, a non-Latin repo
+  name, an em dash — was not cut at all and went out at up to its full 200 bytes. Neither plane
+  caught it: `seat_state.task_title` is `VARCHAR(120)` and MariaDB counts `VARCHAR` in characters
+  (D2 § 6.3), which is that column being *sized to hold* the bound rather than to enforce it.
+  ⭐ **D1 § 7.4's procedure now has ONE implementation — `App\Support\ByteTruncation`** — cut at the
+  last character boundary at or before the bound less the mark, then append `…`. It is extracted
+  rather than written inline because `BOARD-TASK.md § 8.4` holds the (unbuilt) tier-1 poller to the
+  same bound through the same procedure, and *"one bound, one place"* is false the moment there are
+  two copies of the arithmetic; the bound itself is `StateRecompute::TASK_TITLE_MAX_BYTES`.
+  ⚠ **The magnitude here is 200 B against 120 B, and NOT the ~480 B first reported** — that figure
+  multiplies the bound by a 4-byte character against an input already capped at 200 B upstream. 480
+  belongs to the tier-1 path, where a board card `name` is capped by nothing; § 8.4 now says so, and
+  says that neither figure re-derives the other. That section also carried the claim that tier 3 was
+  *harmless* because its input was already byte-capped — true of the capping, wrong about which cap —
+  and the sentence that let this ship is corrected in the same change.
+  ⭐ **The `mb_substr` sibling audit the card owed is run and its result is recorded: NO third
+  member.** `FoldEvent::str()` is the only other character-counting truncation in `server/app/`, and
+  it is unit-correct for what it is — a storage guard sized to the COLUMN's character width (D2
+  § 6.3), explicitly not a second sanitizer. `TwoFactorReset`'s `Str::limit(…, 250)` writes a
+  `VARCHAR(255)` audit column that is on no wire. What the audit DID surface, for its own card and
+  not fixed here: nothing on the server re-checks a per-field BYTE cap the reporter is trusted to
+  apply, so a non-conforming reporter can still overrun `action.descriptor`'s `≤ 200 B`.
+- **card#7341** — **THE FLOOR TILESET IS VENDORED AND D3 § 14 ITEM 7 IS CLOSED — and the ruling is
+  that it is a BRIDGE.** Operator ruling of 2026-09-12: Kenney's **Furniture Kit**
+  (<https://kenney.nl/assets/furniture-kit>, `CC0-1.0`), chosen **explicitly as a bridge to
+  first-party vector art**. A curated subset of the pack's `Side/` renders lands under
+  `resources/floor/tiles/furniture-kit/` behind the Tiled tileset `furniture-kit.tsx`, each file
+  with the `docs/ATTRIBUTION.md` row Gate 1 requires, and `resources/floor/LINEAGE.md` records the
+  terms as read in the pack's own `License.txt`, the downloaded archive's SHA-256, what was curated
+  and what was deliberately not taken. `docs/PLAN.md § 0` carries it as an **append** beside D-07.
+  ⚠ **It does NOT meet D3 § 10.4's resolution-independence requirement and is not meant to** —
+  pre-rendered raster fails that bar by construction. Said in four places a reader can arrive at
+  independently (§ 10.3, § 10.4, `ATTRIBUTION.md`, `LINEAGE.md`), because an interim asset that only
+  the asset tree admits to being interim is one somebody later reads as a decision.
+  ⭐ **`Side/`, not `Isometric/`, and that was the judgement call.** The ratified reference is a
+  building in **cross-section** (§ 4.1's stacked plates) with a camera that zooms and pans (§ 4.5) —
+  an elevation, in which floors stack as bands; isometric tiles recede along two axes and cannot
+  stack into a section without occluding each other — and nothing in D3 asks for that projection,
+  which until § 10.3's new bullet was written the word's total absence from the document said for
+  it.
+  Taking both was refused rather than overlooked: a renderer draws one projection, and the isometric
+  set is four renders per object that every Gate 1 row would have to keep true for nothing drawn.
+  ⛔ **THE PROVENANCE GATE HAD NEVER BEEN RUN AGAINST THIS TILESET SHAPE.** Individually-sized
+  renders need an **image-collection** tileset — `columns="0"`, one `<tile><image source="…"/></tile>`
+  per PNG — and every clause-3 fixture in `bin/asset-provenance.selftest.py` was a sliced grid sheet
+  with one document-level `<image>`. It **passes** all three clauses unmodified, and no parser change
+  was needed or made; what was missing was evidence, so the selftest gains the collection form as a
+  control **plus two REDs of its own** (a per-tile `<image>` holding its bytes inline; a JSON tile
+  whose `image` is a `data:` URI), because a green over a shape no fixture ever fed the parser
+  reports where the fixtures stopped rather than what the parser does.
+  ⭐ **§ 12's viewport row is answered, and the answer is narrower than the row expected.** A desk
+  sprite is a **measured 116 px** wide — a new **Measured** row, held against the PNG's own IHDR
+  header by a new `verify-floor.py` G8 leg with both the number and the path re-derived from § 10.3's
+  sentence, seen to red on all three of its arms (wrong size, missing file, not a PNG). The
+  1,280 × 800 floor **does not move**, and the measurement's first result is one the old wording
+  assumed away: a 12-slot room as one native-scale row is 12 × 116 px of desk plus two 108 px walls =
+  **1,608 px**, *wider* than the viewport floor, so the tileset shows the room does not fit at 1:1
+  rather than showing that it does. The camera is navigation (§ 4.5), so the floor is reached by
+  zooming out or panning — and which one is taken is exactly what decides nameplate legibility, which
+  is what this row turns on and what no renderer exists to measure. Recorded as a verdict rather than
+  left silently unmet.
+  ⚠ **§ 12's Gate-2 embedded-literal row re-derived on its own stated trigger** (*"whenever art is
+  added"*): the longest look-encoded run of base64's alphabet under `resources/` is now **107 B**, in
+  the whitespace-stripped prose of the new lineage file — not 62 B in `index.js`. Still an order of
+  magnitude under the 1,024 B ceiling, and the new longest run being English prose is clause 2's
+  named residue observed rather than supposed.
+  **No map is vendored** — a tileset is not a map, `verify-floor.py`'s sweep is for Tiled's two *map*
+  spellings, and § 10.3's declared absence stands with its branch still reporting `ABSENT`.
+
+- **card#7897** — D3 § 5.1 rule 4 states that `task.as_of` is **not drawn on the desk**, and § 13 gains
+  **decision 26** recording it with its alternative and reversal cost. Operator ruling, 2026-09-12,
+  taking option (b) of the amendment PupFuzz/mezzanine#95 proposed and did not apply: the member stays
+  in § 5.1's field list and is EXCLUDED by a stated rule rather than dropped from the list, so the
+  desk's contract says nothing an implementer has to fill in. No code changes — the module already
+  does not carry the member; what it lacked was the document saying so.
+
+- **card#7582** — **The D4 amendments are RATIFIED and applied, and retirement now clears the
+  board-user mapping.** Operator ruling of 2026-09-12 on A1–A10 from `BOARD-TASK.md`'s pull
+  request, taken **as amended by an adversarial review** rather than as drafted. `FLEET-STATE.md`
+  gains the two § 2.1 process rows, `seats.board_user_id` (UNIQUE) and the `seat_board_task` DDL at
+  § 6.4, the `board_poll_ok` / `board_poll_failed` counters at § 7.2 and § 8.2.4, the § 6.7
+  retention posture, the § 6.8 sizing line, and the § 1.2 / § 4.9 / § 14 repairs that stop the
+  document saying the poller is designed nowhere.
+  ⭐ **A10, which the review found MISSING, is added: § 6.6 and AT-D2-10 now state the rebuild rule
+  in full** — the fold reads only `events` and the durable inputs a rebuild does not destroy
+  (`seats`, `seat_board_task`). Until this, both stated the narrower *read nothing outside the log*
+  as the definition while D4 relied on the wider one, which is two live readings of one rule.
+  ⛔ **The product fork answered: RETIREMENT CLEARS THE MAPPING, in the retirement transaction**
+  (`App\Fleet\SeatRetirement`, § 4.10, AT-D4-8). The alternative — leave the row and make D4's
+  "a row leaves in exactly two ways" true by deleting one of the ways — was refused because
+  `board_user_id` is UNIQUE: a retired seat keeping it holds that board user against the fleet, so
+  the REPLACEMENT seat cannot be mapped to the same person until someone runs an undocumented
+  `--clear` on a seat that has left every read surface, and the whole symptom is a bare non-zero
+  exit. **The store ships with it** — the ratified § 6.4 shape, one migration — because a clearing
+  act with no column to clear cannot be tested, and the test is what makes it real: it was seen to
+  fail on the unique-key refusal first.
+  ⚠ **Three of the review's findings changed what was ratified, and are applied rather than noted:**
+  the two counters gain counting VERBS in § 2.1 (without them A3 turned `verify-fleet-state.py` RED
+  with two G8 failures, measured — and re-measured here by planting it); the 5-minute cadence is
+  **Chosen**, not *Derived*, which is what D4's own number table said all along; and the poller's
+  title truncation is **120 BYTES by D1 § 7.4's procedure**, not 120 characters — a board card
+  `name` is capped by nothing, and `mb_substr(…, 0, 120)` of a multibyte title is up to 480 bytes
+  against § 8.2.1's `≤ 120 B` contract.
+  ⛔ **The poller is still not built** — `mezzanine:board-poll` and `mezzanine:seat-board-user` are a
+  separate pull, which the ruling says in terms; `seat_board_task` therefore has one writer today and
+  it only deletes.
+- **card#9146** — **THE PROMOTE CHAIN'S 403 WAS THE WRONG ACCOUNT'S TOKEN, and nothing checked
+  which account it was.** Every `release-promote-cards` run from 2026-08-24 to 2026-09-09 died
+  `✗ card#NNNN: move failed (HTTP 403) — left in place` on every card it named. The cause was not
+  the board: `secrets.KANBAN_WRITEBACK_TOKEN` held a token for kanban **user 10** instead of this
+  repo's writeback account, **user 15**. Measured on the workflow itself, one variable at a time —
+  run `34417338664` probed `user 10` and then 403'd on `card#9077`; the secret was re-set at
+  `2026-09-09T23:37:31Z`; run `34417760754` probed `user 15` and reported
+  `✓ card#9078: moved 107 → 108`. ⛔ **Both accounts are `board_custom` on board 14 with identical
+  `custom_permissions` today, so the role does not explain the refusal, and this repo has NOT
+  established why user 10 is refused** — the identity is the discriminator and that is all this
+  chain needs. **The repo-side defect was the missing check**: the preflight asserted only that
+  the secret was NON-EMPTY while its own error text DECLARED a requirement about the token's user,
+  so a mis-set credential looked like a board-permission mystery and cost four rounds of wrong
+  inference across two agents. `release-promote-cards.yml` now asks `GET /users/current.json`
+  **before the mover runs** and fails the job unless `.data.id` equals the new committed
+  `.release-pr.json` → `.promote.writeback_user_id`; it prints the two numeric ids and nothing
+  else from that response, and sends only to `vars.KANBAN_API_BASE` (the PR-editable `api_base`
+  path is unreachable from it, which is why it carries no second copy of the mover's host guard).
+  **Seen to fail before it was trusted** — run `34674557403` declared `writeback_user_id: 99` and
+  the job red with *"authenticates as kanban user 15, but .release-pr.json declares … user 99"*,
+  with the promote step never reached. **Then seen to work end to end, not as a dry run** — run
+  `34674965476` (`DRY_RUN: false`, on the bytes this ships) reported `✓ card#7334: moved 107 →
+  108` for three cards and `3 moved, 0 already-released, 0 stage-guarded, 0 no-card, 0 failed`,
+  and the board reads 108 for all three. Seven stranded cards were drained across that run and
+  `34674802211`, each re-verified as a `card#<id>`-tokened commit reachable from `main`;
+  **the rest of that backlog is still stranded** and needs the same treatment. **Neither vendored file was touched**, so the #100 body pins stay
+  green. `docs/KANBAN.md` gains **G-17** for the whole mechanism and warns that **G-1 is
+  not what bit this repo** — a token can be a full board member and still be the wrong account.
+
+- **card#9250** — **MIGRATIONS NOW RUN ON THE ENGINE THEY RUN ON.** Until this landed, no
+  migration in this repository had ever been executed against MariaDB: the suite is SQLite
+  (`server/phpunit.xml`), `php-tests` asserts SQLite by name, and production is MariaDB
+  (`docs/PLAN.md` D-15 as amended 2026-09-09). Laravel compiles the two through different schema
+  grammars — SQLite has no native `ENUM` and REBUILDS a table where MySQL/MariaDB emits
+  `ALTER … MODIFY` — so a migration that passed CI and failed on MariaDB was discoverable only at
+  deploy, where DDL is non-transactional and a multi-statement migration halts PART-APPLIED.
+  **A second job, `php-tests-mariadb`, now runs every migration and the whole suite against a
+  `mariadb:11.8.6` service container** — the exact floor `docs/design/FLEET-STATE.md § 6.1` pins,
+  not a floating tag, because the point is to execute the minimum the document promises.
+  ⛔ **An ADDITIONAL lane, not a changed one**: the SQLite lane and its `DB_CONNECTION=sqlite`
+  assertion are untouched, and the two jobs share nothing but the checkout. The backend is selected
+  by **exporting** `DB_CONNECTION`, which is the mechanism `phpunit.xml`'s unforced declaration and
+  `§ 6.2` finding 1 always described — *"nothing in this repo's CI selects a backend by exporting
+  it today; when something does, it must win"* is no longer a hypothetical, and the three places
+  that said so are corrected. Every other § 6.2 pin is forced + paired and correctly DEFEATS the
+  new job's exports: CI chooses the store, CI does not choose the isolation.
+  ⭐ **The lane is built so it can fail, and was seen to.** New `tools/ci-store-probe.php` asks the
+  SERVER rather than trusting a declaration: it reds unless `VERSION()` names MariaDB, it **derives**
+  § 6.1's floor from that document's engine row and reds when the live server is below it (the
+  `services:` image tag cannot be interpolated, so the copy is guarded rather than deleted), and it
+  asserts table presence against a caller-stated expectation. The lane runs it as a **control pair**
+  twice — empty, migrate, non-empty; wipe, run the suite, non-empty — and the second pair is the
+  only available proof that the SUITE resolved to MariaDB rather than silently to SQLite, which is
+  § 6.2 finding 4's failure mode (*a MariaDB matrix that re-ran both legs on SQLite, green, testing
+  nothing*). `pdo_sqlite` is deliberately **not installed** in that job for the same reason: a
+  fallback must fatal, not pass.
+  ⚠ **Still not covered, by name**: TLS and the `+00:00` session time zone (the container is
+  plaintext on loopback and `config/database.php` sets no `timezone`); `down()` (only `up()` runs —
+  `bin/deploy.sh` is forward-only on purpose, so a `down()` defect is on no production path); and
+  every concurrency exposure card#7523 lists (`FOR UPDATE SKIP LOCKED`, the `Predicates::record()`
+  lost update, the ABBA ordering), which need two connections working at once and which a
+  single-threaded suite does not produce. What card#7523 gains is that those are now blocked on a
+  TEST rather than on a STORE — the correction is written into `MySqlColumnTypeTest`'s header,
+  which said the opposite.
+  ⭐ **WHAT THE FIRST RUN FOUND, which is the whole argument for the lane.** Every migration
+  applied cleanly on MariaDB — **no migration defect exists**, and that is now a measurement
+  rather than a hope. What the lane did catch is a defect class in the TESTS: **two tests match
+  emitted SQL text against SQLite's `"` identifier quoting**, which MariaDB writes as backticks.
+  The two ends of that class are the reason a lane is worth more than an audit.
+  `Tests\Feature\Admin\SeatConsoleTest` FAILED — its `DB::beforeExecuting` hook never fired and
+  its own precondition assertion said so. `Tests\Feature\Ingest\At13AtomicBatchRejectionTest`
+  **PASSED, vacuously**: its filter matched nothing and an empty set is exactly what it asserts,
+  so AT-13's control-flow assertion — *"a refused batch must issue no INSERT at all"* — was a
+  decoration on that engine, green forever and proving the opposite of its claim. Both now ask
+  the connected grammar through one shared `Tests\TestCase::wrapTable()` rather than spelling a
+  quoting character, so a third site cannot mint it by copying a neighbour.
+  The second run found the second: a fixture wrote `'2026-01-01 00:00:00'` into a `DATETIME(3)`
+  column and asserted the literal back. SQLite returns the string it was handed; MariaDB returns
+  `…00:00:00.000`, which is what `§ 6.4` declares the column to be. **Neither engine nor the
+  application is wrong** — `App\Fold\Clock::toMs()` already absorbs both spellings by name and every
+  wire value goes through `Clock::wire()` — the FIXTURE was not a `DATETIME(3)` value, and now is.
+  Audited for siblings by the shape that produced it (a fraction-less datetime literal in a test):
+  `grep -rnE "'20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'" server/tests server/app`
+  returns that file alone.
+- **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
+  ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
+  derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
+  [install => form, …]]`, optionally with `'label' => '…'` — and the label is display text only: the
+  plate and the elevator's stop read it, and `FLOOR.md § 4.2` states the same rule for the floor
+  screen card#9208 will build. **The key is untouched**: `/floor/{key}`, the stack order and the cab
+  position are the derived key whatever the label says, so a label is edited freely and no link
+  moves. **No label ⇒ the floor reads as its key** — honest, and no *unnamed floor* placeholder is
+  invented; an install the layout does not place has no entry and therefore no label. **Two floors
+  that would READ the same are refused at load** (`BuildingLayout::parse`), named by both keys and
+  the authored string — a duplicated label or a label equal to another floor's key — rather than
+  repaired by drawing the key beside the label (`§ 13` decision 25 carries the argument). **The
+  comparison is on what the page RENDERS, not on the bytes** — one named predicate,
+  `BuildingLayout::readsAs()`, strips and collapses whitespace the way the browser's own
+  `white-space: normal` does before comparing, so ` the solos` beside `the solos` is refused and a
+  label of one NO-BREAK SPACE is blank; the label itself is still stored exactly as authored. An
+  explicit `'label' => null` is an ABSENT label rather than a type refusal, so the document survives
+  the JSON-column store `§ 4.6` promises it to. The one case the reader cannot check — a label equal
+  to an install provisioned after the document was written — is named in `§ 4.6` and the composer
+  draws both floors rather than refuse a building for a name. The old bare room-set shape and any
+  unknown entry member (`id`, `key`, …) are refused **by name** with the new shape in the message.
+  `compose-cases.json` gains the labelled, unlabelled, unplaced and reads-alike cases, and the PHP
+  composer and the browser's `floors()` are held to the same `label` member through it. ⚠ Found and
+  fixed on the way: `main.js`'s elevator click computed the ride WITHOUT the delivered layout, so on
+  any composed building the destination the button named and the floor the cab landed on could
+  differ — the click now reads the last rendered building instead of deriving a second one.
+- **card#9267** — **THE ROOM MODEL: a room is an install, a floor is an operator-composed set of
+  rooms.** Operator ruling of 2026-09-11, which closes `FLOOR.md § 14` item 6 (*"is a floor an
+  install, or a PM?"*) — the answer was that the question conflated the COORDINATION unit with the
+  DISPLAY unit. `install_id` is the first and **does not move**: D1's seat config, D2's
+  `private-fleet.{install_id}`, its snapshot grouping and its ACL attachment point are all per
+  install and **neither D1, D2 nor D4 is edited by this PR**. The floor is the second, and it is
+  now composed. New `FLOOR.md § 4.6` owns the layout; `§ 3.1` carries both keys and points at the
+  derivation (`grep -n 'card#9267'`) of every other section the ruling made literally false, each
+  amended at its own site rather than enumerated anywhere; `§ 13` row 24 records the three
+  mechanisms with what each was taken over.
+  ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — a LIST of
+  floors, each a mapping of install id => `open`|`office` — read through
+  `App\Building\BuildingLayout`, which takes the DECODED document and never a path. It is a
+  deploy-time file because nothing the admin console authors is read at render time today (the
+  floor map is a build artifact by card#9208's ruling, and the console's stored maps have no read
+  path), so a layout in that store would answer card#9071's open question by accident.
+  ⛔ **A FLOOR HAS NO AUTHORED ID — it IS its rooms, and its key is DERIVED: the lexically least
+  `install_id` among them.** That keeps floor keys and install ids apart in the one `/floor/{…}`
+  namespace (every floor key is an install the layout places), keeps every published
+  `/floor/{install_id}` link resolving, and leaves nothing in the document to get wrong — a keyed
+  entry is refused rather than read past. The first draft of this card had the operator name the
+  floor after one of its own rooms; the derived key keeps everything that anchor bought and drops
+  the rule.
+  ⛔ **NOTHING FALLS OFF THE BUILDING, IN EITHER DIRECTION.** An install the layout does not place
+  gets a floor of its own, alone, `open` — so the layout is a departure from a default rather than
+  an enumeration anything depends on being complete, and provisioning an install renders it with
+  no deploy. A room the fleet reports no seat for is drawn and labelled, never omitted. Both are
+  `§ 0` item 6's *nothing is happening* render refused at building scale.
+  ⭐ **THE LOBBY IS BUILT ON IT.** The dashboard delivers the validated layout with the page
+  (`#lobby-layout`, `§ 4.6`: never from an endpoint); `lobby-model.js` stacks the composed floors,
+  a plate of several rooms names them, and the elevator rides between FLOORS. The client applies
+  the one default rule itself — an install § 4.1's discrepancy check discovers after the page was
+  served still owes a floor — so the rule has two homes, PHP for the console and JS for the lobby,
+  and both are held to one fixture, `server/tests/fixtures/building/compose-cases.json`.
+  ⚠ **DESIGNED, NOT BUILT: the line between rooms** (card#9268). On one floor it is already
+  `§ 5.7`'s line; across floors the form is a **call marker at each end that resolves**, with the
+  line as its co-located case. `§ 6.2` gets no row and may not: the object that would drive it is
+  on no wire. The lobby-draws-it alternative is priced and rejected at `§ 4.6`.
+  ⚠ **The console's floors module shows which floor each room is on** and stops saying *a floor
+  is an install*. Its table, routes and name still say *floors* while holding one map per ROOM —
+  stated at the module rather than renamed here, a hygiene rename with no user-visible harm.
+  ⭐ **THE WORD *room* HAS TWO SENSES NOW, AND THE SWEEP OF BOTH WAS DONE IN THIS CARD** rather
+  than promised as a follow-up: D3 used *room* for the DRAWN INTERIOR before the ruling gave the
+  noun to the container, so every occurrence in `FLOOR.md` was read against both senses. The sites
+  where a container reading was available and wrong — § 4.1's and § 4.2's *a plate carries the
+  summary, not the room*, A17's row, § 6.2's and § 6.3's *the room is live*, § 10.4 and § 12
+  step 7 — are
+  amended and carry the `card#9267` marker; § 3.1 names the second noun once and its follow-up
+  promise is gone; what is left is the drawn place, in sentences no install fits.
+  ⛔ **The ruling also minted a third road to the elevator's ONE-STOP refusal** — one floor from N
+  installs, a fully-placed fleet composed onto a single floor, which is neither the one-install nor
+  the empty building already covered — and `TheBuildingStacksTheComposedFloorsTest` now asserts it.
+
+- **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
+  the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —
+  "one **floor plate per install**, stacked, with an elevator as the way between them" — and the
+  lobby was still rendering it as a flat list, so this PR is that paragraph's CODE and **edits no
+  design document**. New `server/public/js/lobby/building-model.js` decides the stack and the ride;
+  `main.js` draws plates where it drew rows and wires the control.
+  ⭐ **The plates ARE the lobby's own floor rows.** § 4.1: the cross-section "is a *rendering* of
+  this table, and changes nothing in it … No new field is read, no count is recomputed." So
+  `plates()` is `lobby-model.js`'s `floors()` with a stack position added, the whole row is
+  asserted member-for-member against the model's, and the plate keeps the published
+  `/floor/{install_id}` link the row had. Two renderings of one floor's summary on one page is
+  what § 2.4 forbids, so the cross-section REPLACES the list rather than joining it.
+  ⛔ **An elevator with nowhere to go REFUSES THE RIDE AND SAYS SO.** `(level + 1) % stack.length` is
+  arithmetic that always "succeeds": on a one-floor building it returns the floor the cab is
+  already on, and a viewer would watch a working elevator on a building with no second floor. The
+  one-stop and no-stop cases are each rendered as their own sentence with the control disabled —
+  and the modulo ride is PLANTED in the shipped module to prove the refusal is what the check
+  measures. ⚠ **That is not a hypothetical degradation: it is what this server renders today.**
+  No install exists in any deployment (`docs/PLAN.md` P4 — "the live-host leg stays unexercised
+  until a host exists"), so the second floor is exercised by the suite and nowhere else.
+  ⭐ **The second and third floors are REAL INSTALLS through the real ingest**, which is P4's own
+  accept line ("second floor renders from a second install's feed"): the new suite provisions
+  `sola` and `zeta`, folds, and reads the served snapshot back.
+  ⛔ **A cab standing on a floor the building no longer has is never moved quietly** — a floor
+  leaves `installs[]` when its last seat retires (§ 3.5), and the client says where the cab went
+  instead of relocating it in silence, which is § 4.1's own refusal to pick a winner.
+  ⚠ **WHAT IS NOT BUILT, AND WHY.** *Where the ride arrives*: § 4.1 makes an elevator ride § 4.5's
+  camera arriving at `/floor/{install_id}`, and that route does not exist (card#9208 — the floor
+  map is a build artifact and none is vendored; § 14 item 7's tileset is open), so the ride moves
+  the cab between the plates of this screen and the plate's link stays the only thing pointing at
+  the route. *The shared solo floor*: `FLOOR.md § 14 item 6` is an OPEN OPERATOR QUESTION — "is a
+  floor an install, or a PM?" — and its "**In the meantime:**" is "**one floor is one install**",
+  which is what the client already does; D-01's floor-per-PM mapping is a *provisioning* choice about
+  `install_id` that D1 § 3.1 owns. Nothing was built for it, because building it would be
+  answering that question in code.
+
+- **card#7897** — **PART 1 ONLY: the thought bubble is BUILT.** Part 2 (messages moving between
+  desks) is untouched — it needs a GitHub-sourced `coord.round` event whose receipt route does not
+  exist, and the card says in terms *"Do NOT animate without it"*.
+  `FLOOR.md § 5.1` has carried the FORM amendment since `#30` — the bubble REPLACES the text chip, a
+  null `task` draws no bubble, and **no § 6.2 animation row is added because nothing about the bubble
+  moves** — so this PR is that amendment's CODE and **edits no design document**. New
+  `server/public/js/desk/task-bubble.js` decides whether a bubble is drawn at all, what text it holds
+  (rule 4's `task.ref` and `task.title`, capped and truncated **with a mark**), and where two bubbles
+  that would collide are parted (rule 5's deterministic pass over the **base** rects, in § 3.1's
+  identity order, so two browsers place them identically with nothing stored).
+  ⭐ **The `task` member now has ONE implementation** — `server/public/js/wire/task.js`, hoisted at
+  its second caller. The drill-down panel (card#7342) and the desk read the same null case, the same
+  reference rule and the same *stale title dropped* wording, so the two surfaces cannot come to
+  disagree about one seat's task; `DrillDownModuleWiringTest`'s shared-function sweep now holds them
+  to one copy each.
+  ⛔ **A null `task` and a desk with no character return the SAME value** — no bubble — because a
+  caller that could tell the two absences apart is a caller that could draw them apart. The
+  characterless set is **re-derived from § 7.1's own Desk column** on every run and set-differenced
+  against the module in both directions, with planted controls for each.
+  ⛔ **No motion, checked rather than commented**: the module holds no timer, no frame callback and
+  no transition, and the suite plants the 1.2 s linger § 5.1 refuses to prove the check can fail —
+  the refusal is a correctness one, because a bubble that hides itself on a timer makes *no bubble*
+  mean "`task` is null **or** the linger expired".
+  ⚠ **No DOM half and no floor page to hang one on** — § 4.4's floor route is card#9208-blocked on a
+  D2 read surface for an authored map, so the element contract stays the floor page's to declare.
+  And `task.ref` is null on every seat this deployment serves (tier 1 designed-not-built, tier 2
+  retired), so a bubble renders a **title with no link and no reference text** — never a guessed URL.
+
+- **card#7582** — **The board task-title producer is DESIGNED, and deliberately not built.**
+  New `docs/design/BOARD-TASK.md` (**D4**) designs tier 1 of `FLEET-STATE.md § 4.9`'s task-title
+  merge: the kanban poller, its cadence, the seat→board-user join, the read-scoped credential and
+  its never-emitted rule, every failure path, and eight acceptance tests with their REDs.
+  ⭐ **The one real design question was rebuildability** — `§ 6.6` + `AT-D2-10` make `seat_state`
+  reproducible from `events` and `RebuildCommand::reset()` nulls the five `task_*` columns, so any
+  tier-1 value written INTO the projection is erased by the documented recovery path. Priced
+  against routing board facts through `events` (a D1 change, and one that would need a forged seat
+  identity or a new producer endpoint) and against excluding `task_*` from AT-D2-10 (the exact
+  shape card#9214 had just deleted), the answer is neither: **the poller writes a durable INPUT
+  table and the fold derives the columns from it**, exactly as it already derives `render_state`
+  from `seats.retired_at` — an operator-written value in no event that `reset()` deliberately does
+  not touch. ⇒ no D1 change, no new event kind, no change to `reset()`, and **no fourth exclusion**.
+  D2 § 12 asks for the tier-1 freshness bound to be "re-derived once the board producer exists and
+  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged.
+  ⚠ **Superseded by the ratification below:** that row stays **Chosen**, not *Derived* — D2 § 12's
+  `Derived` means computed from a number in D2 or D1, and the cadence is in neither.
+  ⛔ **Nothing is implemented and that is the deliverable.** Every structural piece needs a D2
+  amendment — a § 2.1 process row, a § 6.4 table and column, two § 7.2 counters — and D2 § 6.4
+  says a builder "may reorder columns and add nothing". The amendments are stated as exact text on
+  the PR, unapplied, for ratification. Two reasons hold independently: no board card is assigned
+  anywhere on board 14 (re-measured over the whole population, not a sample), so tier 1's answering
+  branch cannot be exercised on a real surface; and the server's board credential does not exist.
+  ⚠ **A finding recorded on this card is corrected here:** the raw board API's list endpoint DOES
+  carry `assigned_user_id` on every row — the earlier "no such key" was true of `kbcard`'s
+  ten-key projection and not of the API, and designed around the wrong reading the poller would
+  have issued one request per card per tick instead of one for the board.
+  `docs/PLAN.md § 2` gains D4 and **loses its "three design artifacts" count** — the same
+  set-versus-figure repair § 2.1 made for its process table. `tools/design/README.md` declares
+  that D4 is a design document under **no** verifier, rather than leaving that quietly true.
+
+- **card#9234** — **Tier 2 of the task-title merge is retired; the coordination producer, its two
+  objects and the thread line are NOT.** Operator ruling, 2026-09-10. Tier 2 was the GitHub-sourced
+  title — *"the seat's most recent coordination/PR activity"*, at `task.ref = "<repo>#N"` — and it
+  fired only on a seat holding no assigned board card. The same day's ruling that a card's assignee
+  names the agent working on it makes **tier 1** that answer, **tier 3** is always underneath, and
+  tier 2 cost a protocol-agent-name→`seat_id` join no document in this repo owns (card#7957).
+  `coord_thread` is gone as a value of `task.source`: out of `FLEET-STATE.md` § 4.9's tier table,
+  its § 6.4 DDL and its § 8.2.1 member table, out of `EVENT-SCHEMA.md` § 18.11 — which stood on
+  *"one producer, two consumers"* and now stands on the coordination family alone — and out of
+  `FLOOR.md`'s producer row and its § 14 items.
+  ⛔ **What stayed, because this removed the SECOND CONSUMER of one producer and not the producer:**
+  D1 § 18 entire, `coord.thread` / `coord.round` as objects (D2 § 8.3.3), D3 § 5.7's thread line,
+  beads, carriers, broadcast and `public/js/coord/`. An edit that removes those is undoing PR #88.
+  ⛔ **The number 2 is RETIRED, not renumbered.** Tier 3 stays tier 3, so `StateRecompute::taskTier3()`
+  and every *tier 3* reference in this repository's documents, tests and comments goes on meaning what
+  it meant; renumbering would have bought a contiguous sequence and falsified all of them at once.
+  The store narrows in **its own migration** (`2026_09_11_000000_narrow_seat_state_task_source_enum`)
+  rather than by an edit to the one that minted the column, because that one shipped in v0.2.0 and
+  v0.3.0: editing a shipped migration changes only what a FRESH database gets, and every migrated
+  store would keep the three-member ENUM with nothing red. No row can hold `coord_thread` — tier 2
+  was never built, and `StateRecompute` has only ever written `telemetry` or `null` — so the
+  narrowing carries no data migration, which was checked rather than assumed.
+  ⚠ **No design verifier reds on a HALF-done removal, and that was watched rather than trusted**:
+  `coord_thread` restored in the § 6.4 ENUM, in § 8.2.1's member table, or as a whole tier-2 row in
+  § 4.9 leaves all three of `tools/design/verify-*.py` green, while a fabricated member in the same
+  ENUM position reds `verify-fleet-state.py` G1 on the same run. The mechanism is that G1 excuses any
+  member D1 also names, and D1 names `coord_thread` — as the coordination OBJECT. The object and the
+  retired task-source value share a spelling, so the one gate that would have caught a resurrected
+  member is blind to this member by construction. Nothing can mint the value today, so this is a
+  guard gap and not a live defect; no new gate is built here.
+
+- **card#7342** — **The desk drill-down panel, and subagents rendered as interns.** New
+  `public/js/drilldown/` — a pure model (`drilldown-model.js`) carrying every rendering decision
+  and a thin DOM half that makes none, on the split `public/js/lobby` and `public/js/coord`
+  already use. It renders `docs/design/FLOOR.md § 4.3`'s current task (title, the tier that
+  answered, *stale title dropped*, and the reference as a link **only** where a base URL is
+  configured for its shape), the current action with § 2.4's *running for 2m 05s*, the context
+  gauge, the uncapped intern list and the recent-activity window — each nullable member under
+  § 5.6's stated absence, and **never a zero**: a null `context` reads *not reported* with the
+  bar element's value REMOVED rather than set to 0.
+  New `public/js/wire/duration.js` is § 2.4's duration format — the one function that section
+  says there is exactly one of — and `DurationFormatMatchesTheDocumentTest` re-derives § 2.4's
+  boundary table from `FLOOR.md` on every run and requires the shipped `.js` to reproduce every
+  row, which is the browser-side leg of the guard `tools/design/verify-floor.py` holds the
+  Python side of.
+  ⛔ **A live defect on the read plane is fixed at its write site**: `detail`'s `open_calls`,
+  `attention` and `session` were handed out as raw selected rows, so six timestamps reached the
+  drill-down as `DATETIME(3)` (`2026-08-23 14:23:31.004`) while the rest of the plane sent
+  § 8.2.1's `rfc3339_ms` — one response carried BOTH spellings of one instant, since
+  `blocked_since` is the promotion of `attention.opened_at`. `Date.parse` reads the store's
+  spelling as a LOCAL time, so an intern's age would have been wrong by the viewer's UTC offset
+  with nothing erroring. Seen to fail first, with the pre-fix value in the failure message.
+  ⚠ **D3 states two selections for the intern list and they are disjoint** — § 5.2's
+  `agent_scope == "subagent"` / non-null `parent_call_id` versus AT-D3-4's "nine open DISPATCH
+  calls … lists 9" and § 8's own label rows. The panel lists the dispatch calls, because the
+  other set carries no `title` and no `subagent_type` at all and § 8.1's cap argument ("the panel
+  … already has every intern") is false under it; the document is **not amended** and this card's
+  PR body carries the proposed text under its own heading.
+  `DrillDownRendersTheInternsTest` pins both selections, so the day it is ruled on the evidence
+  is a check rather than a memory.
+  ⚠ **What is not built and why**, so the gaps are recorded rather than discovered: `task.ref` is
+  null on every seat this deployment serves (D2 § 4.9 builds tier 3 only), so the link path runs
+  on a value nothing currently mints; the side table's stools and its *+N more* tag are the
+  DESK's and wait on the floor screen (card#9208); the transport / derivation / reporter / badges
+  / session / retirement / raw blocks and their *as of* stamps are a later slice, and no stamp is
+  drawn because this slice renders none of § 6.5's ten; and nothing patches the panel live
+  because no delta-feed client exists yet.
+
+- **card#9223** — **The ingest rate-limit suite pins its clock, and a real flake mechanism is
+  closed.** `App\Support\FixedWindow` indexes on `intdiv(now()->getTimestamp(), $windowS)` — an
+  **absolute** window — so a 120-request loop that straddled a real minute boundary put its 121st
+  request in a fresh window, where `202` is correct limiter behaviour and the TEST was the thing
+  that was wrong. Root-caused at source, then **seen to fail**: the boundary was forced both by
+  travelling the clock and by sleeping across a real one, reproducing `Expected 429 but received
+  202` on demand, and passing with the pin.
+  ⚠ **A severity claim in this bullet's first version was false and is corrected here rather than
+  quietly dropped.** It said the flake "reddened roughly one PR in three"; that was card#9223's
+  local sample of *three* runs restated as a CI rate. The record refutes it — `gh run list
+  --workflow php-tests.yml` gave 33 runs, 32 success, the one failure a composer/PHP-version error
+  on the lane's own setup branch. **No CI run had ever failed on this test.** The real exposure is
+  the loop's duration over the window length, ~1 %. What justifies the fix is not the rate but that
+  the lane is a candidate to become a REQUIRED check, where any nonzero flake rate blocks merges.
+  ⛔ **No assertion was weakened and no production behaviour changed** — the pin supplies the
+  precondition each test already names in its own title.
+  New `Tests\Feature\Support\PinsTheRateLimitWindow` pins the window;
+  `FixedWindowPinCoverageTest` **re-derives the population every run** and reds on any class that
+  asserts a `429` without a pinned clock. That guard replaced a first attempt that lived on the
+  trait itself and could not fail for either hazard it named — it was deleted along with the trait
+  it was meant to protect. Also corrected: a comment claiming the release test catches a mis-sized
+  TTL, which mutation testing shows it does not.
+- **card#9214** — **`task.as_of` is derived from the log, and AT-D2-10's blind fourth exclusion is
+  gone.** § 6.6 makes `seat_state` reproducible from `events` and states what a divergence means:
+  *"some fold rule is reading state that is not in the log, and that rule is a defect by
+  construction"*. `StateRecompute::taskTier3()` WAS such a rule — it stamped `task_as_of` from the
+  **wall clock** — and `mezzanine:rebuild` resets all five `task_*` columns, so the documented
+  `derivation_error` recovery **re-stamped every replayed seat at rebuild time** and the desk's
+  thought bubble claimed its title had been obtained when the operator ran the recovery. Worse the
+  moment § 4.9's tiers 1/2 exist, where `as_of` is the basis of the 30-minute staleness drop: one
+  rebuild would reset the staleness clock fleet-wide.
+  ⇒ **The stamp now comes from the answering call's own `opened_received_at`** — the server-clock
+  receipt of the event that carries the title — which satisfies § 8.2.1's *"server clock"* and
+  § 4.9's *"when this tier's value was obtained"* **with no D2 change at all**, and makes card
+  #7837's no-re-stamp property structural, so that card's `$unmoved` guard is **deleted** rather
+  than kept beside it. `task_as_of` also goes to null **with** the title now: the null branch used
+  to leave the vanished title's stamp behind — invisible on the wire, and not reproducible either.
+  ⛔ **The test that should have caught it was blind AND unexercised, and both halves are fixed.**
+  `At10RebuildEqualsFoldTest` unset `task_as_of` from its comparison — a **fourth** exclusion
+  beyond § 11's three named ones, with no justification in its docblock — and deleting it changed
+  nothing. ⚠ **The recorded reason for that was half wrong, and the measurement is corrected here:**
+  the column was NOT unpopulated. It read `2026-08-26 12:00:03.000` on **both** sides; the blinder
+  was the **frozen clock** — one batch, one instant, so the fold and the replay stamped the same
+  value. The fixture now ends with a second, live session whose titled dispatch call is still
+  **open**, the rebuild runs **5 s** after the fold (12× inside the tightest compared threshold,
+  § 7.2's 60 s `fold_lag`), the exclusion is deleted, and `snapshot()`'s docblock now names every
+  surviving member with the reason it is on the list.
+  ⭐ **SEEN RED FIRST** (canon #9): with the extended fixture and the exclusion removed but the fold
+  unfixed, AT-D2-10 failed on `task_as_of` **alone** — `12:00:03.000` expected, `12:00:08.000`
+  actual — then went green on the fix.
+  ⚠ **A D2 amendment was considered and REFUSED, not deferred.** Naming `task.as_of`
+  rebuild-excluded would have had to weaken § 11's *"the rendered object is byte-identical"* as
+  well, and would have carved out the exact defect class AT-D2-10 exists to detect. The alternative
+  text is written out in the PR body, unapplied and unratified.
+
+- **card#8300** — **The coordination thread line — card#7897 part 2 slice 2, D3 § 5.7 and its
+  client.** D2 § 8.3.3's two objects had a read surface (card#9212) and no render map; this is the
+  render map, and the first thing on the floor drawn **between** desks rather than at one.
+  **§ 5.7** names all twenty-two members — `coord_thread.*` × 11, `coord_round.*` × 11 — with a
+  null column of its own, because § 5.6's population is § 8.2.1's and is closed against it both
+  ways. **§ 6.2 gains A18/A19/A20**: the held thread line, the envelope, the broadcast pulse.
+  ⛔ **RESOLVE OR RENDER UNRESOLVED, and today nothing resolves.** No wire event and no config in
+  this repository maps a protocol agent name to a `seat_id` (D2 § 8.3.3; card#7957's ruling *(d)*
+  is unlanded), so **every participant renders unresolved and no thread line is drawn on any
+  floor** — the thread renders as its beads, its label and its named-unresolved participants. That
+  is card#7957's ruling *(2)* built rather than deferred: the renderer is correct on day one and
+  does not change shape when the join lands. `public/js/coord/`'s `resolve()` has **no else
+  branch** and `main.js` builds no join; both are held there by planted controls, because a
+  guessed line looks exactly like a correct one on a screen.
+  ⚠ **NOT RENDERED, each with the reason:** no duration anywhere — § 2.4's format is closed but
+  publishes no **wording** for a coordination age, and § 14 item 17 owns that gap "rather than
+  [having it] filled by whichever surface reaches them first", so both receipt clocks are labelled
+  timestamps and nothing is subtracted (the lobby made the same call at the same item; this is the
+  second surface to). No convergence — `lifecycle: "closed"` is *ended* and `declares_close` is
+  *somebody performed the close act*, and D2 publishes no flag to compute one from.
+  ⭐ **The gate was widened again and the widening is checked.** `verify-floor.py` reads § 5.7's
+  source column (G2) and its markers (G9); the § 12 row that ENUMERATES G2's tables is now
+  set-differenced against the tool's own map in both directions, closing the second home that
+  over-claimed for two revisions — six planted controls, each reding by name.
+  The lobby's `node` rig was **hoisted at its second caller** to
+  `Tests\Feature\Support\DrivesAShippedClientModule` rather than copied.
+  ⚠ **There is no browser on the build host.** Nothing here verifies layout, position or paint,
+  and `main.js` is exercised only against a stub of the four DOM calls it makes.
+  ⚠ **Slice 3 is not this card's and its text is wrong.** card#8300 still calls the producer "the
+  `coord.*` bridge producer"; D1 § 18.1 correction 1 moved it to Mezzanine's own
+  `POST /api/ingest/github` receipt route, so the coordination wire crosses no repository boundary
+  and `agent-webhook-bridge` is owed nothing.
+
+- **card#9209** — **D3 publishes a duration format.** § 7.1's Label cells rendered durations and
+  the document published no rule for them: its own exemplars — `4m 12s`, `11m`, `2h 06m` — are
+  produced by **no single rule**, § 12 carried no row, and the ratified preview sidestepped the
+  question with pre-formatted sample strings, so an implementer inherited a gap that looked solved.
+  **§ 2.4 now publishes ONE function** — seconds in, one string out — in seven clauses with a
+  boundary table: at most two units (`h`/`m`/`s`, no day unit), the largest non-zero unit first and
+  unpadded, the second zero-padded to two digits and **dropped when zero**, the remainder truncated
+  and never rounded, `0s` for zero and for anything under a second and for a negative age, and
+  *nothing done yet* / *no data yet* — never `0s` — for a **missing** one.
+  ⭐ **Shared by every rendered duration on the page, with no exception**, which is what retired the
+  two forms that were not the others': § 2.4's own *this state is 117 s behind* is now *1m 57s*, and
+  the fleet banner's *N minutes ago* is *N ago*. § 7.1's exemplars are regenerated from the rule
+  (all three already conformed); § 12 gains the units row, the day-boundary row and the guard-class
+  row; **§ 13 decision 23** records the no-day-unit call with its alternative, because that is the
+  half a reviewer is most likely to contest.
+  ⚠ **The gap was wider than § 7.1 and the population is now named.** § 5.3's `sweep_last_run_at`
+  and `ingest_last_receipt_at` ages, the panel's context-sample age, reporter uptime, oldest-unsent
+  age and timeline-row age, and the fleet banner are all durations this document renders and none of
+  them was among § 2.4's four — so § 2.1 row 2's *three* was a **closed list of instances** where the
+  row means a kind, and it was already false. Row 2 now names the kind; **§ 14 item 17** carries the
+  remaining **wording** gap (the format is closed for all of them; the string four of them are
+  spoken in is not).
+  ⛔ **Reconciled in the same change, so no shipped instance outlives the ruling** (card#8075's
+  lesson): the preview's `0m 50s` and `0m 21s` become `50s` and `21s`, and the lobby's three
+  card#9209 comments — which said *there is no format* — now say what is actually still open.
+  **New gates, both seen to fail:** `verify-floor.py` **G12** re-implements the function from
+  § 2.4's clauses, reproduces its boundary table before either leg runs, holds every duration inside
+  a published rendered span to it as a fixed point, and re-derives § 7.1's `stale` / `offline` ages
+  **arithmetically** from the timestamp and corrected clock those cells state themselves; the
+  preview selftest gains the same two legs over the artifact's own sample fleet, with the dark
+  desk's age derived from `last_receipt_at` and the page's frozen clock — and never from
+  `action.started_at`, which is the seat clock § 2.4 forbids subtracting.
+  ⚠ **One correction found in passing:** § 2.4 said the fleet banner's words were *"in words D2 § 2.3
+  fixes"*. D2 § 2.3 fixes the banner's trigger and its threshold and publishes no wording for it —
+  `grep` returns nothing — so the attribution is withdrawn and the words are named as this
+  document's.
+
+- **card#9212** — **D2 gains the coordination read surface that card#7897 part 2 slice 1 was
+  ruled to write and did not.** That slice was defined as two documents; `PupFuzz/mezzanine#31`
+  landed only D1 (`EVENT-SCHEMA.md § 18`), and `FLEET-STATE.md` carried **no** `coord.*` surface
+  under any name — which is why `verify-floor.py` red by name on the first § 5.1 render row a D3
+  build tried to source from one. **New D2 § 8.3.3** declares both objects as read-surface fields
+  (`coord_thread.*`, `coord_round.*`), and § 8.3's message table gains `coord.thread` and
+  `coord.round`. Nothing is re-derived: every field, bound and nullability is D1 § 18.6/§ 18.7's,
+  cited, and the section mints no number.
+  ⭐ **What the surface refuses is the load-bearing half.** No mapping from a protocol agent name to
+  a `seat_id` — UNVERIFIED at D1 § 18.13 row 6, ruled on card#7957, and a renderer that reads one as
+  the other draws a line to a desk no fact names; no `needs_human`, no `converged`, no round number,
+  no `is_broadcast`, no delivery digest, each with the D1 finding that killed it. ⇒ **The escalation
+  flare has no field at all and must not be drawn**, and the convergence spark has one that means
+  something narrower than convergence — a thread *ended*, a post *declared the close*.
+  ⚠ **The producer is Mezzanine's own receipt route, not the bridge** (D1 § 18.1 correction 1, on
+  D-10): the coordination wire crosses no repository boundary, so the ruling's cross-repo DECLARE
+  obligation has one end rather than two, and nothing is owed into `agent-webhook-bridge`.
+  **Feed only** — no snapshot member and no fifth endpoint, because a snapshot is a read of a
+  coordination store that D1 § 18.13 hands to a later slice; the cost (a just-connected floor draws
+  no thread line until the next post) is priced in § 8.3.3 and carried as § 14 item 14.
+  **Doc-sync of claims this falsified — the CLAIM was audited for siblings, not just the file.** In D2:
+  § 1.2's *"ingest of GitHub webhook … not designed anywhere yet"*, § 4.9's and § 13 row 25's *"the
+  producers of tiers 1 and 2 are designed in no document in this repo"*, and § 14 item 3. In **D3**,
+  where the same claim had a fourth and fifth copy: § 1.2's non-goal row and § 14 item 4's *closes it*.
+  Tier 2's producer has been D1 § 18 since PR #31 merged, and every one of these said otherwise.
+  D3's § 12 guard row moves with the gate change below — it enumerates the D2 surfaces G2 reads.
+  **Gates:** `verify-floor.py` learns D2's **fifth** field surface (reading **both** of § 8.3.3's
+  tables — a first-table-only read would publish one object and report clean over the other), and
+  `verify-fleet-state.py`'s G7 adds `coord` to the message-type prefixes it closes prose against.
+  Both were watched failing: a fabricated `coord_thread.bogus` in § 5.1 reds, and a `coord.bogus` in
+  D2's prose reds. New **AT-D2-24** pins the two rules a build could not otherwise be held to — the
+  invented join, and a coordination fact minting a seat state.
+- **card#7833** — **§ 5's predicate criteria are now evaluable, because § 6.4's `seat_predicates`
+  was EXTENDED to carry the evidence they ask for** (operator ruling: extend the store, do not
+  restate the criteria). Every criterion in § 5 is stated over a window, and the table carried only
+  cumulative branch counts plus two timestamps — from which no windowed count is derivable. ⭐ **The
+  gap is provable in one pair of histories, and that pair is now a test:** 250 clean turns inside a
+  day (criterion MET) and 249 spread over a month plus one an hour ago (NOT met) produce a
+  **byte-identical row** — `true_count` 250, `false_count` 0, `last_true_at` an hour ago,
+  `last_false_at` null, `alarm_since` null. No function of that tuple separates them. Since PR#21's
+  interim, four of the seven answered `cannot_evaluate` on every row of every pass: honest, and
+  inert.
+  **What § 6.4 gained:** `run_length` / `run_started_at` (the constancy evidence) and
+  `window_start` / `window_true` / `window_false` / `prev_start` / `prev_true` / `prev_false` (a
+  tumbling 24 h window and the last completed one). The run's BRANCH is deliberately not a column —
+  `Predicates::priorBranch()` already derives it from the two `last_*_at` timestamps, and a second
+  copy would be free to disagree.
+  **What the code gained:** *constant across ≥ N evaluations in a window W* is exactly *an unbroken
+  same-branch run of ≥ N that began no more than W ago*, so `seat_live`, `activity_recent`,
+  `turn_clean`, `ingest_receiving` and `fold_current` collapse from three implementations into ONE
+  `run` rule at five settings of `(direction, n, window)` — the old `consecutive` kind is that rule
+  with no window. The verdict is decided at `record()` and **latched** in `alarm_since`, never
+  recomputed cold: a run that crosses N inside W and keeps going outgrows W while still being
+  constant, and a cold recomputation would withdraw an alarm whose subject had not changed. Exactly
+  one event withdraws it — the run breaking.
+  ⚠ **THE ACCEPTED COST, recorded rather than absorbed: `call_closed_by_wire` moves from a ROLLING
+  24 h window to a TUMBLING one.** Its criterion is a *share* ("≥ 5 % server-closed across ≥ 1,000
+  in 24 h") and § 5 says so in terms, so restating it as a run would not weaken it — it would
+  **delete** it, and it is the only one of the seven that is a health signal rather than a
+  discrimination meta-monitor. Evaluated over the last **completed** window it is exact, at two
+  costs the operator accepted: the alarm can only arrive **at a window roll**, so worst-case
+  detection of a reap outage stretches by up to one window; and a burst of server closes that
+  **straddles** a boundary can leave both halves under the 1,000 floor and alarm on neither. Both
+  are under-firing, which is the direction § 5's own trade prefers — and the straddle is pinned by
+  a test, so a later change that makes it fire is visibly a design change and not a bug fix.
+  ⚠ **A second residue, also under-firing:** the run's window is measured from the run's START, so
+  a run that began before W and only reached N afterwards does not fire. Closing that needs the
+  timestamp of the (`run_length` − N + 1)-th evaluation — a per-evaluation bucket table, which was
+  refused: it would put a second row-write on the fold's hot path, written by two processes, and a
+  second lock-order edge on top of the one card#7523 already carries. **`Predicates::record()`'s
+  concurrency posture is untouched by design** — the new state is computed in PHP from the row it
+  already read and written by the upsert it already did: no new statement, no new writer, no new
+  lock-order edge.
+  ⭐ **`cannot_evaluate` is GONE, and that closes a read-side gap rather than merely tidying one.**
+  `Sweep::pass()` discards `Predicates::alarm()`'s return and § 8.2.3's `detail.predicates`
+  publishes only the row's own columns, so while a third outcome existed that wrote NOTHING, a
+  predicate **nobody was checking** rendered identically to a healthy one. It is closed by removing
+  the third outcome, not by plumbing a field: after a pass, `alarm_since !== null` holds if and only
+  if the outcome was `FIRES`, on every row visited — asserted directly, over a fixture containing
+  both verdicts so the check can fail. **AT-D2-13 is satisfiable for all seven predicates**, each
+  seen to fire and seen not to fire across its own boundary (5,759/5,760 · 199/200 · 49/50 ·
+  999/1,000 · exactly 7 days vs one second more), with ten mutations of the new rules each driven
+  red.
+  ⚠ **The migration was edited IN PLACE rather than shipped as an `ALTER`**, on a stated basis and
+  not a convenience: § 6.1 records that "the deploy host is not built yet" and § 6.8 that "no seat
+  has been instrumented yet", so no store anywhere holds a row of this table. Splitting one table's
+  declaration across two files to alter a table nothing has created would have left that migration's
+  own "§ 6.4's verbatim DDL" comment false.
+  ⚠ **One claim in this work was made from recall, then measured, and was WRONG** — recorded because
+  the correction is now load-bearing in a comment. The share comparison uses integer
+  cross-multiplication, and its first justification said `0.05 * 1000` is `50.000000000000007` in
+  IEEE-754 so the float form could not meet its own boundary. It is exactly `50.0`, and the float
+  form diverges from the integer form at no total in the reachable range. The integer form stays —
+  exact by construction, and § 5 states the threshold in percent — but it is recorded as a
+  robustness choice **with no failing case behind it**: a mutation to the float form leaves the
+  suite green, deliberately.
+
+- **card#7523** — **the store is repinned to MariaDB ≥ 11.8.6, replacing MySQL ≥ 8.0.12** (operator
+  ruling, 2026-09-09). This is the DOCUMENTATION AND PINS half; host provisioning is the operator's
+  and is not in it. **D2 § 6.1 does not carry its requirements across — it re-argues each one**: the
+  engine row now cites MariaDB for `FOR UPDATE SKIP LOCKED` (10.6.0) and `ALGORITHM=INSTANT` (10.3.2,
+  with no MySQL-style 64-row-version ceiling), and the character-set row moves off
+  `utf8mb4_0900_ai_ci` — a MySQL-only identifier that spells no vendor name, which is why a grep for
+  "MySQL" would have left it. The value it moves to is `utf8mb4_unicode_ci`, which is what
+  `server/config/database.php` has said all along: **the document and the config had already drifted
+  apart on this row and nobody could see it**, because the only thing the schema's correctness
+  actually rests on is `ascii_bin` on identifier columns, and that is present on both engines.
+  ⭐ **`JSON` is the one requirement that changed meaning, not just vendor.** On MariaDB it is an
+  alias for `LONGTEXT` + an automatic `CHECK (json_valid(…))`, not a binary type, and the `->`/`->>`
+  operators do not exist before 13.1. That is inert **here** and the reason is recorded rather than
+  assumed: this repo has **zero** SQL-side JSON — every JSON column is written whole, read whole and
+  decoded in PHP (re-verified this pass, not taken on trust). The same pass re-verified the other
+  divergences: no `uuid`/`ulid` column in any migration, so the one driver difference the research
+  names has nothing in this schema to act on; and no functional/expression index.
+  ⚠ **ONE ITEM IS UNSOURCED AND IS RECORDED AS UNSOURCED, not smoothed over.** Quantified
+  whole-column JSON read/write performance on a `LONGTEXT`-backed `JSON` against MySQL's binary
+  `JSON` — neither vendor isolates that access pattern. § 6.1 now says in terms that this document
+  claims **no parity in either direction**; it needs a benchmark, not a citation. § 6.8's row-cost
+  model carries the same caveat, having been built on the binary-`JSON` assumption.
+  ⚠ **`docs/PLAN.md` D-15 was superseded by an APPEND, never an edit** — that register's own rule
+  (`§ Amendments`). The row stands as written; the amendment states that the engine and its floor
+  move and that the *dedicated host*, the provisioning ownership and § 6.2's pinned names do not.
+  ⛔ **What this deliberately did NOT change, each for a stated reason.** `bin/deploy.sh` still
+  refuses any `DB_CONNECTION` but `mysql` — that is the LARAVEL CONNECTION NAME, not the server
+  product, Laravel's `mysql` driver speaks to MariaDB, and moving the app to `config/database.php`'s
+  `mariadb` connection would change what the deploy accepts *and* what the § 6.2 isolation guards key
+  on. Its refusal text and the comment above it now say all of that; the decision is the operator's
+  and is named as open in the D-15 amendment. Migrations, `config/database.php` and the suite's SQLite
+  pin are untouched. `docs/sprint-burndown.html` is generated and card#7523's own title still says
+  *"MySQL provisioning"* — both move when the operator retitles the card, not from here.
+  ⛔ **PHP docblocks still name MySQL as the deployed engine** (`Fold`, `Predicates`, `BatchWriter`,
+  `Clock`, the migrations, `MySqlColumnTypeTest`, `ingest-roundtrip.py`, …). No count is written
+  here because a count is a claim with a maintenance schedule; the population is whatever
+  `grep -rIil mysql server/app server/database server/tests` returns, less the identifiers
+  (`MYSQL_ATTR_SSL_CA`, `database.connections.mysql.*`, `MySqlGrammar`, `MySqlColumnTypeTest`)
+  which are names and not claims. They are reported as ONE class rather than fixed here — this
+  dispatch is docs and pins, and a repo-wide comment sweep during parallel work is how a rebase
+  eats a real change. **Every** copy of the `utf8mb4_0900_ai_ci` claim WAS fixed, in code comments
+  as well as in D2, because that claim is the one this card falsifies and a corrected claim with
+  false copies left behind is the drift the correction exists to remove. Also reported: `MySqlColumnTypeTest` compiles the real migrations through Laravel's
+  **MySqlGrammar**, which is no longer the grammar the prod store is reached by — inert today (the
+  `mariadb` driver differs only on `uuid`, which this schema has none of) and named so it does not go
+  quiet.
+- **card#9203** — **the PHP floor is now `^8.4.1`, and no surface restates it.** `server/composer.json`
+  declared `"php": "^8.3"` while the committed `server/composer.lock` pinned `symfony/*` v8.1.5, every
+  one of which requires `php >=8.4.1` — so **the repository could not install its own lockfile on the
+  version it declared**. Measured, not inferred: `composer install` on PHP 8.3.33 exits 2 with eighteen
+  *"your php version (8.3.33) does not satisfy"* problems, found by the first run of card#7344's lane.
+  ⛔ **The severity was in `bin/deploy.sh`, and it is what this card closes.** Precondition **A6** exists
+  for one reason — *"composer would refuse anyway, but it would refuse INSIDE the window, after the app
+  was already taken down"* — and it carried its own hand-written copy of the floor, `8.3*|8.4*|8.5*|9.*`.
+  On an 8.3 host that copy **PASSED**: the maintenance window opened, `php artisan down` ran, and
+  `composer install` then failed in-window. Per the deploy contract that is exit **2** — the app is left
+  DOWN, a marker is left on disk, nothing is rolled back and a bare re-run refuses. The guard was not
+  broken; it was faithfully enforcing a claim that had stopped being true. The same restatement had
+  drifted the OTHER way too, unnoticed: the case list accepted `9.*`, which `^8.3` never allowed.
+  ⛤ **A6 now READS the constraint instead of restating it, out of the RELEASE BEING DEPLOYED.** It moved
+  to after A7's ref resolution, out of letter order and commented as such, because it needs `$SHA`: the
+  floor that matters is the target tree's, not the prod checkout's, and those two differ on exactly one
+  deploy — **the one that raises the floor**, which is this one. Reading the checkout would have passed
+  it; reading the target refuses it before anything is touched.
+  ⛤ **`MEZZ_FPM_SERVICE`'s default is derived from the host's PHP** (`php8.4-fpm` on 8.4, `php8.5-fpm` on
+  8.5) rather than the literal `php8.3-fpm` it used to be. An FPM unit tracks the version a host has
+  INSTALLED, not the floor `composer.json` declares, so *any* literal there is wrong for some satisfying
+  host. A host whose CLI and FPM pool are different minors sets `MEZZ_FPM_SERVICE`, and does not get a
+  surprise for forgetting: A13 already requires the unit to exist and be enabled before the window.
+  ⚠ **`composer.lock` was NOT re-resolved.** `composer update --lock` moved exactly two lines — the
+  `content-hash` and the `platform.php` block, which had been saying `^8.3` while the lock's own contents
+  required `>=8.4.1`. **No package version changed** — the whole locked set was diffed name-by-version
+  before and after, and only those two lines moved. A dependency bump was not in this card's scope and
+  would have needed its own review.
+  ⛔ **The check that would have caught the mint now exists: `tools/verify-php-floor.py`.** It asserts that
+  the DECLARED floor can carry every package the LOCK pins, and that the lock is in step with the
+  declaration. `composer validate --strict` was clean for the whole time this was broken — it checks
+  composer.json's content hash, never whether the declared platform can install the locked tree — so the
+  `php-tests` lane now runs both, and derives its own `php-version` pin and cache key from
+  `server/composer.json` instead of carrying the `8.4` it used to spell out. That header's explanation of
+  why it deliberately did not follow the floor is rewritten, not left standing.
+  ⚠ **What is still not covered, stated rather than implied:** the lane pins the floor's MINOR, so it runs
+  the newest 8.4.x and never executes the exact `8.4.1` the declaration promises. That gap is closed
+  statically by the new tool (it reds if any locked package needs more than the declaration) rather than
+  by a patch-level pin, which would freeze CI on a PHP that stops receiving security patches and would
+  depend on `setup-php` resolving an exact patch level.
+  ⛤ **Seen to fail (canon #9).** `bin/deploy.selftest.sh` grew a paired section for A6 — a host one minor
+  below the floor, one PATCH below it, exactly at it, above it on a later minor, above the ceiling, a
+  release that RAISES the floor above what the checkout declares, an unevaluable constraint, an absent
+  `require.php` and an absent `composer.json` — each refusal next to a single-variable control that
+  passes. Restating the floor as the stale `^8.3` inside A6 reds that section — including the card's
+  own case going from *refused* to *proceeds* — and restoring it greens it. The 8.3 fixture is given
+  its own `php8.3-fpm` unit on purpose, so that A6 is the only thing that can refuse it and the exit
+  code cannot go on reading 1 for an unrelated reason.
+  ⚠ **Found and NOT fixed, reported rather than folded in:** `composer.lock` also carries packages capped
+  at PHP 8.5 (`8.1 - 8.5`, `8.2 - 8.5`), so its true installable range is `[8.4.1, 8.6)` while `^8.4.1`
+  promises `[8.4.1, 9.0)`. Nothing can reach that today — 8.6 does not exist — and the new tool checks the
+  floor only, so the ceiling half is unguarded and named here rather than left silent.
+- **card#9208** — **the floor map has no read surface, and that is now a ruling instead of a
+  silence.** D3 § 4 renders a tiled floor from an authored `.tmj` and D2 published nothing to obtain
+  one — card#8075's defect shape one layer up, where the cheap move is for the client to mint the
+  surface it needs. ⭐ **Operator ruling, 2026-09-09: the map is a BUILD ARTIFACT shipped with the
+  client and never served at runtime**, with the two other candidate shapes (a served map surface; the
+  map riding the snapshot) declined, and **a floor edit is a redeploy** accepted explicitly as its
+  cost. Recorded where each half belongs rather than where it was convenient: the read-surface half in
+  **D2** — § 8.2 declares that no endpoint serves a map, § 13 row 38 is the ruling with its
+  alternatives and its cost — because D3 § 1.2 makes every read surface D2's and § 1.3 forbids D3 to
+  edit it; the client half in **D3 § 10.3**, which replaces *"deliberately not invented here"* with the
+  answer, the artifact's path, and what a redeploy actually costs an author.
+  ⚠ **D2 declares the seat→desk binding and it needs NO new wire member.** § 8.2.1 now states that
+  `install_id` + `seat_id` **are** the binding and the whole of it — they ride every seat object and
+  every seat-scoped message already, the desk is a pure client-side function of that pair (D3 § 3.2),
+  and what was missing was the statement that they are load-bearing for the layout, not a field. No
+  slot index, no desk id, no map reference is published, and § 8.2.1's field table is unchanged.
+  ⛔ **`verify-floor.py`'s `S = 12` check was a decoration and is now a check.** It regexed the number
+  out of D3's own prose — a sentence calling the map *shipped* while **no `.tmj` exists anywhere in
+  this repository** — so the gate asserted the document against itself. G8 now resolves the artifact
+  from § 10.3's declared path in either Tiled spelling (both re-derived from § 10.1's allowlist) and
+  takes one of two branches, each seen to red: with a map present it counts the objects of the `desks`
+  layer and reds on a count that is not `S`; with none it requires § 10.3 to **declare** the absence
+  and sweeps the tree for any map that would falsify it. The gate's output says which branch ran,
+  because *S held against a file* and *S held against a declaration* are different claims.
+  ⭐ **The absence is now stated, not implicit:** § 10.3 declares the artifact as
+  `resources/floor/<install_id>.tmj`, that none is vendored, and that card#7341 vendors the `aimla`
+  one. Minting a map is deliberately NOT in this card — it needs the tileset D3 § 14 item 7 is still
+  open on and a `docs/ATTRIBUTION.md` row for it.
+  ⚠ **The ruling opened one question and it is filed rather than left as a consequence:** card#9085's
+  console still authors and stores one Tiled document per floor, and under this ruling nothing reads
+  that store but the console itself — an operator can author a floor, watch it save, and see no change
+  ever. D3 § 14 item 16 carries it with the three answers and says it is an operator call.
+  ⛔⭐ **REVERSED 2026-09-12 — operator ruling on the same card, taking D3 § 14 item 16's third
+  answer and widening it: *"option C. Each floor should be configurable separately, including room
+  design (walls, furniture, etc)"*.** The map is **served at runtime from the admin console's store**,
+  and the console is the source of truth. This is a DESIGN amendment (D2 + D3), and no application
+  code moves with it. Recorded where each half belongs, as before: **D2** gains § 8.7 (the building
+  surface — `GET /api/building`, `GET /api/building/rooms/{install_id}/map`, and the feed messages
+  `room.map` / `building.layout` that say one changed), § 6.11 (the authored store and its append-only
+  revisions: a prior layout IS retrievable after a bad save, a restore is a forward revision, a removal
+  is a revision, and *review* is the one thing version control gave that the store does not give back —
+  said in terms), § 2.2's two posture rows, § 8.1's third posture row, § 9's browser-only row, § 6.4's
+  DDL for `authored_revisions` / `building_layout` / `floors.map_version`, § 6.10's second
+  irreplaceable population, and § 13 row 38 REVERSED with rows 41–44 (own prefix not the fleet plane;
+  notify-then-fetch not poll; append-only revisions; ONE shipped default). **D3** § 10.3 is rewritten:
+  the configurable unit is the **ROOM** and the operator's *each floor* maps onto it (§ 13 row 27);
+  Tiled stays the authoring format and the console validates, previews, revisions, diffs, restores and
+  exports rather than growing an editor (row 28; § 14 item 18 prices the editor); the renderer's closed
+  read of the document is a table, and a desk object carrying ANY property is refused at the write; a
+  map apply fires no animation (row 29) and a failed fetch never draws the default (row 30, § 9 F16).
+  **The layout moves with the map** — § 4.6's deploy-time argument was § 10.3's and inverted with it
+  (§ 13 row 24 amended). ⚠ That move is **this design's inference**, not a clause of the ruling: the
+  operator's card#9070 words point the same way but were about the map, before card#9267 minted a
+  layout at all — § 4.6 says so and names it as the one call to reverse if the two-change-path
+  argument is not accepted. § 14 item 16 CLOSED; items 18 and 19 opened; Appendix A gains T39;
+  Appendix B gains three build slices.
+  ⚠ **Reconciled with card#7341 as the record has it, not as first dispatched:** that card's tileset
+  pull (#107, 2026-09-12) vendored the tileset and **no map**. § 10.3 declares the ONE shipped default
+  at `resources/floor/default.tmj` before any map exists at any path, so the map card#7341 goes on to
+  author is written there from the start and nothing is renamed; `verify-floor.py` G8b reds a map
+  landing at the old per-room path by name in every state (CONTRADICTED while § 10.3 declares the
+  absence; MISPLACED after it, instead of the default or beside it — the gate's own G8b comment
+  records why the *beside* leg was added).
+  ⛔ **`room.map` rides EVERY install's channel, like the heartbeat** — a client's subscriptions are
+  the snapshot's installs, and the room an operator has just drawn may have no seat reporting, so a
+  per-room publish would reach nobody. And the design says plainly what card#9071's *no pinning*
+  ruling protects (no identity in the document, no stored position, every browser agrees) and what no
+  document check can prevent (an author choosing `S` and geometry so a known seat lands at a known
+  desk — arithmetic on a pure function, not a feature).
+  ⛔ **`verify-floor.py` G8 now asserts the INVERSE of what it asserted:** a new leg, **G8d** (G8c is
+  the tileset pull's sprite check), requires § 10.3 to name the read paths a room's map is fetched
+  from and holds them to set-equality with D2 § 8.7's `GET` rows — seen red three ways (an
+  undeclared path; the map path dropped while the layout path stays; no path at all). G8b's existing
+  CONTRADICTED branch was also seen red on a map planted in the tree. `verify-fleet-state.py` G7's
+  prefix set gains `room` / `building`, seen red on a planted `building.reload`.
+  ⚠ **Code comments and docblocks now stale, owed by the build slices — the PREDICATE is the record,
+  and the list below is its full output on 2026-09-12, unrelated hits included and marked, so that
+  the build re-runs the predicate rather than trusting the list:**
+  `grep -rniE "build artifact|never served|no read path|with the page|not from an endpoint|all four|the one endpoint|deploy-time|9208" server/`.
+  **Slice 1** (the layout's home): `server/config/building.php`, `server/routes/web.php`,
+  `server/resources/views/dashboard.blade.php`, `server/resources/views/console/floors/index.blade.php`,
+  `server/public/js/lobby/lobby-model.js`, `server/public/js/lobby/building-model.js`,
+  `server/public/js/lobby/main.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`,
+  `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`. **Slice 2** (the surface):
+  `server/app/Http/Middleware/FleetReadGate.php`. **Slice 3 / the floor route** (the
+  docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* — the surface now
+  exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
+  `server/public/js/drilldown/main.js`, `server/public/js/drilldown/drilldown-model.js`,
+  `server/tests/Feature/Coordination/CoordModuleWiringTest.php`,
+  `server/tests/Feature/Desk/DeskDrawsTheThoughtBubbleTest.php`,
+  `server/tests/Feature/DrillDown/DrillDownModuleWiringTest.php`,
+  `server/tests/Feature/DrillDown/DrillDownRendersTheInternsTest.php`. **Unrelated hits, not stale**
+  (the predicate's false positives, named so the next run can tell them apart): `server/routes/fleet.php`
+  (*all four routes are `GET`* — scoped to that file's four fleet routes, and still true of them),
+  `server/app/Fold/Fold.php`
+  (*all four fold call sites*), `server/app/Http/Controllers/FleetController.php` (a pagination row
+  *never served*), `server/tests/Feature/Feed/At19ReadAuthTest.php` (*the one endpoint that carries
+  `counters`*), `server/tests/Feature/Fold/At10RebuildEqualsFoldTest.php` (*all fourteen*).
+
+- **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
+  count.** The table is what an operator provisions a host from, and it listed every process except
+  the 15 s feed heartbeat — so a host built from it would supervise the fold, the sweep and the
+  purge, come up green, and leave `feed.heartbeat` unsent. The client half of § 8.3 then does the
+  visible damage: **a channel that sees no message of any kind for 45 s renders `feed_down` and
+  reconnect-loops against a perfectly healthy fleet**, and because the timer is armed by *any*
+  message, the channels that fail are the QUIET ones — exactly the case § 8.3 built the heartbeat
+  for ("a quiet fleet and a dead socket must not look the same"). A `db`/`fold`/`sweep` change also
+  never reaches a connected client, `FeedHeartbeatCommand::tick()` being the only caller of
+  `Publisher::healthChanged()`. Nothing errors anywhere in that sequence.
+  ⛤ **The opening count is deleted rather than corrected.** *"Five processes — four that run on
+  their own"* is a second copy of the set standing next to it, and it is what let the omission read
+  as complete: the heartbeat was built, `bin/deploy.sh` supervised it, and the figure went on
+  saying five. § 2.1 now opens with "the rows of this table are the processes", states in
+  terms that it carries no count, and says *add a process, add a row* — so the next daemon has one
+  place to be recorded and no number to contradict it.
+  ⚠ **`bin/deploy.sh` is the guard that already existed, and it now cites one section instead of
+  two.** Its `DAEMON_SERVICES` default has carried `mezzanine-feed-heartbeat` since card#7459 and it
+  refuses to deploy without a systemd unit for every member, so a host missing the unit fails loudly
+  at deploy time — that is what kept this from being a live outage. Its comment described the set as
+  "§ 2.1's population plus § 8.3's heartbeat"; § 2.1 is now the whole of it.
+  ⛔ **Nothing checks § 2.1 against the processes the code actually defines** — no gate, no test,
+  and `tools/design/verify-fleet-state.py` does not parse that table. The sibling audit for this
+  card was run by hand off `server/app/Console/Commands/*.php`, `server/routes/console.php` and
+  `bin/deploy.sh`; it found the heartbeat and two more gaps of the same shape (Reverb, which no D2
+  section lists as a process to provision, and the per-minute scheduler tick `mezzanine:purge`
+  needs, which appears nowhere in this repo). Both are reported with this card rather than fixed
+  here — one change does one thing — together with the proposal for the check that would have
+  caught all three: a G-check re-deriving § 2.1's membership from the commands the code defines.
+- **card#7341** — **the lobby: `/dashboard` was a placeholder that said the floor "stays empty so
+  that #7341 has nothing to delete before it can start", and it now renders the fleet.** D3 § 4.1's
+  building summary, live from `GET /api/fleet/snapshot`: the floor list (`installs[].install_id`,
+  ascending), a per-floor state summary in § 7.1's **fixed member order**, the fleet totals
+  (`fleet.seats_total` / `fleet.seats_live`) **read from the wire and never recounted**, § 4.1's
+  discrepancy render in both directions with its one-fetch-per-distinct-`(N, M)` budget, the
+  membership stamp (the response's own `server_time`), and store / derivation / sweep as **three
+  separate indicators** plus § 5.3's ingest recency — four sibling elements, so there is no element
+  on the page that could carry an aggregate (D2 § 8.2.4: "the wire keeps them apart").
+  ⛤ **Native ES modules from `server/public/js/lobby/`, no bundler and no `@vite`** (§ 1.2 leaves
+  that choice to the implementer): there is no `package-lock.json` in this repository and `npm ci`
+  cannot run, so a build step would be a dependency this slice could not honestly gate.
+  ⛔ **THE MEMBER SET IS RE-DERIVED FROM D3 ON EVERY RUN, IN BOTH DIRECTIONS AND IN ORDER.**
+  § 7.1's table is parsed out of `docs/design/FLOOR.md` and compared to
+  `public/js/lobby/render-state.js`'s array position by position — a member D3 publishes that the
+  client does not know, a member the client knows that D3 does not publish, and a set that agrees
+  while two members have swapped places are three distinct failures with three distinct messages.
+  The floor-preview README's rule is the reason: "**six** copies of one member set are what this
+  replaced … a second member set, in any spelling, is how the unrecognised case gets lost again."
+  ⛤ **Seen to fail before being trusted — eleven planted controls**, each mutating the shipped
+  module (or the rendered page) and naming the check that must go red: § 7.1's closing anchor
+  renamed (the parse silently widening), a member dropped, `thinking` added — § 6.2 A4's
+  *derivation* mistaken for a wire member — two members swapped (set clean, order red), the fleet
+  totals recounted from the desks (AT-D3-15's own RED), the discrepancy budget's memory removed (it
+  becomes a poll), the summary's unrecognised remainder deleted (AT-D3-15's *silent* half: a seat in
+  no member set falls out of its own floor's count with no throw and no glyph), a null timestamp
+  coalesced to `00:00:00` (`docs/KANBAN.md § G-1`'s clean zero), an element renamed out from under
+  the client (`getElementById` answering `null` — nothing throws and one fact is never rendered),
+  an element nothing writes into, and a fifth indicator with no cell for it.
+  ⛤ **The render assertions are driven over a REAL snapshot body**, built by the real ingest and the
+  real fold through `FeedTestCase` and fetched over HTTP by an MFA-satisfied session — and the
+  fixture is chosen so the two candidate orders disagree: the wire serves `aimla-impl` (`offline`)
+  before `aimla-pm` (`idle`), while § 7.1 puts `idle` first, so a summary built in arrival order
+  fails. The client itself runs under `node`, so what the assertions drive is the file the browser
+  is served rather than a PHP re-implementation of it.
+  ⛔ **TWO THINGS ARE DELIBERATELY NOT BUILT, AND NEITHER IS AN OVERSIGHT.** The **tiled map, camera,
+  desks and elevator** are card#9208: D2 publishes no read surface for an authored floor map, § 10.3
+  says that path "is deliberately not invented here", and § 1.3 corollary 2 forbids a guessed
+  endpoint — so no map endpoint, no map fixture and no client-side map loader was minted. **No
+  duration string is rendered anywhere** — card#9209: § 7.1's own exemplars disagree (`4m 12s` /
+  `11m` / `2h 06m`) and § 12 carries no row, so § 5.3's two "as an age" readouts render the labelled
+  **timestamp** the wire actually carries instead, subtracting nothing; a test asserts no duration
+  shape reaches the page. `fleet.max_fold_lag_ms` is **not** rendered here either: its published
+  form is the fleet banner's (§ 2.4, § 7.4), which belongs to the floor's status strip, and a second
+  rendering of one fact is what § 2.4's one-form-per-fact rule forbids.
+  ⚠ **WHAT IS NOT VERIFIED, stated rather than implied: there is no browser on the build host.**
+  Nothing here has been laid out, painted, clicked or seen. "Visually apart" is bought
+  structurally — four separate block elements under their own heading — and the DOM layer
+  (`main.js`) is deliberately thin and decides nothing, because it is the part no check exercises.
+  What IS checked is that every id it addresses exists on the page and every id the page declares is
+  written into, in both directions, with the health cells' ids derived from the model rather than
+  listed.
+
+- **card#7344** — **the PHP half: CI now actually runs `server/`'s test suite.** Until
+  `.github/workflows/php-tests.yml` landed, **no workflow in this repo executed a line of PHP** —
+  the suite under `server/tests/` ran only when somebody remembered to run it, so every
+  `php artisan test` figure in a PR body here was self-attested and unreproducible. ⚠ **The cost
+  was already realised, not predicted:** `Tests\Feature\Feed\SeatObjectMatchesTheDocumentTest`
+  sat RED on `dev` for days (D2 § 8.2.1 declared `blocked_since`, `App\Read\SeatObject` did not
+  carry it — see the card#8075 entry below), and it was found because one agent happened to run
+  the suite by hand. The guard existed, had merged, and was failing the whole time. A guard
+  nothing runs is not a guard.
+  ⛤ **The lane runs the repo's own entry point, `composer test`** (`artisan config:clear` then
+  `artisan test`), rather than a hand-rolled phpunit command line: `server/composer.json` already
+  owns what "run the tests" means here and a second spelling in CI is a second thing to keep in
+  step with it. PHP was pinned to **8.4**, and NOT to the declared floor — the lane's own first run
+  measured why: `composer.lock` carried `symfony/*` v8.1.5 requiring `php >=8.4.1`, so the committed
+  lock COULD NOT be installed on the `^8.3` that `composer.json` declared and `bin/deploy.sh` reloaded
+  (`php8.3-fpm`). ⚠ **So the lane did NOT test the version the app was configured to deploy onto** —
+  those three surfaces disagreed, and that was filed as **card#9203**, a live deploy defect: on an 8.3
+  host `deploy.sh`'s A6 precondition PASSED, the maintenance window opened, and `composer install`
+  then failed INSIDE it. **card#9203's entry above is where that ends**: the floor is `^8.4.1`, and the
+  lane now derives its pin from `server/composer.json` rather than spelling one out. With `pdo_sqlite`/`sqlite3`, composer's download
+  cache keyed on `composer.lock`, and every action pinned to an exact commit.
+  ⛔ **No `paths:` filter, and here that is measured rather than inherited.** The house argument
+  applies (a filtered workflow produces NO RUN, which as a required check reads *pending*, never
+  *passed*), but this suite has a concrete second reason: **it reads outside `server/`** —
+  `SeatObjectMatchesTheDocumentTest` opens `base_path('../docs/design/FLEET-STATE.md')` and
+  compares § 8.2.1's field table to the wire object, so a `server/**` filter would be dark on a
+  docs-only PR editing that table, which is one of the two ways the card#8075 gap could have been
+  minted.
+  ⛤ **The backend is ASSERTED, not exported.** `server/phpunit.xml` leaves `DB_CONNECTION`
+  deliberately unforced and `docs/design/FLEET-STATE.md § 6.2`'s argument rests on nothing in this
+  repo's CI selecting a backend by exporting one; an `export DB_CONNECTION=sqlite` would have
+  falsified that sentence for a value the committed template already carries. So the lane greps
+  its `.env` and reds by name if `.env.example` is ever flipped, instead of silently running
+  somewhere else. **Seen to fail before being trusted**, both arms: the suite red on a planted
+  removal of `blocked_since` from `App\Read\SeatObject::build()` (naming
+  `SeatObjectMatchesTheDocumentTest`, *"§ 8.2.1 declares fields the seat object does not carry"* →
+  `['blocked_since']`), green again on restore; and the backend assertion red on a `.env` flipped
+  to mysql, green on the template's own value.
+  ⚠ **THIS CHANGE DOES NOT MAKE THE CHECK REQUIRED, AND THAT IS DELIBERATE, NOT AN OVERSIGHT.**
+  Requiring a context is a repository-settings act reserved to the operator, so it is raised
+  separately — `docs/PLAN.md § 4`'s row for this card asks for the required-check list to move in
+  the same PR, and this is the half of that row that is knowingly left open rather than done
+  quietly. `docs/VERSIONING.md § Branch model` is the one home of that list; **re-measured live on
+  2026-09-09 while adding this workflow, as that section instructs — both rulesets still require
+  exactly the five contexts it records, `updated_at` unmoved, so no copy needed updating.**
+  ⚠ **The JS half of the card stays open, and the reason is measured, not assumed.**
+  `server/package.json` declares exactly two scripts, `build` and `dev`; no JS test framework is
+  installed anywhere under `server/`, so a JS *test* lane would have nothing to run. A
+  `npm ci && npm run build` lane WOULD be meaningful — but `server/package-lock.json` does not
+  exist (and is not gitignored; it was simply never committed) and `npm ci` requires one. Minting
+  a lockfile is a dependency-pinning decision of its own, not a side effect of adding a test lane.
+
+- **card#9054** — **the sibling audit: more surfaces claimed a required-check status, and the one
+  "pin" standing behind them could not fail.** The v0.3.0 entry below fixed the two surfaces the
+  card named. Re-deriving the population instead of grepping its phrasing found the rest, and the
+  ones that mattered most used none of the card's words. `.github/workflows/deploy-selftest.yml`
+  repeated the false claim verbatim (*"`card-token-lint` is the only mechanically required check"*,
+  plus the same dead `card#7344` owner). ⛤ **`release-pr-guard.yml` said `card-token-lint` was
+  *already* required *"so making this one required is the obvious next step"* — while
+  `release-pr-guard` had itself been required since 2026-08-30**, i.e. the file describing the repo's
+  strictest merge gate told a reviewer that gate did not block. `design-doc-verifiers.yml` spoke of
+  *"the moment this becomes required"* about two contexts (`design-docs`, `design-artifact`) required
+  since 2026-08-31, and `asset-provenance.yml` still carried *"if this check is ever promoted to
+  required"* five lines under the block that had just been corrected. Every one of those headers
+  now states the mechanism without a membership claim and points at the one home.
+  ⛔ **The pin that was offered as the model for the others was a tautology.**
+  `bin/harness-fixture-drift.selftest.py` asserted that the string `NOT A REQUIRED STATUS CHECK` was
+  **present** in that workflow's header — so it reddened only if somebody DELETED the sentence, and
+  never if the sentence went FALSE, which is the one direction that costs anything. It is replaced by
+  the property this checkout can actually hold: **the header states no required-check status in
+  either direction, and points at `docs/VERSIONING.md § Branch model` instead.** Seen to fail three
+  ways before being trusted — a planted *IS required* claim, a planted *NOT required* claim (true
+  today, and it must still red: no file here can verify it), and the pointer removed — each red alone
+  and named its own plant; green on restore.
+  ⚠ **`docs/VERSIONING.md § Branch model`'s own lead paragraph was the last unmarked copy**: *"No
+  ruleset requires a status check"*, bold and first, was the one block in that stack of dated
+  amendments that was never marked superseded, so the reader who skims one paragraph got the 2026-08-23
+  answer. It is now marked like the rest. `docs/PLAN.md` D-12 is amended by APPEND, per that
+  register's own rule, rather than edited.
+  ⛤ **What is deliberately NOT fixed, and it is the class:** nothing stops the *fifth* copy. The new
+  assertion holds one workflow's header; the other ten are guarded by convention. A repo-wide check
+  needs a lane that runs unfiltered on every PR, which is a new context — a required-check-list
+  question, and therefore the operator's. Filed rather than built quietly.
+
 ## [0.3.0] — 2026-09-09
 
 - **card#8075** — **the CODE half: `blocked_since` was a published member no server ever

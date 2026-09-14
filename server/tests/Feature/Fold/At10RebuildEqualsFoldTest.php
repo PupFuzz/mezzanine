@@ -29,6 +29,31 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         $this->assertNotSame([], $folded['calls']);
         $this->assertNotSame([], $folded['attention']);
 
+        // ⛔ THE CONTROL ON THE § 4.9 COLUMNS — card #9214, and it is a CONTROL rather than a
+        // nicety: `task_as_of` is compared below, and a fixture that left `task_title` null would
+        // compare a null against a null and report equality whatever the fold did with the stamp.
+        // The comparison can only discriminate on a column that is POPULATED on both sides.
+        $this->assertNotNull($folded['seat_state']['task_title'], 'the fixture opened no titled call');
+        $this->assertNotNull($folded['seat_state']['task_as_of']);
+
+        // ⛔ THE REBUILD RUNS AT A LATER WALL CLOCK THAN THE FOLD, AND THAT IS THE WHOLE POINT
+        // OF THIS LINE — card #9214.
+        //
+        // `FoldTestCase` drives a FIXED server clock, and every event of this fixture arrives in
+        // one batch, so without this the fold and the replay both run at ONE instant. Any fold
+        // rule that stamped a projected column with `now()` would then write the SAME value on
+        // both sides, and this comparison would report equality while the column was not
+        // reproducible at all — which is exactly what `task_as_of` did, undetected, behind the
+        // exclusion `snapshot()` used to carry. A rebuild is a RECOVERY path (§ 6.6): it runs
+        // minutes to days after the fold it replaces, never in the same millisecond.
+        //
+        // FIVE SECONDS, and the bound is the tightest time-derived threshold any COMPARED column
+        // turns on: § 7.2's `fold_lag` badge at 60 s (`Badges::FOLD_LAG_MS`), then § 4.5's 300 s
+        // `stale`. `deliver()` has already advanced the clock by `VISIBILITY_LAG_S + 1`, so the
+        // replay derives at receipt + 8 s — inside every one of them by an order of magnitude, so
+        // a divergence here is a divergence about the FOLD and not about the fixture's clock.
+        $this->advanceServerClock(5);
+
         $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
 
         // "Every column of `seat_state`, `sessions`, `calls` and `attention_requests` is IDENTICAL
@@ -99,6 +124,8 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         $call = $this->ulid();
         $dispatch = $this->ulid();
         $request = $this->ulid();
+        $live = $this->ulid();
+        $next = 'b8e3d029-5c11-4f88-9a0d-3e72d5c9b024';
 
         $this->deliver([
             $this->event('session.start', [
@@ -162,6 +189,37 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
                 'end_reason' => 'prompt_input_exit', 'duration_ms' => 938204, 'turns' => 1,
                 'aborted_calls' => 0,
             ]),
+
+            // ⛔ AND THEN A SECOND SESSION THAT IS STILL LIVE, WITH A TITLED DISPATCH CALL STILL
+            // OPEN — card #9214.
+            //
+            // § 4.9's tier 3 answers from "the newest OPEN dispatch call's `title`", so a fixture
+            // whose every call is closed leaves `task_title`, and with it `task_as_of`, at null in
+            // the state this test compares. That was this fixture's shape, and it is why the
+            // exclusion `snapshot()` used to carry for `task_as_of` was UNEXERCISED: deleting it
+            // changed nothing, because the column was null on both sides.
+            //
+            // It ends OPEN deliberately. `session.end` above reaps the calls of the session it
+            // closes (§ 4.6), so appending this call to that session would only close it again;
+            // this is the seat as an operator actually finds it when a rebuild is called for —
+            // mid-flight, with a subagent out. Leaving a call open used to cost a delta per fold
+            // pass (card #7837's `task_as_of` re-stamp) and two of this suite's fixtures are
+            // fenced against it in terms; that is fixed, and `FeedSurfaceTest::
+            // test_a_seat_with_an_open_call_is_as_quiet_as_one_without` is what holds it fixed.
+            $this->event('session.start', [
+                'source' => 'startup', 'project_label' => 'mezzanine',
+                'harness_label' => 'claude-code/2.1.240', 'previous_session_id' => $this->sessionId,
+            ], $next),
+            $this->event('turn.start', ['prompt_chars' => 96], $next),
+            $this->event('tool.start', [
+                'call_id' => $live, 'tool_name' => 'Agent', 'descriptor' => null,
+                'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
+                'harness_call_ref' => null, 'open_calls_before' => 0,
+            ], $next),
+            $this->event('subagent.spawn', [
+                'call_id' => $live, 'title' => 'rebuild the seat from the log',
+                'title_truncated' => false, 'subagent_type' => 'coder',
+            ], $next),
         ]);
     }
 
@@ -170,6 +228,31 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
      * a rebuild necessarily re-mints (the projection rows are DELETED and re-inserted, so their
      * `id`s and the `session_ref`s pointing at them are new — which is why § 11 compares COLUMNS
      * and the rendered object rather than row identity).
+     *
+     * ⛔ THE EXCLUSION LIST IS CLOSED AND EVERY MEMBER CARRIES ITS REASON HERE. An exclusion with
+     * no reason is a hole in the strongest check this design has, and it is not discoverable from
+     * outside: the test still passes, and it passes LOUDER than it should.
+     *
+     *   `id`, `seat_ref`, `session_ref`      surrogate keys the rebuild re-mints (above)
+     *   `updated_at`, `state_computed_at`    § 11 by name
+     *   `state_version`                      § 11 by name — it counts transitions, and a rebuild
+     *                                        produces them in one pass
+     *   `current_session_ref`,               surrogate POINTERS at those re-minted rows; the facts
+     *   `current_call_ref`,                  they point at ARE compared, as the rows of the three
+     *   `open_attention_ref`                 projection tables — the `id`s cannot be
+     *   `fold_cursor_received_at`            a rebuild deliberately re-enters the never-folded
+     *                                        state and leaves it by a different route (§ 2.3), so
+     *                                        its cursor clock is the OLDEST REPLAYED event's
+     *                                        receipt rather than the last folded event's
+     *
+     * ⚠ `task_as_of` WAS A FOURTH EXCLUSION BEYOND § 11's THREE AND IS NOT ONE ANY MORE — card
+     * #9214. It carried no justification, and it was measured UNEXERCISED: deleting it changed
+     * nothing, because this fixture closed every call (so `task_title` was null on both sides) and
+     * ran the fold and the replay at ONE frozen instant (so a `now()` stamp landed on the same
+     * value twice). Both holes are closed above, and the column is compared like every other one.
+     * `StateRecompute::taskTier3()` now derives the stamp from the answering call's own
+     * `opened_received_at`, which is IN THE LOG — so the equality holds for the reason § 6.6 gives
+     * rather than by exclusion.
      *
      * @return array<string, mixed>
      */
@@ -183,13 +266,11 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
 
         $state = (array) $this->state();
 
-        // The three § 11 names, plus the two cursor columns — a rebuild deliberately re-enters the
-        // never-folded state and leaves it by a different route (§ 2.3), so its cursor clock is the
-        // oldest replayed event's receipt rather than the last folded event's.
+        // The list the docblock above closes, in that order.
         unset(
             $state['updated_at'], $state['state_computed_at'], $state['state_version'],
             $state['current_session_ref'], $state['current_call_ref'], $state['open_attention_ref'],
-            $state['fold_cursor_received_at'], $state['task_as_of'],
+            $state['fold_cursor_received_at'],
         );
 
         return [

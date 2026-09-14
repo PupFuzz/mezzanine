@@ -1,0 +1,55 @@
+/**
+ * The probe the PHP suite drives the lobby's client model through — `node`, no dependencies, no
+ * network, no DOM.
+ *
+ * ⛔ IT IMPORTS THE SHIPPED MODULES AND RE-IMPLEMENTS NOTHING. The module directory is argv[2],
+ * so the same probe runs against `public/js/lobby` and against a MUTATED COPY of it in a temp
+ * directory — which is how every planted control in `tests/Feature/Lobby` re-mints its defect
+ * against the real code rather than against a second copy of the logic.
+ *
+ * stdin  — JSON: `{ "snapshot": <a GET /api/fleet/snapshot body>,
+ *                   "layout": <the composed floors the page delivers (§ 4.6), or absent = the
+ *                              empty layout, which is today's building>,
+ *                   "observations": [[held, total], …],
+ *                   "cab": <the stop the viewer last rode to, or absent> }`
+ * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...}, "budget": {...} }`
+ *
+ * Any throw exits non-zero with the message on stderr: a probe that swallowed one would turn a
+ * client that crashes on an unrecognised member into a green test (AT-D3-11's whole subject).
+ */
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const dir = process.argv[2];
+
+if (typeof dir !== 'string' || dir === '') {
+    console.error('usage: node lobby-probe.mjs <module-dir>  (JSON payload on stdin)');
+    process.exit(2);
+}
+
+const url = (file) => pathToFileURL(join(dir, file)).href;
+
+const { RENDER_STATES, isRenderState } = await import(url('render-state.js'));
+const model = await import(url('lobby-model.js'));
+const building = await import(url('building-model.js'));
+
+const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
+
+const budget = new model.DiscrepancyBudget();
+const admitted = (payload.observations ?? []).map(([held, total]) => budget.admits(held, total));
+
+console.log(JSON.stringify({
+    render_states: RENDER_STATES,
+    // The membership predicate, sampled on values the caller names — so a test can assert the
+    // client does not KNOW a value as well as that it does not render it as one.
+    membership: Object.fromEntries((payload.membership_probe ?? []).map((v) => [String(v), isRenderState(v)])),
+    model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot, payload.layout ?? []),
+    // § 4.1's cross-section and its elevator. `cab` is the viewer's own position (§ 4.5:
+    // navigation is never state), so it is an INPUT here and is never read out of the snapshot.
+    building: payload.snapshot === undefined
+        ? null
+        : building.buildingModel(payload.snapshot, payload.cab ?? null, payload.layout ?? []),
+    budget: { admitted, spent: budget.spent },
+}, null, 2));

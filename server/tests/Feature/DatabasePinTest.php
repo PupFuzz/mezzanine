@@ -61,15 +61,23 @@ class DatabasePinTest extends TestCase
         }
     }
 
-    public function test_db_connection_is_declared_but_never_forced(): void
+    public function test_db_connection_is_declared_as_mysql_and_never_forced(): void
     {
-        // Forcing it is what turned another repo's MariaDB matrix into a SQLite run
-        // reporting green (§ 6.2). The absence of force="true" here is the fix, so it is
-        // asserted rather than left to survive by nobody noticing it.
+        // phpunit.xml's comment argues both halves. UNFORCED, so an export of another connection
+        // wins and Tests\TestCase then aborts the run by name, rather than a forced pin quietly
+        // substituting `mysql` for what the caller asked. DECLARED AS `mysql`, asserted HERE and
+        // not only through the resolved value: CI exports DB_CONNECTION=mysql, which beats this
+        // declaration, so a flip back to another engine would pass the resolved guard in CI and
+        // reach only the checkouts that export nothing.
         $env = $this->phpunitXml()->xpath('//php/env[@name="DB_CONNECTION"]');
 
         $this->assertCount(1, $env ?: []);
-        $this->assertNull($env[0]['force']);
+        $this->assertNull($env[0]['force'], 'phpunit.xml forces DB_CONNECTION, so an export of another connection is silently overridden instead of refused.');
+        $this->assertSame(
+            'mysql',
+            (string) $env[0]['value'],
+            'phpunit.xml declares a DB_CONNECTION other than mysql. MariaDB, through the mysql connection, is the only supported engine (docs/PLAN.md D-15, card#9328).'
+        );
     }
 
     public function test_the_resolved_store_configuration_is_the_pinned_one(): void
@@ -77,16 +85,5 @@ class DatabasePinTest extends TestCase
         $this->assertSame('mezzanine_test', config('database.connections.mysql.database'));
         $this->assertSame('11', (string) config('database.redis.default.database'));
         $this->assertSame('10', (string) config('database.redis.cache.database'));
-    }
-
-    public function test_the_sqlite_connection_does_not_consume_the_pinned_db_database(): void
-    {
-        // If these two ever became the same variable again, the pin above would point SQLite
-        // at a file named after a MySQL schema and the suite would stop running.
-        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
-        $this->assertNotSame(
-            config('database.connections.mysql.database'),
-            config('database.connections.sqlite.database'),
-        );
     }
 }

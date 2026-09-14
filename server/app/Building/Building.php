@@ -1,0 +1,116 @@
+<?php
+
+namespace App\Building;
+
+/**
+ * The building, composed — `docs/design/FLOOR.md § 4.6`. One authored layout plus the installs the
+ * fleet reports, in, and the floors this deployment draws, out.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ A PURE FUNCTION OF ITS TWO INPUTS, AND IT READS NOTHING ELSE. It opens no stream, issues no
+ * fetch and names no seat — `docs/design/FLOOR.md § 4.6` puts `ADMIT`'s population with the
+ * SNAPSHOT and never with the layout, because a client that admitted an install on the strength
+ * of a layout naming a room would be asking for an install that may not exist. (The feed is one
+ * fleet-wide stream since card#9287; there is no per-install channel for a layout to open.)
+ * The layout decides WHERE a room is drawn and contributes no count, no state, no membership and
+ * no message.
+ *
+ * ⛔ EVERY INSTALL GIVEN TO IT COMES BACK ON A FLOOR. § 4.6 draws an install the layout does not
+ * place on a floor of its own, alone, in the `open` form — which makes the layout a DEPARTURE from
+ * a default rather than an enumeration anything depends on being complete, so provisioning an
+ * install renders it without a deploy and a floor can never have a hole where a room is.
+ *
+ * ⛔ AND EVERY ROOM THE LAYOUT DECLARES COMES BACK TOO, reported or not — § 4.6 draws such a room
+ * and labels it rather than omitting it. A room whose install the fleet reports nothing for is
+ * returned with `reported: false` and is NEVER dropped: omitting it would make the floor silently
+ * narrower than the operator authored it, and they would then be debugging a room that renders as
+ * nothing.
+ *
+ * ⚠ THIS RULE HAS A SECOND HOME, AND THE TWO ARE PINNED TO ONE FIXTURE. The lobby composes the
+ * same floors in the browser (`public/js/lobby/lobby-model.js`, `floors()`), because § 4.1's
+ * discrepancy check discovers an install AFTER the page was served and that install still owes a
+ * floor. Two runtimes, one rule: `tests/fixtures/building/compose-cases.json` is the one statement
+ * of it, and both `Tests\Feature\Building` and `Tests\Feature\Lobby` are held to it.
+ *
+ * ⚠ IT CARRIES THE LABEL AND NEVER DISAMBIGUATES ONE (card#9273, § 4.6). An implicit floor has no
+ * layout entry to carry a label, so its `label` is null and it reads as its key; and a label equal
+ * to an UNPLACED install's id composes to two floors reading alike with different links, which
+ * this composer neither refuses nor repairs — "a refusal there would take the building down for a
+ * name", and provisioning an install must render it without a deploy.
+ *
+ * ⭐ IT CARRIES THE ROOM'S `origin` AND NOT THE FLOOR'S `hallway` (card#9292, § 4.6), and the
+ * asymmetry is the two members' own. `origin` is where a room is DRAWN — three integers' worth of
+ * the composition every reader of a composed floor needs, and the fixture pins both runtimes to
+ * carrying it. A `hallway` is a whole Tiled document that only the floor SCREEN draws (§ 4.2,
+ * Appendix B step 7); putting it on every composed floor would page it into the lobby, which draws
+ * plates, for a screen that does not exist yet. It stays in the layout document, where the floor
+ * route will read it.
+ *
+ * ⚠ IT MINTS NO RENDERED STRING. `reported: false` is the FACT; § 4.6's wording for it — *no seats
+ * reported for this room* — is the client's own narration (§ 5.5) and belongs to whatever draws
+ * the room. A sentence composed here would be a second home for it, and the two would disagree the
+ * first time one was edited.
+ */
+final class Building
+{
+    /**
+     * The floors this deployment draws, floor keys ascending, each floor's rooms by `install_id`
+     * ascending — `docs/design/FLOOR.md § 2.1` row 6's sort orders. The layout's own authoring
+     * order is deliberately NOT the stack order: § 4.1 fixes the floor list as an ascending one and
+     * "which end of the stack is the top is not a fact this document ratifies", and an implicit
+     * floor has no authored position to honour anyway.
+     *
+     * @param  list<string>  $installs  the installs the fleet reports, in any order
+     * @return list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}, reported: bool}>}>
+     */
+    public static function compose(BuildingLayout $layout, array $installs): array
+    {
+        $reported = array_fill_keys(array_map(strval(...), $installs), true);
+
+        $floors = [];
+
+        foreach ($layout->floors as $floor) {
+            $floors[$floor['floor']] = [
+                'label' => $floor['label'],
+                'rooms' => array_map(
+                    fn (array $room) => $room + ['reported' => isset($reported[$room['install']])],
+                    $floor['rooms'],
+                ),
+            ];
+        }
+
+        foreach (array_keys($reported) as $installId) {
+            $installId = (string) $installId;
+
+            if ($layout->floorOf($installId) !== null) {
+                continue;
+            }
+
+            // The unplaced install's own floor. § 4.6's derived key is what makes this safe to
+            // mint: every floor key in the layout is an install the layout PLACES, so an install
+            // it does not place cannot collide with one, and this line can never overwrite an
+            // authored floor.
+            $floors[$installId] = [
+                // § 4.6 (card#9273): "there is no layout entry to carry one, so it reads as its
+                // key" — the `install_id` the wire already carries, which is a name and not a
+                // placeholder. Naming this floor means placing it.
+                'label' => null,
+                'rooms' => [[
+                    'install' => $installId,
+                    'form' => BuildingLayout::DEFAULT_FORM,
+                    'reported' => true,
+                ]],
+            ];
+        }
+
+        ksort($floors, SORT_STRING);
+
+        $out = [];
+
+        foreach ($floors as $floorKey => $floor) {
+            $out[] = ['floor' => (string) $floorKey, 'label' => $floor['label'], 'rooms' => $floor['rooms']];
+        }
+
+        return $out;
+    }
+}

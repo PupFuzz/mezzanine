@@ -7,6 +7,10 @@
 # PupFuzz/agent-board-framework `bin/promote-cards-by-token.selftest.sh` at commit
 # e2f131f796baa93a5aa9cec620969bcaa21ac7fe. Fix defects upstream and re-vendor. Paths and
 # `card#NNNN` references inside the body resolve in THAT repo, not this one.
+# ⚑ AND THAT CLAIM IS CHECKED, not asserted: `bin/vendor-pin-check.sh` pins the sha256 of this
+# file's body and runs on EVERY PR (the `card-token-lint` workflow). Any edit below reds CI
+# until the pin is updated in the same commit. The mover's header says why this exists — its
+# own identical claim had quietly been false since #51, with nothing checking it.
 #
 # WHY IT SHIPS HERE rather than being left upstream. The mover writes to a TERMINAL board
 # stage on every release, and this repo's CI runs the mover, not upstream's. Two failure
@@ -22,8 +26,9 @@
 # evidence only if failure was possible.
 #
 # ⚠ THE BOARD AND STAGE IDS IN THE FIXTURES BELOW (board 13, stages 93/97) ARE NOT THIS
-# REPO'S. They are upstream's, and they stay upstream's for two reasons: keeping them makes
-# the body a one-diff check against upstream, and a fixture that used board 14's real ids
+# REPO'S. They are upstream's, and they stay upstream's for two reasons: keeping them is what
+# keeps this body identical to its pin — the thing `bin/vendor-pin-check.sh` now enforces
+# rather than merely asserting — and a fixture that used board 14's real ids
 # would read as though this suite writes to the live board. It writes to nothing — `curl` is
 # a stub on PATH and the git history is a throwaway fixture repo. This repo's real ids live
 # in `.release-pr.json`, which this file never reads.

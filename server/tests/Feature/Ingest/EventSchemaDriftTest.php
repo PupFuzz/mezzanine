@@ -173,8 +173,128 @@ class EventSchemaDriftTest extends TestCase
 
     public static function kindSections(): array
     {
-        $doc = (string) file_get_contents(self::DOC);
         $cases = [];
+
+        foreach (self::dataFieldTables() as $kind => $rows) {
+            preg_match_all('/^\|\s*`([a-z_]+)`\s*\|/m', implode("\n", $rows), $names);
+
+            $cases[$kind] = [$kind, $names[1]];
+        }
+
+        return $cases;
+    }
+
+    /**
+     * The per-field BYTE BOUNDS, read out of the same `data` field tables (card#9283).
+     *
+     * ⛔ THE POPULATION IS DERIVED HERE AND WRITTEN DOWN NOWHERE, which is the point rather than
+     * a flourish. "Which fields carry a published byte bound" is a question whose answer moves
+     * whenever the document moves, and a list of them kept in a test is an artifact the passes
+     * that falsify it never revisit — so the rule is stated instead: a bound is the FIRST
+     * `≤ N B`/`≤ N KiB` figure in a `data` field row's cells. Add a bounded field to D1 and this
+     * provider produces it on the next run, and the registry is red until it carries it. That is
+     * the difference between a field that is unchecked and a field that is unchecked SILENTLY.
+     *
+     * ⚠ FIRST, not any. § 6.14's `predicates` row states its cap (`≤ 512 B`) and then a worst-case
+     * arithmetic ("worst case **396 B**"), and `selftest` states its cap and then a per-KEY bound
+     * ("every key … ≤ 32 B"). Both trailing figures are real numbers about the field and neither
+     * is its bound; taking the last or the smallest match would enforce 32 B on a 256 B object and
+     * refuse every heartbeat this fleet sends.
+     */
+    #[DataProvider('kindNames')]
+    public function test_every_kinds_byte_bounds_match_the_document(string $kind): void
+    {
+        $this->assertSame(
+            self::documentedBounds()[$kind],
+            KindRegistry::KINDS[$kind]['bounds'],
+            sprintf(
+                "%s's byte bounds have drifted from docs/design/EVENT-SCHEMA.md § 6. A bound the "
+                .'document publishes and the registry does not carry is a field the ingest does '
+                .'not check — the exact gap card#9283 closed — and a bound the registry carries '
+                .'tighter than the document refuses a CONFORMING reporter, permanently (§ 11.5).',
+                $kind,
+            ),
+        );
+    }
+
+    /**
+     * The bound population is not merely compared per kind — it is asserted to be NON-EMPTY and
+     * to cover every kind, for the reason the non-vacuity guard below already exists: a regex over
+     * markdown that stops matching reports a clean run over an unchecked population.
+     */
+    public function test_the_byte_bound_population_is_not_empty_and_covers_every_kind(): void
+    {
+        $bounds = self::documentedBounds();
+
+        $this->assertSame(
+            array_keys(KindRegistry::KINDS),
+            array_keys($bounds),
+            'the bound derivation did not produce an entry per § 6 kind',
+        );
+
+        $total = array_sum(array_map('count', $bounds));
+
+        $this->assertGreaterThan(0, $total, 'the bound derivation extracted no bounds at all');
+        $this->assertSame(
+            $total,
+            array_sum(array_map(fn (array $spec) => count($spec['bounds']), KindRegistry::KINDS)),
+            'the registry and the document do not hold the same NUMBER of per-field byte bounds',
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function kindNames(): array
+    {
+        $cases = [];
+
+        foreach (array_keys(self::dataFieldTables()) as $kind) {
+            $cases[$kind] = [$kind];
+        }
+
+        return $cases;
+    }
+
+    /**
+     * @return array<string, array<string, int>> kind => field => bound in bytes, in document order
+     */
+    private static function documentedBounds(): array
+    {
+        $out = [];
+
+        foreach (self::dataFieldTables() as $kind => $rows) {
+            $out[$kind] = [];
+
+            foreach ($rows as $row) {
+                if (! preg_match('/^\|\s*`([a-z_]+)`\s*\|/', $row, $name)) {
+                    continue;
+                }
+
+                if (! preg_match('/≤\s*([\d.]+)\s*(B|KiB)\b/u', $row, $bound)) {
+                    continue;
+                }
+
+                $out[$kind][$name[1]] = (int) ((float) $bound[1] * ($bound[2] === 'KiB' ? 1024 : 1));
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The `data` field table of every § 6 kind, as raw rows.
+     *
+     * Extracted at the SECOND caller, exactly as `enumRows()` was: `kindSections()` and
+     * `documentedBounds()` read the same table for two different columns of it, and two copies of
+     * the parser is two chances for one of them to stop matching and report a clean run.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function dataFieldTables(): array
+    {
+        $doc = (string) file_get_contents(self::DOC);
+        $out = [];
 
         preg_match_all('/^### 6\.\d+ `([a-z]+\.[a-z_]+)`\n(.*?)(?=\n### |\n## )/ms', $doc, $sections, PREG_SET_ORDER);
 
@@ -185,12 +305,13 @@ class EventSchemaDriftTest extends TestCase
                 continue;
             }
 
-            preg_match_all('/^\|\s*`([a-z_]+)`\s*\|/m', $table[1], $rows);
-
-            $cases[$kind] = [$kind, $rows[1]];
+            $out[$kind] = array_values(array_filter(
+                explode("\n", $table[1]),
+                fn (string $line) => str_starts_with($line, '|'),
+            ));
         }
 
-        return $cases;
+        return $out;
     }
 
     /**

@@ -43,8 +43,8 @@ posts the JSON. No model is asked to describe itself.
 server/                     the Laravel host + MFA-gated shell   ← exists
 server/resources/js/floor/  Pixi.js office floor (scene, characters, camera)
 resources/characters/       the procedural character generator + LINEAGE.md ← exists
-resources/floor/            the CC0 tileset + Tiled map (card #7341)
-fleet-reporter/             cross-platform hook bundle + installer
+resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
+fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
                             automation, CI gates, harnesses          ← exists
@@ -64,13 +64,40 @@ not an asset tree and owes no provenance rows.
 
 ### Running the server locally
 
+**MariaDB is the only supported store. SQLite is not a supported configuration** — not for a local
+checkout, not in CI, not on a host (`docs/PLAN.md` D-15). A local checkout needs a MariaDB server at
+or above the floor `docs/design/FLEET-STATE.md § 6.1` pins, with two databases on it: the one the
+application uses, and **`mezzanine_test`**, which the test suite is pinned to (§ 6.2) and in which
+`php artisan test` **drops every table on every run** — never give that name to a database you want
+to keep.
+
+Create both, and one account for them, once — at the `mariadb` client's prompt as an administrative
+user (`sudo mariadb`). Type it at the prompt rather than passing it with `-e`, so the password never
+lands in argv or shell history:
+
+```sql
+CREATE DATABASE mezzanine;
+CREATE DATABASE mezzanine_test;
+CREATE USER 'mezzanine'@'127.0.0.1' IDENTIFIED BY '<choose a password>';
+GRANT ALL PRIVILEGES ON mezzanine.*      TO 'mezzanine'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON mezzanine_test.* TO 'mezzanine'@'127.0.0.1';
+```
+
+No character set is given there on purpose: `server/config/database.php` is the one home of the
+charset and collation, and every table is created with them explicitly. `server/.env.example`
+already carries the `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE` and `DB_USERNAME` values
+that match the statements above (`DB_CONNECTION=mysql` is Laravel's connection name, and it is how
+the app reaches MariaDB); the one key left to you is **`DB_PASSWORD`**. The suite uses the same
+account and swaps only the database, to `mezzanine_test` — and `Tests\TestCase` aborts the run
+before it touches anything if the connection resolves to any other connection or database.
+
 ```
 cd server
 composer install                                    # ← local only; a HOST installs --no-dev (below)
-cp .env.example .env && php artisan key:generate    # .env is never committed
+cp .env.example .env && php artisan key:generate    # .env is never committed; then set DB_PASSWORD in it
 php artisan migrate
 php artisan mezzanine:user:create                   # ← the first account; nothing else creates one
-php artisan test
+php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment
@@ -111,6 +138,20 @@ state with no account that can sign in, there is no
 password reset and no registration page: shell access on the host
 and this command are the recovery.
 
+### The authenticator entry's name
+
+Your authenticator app names this site's entry after the **site's own hostname**: the first label of
+`APP_URL`'s host, so `https://sandboxmezzanine.neeba.com` enrols as `sandboxmezzanine`, and each host
+gets an entry you can tell apart from the others. It deliberately does not read `APP_NAME`, which is
+`Mezzanine` everywhere and also names the session cookie and the cache prefix. A host that wants a
+different name sets `TWO_FACTOR_ISSUER` in `.env`. `App\Auth\TwoFactorIssuer` owns the derivation
+and its fallbacks: a whole IPv4 address, and `APP_NAME` when the URL gives nothing usable.
+
+⚠ **The name is fixed when you enrol, not when you sign in.** An account enrolled before this
+change keeps its old `Mezzanine` label, and so does one enrolled before a host changes
+`TWO_FACTOR_ISSUER`. The secret is the same, so its codes keep working. To change the label,
+rename the entry in the authenticator app or enrol again.
+
 ### Losing your authenticator
 
 **Two ways back, and the first needs nothing from the host.**
@@ -147,16 +188,30 @@ who does not want that property leaves `MAIL_MAILER` unconfigured and the path s
 `/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
 **retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
-where *who retired it, when and why* lives, `card#9078`) and **floors** (each floor's Tiled map: how
-many desks the room has and where they sit, `card#9085`). Pinning a named seat to a chosen desk is
-deferred to `card#9071` because it would store a fact `docs/design/FLOOR.md § 3.2` derives.
+where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
+many desks it has and where they sit, `card#9085`) and the **building layout** (which rooms share a
+floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`).
+Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) because it would
+store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying **any** property is
+refused at the write so that a seat's name cannot arrive as one.
 
-**A floor's map is authored in Tiled and installed through the console** — export it as a JSON map
-(`.tmj`) with the tile layer format set to CSV, referencing the tileset by file rather than
-embedding its image, and paste it in. The console refuses anything else by name, and shows each
-floor's slot count against the seats it renders so a map that is short of desks is visible where it
-can be fixed rather than on the floor. Removing a map removes the room and nothing else: the
-install, its seats and their state are the fleet's.
+**A room's map is authored in Tiled and installed through the console** — export it as a JSON map
+(`.tmj`) with the tile layer format set to CSV, referencing a tileset this repository ships under
+`resources/floor/` rather than embedding its image, and paste it in. The console refuses anything
+else by name, and shows each room's slot count against the seats it renders so a map that is short
+of desks is visible where it can be fixed rather than on the floor. Removing a map puts the room
+back on the shipped default and nothing else: the install, its seats and their state are the
+fleet's.
+
+**Every save is a revision, and any of them can be restored** (`docs/design/FLEET-STATE.md § 6.11`).
+The console lists a room's revisions with who authored each and when, diffs two of them — naming the
+tile layers that differ and the desk count before and after — restores any one as a **new** revision
+rather than by rewriting history, and exports any one as a file, which is the operator's own copy
+against a lost store. A removal is a revision too, so the map it removed is still there to restore,
+and a save that changes nothing is refused rather than recorded. ⚠ **What that does not give back is
+a review**: every authenticated user is an operator, so no second person stands between a save and
+every viewer, and until the floor's renderer can preview a document before it is saved the restore
+is what stands in its place.
 
 **Every account that can reach the console is an operator** — there are no roles, because this
 application has one class of user. ▶ **The trigger that reopens that decision, stated so it is a
@@ -173,6 +228,14 @@ retired, and its record survives so that everything it did still resolves.
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships
 `docs/ATTRIBUTION.md` naming every upstream. Office tiles are CC0. **No commercially-licensed
 assets are vendored here.**
+
+The office tiles are Kenney's **Furniture Kit** (CC0), and they are a **bridge, not the
+destination**: the operator chose them on 2026-09-12 explicitly as a stand-in for first-party
+vector art, and being pre-rendered raster they do not meet the resolution-independence the ratified
+art direction requires (`docs/design/FLOOR.md § 10.4`). `resources/floor/LINEAGE.md` records the
+terms as read at the source, the downloaded archive's hash, what was curated and what was
+deliberately not taken — including the pack's 3D sources, which the asset allowlist refuses
+outright.
 
 The character generator is a **port** of munder-difflin's (MIT), at a pinned commit:
 `resources/characters/LINEAGE.md` records the upstream, the commit, the reproduced MIT notice,

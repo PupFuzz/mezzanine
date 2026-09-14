@@ -88,10 +88,19 @@ class At13AtomicBatchRejectionTest extends IngestTestCase
 
         $this->postBatch($this->validBatch($this->twoHundredWithABadOne()))->assertStatus(422);
 
+        // ⛔ THE TABLES ARE QUOTED BY THE CONNECTED STORE'S GRAMMAR, NEVER BY HAND — card#9250.
+        // These read `insert into "events"` / `"batches"`, which is SQLite's quoting. On MariaDB
+        // it is backticks, so the filter matched NOTHING and `assertSame([], $writes)` passed
+        // vacuously — green, and proving the opposite of what it claims. Unlike its sibling in
+        // SeatConsoleTest there was no precondition to catch it, which is why the grammar is now
+        // asked rather than assumed.
+        $events = 'insert into '.strtolower($this->wrapTable('events'));
+        $batches = 'insert into '.strtolower($this->wrapTable('batches'));
+
         $writes = array_filter(
             DB::getQueryLog(),
-            fn ($q) => str_contains(strtolower($q['query']), 'insert into "events"')
-                || str_contains(strtolower($q['query']), 'insert into "batches"'),
+            fn ($q) => str_contains(strtolower($q['query']), $events)
+                || str_contains(strtolower($q['query']), $batches),
         );
 
         DB::disableQueryLog();
@@ -131,16 +140,23 @@ class At13AtomicBatchRejectionTest extends IngestTestCase
         // file paths — `descriptor` is a sanitized command line — and refuse a batch the producer
         // measured as in-bounds, taking its 199 neighbours with it. This is the fixture that
         // would have caught that: 1,200 slashes are 1,200 bytes to `JSON.stringify` and 2,400 to
-        // PHP's default, and the payload sits between the two — 2,478 bytes measured D1's way
-        // and 3,678 measured PHP's, either side of the 3,072-byte cap.
+        // PHP's default, and the payload sits between the two — either side of the 3,072-byte cap.
         //
-        // (`descriptor`'s own 200 B bound is NOT what is being tested and is NOT enforced here:
-        // per-field bounds are the reporter's clamp under § 6.0 rule 5, and `KindRegistry`
-        // records why the ingest does not re-impose them. The subject is § 12.1 step 9's `data`
-        // cap, which is the one bound the ingest does enforce.)
-        $descriptor = str_repeat('/a', 1200);
-
-        $data = ['call_id' => $this->ulid(), 'tool_name' => 'Bash', 'descriptor' => $descriptor];
+        // ⭐ THE SLASHES MOVED OUT OF `descriptor` WHEN card#9283 LANDED, and the move is the
+        // point rather than a workaround. This fixture used to carry all 1,200 in `descriptor`,
+        // with a note that the field's own 200 B bound "is NOT enforced here". It is enforced now
+        // (§ 12.1 step 10), so that fixture would be refused by the per-field rule before the
+        // `data` cap it exists to test was ever reached — one fixture tripping two rules tests
+        // neither. The bulk therefore sits in a key this ingest's per-kind schema does not
+        // define, which is the class that can still inflate `data` past its cap: an unknown key
+        // is counted as `ignored_unknown_fields` and never refused (§ 12.1 step 10), and D1
+        // publishes no bound for a field it has not declared.
+        $data = [
+            'call_id' => $this->ulid(),
+            'tool_name' => 'Bash',
+            'descriptor' => 'Bash: ls /usr/local/bin',
+            'vendor_payload' => str_repeat('/a', 1200),
+        ];
 
         $this->assertGreaterThan(3072, strlen(json_encode($data)), 'the fixture no longer discriminates');
         $this->assertLessThan(3072, strlen(Wire::serialize($data)), 'the fixture no longer discriminates');

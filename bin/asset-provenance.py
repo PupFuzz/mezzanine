@@ -57,9 +57,13 @@ WHAT IT DOES.
   UNTIL card#7913 GATE 2 RAN OVER THE CHARACTER TREE ONLY, while Gate 1 already ran over all of
   resources/. That was correct while Gate 2 asserted an absence peculiar to that tree; it was a
   leftover the moment the 2026-08-27 amendment rewrote its claim as a UNIVERSAL one — "every asset
-  is a file Gate 1 can see" says nothing about characters. The tree about to receive this project's
-  first vendored third-party art (resources/floor/, card#7341) was the one tree Gate 2 did not
-  inspect, so the widening happened BEFORE that tree exists rather than on top of its contents.
+  is a file Gate 1 can see" says nothing about characters. The tree that has SINCE received this
+  project's first vendored third-party art (resources/floor/, card#7341, 2026-09-12) was the one tree
+  Gate 2 did not inspect, so the widening happened BEFORE that tree existed rather than on top of its
+  contents -- and the tileset's first run through all three clauses was clean, which tested that
+  rather than assuming it. That tileset is an IMAGE COLLECTION (columns="0", one <tile><image
+  source=.../></tile> per PNG) rather than a sliced grid sheet, a clause-3 shape no fixture had ever
+  exercised until card#7341 added both halves of it to the selftest.
   Note that Gate 2 has TWO scoping knobs, the tree AND the extension allowlist, and widening only
   one of them is not a widening: with the tree widened and the allowlist left alone, every Tiled
   artifact fails clause 1 by name for a reason that has nothing to do with what it contains.

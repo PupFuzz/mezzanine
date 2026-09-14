@@ -21,8 +21,14 @@ final class ValidEvent
         public readonly ?int $seq = null,
         public readonly ?string $sessionId = null,
         public readonly bool $oversize = false,
-        /** @var array<string, mixed>|null */
-        public readonly ?array $data = null,
+        /**
+         * The event's `data` as the WIRE spelled it — a JSON object, so a `stdClass` and not an
+         * array (card#9295). An associative decode maps `{}` and `[]` onto the same PHP value,
+         * and this field is what `BatchWriter` serializes into `events.data`, so an array here
+         * would write `[]` for an object the producer sent as `{}` — against D2 § 6.4's
+         * "verbatim".
+         */
+        public readonly ?\stdClass $data = null,
         public readonly int $coercedEnumValues = 0,
         public readonly int $ignoredUnknownFields = 0,
     ) {}
@@ -32,9 +38,6 @@ final class ValidEvent
         return new self(known: false, kind: $kind);
     }
 
-    /**
-     * @param  array<string, mixed>  $data
-     */
     public static function accepted(
         string $eventId,
         string $kind,
@@ -42,7 +45,7 @@ final class ValidEvent
         int $seq,
         ?string $sessionId,
         bool $oversize,
-        array $data,
+        \stdClass $data,
         int $coercedEnumValues,
         int $ignoredUnknownFields,
     ): self {

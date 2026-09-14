@@ -43,6 +43,14 @@ final class ConsoleModules
                     .'sit; which seat sits at which desk stays derived.',
             ],
             [
+                'key' => 'layout',
+                'label' => 'Building layout',
+                'route' => 'admin.layout.edit',
+                'blurb' => 'Which rooms share a floor, what each floor is called, and — on a '
+                    .'planned floor — where each room is drawn and what the corridor between '
+                    .'them looks like. Every save is a revision, and any of them can be restored.',
+            ],
+            [
                 'key' => 'agents',
                 'label' => 'Agents',
                 'route' => 'admin.agents.index',

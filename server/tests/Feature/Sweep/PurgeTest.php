@@ -46,6 +46,36 @@ class PurgeTest extends SweepTestCase
         $this->assertSame(1, DB::table('batches')->count());
     }
 
+    /**
+     * § 6.7: `feed_outbox` is retained **60 s** after `created_at` — the stall bound plus one heartbeat —
+     * and folded into the same pass (card#9300). A row a stream may still deliver is kept; a row no
+     * stream inside its bound can still read is deleted; and the event retention's diagnostic
+     * override does not move it, because 60 s is not a retention of history.
+     */
+    public function test_the_feed_outbox_keeps_sixty_seconds_and_no_more(): void
+    {
+        $this->assertSame(60, Purge::FEED_OUTBOX_RETENTION_S);
+
+        $this->deliver($this->cleanTurn());
+        $this->fold();                                        // the fold writes its deltas
+        $old = DB::table('feed_outbox')->count();
+        $this->assertGreaterThan(0, $old, 'the fixture wrote no outbox row to purge');
+
+        $this->advanceServerClock(Purge::FEED_OUTBOX_RETENTION_S - 5);
+        app(Purge::class)->pass();
+        $this->assertSame($old, DB::table('feed_outbox')->count(), 'a row still inside the retention was purged');
+
+        $this->advanceServerClock(10);
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();                                        // fresh rows, seconds old
+        $fresh = DB::table('feed_outbox')->count() - $old;
+        $this->assertGreaterThan(0, $fresh);
+
+        app(Purge::class)->pass(retentionDays: 30);           // the event retention's override: 30 days
+        $this->assertSame($fresh, DB::table('feed_outbox')->count(),
+            'the 60 s rows survived — or the fresh ones went — so the override reached the outbox');
+    }
+
     public function test_the_purge_refuses_a_retention_below_the_dedup_window(): void
     {
         // `D2-MUST` #3's floor, checked rather than assumed. Without this refusal the same call
@@ -155,7 +185,8 @@ class PurgeTest extends SweepTestCase
 
         $expired = DB::table('events')->count() + DB::table('batches')->count()
             + DB::table('calls')->whereNotNull('closed_at')->count()
-            + DB::table('seat_state_transitions')->count();
+            + DB::table('seat_state_transitions')->count()
+            + DB::table('feed_outbox')->count();    // § 6.7's transient table, on its own 60 s (card#9300)
 
         app(Purge::class)->pass(budgetSeconds: 0);
 

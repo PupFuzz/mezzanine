@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Auth\ActiveUserProvider;
+use App\Feed\MonotonicStreamClock;
+use App\Feed\StreamClock;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 
@@ -13,7 +15,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // The stream handler's clock (docs/design/FLEET-STATE.md § 8.3, card#9300). An interface so
+        // the suite can step the handler's loop; see `App\Feed\StreamClock`.
+        $this->app->bind(StreamClock::class, MonotonicStreamClock::class);
     }
 
     /**

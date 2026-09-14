@@ -586,6 +586,66 @@ case("clause 3 RED — the JSON form of the same thing: an `image` that is a dat
      1, "carries an embedded tileset image",
      tiled_files(**{"resources/floor/office.tsj": DATAURI_TSJ}), tiled_rows())
 
+print("\n11b. ⭐ THE IMAGE-COLLECTION TILESET — the OTHER Tiled shape, unexercised until card#7341")
+# EVERY tileset fixture above is a SLICED GRID SHEET: one <image> on the <tileset> element itself,
+# `columns` > 0, and the tiles are cells of that one picture. Tiled's other tileset shape is an
+# IMAGE COLLECTION — `columns="0"`, no tileset-level <image>, and one <tile><image source=…/></tile>
+# per file — and it is the shape a set of individually-sized renders requires, because packing a
+# 190 px wall and a 5 px keyboard into one grid either crops them or pads the sheet with empty
+# cells. `resources/floor/tiles/furniture-kit.tsx` (card#7341) is that shape.
+#
+# ⛔ WHY IT IS HERE AND NOT ASSUMED. Clause 3 walks `root.iter("image")` and `root.iter("data")`,
+# which reaches a per-tile <image> as readily as a tileset-level one — but "reads the same to me"
+# is not evidence, and a green over a shape no fixture had ever fed the parser reports where the
+# fixtures stopped rather than what the parser does. Both halves are asserted: the collection form
+# PASSES all three clauses, AND it can still FAIL for the embedded-image reason. Either alone
+# proves nothing — a parser that silently skipped per-tile <image> elements would also pass.
+COLLECTION_TSX = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                  '<tileset version="1.10" name="office-collection" tilewidth="32" '
+                  'tileheight="32" tilecount="2" columns="0">\n'
+                  ' <grid orientation="orthogonal" width="1" height="1"/>\n'
+                  ' <tile id="0">\n'
+                  '  <image source="office.png" width="32" height="32"/>\n'
+                  ' </tile>\n'
+                  ' <tile id="1">\n'
+                  '  <image source="office.png" width="32" height="32"/>\n'
+                  ' </tile>\n'
+                  '</tileset>\n')
+COLLECTION_TSJ = json.dumps({"name": "office-collection", "tilewidth": 32, "tileheight": 32,
+                             "tilecount": 2, "columns": 0,
+                             "grid": {"orientation": "orthogonal", "width": 1, "height": 1},
+                             "tiles": [{"id": 0, "image": "office.png",
+                                        "imagewidth": 32, "imageheight": 32},
+                                       {"id": 1, "image": "office.png",
+                                        "imagewidth": 32, "imageheight": 32}]})
+case("⭐ THE CONTROL FOR THIS SHAPE — an image-collection .tsx and .tsj (columns=0, one "
+     "<tile><image source=…/></tile> per file, no tileset-level image and no layer data at all) "
+     "PASS all three clauses. Without this the two REDs below would only show that SOMETHING in a "
+     "collection-shaped file reds",
+     0, PASS,
+     tiled_files(**{"resources/floor/office.tsx": COLLECTION_TSX,
+                    "resources/floor/office.tsj": COLLECTION_TSJ}),
+     tiled_rows())
+COLLECTION_EMBEDDED_TSX = COLLECTION_TSX.replace(
+    '<image source="office.png" width="32" height="32"/>',
+    '<image format="png" width="32" height="32">\n'
+    f'   <data encoding="base64">{base64.b64encode(TILED_PNG).decode()}</data>\n'
+    '  </image>', 1)
+case("clause 3 RED — ONE tile of a collection holds its bytes inline while every other tile "
+     "names a file. The per-tile hole is the one a collection can have and a grid sheet cannot: "
+     "every other row honest, and one picture with no path",
+     1, "carries an embedded tileset image",
+     tiled_files(**{"resources/floor/office.tsx": COLLECTION_EMBEDDED_TSX}), tiled_rows())
+COLLECTION_DATAURI_TSJ = COLLECTION_TSJ.replace(
+    '"image": "office.png", "imagewidth": 32, "imageheight": 32}, {"id": 1',
+    '"image": "data:image/png;base64,' + base64.b64encode(TILED_PNG).decode()
+    + '", "imagewidth": 32, "imageheight": 32}, {"id": 1', 1)
+case("clause 3 RED — the JSON collection's form of the same defect: a TILE's `image` is a data: "
+     "URI. The grid-sheet fixture above carries `image` at the DOCUMENT root, so only this one "
+     "shows the check reaches a nested tile object",
+     1, "carries an embedded tileset image",
+     tiled_files(**{"resources/floor/office.tsj": COLLECTION_DATAURI_TSJ}), tiled_rows())
+
 print("\n12. clause 3 — a file it cannot PARSE is a red, never a skip")
 case("an unparseable .tmj: a check that cannot establish its property says so",
      1, "is not parseable as Tiled JSON",

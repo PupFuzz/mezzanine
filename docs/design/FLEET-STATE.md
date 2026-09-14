@@ -6,8 +6,9 @@ contract every consumer reads.
 > **Status: Draft — pending design review.** Owner: aimla-pm. Gate:
 > [`docs/PLAN.md § 2`](../PLAN.md#2-design-first-gates--the-order-is-the-plan) (P0 design, board 14).
 > Written to the **standalone-implementer standard (D-14)**: an agent holding only this file and
-> [D1](EVENT-SCHEMA.md) must be able to build the store, the fold and both read surfaces. Nothing here
-> is built yet — there is no Laravel application in this repo. Every number carries its derivation;
+> [D1](EVENT-SCHEMA.md) must be able to build the store, the fold and both read surfaces. The build is
+> tracked step by step in [Appendix B](#appendix-b--what-an-implementer-builds-from-this), and the
+> application lives in `server/`. Every number carries its derivation;
 > every failure path names its behaviour and its observable. Decisions a reviewer is most likely to
 > contest are collected in [§ 13](#13-decisions-taken-revisable-at-review), and each is **decided**,
 > not parked. The obligations [D1](EVENT-SCHEMA.md) places on this document are enumerated in
@@ -42,15 +43,16 @@ contract every consumer reads.
    never `idle` ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm), `D2-MUST` #2). The same
    property is built one layer out, in the feed itself: a browser can always tell "the fleet is quiet"
    from "the feed died" ([§ 8.3](#83-the-websocket-delta-feed)).
-6. **The store is MySQL 8.0 on a dedicated host** (operator decision, `docs/PLAN.md` D-15). Every
+6. **The store is MariaDB on a dedicated host** (operator decision, `docs/PLAN.md` D-15 and
+   its 2026-09-09 amendment). Every
    query crosses a network, so the design batches writes, reads a snapshot in one query, and states a
    fail-posture for the store being unreachable on every path that touches it ([§ 2.2](#22-fail-posture-per-path)).
 7. **Two read surfaces with two different compatibility postures.** The REST snapshot has an
    independently-upgraded consumer (the bridge's autonomy watchdog), so it carries a version line and
-   the additive-change discipline. The WebSocket delta feed ships with the browser code in the same
+   the additive-change discipline. The SSE delta feed ships with the browser code in the same
    deploy act, so it does not — and says so, rather than inheriting a rule it does not need
    ([§ 8.1](#81-two-surfaces-two-compatibility-postures)).
-8. **Snapshot-then-deltas is a protocol, not a sequence.** The client subscribes first, buffers, then
+8. **Snapshot-then-deltas is a protocol, not a sequence.** The client opens the stream first, buffers, then
    fetches the snapshot, then discards buffered deltas at or below the snapshot's watermark. The
    watermark is a server-minted per-seat `state_version`, **not** D1's `(seq_epoch, seq)` — and
    [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states exactly why both exist and which
@@ -69,7 +71,7 @@ contract every consumer reads.
    fleet-reporter ──▶ POST /api/ingest/events        (D1 § 12, card #7338)
                         │        │                                          │
                         │        ▼  one transaction                         │
-                        │   ┌──────────────┐    MySQL 8.0, dedicated host   │
+                        │   ┌──────────────┐    MariaDB, dedicated host     │
                         │   │  events      │◀── durable log, 14-day         │
                         │   │  batches     │    retention, dedup key        │
                         │   └──────┬───────┘                                │
@@ -82,7 +84,7 @@ contract every consumer reads.
                         │          │  derive() ─ one function               │
                         │          ├──────────▶ GET /api/fleet/snapshot ────┼─▶ browser (MFA)
                         │          │            GET /api/fleet/seats/…      │   watchdog (mzr_ token)
-                        │          └──────────▶ Reverb  private-fleet.<id> ─┼─▶ browser only
+                        │          └──────────▶ GET /api/fleet/stream  SSE ─┼─▶ browser only
                         │   sweeper (15 s): staleness, orphans, ceilings    │
 ```
 
@@ -98,7 +100,8 @@ contract every consumer reads.
 | Server-side predicates and the control that proves each can answer both ways | [§ 5](#5-server-side-predicates-and-their-controls) |
 | The store: deployment posture, database names, DDL, the fold, retention, sizing, migrations | [§ 6](#6-the-store) |
 | Where D1 § 12.7's server-side counters live and how they are exposed, plus this plane's own counters | [§ 7](#7-counters) |
-| The feed: REST snapshot, WebSocket deltas, snapshot-then-deltas, gaps, reconnect, backpressure | [§ 8](#8-the-feed-contract) |
+| The feed: REST snapshot, SSE deltas, snapshot-then-deltas, gaps, reconnect, backpressure | [§ 8](#8-the-feed-contract) |
+| The coordination read surface: which of [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer)'s coordination facts reach a reader, on which message, and what a consumer may conclude from them | [§ 8.3.3](#833-the-coordination-objects) |
 | Read-side authentication and rate limits | [§ 9](#9-read-side-authentication) |
 
 ### 1.2 Non-goals — stated so an implementer cannot widen scope in good faith
@@ -107,12 +110,12 @@ contract every consumer reads.
 |---|---|
 | **The wire schema, ingest auth, validation, error bodies, rate limits, the atomic-batch rule** | [D1](EVENT-SCHEMA.md). This document consumes an accepted batch; it does not re-specify how a batch becomes accepted. Card #7338 builds the ingest from D1; card #7339 builds everything here. |
 | **Anything rendered** — desks, floors, sprites, animation, the identity→desk mapping | D3 (`docs/design/FLOOR.md`). This document ends at a JSON object and a state name. Where D1 or this document says "renders", it is naming the **obligation** D3 inherits, not the pixels. |
-| **Ingest of GitHub webhook and kanban board events** | Not designed anywhere yet. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and declares the producers' design an open question with a named cost, rather than inventing them. |
+| **Ingest of kanban board events, and the coordination receipt route itself** | ⚠ **Half of this row went stale when D1 § 18 landed and it is repaired rather than reworded.** The **kanban poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (D4) — *outside* this contract, which is where this row has always placed it — and what this document adds is the store column its output lands in ([§ 6.4](#64-ddl)) and the merge that reads it ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)), never a second derivation of it. The **GitHub coordination receipt is designed** — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns its endpoint, authentication, validation order and every derived fact — and what this document adds is the read surface those facts reach a reader on ([§ 8.3.3](#833-the-coordination-objects)), never a second derivation of them. [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) specifies the *merge rule and the columns* — which are state-model questions and therefore D2's — and carries what is still open about the board producer with its cost, rather than inventing it. |
 | **The autonomy watchdog** | Roundtable #341, a separate track. Mezzanine's contribution is the REST snapshot ([`docs/PLAN.md § 3`](../PLAN.md#3-work-breakdown)), and this document specifies it as a first-class consumer. |
 | **MFA and the browser session** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states *which* surfaces MFA gates and what a failed gate returns; it does not specify the second factor. |
 | **Alerting, paging, e-mail** | There is no notifier here. Every degraded condition surfaces as a counter, a badge and a rendered state. A fleet that wants a pager reads the REST snapshot. |
 | **Historical analytics beyond the retention window** | Retention is 14 days ([§ 6.7](#67-retention-and-purge)). There is no warehouse, no roll-up table and no trend history, deliberately: the product answers *what is happening now*, and a second, slower copy of the data with its own schema is a second thing to keep true. |
-| **Backups of derived state** | Everything except `events` is re-derivable by replay ([§ 6.6](#66-rebuild-from-the-log)). [§ 6.10](#610-durability-posture) states the whole durability position, including what a total loss of the store actually costs. |
+| **Backups of derived state** | Everything except `events` — and, since card#9208's reversal, the **authored building documents** of [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), which no replay re-derives — is re-derivable by replay ([§ 6.6](#66-rebuild-from-the-log)). [§ 6.10](#610-durability-posture) states the whole durability position, including what a total loss of the store actually costs. |
 | **Any server → seat channel** | D1 § 1 forbids it and nothing here needs it. The read plane is read-only in both directions: it never writes to a seat and never asks one for anything. |
 
 ### 1.3 The boundary, stated as a rule
@@ -130,16 +133,40 @@ silently correcting its upstream is how two documents start disagreeing about wh
 
 ### 2.1 Processes
 
-**Five processes** — four that run on their own and one an operator invokes — all of which must be
-individually restartable without losing or double-applying anything.
+**The rows of this table are the processes this design defines** — those that run on their own, and
+one an operator invokes — all of which must be individually restartable without losing or
+double-applying anything.
+
+**This table is what a host is provisioned from, and it deliberately states no count.** An earlier
+revision opened with *"Five processes"*. The feed heartbeat ([§ 8.3](#83-the-websocket-delta-feed))
+was then built as a sixth, this table did not gain a row, and the figure went on reading as though
+the set were complete — so a host provisioned from it would have supervised everything except the
+heartbeat, and any channel quiet for 45 s would have rendered its feed dead against a healthy fleet,
+with nothing erroring anywhere (card#9181). A figure beside the set it counts is a second copy of
+that set and goes stale the moment a process is added; the set is what an operator actually reads.
+**Add a process, add a row** — and there is no number here to update with it.
+
+⭐ **The transport is a row here since card#9287, and the row is a request, not a daemon.** An earlier
+revision named Reverb as the feed's transport and said outright that this table did not carry it — *a
+gap rather than a decision* — so *provision what § 2.1 lists* stood no socket server up. That gap is
+closed by removing the thing it was a gap for: [§ 8.3](#83-the-websocket-delta-feed) now pins the feed
+to native Server-Sent Events served by PHP-FPM, and the process that serves it is the **feed stream**
+row below — one ordinary HTTP request per open browser, supervised by nothing but the FPM pool that
+serves every other request. Its cost is a worker pinned per browser, priced in § 8.3 as a **named,
+checked deploy requirement** rather than a sizing note.
 
 | Process | Kind | Cadence | Job | If it dies |
 |---|---|---|---|---|
 | **ingest** | HTTP request (PHP-FPM) | per batch | validate per [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order), write `events` + `batches`, the seat's **`head_event_id`**, and — only where it is still `NULL`, i.e. on the seat's first-ever event — the **seed of `fold_cursor_received_at`** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)), all in one transaction, return `202` | the reporter spools and retries ([D1 § 11.5](EVENT-SCHEMA.md#115-retry-and-backoff)); nothing is lost until a seat's 8-day residency cap |
-| **fold** | long-lived daemon (`mezzanine:fold`), supervised | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
-| **sweep** | long-lived daemon (`mezzanine:sweep`), supervised | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
+| **fold** | long-lived daemon (`mezzanine:fold`), supervised by the deploy user's crontab (`bin/supervision.sh`) | continuous, ≤ 1 s idle poll | advance each seat's cursor (`fold_cursor_event_id` **and `fold_cursor_received_at`**) over `events`, project facts, recompute state, emit deltas | states **freeze** while receipts keep arriving — the one degradation that could look healthy, so it is badged and alarmed ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) |
+| **sweep** | long-lived daemon (`mezzanine:sweep`), supervised by the deploy user's crontab (`bin/supervision.sh`) | every **15 s** | apply the **seven** time-derived jobs, and this is their one list: staleness ([§ 4.5](#45-link-states)), orphan-timeout closes ([§ 4.6](#46-every-open-fact-has-a-ceiling)), attention ceilings ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)), compaction ceilings ([§ 4.6](#46-every-open-fact-has-a-ceiling)), the leaving-live clears ([§ 4.5](#45-link-states)), offline quiescence ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and the predicate-constant alarms ([§ 5](#5-server-side-predicates-and-their-controls)). Each pass also recomputes `link_state` and `render_state` for **every** seat, which is what makes a time-derived transition arrive at all, and a pass that moves a version-bearing field bumps `state_version` and enqueues its delta under [§ 6.5](#65-the-fold)'s per-writer rule like any other writer | time-derived states stop advancing; a dead seat keeps rendering its last activity state. Detected the same way as a frozen fold — `sweep_last_run_at` feeds fleet health |
+| **feed heartbeat** | long-lived daemon (`mezzanine:feed-heartbeat`), supervised by the deploy user's crontab (`bin/supervision.sh`) | every **15 s** | write [§ 8.3](#83-the-websocket-delta-feed)'s `feed.heartbeat` to `feed_outbox` — **one row, fleet-wide, unconditionally** — whether or not anything changed and whether or not a client is connected — and, on a tick where `db`, `fold` or `sweep` changed value, [§ 8.3](#83-the-websocket-delta-feed)'s `fleet.health` for that change. A read of the store that fails publishes `db: "down"` rather than exiting — ⛔ **but only where the store is readable-but-degraded, and an earlier revision of this row overstated it.** This daemon's publish target is `feed_outbox`, which is in the SAME store ([§ 6.4](#64-ddl)): in a full outage it can write nothing, so it is not the messenger of that outage and this row no longer claims to be. Who tells whom, exactly: a **connecting** browser is told by the handler's on-connect `fleet.health`, a direct yield needing no outbox row ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row); an **already-connected** browser is told by this daemon where the store still takes writes, and where the store takes none the messenger is the stream's own `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)) — not this daemon and not its silence. What the heartbeat's ABSENCE still means, and the whole of what it means, is a stream that ended without saying so — a killed worker, the proxy, the network — which arms the client's 45 s dead-feed timer ([§ 8.3](#83-the-websocket-delta-feed)) and is the reason the heartbeat is unconditional | **a quiet fleet and a dead stream stop being distinguishable — the one thing [§ 8.3](#83-the-websocket-delta-feed) built this message to separate.** The client's 45 s timer is armed by a message of *any* kind, so a stream with `seat.delta` traffic stays up by accident and a **quiet** fleet's stream — precisely the case the heartbeat exists for — renders `feed_down` and reconnect-loops against a perfectly healthy fleet. A `db`/`fold`/`sweep` change is also never announced to a connected client, this daemon being that message's producer. Nothing errors: receipts land, the snapshot serves, the deploy is green |
+| **feed stream** | HTTP request (PHP-FPM), **long-lived** — `GET /api/fleet/stream`, one per open browser, and a worker pinned for as long as it is open ([§ 8.3](#83-the-websocket-delta-feed)) | polls `feed_outbox` every **250 ms**; re-checks the session every **15 s** ([§ 9](#9-read-side-authentication)) | yield `fleet.health` first — `db: "down"` if the store is unreadable ([§ 2.2](#22-fail-posture-per-path)) — then deliver every outbox row past its cursor that [§ 9](#9-read-side-authentication)'s filter admits, in `id` order, behind [§ 6.5](#65-the-fold)'s 2 s visibility lag; end the stream on `fleet.reload`, on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, on **any read of the store that fails** — the connect read, a tick's read, or [§ 9](#9-read-side-authentication)'s session re-check coming back without an answer about the session — or on a re-check that came back **invalid**, saying which with `feed.close` ([§ 8.3](#83-the-websocket-delta-feed)) | that browser's `EventSource` errors and the client re-opens on the cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1, F3) — every other stream is a separate worker and notices nothing. **What a dead pool looks like is the one failure here that is not the feed's:** with every worker pinned, the snapshot, the health endpoint and the console queue behind the streams, which is § 8.3's requirement R2 and its named observable |
+| **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **immediately before** the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot (the pool's master is root's, `docs/PLAN.md § 5`) | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait lag + tick + margin (3 s)**: a row is invisible to every handler for [§ 6.5](#65-the-fold)'s 2 s visibility lag and is delivered on the tick after that, so when the command returns every stream that is draining has read it and ended with `feed.close{reason:"reload"}` ([§ 8.3](#83-the-websocket-delta-feed)) — which is what takes it off the previous release's code, since opcache revalidation reaches new requests only and the client's reconnect is a new request. ⭐ **What ends the streams that did NOT read it is DECIDED ([§ 14](#14-open-questions-for-the-review-loop) item 17, closed by measurement on card#9300):** `bin/deploy.sh` then reads the **stream pool's** full status over its `pm.status_listen` ([§ 8.3](#83-the-websocket-delta-feed) R2) and waits, up to a **30 s ceiling** (`MEZZ_FEED_DRAIN_CEILING_S`), for every request that **started before the row was written** to finish; at the ceiling it sends those workers **SIGTERM**, and the pool's master starts fresh ones in their place. ⚠ **The ceiling's default has a consumer at the CLIENT:** [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s reload grace — the span in which a browser re-opens silently instead of rendering a failure over a routine deploy — is derived at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from) from this ceiling among other figures, so a host that raises `MEZZ_FEED_DRAIN_CEILING_S` beyond this default **can** hold the maintenance window past that grace — it does so on a deploy where a stream missed `fleet.reload`, since the drain returns as soon as no previous-release stream remains. No client can read the setting, and those two sections own what its viewer sees then. A stream is picked by **when its request started, never by its URI** — behind the front controller every request in the listing reads `/index.php` (measured) — and that is exact only because the pool is **dedicated** (R2): the only other requests the maintenance window lets into it are `503`s, milliseconds long. The signal needs no root because the pool runs as the deploy user, which the deploy's A14 refuses a host without. A residual the signal does not end, or a status that stops answering, is **logged and does not fail the window** — a deploy must not block, or stay down, on one wedged stream. ⚠ The poll and the signal are `bin/deploy.sh`'s and not this command's, which an earlier revision of this row gave the poll to: they read the host's FPM pool, which the deploy's one FPM reader already resolves (card#9300: never a second reader), and the command then runs the same on a host with no FPM at all | the deploy's window fails on it, like any other step of phase B. Were it skipped, streams would keep serving the previous release's code until each ended on its own clock — for a healthy client, not before its session expires ([§ 9](#9-read-side-authentication)) — and each client would learn of the deploy only when it next reconnected, from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
-| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, and publish the `seat.retired` message and the delta ([§ 4.10](#410-retirement-is-a-rendered-state)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
+| **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
+| **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --clear`) | on demand | the **only** writer of `seats.board_user_id`, and **any** write of that column — setting it or clearing it — deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
+| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 
 **15 s sweep cadence, derived.** The tightest deadline any time-derived transition has is the `stale`
 threshold, 300 s ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm)). A 15 s cadence bounds
@@ -149,6 +176,27 @@ scans over rows with a materialized due-time ([§ 6.4](#64-ddl)) plus one scan o
 carries exactly one row per seat and is what the per-seat recompute above costs. A 60 s cadence would be 20 % late on the
 tightest deadline; a 1 s cadence would multiply the query load by 15 to buy lateness nobody can see.
 
+**The feed heartbeat's 15 s is [§ 8.3](#83-the-websocket-delta-feed)'s number, not the sweeper's, and
+sharing a process with the sweeper is what it must not do.** The two cadences are the same figure by
+coincidence — one is derived above from the 300 s `stale` threshold, the other in
+[§ 8.3](#83-the-websocket-delta-feed) from D1's own heartbeat-and-alarm shape scaled to a LAN
+channel — and folding the heartbeat into a sweep pass would put the instrument inside the thing it
+reports on: [§ 2.2](#22-fail-posture-per-path) makes a dead sweeper a **reportable** condition
+(`fleet.sweep` goes `stalled`), and a heartbeat riding that pass would fall silent at exactly the
+moment it has news, leaving the client unable to tell a stalled fleet from a dead stream — which is
+the one distinction [§ 8.3](#83-the-websocket-delta-feed) exists to draw. It is the argument
+[§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) makes for `fold_lag_ms`'s basis, one layer
+further out.
+
+**5 min board-poll cadence, chosen — and *chosen*, not *derived*, which is the word its own document
+uses.** `BOARD-TASK.md § 3.2` owns it, with its measured cost and the two failures either side. It is
+the number [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s 30-minute bound is
+measured in — six cadences, so five consecutive failed polls are tolerated before a title is
+dropped — and it is stated by reference rather than re-argued here. ⛔ It is **not** `Derived` in
+[§ 12](#12-every-number-and-where-it-comes-from)'s sense, and the distinction is that section's own:
+`Derived` is reserved for a number computed from another number in that table or in D1, and this one
+is in neither.
+
 ### 2.2 Fail-posture per path
 
 **Every path states its own posture and its own reason. None of them inherits one from a sibling.**
@@ -157,16 +205,19 @@ tightest deadline; a 1 s cadence would multiply the query load by 15 to buy late
 
 | Path | Store/dependency unavailable | Posture | Why this posture and not the other |
 |---|---|---|---|
-| **Ingest write** | MySQL unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing. |
-| **REST snapshot read** | MySQL unreachable | **CLOSED** — `503 fleet_unavailable`, machine-readable, **never `200` with an empty or partial fleet** | An empty fleet is indistinguishable from a calm fleet. This is `docs/KANBAN.md § G-1`'s defect (a 200 with empty data reading as a clean zero) and [`docs/VERSIONING.md § The failure direction`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)'s rule, on the read side. |
-| **REST snapshot read** | MySQL reachable, **some seats' fold cursors stale** | **OPEN, labelled** — serve the state, with `derivation.fold_lag_ms` per seat and `fleet.fold` ≠ `ok` | Frozen state is still the last true state; refusing the whole fleet because one seat's derivation is behind would turn a partial degradation into a total outage. The label is what stops it being read as current. |
-| **WebSocket connect** | Reverb up, MySQL down | **CLOSED** — the connection is accepted and immediately sent `fleet.health` with `db: "down"`; no snapshot is served | Same argument as the REST read. The socket stays up deliberately, because it is the channel that tells the browser *why* there is nothing. |
-| **WebSocket feed** | Reverb down, MySQL up | **OPEN for reading, CLOSED for the live claim** — REST still serves; the client polls at **10 s** and must render a `feed_down` indicator | A dashboard that silently degrades from live to polled is a dashboard whose age nobody can trust. The poll interval matches D1's flush interval, so the polled floor is no more stale than the live one's own input cadence. |
+| **Ingest write** | the store unreachable or the transaction fails | **CLOSED** — `503 server_error`, retryable, nothing acknowledged | The reporter advances its spool cursor on `202` ([D1 § 4.6](EVENT-SCHEMA.md#46-successful-response)). Acknowledging a batch we did not store destroys the only other copy — the exact defect [D1 § 12.4](EVENT-SCHEMA.md#124-batches-are-atomic) refuses for partial ingest, arriving through the store instead of through validation. The seat spools for days; we lose nothing by refusing. |
+| **REST snapshot read** | the store unreachable | **CLOSED** — `503 fleet_unavailable`, machine-readable, **never `200` with an empty or partial fleet** | An empty fleet is indistinguishable from a calm fleet. This is `docs/KANBAN.md § G-1`'s defect (a 200 with empty data reading as a clean zero) and [`docs/VERSIONING.md § The failure direction`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly)'s rule, on the read side. |
+| **REST snapshot read** | the store reachable, **some seats' fold cursors stale** | **OPEN, labelled** — serve the state, with `derivation.fold_lag_ms` per seat and `fleet.fold` ≠ `ok` | Frozen state is still the last true state; refusing the whole fleet because one seat's derivation is behind would turn a partial degradation into a total outage. The label is what stops it being read as current. |
+| **Stream connect** | the app up, the store down | **CLOSED** — the request is accepted, the handler's **first message** is `fleet.health` with `db: "down"`, and the stream then **ends** with `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)); no snapshot is served | Same argument as the REST read. The connection is accepted only far enough to say *why* there is nothing — under SSE that message is the handler's first yield rather than a hook nobody had ([§ 8.3](#83-the-websocket-delta-feed)) — and then it ends, because every datum it would carry comes out of the store it could not read. |
+| **Stream** | the stream unreachable — the pool exhausted, the proxy buffering it, the network — the store up | **OPEN for reading, CLOSED for the live claim** — REST still serves; the client polls at **10 s** and must render a `feed_down` indicator. ⚠ **A stream the deploy's `feed.close{reason:"reload"}` ended ([§ 8.3](#83-the-websocket-delta-feed)) is inside the reload grace [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns, and takes that section's clause (2) instead of this row's poll and indicator** — stated in this row because none of these rows inherits a posture from a sibling | A dashboard that silently degrades from live to polled is a dashboard whose age nobody can trust. The poll interval matches D1's flush interval, so the polled floor is no more stale than the live one's own input cadence. |
 | **Fold worker** | dead or lagging | **OPEN for ingest, CLOSED for the currency claim** — receipts keep landing, state freezes, seats badge `fold_lag`, `fleet.fold` goes `stalled` | Refusing ingest because *derivation* is broken would discard data we can still store and later derive. Freezing silently is the failure this whole product exists to prevent, so the freeze is announced. See [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation). |
 | **Fold worker** | a single event raises during projection | **OPEN, counted, quarantined-in-place** — the cursor advances past it, `fold_error` increments, the seat badges `derivation_error`; the event stays in `events` for replay | One malformed event must not wedge a seat's derivation forever — the same judgement [D1 § 11.4](EVENT-SCHEMA.md#114-corruption-the-torn-last-line-and-a-lost-statejson) makes for a torn spool line. Because the log is retained, the fix plus a rebuild recovers the seat exactly. |
 | **Sweep worker** | dead | **OPEN for ingest, CLOSED for the currency claim** — the fleet object's `sweep_last_run_at` keeps its last value and `fleet.sweep` goes `stalled` past **60 s** since it ([§ 8.2.4](#824-the-fleet-health-object)) | Identical reasoning to the fold, and stated separately rather than inherited because the *consequence* differs: a dead fold freezes wire-driven transitions, a dead sweep freezes time-driven ones, and only the second one can leave a dead seat rendering `working`. |
-| **Feed backpressure** | a client cannot drain its queue | **CLOSED for that connection** — at 256 queued messages or 512 KiB the connection is closed with `resync_required`; other clients are untouched | Dropping deltas silently leaves that browser permanently and invisibly wrong. Closing the connection costs one snapshot fetch and is self-healing. |
+| **Feed backpressure** | a client cannot drain the stream | **CLOSED for that connection** — a tick the handler cannot complete within [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound is detected at the top of the following pass and ends the stream with `feed.close`, and other clients are untouched (that section owns the figure, and its bound is a detector and not a cap on how long the worker is held) | Dropping deltas silently leaves that browser permanently and invisibly wrong. Ending the stream costs one snapshot fetch and is self-healing — and returns the worker, which under SSE is the resource a stalled client actually consumes. |
+| **Feed stream, MID-STREAM** | the store becomes unreachable while the stream is open | **CLOSED** — the tick's read of `feed_outbox` fails, or [§ 9](#9-read-side-authentication)'s 15 s session re-check comes back without an answer about the session, and the handler **ends the stream** with `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)). No cursor is held across the outage, no delivery is resumed from one, and nothing is frozen | Every datum this stream carries comes out of that store, so a stream that cannot read it has nothing left to deliver and no way to tell whether it still may — and a recovery path back to a place with no value is not a posture, it is a pretence. What the viewer gets instead is the truth by name: [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 is the render, and the client retries on the **backed-off** cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns. That backoff — not a held-open stream — is the answer to the reconnect stampede F20 prices, and it is cheap and local where holding streams open was neither |
 | **Read-token verification** | the token store is unreachable | **CLOSED** — `503`, never a cached or assumed grant | A read token gates the whole fleet's activity picture. There is no posture in which "we could not check, so we allowed it" is correct. |
+| **Building surface read** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the store unreachable | **CLOSED** — `503 fleet_unavailable`, **never the shipped default served in its place** | A default served on a failed read is a room the operator authored rendering as one they did not, with confidence — the clean-zero shape one surface over from the snapshot's. The client draws the failure by name ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F16) and keeps every desk's facts |
+| **Building surface read** | the store reachable, **no authored map for the room** | **OPEN, labelled** — `200` with the shipped default, `source: "default"`, `map_version: null` | An unauthored room is a state and not a failure: the default is what every room starts from, and the label is what keeps it distinguishable from an authored map on the same shape. This is the row an implementer gets wrong by answering `404`, which would make every new install a broken room |
 | **Purge job** | dead | **OPEN** — data accumulates; alarm on table size at the stated threshold | Retaining too much costs disk; deleting on a broken assumption costs the dedup guarantee ([§ 6.7](#67-retention-and-purge)). The safe direction is to keep. |
 | **Clock (NTP) on the Mezzanine host** | skewed | **OPEN, visible** — `received_at` remains the authority ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what)) and every seat's `clock_skew_ms` moves together | A fleet-wide skew shows up as *every* seat badging `clock_skew` in the same direction, which is a legible signature. Nothing else can produce it, so no extra instrument is needed — but the reading is stated here so it is not mis-read as a fleet of broken seats. |
 
@@ -849,6 +900,7 @@ discriminable on the wire; this section is D2 not throwing it away.
 | a `compaction.start` / `compaction.end` | an activity **state** — neither `working` nor a state of its own | `compaction.start` refreshes `last_activity_*` (it **is** activity, [§ 3.2](#32-the-activity-event-set)) and sets `sessions.compaction_open_since`; `compaction.end` clears it. [§ 4.3](#43-the-derivation-function) reads no compaction fact, so a seat compacting between turns derives from `L` — `idle` after a clean turn. **That is the decision, and it is deliberate**: a compaction is the harness reclaiming context, not the agent doing work, and rendering `working` for it would put a busy desk on the floor for a seat whose agent is idle. The fact is still bounded ([§ 4.6](#46-every-open-fact-has-a-ceiling)) and still visible in the drill-down, which is where "why is this seat quiet for 40 s" is answered |
 | a server-side orphan close, a ceiling expiry, or offline quiescence | a **wire event** | ledger writes only. [D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state): "no wire event is synthesized, because the wire is what a seat said and the server must not put words in a seat's mouth". `events` therefore contains only what seats sent, which is what makes [§ 6.6](#66-rebuild-from-the-log)'s replay meaningful. |
 | a `tool.end` whose `match` is `lifo_tool_name` | a different open/closed **count** | the mis-match can swap two concurrent same-tool calls' ids and durations and nothing else ([D1 § 8.2](EVENT-SCHEMA.md#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)); `match` is stored and rendered in the drill-down so an approximate attribution is legible as one |
+| a **coordination fact** — any member of either object [§ 8.3.3](#833-the-coordination-objects) declares | any activity or link state, any badge, any `render_state`, any `task` value | nothing at all on the seat plane. These objects are not seat-scoped, no seat's `state_version` moves for one, and no `seat.delta` is emitted. ⚠ **This row is the one input to this table that is not a reporter-wire pattern**, and it is a rule this document ADDS for the second producer rather than one it reads out of D1: [D1 § 18.1](EVENT-SCHEMA.md#181-two-corrections-this-section-carries-and-the-boundary-it-keeps) states that its section *"adds no column"* to this model, and [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C gives the reason a coordination post must not raise `blocked` in particular — one rendered fact, one source |
 | a `tool.start` carrying `agent_scope` or `parent_call_id` | a scope-dependent state rule | those are **labels** ([D1 § 6.5](EVENT-SCHEMA.md#65-toolstart)); the server ledger is seat-scoped and models no agent scope ([D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)). They are stored for the intern join and never gate anything. |
 
 The golden fixture for this whole section is D1's own worked `/clear` trace, replayed end to end in
@@ -866,10 +918,33 @@ three sources: telemetry supplies the live *action*, GitHub and board events sup
 | Tier | Source | Field | Freshness bound | Precedence |
 |---|---|---|---|---|
 | 1 | board card assigned to this seat | `task.title`, `task.ref = "card#NNNN"` | re-read at the board poll cadence; stale past **30 min** | highest |
-| 2 | the seat's most recent coordination/PR activity correlated to it | `task.title`, `task.ref = "<repo>#N"` | stale past **30 min** | middle |
 | 3 | the seat's own telemetry — the newest open dispatch call's `title`, else the current call's `descriptor` | `task.title`, `task.ref = null` | live | lowest |
 
-- `task.source` is always on the wire (`board_card` · `coord_thread` · `telemetry` · `null`), so a
+⛔ **TIER 2 IS RETIRED, AND ITS NUMBER IS RETIRED WITH IT — operator ruling, 2026-09-10 (`card#9234`).**
+Tier 2 was the GitHub-sourced title — *the seat's most recent coordination/PR activity correlated to
+it*, at `task.ref = "<repo>#N"` — and it sat between the two rows above. It is **dropped from this
+design**, and `coord_thread` is no longer a member of `task.source`. **Why:** the same day's ruling
+that a board card's assignee names the agent working on it makes **tier 1** the answer to *what is
+this agent working on*, and **tier 3** is always available underneath — so tier 2 was a narrow
+fallback wedged between two sources that already work, firing only on a seat holding no assigned
+card, and it cost a join (a protocol agent name → `seat_id`) that no document in this repo owned
+when the tier was retired (`card#7957`; one exists since `card#9296`, and it is a seat's own
+declaration — [§ 8.3.3](#833-the-coordination-objects) — which arrived after this ruling and does not
+reverse it: the title it would have joined is gone either way). Nothing was ever built against it: no route, no controller, no test, and no row in any
+store has ever carried the value.
+⛔ **The rows above are NOT renumbered and the number 2 is not reused.** Tier 3 stays tier 3, so
+`StateRecompute::taskTier3()` and every *tier 3* reference in this repository's documents, tests and
+comments goes on meaning exactly what it meant before this ruling. Renumbering would buy a contiguous
+sequence and falsify every one of them at once; a retired number keeps them all true, which is why it
+is retired rather than recycled.
+⚠ **The coordination PRODUCER and its objects are NOT dropped, and an edit that removes them is
+undoing something else.** [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) still designs
+the GitHub coordination receipt, and this document still carries `coord.thread` and `coord.round` at
+[§ 8.3.3](#833-the-coordination-objects) — the thread line, beads, carriers and broadcast are what
+they serve, and [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line) renders them. What this ruling
+removed is the **second consumer** of that one producer, not the producer.
+
+- `task.source` is always on the wire (`board_card` · `telemetry` · `null`), so a
   consumer never has to guess which tier answered — and a floor showing tier 3 everywhere is visibly a
   floor whose board integration is dark, rather than a floor that looks fine.
 - A tier's value past its freshness bound is **dropped, not rendered stale**: the merge falls through to
@@ -878,15 +953,23 @@ three sources: telemetry supplies the live *action*, GitHub and board events sup
 - Tier 3 is always available while the seat is live, so the merge never yields "no title" on a working
   seat.
 
-**What is deliberately not specified here, and why.** The *producers* of tiers 1 and 2 — a GitHub
-webhook receiver and a kanban poller — are designed in no document in this repo. And the proposal's
+**What is deliberately not specified here, and why.** ⚠ **Tier 1's producer is no longer undesigned,
+and this paragraph claimed it was for as long as it had been.**
+[`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (**D4**) designs the kanban board poller — its cadence,
+the seat→board-user join, its credential posture and every failure path — and it is a document of
+its own because [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)
+places the poller outside this contract by name. ⭐ **What it does NOT do is write these columns.**
+The poller writes an input table (`seat_board_task`, [§ 6.4](#64-ddl)) and the fold derives
+`task_*` from it on every recompute, exactly as it derives `render_state` from `seats.retired_at` —
+so a board-sourced title is reproducible by [§ 6.6](#66-rebuild-from-the-log)'s rebuild with no new
+event kind and **no exclusion added to** [AT-D2-10](#at-d2-10-rebuild-equals-fold). And the
+proposal's
 "three-tier status fallback" is a document this repo does not contain: it is named in
 `docs/PLAN.md § 2` and nowhere reproduced. **This document does not invent its tiers.** Specifying a
 fallback from the phrase alone would put a guessed rule in a contract, and a guessed rule that reads
 plausibly is worse than an absent one. So: the merge above is derived from what this repo states, and
-[§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers and
-for a decision on where the two producers are designed. Until that answers, an implementer builds tier 3
-(which needs nothing new) and leaves tiers 1 and 2 as the stated columns they populate.
+[§ 14](#14-open-questions-for-the-review-loop) item 3 asks review for the proposal's actual tiers.
+Until that answers, the merge is tier 1 over tier 3, with tier 1 dark until D4 is built.
 
 ### 4.10 Retirement is a rendered state
 
@@ -945,6 +1028,19 @@ recompute then agrees with it on every later pass rather than racing it, because
 | What do connected clients see at the moment of retirement? | the `seat.retired` feed message and the delta carrying `render_state: "retired"`, **both published by the retirement act in the transaction that sets the columns** ([§ 2.1](#21-processes), [§ 8.3](#83-the-websocket-delta-feed)) — so the change is immediate rather than up to one sweep pass late, it carries `cause: operator` rather than `staleness_sweep`, and `seat.retired` reaches the wire at all, which nothing else in this document would have done. ⭐ **Those two messages ARE the removal**: [FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal) takes the desk off the floor on them, and a client that missed them learns from the next full snapshot instead. A desk still never disappears because data went missing — only because a retirement was announced |
 | Does `link_state` or `activity_state` change? | Retirement itself changes neither — it is an administrative fact, not a transport or activity one. But **the axes keep deriving**: the sweeper recomputes `link_state` for every seat on every pass ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)), so a retired seat that stops reporting still reaches `stale` at 300 s and `offline` at 900 s underneath, and `retired` short-circuits above both in [§ 4.2](#42-render-precedence) so the stored render stays right. ⚠ **Since card#9078 nothing RENDERS what that derivation produces** — the seat is off every read surface — so what those columns serve is the ledger and an operator query, not a desk. Whether the sweeper should keep visiting a retired seat at all is [§ 14](#14-open-questions-for-the-review-loop)'s to settle, not this section's: it is a live question the ruling opened rather than a behaviour it decided |
 
+⭐ **RETIREMENT ALSO CLEARS THE SEAT'S BOARD-USER MAPPING, IN THE SAME TRANSACTION (`card#7582`).**
+`seats.board_user_id` goes back to `NULL` and the seat's `seat_board_task` row is deleted
+([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge)) beside the three columns above — one act, one
+transaction, the same rule this section already applies to everything else retirement produces.
+**Why it is part of the act and not left to an operator.** `board_user_id` is UNIQUE, so a retired
+seat that keeps it holds that board user against the whole fleet: the replacement seat cannot be
+mapped to the same person until somebody runs `mezzanine:seat-board-user --clear` on a seat that no
+longer appears on any read surface, and the only symptom of not having done so is the mapping
+command's bare non-zero exit. ⛔ **It is not a deletion of anything the record needs**: the three
+retirement columns, and every row the ledger holds, are untouched — what goes is a JOIN KEY into a
+live board, which is exactly the thing a retired seat must stop holding. The board poll
+([§ 2.1](#21-processes)) already skips a retired seat, so nothing re-creates the row.
+
 `retired` sits at the top of [§ 4.2](#42-render-precedence)'s collapse because it is the one state that
 is true regardless of what the seat is still doing: a retired seat that keeps reporting is a
 misconfiguration, and storing it as `working` would hide that.
@@ -979,13 +1075,53 @@ can only say `no`.
 
 | Predicate | Branches | Evaluated | Alarm criterion | The control that proves it discriminates |
 |---|---|---|---|---|
-| `seat_live` | `now − last_receipt_at ≤ 300 s` / `>` | per sweep pass, per seat — ~5,760/seat/day | **constant-`false` across ≥ 5,760 evaluations in a rolling 7 days**, per seat — a seat that has not been live in a seat-day of passes. Constant-**`true`** is deliberately **not** a criterion: a fleet in which no seat is ever stale for a week is the good outcome, and an alarm that fires on the healthy case is worse than no alarm, because it is the one that gets trained away. The `true`/`false` discrimination of this predicate is proved by test ([AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways)), not by production constancy | a fixture seat whose last receipt is back-dated past 300 s must flip the branch in the next pass; a fixture seat receiving normally must not |
-| `activity_recent` | `now − last_activity_received_at ≤ 900 s` / `>` | per sweep pass, per seat | **constant across ≥ 5,760 evaluations in a rolling 7 days**, in **either** direction — and unlike `seat_live` above, both directions are right here. Constant-`true` means a seat has done something in the activity set every 15 minutes for a week without a single quiet quarter-hour, which no real desk does and a receipt-fed activity column does exactly; constant-`false` means a week with no activity at all on a seat that is still reporting. Neither is the healthy case, so neither alarm fires on one | the heartbeat-only fixture of [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy) drives `false` while `seat_live` stays `true`; a working fixture drives `true`. **If these two predicates ever move together, activity is being written from receipt** — that is the discriminating pair, and it is the mechanised form of [§ 3](#3-delivery-is-not-activity) |
-| `turn_clean` | a `turn.end` satisfied [§ 4.3](#43-the-derivation-function) rule 4's turn-side conditions — `end_reason == "stop_hook"`, `aborted_call_ids == []` and `background_tasks_open == 0` / it did not | per `turn.end` — ~200–600/seat/day ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)) | **0 % or 100 % across ≥ 200 evaluations in a rolling 24 h.** The 100 % end is kept deliberately, against `seat_live`'s rule, and the asymmetry has a reason: 200 consecutive clean turns is a *plausible* healthy day, so this criterion can fire on a good seat — but the thing it would be missing if it did not is the false-idle defect itself, D1's headline failure arriving through a derivation that has stopped seeing aborts. A criterion that can cry wolf on the one defect both documents exist to prevent is the trade this document takes, and it is recorded here rather than left as an inconsistency with the row above | AT-D2-2's `/clear` fixture drives `false`; AT-D2-1's ordinary turn drives `true`. Constant-`true` means the abort path is not reaching the derivation — the false-idle defect returning; constant-`false` means idle has become unreachable, which is what a wrongly-scoped reap looked like in D1's own review |
-| `call_closed_by_wire` | a call closed by a `tool.end` / by a server orphan or quiescence | per call close — ~1,000–3,000/seat/day | **≥ 5 % server-closed across ≥ 1,000 in 24 h** is the alarm direction here (not constancy): server closes should be rare | drive a fixture with the reap disabled → the share jumps; the healthy fixture keeps it near zero. This is the server-side twin of D1's `late_completion` signal |
+| `seat_live` | `now − last_receipt_at ≤ 300 s` / `>` | per sweep pass, per seat — ~5,760/seat/day | **constant-`false` across ≥ 5,760 evaluations in a rolling 7 days**, per seat — a seat that has not been live in a seat-day of passes. Stored and evaluated as a **run** (below). Constant-**`true`** is deliberately **not** a criterion: a fleet in which no seat is ever stale for a week is the good outcome, and an alarm that fires on the healthy case is worse than no alarm, because it is the one that gets trained away. The `true`/`false` discrimination of this predicate is proved by test ([AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways)), not by production constancy | a fixture seat whose last receipt is back-dated past 300 s must flip the branch in the next pass; a fixture seat receiving normally must not |
+| `activity_recent` | `now − last_activity_received_at ≤ 900 s` / `>` | per sweep pass, per seat | **constant across ≥ 5,760 evaluations in a rolling 7 days**, in **either** direction, stored and evaluated as a **run** (below) — and unlike `seat_live` above, both directions are right here. Constant-`true` means a seat has done something in the activity set every 15 minutes for a week without a single quiet quarter-hour, which no real desk does and a receipt-fed activity column does exactly; constant-`false` means a week with no activity at all on a seat that is still reporting. Neither is the healthy case, so neither alarm fires on one | the heartbeat-only fixture of [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy) drives `false` while `seat_live` stays `true`; a working fixture drives `true`. **If these two predicates ever move together, activity is being written from receipt** — that is the discriminating pair, and it is the mechanised form of [§ 3](#3-delivery-is-not-activity) |
+| `turn_clean` | a `turn.end` satisfied [§ 4.3](#43-the-derivation-function) rule 4's turn-side conditions — `end_reason == "stop_hook"`, `aborted_call_ids == []` and `background_tasks_open == 0` / it did not | per `turn.end` — ~200–600/seat/day ([D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read)) | **0 % or 100 % across ≥ 200 evaluations in a rolling 24 h** — 0 % and 100 % **are** constancy, so this is the same **run** rule as the two rows above at a different `(n, window)` (below). The 100 % end is kept deliberately, against `seat_live`'s rule, and the asymmetry has a reason: 200 consecutive clean turns is a *plausible* healthy day, so this criterion can fire on a good seat — but the thing it would be missing if it did not is the false-idle defect itself, D1's headline failure arriving through a derivation that has stopped seeing aborts. A criterion that can cry wolf on the one defect both documents exist to prevent is the trade this document takes, and it is recorded here rather than left as an inconsistency with the row above | AT-D2-2's `/clear` fixture drives `false`; AT-D2-1's ordinary turn drives `true`. Constant-`true` means the abort path is not reaching the derivation — the false-idle defect returning; constant-`false` means idle has become unreachable, which is what a wrongly-scoped reap looked like in D1's own review |
+| `call_closed_by_wire` | a call closed by a `tool.end` / by a server orphan or quiescence | per call close — ~1,000–3,000/seat/day | **≥ 5 % server-closed across ≥ 1,000 in 24 h** is the alarm direction here (not constancy): server closes should be rare. ⚠ **Evaluated over the last COMPLETED 24 h window, not a rolling one** — a *tumbling* window, and the cost of that is stated below rather than absorbed | drive a fixture with the reap disabled → the share jumps; the healthy fixture keeps it near zero. This is the server-side twin of D1's `late_completion` signal |
 | `attention_resolved_by_wire` | resolved by an `attention.resolved` / by the server ceiling | per resolution — 0–50/seat/day | **any** server-ceiling resolution in 24 h is surfaced; constant-server over ≥ 10 alarms | stub the resolution events → ceiling branch; ordinary approval → wire branch |
 | `ingest_receiving` | any batch received fleet-wide in the last 300 s / none | per sweep pass, fleet-wide | **constant-`false` for 2 consecutive passes** alarms | stop the ingest → `false` within 300 s; a single live seat → `true`. This is the predicate that separates "every seat died" from "our pipe is broken", and without it a fleet-wide ingest outage renders as 40 independently-stale desks |
 | `fold_current` | `fold_lag_ms ≤ 60,000` / `>`, with `fold_lag_ms` **computed** from the cursor and head columns per [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation), never read from a stored lag | per sweep pass, per seat | **constant-`false` for 2 consecutive passes** alarms | pause the fold daemon → `false` within one pass; resume → `true`. This control is only reachable because the sweeper and the fold are different processes and the lag's basis is a **timestamp two processes write** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation): the ingest seeds `fold_cursor_received_at`, the fold advances it), not a number the fold maintains — a stored lag the fold wrote would freeze with it |
+
+**How § 6.4 carries these criteria, and why it had to change (card#7833).** Every criterion above is
+stated over a *window*, and until this change [§ 6.4](#64-ddl)'s `seat_predicates` carried only
+cumulative branch counts and two last-seen timestamps — from which **no windowed count is derivable**.
+The gap is not a preference, and it is provable in one pair of histories: 250 clean turns inside one
+day (criterion **met**) and 249 clean turns spread over a month plus one an hour ago (criterion **not
+met**) produce a **byte-identical row** — `true_count` 250, `false_count` 0, `last_true_at` an hour ago,
+`last_false_at` null. No function of that tuple separates them. An earlier build approximated it and
+the approximation **over-fired** three reachable ways, which by this section's own trade *inverts* the
+feature rather than degrading it; the interim after that made four of the seven answer
+`cannot_evaluate`, which was honest and inert. The operator's ruling was to **extend the store, not
+restate the criteria** — restating `call_closed_by_wire`'s share as a run would not weaken it, it would
+**delete** it, and it is the one criterion here that is a health signal rather than a discrimination
+meta-monitor. `seat_predicates` therefore carries two more pieces of evidence, and each criterion above
+is read from exactly one of them:
+
+- **A run** — `run_length` and `run_started_at`. *Constant across ≥ N evaluations inside a window W* is
+  exactly *an unbroken same-branch run of ≥ N evaluations that began no more than W ago*, so
+  `seat_live`, `activity_recent` and `turn_clean` are **one rule** at three settings of
+  `(direction, n, window)`, and `ingest_receiving` and `fold_current` are the same rule with **no**
+  window — "2 consecutive passes" is a run of 2. The run's **branch** is not stored: it is derived from
+  `last_true_at` / `last_false_at`, which already carry it. **The verdict is decided when the
+  evaluation is recorded and latched in `alarm_since`**, never recomputed cold: a run that crosses N
+  *inside* W and then keeps going outgrows W while still being constant, and a cold recomputation would
+  withdraw an alarm whose subject had not changed. Exactly one event withdraws it — the run breaking.
+  ⚠ **The residue, in the under-firing direction:** the window is measured from the run's *start*, so a
+  run that began before W and only reached N afterwards does not fire. Closing that needs the timestamp
+  of the (`run_length` − N + 1)-th evaluation, i.e. a per-evaluation bucket table, which this design
+  refuses — it would put a second row-write on the fold's per-event path ([§ 6.5](#65-the-fold): **one
+  transaction per pass, per seat**) for a predicate two different processes already write, where the
+  columns above add none. It is unreachable at a steady evaluation rate, which is the property the
+  paragraph below requires of every threshold anyway.
+- **A tumbling window** — `window_start` / `window_true` / `window_false` and the last completed
+  window's `prev_start` / `prev_true` / `prev_false`. `call_closed_by_wire` is the only criterion whose
+  evidence is a windowed **count** rather than a run, and it is evaluated **exactly** over the last
+  completed 24 h window. ⚠ **The accepted cost, recorded because it is a real trade and not an
+  implementation detail:** the window is *tumbling*, not rolling, so the alarm can only arrive **at a
+  window roll** — worst-case detection of a reap outage stretches by up to one window — and a burst of
+  server closes that **straddles** a boundary can leave both halves under the 1,000 floor and alarm on
+  neither. Both failures are under-firing, which is the direction this section's own trade prefers.
 
 **On the thresholds.** They are chosen the way D1 chooses its own and carry the same obligation: each
 criterion is reachable by its predicate's own evaluation rate — the rule D1 states as "a threshold above
@@ -1002,19 +1138,54 @@ its own volume can reach, that it fires visibly, and that it has been **seen to 
 
 ### 6.1 Deployment posture
 
-**MySQL 8.0 or later, on a host dedicated to it** (`docs/PLAN.md` D-15; the operator's decision, and the
-reason [§ 2.2](#22-fail-posture-per-path) has a row for the store being unreachable at all). The version
-floor is not decorative — four features below are load-bearing:
+**MariaDB, on a host dedicated to it, at the version floor the table below pins**
+(`docs/PLAN.md` D-15 and its 2026-09-09 amendment; the operator's decision, and the reason
+[§ 2.2](#22-fail-posture-per-path) has a row for the store being unreachable at all). The version
+floor is not decorative — the requirements below are load-bearing:
 
 | Requirement | Value | Why it is required, and its state |
 |---|---|---|
-| Engine / version | **MySQL ≥ 8.0.12** | `SELECT … FOR UPDATE SKIP LOCKED` for the fold's seat claim ([§ 6.5](#65-the-fold)); `ALGORITHM=INSTANT` column adds on `events` ([§ 6.9](#69-migrations-on-a-live-events-table)); native `JSON`; `DATETIME(3)`. **DOCS-CITED** (MySQL 8.0 reference manual), **verified at provisioning** — the deploy host is not built yet |
+| Engine / version | **MariaDB ≥ 11.8.6** | `SELECT … FOR UPDATE SKIP LOCKED` for the fold's seat claim ([§ 6.5](#65-the-fold)) — MariaDB 10.6.0; `ALGORITHM=INSTANT` column adds on `events` ([§ 6.9](#69-migrations-on-a-live-events-table)) — MariaDB 10.3.2/10.4 by operation, and with no MySQL-style 64-row-version ceiling before a rebuild; `DATETIME(3)`; and `JSON` **as a type name only** — on MariaDB it is an alias for `LONGTEXT` with an automatic `CHECK (json_valid(…))` and not a binary type, which is sufficient here **only because nothing queries into `data`** (below, and [§ 6.3](#63-conventions)). **DOCS-CITED** (MariaDB Knowledge Base), **verified at provisioning** — the deploy host is not built yet |
 | Storage engine | InnoDB, `ROW_FORMAT=DYNAMIC` | transactions; the fold's cursor advance and its projections are one transaction |
-| Character set | `utf8mb4` / `utf8mb4_0900_ai_ci`; **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly |
-| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MySQL, but a `TIMESTAMP` is — which is why this schema uses no `TIMESTAMP` column anywhere. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
+| Character set | `utf8mb4` / `utf8mb4_unicode_ci` (the value's one home is `server/config/database.php`); **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly. ⭐ **`ascii_bin` is the correctness guard, not the default collation**: `utf8mb4_unicode_ci` is case-INSENSITIVE, and two ULIDs differing only in case must not compare equal in `uq_dedup`. `utf8mb4_0900_ai_ci` — what this row named before the repin — is **not a native MariaDB collation**; it is accepted as an alias onto the UCA-1400 family from 11.4.5, and MariaDB's own ticket cautions the resulting ordering is not guaranteed byte-identical to MySQL's, so the name is not used here at all |
+| Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — which is why this schema uses no `TIMESTAMP` column anywhere. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
 | Transport | **TLS required**, certificate verified, no fallback to plaintext | the app and the store are on different machines, so the credential and every descriptor cross a network. Loosening verification "because it is our own network" is the constraint-weakening fix D1 refuses for the reporter's TLS, and it ships to production the same way. Fail **closed**: no TLS, no connection, `503` |
 | Connections | request path: one per request (PHP-FPM), no persistent connections; daemons: one long-lived connection each, with reconnect-on-`gone away` and capped backoff | a persistent pool under FPM keeps `wait_timeout` sessions alive across unrelated requests and makes the time-zone and session-variable posture per-worker rather than per-request |
 | Query budget | the fleet snapshot is **one query**; the fold's per-batch work is **one transaction** | every round trip is a WAN round trip. An N+1 over 50 seats is 50 round trips on the dashboard's critical path |
+
+**The repin, and what was checked before it was made.** Operator ruling, 2026-09-09 (card#7523,
+`docs/PLAN.md` D-15's amendment): the engine moves from **MySQL ≥ 8.0.12** to **MariaDB**, at
+the floor the table's engine row above pins. Every requirement in that table was re-argued
+against MariaDB rather than carried across, and the known divergences between the two engines
+were each checked against **this** repo:
+
+- **`JSON` is an alias for `LONGTEXT` plus an automatic `CHECK (json_valid(…))`, not a binary type**,
+  and the `->` / `->>` arrow operators do not exist before MariaDB 13.1. This schema uses **no
+  SQL-side JSON at all** — every JSON column is written whole, read whole and decoded in PHP
+  ([§ 6.3](#63-conventions)) — so neither the representation nor the missing operators is reachable
+  from any query this design specifies. ⚠ **What is NOT established is performance.** Quantified
+  whole-column JSON read/write against a `LONGTEXT`-backed `JSON` versus MySQL's binary `JSON` is
+  **UNSOURCED**: neither vendor isolates that access pattern and no benchmark has been run here, so
+  this document claims **no parity in either direction**. It needs a measurement, not a citation, and
+  the closure is the same act as every other row's — measured at provisioning against the real store.
+  The same caveat applies to the `data` bytes in [§ 6.8](#68-sizing)'s row-cost model, which was
+  built on a binary-`JSON` assumption and is re-measured there anyway.
+- **Laravel's `mariadb` driver emits a native `uuid` column where `mysql` emits `char(36)`.** This
+  repo declares no `uuid` and no `ulid` column in any migration — its ULIDs are `CHAR(26) ascii_bin`
+  ([§ 6.3](#63-conventions)) — so that divergence has nothing in this schema to act on. Stated
+  narrowly on purpose: what was checked is the absence of those columns, not a general claim
+  that the two drivers emit identical DDL.
+- **MariaDB has no functional / expression indexes.** This schema declares none, and
+  [§ 13](#13-decisions-taken-revisable-at-review) row 13 had already rejected indexing into `data` on
+  grounds that do not depend on the feature existing.
+- **`utf8mb4_0900_*` is not native to MariaDB** — see the character-set row above. The pinned
+  floor accepts the name as an alias, but the name is not used, and the property this schema
+  depends on is `ascii_bin`.
+
+**Unchanged by the repin**, stated so a reader does not re-check them: `ON DUPLICATE KEY UPDATE`,
+single-table `DELETE … ORDER BY … LIMIT`, native `ENUM`, `ROW_FORMAT=DYNAMIC`, `DATETIME(3)` with
+`+00:00` session semantics, and InnoDB deadlock detection with the same error 1213 and the same
+victim heuristic.
 
 ### 6.2 Database names, pinned and published
 
@@ -1035,9 +1206,13 @@ that thread that this section acts on, each one someone else's measurement:
    database, so a correctly pinned `DB_DATABASE` can still be ignored. Both must be pinned to the empty
    string.
 4. **Do not force a variable a CI matrix exports to select a backend** — a bridge repo's MariaDB matrix
-   would have silently re-run both legs on SQLite: green, testing nothing.
+   would have silently re-run both legs on SQLite: green, testing nothing. *(This repo no longer
+   selects a backend at all: MariaDB is the only engine and SQLite is not a supported configuration —
+   `docs/PLAN.md` D-15's 2026-09-13 amendment, card#9328. The finding still decides how
+   `DB_CONNECTION` is declared; see the guard bullets below.)*
 5. The guard must assert the **resolved** value (`config()`), not the declared one, because all three
-   mechanisms above leave the declaration looking correct.
+   mechanisms above leave the declaration looking correct. ⚠ **For mechanism 3, `config()` is not the
+   whole resolved value** — measured here on card#9328; the guard below also reads the connection.
 
 **Mezzanine's values, claimed and published here.** Mezzanine's production store is on a dedicated host,
 but its **sandbox** instance (D-13) runs wherever its agent runs, and that may be a shared box — so the
@@ -1073,22 +1248,51 @@ believed they had already done:
 
 **And the pin is guarded, not trusted** ([AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)):
 
-- A test-suite bootstrap assertion reads **`config('database.connections.mysql.database')`** — the
-  resolved value — and **aborts the run** before the first migration if it is not exactly
-  `mezzanine_test`. Same for the two Redis databases. Aborting, not skipping: a suite that cannot prove
-  its isolation must not run at all.
+- A test-suite bootstrap guard (`Tests\TestCase::createApplication()`) **aborts the run** before the
+  first migration unless the resolved store is the pinned one. Aborting, not skipping: a suite that
+  cannot prove its isolation must not run at all. It resolves the store by **two reads, and neither is
+  redundant**:
+  - **`config()` for each pinned key** — `database.default` must be `mysql`,
+    `database.connections.mysql.database` must be `mezzanine_test`, and the two Redis databases must be
+    11 and 10. This read catches findings 1 and 2 (an export beating an unforced `<env>`, a `force`
+    that never reaches `$_SERVER`) and an exported `DB_CONNECTION` naming any other connection.
+    `database.default` is pinned because the suite writes through it: every migration and query goes
+    through the DEFAULT connection, so the database pin alone proves only that the `mysql` connection
+    points at `mezzanine_test`, not that the suite uses that connection.
+  - **The database name the default connection itself resolves**, `DB::connection()->getDatabaseName()`
+    — this catches finding 3, which the `config()` read cannot. Laravel applies a `DB_URL`'s path only
+    when it BUILDS the connection, so `config('database.connections.mysql.database')` keeps reporting
+    `mezzanine_test` while the connection points elsewhere. Measured on card#9328: with the `DB_URL`
+    pin removed from `phpunit.xml` and a `DB_URL` exported, the `config()` read passed. The connection's
+    PDO is lazy, so this read opens no connection.
+  - ⚠ **`REDIS_URL` has no connection-level read.** Laravel's `RedisManager` also applies the URL only
+    when it resolves a connection, so a `REDIS_URL` path is invisible to the `config()` read, just as
+    `DB_URL`'s was. Nothing refuses it, and today nothing reaches it: the suite runs cache, session and
+    queue on `array` / `array` / `sync` (`server/phpunit.xml`), and no test uses Redis. The first test
+    that opens a Redis connection owes the Redis form of the connection read.
 - A second test asserts the `phpunit.xml` file itself: every pinned key has both an `<env force="true">`
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
-- `DB_CONNECTION` is **not** forced, deliberately, and the omission is commented as load-bearing:
-  nothing in this repo's CI selects a backend by exporting it today, but forcing it is exactly the shape
-  that turned another repo's MariaDB matrix into a SQLite run reporting green.
+- `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
+  comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
+  configuration anywhere this application runs, so nothing selects a backend any more
+  (`docs/PLAN.md` D-15's 2026-09-13 amendment, card#9328; it retired the SQLite suite and CI lane this
+  bullet used to describe). The omission survives for finding 4's reason, pointed the other way:
+  forcing `mysql` would silently turn an exported `DB_CONNECTION=<anything else>` into a green run on
+  `mysql`, a run that reports something other than what its caller asked for. Unforced, the export
+  wins and the guard's `database.default` read aborts the run by name. `DatabasePinTest` also asserts
+  the **declared** value is `mysql` and unforced, because an environment that exports
+  `DB_CONNECTION=mysql` beats the declaration, so a flip of the declaration would be invisible to the
+  resolved guard there. Every other pin in the table above is forced + paired and therefore
+  **defeats** an export: an environment may name the connection, the guard refuses any but `mysql`,
+  and nothing exported gets to choose the isolation.
 - The proof is **deleting one half of a pair**, not a hostile export and not a clean run (corrected
   2026-08-25, card#7334 — this bullet said the opposite). Under an intact pin
   `REDIS_DB=9 DB_DATABASE=mezzanine php artisan test` **passes, and must**: the `<server>` twin beats
   the export, so the resolved value never moves and the guard has nothing to refuse. To watch the guard
   refuse, delete the `<server>` half of one pin under an export of that key — that is the only lever
-  that moves the resolved value. A guard watched failing under a lever that cannot move it is not
+  that moves the resolved value. For the `DB_URL` pin, the connection read refuses that lever, and the
+  `config()` read does not. A guard watched failing under a lever that cannot move it is not
   watched failing at all. See [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites).
 
 **Production migrations** additionally require `--force` (Laravel's own production confirmation) and
@@ -1103,9 +1307,9 @@ guarded by a flag is one typo from being run; a command that does not exist ther
 | Surrogate keys | `installs.id SMALLINT UNSIGNED`, `seats.id INT UNSIGNED`; every hot table carries `seat_ref` | a natural key on `events` would be `install_id` (≤ 32 B) + `seat_id` (≤ 48 B) on every row and in every index — ~76 B against 4 |
 | ULIDs | `CHAR(26) CHARACTER SET ascii COLLATE ascii_bin` | 26 bytes, exact comparison, legible in a query, and lexicographically ordered by mint time. `BINARY(16)` would save 10 B/row and make every diagnostic query require a conversion function; at 10,420 events/seat/day that saving is ~0.1 MB/seat/day against permanent illegibility |
 | Timestamps | `DATETIME(3)`, UTC, never `TIMESTAMP` | millisecond precision matches `rfc3339_ms` on the wire; `TIMESTAMP` converts by session time zone |
-| Enums | MySQL `ENUM` for closed sets D1 owns; `VARCHAR` + application validation for open ones | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted. So: `ENUM` only where the coercion has already happened at the ingest ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10), which is every enum this schema stores |
-| `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on a hot path; it is kept for the drill-down, for replay and for forensics |
-| String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MySQL counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
+| Enums | MariaDB `ENUM` where the column's **writer can only produce members the schema declares** — a D1 value set coerced at the ingest, or a closed set this plane mints and its own fold, sweeper or console writes (`unknown_reason`, `seat_state_transitions.cause`, `feed_tokens.scope`, `authored_revisions.kind` …); `VARCHAR` + application validation where an unknown member is **data to record** rather than a bug to reject — the open sets D1 rule 7 says must be coerced-and-counted. ⚠ Until card#9208's reversal this row said *closed sets D1 owns* and its Reason cell closed with *which is every enum this schema stores* — false of the schema it sat beside: re-derived by `tools/design/verify-fleet-state.py`'s G1, which prints how many ENUM members this document mints on every run, roughly a quarter of them are D2's own and always were. The criterion is restated rather than the list of exceptions, because the list would be most of the schema | an `ENUM` rejects an unknown member at the storage layer, which is wrong for a value D1's rule 7 says must be coerced-and-counted, and right for a value only this plane's own code can write — an unknown member there is a bug, and a migration per member is the price of the storage layer refusing it. G1 holds the second half honest: every member this document mints must be produced by a rule it states |
+| `data` | `JSON NOT NULL`, opaque | the fold projects every field the state model reads into a typed column. Nothing queries into `data` on **any** path — not just not on a hot one — and after the MariaDB repin that is load-bearing rather than incidental: MariaDB's `JSON` is an alias for `LONGTEXT` + `CHECK (json_valid(…))` and has no arrow operators before 13.1 ([§ 6.1](#61-deployment-posture)). Every JSON column is written whole, read whole and decoded in PHP; the column is kept for the drill-down, for replay and for forensics |
+| String lengths | `VARCHAR(n)` where `n` is D1's **byte** bound | MariaDB counts `VARCHAR` in *characters*, so a `VARCHAR(200)` `utf8mb4` column holds any 200-**byte** descriptor with room to spare. The column is deliberately never the binding constraint — D1's cap is |
 | Nullability | a column is `NULL` only where D1's field table says the wire value is nullable, or where the fact genuinely does not exist yet | a nullable column that "means zero" is a read-time fallback, which is a defect to trace to its write site |
 | Wire integers | every integer column the fold writes is `UNSIGNED`, and the fold reads a wire integer through **one** range rule applied after the encoding is resolved: a JSON number and its string spelling are the same value, and a value outside `0 … PHP_INT_MAX` is `NULL` and never a raise | [D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10 does not type-check per-kind `data` fields, so the fold is the first plane that reads them and a reporter bug can put any scalar on any of them. Two encoding-specific tests are two rules free to disagree — and the disagreement is invisible, because it takes a reporter that writes the field the other way. `NULL` and not a raise because every one of these columns is nullable and [§ 6.5](#65-the-fold)'s poison-event rule would otherwise quarantine a whole event over one out-of-range field |
 
@@ -1128,18 +1332,57 @@ CREATE TABLE seats (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   install_ref   SMALLINT UNSIGNED NOT NULL,
   seat_id       VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  board_user_id INT UNSIGNED NULL,          -- § 4.9 tier 1's join. Operator act only, one writer
+                                            -- (§ 2.1's seat→board-user command); never inferred
+                                            -- from a name. NULL = not a tier-1 candidate, and
+                                            -- retirement puts it back there (§ 4.10)
   created_at    DATETIME(3)  NOT NULL,
   retired_at    DATETIME(3)  NULL,          -- operator act only; never set by a timeout. Its
                                             -- one writer is named in § 2.1 / § 4.10
   retired_by    VARCHAR(64)  NULL,
   retired_reason VARCHAR(255) NULL,
   UNIQUE KEY uq_seat (install_ref, seat_id),
+  UNIQUE KEY uq_seat_board_user (board_user_id),
   CONSTRAINT fk_seat_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
 -- A seat row is created at ingest-token issue time (D1 § 3.3), which is why the row can exist
 -- before any event arrives: a provisioned-but-silent seat renders `offline`/`no_data_yet`
 -- rather than being invisible. The token rows themselves live in the ingest's own table
 -- (card #7338, D1 § 3.3) and are never read by anything in this document.
+
+CREATE TABLE seat_board_task (
+  seat_ref        INT UNSIGNED NOT NULL PRIMARY KEY,
+  card_id         INT UNSIGNED NULL,        -- NULL means the board ANSWERED and this seat has no
+                                            -- assigned card -- a positive fact, not an absence
+  board_id        SMALLINT UNSIGNED NULL,   -- which configured board answered; NULL exactly when
+                                            -- card_id is
+  title           VARCHAR(120) NULL,        -- the card name, truncated at the POLLER to 120 BYTES
+                                            -- by D1 § 7.4's procedure -- the same procedure and the
+                                            -- same bound seat_state.task_title's own value is held
+                                            -- to, so the two cannot disagree. § 8.2.1 states that
+                                            -- bound in BYTES; VARCHAR(120) counts CHARACTERS in
+                                            -- MariaDB, and a 120-byte UTF-8 string is at most 120
+                                            -- of them, so this column can never be the thing that
+                                            -- truncates -- which is the point: a silent truncation
+                                            -- at the store would put a different title in the
+                                            -- input than the one the merge renders. NULL with
+                                            -- card_id
+  card_updated_at DATETIME(3) NULL,         -- the board row's own updated_at: the tie-break key,
+                                            -- stored so the choice is auditable. NEVER the
+                                            -- freshness basis
+  observed_at     DATETIME(3) NOT NULL,     -- server clock at the START of the poll that wrote
+                                            -- this row. § 4.9's 30-minute bound is measured from
+                                            -- it, and it becomes task.as_of
+  CONSTRAINT fk_sbt_seat FOREIGN KEY (seat_ref) REFERENCES seats (id)
+) ENGINE=InnoDB;
+-- An INPUT, not a projection: its writer is § 2.1's board poll and § 6.6's rebuild does NOT reset
+-- it, for the same reason it does not reset `seats.retired_at`. § 6.6 states that reason as the
+-- rule the fold is held to and names this table in it, so the comparison is a citation rather than
+-- an analogy. That is what makes a board-sourced task title reproducible by a replay with no new
+-- event kind and no AT-D2-10 exclusion; the argument is `BOARD-TASK.md § 2`.
+-- Two acts delete a row, both of them operator acts and both in their own transaction: any write of
+-- `seats.board_user_id` (§ 2.1's seat→board-user command, setting or clearing), and the seat's
+-- retirement (§ 4.10). Nothing else, and no purge (§ 6.7).
 
 CREATE TABLE batches (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1187,14 +1430,20 @@ CREATE TABLE events (
   seq           BIGINT UNSIGNED NOT NULL,
   session_id    VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NULL,  -- null on heartbeats
   oversize      TINYINT(1) NOT NULL DEFAULT 0,
-  data          JSON NOT NULL,
+  data          JSON NOT NULL,               -- the producer's own document, object/array spelling
+                                             -- included: `{}` is stored as `{}` and never as `[]`
+                                             -- (card#9295). The ingest decodes the body with PHP's
+                                             -- associative mode OFF for exactly this reason — with
+                                             -- it on, `{}` and `[]` are one value, which both
+                                             -- refused a `data` D1 § 6.0 permits and would have
+                                             -- rewritten the survivors' spelling on the way in.
   UNIQUE KEY uq_dedup (seat_ref, event_id),                 -- D2-MUST #3
   KEY ix_seat_seq  (seat_ref, seq_epoch, seq),              -- gap detection, ordering, replay
   KEY ix_seat_recv (seat_ref, received_at),                 -- purge, timeline, staleness
   KEY ix_fold      (seat_ref, id)                           -- the fold's cursor scan
 ) ENGINE=InnoDB;
--- NOT PARTITIONED, deliberately: MySQL requires every unique key to contain every partitioning
--- column (DOCS-CITED, MySQL 8.0 manual, "Partitioning Keys, Primary Keys, and Unique Keys";
+-- NOT PARTITIONED, deliberately: MariaDB requires every unique key to contain every partitioning
+-- column (DOCS-CITED, MariaDB Knowledge Base on partitioning limitations;
 -- verified at provisioning with the version floor of § 6.1), so a RANGE partition on received_at would force uq_dedup to become
 -- (seat_ref, event_id, received_at) -- under which the same event re-sent on a later day no
 -- longer conflicts, and D2-MUST #3's dedup silently stops working. Cheap partition drops are
@@ -1375,6 +1624,26 @@ CREATE TABLE seat_state (
   spool_lag_events          INT UNSIGNED NULL,
   oldest_unsent_age_s       INT UNSIGNED NULL,
   enabled                   TINYINT(1) NULL,
+  protocol_agent_name       VARCHAR(48) CHARACTER SET ascii COLLATE ascii_bin NULL,
+                                         -- D1 § 3.1's DECLARED protocol agent name, last
+                                         -- heartbeat's value, verbatim. NULL = no heartbeat yet; a
+                                         -- last heartbeat that carried neither member (e.g. from a
+                                         -- reporter that predates D1 § 6.14's fields); or the seat
+                                         -- declares none (only that one has a non-NULL check, and
+                                         -- last_heartbeat_received_at tells no heartbeat from a
+                                         -- heartbeat without the pair).
+                                         -- ⛔ It is a REPORTED label, never an identity: the seat
+                                         -- row this one hangs off is keyed by (install_ref,
+                                         -- seat_id) and nothing here is ever read to find a seat.
+                                         -- ascii_bin, like seat_id, so a case difference is a
+                                         -- different name rather than a silent match
+  protocol_agent_name_check ENUM('checked','unchecked','disagreed','undeclared') NULL,
+                                         -- D1 § 3.1's four states, verbatim; this plane adds none
+                                         -- and re-derives none. NULL before the first heartbeat,
+                                         -- exactly as `enabled` above, AND after a heartbeat that
+                                         -- carried neither member (e.g. from a reporter that
+                                         -- predates D1 § 6.14's fields). ⛔ Only `checked` and
+                                         -- `unchecked` resolve a name to this desk (§ 8.3.3)
   reporter_version          VARCHAR(24) CHARACTER SET ascii NULL,
   reporter_platform         ENUM('linux','win32','darwin','other') NULL,
   reporter_uptime_s         BIGINT UNSIGNED NULL,
@@ -1399,7 +1668,7 @@ CREATE TABLE seat_state (
   model_label        VARCHAR(48) NULL,
   -- TASK (§ 4.9)
   task_title  VARCHAR(120) NULL,
-  task_source ENUM('board_card','coord_thread','telemetry') NULL,
+  task_source ENUM('board_card','telemetry') NULL,   -- tier 2's 'coord_thread' RETIRED (§ 4.9)
   task_ref    VARCHAR(64) NULL,
   task_as_of  DATETIME(3) NULL,
   task_degraded TINYINT(1) NOT NULL DEFAULT 0,   -- a higher tier was dropped past its bound (§ 4.9)
@@ -1463,12 +1732,27 @@ CREATE TABLE seat_predicates (
   last_true_at  DATETIME(3) NULL,
   last_false_at DATETIME(3) NULL,
   alarm_since   DATETIME(3) NULL,
+  -- § 5's CONSTANCY evidence (card#7833). The run's BRANCH is deliberately absent: it is derived
+  -- from the two last_*_at columns above, and a stored copy would be free to disagree with them.
+  run_length     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  run_started_at DATETIME(3) NULL,
+  -- § 5's SHARE evidence: a TUMBLING window and the last COMPLETED one. Written for
+  -- `call_closed_by_wire` alone — the only criterion whose evidence is a windowed COUNT.
+  window_start  DATETIME(3) NULL,
+  window_true   BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  window_false  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  prev_start    DATETIME(3) NULL,
+  prev_true     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  prev_false    BIGINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (seat_ref, name)
 ) ENGINE=InnoDB;
 -- seat_ref 0 is a reserved sentinel for the fleet-wide row, NOT a real row in `seats`, and there
 -- is deliberately no FK on this table, because the population is "predicates", not "seats".
 -- A fleet-wide predicate has no seat and inventing a fake seat row for it would put a
 -- non-existent desk on the floor.
+-- The eight columns after `alarm_since` are card#7833's, and § 5 states in full what each one
+-- carries and why a bucket table was refused. They add NO statement to the write path: the
+-- predicate writer already read this row and already rewrote it whole.
 
 CREATE TABLE feed_tokens (
   id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1484,6 +1768,89 @@ CREATE TABLE feed_tokens (
   last_used_ip VARBINARY(16) NULL,
   UNIQUE KEY uq_hash (token_hash),
   KEY ix_prefix (prefix)
+) ENGINE=InnoDB;
+
+-- ── THE FEED OUTBOX (§ 8.3, card#9287). The one queue between every writer of a feed message and
+-- every open stream, and the table § 6.5's per-writer rule enqueues to. TRANSIENT: a row is delivered
+-- by every stream that is open when it commits and by nothing else — no stream ever resumes from it
+-- (§ 8.5 refuses a replay buffer, and this is not one) — so a row nobody was connected to read is
+-- purged unread at § 6.7's retention, and the state it announced reaches that reader at its next
+-- snapshot instead. Written as the LAST statement before the writer's COMMIT (§ 8.3), for the same
+-- reason `events` is read behind a visibility lag: an id must not be held across a long transaction.
+
+CREATE TABLE feed_outbox (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  created_at  DATETIME(3) NOT NULL,             -- stamped by the WRITER at its INSERT, from the application
+                                                -- clock § 6.5's visibility lag and § 6.7's purge are both
+                                                -- computed on — never a store-clock DEFAULT (card#9300):
+                                                -- the store is on its own host (§ 6.1), and a store-clock
+                                                -- stamp read against an application-clock `server_now`
+                                                -- would put the two hosts' skew inside a 2 s bound
+  t           ENUM('seat.delta','feed.heartbeat','seat.retired','fleet.reload','fleet.health',
+                   'coord.thread','coord.round','room.map','building.layout') NOT NULL,
+                                                -- § 8.3's message type, outside the body so no filter
+                                                -- parses JSON; an ENUM by § 6.3's criterion — only this
+                                                -- plane's own code writes it, so a new type is a migration.
+                                                -- ⛔ `feed.close` is NOT a member and must not become one:
+                                                -- it is minted by ONE handler about ITS OWN stream (§ 8.3),
+                                                -- and a row carrying it would be fanned out to every open
+                                                -- stream — the loop has no `return` on it — telling every
+                                                -- client the server ended a stream that is still running
+  install_id  VARCHAR(32) NULL,                 -- the message's install where it has one (seat.*, coord.*,
+                                                -- room.map); NULL on a fleet-wide message. § 9's filter key
+  message     JSON NOT NULL CHECK (LENGTH(message) <= 8192),   -- the § 8.3 envelope, serialized ONCE by
+                                                -- the writer; § 8.3's 8 KiB bound, enforced at the write
+  KEY ix_created (created_at)                   -- the purge's range scan (§ 6.7); the handler reads the PK
+) ENGINE=InnoDB;
+
+-- ── THE AUTHORED BUILDING STORE (§ 6.11) — card#9208's reversal, 2026-09-12. Three tables the fold
+-- never reads and a rebuild never touches: an operator writes them in the admin console, § 8.7
+-- serves them. `floors` shipped with card#9085 and is sketched here because it gained a reader;
+-- `map_version` is the one column this amendment adds to it.
+
+CREATE TABLE floors (
+  id            SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  install_id    VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- the ROOM (card#9267).
+                                            -- Deliberately no FK to `installs`: a room may be
+                                            -- authored before its first seat ever reports
+  map           MEDIUMTEXT   NOT NULL,      -- the Tiled JSON document, byte for byte as authored
+  map_version   INT UNSIGNED NOT NULL,      -- = authored_revisions.revision of the row this IS.
+                                            -- The migration adding it seeds revision 1 per
+                                            -- existing row from that row's own map/updated_by/
+                                            -- updated_at, so no row exists without a revision
+  updated_by    VARCHAR(255) NOT NULL,      -- users.email of the last author
+  created_at    DATETIME(3)  NOT NULL,      -- when this room was FIRST authored
+  updated_at    DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_floor (install_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE building_layout (
+  id             TINYINT UNSIGNED NOT NULL PRIMARY KEY,  -- always 1: the building has one layout
+  document       MEDIUMTEXT   NOT NULL,     -- FLOOR.md § 4.6's document as JSON text, validated
+                                            -- at the write by App\Building\BuildingLayout;
+                                            -- the same column type as the revision that is it
+  layout_version INT UNSIGNED NOT NULL,     -- = authored_revisions.revision of the row this IS
+  updated_by     VARCHAR(255) NOT NULL,
+  updated_at     DATETIME(3)  NOT NULL,
+  CONSTRAINT ck_one_layout CHECK (id = 1)
+) ENGINE=InnoDB;
+
+CREATE TABLE authored_revisions (
+  id             INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  kind           ENUM('room_map', 'building_layout') NOT NULL,
+                                            -- ENUM by § 6.3: the console is the only writer and
+                                            -- it enumerates the set, so an unknown kind is a bug
+                                            -- to reject, not a value to record
+  subject        VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+                                            -- the room's install_id for a room_map; '' for the
+                                            -- building_layout. Never a collision: D1 § 3.1's slug
+                                            -- is at least two characters long
+  revision       INT UNSIGNED NOT NULL,     -- 1, 2, 3 … per (kind, subject); never reused
+  document       MEDIUMTEXT   NULL,         -- NULL = a REMOVAL: the subject went back to its default
+  restored_from  INT UNSIGNED NULL,         -- the revision this one copies, when it is a restore
+  authored_by    VARCHAR(255) NOT NULL,
+  authored_at    DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_revision (kind, subject, revision)
 ) ENGINE=InnoDB;
 ```
 
@@ -1502,7 +1869,7 @@ loop:
                                                  -- lag, and this column is never NULL for a
                                                  -- seat this WHERE clause can select (§ 2.3)
            LIMIT 8
-          FOR UPDATE SKIP LOCKED            -- MySQL 8.0; another worker's seats are skipped
+          FOR UPDATE SKIP LOCKED            -- MariaDB 10.6.0+; another worker's seats are skipped
   for each seat in claim:
      BEGIN
        rows = SELECT * FROM events
@@ -1634,6 +2001,7 @@ of facts outside the ten, and the closed list means each of them is version-bear
 | `enabled` | the flag is *only ever* learned from a heartbeat ([§ 4.5](#45-link-states) rule 4), so no other event can move it |
 | `badges` · `badges_since` | D1's twelve `degraded` members ride the heartbeat ([§ 7.3](#73-how-the-reporters-own-counters-are-handled)); a badge onset or clear is a rendered change |
 | `reporter.selftest_failed` | the `selftest` object is a member of the heartbeat's own `data` ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) and of no other event's; a failing self-test is exactly what a consumer must be told |
+| `protocol_agent_name` · `protocol_agent_name_check` | both are config-derived and ride the heartbeat alone ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)), so no other event can move them. The edge is a seat editing its declaration, or a roster appearing or vanishing under it — single digits per seat-*lifetime*, not per day — and it changes which desk a thread line reaches, which is as rendered as a change gets |
 | `delivery.seq_epoch` | changes on an epoch reset ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), which a heartbeat can be the first event to carry |
 | `link_state` · `render_state` · `delivery.no_data_since` | derived, not carried: a receipt is what ends `stale`/`offline` and clears `no_data_since`, and `oldest_unsent_age_s` past 300 s is what enters and leaves `catching_up` ([§ 4.5](#45-link-states), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale)) — the excluded members are the *inputs*, and a derived value computed from an excluded input is not itself excluded |
 
@@ -1728,9 +2096,12 @@ greater. Arrival order therefore decides *when* work happens and never *which va
 gives.** An earlier draft justified the cursor by calling `events.id` "gapless", and that is both false
 and the wrong property. It is false because InnoDB burns an AUTO_INCREMENT value on a rolled-back
 transaction and interleaves values across concurrent statements under
-`innodb_autoinc_lock_mode = 2`, the MySQL 8.0 default (**DOCS-CITED**, MySQL 8.0 reference manual;
-**verified at provisioning** with every other MySQL fact of [§ 6.1](#61-deployment-posture)). And it is
-the wrong property because a cursor does not care about holes: it needs **no row with `id ≤ cursor` to
+`innodb_autoinc_lock_mode`, whose value decides how far. ⚠ **MariaDB's default for that variable is
+UNVERIFIED here** — the MySQL 8.0 default of `2` was the earlier citation and it does not survive the
+repin ([§ 6.1](#61-deployment-posture)) — and it deliberately stays unresolved, because the paragraph
+below needs only that the ids are *not* gapless, which the rolled-back transaction already
+settles. It is **verified at provisioning** with every other engine fact of
+[§ 6.1](#61-deployment-posture). And it is the wrong property because a cursor does not care about holes: it needs **no row with `id ≤ cursor` to
 become visible after the cursor has passed it**. AUTO_INCREMENT does not give that either — ids are
 assigned at `INSERT` and rows become visible at `COMMIT`, so two overlapping ingest transactions for
 one seat (an anticipated state: D1 § 10.3's ambiguous-timeout retry) can commit out of id order, and a
@@ -1744,7 +2115,7 @@ has committed or rolled back. 2 s is ~3 orders of magnitude above the ingest tra
 specifies (one multi-row `INSERT` of ≤ 200 events plus one `batches` row,
 [§ 2.1](#21-processes)), and an ingest transaction that exceeds 2 s is a slow-query alarm in its own
 right. The residual is stated rather than hidden: this is a bound, not a proof — an exact guarantee
-would need a commit-ordered column, which MySQL does not offer — and
+would need a commit-ordered column, which MariaDB does not offer — and
 [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) is the test that drives
 two overlapping same-seat ingest transactions against a live fold rather than reasoning about them. The
 lag covers the advance that *reads* rows; the purged-window branch above advances without reading any,
@@ -1797,7 +2168,15 @@ This exists for three reasons, in order of weight: it is the recovery path after
 it is the migration path when a projection gains a column; and it is the **strongest available test of
 the derived-not-stored property** — [AT-D2-10](#at-d2-10-rebuild-equals-fold) asserts that a rebuilt
 seat's state equals the incrementally folded one field for field. If it ever does not, some fold rule is
-reading state that is not in the log, and that rule is a defect by construction.
+reading state a replay cannot re-read, and that rule is a defect by construction. ⭐ **The rule, stated
+in full because the narrower form of it was read as the definition for as long as it stood alone
+(`card#7582`): the fold reads only `events` and the durable inputs a rebuild does not destroy
+(`seats`, `seat_board_task`).** Those two are inputs with their own writers — an operator act and
+[§ 2.1](#21-processes)'s board poll — that `reset()` does not touch and a rebuild therefore re-reads
+unchanged, which is why reading them is reproducible and reading a projection's own prior value is
+not. *Read only `events`* would forbid [§ 4.2](#42-render-precedence)'s `render_state`, which has
+been derived from `seats.retired_at` since this document was written; it is the narrower sentence
+that was wrong, not the practice.
 
 Bounded honestly: a rebuild can only reconstruct what the retention window still holds. A seat rebuilt
 after 14 days starts from the oldest retained event, so calls opened before the window are absent and
@@ -1812,7 +2191,10 @@ rather than a silently shortened history.
 | `batches` | **14 days** | aligned with `events` so a forensic question about an event can always reach its batch. D1 § 10.4's 24 h idempotency memory is a timestamp comparison, not a deletion ([§ 6.4](#64-ddl)) |
 | `sessions`, `calls`, `attention_requests` | **14 days** after the row closed; open rows are never purged | a closed fact older than the log it was derived from cannot be re-derived, so purging it early would make a rebuild produce a *different* answer than the live fold — breaking [AT-D2-10](#at-d2-10-rebuild-equals-fold)'s equality for a reason that is not a defect |
 | `seat_state_transitions` | **14 days** | the drill-down's history horizon; same number, one home |
+| `feed_outbox` | **60 s** after `created_at` | **the only transient table in this store, and the only one whose retention is measured in seconds.** It is [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound plus one [§ 8.3](#83-the-websocket-delta-feed) heartbeat interval, each figure stated at its own section: a stream that resumes at the edge of its bound finds every row it may still deliver, and a stream past it has already been ended and never reads again — which is a property of WHERE the bound is checked, not only of its value: [§ 8.3](#83-the-websocket-delta-feed)'s handler tests it **before** its read, so a stream that was blocked longer than this retention ends instead of advancing its cursor over a row the purge took. Were the test after the read, this row's number would have to bound something no clock in the handler measures. It is **not** a replay buffer — no stream starts below the head it connected at ([§ 8.3](#83-the-websocket-delta-feed)) — so no reader ever needs a row older than the longest a reader may lag, and 60 s is that figure with the margin stated. **A row nobody consumed is the ordinary case** — no browser open, and the writers write regardless, as the heartbeat daemon always did — **and it is purged unread**: the fact it announced lives in `seat_state` and the projections and reaches a later reader at its snapshot. The one message class no store holds, the coordination objects, is lost to an absent reader exactly as § 8.5 already says it is lost to a dropped one |
 | `seat_state`, `seat_counters`, `global_counters`, `seat_predicates`, `installs`, `seats`, `feed_tokens` | **never** | current state and monotonic counters. A seat row outlives its events deliberately: a provisioned seat that has never reported must render, not vanish. A **retired** seat is likewise never purged; it drops out of the read surfaces **at** `retired_at` by a query filter (card#9078), not by a deletion ([§ 4.10](#410-retirement-is-a-rendered-state)), so an operator question about why it went can still be answered |
+| `seat_board_task` | **never**, like `seats` | **Not traffic-bounded**: one row per mapped, unretired seat, so the population is the fleet and not its traffic. Purged by nothing; a row leaves in exactly two ways, both of them operator acts with a writer named — any write of `seats.board_user_id` by the seat→board-user command, `--clear` or `--board-user`, and the seat's **retirement**, which deletes it in the transaction that sets `retired_at` ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) |
+| `floors`, `building_layout`, `authored_revisions` | **never** | **Not traffic-bounded**: a row is written by an operator's save in the admin console and by nothing else, so the population is the number of times a person pressed *save* — [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) sizes it — and a revision purged is exactly the prior layout the recovery rule there exists to keep retrievable. Purged by nothing; a room's map is **removed** by a revision that records the removal, never by deleting its history |
 
 **The retention chain, stated as one inequality because all three numbers move together:**
 
@@ -1830,7 +2212,12 @@ a timeline, and the reason D1 states the first half of this chain at all.
 deletes fewer than the limit or a **60-second wall-clock budget** expires, then the next table. Bounded
 batches keep the transaction and the binlog small and keep the store responsive during the pass; the
 budget means a purge that cannot keep up **falls behind visibly** (`purge_backlog_rows` is counted)
-rather than holding a long transaction. Table-size alarm: `events` past **20 GB** raises
+rather than holding a long transaction. `feed_outbox` is in the pass on the same `created_at` range
+scan; against the hourly cadence its rows linger up to an hour past their 60 s, which at the 50-seat
+ceiling is 8,980 × 50 ÷ 24 = 18,708 rows (~7.5 MB at ~400 B a row — both figures in
+[§ 12](#12-every-number-and-where-it-comes-from)) and is never read
+by anything: the handler's poll is a primary-key range from its cursor and is unmoved by the rows behind
+it. Table-size alarm: `events` past **20 GB** raises
 `store_size_alarm` — that is ~2.9× the 50-seat 14-day figure of [§ 6.8](#68-sizing), so it can only
 fire on a fleet much larger than planned or a purge that has been dead for a long time, either of which
 is worth a human.
@@ -1852,6 +2239,7 @@ first week of live data.
 | aimla today (4 seats) | **~0.54 GB** | × 4 |
 | a plausible fleet (12 seats) | **~1.6 GB** | × 12 |
 | a large fleet (50 seats) | **~6.8 GB** | × 50 |
+| `feed_outbox`, lingering between purges | **~7.5 MB** | ≤ 1 h of ceiling traffic between hourly purges ([§ 6.7](#67-retention-and-purge)): 8,980 × 50 ÷ 24 = 18,708 rows × ~400 B, both in [§ 12](#12-every-number-and-where-it-comes-from). Transient, and outside every per-seat-day figure above |
 
 **Transitions are sized from the render-change rate, not from the delta rate**, and the two are
 different populations by construction ([§ 6.5](#65-the-fold)): a transition row is written when
@@ -1865,17 +2253,33 @@ against 8,980 deltas. An earlier draft sized this table at the delta rate; the e
 (it over-sized the store by 1.7 MB/seat-day) but it made two rows of
 [§ 12](#12-every-number-and-where-it-comes-from) claim a derivation they did not have.
 
+⚠ **The `data` bytes in the row cost above were modelled on a BINARY `JSON` column, and MariaDB's
+`JSON` is an alias for `LONGTEXT` ([§ 6.1](#61-deployment-posture)).** How the two compare, in
+stored bytes and in read/write cost, is **UNSOURCED** — neither vendor isolates the whole-column
+access pattern this schema uses, and no benchmark has been run. That is a measurement this
+document does not have rather than a parity it is claiming, and it closes the same way every
+other figure here does: re-measured against the real table at provisioning.
+
 Read the shape rather than the digits: at the fleet sizes this product is for, the entire store fits in
 a few gigabytes, so **no design decision here is made for storage reasons** — not the retention window,
 not the JSON column, not the transitions table. The one number that would change that is the seat count,
 and it scales linearly with a re-derivation that is one multiplication.
+
+**`seat_board_task` moves no figure in this section.** It carries at most one row per seat — a
+population bounded by the fleet, not by traffic — so at the 50-seat scale sized above it is under a
+single page. It is stated rather than omitted, because a table absent from a sizing section reads
+as a table nobody costed.
+
+**The authored building store moves no figure here either, and [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) costs it
+where it is defined:** its rows are operator saves, bounded by a person's patience and not by the
+fleet's traffic, and each is at most the console's 512 KiB write bound.
 
 **Tool-checked vs hand-verified.** The per-seat-day and per-seat figures are **hand-verified** from the
 row-cost model above, and they are the largest block of hand-verified arithmetic left in this document.
 `tools/design/verify-fleet-state.py` checks that each of them appears at the
 [§ 12](#12-every-number-and-where-it-comes-from) row that cites this section — it does **not** re-derive
 the row-cost model itself, because the 449 B column sum and the 153 B index-entry figure are properties
-of a MySQL host that does not exist yet ([§ 6.1](#61-deployment-posture)). Both are re-measured at
+of a MariaDB host that does not exist yet ([§ 6.1](#61-deployment-posture)). Both are re-measured at
 provisioning against the real table, which is when they stop being estimates; the closure act is stated
 here rather than left implicit.
 
@@ -1885,7 +2289,10 @@ here rather than left implicit.
 ingest outage. Three rules, and the first one is the one that gets skipped:
 
 1. **Every migration on `events` states its algorithm in a comment and the deploy checks it** —
-   `ALGORITHM=INSTANT` for an added nullable column at the end (MySQL ≥ 8.0.12), `INPLACE` for a
+   `ALGORITHM=INSTANT` for an added nullable column at the end (MariaDB 10.3.2/10.4 by
+   operation, well under
+   [§ 6.1](#61-deployment-posture)'s floor, and with no MySQL-style 64-row-version ceiling forcing a
+   later rebuild), `INPLACE` for a
    secondary index. Anything that would be `COPY` does not ship as a migration; it ships as a documented
    maintenance-window operation or not at all.
 2. **A projection change needs no `ALTER` on `events` at all** — add the column to the projection, then
@@ -1895,21 +2302,107 @@ ingest outage. Three rules, and the first one is the one that gets skipped:
 
 ### 6.10 Durability posture
 
-**The only irreplaceable asset in this store is `events`, and its value expires in 14 days.** Everything
-else is derived and rebuildable ([§ 6.6](#66-rebuild-from-the-log)). So the honest position, stated
-rather than assumed:
+**Two populations in this store are irreplaceable, and they differ in how long their value lasts:
+`events`, whose value expires in 14 days, and — since card#9208's reversal of 2026-09-12 — the
+authored building documents of [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), whose value does not expire at all.**
+Everything else is derived and rebuildable ([§ 6.6](#66-rebuild-from-the-log)). So the honest position,
+stated rather than assumed:
 
 - **Total loss of the store** costs the retained history and nothing structural. Seats keep reporting;
   the fleet re-derives from the events that arrive after the loss, and seats that still hold spool
   (≤ 8 days, [D1 § 11.3](EVENT-SCHEMA.md#113-rotation-and-the-overflow-policy)) re-deliver what they had
   not yet sent. Within minutes the floor is correct again and within a day the drill-downs are useful
   again.
-- **Backups are therefore an operational choice, not a correctness requirement**, and this document does
-  not specify one. What it does specify is that the *decision* is recorded at provisioning
-  ([§ 14](#14-open-questions-for-the-review-loop) item 6) rather than discovered during an incident.
+- **Total loss of the store also loses every authored floor, and nothing re-derives one** — no seat
+  reports a wall. What stands between an operator and redrawing the building is
+  [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s export (a `.tmj` in the operator's own hands, and the repository's
+  shipped default where a room was re-vendored from one) and the backup decision below.
+- **Backups are therefore an operational choice for the fleet's derived state, and the difference
+  between an incident and a loss for the authored documents.** This document still does not specify
+  one. What it does specify is that the *decision* is recorded at provisioning
+  ([§ 14](#14-open-questions-for-the-review-loop) item 6) rather than discovered during an incident —
+  and that item now says what the decision covers.
 - **What is not survivable is a silent partial loss** — a store that returns some seats and not others.
   That is why the snapshot read fails closed ([§ 2.2](#22-fail-posture-per-path)) rather than serving
   what it can reach.
+
+### 6.11 The authored building store — room maps, the layout, and their revisions
+
+⭐ **Operator ruling, card#9208 (2026-09-12)**, reversing the same card's ruling of 2026-09-09 —
+[§ 13](#13-decisions-taken-revisable-at-review) row 38 carries the reversal, its alternatives and its
+cost; this section is the **store** half of it and [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) is the **read** half. What
+an operator authors in the admin console — one Tiled document per **room** (an install, card#9267) and
+one **building layout** (which rooms share a floor, each room's form, a floor's label — and, since
+card#9292, the floor **plan**: each room's position and a floor's hallway —
+[FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s document) — is served to the floor at runtime,
+and the console is the source of truth for both. The DDL is in [§ 6.4](#64-ddl)'s block, under its
+own heading, so that the one gate that reads that block reads these tables too.
+
+**These rows are the second irreplaceable population in this store, and the fold never reads them.**
+[§ 6.6](#66-rebuild-from-the-log)'s rule is untouched: the fold reads `events` and the durable inputs
+a rebuild does not destroy, and none of these three tables is among them — a wall is not a fact any
+seat reported, and `render_state` does not depend on where a desk is drawn. What changes is
+[§ 6.10](#610-durability-posture): a total loss of the store now loses every authored floor, and no
+replay brings one back.
+
+**Every save is a revision, and a prior layout IS retrievable after a bad save — designed, because the
+ruling owes it and *the database is the record* is not an answer.** The reversed build-artifact shape
+had four things for free — a diff, a review, a revert and a blame — and this store gives back three of
+them and says which one it does not:
+
+| Lost with version control | What stands in its place | Recovered? |
+|---|---|---|
+| **revert** | `authored_revisions` is append-only: a save inserts revision N+1 for its `(kind, subject)` and points `floors.map_version` — or `building_layout.layout_version` — at it in one transaction. A **restore** is a new revision whose `document` copies revision K's, with `restored_from = K`; history is never rewritten, and *undo the restore* is itself a restore. A **removal** is a revision with `document NULL`, so a removed map is as retrievable as an edited one, and the room renders the shipped default until it is authored again | **yes**, to any prior revision |
+| **blame** | `authored_by` and `authored_at` on every revision — the console session's user, the same value `floors.updated_by` already records | **yes** |
+| **diff** | the console shows two revisions side by side and names what moved: the tile layers whose data differ, the desk count `S` before and after, and a line diff of the two documents pretty-printed. A CSV-encoded map is reviewable in a diff — [FLOOR.md § 10.1](FLOOR.md#101-the-manifest-and-the-two-gates) clause 3 chose CSV partly for that — and the store keeps the document byte for byte, so the diff is of what was authored | **yes**, read in the console rather than in a pull request |
+| **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in that exists only once that renderer does ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) step 7), so until then the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
+
+**The write path, stated once.** The admin console is the only writer of all three tables — its
+**floors** module (card#9085) writes a room's map and its **building layout** module (card#9208's
+build slice 1) writes the layout, and both go through the one serialised path below — and one save is
+one transaction: validate the document — a room map by
+`App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
+by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
+states — since card#9292 the floor plan's among them: a placed room's `origin`; a planned floor's
+`hallway`, held to `App\Floor\FloorMap`'s rules with its `desks` layer refused rather than required;
+and **two rooms on one floor whose footprints would intersect** — share a pixel; a shared edge is
+not an intersection, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) — computed from each room's
+current extent: the grid of its authored map, else of the default this store's read half answers for
+it. A layout **restore** is checked exactly as a save is, against today's room maps and not the ones
+revision K was checked against, so *undo* cannot re-create an overlap a later map made. ⚠ **That last
+refusal has a SECOND write site**: a room map's save, restore or removal changes the room's extent, so
+on a planned floor it is checked against the current layout in the same transaction and refused by
+name, naming both rooms, before any revision is written. **Both paths take the `building_layout`
+current row `FOR UPDATE` first**, so a layout write and a room-map write serialise and neither can pass
+its check against a state the other is replacing — the coupling
+[FLOOR.md § 13](FLOOR.md#13-decisions-taken-revisable-at-review) row 32 prices — insert the `room_map` or `building_layout` revision, write the current row, commit, and **on
+commit** publish [§ 8.3](#83-the-websocket-delta-feed)'s `room.map` or `building.layout`. A save that
+fails validation writes nothing and publishes nothing. A save whose document is byte-identical to the
+current revision is refused as a no-op rather than minting an empty revision, so a revision always
+records a change. A **removal** deletes the room's `floors` row and inserts its `document NULL`
+revision in the same transaction — `floors` holds only rooms with an authored map current, and the
+revision log is the history — so [§ 6.7](#67-retention-and-purge)'s *purged by nothing* is a claim
+about the log, and the current table is a projection of it. **Existing rows are not orphaned by the
+amendment:** the migration that adds `map_version` seeds one `room_map` revision 1 per `floors` row
+from the row's own `map`, `updated_by` and `updated_at`, so the invariant *no current row without a
+revision behind it* holds from the first migration onward. A `room_map` revision's `subject` is the room's `install_id`; a `building_layout`
+revision's is the empty string, and the DDL says why that can never name a room.
+
+**Export, and the way back into version control.** The console serves any revision as a `.tmj`
+download. That is the operator's own copy against a lost store, and it is how an authored room becomes
+the repository's **shipped default** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map))
+— vendored under `resources/floor/` with its `docs/ATTRIBUTION.md` row, where it regains the diff, the
+review and the blame the store cannot give. The two homes are not two truths: the store is what a floor
+renders, and the repository is what a room starts from.
+
+**Retention and size.** All three tables are retained forever ([§ 6.7](#67-retention-and-purge)). The
+population is not traffic-bounded — a row is an operator pressing *save* — and a document is at most
+**512 KiB**, the console's write bound ([§ 12](#12-every-number-and-where-it-comes-from)) — the layout
+document included, its hallways and all (card#9292): at the ~25 KB a CSV-encoded map realistically
+costs, that is on the order of twenty planned floors' hallways before a layout save is refused by the
+bound, and the refusal names it. A thousand
+saves across a building would be under half a gigabyte at the bound and, at a realistic ~25 KB per
+CSV-encoded map, about 25 MB; [§ 6.8](#68-sizing)'s figures do not move.
 
 ---
 
@@ -1996,11 +2489,13 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
-| `feed_resync_required` | `global_counters` | fleet health | a connection was closed for backpressure or a version mismatch | rising ⇒ clients or the network cannot keep up |
+| `feed_resync_required` | `global_counters` | fleet health | the handler ended a stream on [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s **stall bound** — that branch and no other, which is what [§ 8.3](#83-the-websocket-delta-feed)'s loop writes; never on a client that simply went away, and never on the other server-chosen ends. ⚠ **This cell read *or a version mismatch* until the card#9287 maintainer round**, naming a close reason [§ 8.3](#83-the-websocket-delta-feed)'s set did not carry and the loop never counted. ⛔ **A `feed.close{reason:"reload"}` in particular does NOT count it**: a deploy ends every open stream at once, so counting it would move this counter by the number of open browsers on every release and destroy the one reading it exists to support | rising ⇒ clients or the network cannot keep up |
 | `feed_gap_detected` | `global_counters` | fleet health | a client reported a `state_version` gap on resync, via `?resync_from=` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)) | rising ⇒ deltas are being lost between the server and the browser |
 | `snapshot_served` / `snapshot_denied` | `global_counters` | fleet health | a REST snapshot was served / refused (`503`, `401`) | fleet health |
 | `token_wrong_surface` | `global_counters` | fleet health | an `mzn_` ingest token was presented to a read endpoint, or an `mzr_` read token to the ingest | **operator alert** — it is either a misconfiguration that will otherwise present as a mysterious dark seat, or a probe |
 | `purge_backlog_rows` | `global_counters` | fleet health | a purge pass hit its 60 s budget with rows still past retention | rising ⇒ the purge cannot keep up; the retention chain's margin is being consumed |
+| `board_poll_ok` | `global_counters` | fleet health | a board poll completed and wrote its transaction ([§ 2.1](#21-processes)) | **Stuck at `0` is the only signal that the board integration NEVER worked** — a poller that stopped after working is visible per seat as `task.degraded` |
+| `board_poll_failed` | `global_counters` | fleet health | a board poll was degraded — credential, transport, status, shape, pagination or the store — and therefore wrote nothing (`BOARD-TASK.md § 9`) | none on its own: the per-seat consequence arrives at [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s bound as `task.degraded`, and this counter is what says the cause was the poll rather than the board |
 
 **Which table, and why the split is not arbitrary.** A counter goes in `seat_counters` when a seat can
 be named for it and the answer is about that seat; in `global_counters` when it cannot, or when the
@@ -2085,7 +2580,8 @@ no second copy of a number the wire already carries.
 | Surface | Consumers | Upgrades | Compatibility posture |
 |---|---|---|---|
 | **REST** `GET /api/fleet/*` | the browser **and** machine consumers — the bridge's autonomy watchdog ([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why): "One producer, clean boundary, either side deployable alone") | **independently** — the watchdog is another team's deploy | carries `api_version`; additive changes are free and a consumer must ignore unknown fields; a removal, a rename or a **meaning change** is a version bump with a stated window — the same rules as [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#the-rules) 1, 3, 4 and 7, for the same reason: two parties that upgrade separately |
-| **WebSocket** `private-fleet.<install_id>` | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
+| **SSE** `GET /api/fleet/stream` ([§ 8.3](#83-the-websocket-delta-feed)) | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
+| **REST** `GET /api/building/*` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the browser only | **together** — the same deploy serves the client that fetches it | carries `api_version` for detection and takes **the stream row's posture, not the fleet REST row's**: no support window and no N/N-1 obligation, because its one consumer ships with the server. It is a REST surface because a map is fetched once and cached by version rather than streamed; it is outside `/api/fleet/*` because an authored document is not a fleet fact ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)). The property that would move it to the first row is checkable: a machine consumer of its own that upgrades on its own schedule |
 
 **Stating the second row is the point.** Inheriting D1's wire-compatibility discipline for a channel
 whose two ends ship in one act would cost a support window, a version negotiation and a set of rules
@@ -2095,15 +2591,31 @@ upgrades on its own schedule, this row is wrong and the row above it applies.
 
 ### 8.2 REST
 
-All four endpoints require authentication ([§ 9](#9-read-side-authentication)). All responses are
-`application/json; charset=utf-8` and carry `server_time`.
+All four fleet endpoints require authentication ([§ 9](#9-read-side-authentication)). All responses
+are `application/json; charset=utf-8` and carry `server_time`.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/fleet/snapshot` | session+MFA **or** `mzr_` token | the whole fleet: every install, every seat, current state. The snapshot half of snapshot-then-deltas, and the watchdog's entire interface |
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}?resync_from=<state_version>` | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
 | `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
-| `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the nine fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the eleven fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
+
+**There is no fifth FLEET endpoint, and the fleet plane still serves no floor map — but a map IS
+served, on a surface of its own, and the sentence that stood here until 2026-09-12 is REVERSED.**
+⭐ **Operator ruling, card#9208 (2026-09-12)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38),
+reversing the same card's ruling of 2026-09-09: the authored floor map is **served at runtime from the
+admin console's store**, and each floor is separately configurable, room design included. The read
+surface is [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s — `GET /api/building` and
+`GET /api/building/rooms/{install_id}/map`, under [§ 9](#9-read-side-authentication)'s browser-only
+row — and what this table's four endpoints publish for a floor is still the seat→desk binding of
+[§ 8.2.1](#821-the-seat-state-object) and nothing else: no snapshot member carries a map, a slot or a
+version of either, which is [§ 13](#13-decisions-taken-revisable-at-review) row 41's decision. **It is
+still written here as a declaration rather than left as an omission**, for the reason the reversed
+sentence gave and which the reversal does not touch: an absent read surface and an undesigned one are
+indistinguishable from D3, and the last time that ambiguity stood a renderer invented the member it
+needed (card#8075). A reader who arrives at this table looking for the map is sent to § 8.7 by name,
+rather than left to infer that the four rows above are the whole of what a floor can fetch.
 
 Every snapshot this plane answers counts `snapshot_served`
 ([§ 7.2](#72-this-planes-own-counters-and-badges)); the refusal path is
@@ -2142,7 +2654,7 @@ snapshot repeats per seat and the delta patches.
 | `action` | object | **yes** | the newest open call; `null` when none is open | see below |
 | `action.call_id` | ULID | no | 26 chars | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `action.tool_name` | string | no | ≤ 64 B | `"Bash"` |
-| `action.descriptor` | string | **yes** | ≤ 200 B, sanitized at the reporter | `"Bash: composer test"` |
+| `action.descriptor` | string | **yes** | ≤ 200 B, sanitized at the reporter — and **enforced at the ingest** since card#9283, so this bound holds for a consumer sizing to it rather than being a producer-side promise ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order) step 10) | `"Bash: composer test"` |
 | `action.started_at` | rfc3339_ms | no | seat clock — a narrative timestamp, never an age | `"2026-08-23T14:23:09.882Z"` |
 | `action.started_received_at` | rfc3339_ms | no | server clock — what an age is computed from | `"2026-08-23T14:23:14.201Z"` |
 | `action.agent_scope` | enum | **yes** | `main`·`subagent`; a label, never gated on | `"main"` |
@@ -2157,7 +2669,7 @@ snapshot repeats per seat and the delta patches.
 | `subagents_open` | int | no | ≥ 0, on the same footing as `open_calls` above and for the same reason — same ceiling mechanism, same `SMALLINT UNSIGNED` column, same closed bound of **65,535** | `1` |
 | `task` | object | **yes** | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) | see below |
 | `task.title` | string | no | ≤ 120 B | `"ingest endpoint"` |
-| `task.source` | enum | no | `board_card`·`coord_thread`·`telemetry` | `"board_card"` |
+| `task.source` | enum | no | `board_card`·`telemetry` — tier 2's `coord_thread` is retired ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)) | `"board_card"` |
 | `task.ref` | string | **yes** | ≤ 64 B | `"card#7338"` |
 | `task.as_of` | rfc3339_ms | no | server clock | `"2026-08-23T14:05:00.000Z"` |
 | `task.degraded` | bool | no | `true` when a higher tier's value was **dropped past its freshness bound** and the merge fell through ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). `task.source` says which tier answered; this says whether a better one was discarded, which is a different question | `false` |
@@ -2191,11 +2703,13 @@ snapshot repeats per seat and the delta patches.
 | `badges` | array\<string\> | no | **0…18** — the union of D1's 12 `degraded` members and [§ 7.2](#72-this-planes-own-counters-and-badges)'s 7, of which `epoch_reset` is in both. The bound is that union's size and moves only when one of the two tables moves; no duplicates; D1's members first, in D1 § 9.3's order, then this document's, in § 7.2's | `["lossy"]` |
 | `badges_since` | rfc3339_ms | **yes** | when the oldest currently-present badge first appeared | `"2026-08-23T09:14:02.118Z"` |
 | `enabled` | bool | **yes** | last heartbeat's value; `null` before the first heartbeat | `true` |
+| `protocol_agent_name` | slug | **yes** | ≤ 48 B — D1's bound for a protocol agent name, carried beside the field it bounds and held to it, with § 6.4's column, by `tools/design/verify-event-schema.py`. The seat's own DECLARATION ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), last heartbeat's value; `null` before the first heartbeat, after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields), **and** on a seat that declares none — `protocol_agent_name_check` is `undeclared` only on the seat that declares none, and `delivery.last_heartbeat_at` is null only before the first heartbeat | `"pm"` |
+| `protocol_agent_name_check` | enum | **yes** | `checked`·`unchecked`·`disagreed`·`undeclared` — D1's four members, published unchanged and re-derived nowhere on this plane; `null` before the first heartbeat, exactly as `enabled`, **and** after a heartbeat that carried neither declaration member (for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields) — `delivery.last_heartbeat_at` is null only before the first heartbeat | `"checked"` |
 | `reporter` | object | no | **never null**, as `activity` above; `uptime_s` and `selftest_failed` are null before the first heartbeat, `version` and `platform` before the seat's first **batch** — they ride the batch envelope, not any event ([§ 6.5](#65-the-fold)) | see below |
 | `reporter.version` | semver | **yes** | ≤ 24 B | `"0.1.0"` |
 | `reporter.platform` | enum | **yes** | D1's 4 members | `"linux"` |
 | `reporter.uptime_s` | int | **yes** | ≥ 0 — the flusher-restart discriminator | `401150` |
-| `reporter.selftest_failed` | array\<string\> | no | **0…8**, the failing check names. Not 0…6: [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat) declares that key set **open at the ingest** — *"a reporter shipping a seventh check ahead of an edit to this table costs one key a consumer does not yet render, and no `422` … the headroom above holds two further members … A ninth does not fit at that bound"* — so a conforming reporter may send 7 or 8 and a consumer validating against 6 would reject valid data. The names total ≤ 175 B across 8, which is what D1's 256 B serialized cap on `selftest` leaves | `[]` |
+| `reporter.selftest_failed` | array\<string\> | no | **0…8**, the failing check names — bounded by [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s arithmetic and **not** by its member table: D1 declares that key set **open at the ingest**, so a conforming reporter may ship a check the table does not yet name and take no `422`, and a consumer validating against the table's current membership would reject valid data. 8 is D1's derived ceiling, not a count of its table. The names total ≤ 175 B across 8, which is what D1's 256 B serialized cap on `selftest` leaves | `[]` |
 | `retired` | object | **yes** | `null` unless `seats.retired_at` is set — which, since card#9078, no seat the read surfaces select ever is: the only object carrying a non-null `retired` is the announcement's own delta ([§ 4.10](#410-retirement-is-a-rendered-state)), which is what tells a client what left and why | `null` |
 | `retired.at` | rfc3339_ms | no | server clock | `"2026-08-20T09:11:04.000Z"` |
 | `retired.by` | string | no | ≤ 64 B, the operator | `"aimla-pm"` |
@@ -2204,6 +2718,70 @@ snapshot repeats per seat and the delta patches.
 | `derivation.computed_at` | rfc3339_ms | no | server clock | `"2026-08-23T14:23:14.318Z"` |
 | `derivation.fold_lag_ms` | int | no | ≥ 0; **computed, not stored** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) | `117` |
 | `derivation.cursor_event_id` | int | no | ≥ 0 | `9912837` |
+
+**`install_id` and `seat_id` are the seat→desk binding, and they are the whole of it.**
+⭐ **Declared here by operator ruling, card#9208 (2026-09-09)** ([§ 13](#13-decisions-taken-revisable-at-review) row 38),
+because a floor's whole layout rests on this pair and nothing in this document said so — **and it
+SURVIVED that card's reversal of 2026-09-12 unchanged**: serving the map ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed))
+moved where a room's map comes from and nothing about what a seat carries. The two members
+above ride **every** seat object and **every** seat-scoped feed message — `seat.delta` and
+`seat.retired` both carry them ([§ 8.3](#83-the-websocket-delta-feed)) — and D1's identity rule makes
+them config-file resident and stable across session restarts, `/clear`, reboots, host renames and
+harness upgrades ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)). Three consequences, stated so
+that neither end has to guess:
+
+- **No third member is published for the binding, and none is coming** — no slot index, no desk id, no
+  map reference. The desk a seat sits at is a pure function of this pair computed in the client
+  ([FLOOR.md § 3.2](FLOOR.md#32-the-desk-slot-function)); the *mapping* is D3's by
+  [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith), and what this plane
+  owes is the **key it is computed from**. That is why declaring the binding costs this contract no wire
+  member: the members already exist, and what was missing was the statement that they are load-bearing
+  for something other than naming a seat.
+- **Changing either member re-identifies the desk; it is not a rename.** The pair *is* the identity, so
+  a seat whose config file changes one of them arrives as a new seat at a new desk and the old seat is
+  one that stopped reporting. That is D1's rule and D1's cost, cited rather than re-decided here.
+- **Uniqueness is per install, not global** — `UNIQUE KEY uq_seat (install_ref, seat_id)`
+  ([§ 6.4](#64-ddl)). A consumer ordering seats within a floor may rely on `seat_id` being total there
+  and nowhere else.
+
+**`protocol_agent_name` is the seat→agent DECLARATION, and publishing it here is the whole of what
+this plane does with it.** ⭐ **`card#7957`'s ruling *(d)*, built on `card#9296`.** The seat declares
+its own protocol agent name in its own config and emits it on every heartbeat
+([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file), [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat));
+the fold stores it against `(install_id, seat_id)` like every other heartbeat-carried fact and this
+object carries it. Four consequences, stated so neither end has to infer them:
+
+- **It is a label, not a member of the binding — and it carries a uniqueness INVARIANT no schema
+  enforces.** [§ 8.2.1](#821-the-seat-state-object)'s *"`install_id` and `seat_id` are the seat→desk
+  binding, and they are the whole of it"* is unchanged: nothing resolves a seat by this member.
+  ⭐ **But a protocol agent name is UNIQUE among the seats of one
+  `install_id`** — operator ruling, `card#9296`
+  ([§ 13](#13-decisions-taken-revisable-at-review) row 50). Two seats of one install declaring the
+  same name — whatever either one's check state; [§ 8.3.3](#833-the-coordination-objects) rule 1 is
+  the one statement of which seats count — is an **install misconfiguration**, not one agent at two
+  desks: they remain two desks
+  with two distinct bindings, and what has failed is the **name**, which has stopped identifying
+  either of them. ⛔ **No `UNIQUE KEY` enforces it, deliberately**: the store would have to refuse the
+  second seat's heartbeat or fail its fold — a typed label taking down the liveness backstop of a seat
+  that is otherwise healthy — and whichever seat heartbeated first would keep the name, which is a
+  pick by arrival order. ⛔ **No seat can detect it either, which is why the invariant is stated
+  here and enforced at the consumer.** A seat's own check asks *is my declared name in the roster*
+  ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), so two seats declaring `"pm"` both find
+  `"pm"` there and **both** emit `checked`; only a party holding the whole install sees both seats.
+  [§ 8.3.3](#833-the-coordination-objects) rule 1 states what that party does with it, and this
+  plane still mints no state from the violation. Changing the name re-identifies no desk and moves no
+  character, which is D1's rule and D1's cost, cited rather than re-decided here.
+- **This plane performs no check of its own and mints no state from it.** The check ran on the
+  declaring box, where the roster was; `protocol_agent_name_check` is its outcome carried verbatim. A
+  server-side re-check would be a second identity surface with no better information, which is the
+  shape `card#7957` rejected in option (b).
+- ⛔ **A `disagreed` or `undeclared` name resolves to nothing, and neither does a name equal to some
+  `seat_id`.** Only a declaration joins ([§ 8.3.3](#833-the-coordination-objects)).
+- **Both members are version-bearing** by [§ 6.5](#65-the-fold)'s subtraction — neither is one of the
+  ten — so a seat that edits its declaration emits one delta on the heartbeat that carries the
+  change, and none on the 1,439 that do not. They cost the store two nullable columns at the end of
+  an existing projection, which is [§ 6.9](#69-migrations-on-a-live-events-table) rule 2's path and
+  needs no `ALTER` on `events` at all.
 
 **`blocked_since` is a PROMOTION out of [§ 8.2.3](#823-the-seat-detail-response), not a new fact to
 source.** The value has always existed server-side: `detail` carries *"the open attention request if
@@ -2236,13 +2814,13 @@ insignificant whitespace). Every row below names the block it is measured from, 
 
 | Object | Bytes | How |
 |---|---|---|
-| seat state, typical | **1,828 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,572 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, typical | **1,893 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
+| seat state, worst case | **5,684 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
-| snapshot, 4 seats | **~7.6 KB** typical, **~23 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~92 KB** typical, **~279 KB** worst | — |
+| snapshot, 4 seats | **~7.9 KB** typical, **~23 KB** worst | 302 + n × the above |
+| snapshot, 50 seats | **~95 KB** typical, **~285 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,171 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,333 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -2253,13 +2831,23 @@ well as the byte count:
 
 1. **Every nullable field is populated**, including the ones no real seat carries together — a retired
    seat with an open call is not a reachable state, and this is a size bound rather than a scenario.
-2. **Every bounded string is at its bound**: 32 B `install_id`, 48 B `seat_id`, 64 B `tool_name`, 200 B
+2. **Every bounded string is at its bound** — and for the WIRE-SOURCED ones (`tool_name`,
+   `descriptor`, the subagent titles and types, `model_label`, `project_label`, `harness_label`)
+   that bound is, since card#9283, **enforced at the ingest**: an event carrying one of those
+   fields over its published bound is refused outright ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order)
+   step 10), so this rule rests on a checked contract rather than on producer-side discipline, and
+   no larger value can reach this object. The server-minted strings below (`retired.by`,
+   `retired.reason`, `task.ref`, `task.title`) are bounded at their own write sites instead. The
+   list: 32 B `install_id`, 48 B `seat_id`, 64 B `tool_name`, 200 B
    `descriptor`, 8 subagents at 120 B titles and 32 B types, 120 B `task.title`, 64 B `task.ref`, 48 B
    `model_label`, 128 B `session_id`, 48 B `project_label`, 32 B `harness_label`, 32 B
    `activity.last_kind`, 24 B `reporter.version`, 64 B `retired.by`, 255 B `retired.reason`, and 175 B
    of `selftest_failed` names (D1's 256 B cap on `selftest`, eight keys).
 3. **Every enum is at its longest member**, which is why the object reads `catching_up`,
-   `session_closed_turn_open`, `authentication_failed` and `coord_thread`.
+   `session_closed_turn_open`, `authentication_failed` and `board_card`. ⚠ `task.source` reads
+   `board_card` and **not** `coord_thread`, which is not a style change: `coord_thread` was the
+   longest member until [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) retired it
+   with tier 2, so the longest member became `board_card` and every figure below moved 2 B with it.
 4. **Every integer takes its own declared bound, and the JS-safe integer ceiling where it has none** —
    2⁵³−1 (16 digits, 17 with a sign), the same ceiling D1 § 6.0 admits and D1's own verifier uses for
    its worst-case arithmetic. Both halves are load-bearing and an earlier revision stated only the
@@ -2274,11 +2862,11 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,171 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.33×**, with **2,021 B** spare.
+The worst-case delta at 6,333 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.29×**, with **1,859 B** spare.
 
-**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~92 KB, which
-is one response. Past **200 seats** (~366 KB typical) the snapshot should page by install — stated now
+**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~95 KB, which
+is one response. Past **200 seats** (~379 KB typical) the snapshot should page by install — stated now
 as the trigger, and deliberately not built, because building pagination for a four-seat fleet is
 mechanism for a case that does not exist and the trigger is one number away from being noticed.
 
@@ -2338,6 +2926,7 @@ mechanism for a case that does not exist and the trigger is one number away from
                         "spool_lag_events": 0, "oldest_unsent_age_s": null,
                         "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH", "last_seq": 48211 },
           "badges": ["lossy"], "badges_since": "2026-08-23T09:14:02.118Z", "enabled": true,
+          "protocol_agent_name": "pm", "protocol_agent_name_check": "checked",
           "reporter": { "version": "0.1.0", "platform": "linux", "uptime_s": 401150,
                         "selftest_failed": [] },
           "retired": null,
@@ -2392,18 +2981,18 @@ a consumer that assumed the three were identical would read a missing `counters`
 | `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat no operator has retired, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
 | `seats_total` | int | no | ≥ 0, excluding retired seats — which leave this count at `retired_at`, in the same transaction that takes their desk off the floor ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
 | `seats_live` | int | no | ≥ 0, `link_state == "live"` | `4` |
-| `counters` | object | **yes** | **`GET /api/fleet/health` only.** The nine fleet-scoped counters whose `Exposed` cell names this surface — `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **all nine members are**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because the nine live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
+| `counters` | object | **yes** | **`GET /api/fleet/health` only.** The eleven fleet-scoped counters whose `Exposed` cell names this surface — `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `board_poll_ok`, `board_poll_failed` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **all eleven members are**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because the eleven live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
 
 **Why `counters` is on the endpoint and not on the object.** [§ 7.1](#71-d1s-server-side-counters--where-they-live)
 declares that its tables answer *where each counter is stored, which surface exposes it, and which badge
-it raises* — and for nine counters the answer to the second was a surface that carried no field for
-them. `purge_backlog_rows` is the instrument [§ 6.7](#67-retention-and-purge) relies on to make a
+it raises* — and for the nine counters this member was minted for, the answer to the second was a surface that
+carried no field for them. `purge_backlog_rows` is the instrument [§ 6.7](#67-retention-and-purge) relies on to make a
 falling-behind purge *"fall behind visibly"*, and `token_wrong_surface` is marked **operator alert**;
 both were readable on no surface this document defined, which is a counter that reads zero forever by
 another route. They belong on `GET /api/fleet/health` rather than on the shared object because that
 endpoint's stated purpose is *"is the aggregation plane telling the truth right now"*
 ([§ 8.2](#82-rest)) and it is polled by an operator, while the shared object rides **every** snapshot
-and a `feed.heartbeat` every 15 s — nine monotonic integers on that path would be permanent bytes
+and a `feed.heartbeat` every 15 s — eleven monotonic integers on that path would be permanent bytes
 carrying, almost always, no news. `tools/design/verify-fleet-state.py` now reds when a counter's
 `Exposed` cell names fleet health and this member does not list it, so the two tables cannot drift
 apart again.
@@ -2415,45 +3004,128 @@ from these three; the wire keeps them apart.
 
 ### 8.3 The WebSocket delta feed
 
-**Transport: Laravel Reverb**, the framework's first-party WebSocket server, speaking the Pusher
-protocol, with channel authorization through the standard `/broadcasting/auth` endpoint (DOCS-CITED,
-Laravel documentation; pinned at build, and the only properties this design depends on are private
-channels and per-message publish). **Channel: `private-fleet.{install_id}`** — one per install, so a
-floor subscribes to what it renders and a future per-install authorization has a channel to hang on.
+⭐ **Transport: native Server-Sent Events — `GET /api/fleet/stream`, `text/event-stream`, served by
+PHP-FPM through `Illuminate\Routing\ResponseFactory::eventStream()` (verified in this tree:
+`Illuminate\Routing\ResponseFactory::eventStream()`, laravel/framework 13.26.1 — cited by symbol
+rather than by vendor line, which a `composer update` moves). No daemon, no broadcasting package, no protocol library, no websocket-capable proxy module.**
+Ruled on card#9287 (2026-09-12), reversing the earlier pin to Laravel Reverb, on one load-bearing fact:
+**this feed is one-way.** Every row of the table below reads `server → client` in its Direction
+column and none reads the reverse — re-derive it by reading the column, not this sentence;
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states there is no client→server channel
+on this surface and refuses to add one; [§ 9](#9-read-side-authentication) refuses the live feed to
+machine consumers. A bidirectional Pusher-protocol daemon was more machinery than this design uses, and
+Reverb's `guzzlehttp/psr7 ^2.6` pin against this tree's 3.1.0 — three HTTP-stack downgrades to install
+it — was the price of that surplus. [§ 13](#13-decisions-taken-revisable-at-review) row 46 carries the
+alternatives and the reversal cost.
+
+**One stream, fleet-wide — no per-install channel.** Every message carries its `install_id` where it
+has one ([§ 8.3.1](#831-worked-delta)); a client holds one stream and reads every install off it, and
+the handler filters per subscriber under [§ 9](#9-read-side-authentication) — today that filter admits
+everything, and it is where a per-install ACL would attach: [§ 14](#14-open-questions-for-the-review-loop)
+item 7 records the operator's ruling that fleet-read is all-or-nothing, for now, and it reopens before
+a second organisation's install reports in. The earlier revision's `private-fleet.{install_id}` channel is retired with the
+protocol that needed it, and two costs go with it: the browser's **six-connections-per-origin** limit
+on HTTP/1.1, which one `EventSource` per install would have exhausted at the second tab of a
+three-install fleet; and [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 14's
+cold-start window, which existed only because a client had to know an install to subscribe to it.
+Both close by construction rather than by rule. (The connection limit is DOCS-CITED — the HTTP/1.1
+specification's own guidance and every mainstream browser's implementation of it put the per-origin
+ceiling at six; it is **UNVERIFIED** for this deployment's actual browsers and protocol version, and
+over HTTP/2 it does not bind at all. The closure act is cheap and is not required by anything here:
+one stream is at the limit under no version of the claim.)
+
+**Authentication is the route's ordinary middleware.** `EventSource` sends the session cookie on a
+same-origin request (DOCS-CITED, WHATWG HTML § *Server-sent events*: the fetch is made with the
+request's credentials mode set to `same-origin` unless `withCredentials` is set), so the stream is
+gated by the same session + MFA stack as the page
+([§ 9](#9-read-side-authentication)); there is no `/broadcasting/auth` and no channel authorization
+callback. **Framing:** each message is one SSE event and `data:` carries the whole envelope, `t`
+included — ⛔ **`t` is the SOLE discriminator a client may dispatch on, and an
+earlier revision of this section said a client "may dispatch on either", which is false against the
+primitive this design pins.** `ResponseFactory::eventStream()` writes an `event:` line for **every**
+message unconditionally, defaulting to the literal `update` when the yielded value is not a
+`StreamedEvent`. Per WHATWG HTML, a non-empty `event:` field sets the dispatched event's type, and the
+`message` type — the one `EventSource.onmessage` listens for — is used **only** when that field is
+absent or empty. So under this primitive `onmessage` can **never** fire, whatever is yielded: a builder
+who writes `es.onmessage` receives **zero** messages on a stream that opened perfectly, which renders as
+F19 and sends an operator after the proxy for a client-side bug. ⭐ **Therefore `event:` carries the
+fixed literal `mezzanine` on every message of this feed**, the client registers exactly one
+`addEventListener("mezzanine", …)` ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)), and `t` inside the
+envelope is what it switches on. One listener rather than one per type is the deliberate choice: with
+per-type listeners a message type added in a later release is **silently dropped** by an older bundle,
+whereas a single listener carries an unknown `t` to a default branch that can ignore-and-count it
+**and the branch is fixed here, because no other section owns it: an unknown `t` is IGNORED and
+counted, never a trigger for resync.** [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s
+ship-together row is why that branch is narrow rather than why it is safe — it is reachable only across
+a deploy window, where a reloaded server is writing types an already-open bundle does not know, which is
+precisely the window `fleet.reload` exists to close. The envelope is still one
+value written twice by one writer. ⛔ **No `id:` field is ever written and `Last-Event-ID` is ignored
+on the request**: SSE's built-in resume is exactly the replay buffer
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) refuses, and the primitive as shipped
+writes none — a builder who adds one has re-opened that decision. No `retry:` is written either; the
+reconnect cadence is the client's ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)).
 
 | Message `t` | Direction | When | Payload |
 |---|---|---|---|
 | `seat.delta` | server → client | a seat's `state_version` advanced | `install_id`, `seat_id`, `state_version`, `at`, `changed[]`, `patch{}` |
-| `feed.heartbeat` | server → client | every **15 s**, per channel, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
+| `feed.heartbeat` | server → client | every **15 s**, one row fleet-wide, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
 | `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer. ⭐ **This message is a REMOVAL instruction**: the consumer drops the seat ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)), and it is the only message on this feed that does | `install_id`, `seat_id`, `reason`, `at` |
-| `fleet.reload` | server → client | `feed_version` changed under a running client (a deploy) | `feed_version`, `reason` |
-| `fleet.health` | server → client | **on connect**, and whenever `db`, `fold` or `sweep` changes value | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `fleet.reload` | server → client | a deploy — written by `mezzanine:feed-reload` ([§ 2.1](#21-processes)) before the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot — carrying the release's `feed_version` whether or not it changed, because the deploy is the one act that knows the code moved. ⛔ **Terminal**: the handler ends the stream after delivering it — **and writes `feed.close{reason:"reload"}` first**, so the end is a stated server decision rather than the unexplained silence [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 routes to the dead-feed render (the `feed.close` row below owns that member) — which is what takes an open stream off the previous release's code, since opcache revalidation reaches new requests only. ⚠ **The message is written on every deploy; the client's RELOAD BANNER is not raised by every one** — it is raised on a `feed_version` the client does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F8), which is unchanged by this row. An unchanged `feed_version` after a deploy means **the wire did not move**, and a client whose bundle is one release old is by that definition still correct on it — so it reconnects, keeps rendering, and is asked to reload only when the wire actually changes. Reading the terminal end as a reload prompt would put a banner in front of every viewer on every deploy | `feed_version`, `reason` |
+| `fleet.health` | server → client | **on connect** — the handler's first yield, read from the store before the outbox is opened, `db: "down"` when that read fails — and whenever `db`, `fold` or `sweep` changes value ([§ 2.1](#21-processes)'s heartbeat daemon writes the change) | `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) |
+| `coord.thread` | server → client | a coordination thread is opened, closed or reopened on a repository bound to this install ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `coord_thread{}` ([§ 8.3.3](#833-the-coordination-objects)) |
+| `coord.round` | server → client | a post is made on such a thread — the opening post and every comment ([D1 § 18.7](EVENT-SCHEMA.md#187-coordround)) | `coord_round{}` ([§ 8.3.3](#833-the-coordination-objects)) |
+| `room.map` | server → client | a room's map was **saved, restored or removed** in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) — one implementation, written on commit of the revision it announces, carrying the room's `install_id`, and delivered on the one stream — a client's rendered set is the snapshot's installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)), and an authored room need not be among them, which under the retired per-install channels was why this row had to fan out to every channel; the stream has nothing to fan out to | `install_id`, `map_version` (`null` after a removal: the room is back on the shipped default), `at` |
+| `building.layout` | server → client | the building layout — the floor plan included, card#9292 — was saved or restored in the admin console ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), one row on the stream, as `feed.heartbeat` is — a layout change concerns every floor | `layout_version`, `at` |
+| `feed.close` | server → client | the handler is ending this stream **on its own decision**, and says why, and the set is **exactly four**: `stalled` — a tick did not complete within [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound; `session` — [§ 9](#9-read-side-authentication)'s 15 s re-check **reached the store, and the store said the session or its MFA is gone**; `unavailable` — **a read of the store did not answer**, which is one condition reached three ways: the **connect** read of `feed_outbox` failed, so this stream never had a cursor to start from; a **tick**'s read failed, so it has nothing left to deliver; or [§ 9](#9-read-side-authentication)'s session re-check came back without an answer about the session. The three carry one reason because the viewer's situation is one situation — the store cannot be read — and [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 renders it once. On `unavailable` the client retries on the **backed-off** cadence [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns, which is not the flat one an ordinary drop takes; `reload` — **the deploy's terminal `fleet.reload` has been delivered and the handler is ending the stream because of it** (the `fleet.reload` row above, written by [§ 2.1](#21-processes)'s `mezzanine:feed-reload`). ⭐ **This member exists because the alternative is an ending the client cannot tell from a killed worker.** The handler already returned on that row and wrote nothing, so every routine deploy ended a stream with no `feed.close` at all — and [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 rules that such a stream *"ended for a reason the server did not choose, and is F1's silence arriving early"*, which puts **feed down — polling** in front of every viewer on every deploy against a perfectly healthy fleet. Here the store is readable, nothing was lost, and the server chose: the reason says all three. ⭐ **What the CLIENT does with it is RULED — operator ruling A4, 2026-09-13 ([FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 20): on a deploy that does not change `feed_version` the viewer sees NOTHING** — the client reconnects silently, and the reload banner is raised only on a `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)). This member is what makes that silent reconnect possible, and the ONLY thing that does: `reason:"reload"` is how a client tells a deploy's end from a failure, because a stream that delivered `fleet.reload` and then died unexplained is, at the client, the same wire as one killed a moment after it. ⚠ **Two ends of a deploy carry no `reload`, and each is correct for the stream it ends:** a stream that missed the message and was ended by the deploy's backstop ([§ 2.1](#21-processes)'s feed-reload row) ends with no `feed.close` at all — its consumer had stopped taking messages, and the unexplained-end path below is its truth; and a reconnect attempted inside the deploy's maintenance window is refused `503` (`php artisan down` holds until the opcache wait is over), which the client's silent reconnect must ride out rather than render — a behaviour this row declares and [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns. A stream that ends with no `feed.close` ended for a reason the server did not choose (a worker killed, the proxy, the network), and the client treats the two alike except that `session` sends it to sign in rather than to reconnect ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3, F7) | `reason`, `at` |
 
 **`fleet.health` is on this table because [§ 2.2](#22-fail-posture-per-path) and
-[AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with MySQL down the
+[AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero) both require it**: with the store down the
 connection is accepted and immediately sent `fleet.health` with `db: "down"`, which is the whole reason
-the socket stays up in that posture. It is a separate message type from `feed.heartbeat` even though
+the connection is accepted at all in that posture: it is opened to say why, and ends with
+`feed.close{reason:"unavailable"}` in the same breath ([§ 2.2](#22-fail-posture-per-path)). It is a separate message type from `feed.heartbeat` even though
 both carry the same object, because the heartbeat is unconditional and periodic — a client that inferred
 health only from heartbeats would learn about a store outage up to 15 s late, on the one path where the
 client is waiting to be told why there is nothing.
 
 **Envelope** — every message: `{"feed_version":1,"t":…,"server_time":"…", …}`.
 
-**`feed.heartbeat` is the property that makes the whole surface honest.** Without it, a socket that has
+**`feed.heartbeat` is the property that makes the whole surface honest.** Without it, a stream that has
 silently died is indistinguishable from a fleet where nothing is happening — which is exactly the
 failure this product exists to remove, one layer further out than D1 solved it. So: the server sends a
 heartbeat every 15 s whether or not anything changed, and **a client that has seen no message of any
-kind for 45 s (3 intervals) treats the feed as dead**, renders a feed-down indicator, and reconnects.
+kind for 45 s (3 intervals) treats the feed as dead**, renders a feed-down indicator, and reconnects
+— ⚠ **except inside the reload grace [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) owns**,
+where a stream this section's own `feed.close{reason:"reload"}` ended is re-opened silently and that
+section's clause (2) says what the strip reads instead.
 15 s and 3× are the same shape as D1's own 60 s/300 s heartbeat-and-alarm pair, scaled to a channel
 where the round trip is milliseconds instead of a WAN flush.
 
-**Coalescing: one delta per seat per 250 ms.** A seat's changes inside a tick are merged into one
-message. 250 ms is chosen because it is below the ~300 ms at which a human notices a change in latency
-(the same threshold D1 derives its hook budget against, and — separately — the same order as the
-~300 ms status-line debounce D1 records for the harness itself,
-[D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED), so the
-floor cannot be made to flicker faster than a person can see. It bounds a single seat's
-outbound rate at **4 msg/s** regardless of what the seat does.
+**The tick: 250 ms, and it delivers rather than merges.** The handler reads `feed_outbox` every
+250 ms and writes every admitted row past its cursor, in `id` order, as one flush. 250 ms is chosen
+because it is below the ~300 ms at which a human notices a change in latency (the same threshold D1
+derives its hook budget against, and — separately — the same order as the ~300 ms status-line
+debounce D1 records for the harness itself,
+[D1 § 6.0](EVENT-SCHEMA.md#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED), so a
+stream delivers at most **4 batches/s** and the floor cannot be made to flicker faster than a person
+can see. ⚠ **An earlier revision called this coalescing — *a seat's changes inside a tick are merged
+into one message* — and it is withdrawn here (card#9287), because it was never legal:**
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s rule applies a delta iff its
+`state_version` is the client's plus one, so a message carrying the *last* of two versions minted in
+one tick is a gap to every client, not a merge. The per-seat message rate is therefore the writers'
+property and not the transport's: [§ 6.5](#65-the-fold)'s rule enqueues one row per transaction that
+bumps `state_version`, and the fold bumps once per pass over a seat's unfolded window — so what this
+tick bounds is delivery granularity per stream, and the *4 msg/s per seat regardless of what the seat
+does* that the earlier revision promised is not a property anything here provides.
+
+⭐ **This withdrawal reconciles the document to code that already shipped, rather than asking for a
+change to it.** `server/app/Feed/SeatDelta.php` (card#7827, ratified on its PR) emits **one delta per
+`state_version` increment** and says why in its own docblock — *"a coalesced message and a lost message
+are the same wire shape to a consumer"*, so every merged burst would cost the client a full seat
+resync and the optimisation would **add** traffic. That build filed the contradiction back at this
+document as card#7838's first item, which asked D2 either to drop coalescing or to give a merged
+message an explicit spanned-versions field. This section takes the first, which is what the running
+code already does — so the doc-vs-code divergence that item exists to close is closed by deletion, and
+no builder has to reconcile anything.
 
 **Volume, derived from D1's kind-table ceiling.** State-changing events per seat-day at the ceiling:
 6,000 tool events + 1,200 turn events + 1,440 context samples + 120 subagent + 80 session + 100
@@ -2475,11 +3147,412 @@ Its members are **edge-triggered**, single digits per seat-day, and no more belo
 the sweeper's own `stale` transition does: 8,980 counts state-changing **events**, and both classes sit
 outside it, which is why it stands unchanged.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,171 B, measured by serializing
+**What the outbox adds to that, on the write side.** Every message above is one `feed_outbox` row
+written in its producer's transaction — so every figure in this paragraph is also a row count: at the
+ceiling, 8,980 rows/seat/day of deltas plus one fleet-wide heartbeat row per 15 s (86,400 ÷ 15 a day,
+not one per install), each carrying its envelope serialized once, whether or not a browser is open to
+read it. That is the cost of a queue with no memory of its own: ~400 B per delta row against the
+~732 B [§ 6.8](#68-sizing) already spends on the event that caused it, retained a minute rather than
+fourteen days. And on the read side, each open stream is **four primary-key range reads per second**
+of a table that is almost always empty past the cursor — at ten browsers, forty reads a second, each an
+index seek over a table whose rows past the cursor are, at the 50-seat ceiling, 5.20 ÷ 4 ≈ **1.3 rows**
+on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
+number this amendment mints.
+
+**Message bound: 8 KiB.** The worst-case delta is 6,333 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
-breach it fails a test rather than a client. Reverb's own configured maximum is read at provisioning
-(**UNVERIFIED** — the host is not built; closure act: read the deployed `config/reverb.php` and record
-it here), and 8 KiB is chosen far below any plausible value so that the two limits cannot interact.
+breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
+line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
+no length limit on a field value) — and what sits between the handler and the browser buffers by chunk,
+never by message, so there is no second limit for this one to interact with (the earlier revision's
+*read the deployed `config/reverb.php`* closure act is retired with the daemon). The
+`feed_outbox.message` column carries the same 8 KiB as a `CHECK` ([§ 6.4](#64-ddl)), so a breach fails
+at the write rather than at a client.
+
+**The handler, stated as the loop it is.** One FPM worker, one browser, one generator handed to
+`eventStream()`; nothing below is a daemon and nothing survives the request.
+⛔ **Every store read in it is inside a `try`, and an earlier revision of this pseudocode had no error
+path at all** — which mattered more than a missing branch usually does, because the primitive wraps the
+whole generator in `try { … } catch (Throwable $e) { report($e); }`: an uncaught `PDOException` ends the
+response **silently**, with no `feed.close`, after whatever had already flushed — and a silent end is
+the one ending this design refuses, because the client cannot tell it from a killed worker and takes
+the flat reconnect cadence instead of the backed-off one F20's stampede is priced against
+([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)). **Both reads fail the same way and carry the
+same reason**: the store cannot be read, so the stream has nothing left to deliver and ends with
+`feed.close{reason:"unavailable"}` ([§ 2.2](#22-fail-posture-per-path)). ⛔ An earlier revision held the
+stream open on a tick failure, froze its cursor and made the stream the messenger of the outage; that
+posture is **withdrawn** (operator ruling, 2026-09-12, card#9287) and nothing below restates it:
+
+```
+GET /api/fleet/stream                       -- session + MFA middleware (§ 9); text/event-stream
+  set_time_limit(0)
+  -- EVERY yield below is `new StreamedEvent('mezzanine', $json)` and never a bare value.
+  -- The message names are shorthand for that object; see the note under this block.
+  yield fleet.health(read the store now)    -- FIRST, before the outbox is opened; db:"down" if the
+                                            -- read fails (§ 2.2's stream-connect row)
+  cursor    = SELECT COALESCE(MAX(id), 0) FROM feed_outbox   -- ON FAILURE: cursor = 0 is REFUSED
+               WHERE created_at <= server_now - INTERVAL 2 SECOND   -- (it would replay the whole
+                                            -- retention window); the handler ends the stream with
+                                            -- feed.close{reason:"unavailable"} and the browser
+                                            -- retries on FLOOR § 2.2's backed-off cadence.
+                                            -- THE HEAD BEHIND
+                                            -- THE LAG, not
+                                            -- MAX(id): the same term the tick's read carries, and for
+                                            -- the same reason.  no history, ever (§ 8.5)
+  tick_started = now;  auth_done = now
+  loop:
+     sleep until 250 ms after tick_started
+     if now - tick_started > 45 s:          -- the PREVIOUS tick's writes blocked that long.  checked
+                                            -- HERE -- before the read -- so a stream that was blocked
+         yield feed.close{reason:"stalled"} -- past § 6.7's retention ENDS rather than reading past a
+         count feed_resync_required; return -- purged row.  see the three notes below
+     tick_started = now                     -- stamped BEFORE the writes it is there to measure
+     rows = SELECT id, t, install_id, message FROM feed_outbox   -- ON FAILURE: yield
+             WHERE id > cursor AND created_at <= server_now - INTERVAL 2 SECOND   -- feed.close
+             ORDER BY id                                  -- {reason:"unavailable"} and RETURN.  no
+                                            -- cursor is held, nothing is frozen, and there is no
+                                            -- resume: the client re-opens and re-snapshots (§ 2.2)
+     for row in rows:
+         if visible_to(reader, row): yield row.message     -- § 9's per-subscriber filter
+         cursor = row.id
+         if row.t == "fleet.reload":                        -- terminal (§ 2.1's feed reload)
+             yield feed.close{reason:"reload"}              -- the server CHOSE this end, so it SAYS so.
+             return                                         -- a bare return here ends the stream with
+                                                            -- no feed.close at all, which FLOOR § 9 F3
+                                                            -- reads as "a reason the server did not
+                                                            -- choose" -- F1's 45 s silence path, and
+                                                            -- `feed down -- polling` on every routine
+                                                            -- deploy against a healthy fleet
+     if now - auth_done >= 15 s:
+         switch session_and_mfa_recheck(reader):            -- re-READ from the store (§ 9).  ONE
+             case valid:        auth_done = now             -- outcome continues the stream; every
+                                                            -- other one ENDS it
+             case invalid:      yield feed.close{reason:"session"}   -- the store ANSWERED: gone
+                                return
+             default:           yield feed.close{reason:"unavailable"}  -- the read did not answer
+                                return                      -- ABOUT THE SESSION -- an error, a lock,
+                                            -- a permission refusal, a lost connection.  `default`
+                                            -- and not a named third case, so no exception escapes
+                                            -- the switch into the primitive's catch(Throwable) and
+                                            -- ends the response with no feed.close at all (§ 9)
+```
+
+⛔ **Every `yield` above is `new StreamedEvent('mezzanine', $json)` — a bare value is a DIFFERENT
+wire.** The pseudocode names the message; it does not name the object that carries it, and the
+difference is the whole of the rule the framing paragraph above states. `eventStream()` sets
+`$event = 'update'` and reads an event name off the yielded value **only** when that value is
+`instanceof \Illuminate\Http\StreamedEvent`, whose constructor is `(string $event, mixed $data)`
+(`Illuminate\Routing\ResponseFactory::eventStream()` and `Illuminate\Http\StreamedEvent`,
+laravel/framework v13.26.1, read at source in this tree). So a builder who follows this block
+literally and yields the bare envelope ships `event: update` on **every** message, the client's one
+`addEventListener("mezzanine", …)` ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)) never
+fires, and the floor renders F19 against a stream that opened perfectly — the same failure the
+framing rule exists to prevent, reached by the one route that rule does not close. ⚠ **`$data` is the
+already-encoded JSON STRING**, not an array or an object: the primitive re-encodes only a value that
+is neither string nor numeric, so passing the string is what puts the bytes
+[§ 8.3.1](#831-worked-delta) shows on the wire rather than a re-encoding of them.
+
+⛔ **`eventStream()`'s third argument is passed `null`.** Its default is the string `'</stream>'`, and
+on the generator's return the primitive writes one more frame — `event: update`, `data: </stream>`
+(`Illuminate\Routing\ResponseFactory::eventStream()`, the `filled($endStreamWith)` branch). That frame
+carries an `event:` in no row of the table above, a `data:` that is not JSON, and it would arrive
+**after** every `feed.close` — which is exactly what
+[FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas) reads to decide whether the server chose to end
+the stream. A builder who omits the argument ships a wire the client cannot dispatch and a close
+reason it cannot see.
+
+Three things in it are load-bearing and each is argued elsewhere, so they are named here once. **The
+first yield is `fleet.health`**, read before anything else, which is [§ 2.2](#22-fail-posture-per-path)'s
+stream-connect posture and the half of [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero)
+the previous transport could not build — *on connect* was a socket-server event with no server
+installed, and here it is the handler's first line. **The read is behind [§ 6.5](#65-the-fold)'s 2 s
+visibility lag** — the same term, the same number, for the same reason: `feed_outbox.id` is
+auto-incremented and assigned inside the writer's transaction, so a row's id can be below the cursor
+while its transaction is still open, and a reader that advanced past it would never deliver it. The
+lag is sufficient only because every writer inserts its outbox row as the **last statement before its
+`COMMIT`**, holding the id for one round trip rather than for the transaction's length — a rule on the
+writers, stated here and tested by [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor).
+**The cursor starts at the head *behind the lag*** and is set by nothing the client sends, which is
+what makes the outbox transient — below. ⚠ **A bare `MAX(id)` at connect would be the defect this
+paragraph exists to prevent, one query earlier**: `MAX(id)` reads committed rows only, and ids are
+assigned at `INSERT` while commits land in their own order, so a writer holding a lower id open at the
+instant a browser connects has its row jumped by that stream **forever** — the steady-state read never
+looks below the cursor again. The connect read therefore carries the same
+`created_at <= server_now - INTERVAL 2 SECOND` term as the tick's, which costs a connecting stream at
+most one lag-window of rows it may also see in its snapshot — harmless, because
+[§ 8.4](#84-snapshot-then-deltas)'s per-seat watermark is what discards those, and the classes with no
+watermark ([§ 8.3.3](#833-the-coordination-objects)) had nothing before connect to duplicate. ⚠ **The fleet-wide classes are the exception that enumeration missed, and they are not covered by a watermark.** A `feed.heartbeat` written up to one lag-window before connect is delivered AFTER the handler's connect-time `fleet.health`, and it carries a whole `fleet{}` ([§ 8.2.4](#824-the-fleet-health-object)) — including `seats_total`/`seats_live`, which move without a `fleet.health` change-row behind them. So a client's fleet counts can be REGRESSED to a ≤2 s-old value until the next heartbeat, and [FLOOR.md § 2.3](FLOOR.md#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s lobby discrepancy check runs off exactly those counts, spending one spurious snapshot fetch. **D3 therefore ignores a `fleet{}` whose `server_time` is not newer than the one it holds** — a monotonicity rule that costs one comparison, owed because the symptom is a periodic unexplained fetch rather than a visible error. ⛔ **The wire fact is this document's and the filter is the render layer's, and saying it only here is what card#9287's maintainer round found**: the rule existed at exactly one site in the repository, in the document a client builder does not build from, while [FLOOR.md § 2.1](FLOOR.md#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) — the **closed** statement of what that client does for itself — never carried it, so a builder working from D3 neither had the rule nor was permitted to invent it. It is now carried there and tracked as an obligation in [FLOOR.md Appendix A](FLOOR.md#appendix-a--every-obligation-addressed-to-this-document), which is the mechanism this repository has for a rule that crosses the boundary; this paragraph states the condition and cites the discharge rather than being the only home of both.
+[AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) tests both
+reads, because a test of the tick alone passes over a defect in the connect.
+
+**The stall check is at the top of the loop, before the read, and measures from the previous tick's
+START.** Both halves are load-bearing and an earlier revision of this pseudocode had neither, which
+made the bound unfireable: it stamped the clock *after* the flush, so the difference it computed was
+the sleep and never the blocked write. Measured from the tick's start, the difference spans the writes;
+checked before the read, a stream whose write blocked longer than
+[§ 6.7](#67-retention-and-purge)'s 60 s **ends instead of reading**, so it can never advance its cursor
+across a row the purge removed while it was blocked — the silent loss a skipped `coord.round` would be
+([§ 8.3.3](#833-the-coordination-objects)). ⚠ **What this check cannot do is fire while a write is
+blocked**, because a blocked `yield` runs no further line of the handler: `eventStream()` does the
+`echo`/`ob_flush()`/`flush()` itself on the generator's behalf, and a client that stops reading
+altogether suspends the handler inside it. So the bound ends a **slow** consumer on its own clock, and
+a **frozen** one at the moment its write returns — which is the host's to bring about, and is stated as
+R2's teardown clause below rather than promised here.
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) prices both.
+
+**`feed_outbox` is a transient queue and not the replay buffer [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)
+refuses — stated as a rule, with the two mechanisms that keep it one.** It is the queue
+[§ 6.5](#65-the-fold)'s per-writer rule enqueues to, and under this transport that sentence is literally
+true for the first time: the row is inserted in the transaction that bumps `state_version`, so a delta
+and the state it announces commit together or not at all — a property the broadcast-after-commit shape
+of the previous transport could not offer. A stream's cursor starts at the outbox head *at connect* and
+only ever moves forward; no request parameter, header (`Last-Event-ID` included) or message can set it
+lower. So a row is delivered to the streams that were open when it committed and to nothing else: a
+client that reconnects gets a snapshot, exactly as § 8.5 says, and never *the messages it missed*.
+That is what makes the table's retention a property of **reader lag** and not of **reader absence**:
+[§ 6.7](#67-retention-and-purge) keeps a row 60 s — the stall bound plus one heartbeat — because no
+stream past the stall bound is still reading, and a row nobody was connected to read is purged unread.
+**What happens to that row is nothing**, and that is the point: the fact it announced lives in
+`seat_state`, `seat_state_transitions` and the rest of the store, and reaches every later reader at
+its next snapshot; the outbox never held anything the store did not. The one message class that is
+*not* in any store — the coordination objects, [§ 8.3.3](#833-the-coordination-objects) — is lost to
+an absent reader exactly as it was lost under the previous transport, which § 8.5 already names and
+[§ 14](#14-open-questions-for-the-review-loop) item 14 already owns.
+
+⛔ **Two conditions this transport depends on cannot be established from this repository, and they
+are written here as named, checked deploy requirements — never as assumptions.** When a condition is
+not establishable locally, the check's correct output is to say so, by name, on a surface the far end
+reads. This section is that surface. ⭐ **Who runs them is SPLIT, because one of the two cannot be
+automated and an earlier revision of this section assigned both to `bin/deploy.sh` anyway.** R2's
+configuration half, and R1's ini half, read the host's own FPM configuration, need no credential, and
+belong in `bin/deploy.sh` as a gate that refuses on a red — ⭐ **and since card#9300 they are one**, in
+`fpm_code_reload_ready`, the deploy's one reader of the FPM SAPI's own phpinfo (`php-fpm -i`), the pools
+running as the deploy user with their `php_value` / `php_admin_value` / `php_flag` overrides, and the
+`.user.ini` files over the app's scripts — widened to R1's and R2's values rather than duplicated, and
+judged on the pool `MEZZ_STREAM_POOL` names. Every refusal in it was written only after the value it
+refuses had been measured on a host where it could be (R1's results below; R2's `pm.status_listen`), and
+`output_buffering`, which measured harmless, is reported and never refused. R1's **wire** half needs a stream opened
+with a signed-in MFA session — [§ 9](#9-read-side-authentication) refuses machine consumers on
+this route deliberately, so there is no credential a deploy script can present — and could not run
+during a deploy in any case, because `bin/deploy.sh` holds the application in maintenance mode across
+the window a 125-second stream check would need. It is therefore an **operator runbook step**, run
+against the deployed origin after any deploy that changed the stream path, the proxy, or the pool.
+Assigning it to the deploy script would have shipped a check that is skipped on every run, which is
+worse than one nobody claimed to have run.
+
+**R1 — nothing between PHP-FPM and the browser may buffer or compress the stream.** *Declared:* the
+handler sends `X-Accel-Buffering: no` and `Cache-Control: no-cache` on every stream response (the
+primitive sets both, with `Content-Type: text/event-stream`, in
+`Illuminate\Routing\ResponseFactory::eventStream()`'s header array) and flushes after every message.
+*What this repository cannot see:* whether the reverse proxy honours that header for a FastCGI
+upstream; whether a compression or output filter sits in the path — **in the proxy or in PHP itself**,
+since `zlib.output_compression` and a non-zero `output_buffering` are ini settings the handler does not
+control; and what the proxy's read timeout is — the heartbeat's 15 s is what keeps a 60 s default alive, and a timeout below it would end
+every stream on a schedule. ⛔ **A THIRD ini directive belongs in this set, and it is the one this design leans on hardest while
+never naming it** (card#9287, maintainer round). ⚠ **It is not a buffering hazard, and it is read here
+anyway**: R1 is where this document reads ini directives off the SAPI that serves the route, and the
+instrument, the baseline-then-pool-override rule and the *measure the reading before it gates a deploy*
+posture — which card#9300 met — are all R1's. A third top-level condition would put one kind of fact in two homes and
+give the same discipline two owners; a directive in R1's set that governs something other than
+buffering costs one sentence, which is this one. `ignore_user_abort` governs whether a
+PHP script keeps running once the client has gone away, and **the frozen-consumer story at
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) and at R2's teardown clause rests on it
+being OFF** — those sections say *the primitive `break`s out of its loop and `break` abandons a
+suspended generator, so no line after the pending `yield` ever runs*, and that reasoning does not hold
+on its own. `eventStream()` tests `connection_aborted()` at the **TOP of its loop body**, so a `break`
+there is reached only after `foreach` has already resumed the generator past its pending `yield` — the
+lines after the `yield` DO run, on that reading (`Illuminate\Routing\ResponseFactory::eventStream()`,
+laravel/framework v13.26.1, the `composer.lock` pin, read at source in the card#9287 maintainer round;
+this repository carries no `vendor/` tree, so the read is cited rather than repeated here). What
+actually keeps them from running is that with `ignore_user_abort` off PHP **terminates the script** at
+the aborted write, and the generator is destroyed rather than resumed. ⛔ **So the conclusion is right
+and its stated mechanism is not, and the difference is a host setting the document never named.**
+*The condition:* `ignore_user_abort` is **off** on the SAPI that serves the stream. *What this
+repository cannot see:* its effective value there. *Measured on the box this design was written on,
+and it is closer to false than it reads:* no ini file under `/etc/php/8.5/` sets the directive in any
+SAPI — all three carry it **commented**, and what the distribution's commented line suggests is
+`ignore_user_abort = On`, one character from true. Both SAPIs therefore take PHP's built-in default,
+which the CLI reports as `0`; the value on the FPM SAPI is read the way R1 reads the other two, from
+`php-fpm -i` and then the serving pool's override — ⭐ **and card#9300 read it and measured it**:
+`php-fpm8.5 -i` prints `ignore_user_abort => Off => Off`, and no pool on that host overrides it. Under a
+throwaway FPM master, a client that left 3 s into a stream stopped its worker at the next write (4.0 s)
+with the directive off, and with a pool override turning it on the generator was resumed past that
+write and ran to the one after (6.0 s) — the mechanism this paragraph states, seen both ways. The deploy
+refuses a stream pool where it is on. *The observable
+when it is false:* the handler resumes past its pending `yield` on a frozen client, so a `feed.close`
+is written into a dead socket and `feed_resync_required` is counted on the one path
+[§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) says it is not —
+[AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others)'s GREEN (b) reds against a
+correct handler, for a host reason no document named.
+
+⛔ **The other two ini settings are NOT one hazard, and an earlier revision of this section put them in one
+sentence and got one of them wrong.** `zlib.output_compression` compresses the body and is genuinely
+not defeated by the handler's flush; it must be `Off` on the SAPI that serves the stream. `output_buffering`
+is a different matter: the primitive calls `ob_flush()` whenever `ob_get_level() > 0`, which is exactly
+the branch a non-zero `output_buffering` opens, so the handler may well defeat it. ⭐ **MEASURED on
+card#9300 (2026-09-13), on the box this design was written on, whose FPM ini carries `output_buffering =
+4096`: the flush DEFEATS it.** Served by a throwaway non-root `php-fpm8.5` master reading that ini, the
+framework's own `eventStream()` delivered three messages a second apart at +0.4 s, +1.4 s and +2.4 s; the
+same frames written with `flush()` and no `ob_flush()` — the control that proves the instrument can see
+buffering — arrived together at +3.0 s, when the request ended; the primitive again, +0.4/+1.4/+2.4 s.
+The real route behind a proxy repeated it: first frame at +0.06 s, a heartbeat every 15 s. So
+`output_buffering` is not an R1 hazard on the FPM SAPI and the deploy does not refuse it. Measured the
+same way, `zlib.output_compression = on` held all three messages to the end (one gzip record at +3.0 s)
+and is refused, and so is any `output_handler`: `ob_gzhandler` sent a gzip record per flush — compression,
+which R1 forbids, and what a browser's `EventSource` makes of it was not measured.
+
+⛔ **The exact commands are deliberately NOT written here, and that is a REVERSAL of an earlier
+revision of this section.** That revision shipped three copy-paste commands with asserted outputs.
+All three were wrong, and wrong the same way — **written from reading the primitive rather than from
+running anything against a stream:**
+
+  - `php -i` reads the **CLI** SAPI, which force-overrides `output_buffering` to `0` whatever the ini
+    says, and reads the CLI's ini file. It could not fail for the setting it named, and it reports a
+    pass for an FPM pool carrying the hazard. Measured, not recalled: on this box `php -i` prints
+    `output_buffering => 0` while `/etc/php/8.5/cli/php.ini` *sets* `4096`.
+  - `grep -c feed.heartbeat` counts **lines**, and the figure it would be asserted against is not a
+    constant. Under this section's framing rule `t` is written **once** per message, inside the
+    `data:` envelope — `event:` carries the fixed literal `mezzanine` — so the line count IS the
+    message count; what defeats the leg is that the message count is **phase-dependent**: 125 s ÷
+    15 s = 8.33, so a correct 125-second window holds **8 or 9** heartbeats depending on the
+    daemon's phase, and an equality against a constant is not satisfiable. ⚠ An earlier revision of
+    this bullet deleted the leg for a DOUBLED count instead, reading a framing rule that put `t` on
+    the `event:` line as well; that rule is retired above and the arithmetic is the whole reason.
+  - `head -c 400` is exhausted by the response headers before any body byte — the `web` group alone
+    sets two encrypted `Set-Cookie`s — so the leg's stated pass criterion was unobservable.
+
+**A check that cannot fail is a decoration; a check that cannot pass gets weakened until it does** —
+and both failures were shipped under a decision row that calls R1 *checked*. So R1 is stated here as a
+**condition, an instrument and an observable**, and card#9300 owns writing the commands **on a host
+where they can be run, and seen to fail once against a deliberately broken proxy, before they are
+trusted**. ⭐ **Written and run: `bin/feed-stream-check.sh`** (`docs/PLAN.md § 5`'s runbook), against a
+throwaway non-root Apache 2.4 with this host's Virtualmin vhost shape (`SetHandler
+proxy:unix:<pool socket>|fcgi://…`) in front of a throwaway FPM serving this route — PASS with `ProxySet
+flushpackets=on` on that socket's `<Proxy>`; **FAIL with the vhost shape exactly as Virtualmin writes it**,
+where `mod_proxy_fcgi` held the whole response, headers included, until the request ended; FAIL with
+`AddOutputFilterByType DEFLATE text/event-stream`; PASS again with `flushpackets=on`. ⛔ **So a host set up
+the way this one is, is R1-FALSE until its operator adds `flushpackets=on` for the stream pool's socket** —
+a root act in the vhost, and exactly the F19 this section exists to name before a viewer meets it. *The instruments:* the ini values are read from **the SAPI that serves the route**, never the CLI's
+`php -i` — the baseline is **`php-fpm -i`**, the FPM binary's own phpinfo, which resolves the
+directives as that SAPI resolves them and names the file it read (run on the box this design was
+written on: `output_buffering => 4096 => 4096`, `Loaded Configuration File =>
+/etc/php/8.5/fpm/php.ini` — which is where the value is set, since no file under
+`/etc/php/8.5/fpm/pool.d/` sets it at all). A `php_admin_value` or `php_value` for the directive in
+the SERVING POOL's file overrides that baseline, so the effective value is **the baseline, then the
+pool's override**, and the gate reads both rather than either. ⛔ **Not `php-fpm -tt`, which an
+earlier revision of this sentence named**: it dumps FPM's own configuration — pools, listeners,
+process management — rather than ini directives, and it opens the error log before it prints
+anything, so on that same box `php-fpm8.5 -tt` exits `ERROR: failed to open error_log … Permission
+denied` under a user without the privilege. An instrument the deploy user cannot run, printing a
+surface the setting does not live on, is not a check of this condition. ⚠ **That is the SECOND
+instrument this section has named from reading rather than from running** — the `php -i` bullet
+above is the first — which is why card#9300's commands are owed on a host where they can be run
+before the gate is trusted ([canon #9](../../CLAUDE.md)); the wire is read from a stream opened with a **signed-in MFA
+session**, asserting on the **arrival timing** of the on-connect `fleet.health` and on the **inter-arrival
+gap** of successive heartbeats — never on a count over a fixed window. ⚠ Whatever client is used must
+send `Accept-Encoding` **explicitly**: `curl` sends none by default, so a proxy that gzips `text/*`
+stays dormant for a bare `curl` and engages for every real browser — the check would pass and every
+viewer would see F19. ⛔ And the session cookie is read from a mode-600 jar, **never passed on the
+command line**: a cookie in `argv` is readable in `ps` and lands in the transcript. *The observable when
+it is false:* every browser renders **feed down — polling** 45 s after connecting, forever, against a
+fleet whose `GET /api/fleet/health` is green and whose outbox is advancing — and the strip adds *the
+stream opened and never spoke*, because the on-connect message is the first byte and its absence is
+this failure's signature ([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19). REST is
+untouched, which is what distinguishes it from R2.
+
+**R2 — a DEDICATED PHP-FPM pool serves `/api/fleet/stream`, sized in concurrently open STREAMS, and
+the host must take a dead one back.** *Declared:* a stream is a request that does not end —
+the handler calls `set_time_limit(0)` and returns only on `fleet.reload`, on the stall bound, on a
+session re-check that came back **invalid** ([§ 9](#9-read-side-authentication)), or when a write fails because the client is gone. *What this repository
+cannot see:* the pool's `pm.max_children` and `request_terminate_timeout`.
+*The requirement, in those terms:* the stream route has **its own pool**, and that pool's
+`pm.max_children` ≥ the number of **concurrently open streams** — which is one per browser **tab**, not
+one per browser: a lobby and a floor open side by side are two, the same arithmetic that retires the
+per-install channel three paragraphs above, and a reload or a closed tab leaves its predecessor pinned
+until a write fails, so the live count exceeds the open-tab count during churn. On that pool
+`request_terminate_timeout` is **0** (any other value ends every healthy stream on that period, which
+renders as every browser reconnecting in lockstep). ⚠ An earlier revision also required
+`process_control_timeout` **non-zero**, so that a graceful FPM reload could finish over a half-open
+stream whose client vanished without a `FIN`. That reload was its only purpose, and no deploy reloads
+FPM any more — the deploy user cannot ([§ 2.1](#21-processes)'s feed-reload row) — so the requirement
+is gone rather than relaxed. ⛔ **And the stream pool
+sets `pm.status_path` AND `pm.status_listen`** — a requirement, not a convenience of the check below:
+`bin/deploy.sh` reads that pool's full status to find the streams that missed `fleet.reload` and end them
+([§ 2.1](#21-processes)'s feed-reload row, [§ 14](#14-open-questions-for-the-review-loop) item 17), and
+refuses a host where it cannot. ⭐ **`pm.status_listen` is the half no earlier revision named, and it was
+MEASURED into this sentence (card#9300):** with every worker of a pool pinned by a stream, a status request
+on the pool's own socket queued behind them until a 5 s timeout, and the same request on `pm.status_listen`
+— a listener FPM serves apart from the pool's workers — answered in 0.17 s. A pool pinned by streams is
+exactly the pool the deploy has to read. ⚠ An earlier revision required a status path on BOTH pools; nothing
+the deploy runs reads the other pool's, which is the operator check's below.
+⭐ **The dedicated pool is a REQUIREMENT and not a recommendation, and the reason is the line above
+it**: `request_terminate_timeout: 0` is the runaway-request kill, and switching it off for the *shared*
+pool switches it off for every request the application serves — a price this design is not willing to
+pay to avoid one pool definition and one location rule. Separated, `0` costs only the streams, which
+are supposed to run forever, and a stream can never starve a snapshot: F20 becomes structurally
+impossible rather than merely sized against.
+
+⛔ **The host must end a connection whose client has stopped reading, and this is the clause that
+returns the one worker the handler cannot.** [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s
+stall bound ends a slow consumer on the handler's own clock, but a client that stops reading altogether
+suspends the handler **inside** the write, where no line of it runs; what ends that is the proxy giving
+up on the client and tearing down the upstream, which makes the blocked write fail. ⛔ **What does NOT
+then happen is the handler's own exit path**, and an earlier revision of this section claimed it did:
+no line after the pending `yield` ever runs, so there is no `feed.close`, no `feed_resync_required`,
+and no cursor left to inspect. ⚠ **Why** is the abort, not the `break` — the primitive's
+`connection_aborted()` test sits at the top of its loop body, so the `break` follows a resumption of
+the generator rather than preventing one, and it is PHP's own termination of the script at the aborted
+write that stops the later lines. That holds while `ignore_user_abort` is **off** on the serving SAPI,
+which R1 names as a third ini condition — read on card#9300 (off) and refused by the deploy when on. The worker comes back because the request was
+torn down, not because the handler noticed. *The requirement:* the proxy's
+client-send timeout is **finite** (nginx `send_timeout`, Apache `Timeout`) and its upstream teardown
+follows it. *What this repository cannot see:* both values. *The observable when THIS clause is false:* a worker
+pinned per frozen client for the kernel's retransmission budget — minutes — and, at enough of them, F20
+arriving from clients rather than from load. *The check:* read the serving pool's own configuration file for every value the requirement above
+states and confirm the stream route resolves to that pool; then open N streams with the R1 command in N shells and, with all
+N open, `GET /api/fleet/health` — which is served by **the other** pool, and that is the point of the
+check — must answer at its ordinary latency, while the **stream pool's** `pm.status_path` shows
+`listen queue` at 0 and `max children reached` unmoved. ⛔ **NOT `php-fpm -tt`, which an earlier
+revision of this sentence named — and naming it here was the SECOND time this section reached for an
+instrument R1 had already disqualified eight paragraphs above**, by name and for this exact reason: it
+opens the error log before it prints anything, so under a user without that privilege it exits
+`ERROR: failed to open error_log … Permission denied` (measured, card#9287 maintainer round) — an
+instrument the deploy user cannot run, prescribed as a **deploy gate** at
+[Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 9. ⚠ **Whether any instrument
+dumps the EFFECTIVE merged pool configuration under the deploy user is UNMEASURED, and this document
+does not assert one**: reading the pool file is what a deploy user can certainly do, and it sees the
+file rather than the resolution. Card#9300's gate reads the pool FILE — `request_terminate_timeout`,
+`pm.status_path`, `pm.status_listen` and the R1 overrides — and then asks the running pool for its status,
+which proves the pool is up, named as the file says, and reachable by the deploy user; the merged
+configuration itself stays unread, and `pm.max_children`, the proxy's send timeout and the vhost's routing
+of `/api/fleet/stream` to this pool stay the runbook's. *The observable
+when it is false:* **the console, not the feed, goes dark** — the snapshot, the health endpoint and every
+admin page queue behind the pinned workers and time out or `504`, against a healthy fleet, while FPM
+logs `server reached pm.max_children setting` and its status counter `max children reached` climbs
+([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F20). That the whole application fails
+rather than one feature is why this is a requirement with a check and not a note.
+
+**What this transport costs, each stated.** (1) One FPM worker per open browser for the length of a
+session — R2, and a real number on a host sized for request-response traffic. (2) A write per message —
+the outbox rows priced under *Volume*, retained a minute. (3) Four index seeks per second per open
+stream. (4) Delivery latency of one visibility lag plus one tick — **≥ 2 s and ≤ 2.25 s after the message's row
+is INSERTED into `feed_outbox`**, which is what the predicate actually measures: the tick's
+`created_at <= server_now - INTERVAL 2 SECOND` term reads a column stamped at `INSERT`. ⚠ **This read
+*after a message's commit* until the card#9287 maintainer round.** The figure does not move — every
+writer inserts its outbox row as the **last statement before its `COMMIT`** (the rule stated above and
+tested by [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor)),
+so the two instants are one round trip apart — but the basis a test asserts against does move: measured
+from the commit the bound is 2 s *minus* that round trip, and a test written to the old wording asserts
+a floor the design does not promise. On top of the fold's own ≥ 2 s behind the wire
+([§ 6.5](#65-the-fold)), which states its own basis correctly — the price of an ordering guarantee this
+document already pays once, in a number it already owns. (5) A deploy must
+publish `fleet.reload` before the deploy's opcache wait ([§ 2.1](#21-processes)) — no deploy reloads FPM,
+and the deploy user cannot — and a stream that misses it is ended by the deploy's backstop at a 30 s
+ceiling ([§ 2.1](#21-processes)'s feed-reload row; [§ 14](#14-open-questions-for-the-review-loop) item 17, decided).
+(6) The count-and-bytes backpressure bound of the earlier revision has no referent here and is replaced
+by a time bound — [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) says how, and what is
+not provided. What it buys is stated once, in [§ 13](#13-decisions-taken-revisable-at-review) row 46,
+so this paragraph cannot be read as the whole ledger.
 
 #### 8.3.1 Worked delta
 
@@ -2521,7 +3594,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
   "seat_id": "012345678901234567890123456789012345678901234567",
   "state_version": 9007199254740991,
   "at": "2026-08-23T14:23:09.882Z",
-  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
+  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
   "patch": {
     "install_id": "01234567890123456789012345678901",
     "seat_id": "012345678901234567890123456789012345678901234567",
@@ -2546,7 +3619,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
       {"call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "title": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "subagent_type": "01234567890123456789012345678901", "started_at": "2026-08-23T14:23:09.882Z"}
     ],
     "subagents_open": 65535,
-    "task": {"title": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "source": "coord_thread", "ref": "0123456789012345678901234567890123456789012345678901234567890123", "as_of": "2026-08-23T14:23:09.882Z", "degraded": true},
+    "task": {"title": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "source": "board_card", "ref": "0123456789012345678901234567890123456789012345678901234567890123", "as_of": "2026-08-23T14:23:09.882Z", "degraded": true},
     "context": {"used_pct": 100.0, "used_tokens": 10000000, "total_tokens": 10000000, "source": "computed", "sampled_at": "2026-08-23T14:23:09.882Z", "sampled_received_at": "2026-08-23T14:23:09.882Z"},
     "model_label": "012345678901234567890123456789012345678901234567",
     "session": {"session_id": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567", "started_at": "2026-08-23T14:23:09.882Z", "source": "startup", "project_label": "012345678901234567890123456789012345678901234567", "harness_label": "01234567890123456789012345678901"},
@@ -2555,6 +3628,8 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
     "badges": ["lossy", "batches_rejected", "harness_contract_moved", "reporter_behind", "value_clamped", "counters_omitted", "index_overflow", "invalid_tool_name", "bad_session_id", "config_invalid", "statusline_degraded", "epoch_reset", "seq_gap", "seq_collision", "clock_skew", "reporter_ahead", "fold_lag", "derivation_error"],
     "badges_since": "2026-08-23T14:23:09.882Z",
     "enabled": true,
+    "protocol_agent_name": "012345678901234567890123456789012345678901234567",
+    "protocol_agent_name_check": "undeclared",
     "reporter": {
       "version": "012345678901234567890123",
       "platform": "darwin",
@@ -2570,13 +3645,290 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
 `changed` lists every key of `patch`, which is what makes this the worst case rather than a large one: a
 delta that patches fewer fields is strictly smaller, and no delta can patch more than all of them.
 
+#### 8.3.3 The coordination objects
+
+⭐ **Ruled — card#7897's part-2 ruling (2026-08-27): one feed, one store, one ordering domain.** The
+coordination family joins the seat and fleet message types above on **this** feed rather than getting one of its
+own, in the ruling's own terms: *"`coord.*` joins them on the same WebSocket, the same store, the same
+ordering domain. A second feed is refused"* — because a client reads feed silence as *the fleet is not
+talking to me* ([§ 8.3](#83-the-websocket-delta-feed)'s heartbeat rule), and two feeds would give one
+page two liveness verdicts with no honest way to render their disagreement.
+
+**The two objects are [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)'s and
+[D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s, and this section does not re-derive them**
+([§ 1.3](#13-the-boundary-stated-as-a-rule)). What is this document's is the **read surface**: which of
+those fields reach a reader, under which message, and what a consumer may and may not
+conclude from them. It publishes no field D1 does not send
+([§ 13](#13-decisions-taken-revisable-at-review) row 29) and it mints **no number** — every bound below
+is D1's, carried beside the field it bounds.
+
+⛔ **The producer is Mezzanine's own GitHub webhook receipt route
+([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)),
+not the webhook bridge.** The ruling above named the bridge, and
+[D1 § 18.1](EVENT-SCHEMA.md#181-two-corrections-this-section-carries-and-the-boundary-it-keeps)
+corrected it at source — on `docs/PLAN.md` D-10 (*"Mezzanine is an observer and stands alone"*) and on
+a read of the bridge that found no surface emitting to an arbitrary HTTP consumer. The correction is
+restated here, once, because a reader who reaches the ruling and not D1 § 18 is otherwise sent to a
+producer that design forbids.
+
+**`coord.thread` — the thread as a lifecycle object.** One per `issues` delivery whose action is
+`opened`, `closed` or `reopened`.
+
+| Field | Type | Null? | Bounds | Example |
+|---|---|---|---|---|
+| `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_thread.install_id` | slug | no | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)) | `"aimla"` |
+| `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
+| `coord_thread.carrier` | slug | **yes** | ≤ 16 B — the title's leading bracketed token, lowercased and slug-validated with **no set consulted** ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)); `null` when the title leads with none, or when the token fails validation | `"announce"` |
+| `coord_thread.subject` | string | **yes** | ≤ 200 B — the issue title less its addressing preamble, sanitized at the receiver ([D1 § 18.10](EVENT-SCHEMA.md#1810-sanitization-at-the-coordination-producer)). **The only free-text field either object carries**; no body text transits at any length | `"the coordination-event producer"` |
+| `coord_thread.subject_truncated` | bool | no | — a silently clipped string is read as the whole string, which is why the flag rides beside it | `false` |
+| `coord_thread.opened_by` | slug | **yes** | ≤ 48 B — a **protocol agent name**, never a `seat_id` (below); `null` whenever `attribution` is not `resolved` | `null` |
+| `coord_thread.attribution` | slug | no | ≤ 16 B — `resolved` · `unresolved` · `unattributable`, the three states D1 keeps apart. A consumer reading `opened_by` without reading this renders *nobody* where the honest render is *not recoverable* | `"unattributable"` |
+| `coord_thread.participants` | array\<slug\> | no | 0…32 members, each ≤ 48 B — **protocol agent names**, the union of the delivery's body `FROM:`/`TO:` lines and its own `to:`/`from:` labels, deduplicated and sorted. `all` is a literal member and is **never** expanded here ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread)) | `["pm","all"]` |
+| `coord_thread.posted_at` | rfc3339_ms | **yes** | GitHub's clock — a **third** clock, reconciled with neither of [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s two ([D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)). `null` at `closed` and `reopened`, where no payload key establishes it ([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 2) | `null` |
+| `coord_thread.received_at` | rfc3339_ms | no | the receipt clock — **the only clock on this object an age may be computed from**, which is [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s rule applied to a producer whose other clock is a third party's | `"2026-08-27T16:02:11.775Z"` |
+
+**`coord.round` — the post.** One per `issue_comment.created`, and one for the `issues.opened`
+delivery that also produces a thread: the opening post **is** a post, and modelling it as only a
+lifecycle edge would lose the thread's first round.
+
+| Field | Type | Null? | Bounds | Example |
+|---|---|---|---|---|
+| `coord_round.post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment. **The post's identity, and the key a consumer counts beads by** | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_round.thread_ref` | string | no | ≤ 256 B — the thread this post is on; the join back to `coord_thread` | `"AIMLA-org/aimla-coordination#742"` |
+| `coord_round.install_id` | slug | no | ≤ 32 B, from the hook binding, as above | `"aimla"` |
+| `coord_round.from` | slug | **yes** | ≤ 48 B — the **protocol agent name** this post evidences; `null` when it evidences none | `"pm"` |
+| `coord_round.attribution` | slug | no | ≤ 16 B — the same three states, for the same reason | `"resolved"` |
+| `coord_round.to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the thread's `to:` labels. `all` appears here verbatim, which is what makes a broadcast legible without a boolean | `["all"]` |
+| `coord_round.targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, `all` expanded against this install's roster and no other ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)). ⛔ **`null` and `[]` are different answers**: `[]` says *this post reached nobody*, `null` says *the fan-out is not resolvable here* | `["magento","platform","moodle"]` |
+| `coord_round.carrier` | slug | **yes** | ≤ 16 B — the thread's leading bracketed token, repeated so a post is legible alone | `"announce"` |
+| `coord_round.declares_close` | bool | no | — this post carries the protocol's `[CLOSE]` token, anchored past the addressing preamble. ⛔ **Not a convergence** ([D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on)), and the not-published table below says what that costs a renderer | `false` |
+| `coord_round.posted_at` | rfc3339_ms | **yes** | the comment's own timestamp, GitHub's clock; `null` when the payload carries none | `"2026-08-27T09:14:02.000Z"` |
+| `coord_round.received_at` | rfc3339_ms | no | the receipt clock, as above — the one an age may be computed from | `"2026-08-27T09:14:03.418Z"` |
+
+**They are not seat objects, they do not ride one, and nothing here moves a seat.** A thread spans
+desks and its participants may include names no desk holds, so a copy on each participant's seat object
+would be one fact with N homes, free to disagree with itself and free to make a seat object's size a
+function of another plane's traffic. ⛔ **No coordination fact mints, clears or masks a seat state, and
+none is read by [§ 4](#4-the-seat-state-model)'s derivation** — that rule is written where the rules of
+its kind live, as a row of [§ 4.8](#48-what-may-never-mint-a-state)'s table, and is pointed at rather
+than restated here. Neither object carries `state_version`, and neither emits a `seat.delta`.
+
+**Names on these objects are PROTOCOL AGENT NAMES, and the mapping from one to a desk now EXISTS —
+on the SEAT object, as a DECLARATION, and nowhere else.** ⭐ **`card#7957`'s ruling *(d)*, built on
+`card#9296`.** The seat declares its own protocol agent name in its own config and emits it on every
+heartbeat ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file),
+[D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)); this plane stores it against
+`(install_id, seat_id)` and publishes it, with its check state beside it, on
+[§ 8.2.1](#821-the-seat-state-object)'s object — the surface a consumer already reads to learn a desk
+exists. **It is DECLARED, never inferred**: one party knows both facts, and it is the one that says
+so.
+
+⛔ **The coordination objects themselves gain NO desk reference, and that refusal is what makes the
+join safe to land.** Both objects still carry agent names and no `seat_id`, no seat reference and no
+desk of any kind — [§ 13](#13-decisions-taken-revisable-at-review) row 39's *"a thread spans desks"*
+argument is untouched by a join existing. A consumer resolves against the seat population it already
+holds; this plane asserts no endpoint for it. Three rules, and the third is the one an implementer
+gets wrong:
+
+1. **The join is `(install_id, protocol_agent_name)` → the ONE seat of that install declaring that
+   name, and it resolves to 0 or 1 desks — never to a set.** Scoped to the install because every
+   object here carries the `install_id` of its hook binding and *"a broadcast's reach equals the
+   install's"*; a name declared in another install is another install's fact.
+   ⭐ **A protocol agent name is unique per install** — operator ruling, `card#9296`
+   ([§ 8.2.1](#821-the-seat-state-object), [§ 13](#13-decisions-taken-revisable-at-review) row 50).
+   So the rule has **two** unresolved arms and not one, and ⛔ **they are decided in this order —
+   the one statement of which seats count; every other surface points here.** **First the
+   duplicate arm, over every seat of this install that DECLARES the name**: a seat counts whatever
+   its `protocol_agent_name_check` — `checked`, `unchecked` or `disagreed` — and only an
+   `undeclared` seat, which declares nothing, does not. **Only then** does rule 2 decide whether the
+   one declaring seat left may resolve.
+   - ⛔ **More than one seat declared it** — two or more seats of this install carry the name, in any
+     of the three declaring states. The invariant is **violated**, and the name resolves to
+     **NOTHING**. The consumer does **not** pick. Every candidate claims the name, so any pick is
+     the guessed desk [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 forbids,
+     and building a `name → seat_id` map by assignment over an unordered seat population is
+     last-writer-wins — a pick wearing a map's clothes, whose answer changes with the order the
+     seats happened to arrive in. ⭐ **A `checked` seat and a `disagreed` seat declaring one name ARE
+     this arm** — operator ruling, `card#9296` round 3, reading the uniqueness ruling literally. The
+     disagreeing seat still sends that name, so resolving to the other would be choosing between two
+     seats that both claim it, however much likelier the checked one looks. A consumer that applies
+     rule 2's filter **before** counting sees one resolving seat and draws to it — the pick arriving
+     through the order of two correct rules — and the order above is what forbids it.
+   - **No seat may resolve it** — no seat of this install carries the name with a check state that
+     rule 2 lets resolve: none declares it, or the one seat that does is `disagreed` — which DOES
+     declare it, so the arm is named for its outcome rather than for a declaration. That is the
+     empty case, it is `card#7957` ruling *(2)*'s permanent first-class render, and it is what a
+     fleet whose seats declare nothing produces everywhere.
+
+   ⛔ **The violation is REPORTED, not silently folded into the empty case.** A duplicated name that
+   rendered as an ordinary unresolved name would be invisible — an install misconfiguration
+   presenting as *no seat may resolve it*, which is the opposite diagnosis. The two arms therefore carry
+   **distinguishable reasons**, named here so every consumer uses the same two:
+   `no_declaring_seat` (the *no seat may resolve it* arm, a lone `disagreed` declarer included — the
+   token keeps its name) and `duplicate_declaration`. That is a **consumer-side** observable, in the
+   same spirit as D1's `protocol_agent_name_unchecked` / `_disagreed` counters and on the only
+   surface that can see it; this plane mints no counter and no state for it, which
+   [§ 8.2.1](#821-the-seat-state-object)'s *"this plane performs no check of its own"* is unchanged
+   by. [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 owns the render.
+2. **Only `checked` and `unchecked` resolve.** `disagreed` is a seat whose own check failed against
+   the roster on its box; `undeclared` is a seat that said nothing. Neither is a declaration anything
+   may rest on, and the check state travels with the name so a consumer can always say which of the
+   two a resolved endpoint rests on.
+3. ⛔ **This plane still mints NO fallback join.** Equality between an agent name and a `seat_id`
+   remains **a coincidence this plane cannot check** and is not a join: on an undeclared seat a
+   byte-identical `seat_id` resolves exactly as an unrelated name does
+   ([AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s discriminating
+   control, unchanged). No prefix match, no install match, no *the only seat in the room*. A
+   participant that does not resolve **draws no line, is reported as unresolved, and does not
+   suppress the rest of the object** — `card#7957` ruling *(2)*, which is the permanent answer for a
+   seat that declares nothing and not a degraded mode awaiting a fix.
+
+**What the declaration does not establish is named where it is owned rather than re-argued here:**
+[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6 carries the list and is
+its one home. ⚠ **A copy of it stood here and is deleted rather than extended** — it had already
+gone stale by one member when D1 added the roster-path residual, which is what a second copy of a
+list costs. This plane publishes the check state that says which of them a given seat's name rests
+on, and adds nothing to them.
+
+**Ordering, duplication, and what a consumer may count.** These objects carry neither `state_version`
+nor D1's `(seq_epoch, seq)`, so [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s gap rule
+does not reach them and **a lost coordination message is not detectable** — named here rather than left
+to be discovered, because the honest answer to a condition this end cannot establish is to say so. What
+a consumer has instead is **identity**: `post_ref` is unique per post and `thread_ref` per thread, so a
+bead count is a count of distinct `post_ref` and a repeat draws nothing new. Duplicate suppression
+happens at receipt on the delivery digest (D1 § 18.8 step 7); the one path that reaches this feed twice
+for one real post is an operator Redeliver older than the digest store's retention
+([D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish), last row), and it arrives
+carrying the same `post_ref`.
+
+**What is deliberately NOT published, each with the finding that killed it** — stated as a table so a
+consumer meeting the ruling's element list can see which of them has no field rather than inferring it
+from an absence:
+
+| Fact a consumer might expect | Why it is absent |
+|---|---|
+| the delivery digest | receipt-internal. It is D1 § 18.8 step 7's idempotency key — a store fact with no render — and `post_ref` / `thread_ref` are the identities a reader needs. Publishing it would hand a client two keys for one post |
+| a `needs_human` escalation flare | [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C, a won't-do on the record: the banner is chat-output only and reaches no thread, so there is no field to read and a permanently-false one reads as *no seat is ever waiting on a human*. The rendered fact already has exactly one source on this plane — `activity_state: "blocked"`, minted by `attention.request` alone ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)) — and a second source for one rendered state is the defect this document refuses everywhere |
+| a `converged` flag | [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding B: convergence is a **quorum** over required participants, and neither object carries an observer-CC marker, a required-participant set or a per-participant ledger. The two weaker facts that *are* true ride instead — `lifecycle: "closed"` (the thread ended) and `declares_close` (somebody performed the close act, and here is who) |
+| a round **number** | [D1 § 18.4](EVENT-SCHEMA.md#184-the-observable-audit) row 2: the number lives in a prose heading, is per-author, and identifies no comment on a multi-party thread. A bead per post is true at the granularity the wire has |
+| an `is_broadcast` boolean | [D1 § 18.6](EVENT-SCHEMA.md#186-coordthread): `to` carries `all` verbatim and `targets` carries the resolved fan-out, so a boolean would be a third representation of one fact |
+
+⇒ **Consequence for the render layer, stated here so it is met at design time rather than at build
+time**, because a renderer reads this document and not that audit. The **escalation flare** has no field
+on this surface at all — a won't-do on the record with its closure act named. The **convergence spark**
+has one, and it means something narrower than the element it was specified as: a floor may render that a
+thread **ended** (`lifecycle`) and that a post **declared the close** (`declares_close`), and may render
+neither as convergence. Every other element of the ruling's table has a field above, or — the
+PM-to-intern folder — is already on the reporter wire as a seat's `subagents`, which is where it stays.
+
+**Volume, the tick, and the message bound.** [§ 8.3](#83-the-websocket-delta-feed)'s 250 ms tick
+delivers and merges nothing — for seat patches because § 8.5's plus-one rule forbids it, and for these
+objects because they are posts, and merging two posts loses one. **They are therefore never
+coalesced** — which is also
+how the ruling's anti-requirement (*no silent cap*) becomes a property of the data rather than a promise
+by the renderer: a broadcast is **one** `coord.round` whose `targets` is the resolved fan-out, so there
+is no set of N messages for anything to cap. They are outside § 8.3's per-seat-day delta figure, which
+counts the state-changing events of D1's kind table and is unmoved by this section. Both objects sit
+inside the **8 KiB** message bound and not near it: the largest term in either is a 32 × 48 B array of
+names — a round carries **two**, `to` and `targets` — beside two references bounded at 256 B.
+
+**Compatibility: this surface has no version-skew axis, and the act that would create one is named.**
+[D1 § 18.7](EVENT-SCHEMA.md#187-coordround) declines to type `lifecycle` or `attribution` as enums
+because those objects *"are minted and consumed inside one deployment, so there is nothing for that
+machinery to route"* — and [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s second row says the
+same of this feed: the client is served by the deploy that serves it, so there is never a client in the
+wild older than the server. The declination therefore transposes and these tables type both fields
+`slug`. ⛔ **D1's trigger is a publication, not a review round**: if these objects are ever served over
+[§ 8.2](#82-rest)'s REST surface, whose consumers upgrade on their own schedule, the enum-classification
+obligation attaches at that change.
+
+**No snapshot member, no fifth endpoint — and that is derived, not a preference.**
+[§ 8.4](#84-snapshot-then-deltas)'s snapshot half is a read of **stored** state, so a coordination
+snapshot is a read over a coordination store, and that store is explicitly a later slice:
+[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s last two rows hand both of its
+open decisions — where the receipt route's counters live, and what bounds the idempotency digest's
+retention — to *"the slice that designs the coordination store"*, which is not this one. Specifying a
+read over a store nobody has designed would put a guessed rule in a contract. So the feed carries these
+objects, `GET /api/fleet/snapshot` does not, and no endpoint joins [§ 8.2](#82-rest)'s four. **The cost
+is stated rather than left to be met:** a client that has just connected draws no thread line until the
+next post on that thread. [§ 14](#14-open-questions-for-the-review-loop) item 14 carries the closure
+act.
+
+**Authentication and scope are unchanged and are not restated:** these ride the one stream like every
+other message on this feed, each row carrying the `install_id` of its hook binding, under
+[§ 9](#9-read-side-authentication)'s read-side rules. Because `install_id` comes from the hook binding
+rather than from the payload, the operator's floor-scoping ruling is a property of the data and not of
+the picture — a broadcast's reach equals the install's, and a renderer that draws wider is drawing past
+its event.
+
+**The published contract, for a producer or a consumer that cannot read this repository's code.**
+[D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) owns the receipt, the derivation and each
+fact's basis; this section owns what crosses to a reader. Together they are implementable without a
+source read: every field above has a type, a bound, a nullability and a named derivation, and the
+conditions neither end can establish locally are named **by name** at
+[D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish). ⚠ **Under D1 § 18.1's
+correction this wire crosses no repository boundary at all** — producer, store and reader are one
+deployment — so the cross-boundary seam the ruling's three obligations were written for has one end
+rather than two. The one input that *is* copied across a boundary is D1 § 18.3.1's install-facts roster,
+which is declared, guarded and dated there.
+
+**Worked examples**, transcribed from D1 § 18.6's and § 18.7's own worked objects less the
+receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-delta-feed)):
+
+```json
+{
+  "feed_version": 1,
+  "t": "coord.round",
+  "server_time": "2026-08-27T09:14:03.501Z",
+  "coord_round": {
+    "post_ref": "AIMLA-org/aimla-coordination#742",
+    "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "install_id": "aimla",
+    "from": "pm",
+    "attribution": "resolved",
+    "to": ["all"],
+    "targets": ["magento", "platform", "moodle"],
+    "carrier": "announce",
+    "declares_close": false,
+    "posted_at": "2026-08-27T09:14:02.000Z",
+    "received_at": "2026-08-27T09:14:03.418Z"
+  }
+}
+```
+
+The close of that same thread, which names nobody — `opened_by` is `null` and `attribution` says why,
+`participants` carries `all` **unexpanded**, and `posted_at` is `null` because no payload key on a
+`closed` delivery establishes it:
+
+```json
+{
+  "feed_version": 1,
+  "t": "coord.thread",
+  "server_time": "2026-08-27T16:02:11.802Z",
+  "coord_thread": {
+    "thread_ref": "AIMLA-org/aimla-coordination#742",
+    "install_id": "aimla",
+    "lifecycle": "closed",
+    "carrier": "announce",
+    "subject": "the coordination-event producer",
+    "subject_truncated": false,
+    "opened_by": null,
+    "attribution": "unattributable",
+    "participants": ["pm", "all"],
+    "posted_at": null,
+    "received_at": "2026-08-27T16:02:11.775Z"
+  }
+}
+```
+
 ### 8.4 Snapshot-then-deltas
 
 The hazard is ordinary and the protocol is the ordinary answer, stated exactly because getting it
 subtly wrong produces a client that is permanently and invisibly wrong about one desk:
 
 ```
-1. client connects, subscribes to private-fleet.<install>
+1. client opens GET /api/fleet/stream   -> ONE stream, every install (§ 8.3)
 2. client BUFFERS every seat.delta it receives from this moment
 3. client GETs /api/fleet/snapshot            -> each seat carries its own state_version
 4. client applies the snapshot
@@ -2585,15 +3937,22 @@ subtly wrong produces a client that is permanently and invisibly wrong about one
 6. steady state: apply deltas as they arrive
 ```
 
-Subscribing **before** fetching is what closes the window: a state change that happens while the
+Opening the stream **before** fetching is what closes the window: a state change that happens while the
 snapshot query is in flight is in the buffer, and the snapshot's per-seat `state_version` is the
-watermark that says whether it is already included. Fetching first and subscribing after leaves a hole
+watermark that says whether it is already included. Fetching first and opening after leaves a hole
 exactly the width of the round trip, and the desk that changed in that window stays wrong until
 something else changes it — which on a quiet desk is never.
 
 **The watermark is per seat, not per fleet**, because `state_version` is per seat. That is what makes
 step 5 exact rather than approximate, and it is why the snapshot must carry the version on every seat
 rather than one snapshot-wide sequence number.
+
+**The coordination messages have no snapshot half, and the asymmetry is stated here rather than met at step 3.**
+Steps 2–5 are about seat state and its per-seat watermark. [§ 8.3.3](#833-the-coordination-objects)'s objects
+carry no `state_version` and are not in `GET /api/fleet/snapshot`, so this protocol neither buffers nor discards
+them: a client applies each as it arrives from the moment it connects, and holds nothing about a thread whose
+last post predates its connection. That is a real cost and § 8.3.3 prices it; what it is **not** is a window of
+the kind step 5 closes, because there is no snapshot for a delta to be older than.
 
 ### 8.5 Gaps, reconnect, and why `state_version` is not `seq`
 
@@ -2605,8 +3964,9 @@ equal, the delta is a duplicate or a straggler and is discarded.
 **`feed_gap_detected` is counted by the server, from that parameter, and the parameter exists because
 nothing else can carry the report.** The read plane is four `GET`s and a server→client feed; there is
 no client→server channel on this surface and this document does not add one, because a report endpoint
-would be a write surface with its own authorization, rate limit and abuse story for one integer. A
-resync `GET` is otherwise byte-identical to an ordinary drill-down fetch, so without the parameter the
+would be a write surface with its own authorization, rate limit and abuse story for one integer — and
+since card#9287 the transport itself is one-way by construction, an `EventSource` having no send, so
+this is a property of the wire and not only a refusal. A resync `GET` is otherwise byte-identical to an ordinary drill-down fetch, so without the parameter the
 server cannot tell a gap from a panel being opened — and a counter nothing can increment is a counter
 that reads zero forever, which is the false-clean this document refuses everywhere else. The server
 also validates it: `resync_from` greater than the seat's current version is ignored and counted
@@ -2631,19 +3991,90 @@ A consumer that wants to correlate a rendered state with the wire has both: the 
 newest `(seq_epoch, seq)` the fold has applied.
 
 **Reconnect.** On reconnect the client re-runs [§ 8.4](#84-snapshot-then-deltas) from step 1. A full
-re-snapshot is ~92 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
+re-snapshot is ~95 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
-memory.
+memory. ⛔ **`feed_outbox` is not that buffer, and [§ 8.3](#83-the-websocket-delta-feed) states the two
+mechanisms that keep it from becoming one**: a stream's cursor starts at the head it connected at, and
+`Last-Event-ID` is never written and never read. A reconnecting client gets the snapshot, not the rows
+it missed.
 
-**Backpressure.** Each connection has a bounded outbound queue: **256 messages or 512 KiB, whichever
-binds first**. At the fleet's 5.2 msg/s ceiling, 256 messages is ~49 seconds of a 50-seat fleet's
-traffic — long enough that an ordinary network hiccup drains, short enough that a wedged client is
-noticed within a minute. On overflow the connection is **closed with `resync_required`** and
-`feed_resync_required` is counted. Dropping individual deltas instead would leave that browser
-permanently wrong with no way to know it; closing costs one snapshot and is self-healing. Other
-connections are unaffected, and the bound is per connection precisely so that one slow client cannot
-consume the memory of the process serving the rest.
+**Backpressure — a stall bound per stream, and why it is a time and not a count.** The
+earlier revision bounded each connection's outbound queue at *256 messages or 512 KiB* and closed it
+with `resync_required`. Under this transport that bound has no referent: there is no per-connection
+queue in the server's memory to count, because the queue is `feed_outbox`, shared and on disk, and each
+stream is its own FPM worker that either writes everything past its cursor at each tick — a draining
+client — or blocks in the write — a client that is not draining. A draining client is never *behind*;
+a non-draining one blocks the handler, which can measure nothing until the write returns. So the bound
+is on **the tick**: at the top of each pass, **before it reads**, the handler compares the clock to the
+moment its previous tick **started**, and a gap over **45 s** ends the stream with
+`feed.close{reason:"stalled"}` — after which `feed_resync_required` is counted and the worker is
+returned. ⭐ **That figure is the stall bound's one statement (card#9326)**: every other site points
+here and carries no figure, and that is what keeps copies from existing — no tool searches the
+documents for them. The two copies that cannot point, [§ 8.3](#83-the-websocket-delta-feed)'s handler
+fence and [§ 12](#12-every-number-and-where-it-comes-from)'s `Stream stall bound` row, are each held
+equal to it by `verify-fleet-state.py`'s G3, which reds when either cannot be read. Both placements
+are the bound rather than details of it, and
+[§ 8.3](#83-the-websocket-delta-feed) says why: measured from the tick's *completion* the difference is
+the sleep and never the blocked write, so the bound would never fire; checked *after* the read, a
+stream blocked past [§ 6.7](#67-retention-and-purge)'s retention would advance its cursor across rows
+the purge took while it was blocked, which is the silent loss the last paragraph here refuses. The bound's figure is the client's own dead-feed
+figure ([§ 8.3](#83-the-websocket-delta-feed)) applied in the other direction — the server gives up on
+a silent client on the same clock the client gives up on a silent server — and it is what
+[§ 6.7](#67-retention-and-purge) adds one heartbeat to, so a stream that resumes inside the bound finds
+every row it may still deliver. **What is not provided, stated so nothing reads as more than it is:**
+no message-count bound, no byte bound, and no `resync_required` close frame — SSE has no close frame
+at all (DOCS-CITED, WHATWG HTML § *Server-sent events*, whose only framing is `event:`/`data:`/`id:`/`retry:` fields),
+and the reason travels as the stream's last message instead. **What is still true:** the server's
+memory does not grow with a stalled client's backlog, because the backlog is in the outbox and the
+kernel's socket buffer, both bounded by something other than the client; and other streams are
+untouched, because each is its own worker. What a stalled client *does* consume is that worker — which
+is R2's arithmetic ([§ 8.3](#83-the-websocket-delta-feed)). ⛔ **For how long is NOT this bound:**
+it is a DETECTOR, compared at the top of the FOLLOWING pass, so a write that blocks for longer than
+it does not end at it ([§ 9](#9-read-side-authentication) case (b)). What caps the occupancy R2 sizes
+against is R2's own teardown clause — the proxy's finite client-send timeout — and a pool sized as if
+the bound capped it is sized short.
+⛔ **And the bound ends a SLOW consumer, not a FROZEN one — stated plainly, because the difference is
+the whole of what this mechanism does not do.** A client that drains slowly returns each write late,
+the handler's next pass sees the gap, and the stream ends on the server's own clock. A client that
+stops reading altogether suspends the handler **inside** `eventStream()`'s write, where no line of the
+loop above runs at all — so nothing fires, and what ends it is the host: the proxy's finite
+client-send timeout tears down the upstream and the blocked write fails. **The handler does not then
+get a final pass** — the primitive breaks out of its loop on the aborted connection and no line after
+the pending `yield` runs: no `feed.close`, and `feed_resync_required` is **not** counted on this path.
+⚠ **The mechanism is the ABORT and not the `break`**, corrected in the card#9287 maintainer round:
+`eventStream()` tests `connection_aborted()` at the top of its loop body, so the `break` is reached
+only after `foreach` has resumed the generator past its `yield`. What keeps the later lines from
+running is that PHP terminates the script at the aborted write — which is true only while
+`ignore_user_abort` is **off** on the serving SAPI, a host condition R1 names — read off, and its
+difference measured, on card#9300. The conclusion stands; the reason it stands is a setting, not the framework. The stall bound is the SLOW consumer's exit
+and only that; the frozen consumer's exit is the host's alone. That is a **requirement on
+the deployment, not a property of this design**, and it is R2's teardown clause
+([§ 8.3](#83-the-websocket-delta-feed)) with its own observable. The design's honest claim is
+therefore: no row is ever skipped for any client, the server's memory never grows with one, and the
+*worker* comes back on the handler's clock for a slow consumer and on the host's for a frozen one. Dropping rows instead of ending the stream is refused for the same reason as
+before, and for one more: a skipped `seat.delta` is caught by the plus-one rule at the seat's next
+delta, but a skipped coordination message is caught by nothing
+([§ 8.3.3](#833-the-coordination-objects)), and a transport that loses posts silently is the failure
+this section refuses everywhere else. ⚠ The one worker neither clock returns promptly is a client that
+vanished mid-write without closing and whose proxy has no send timeout either: the write then blocks
+until the kernel gives up on the connection, which is R2's teardown clause, named there rather than
+here.
+
+**The gap rule covers seat deltas and nothing else.** [§ 8.3.3](#833-the-coordination-objects)'s coordination
+messages carry neither `state_version` nor `(seq_epoch, seq)` — [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)
+drops `seq` because no delivery carries one and a server-minted one would be an ordering that producer invented
+— so **a lost coordination message is detectable by neither key**, there is nothing for a client to re-sync
+against, and no resync parameter exists for it. That is named rather than papered over. ⛔ **And nothing
+recovers it, which is stated rather than softened with the recovery that exists for a different loss.**
+GitHub's Redeliver
+([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order) steps 7
+and 9) recovers a delivery lost **at receipt**; a message lost between this server and a client was already
+derived, so its digest is committed and a redelivery of it is absorbed as a duplicate. What bounds the *cost*
+is that a client's next read of that thread is its next post — these objects are self-identifying, so a later
+post carries the `thread_ref` a consumer needs and a redelivered one carries the `post_ref` it always had.
+The closure act is [§ 14](#14-open-questions-for-the-review-loop) item 14's, not a key added here: a
+coordination snapshot is what makes a missed message survivable, and it needs the store.
 
 ### 8.6 A deliberately-invalid exchange
 
@@ -2683,6 +4114,182 @@ The one outcome forbidden everywhere on this surface: **a `200` with an empty fl
 `docs/KANBAN.md § G-1` shape — a clean zero that means "we could not answer" — and on a dashboard it
 renders as an empty office, which is indistinguishable from a fleet that has gone home.
 
+### 8.7 The building surface — the layout, the room maps, and the message that says one changed
+
+⭐ **Operator ruling, card#9208 (2026-09-12)** — [§ 13](#13-decisions-taken-revisable-at-review) row 38
+carries the reversal; [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) is the store this reads. Two endpoints and two feed
+messages, and the rule that binds all four: **an authored document is served whole and by version —
+never inlined into fleet state, and never carried on a message.**
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/building` | session+MFA | the **layout** — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s floors, already keyed, labelled and sorted, exactly as the page delivered them before this surface existed — and, for every room that has an authored map, its **`map_version`**. It is what a client fetches beside the snapshot on connect, and again on every `building.layout` |
+| `GET` | `/api/building/rooms/{install_id}/map` | session+MFA | one room's **map**: the Tiled document the floor draws that room from, with the version it is. Answered from the room's authored document where one is current and from the **shipped default** where none is — the same shape either way, with `source` saying which |
+
+Both require authentication under [§ 9](#9-read-side-authentication)'s browser-only row; both are
+`application/json; charset=utf-8` and carry `api_version` and `server_time`; both fail **closed**
+exactly as the snapshot does ([§ 2.2](#22-fail-posture-per-path)) — a store that cannot be read is
+`503 fleet_unavailable`, never a default served as though it were the answer, because a client that
+could not tell *the operator authored nothing* from *the store is down* would draw the wrong building
+with confidence. Both postures — the failure, and the *unauthored room* that is not one — are rows of
+[§ 2.2](#22-fail-posture-per-path)'s register, stated there in their own words rather than inherited
+from the snapshot's row.
+
+**`GET /api/building`, worked:**
+
+```json
+{
+  "api_version": 1,
+  "server_time": "2026-09-12T09:14:02.118Z",
+  "layout": {
+    "layout_version": 3,
+    "floors": [
+      { "floor": "aimla", "label": null,
+        "rooms": [ { "install": "aimla", "form": "open" } ] },
+      { "floor": "sola", "label": "the solos",
+        "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
+                   { "install": "zeta", "form": "office", "origin": { "x": 288, "y": 160 } } ],
+        "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
+                     "tilewidth": 32, "tileheight": 32,
+                     "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
+                     "layers": [ { "type": "tilelayer", "name": "corridor", "data": [ 1, 1, 1 ] } ] } }
+    ]
+  },
+  "rooms": [
+    { "install_id": "aimla", "map_version": 7, "updated_at": "2026-09-12T09:13:58.402Z" },
+    { "install_id": "sola",  "map_version": 2, "updated_at": "2026-09-12T08:41:10.007Z" },
+    { "install_id": "zeta",  "map_version": 1, "updated_at": "2026-09-12T08:39:52.615Z" }
+  ]
+}
+```
+
+- `layout.floors` is the **placed** floors only — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s
+  one client-side rule (an install the layout does not place is a floor of its own, alone, `open`) is
+  applied by the client against the snapshot's installs, as it is today; this surface does not carry
+  `reported`, because whether a room's seats are on the wire is the snapshot's fact and not the
+  layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
+  building, one floor per install.
+- A floor the operator **planned** ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout), card#9292)
+  carries `origin` on every room and, where one was authored, its `hallway` — the Tiled document as
+  authored, whole, because it is part of the layout document and not a room's; a floor with neither
+  is laid out by that section's default rule in the client. `origin` is a position and never a size: a
+  room's extent is the grid of the map this surface answers for it below, which is why no member
+  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 256 px wide, which
+  is why they may sit 288 px apart; two unauthored rooms would take the shipped default's grid and the
+  save would be checked against that. **The response grows by every hallway on every connect**, bounded by
+  the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
+  and by nothing this surface adds; the hallway endpoint of its own that was declined is
+  [§ 13](#13-decisions-taken-revisable-at-review) row 45's.
+- `rooms[]` lists the rooms with an **authored** map and nothing else. It is not a population
+  statement — a room absent here renders the shipped default, and a room named here whose install the
+  snapshot does not list is still a room whose seats have not reported, which
+  [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) draws and labels rather than omits.
+
+**`GET /api/building/rooms/aimla/map`, worked** — the envelope; `map` is the Tiled document as
+authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)'s table:
+
+```json
+{
+  "api_version": 1,
+  "server_time": "2026-09-12T09:14:02.118Z",
+  "install_id": "aimla",
+  "source": "authored",
+  "map_version": 7,
+  "updated_at": "2026-09-12T09:13:58.402Z",
+  "map": { "type": "map", "orientation": "orthogonal", "width": 40, "height": 25,
+           "tilewidth": 32, "tileheight": 32,
+           "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
+           "layers": [ { "type": "tilelayer", "name": "floor", "data": [ 1, 1, 1 ] },
+                       { "type": "objectgroup", "name": "desks",
+                         "objects": [ { "id": 1, "x": 64, "y": 96, "width": 116, "height": 64 } ] } ] }
+}
+```
+
+| Member | Values | Rule |
+|---|---|---|
+| `source` | `authored` · `default` | which document this is. `default` is the repository's one shipped map, `resources/floor/default.tmj` ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)), served for every room with no authored revision current — including a room that had one and was **removed** back to it, and a room whose install has never reported. The surface answers for any `install_id` that matches [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s slug; one that does not is `404` |
+| `map_version` | ≥ 1, or `null` | the `authored_revisions.revision` that is current ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)); `null` iff `source` is `default`. A client caches a room's map by this value and re-fetches on a `room.map` whose `map_version` differs from the one it holds |
+| `updated_at` | rfc3339_ms, or `null` | the current revision's `authored_at`; `null` iff `source` is `default` |
+| `map` | the Tiled document | byte for byte what was authored, re-serialised through this envelope. At most **512 KiB** at the write ([§ 12](#12-every-number-and-where-it-comes-from)), so the response is bounded by the console's bound and not by this surface |
+
+**Versioning, and how a client learns a map changed — it is told, then it fetches.**
+[§ 8.3](#83-the-websocket-delta-feed) carries two messages: `room.map` when a room's map is saved,
+restored or removed, carrying its `install_id` and the new `map_version` (`null` after a removal); and
+`building.layout` when the layout is saved or restored, carrying `layout_version`. **Both ride the one
+fleet-wide stream** ([§ 8.3](#83-the-websocket-delta-feed)), as `feed.heartbeat` does, and for
+`room.map` that is a correctness condition rather than a convenience: a client's rendered set is the
+**snapshot's** installs and never the layout's ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)),
+and a room an operator has just drawn is exactly the room that may have no seat reporting yet — so a
+`room.map` delivered only to clients holding that room's install would reach nobody, and the operator
+watching for their save would see nothing. (Under the retired per-install channels that was why both
+had to fan out to every channel; card#9287's one stream has nothing to fan out to.) A client applies a
+`room.map` only for a room it renders and ignores the rest; it fetches `GET /api/building` again on a
+`building.layout` whose `layout_version` differs from the one it holds, and receives each message
+once. Neither carries the document, and the reason is
+arithmetic rather than taste: a map is bounded at 512 KiB and a feed message at 8 KiB
+([§ 8.3](#83-the-websocket-delta-feed)),
+so the document cannot ride the message, and a truncated one would be worse than none. The messages
+are notifications and the endpoints are the state — the same split as `fleet.health` beside
+`GET /api/fleet/health`. Three shapes were declined, in [§ 13](#13-decisions-taken-revisable-at-review)
+row 42: polling `/api/building` on a cadence (a version a client asks for every N seconds is N seconds
+of a wrong building on every save, and a request every N seconds from every client for a document that
+changes on a designer's schedule); a `fleet.reload` on every save (it ends every open stream — a
+deploy's act, for furniture); and carrying the document on the message (above). A client in
+[FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F1's polling mode holds no stream
+and sees neither message — it fetches `/api/building` again when it reconnects, which is the one
+staleness this shape accepts, and it is stated there rather than met on a floor.
+
+⚠ **What `room.map` spends, named rather than
+discovered:** it is the one message on this feed that carries **another install's `install_id`** to
+every subscriber, and `feed_outbox.install_id` is what the handler's per-subscriber filter
+([§ 9](#9-read-side-authentication)) would key on were fleet-read ever per-install. Under the
+all-or-nothing read the operator ruled for now ([§ 14](#14-open-questions-for-the-review-loop) item 7)
+that costs nothing — every subscriber may see every room — and a client-side *ignore the rest* is a
+rendering rule, not an authorization boundary. If item 7 reopens, `room.map` must be filtered per
+subscriber **before** that ACL is real, which item 7 prices in its first edit, and
+[§ 13](#13-decisions-taken-revisable-at-review) row 42 carries the alternatives this section declined.
+**And it is not the only thing that ACL would have to rule on, which is why item 7 prices it as a
+design question and not a filter:** `feed.heartbeat` and `fleet.health` carry the fleet-wide `fleet{}`
+— `seats_total`, `seats_live`, `max_fold_lag_ms`, aggregates over every seat — to every subscriber
+already, so what a per-install viewer may see of the fleet's health is a product answer nobody has
+given; it is item 7's second edit.
+
+**What this surface never carries, so that the boundary card#9071 ruled on is a property of the wire
+and not of the console's forms.** No seat, no `seat_id`, no slot index, no desk-to-seat pair: the seat
+object ([§ 8.2.1](#821-the-seat-state-object)) carries no slot and no map reference, the map carries no
+seat, and the two meet only in the client's own slot function
+([FLOOR.md § 3.2](FLOOR.md#32-the-desk-slot-function)), which reads the seat key off the wire and `S`
+off the map. ⛔ **The console may NOT pin a seat to a desk — operator ruling, card#9071
+(2026-09-12)** — and what that ruling protects, and what it cannot, are stated apart rather than run
+together. **Protected, at the write:** the document carries no identity — [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)
+refuses a desk object carrying any property, so a map cannot name a seat and the wire never carries a
+stored position; two browsers, two reloads and two restarts still agree from the seat key and `S`
+alone, which is the property the ruling was reasoned on. **Not prevented, and not preventable by any
+check on the document:** an author chooses `S` and where each slot index is drawn, `h(seat)` is fixed
+and published, so an author who wants a known seat at a known desk can choose `S` and the geometry
+so that it lands there — trivially with one desk in a one-seat room. That is arithmetic on a pure
+function, not a pin feature: nothing is stored, nothing is served, and the next seat to arrive can
+displace it. It is written here because *the ruling is enforced at the write* would otherwise be
+read as *an operator cannot arrange it*, and the second is false. What an author does to a desk in
+the ordinary case, stated so it is not discovered: a save that changes `S` re-slots **every** desk
+in that room, because the slot function is `h mod S` — the console shows `S` before and after a save
+for exactly that reason — and a save that keeps `S` moves no desk at all.
+
+**What D3 owes this surface, named here so the obligation has a row:** fetch a room's map by
+`map_version` and re-render that room on a `room.map`, **without animation** — a map is a layout act
+and not a fleet event; fetch the layout again on a `building.layout`; and on a map or layout request that fails,
+draw the failure by name rather than the shipped default — or the empty layout's building — in its
+place, because a default drawn silently is a room the operator authored rendering as one they did
+not, and a building composed from a failed fetch is the same defect one level up.
+
+**Counters: none, and why.** `snapshot_served` / `snapshot_denied` exist so that a read plane refusing
+everything reads as refusing rather than idle ([§ 8.2](#82-rest)), and that pair counts the snapshot
+route alone — it does **not** observe this surface. What makes a second pair unnecessary is that the
+*conditions* are shared, not the instrument: a store that refuses this surface refuses the snapshot
+the same client always fetches first, and a map refused is drawn on the floor by name
+([FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F16) rather than as a silent default.
+A `map_served` pair would count a condition the snapshot pair already makes visible.
+
 ---
 
 ## 9. Read-side authentication
@@ -2693,25 +4300,162 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 
 | Surface | Credential | Notes |
 |---|---|---|
-| the floor, the drill-down, the WebSocket handshake, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the websocket handshake **and** the REST snapshot |
+| the floor, the drill-down, the stream, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the feed **and** the REST snapshot — and on the stream the gate is re-applied every **15 s** for as long as it is open, below |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
-| the WebSocket, from a machine consumer | **not supported** | see below |
+| the stream, from a machine consumer | **not supported** | refused by operator ruling, 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15); the reason it was first refused is gone — see below |
+| the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
-**The live feed is browser-only, and that is a decision with a cost.** A long-lived socket authenticated
-by a bearer token needs a revocation story *on an already-open connection* — a token revoked at 09:00
-must not keep streaming until the client disconnects — which means either periodic re-authorization on
-the socket or accepting a revocation lag. The known machine consumer is the bridge's autonomy watchdog,
-whose decision cadence is minutes ([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why)),
-so REST polling serves it exactly. The cost, stated: a future machine consumer that genuinely needs
-sub-second fleet state gets polling latency instead, and reversing this means specifying socket
-re-authorization, not just opening a port.
+**The stream re-checks its own authorization every 15 s, so revocation on an open connection is a
+property this feed has — for the browser.** A long-lived connection authenticated once needs a
+revocation story *on an already-open connection* — a session that expires at 09:00, or a token revoked
+then, must not keep streaming until the client disconnects. Under the previous transport that story did
+not exist: the handshake was authorized once at `/broadcasting/auth` and nothing on the daemon could
+re-ask, which is why machine consumers were refused the socket and why
+[FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F7 carried the browser's expiry as a
+residual. An SSE handler is PHP with the store in reach, so **every 15 s it re-runs the check the route's
+middleware ran at connect — the session is live and its MFA enrolment holds — and a check that comes
+back **invalid** ends the stream with `feed.close{reason:"session"}`**. ⛔ **It re-READS both from the store**, the session
+record by its id and the user's MFA enrolment, and never re-inspects the copy the request loaded at
+connect: a re-check of an in-memory session is a check that cannot fail, which is the decoration
+[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) exists to forbid, re-minted inside the fix for
+it
+([§ 8.3](#83-the-websocket-delta-feed)). The lag between an expiry and its enforcement is therefore **the auth
+interval plus one loop pass**, and the pass is what makes that larger than it reads: it CONTAINS the
+write loop, so a consumer that drains slowly holds the handler inside it. **Two cases, and the second
+is the one no revision of this section has stated.**
+
+- **(a) Every pass inside [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall
+  bound.** The re-check fires within the auth interval plus that bound, so the enforcement lag is
+  **under 60 s** — and on a client that drains promptly it is **15 s + one 250 ms tick**, which is the
+  figure a test on a healthy consumer asserts. ⭐ **These two figures are the enforcement bound's one
+  statement (card#9326)**: every other site points here and carries no figure, and that is what keeps
+  copies from existing — no tool searches the documents for them. `verify-fleet-state.py`'s G14
+  re-derives both — the auth interval and the tick from [§ 8.3](#83-the-websocket-delta-feed)'s
+  handler, the stall bound from [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) — and
+  reds when either figure here disagrees with that derivation.
+- **(b) A pass that OVERRUNS the stall bound.** ⛔ **That bound is a DETECTOR, not a cap**: it is
+  compared at the top of the FOLLOWING pass, so a write that blocks for longer than the bound does not
+  end when the bound is reached — it simply makes that pass the last one, and the stream then ends on `stalled` rather than
+  on `session`. Every row written during the overrun went to a session that was already revoked, and
+  **nothing in this handler caps how long that is.** What caps it is R2's teardown clause
+  ([§ 8.3](#83-the-websocket-delta-feed)) — the proxy's finite client-send timeout — which is a
+  requirement on the deployment and not a property of this design.
+
+⛔ **The guarantee this section offers is (a), and (b) is named rather than rounded away**: a
+revocation story whose worst case belongs to the host is not one that may quote a number without
+saying so.
+⚠ **An earlier revision of this sentence stated the 250 ms figure as THE bound**, reasoning only from
+the re-check's position at the bottom of the loop body. It was short by ~4×, and what the difference
+buys a revoked session that drains slowly is up to a stall bound's worth of fleet data it is no longer entitled to — which
+is a security figure, so it is corrected here rather than softened (card#9287 maintainer round).
+⛔ **Hoisting the re-check ABOVE the write loop does not make 250 ms true, and is refused here rather
+than left as an open option.** The exposure is created by the write loop itself: for as long as it
+blocks it is delivering rows to that session, so moving the check to the top of the pass decides only
+whether the close is taken at the end of pass N or the start of pass N+1 — the same rows have already
+gone in both orderings. And at the top the **stall** check reaches the blocked pass first, so the one
+thing the hoist reliably changes is the reason the viewer is given: `stalled` where `session` is true.
+Closing the window rather than restating it means a check the blocked write cannot outrun — a
+per-message check, which the sentence below prices and refuses — and that is a different decision from
+where this check sits. ⚠ And the hoist does not close case (b) either: a pass that begins just inside
+the auth interval and then blocks is a pass whose re-check was not yet due, wherever in the body it
+sits.
+
+⚠ **"Tick" carries two
+values in this document**: the stream's loop tick is 250 ms ([§ 8.3](#83-the-websocket-delta-feed)) and
+the heartbeat's is 15 s, so *the auth interval* is this section's name for the 15 s one and a bare
+"one tick" is never the bound — nor, on a stream whose consumer is slow, is one 250 ms one. A test
+asserting the flat auth interval reds intermittently, one loop tick past it, against a correct
+implementation on a draining client, and a test asserting case (a)'s draining figure reds outright
+against a correct one whose consumer is slow. During that window the stream delivers messages the session was entitled to when the
+tick before ran; that window is accepted on the record rather than closed with a per-message check,
+because a per-message check is a session read per delta at 5.2 msg/s for a property that changes far
+more rarely than that. The same clock answers
+[FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 5.
+
+⛔ **The re-check CONTINUES the stream on exactly one outcome and ENDS it on every other.**
+
+- **valid** — the store answered, the session is live and its MFA enrolment holds: the stream continues.
+- **the store answered, and what it said is that the session or its MFA is gone**: the stream ends with
+  `feed.close{reason:"session"}` ([§ 8.3](#83-the-websocket-delta-feed)), and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6's sign-in is the render. That is the
+  revocation-on-an-already-open-connection case this re-check was written for, and its meaning is
+  exactly this one.
+- **anything else** — a lost connection, a timeout, a lock, a corrupt page, a per-table permission
+  refusal: the read did not come back with **an answer about the session**, so the stream ends with
+  `feed.close{reason:"unavailable"}` ([§ 8.3](#83-the-websocket-delta-feed)) and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F5 is the render — that row owns the words and this one does not restate them.
+
+⛔ **The predicate on that last branch is *the read returned an answer about the session*, and never
+*the store was reachable*.** A per-table permission refusal and a corrupt page both REACH the store and
+both answer, with an error. An implementation that tested reachability would leave those two matching
+no branch at all, and an exception matching no branch is swallowed by the primitive's
+`catch (Throwable)` ([§ 8.3](#83-the-websocket-delta-feed)): the response then ends **silently, with no
+`feed.close`**, which is the ending this design refuses everywhere else. [§ 8.3](#83-the-websocket-delta-feed)'s
+loop writes it as a `default` case for that reason, not as a third named outcome.
+
+**Which of the two reasons is sent is a RENDER decision, and it is taken here rather than left to an
+implementer.** `session` sends the viewer to a sign-in, and a sign-in cannot be completed while the
+store is unreadable, because authenticating reads the same tables the check just failed on. It would
+also render *your session is gone* when what is true is *the store is down* — an absence of evidence
+read as evidence of absence, on the surface a viewer's authentication is decided from. So a read that
+did not answer sends `unavailable`: the same member a failed **tick** read sends, because it is the
+same condition. ⛔ **This outcome mints NO new member of [§ 8.3](#83-the-websocket-delta-feed)'s closed set** — it
+sends `unavailable`, which that set already carries. The set's members and its size are declared on
+that row and guarded there; this section does not restate either.
+
+**This is [§ 2.2](#22-fail-posture-per-path)'s *read-token verification* posture — *"there is no
+posture in which 'we could not check, so we allowed it' is correct"* — applied to revoking rather than
+to granting, with no carve-out from it.** A stream whose session cannot be verified stops; what the
+viewer is told is the truth about the store, rather than a verdict about a session nobody reached.
+Nothing is held open, so nothing has to be said about what an open stream may deliver while the check
+is unanswered, and no timer, heuristic or client-side guess is specified for the case where an outage
+outlasts `SESSION_LIFETIME`: there is no open stream for it to outlast.
+
+⚠ **One case is labelled loosely, and it is stated rather than hidden: a session read that fails while
+reads of `feed_outbox` keep succeeding.** They are two tables in one store — a lock or a per-table
+grant can take one and not the other — so the floor takes F5's render over a store whose
+fleet data was, in fact, readable. The mislabel is in the safe direction, the alternative is the one
+this design refuses (the whole fleet's activity picture delivered to a session nobody could verify),
+and the client's own next act settles it: a reconnect re-runs the route's middleware against the same
+unreadable table and is refused there.
+
+⚠ **A consequence of re-reading the session that is this design's to state rather than an
+implementer's to discover: an open stream does not keep a session alive, so a floor left open is signed
+out on the session's own schedule.** The framework writes the session record once per request, when the
+response is returned — for a stream that is at connect, before the body has streamed a single byte —
+and a client with a healthy stream makes no other request, because [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables)
+F1's 10 s poll runs only while the feed is **down**. So `last_activity` is stamped at connect and never
+again, and at `SESSION_LIFETIME` after connecting — **120 minutes** on this application's configuration
+(`server/config/session.php`, `database` driver) — the re-check finds the session expired and ends the
+stream, which [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 renders as a sign-in
+over a dimmed floor. **The tick deliberately does not touch `last_activity`**, and that is the decision
+rather than an oversight: touching it would make an unattended tab immortal and defeat idle expiry on
+exactly the screen this product leaves on a wall, which is a security property nobody has ruled may be
+spent. The cost is the other half — an operator's floor asks for MFA again every two hours — and it is
+filed, not absorbed: [§ 14](#14-open-questions-for-the-review-loop) item 16 holds it, because the fix (a
+longer lifetime for this route, a kiosk credential, a re-auth that does not blank the floor) is an
+authorization decision and not a render. The operator **deferred** that decision on 2026-09-13 until
+the floor exists, with a kiosk credential as the likely shape, so this behaviour stands until then.
+
+⚠ **The live feed stays browser-only, and the reason has changed, which is stated so nobody reads the
+old reason as still standing.** The refusal rested on *no revocation story on an open connection*; that
+story now exists, and a machine consumer's `mzr_` token could be re-checked on the same tick against
+`feed_tokens.revoked_at` with no new mechanism. **Whether machines may hold the stream is an
+authorization ruling, and the operator ruled it no, for now, on 2026-09-13**
+([§ 14](#14-open-questions-for-the-review-loop) item 15). A yes has costs of its own: a worker pinned
+per machine consumer under R2's arithmetic, a token's 120 req/min limit that means nothing on a stream,
+and the all-or-nothing read of the paragraph below granted to a credential rather than a person. The
+known machine consumer is the bridge's autonomy watchdog, whose decision cadence is minutes
+([`docs/PLAN.md § 1`](../PLAN.md#1-the-aggregation-ruling-d-10--standalone-and-why)), so REST polling
+serves it exactly, as before. The cost, stated: a future machine consumer that genuinely needs
+sub-second fleet state gets polling latency, and that need is what reopens item 15.
 
 | Property | Value | Derivation |
 |---|---|---|
 | Token entropy and storage | 32 CSPRNG bytes → 43 base64url chars; SHA-256 stored, plaintext never | [D1 § 3.3](EVENT-SCHEMA.md#33-authentication-and-the-identity-binding-rule), cited |
 | Prefix | `mzr_` | greppable and distinct from the ingest's `mzn_`; the distinction is what makes `token_wrong_surface` detectable rather than a mystery `401`. This document mints a credential prefix D1's sanitizer did not know, which [§ 14](#14-open-questions-for-the-review-loop) item 11 filed and D1 has since closed: [D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 3's known-prefix regex now enumerates `mzr_` beside `mzn_`, so a read token pasted into a descriptor is redacted by that rule. Reachability was low either way — D1 § 7.1's descriptor allowlist runs first, and a read token has no reason to be near a seat — but [§ 1.3](#13-the-boundary-stated-as-a-rule) obliges the sentence that adds a rule on top of a D1 fact to file the gap rather than work around it, and filing it is what got it fixed |
 | Expiry | **90 days** | long enough that rotation is quarterly rather than constant, short enough that a forgotten token dies. Multiple tokens may be active, so rotation is issue-then-revoke with no overlap window to specify |
-| Revocation | checked **per request**, never cached | a revoked credential that keeps working for a cache TTL is a revocation that did not happen. One indexed lookup per request, at a consumer rate of ≤ 1/min |
+| Revocation | checked **per request**, never cached — and on the stream, **per 15 s tick** for the session that opened it | a revoked credential that keeps working for a cache TTL is a revocation that did not happen. One indexed lookup per request, at a consumer rate of ≤ 1/min; one session read per open stream per tick |
 | Rate limit, token | **120 req/min** | the same ceiling D1 sets for a seat's ingest requests, reused so the fleet has one request-rate number; the watchdog's real cadence is ~1/min, so this is ~120× headroom and can only be reached by a loop |
 | Rate limit, session | **600 req/min** | a browser opening drill-downs bursts; 600 is ~10 req/s sustained, far above any human interaction and far below anything that threatens the store |
 | Over limit | `429` with `retry_after_s` | — |
@@ -2721,9 +4465,12 @@ re-authorization, not just opening a port.
 
 **Authorization within the fleet is currently all-or-nothing**: any MFA-authenticated user sees every
 install, and any `fleet_read` token does too. That is stated rather than assumed, because the moment a
-second organisation's install reports into one Mezzanine it is wrong. The channel and endpoint shapes
-are already per-install so that a future ACL has somewhere to attach; whether one is needed is
-[§ 14](#14-open-questions-for-the-review-loop) item 7, and it is an operator question, not a design one.
+second organisation's install reports into one Mezzanine it is wrong. Every outbox row carries its
+`install_id` and the stream handler filters per subscriber ([§ 8.3](#83-the-websocket-delta-feed)), and
+the endpoint shapes are per-install, so a future ACL has somewhere to attach. Whether one is needed was
+an operator question, not a design one, and the operator ruled on 2026-09-13 that none is, for now:
+[§ 14](#14-open-questions-for-the-review-loop) item 7 records the ruling, and it reopens before a second
+organisation's install reports in.
 
 ---
 
@@ -2987,13 +4734,13 @@ and the gate on trusting the derived signal at all.*
 
 ### AT-D2-7 snapshot-then-deltas has no window
 
-- **Build:** a client harness that subscribes, buffers, snapshots and drains per
-  [§ 8.4](#84-snapshot-then-deltas), with a **forced 500 ms delay** injected between the subscribe and
+- **Build:** a client harness that opens the stream, buffers, snapshots and drains per
+  [§ 8.4](#84-snapshot-then-deltas), with a **forced 500 ms delay** injected between the stream's open and
   the snapshot query, and a state change driven inside that window.
 - **GREEN:** the client's final state equals the server's `seat_state` exactly, whether the change landed
   before or after the snapshot's read; the buffered delta at or below the watermark is discarded and the
   one above it is applied; running the same scenario 100 times yields 100 identical results.
-- **RED — order:** snapshot first, subscribe after → the change made in the window is in neither, and the
+- **RED — order:** snapshot first, stream after → the change made in the window is in neither, and the
   desk stays wrong until something unrelated changes it. Assert the divergence explicitly; on a quiet
   desk it is permanent.
 - **Second RED — no watermark:** apply every buffered delta unconditionally → a delta already included
@@ -3042,8 +4789,11 @@ and the gate on trusting the derived signal at all.*
   [§ 8.2.1](#821-the-seat-state-object) — is byte-identical.
 - **RED:** make one fold rule read a value that is not in the log — the classic form is "if the seat is
   currently `idle`, treat this event differently" — and the rebuild diverges. That divergence is the
-  definition of the defect: a rule whose output depends on history the log does not contain cannot be
-  replayed, recovered, or reasoned about.
+  definition of the defect: a rule whose output depends on state that is neither in the log nor in
+  a durable input a rebuild does not destroy cannot be replayed, recovered, or reasoned about.
+  **The permitted reads are `events` and those durable inputs —
+  `seats` and `seat_board_task` ([§ 6.6](#66-rebuild-from-the-log)) — and nothing else**; a
+  projection's own prior value, which is what the classic form above reads, is not one of them.
 - **Discriminating control:** a rebuild of an untouched seat must produce **zero** differences, so the
   comparison is known to be capable of reporting equality.
 
@@ -3063,11 +4813,15 @@ and the gate on trusting the derived signal at all.*
 
 ### AT-D2-12 the store failing is never a quiet zero
 
-- **Build:** run the app with MySQL stopped.
+- **Build:** run the app with the store stopped.
 - **GREEN:** `POST /api/ingest/events` returns `503` (retryable — the reporter spools and nothing is
   acknowledged); `GET /api/fleet/snapshot` returns `503 fleet_unavailable` with a machine-readable body
-  and **no `installs` key at all**; a connected WebSocket client receives `fleet.health` with
-  `db: "down"` and the floor renders an unavailable state, not an empty office.
+  and **no `installs` key at all**; a client that opens the stream receives `fleet.health` with
+  `db: "down"` as its **first** message and `feed.close{reason:"unavailable"}` as its **last**, the
+  stream then **ending** ([§ 2.2](#22-fail-posture-per-path)'s stream-connect row), and the floor renders
+  an unavailable state, not an empty office. ⛔ **Assert the close and the end, not merely the first
+  message**: a GREEN that stopped there passes equally against a stream held open through the outage,
+  which is the posture card#9287's ruling withdrew.
 - **RED:** return `200` with `{"installs": []}` → the floor renders as a building where everyone went
   home, which is `docs/KANBAN.md § G-1`'s defect exactly: a clean zero that means "we could not answer".
   Assert the body, not the status code — a `200` with an empty array is the failure, and it looks fine
@@ -3075,6 +4829,12 @@ and the gate on trusting the derived signal at all.*
 - **Second RED:** acknowledge the ingest batch (`202`) while the write failed → the reporter advances its
   spool cursor and the events are gone from both copies. Assert the events are absent from the store
   afterwards; that is the only way to see the loss.
+- **Third RED — hold the stream open after the `db: "down"`:** accept the connection, send the health
+  message and keep the stream alive → the viewer is told the store is down over a connection that is
+  still claiming to be live, nothing on the wire says the server chose to end anything, and
+  [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 therefore reads the eventual drop as
+  silence the server did not choose. This is the withdrawn posture arriving through the test that
+  gates the ruling, so assert the **last** message and not only the first.
 
 ### AT-D2-13 every predicate can answer both ways
 
@@ -3097,10 +4857,12 @@ and the gate on trusting the derived signal at all.*
 
 - **Build:** the bootstrap guard and the `phpunit.xml` pin-shape test of
   [§ 6.2](#62-database-names-pinned-and-published).
-- **GREEN:** the suite runs against `mezzanine_test`, and asserts `config('database.connections.mysql.database')`,
-  `config('database.redis.default.database')` and `config('database.redis.cache.database')` resolve to
-  the pinned values; the connection's resolved `time_zone` is `+00:00`; every isolation-critical key has
-  both an `<env force="true">` and a matching `<server>` entry with equal values.
+- **GREEN:** the suite runs against `mezzanine_test`, and asserts `config('database.default')`,
+  `config('database.connections.mysql.database')`, `config('database.redis.default.database')` and
+  `config('database.redis.cache.database')` resolve to the pinned values and
+  `DB::connection()->getDatabaseName()` resolves to `mezzanine_test`; the connection's resolved
+  `time_zone` is `+00:00`; every isolation-critical key has both an `<env force="true">` and a matching
+  `<server>` entry with equal values; `DB_CONNECTION` is declared `mysql` and not forced.
 - **The hostile export is a GREEN, not a RED — corrected 2026-08-25 (card#7334; this row previously
   said the opposite).** `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **passes, and passing is
   the correct outcome**: with BOTH halves of each pin present the export is *defeated*, so the resolved
@@ -3113,26 +4875,79 @@ and the gate on trusting the derived signal at all.*
   makes a pin bite, and the export losing IS the pin working. ⇒ **Assert the green here** (resolved
   value unchanged under a hostile export), and read the guard's refusal from the two REDs below, which
   move the resolved value for real.
-- **Second RED — the `_URL` mechanism:** with the pins intact, set `DB_URL` to a URL naming
-  `mezzanine` → the guard must still abort, because it reads the resolved value and not the declared
-  one. Repeat with `REDIS_URL`.
+- **Second RED — the `_URL` mechanism, corrected 2026-09-13 (card#9328; this row previously said
+  that with the pins intact a `DB_URL` naming `mezzanine` makes the guard abort).** ⛔ **That lever
+  could not fire.** With the pins intact, the `DB_URL` pair defeats the export exactly as the
+  hostile-export GREEN above describes, so the run stays green. And before card#9328 the guard read
+  only `config()`, which a URL's path never reaches, so even with the pin removed it did not abort.
+  **The RED:** delete the `DB_URL` pin (both entries) and export a `DB_URL` whose path names another
+  database, one that **does not exist**, so that a guard which fails to fire cannot write anywhere →
+  the `config()` read passes (it still reports `mezzanine_test`), and the connection read in
+  `Tests\TestCase::createApplication()`, `DB::connection()->getDatabaseName()`, aborts the run:
+  *"the default connection resolves to database '…', expected 'mezzanine_test'"*. There is no dedicated
+  test for this: every test in the run errors on that abort, `DatabasePinTest` included, because it
+  boots through the same `TestCase`. **Not repeated for `REDIS_URL`:** no Redis connection read exists
+  to refuse it; see [§ 6.2](#62-database-names-pinned-and-published)'s guard bullets.
 - **Third RED — the pair, and it is the PRIMARY refusal proof now that the export is a green:** delete
-  the `<server>` half of one pin under an export of that key → the export wins, the resolved value moves,
-  and the shape test fails naming the key. That is both the silent-divergence mode (one line of a
-  two-line pin edited, everything still reading correctly) **and the only lever that demonstrates the
-  guard refusing** — deleting a half is what lets an export reach the resolved value at all.
+  the `<server>` half of one pin under an export of that key → the export wins, the resolved value
+  moves, and the guard aborts the run naming the `config()` key. Every test errors, the shape test
+  included, since it boots through the same `TestCase`. With nothing exported, the same deletion
+  boots cleanly and `DatabasePinTest`'s pairing test fails naming the key. That is both the
+  silent-divergence mode (one line of a two-line pin edited, everything still reading correctly)
+  **and the only lever that demonstrates the guard refusing** — deleting a half is what lets an export
+  reach the resolved value at all.
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 
-- **Build:** two connected clients; stop reading on one; drive fleet traffic past its queue bound.
-- **GREEN:** the stalled client's connection is closed with `resync_required`, `feed_resync_required`
-  increments, and it converges after reconnecting; the healthy client misses nothing (assert its final
-  state equals the server's, field by field); the server's memory does not grow with the stalled
-  client's backlog.
-- **RED — unbounded queue:** remove the bound → the process's memory grows with the stalled client and
-  the healthy client's latency rises with it. **Second RED — drop deltas instead:** the stalled client
-  reconnects to a *wrong* state with no gap detected, because dropping a delta without closing loses the
-  `state_version` step the gap check depends on.
+- **Build — two legs, because the bound does two different things and one of them is the host's.**
+  *(a) the SLOW consumer:* two open streams, one of which drains at a rate that makes each write return
+  late — a few bytes per second is enough — driven for longer than
+  [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound. *(b) the FROZEN
+  consumer:* the same pair, but the second harness stops reading altogether while holding the
+  connection open, and the proxy in front is configured with a finite client-send timeout (R2's
+  teardown clause, [§ 8.3](#83-the-websocket-delta-feed)) — **this leg tests a deployment property and
+  must be run against one; it is not satisfiable against PHP's built-in server**, and saying so is the
+  test rather than a gap in it.
+- **GREEN (a):** the slow stream is ended by its handler with `feed.close{reason:"stalled"}` as its last
+  message, `feed_resync_required` increments **once**, the handler's worker is returned to the pool
+  (assert the pool's active-process count, or the handler's own exit, not merely the client's view), and
+  the client converges after reconnecting; the healthy stream misses nothing (assert its final state
+  equals the server's, field by field); **the server's memory does not grow with the stalled client's
+  backlog** — assert the stalled worker's RSS is flat across the stall, because the backlog is in
+  `feed_outbox` and the kernel's socket buffer and in no PHP array.
+- **GREEN (b):** while the frozen client holds the connection, the handler is **blocked in its write and
+  ends nothing** — assert that, because it is what the design claims rather than what a reader hopes.
+  When the proxy's timeout tears the upstream down, the worker is **returned by the host, not by the
+  handler** — assert the pool's active-process count falls back, and assert `feed_resync_required` does
+  **not** increment, because on this path the handler never resumes to count it. ⛔ **Assert nothing
+  about `feed.close`, and nothing about the cursor:** both live in a generator the primitive abandoned
+  mid-`yield`, and a GREEN that named them would be asserting a step that does not execute. The healthy
+  stream misses nothing throughout — that is the leg's actual subject, one connection closing and no
+  others.
+- **RED — no stall bound:** remove the tick comparison → leg (a)'s worker stays blocked until the
+  kernel gives up, and every such client holds one of `pm.max_children` for minutes; with enough of them
+  the snapshot and the health endpoint queue behind the streams, which is R2's observable arriving
+  through a test rather than a host.
+- **Second RED — stamp the clock at the tick's END:** restore the comparison but assign the tick's
+  timestamp after the write loop → the difference is the 250 ms sleep for every input and the bound
+  fires for none; leg (a) regresses to the RED above **while the code still contains a stall check**,
+  which is the failure this test is really for.
+- **Third RED — check after the read:** move the comparison below the `SELECT`, and drive leg **(a)**
+  past [§ 6.7](#67-retention-and-purge)'s **60 s** outbox retention rather than merely past
+  [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound → the slow consumer's handler resumes, reads, and advances its cursor **over rows the purge
+  removed while it was blocked**, where the check-before-read placement would have ended the stream
+  instead; the client silently loses them. Assert on a `coord.round` in that window, which no gap check
+  can recover. ⚠ **It is leg (a), and an earlier revision of this RED named leg (b)** — which cannot
+  produce it: GREEN (b) four lines above rules that on the frozen path the handler *"ends nothing"* and
+  instructs the reader to assert nothing about the cursor, because the handler is suspended inside its
+  write and no line of the loop runs at all, so the moved comparison is never reached. A RED that
+  cannot be produced is a decoration ([canon #9](../../CLAUDE.md)), and this is the one guarding the
+  placement [§ 6.7](#67-retention-and-purge)'s retention argument rests on.
+- **Fourth RED — skip rows instead of ending the stream:** on resume, advance the cursor past what the
+  stalled handler could not write → a skipped `seat.delta` is caught by the plus-one rule at that seat's
+  next delta and costs a resync, but a skipped `coord.round` is caught by nothing
+  ([§ 8.3.3](#833-the-coordination-objects)): assert on the coordination message, which is the loss no
+  counter and no gap check can see.
 
 ### AT-D2-16 server-side closes write no wire events
 
@@ -3201,9 +5016,59 @@ and the gate on trusting the derived signal at all.*
   not merely that the status is non-200.
 - **GREEN — no revocation cache:** revoke a token mid-run and issue the next request immediately → it is
   refused on the first attempt, not after a TTL.
-- **RED:** cache the token row for 60 s → a revoked credential keeps reading the fleet for a minute, which
-  is a revocation that did not happen. **Second RED:** accept the `mzn_` token → the ingest credential
-  becomes a read credential, and every seat's token is now a fleet-wide read grant.
+- **GREEN — the stream re-checks:** open a stream under a valid MFA session, then expire the session (or
+  clear the user's enrolment) with the stream open → within **[§ 9](#9-read-side-authentication)'s enforcement bound — the auth interval plus one loop PASS**, which on this leg's draining consumer is that section's case (a) figure, and that section owns the bound for every other consumer, including the case it does not cap — the stream's last message is
+  `feed.close{reason:"session"}` and it ends; the client's reconnect is refused as the browser-session
+  case above is. Assert the **close reason** and the tick bound, not merely that the stream ended.
+- **GREEN — the store goes away under an OPEN stream, and the stream ENDS saying so:** open a stream
+  under a valid MFA session, then make the store's reads **fail rather than answer**. ⚠ **Two runs,
+  because the instrument decides WHICH read fails**: drop the connection the handler holds, so both
+  reads go — the ordinary outage — and then revoke `SELECT` on the session table **alone**, which is
+  [§ 9](#9-read-side-authentication)'s split case, where the outbox read keeps succeeding and only the
+  re-check fails. **The assertion below holds in both runs and only the BOUND differs**, because the
+  two runs fail different reads: in the first the tick read fails, so the close arrives within **one
+  250 ms tick**; in the second only the re-check does, so it arrives within **the auth interval plus
+  one loop pass** ([§ 9](#9-read-side-authentication)), which on a draining consumer is that section's case (a)
+  figure. In both runs the stream's
+  **last message is `feed.close{reason:"unavailable"}`** and the stream **ends**. ⛔ Assert the bound [§ 9](#9-read-side-authentication) states and not the flat auth interval, which reds one loop tick past it against a correct build; and drive both runs with a consumer that DRAINS, because on a slow one the bound is the auth interval plus the stall bound and this leg would red against a correct handler. ⛔ Assert the reason,
+  and assert it is a member of [§ 8.3](#83-the-websocket-delta-feed)'s **declared** set — that row
+  owns the members and their number and this leg does not restate either — so an implementation that
+  invents a member for this posture reds here; and assert it is **not** `session`,
+  because closing is correct and calling it a session is not.
+- **GREEN — recovery is a RECONNECT, not a resumed cursor:** restore the store, let the client re-open
+  on [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s backed-off cadence, and assert the new
+  stream's **first** message is `fleet.health` carrying `db` at the value
+  [§ 8.2.4](#824-the-fleet-health-object) declares for a readable store — that table owns the
+  vocabulary and this leg does not restate it — followed by
+  [§ 8.4](#84-snapshot-then-deltas)'s snapshot-then-deltas. ⛔ **Assert that no row predating the
+  reconnect arrives**: nothing held a cursor across the outage, so a build that resumed one is
+  delivering history this feed does not keep
+  ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). This leg is producible in **both**
+  runs above, which is why it is stated once here rather than inside either.
+- **RED — a failed READ classified as *invalid*:** land a read that failed on the *invalid* branch →
+  the stream ends with `feed.close{reason:"session"}` and every viewer on the fleet is sent to a
+  sign-in page that cannot be completed, because authenticating reads the same tables the check just
+  failed on. The close is right and the reason is wrong, and on this surface the reason is the whole of
+  the render.
+- **RED — a failed read that matches no branch:** classify only a lost connection as *did not answer*
+  and drive run 2's `REVOKE SELECT` → the permission exception matches nothing, the primitive's
+  `catch (Throwable)` swallows it ([§ 8.3](#83-the-websocket-delta-feed)), and the stream ends
+  **silently with no `feed.close` at all**. ⛔ Assert the last **message**, never merely that the
+  stream ended: this RED and the GREEN above are indistinguishable by *did it end*.
+- **Discriminating control for the reason:** the *"the stream re-checks"* leg above, run with the store
+  **readable** and the session genuinely expired, must still produce `feed.close{reason:"session"}`
+  inside the same bound — so an assertion of `unavailable` is known to be made by an instrument capable
+  of seeing a `session` that is owed, rather than passing because this build sends one reason for
+  everything.
+- **RED — the in-memory re-check:** implement the tick's re-check against the session the request
+  already loaded rather than re-reading it → it can never fail, so the GREEN above passes only because
+  nothing was checked; assert the same expiry with the stream open and see it survive.
+- **Second RED:** cache the token row for 60 s → a revoked credential keeps reading the fleet for a minute, which
+  is a revocation that did not happen. **Third RED:** accept the `mzn_` token → the ingest credential
+  becomes a read credential, and every seat's token is now a fleet-wide read grant. **Fourth RED —
+  authorize once:** check the session at connect only → an expired session keeps streaming every seat's
+  activity until the browser is closed, which is the revocation-that-did-not-happen this test exists to
+  refuse, on the surface that used to be exempt from it.
 
 ### AT-D2-20 catching up is not current, and not stale
 
@@ -3345,6 +5210,98 @@ the whole reason this test was not simply removed with its behaviour.
 - **Discriminating control:** a live seat in the same fleet is unaffected at every step — still
   rendered, still counted, still fetchable.
 
+### AT-D2-24 a coordination object names an agent, and never a desk
+
+⚠ **Its input is a webhook delivery rather than an event fixture** — the fixtures above are wire events
+and this test's producer is not the reporter. It drives [D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)'s
+receipt route with signed deliveries and reads what reaches a connected client
+([§ 8.3.3](#833-the-coordination-objects)).
+
+- **Build:** one folded, live seat and a connected client. Deliver one signed `issues.opened` and one
+  signed `issue_comment.created` for a thread whose body lines and labels name **two** agents: one that
+  matches no `seat_id` on the fleet, and one that matches a `seat_id` byte for byte.
+- **GREEN — the objects arrive whole:** a `coord.thread` and a `coord.round`, each carrying exactly the
+  members [§ 8.3.3](#833-the-coordination-objects) declares and no others; `participants` carries both
+  names **as written** with `all` unexpanded, and the round's `targets` carries the resolved fan-out.
+- **GREEN — nothing about the seat moved:** the seat's `state_version` is unchanged, no `seat.delta`
+  was published, and its `render_state`, `activity_state`, `badges` and `task` are identical to their
+  pre-delivery values ([§ 4.8](#48-what-may-never-mint-a-state)).
+- **⛔ RED — the invented join:** resolve either name to a desk — by equality with `seat_id`, by prefix,
+  by install — and publish a desk reference on either object → a line drawn to a desk no fact names,
+  which is what [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) row 6 prices as
+  *derived correctly and joined to nothing*. **Its control is the byte-identical name:** the one that
+  DOES equal a `seat_id` must be published exactly as unresolved as the one that does not, because the
+  equality is a coincidence this plane cannot check. ⚠ **This RED and this control SURVIVE the join
+  landing on `card#9296` unchanged, and that is the point of keeping them here**: a declaration
+  resolving is not this plane publishing a desk, and the byte-identical seat is still undeclared.
+- **GREEN — the DECLARED seat resolves, and the resolution is the consumer's.** Add a third seat to
+  the fleet whose heartbeat declares `protocol_agent_name` equal to the round's `from`, with
+  `protocol_agent_name_check: "checked"`. The snapshot and that seat's delta carry both members
+  ([§ 8.2.1](#821-the-seat-state-object)); the `coord.round` that reaches the client is **byte-identical
+  to the one it carried before that seat existed** — same members, still no desk reference — so
+  everything needed to reach the desk is on the client and nothing was pre-joined for it.
+- **⛔ Second RED — the state that must not resolve:** leave that seat's `protocol_agent_name`
+  byte-identical and flip `protocol_agent_name_check` to `disagreed`, then to `undeclared`, and let a
+  consumer's join reach the desk anyway → a name whose own check FAILED has been ratified by the
+  consumer of the check, which is `card#7957`'s finding arriving through the mechanism built to close
+  it. The two members are read together or not at all
+  ([§ 8.3.3](#833-the-coordination-objects) rule 2).
+- **⛔ Third RED — the roster the server does not have:** re-check the declared name server-side
+  against anything — a list, a config, the other seats — and publish the result → a second identity
+  surface with no better information than the one on the declaring box, which is option (b) of
+  `card#7957` re-minted inside option (d).
+- **⛔ Fourth RED — the coordination fact that mints a state:** let `declares_close`, a carrier or a
+  participant raise a badge, a `blocked`, or any `render_state` → a second source for a rendered state
+  whose one source is `attention.request` ([§ 4.4](#44-activity-states-every-entry-and-exit-edge),
+  [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on) finding C).
+- **Fifth RED — the field that is not there:** publish the delivery digest, a `converged` flag or a
+  round number on either object → each is a row of § 8.3.3's not-published table, with the finding that
+  killed it.
+- **⛔ Sixth RED — the duplicate a consumer picks between:** add a fourth seat to the same install
+  whose heartbeat declares the same `protocol_agent_name` as the declared seat above, also `checked`,
+  and let a consumer's join reach either desk → the name resolves to whichever seat the map was built
+  from last, which is a pick by arrival order and the guessed desk
+  [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line) clause 1 forbids. The round that reaches
+  the client is still byte-identical; the name resolves to **nothing** and is reported with the reason
+  `duplicate_declaration`, never `no_declaring_seat` ([§ 8.3.3](#833-the-coordination-objects)
+  rule 1).
+- **⛔ Seventh RED — the duplicate the filter hides:** flip that fourth seat's
+  `protocol_agent_name_check` to `disagreed`, its `protocol_agent_name` byte-identical and the
+  declared seat above still `checked`, and let a consumer's join reach the `checked` seat's desk → a
+  consumer that applied rule 2's filter before counting saw one resolving seat and picked it while a
+  second seat of the install still sends that name. The name resolves to **nothing** and is reported
+  `duplicate_declaration` — never `no_declaring_seat`, and never the `checked` seat's desk
+  ([§ 8.3.3](#833-the-coordination-objects) rule 1 counts every declaring seat before rule 2 runs).
+- **Discriminating control:** re-deliver both bodies with the signature broken. Nothing reaches the
+  feed at all (D1 § 18.8 step 3), which is what makes a GREEN above evidence that the receipt path ran
+  rather than that the test published its own objects.
+
+### AT-D2-25 a concurrent writer cannot strand a message behind a stream's cursor
+
+*The test for the outbox's use of [§ 6.5](#65-the-fold)'s visibility lag — the same defect
+[AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) catches on the fold's
+cursor, one table over, with a stream as the reader.*
+
+- **Build:** one open stream; two writers overlapping in time. Writer 1 inserts its `feed_outbox` row
+  (taking the lower `id`) and holds its transaction open; writer 2 inserts and commits; then writer 1
+  commits. Make writer 1's message a `coord.round`, because that is the one class no gap check can
+  recover. Drive it 20 times, as AT-D2-22 does, for the same reason.
+- **GREEN:** the stream delivers both messages, in `id` order, on every iteration — assert the **message
+  set** received, not the client's final seat state, which can match while a post was lost.
+- **RED — remove the visibility lag from the TICK:** drop the `created_at <= server_now - INTERVAL 2
+  SECOND` term from the read → a tick that lands between the two commits advances the cursor past
+  writer 1's lower `id`, and that post is **never delivered** to this stream: no counter moves and no
+  client detects it.
+- **Second RED — remove it from the CONNECT, which is the arm a tick-only test passes over:** restore
+  the tick's term and initialise the cursor with a bare `SELECT MAX(id)`, then **open the stream**
+  between the two commits rather than before them → writer 1's row is below the new stream's starting
+  cursor and is never delivered to it, while every already-open stream gets it and the test's other
+  assertions all pass. Assert on the newly-connected client's message set.
+- **Third RED — the early insert:** move a writer's outbox `INSERT` from the last statement before
+  `COMMIT` to the first, and hold the transaction longer than 2 s → the lag no longer covers the window,
+  and the same loss returns. This is the RED for the writer-side rule, which the query term alone does
+  not enforce.
+
 ---
 
 ## 12. Every number, and where it comes from
@@ -3374,6 +5331,7 @@ document.
 | Sweep cadence | 15 s | **Derived** — 5 % of the tightest deadline any time-derived transition has (the 300 s `stale` threshold), at 5,760 passes/day of two indexed range scans | [§ 2.1](#21-processes) |
 | `fold_lag` badge | 60 s | **Derived** — one heartbeat interval (D1 § 9.1): a seat a whole heartbeat behind in derivation has certainly missed an input, so the badge cannot fire on a healthy pass. Healthy value is ~1 s | [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) |
 | `fleet.fold = stalled` | 300 s | **Derived** — the `stale` threshold reused, so transport silence and derivation silence become visible at the same age and are comparable in one unit | [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation) |
+| Authored document size bound | **512 KiB** | **Chosen** — the console's write bound on one Tiled document (`App\Floor\FloorMap::MAX_BYTES`, card#9085), carried into this contract because the read surface serves what the console accepted. A CSV-encoded 1,200-tile layer is ~6 KB, so a room of a dozen layers is under a tenth of it, and the bound exists so a pasted document that is not a map fails on size before it fails on shape. Sixty-four times the 8 KiB feed message bound, which is the arithmetic behind the document never riding a message | [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) |
 | Fold batch size | 500 events | **Derived** — ~2.5 D1 batches (200-event cap), a few ms of row locks per transaction; ~70 min of one seat's ceiling traffic, so it binds only during a drain | [§ 6.5](#65-the-fold) |
 | Fold claim size | 8 seats | **Chosen** — small enough that a second worker partitions cleanly under `SKIP LOCKED`, large enough that a four-seat fleet is one claim | [§ 6.5](#65-the-fold) |
 | Purge batch / budget | 5,000 rows / 60 s | **Chosen** — bounded DELETEs keep the transaction and the binlog small; the wall-clock budget makes a purge that cannot keep up fall behind *visibly* (`purge_backlog_rows`) instead of holding a long transaction | [§ 6.7](#67-retention-and-purge) |
@@ -3383,18 +5341,23 @@ document.
 | Store per seat-day | **~9.7 MB** | **Derived** — 7.6 MB of `events` (10,420 × 732 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~136 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.54 / 1.6 / 6.8 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **1,828 B** typical, **5,572 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
-| Fleet snapshot | **7.6 KB** (4 seats) … **92 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
-| Snapshot pagination trigger | 200 seats (~366 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,171 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Seat-state object | **1,893 B** typical, **5,684 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Fleet snapshot | **7.9 KB** (4 seats) … **95 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
+| Snapshot pagination trigger | 200 seats (~379 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
+| Delta message | **323 B** typical, **6,333 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.33× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. Reverb's own configured maximum is **UNVERIFIED** (host not provisioned; closure: read the deployed `config/reverb.php`) and 8 KiB sits far below any plausible value | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.29× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta coalescing tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds one seat at 4 msg/s | [§ 8.3](#83-the-websocket-delta-feed) |
+| Stream tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds a stream's delivery at 4 batches/s, and merges nothing (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed heartbeat | 15 s, dead at 45 s | **Derived** — the same assert-and-alarm shape as D1's 60 s/300 s heartbeat pair, scaled to a channel whose round trip is milliseconds; 3× is the same multiple D1's flusher-lock staleness uses against its own cadence | [§ 8.3](#83-the-websocket-delta-feed) |
-| Feed outbound queue | 256 messages / 512 KiB | **Derived** — 256 messages is ~49 s of a 50-seat fleet's ceiling traffic: long enough that an ordinary hiccup drains, short enough that a wedged client is noticed within a minute | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
+| Stream stall bound | 45 s | **Derived** — the feed's own dead-feed figure (the heartbeat row above) applied server-side: the handler gives up on a client that has not drained a tick for as long as a client gives up on a server that has sent nothing (card#9287; the earlier 256-message / 512 KiB queue bound had no referent under SSE) | [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) |
+| `feed_outbox` retention | 60 s | **Derived** — the stall bound plus one heartbeat interval, so a stream inside its bound finds every row it may still deliver | [§ 6.7](#67-retention-and-purge) |
+| Stream session re-check | 15 s | **Derived** — the heartbeat tick, reused so the stream has one clock; a per-message check would be a session read per delta for a property that moves once a day. ⚠ **This is the INTERVAL and not the enforcement bound**, and reading it as one is how the bound stood on the record ~4× short: the check fires on a loop pass, and a pass is bounded by the stall bound above rather than by the tick, so the bound is this interval plus that one — [§ 9](#9-read-side-authentication) states it and owns it | [§ 9](#9-read-side-authentication) |
+| `feed_outbox` row cost | **~400 B** | **Derived** — the measured 323 B typical delta ([§ 8.3.1](#831-worked-delta)) carried whole in `message`, plus the row's own `id`, `created_at`, `t` and `install_id` columns and InnoDB's per-row overhead | [§ 6.7](#67-retention-and-purge), [§ 6.8](#68-sizing) |
+| `feed_outbox` lingering size | **~7.5 MB** | **Derived** — one hour of ceiling traffic between hourly purge passes: 8,980 × 50 ÷ 24 = 18,708 rows (plus 240 heartbeat rows, immaterial) × ~400 B | [§ 6.8](#68-sizing) |
+| Outbox visibility lag | 2 s | **Derived** — equal to the fold visibility lag above: the same primitive for the same reason, a reader must not advance past an id whose transaction has not committed | [§ 8.3](#83-the-websocket-delta-feed) |
 | `fleet.sweep = stalled` | 60 s | **Derived** — four sweep passes at the 15 s cadence: one missed pass is a hiccup, four is a dead daemon, and the fleet object needs a threshold it can render ([§ 8.2.4](#824-the-fleet-health-object)) | [§ 2.2](#22-fail-posture-per-path) |
 | Fold visibility lag | 2 s | **Derived** — ~3 orders of magnitude above the ingest transaction (one multi-row `INSERT` of ≤ 200 events plus one `batches` row), which is what makes "the transaction that assigned this id has finished" true rather than hoped; an ingest transaction past 2 s is a slow-query alarm in its own right | [§ 6.5](#65-the-fold) |
 | Compaction ceiling | 15 min | **Derived** — the ordinary orphan ceiling reused, because a compaction is a harness operation of the same order as a tool call and reusing the number keeps one home for it | [§ 4.6](#46-every-open-fact-has-a-ceiling) |
@@ -3405,9 +5368,9 @@ document.
 | Read token expiry | 90 days | **Chosen** — quarterly rotation; a forgotten token dies. Multiple active tokens make rotation issue-then-revoke with no overlap to specify | [§ 9](#9-read-side-authentication) |
 | Rate limit, read token | 120 req/min | **Cited** — D1's per-seat request ceiling, reused so the fleet has one number; ~120× the watchdog's real cadence | [§ 9](#9-read-side-authentication) |
 | Rate limit, browser session | 600 req/min | **Chosen** — ~10 req/s, above any human interaction and far below anything the store notices | [§ 9](#9-read-side-authentication) |
-| Task-title tier staleness | 30 min | **Chosen, provisional** — a card title older than half an hour is likely describing the previous task; re-derived once the board producer exists and its poll cadence is known ([§ 14](#14-open-questions-for-the-review-loop) item 3) | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
-| Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h (`call_closed_by_wire`), any server ceiling in 24 h and constant-server over ≥ 10 (`attention_resolved_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
-| MySQL version floor | 8.0.12 | **Cited** — DOCS-CITED (MySQL 8.0 manual) for `SKIP LOCKED`, `ALGORITHM=INSTANT`, `JSON`, `DATETIME(3)`; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
+| Task-title tier staleness | 30 min | **Chosen** — six × the **5-minute board poll cadence** (`BOARD-TASK.md § 3.2`, and [§ 2.1](#21-processes)), so five consecutive failed polls are tolerated before a title is dropped, with a hard floor of *more than two cadences* because at two a single transient failure clears every tier-1 title on the floor at once. ⛔ **Chosen and not Derived, and the distinction is this table's own**: the cadence this figure is a multiple of is itself a judgement call, made in another document, so the figure is computed from no number in this table and none in D1. ⭐ **Re-derived on `card#7582` as this row previously asked, and the figure did not move — only its basis did**, which is evidence the original judgement was sound rather than evidence nobody checked; **it is re-derived again whenever the cadence moves**, which is the standing homework this row now carries in place of the one it discharged | [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here) |
+| Predicate criteria | constant-`false` over ≥ 5,760/7 d (`seat_live`), constant over ≥ 5,760/7 d (`activity_recent`), 0 % or 100 % over ≥ 200/24 h (`turn_clean`), ≥ 5 % server-closed over ≥ 1,000/24 h, over the last COMPLETED window (`call_closed_by_wire`), any server ceiling in 24 h and constant-server over ≥ 10 (`attention_resolved_by_wire`), constant-`false` for 2 consecutive passes (`ingest_receiving`, `fold_current`) — one clause per row of [§ 5](#5-server-side-predicates-and-their-controls), transcribed rather than summarised | **Chosen provisionally** — each is reachable by its own predicate's evaluation rate, which is the property review must preserve; every one is re-picked from the first week of live per-predicate counts | [§ 5](#5-server-side-predicates-and-their-controls) |
+| Store version floor | 11.8.6 | **Ruled** — operator, card#7523 (2026-09-09), replacing MySQL ≥ 8.0.12. The features under it are DOCS-CITED to the MariaDB Knowledge Base: `SKIP LOCKED` (10.6.0), `ALGORITHM=INSTANT` (10.3.2/10.4 by operation), `DATETIME(3)`, and `JSON` as a `LONGTEXT` alias rather than a binary type; **verified at provisioning** | [§ 6.1](#61-deployment-posture) |
 | Redis test databases | 11 / 10 | **Chosen** — against the fleet's published claims (14/15, 13/12, 15/14, 2/3 on roundtable #349) and clear of the `0`/`1` defaults every unpinned seat gets | [§ 6.2](#62-database-names-pinned-and-published) |
 
 **Three figures rest on an estimate and say so at their definition:** everything derived from D1's
@@ -3424,22 +5387,25 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 
 | Check | What the tool re-derives | Status |
 |---|---|---|
-| **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be | **tool-checked** |
-| **Field table ↔ worked examples, both directions** | the **74** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
+| **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here — **and the stream's stall bound** | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be. And [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, held equal to [§ 8.3](#83-the-websocket-delta-feed)'s dead-feed figure, to [§ 6.7](#67-retention-and-purge)'s `feed_outbox` retention less one heartbeat interval, and to its two copies that cannot point at it: the `tick_started > N s` comparison in [§ 8.3](#83-the-websocket-delta-feed)'s handler fence, and this section's `Stream stall bound` row, its figure bolded or not — each copy with a control that reds when it cannot be found or read (card#9326) | **tool-checked** |
+| **Field table ↔ worked examples, both directions** | the **76** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
 | **DDL `ENUM` member reachability** | every member of every `ENUM` in [§ 6.4](#64-ddl), counted across the rest of the file; a member occurring only in its own declaration is a member no path can produce | **tool-checked** |
 | **Cross-document enum containment** | D2's `abort_reason` / `close_source` / `resolution` / `resolution_source` extension sets against D1's declared sets, with the counts stated in the DDL comments | **tool-checked** |
-| **Feed message-type closure** | every `t` value named anywhere against [§ 8.3](#83-the-websocket-delta-feed)'s table | **tool-checked** |
+| **Feed message-type closure** | every use of a message type in a namespace [§ 8.3](#83-the-websocket-delta-feed)'s own table declares — the namespaces are the ROOTS of that table's types, re-derived per run rather than listed in the tool, and whether an occurrence is a *use* is decided by what this document DOES with the token (a whole token, so a path or a host name is not one; carrying a payload object rather than a scalar value) instead of by whether it is written in backticks, so § 8.3's and § 8.4's fences are inside the population | **tool-checked**, with **two holes declared rather than closed**, both reported on every run: a namespace with **no row in that table at all** is invisible, because the table it would be held against never names it; and a message name written in the `name: scalar` field form reads as a field and is skipped — that skip is **counted** beside the population, and one occurring **inside a fenced block is a failure**, which bounds the hole to prose |
 | **Counter closure** | every counter named in prose or an AT against [§ 7.1](#71-d1s-server-side-counters--where-they-live) / [§ 7.2](#72-this-planes-own-counters-and-badges), including the `Stored` and `Exposed` columns; that a counter naming **fleet health** as its surface is carried by [§ 8.2.4](#824-the-fleet-health-object)'s `counters` member, because a surface that does not carry the thing is no surface; D1 § 12.7's population against § 7.1; and the **count** of that population as this document states it in prose | **tool-checked** |
 | **[§ 12](#12-every-number-and-where-it-comes-from) ↔ definition site** | each row's number as a **whole numeric token** at the section it cites, with its unit beside it where this table gives one; then the same match **perturbed** to prove it can fail for that row | **tool-checked**, with its own residue printed — not "checked" flatly, because an earlier version of this check was a substring search over the whole cited section and could not see a two-digit value change at all. Numbers for which some other value would also have matched — one- and two-digit values in sections full of them — are listed individually on every run rather than counted as passes |
 | **Appendix A** | its three stated counts against its own row counts; the **split** between the rows D1's obligation markers reach and the manual residue, re-derived per row; every D1 section containing a literal `D2` against the sections Appendix A cites **from a D1-attributed position only** — the D1-source column, an explicit `D1 §`, or a link into D1, never the "Discharged in" column, whose `§ n` links are this document's own sections and once satisfied the requirement by collision; and, since [§ 14](#14-open-questions-for-the-review-loop) item 13 landed, that no D1 section mentions D2 **without marking which sentence is the obligation** — the S29 shape, which a section-level check reported clean over | **tool-checked**, with a stated limit: a row whose D1-source column names no section number cannot be reached by any marker convention, so the tool re-derives that residue per run and prints it by name rather than folding it into a pass count |
 | **Fixture arity** | a fixture described as "§ N's *k* events" against § N's own row count | **tool-checked** |
 | **Retention chain** `8 < 10 < 14` | the three numbers extracted from their one home each, as an inequality | **tool-checked** |
 | **§ 10's trace** | delta count and transition count re-derived from the table's own columns | **tool-checked** |
+| **The declared agent-name join, across the two identity surfaces** | the `protocol_agent_name_check` value set, re-derived from [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s field-table row and set-differenced against [§ 6.4](#64-ddl)'s `ENUM` and [§ 8.2.1](#821-the-seat-state-object)'s row — three homes for one set, two documents, and a rename on any of them reds; **and** that neither coordination object in [§ 8.3.3](#833-the-coordination-objects) declares a field naming a desk, which is the refusal the join had to survive — as a **shape** match — the segment says *seat* or *desk* — over every dot- and bracket-separated segment of every field row those two tables declare, beside name-equality against the three members [§ 8.2.1](#821-the-seat-state-object) declares today, so a `coord_thread.desk` or a nested `…[].seat_ref` reds rather than passing under a name the tool was never told; and with the control's own denominator re-derived from the two tables' row counts rather than written in the tool | **tool-checked** |
+| **`feed.close` reason closure, and the ruling the reasons carry** | the reason set re-derived from every `feed.close{reason:"…"}` this document writes, held against [§ 8.3](#83-the-websocket-delta-feed)'s declaring row **and against the size that row states**; then the three sites that state card#9287's close rule — [§ 2.2](#22-fail-posture-per-path)'s two stream rows, [§ 9](#9-read-side-authentication)'s re-check and [§ 8.3](#83-the-websocket-delta-feed)'s handler loop — each required to name `feed.close{reason:"unavailable"}`, so a site that reverts to a stream surviving the outage stops naming it and reds; that token is read off the declaring row by its member's description rather than written into the tool, and **every member the row declares** must be written by a pseudocode fence inside [§ 8.3](#83-the-websocket-delta-feed), the member set re-derived from the row and held to the size it states — so a member declared with no close in the buildable loop reds, whatever it is called (card#9326) | **tool-checked** |
+| **The enforcement bound's owner figures** | [§ 9](#9-read-side-authentication) case (a)'s *under* figure, re-derived as the auth interval plus [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, and its draining figure, re-derived as the auth interval plus one stream tick — the interval and the tick read from [§ 8.3](#83-the-websocket-delta-feed)'s handler — with a control that reds when any input cannot be read. ⚠ **Copies of either bound elsewhere are not searched for**: every site other than the owners and the two inline stall-bound copies the *Byte figures* row above holds points at its owner and carries no figure, and that deletion — not a scanner — is what prevents a drifted copy (card#9326) | **tool-checked** |
 | The store sizing model (row costs, index entry sizes) | — | **hand-verified**: it needs a provisioned host to measure, and [§ 6.8](#68-sizing) says so |
 | Every **Cited** row's agreement with D1 | — | **hand-verified**: the tool checks the number's presence at its D2 home, not its truth at D1's |
 
 **What the tool deliberately does not do.** It does not check prose for meaning, it does not verify
-MySQL behaviour (no host exists), and it does not re-derive the D1 obligations that carry no marker.
+MariaDB behaviour (no host exists), and it does not re-derive the D1 obligations that carry no marker.
 Where a guard class could not be mechanised without implementing the system, the tool implements the
 nearest checkable invariant and **says so in its own output** rather than reporting a clean over a
 population it never measured.
@@ -3462,10 +5428,10 @@ review can reverse it deliberately rather than discover it later.
 | 6 | **Visit in `events.id` order behind a 2 s visibility lag, apply with `(event_time, seq_epoch, seq)` last-write-wins** | order the cursor by `(seq_epoch, seq)` | `seq` can have permanent holes ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)), so a cursor over it can wait forever for an event that will never arrive. `events.id` is **not** gapless and the cursor does not need it to be — what it needs is that no row at or below it becomes visible afterwards, which the lag buys for the reading advance and a guarded write buys for the purged-window one ([§ 6.5](#65-the-fold)) | three `applied_*` columns on every projection row (~40 B), and derivation is ≥ 2 s behind the wire |
 | 7 | **The comparator includes `seq_epoch`** | `(event_time, seq)` exactly as `D2-MUST` #4 words it | `seq` restarts at a new epoch, so the literal two-part key is not a total order across a reset. The three-part key reduces to it whenever the epoch is constant, which is every comparison but one | none functionally; it is a wording divergence from D1 and is filed as such ([§ 14](#14-open-questions-for-the-review-loop) item 4) rather than left to be discovered |
 | 8 | **The feed's ordering key is a server-minted `state_version`, not `(seq_epoch, seq)`** | order deltas by the wire key | State transitions are also minted by rules with **no wire event** — orphan closes, staleness, ceilings, quiescence. Those carry no `seq` and there is no honest value to invent. A `seq`-ordered feed could not sequence precisely the transitions that fire when a seat goes quiet | two ordering keys in the system, which is why [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq) states the division explicitly and the snapshot carries the wire key as provenance |
-| 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
-| 10 | **The live feed is browser-only; machine consumers poll REST** | authenticate the socket with an `mzr_` token too | A long-lived socket needs revocation *on an open connection*, which is a mechanism nobody has asked for; the known machine consumer's decision cadence is minutes | a future consumer needing sub-second fleet state gets polling latency; reversing this means specifying socket re-authorization, not opening a port |
-| 11 | **REST carries the compatibility discipline; the WebSocket does not** | apply `docs/VERSIONING.md § Wire compatibility` to both | Only REST has a consumer that upgrades on someone else's schedule. An N/N-1 window on a channel whose two ends ship in one act is an obligation nobody can exercise, and therefore one nobody maintains | if the delta feed ever gains an independent consumer this is wrong — which is a checkable condition, stated in [§ 8.1](#81-two-surfaces-two-compatibility-postures) as the trigger |
-| 12 | **`events` is not partitioned** | RANGE partition on `received_at` for O(1) purge by `DROP PARTITION` | MySQL requires every unique key to contain every partitioning column, so `uq_dedup` would become `(seat_ref, event_id, received_at)` — under which a re-sent event on a later day no longer conflicts and **`D2-MUST` #3's dedup silently stops working**. A cheap purge is not worth the guarantee it would break | purge is bounded `DELETE`s with a wall-clock budget instead, and `purge_backlog_rows` says when that stops keeping up |
+| 9 | **Resync per seat on a gap; no server-side delta replay buffer** | keep a bounded per-connection replay buffer and re-send the missing range | A replay buffer is a second stateful copy of recent history whose correctness must be maintained against the store, to save a request that costs less than the buffer's own memory (~1.7 KB for one seat). `feed_outbox` (card#9287) is not that buffer: a stream never starts below the head it connected at and `Last-Event-ID` is never written ([§ 8.3](#83-the-websocket-delta-feed)) | a gapped client makes one extra HTTP request. `feed_gap_detected` measures how often |
+| 10 | **The live feed is browser-only; machine consumers poll REST** — ⚠ **the reason changed on card#9287 and the decision did not** | authenticate the stream with an `mzr_` token too | Until card#9287: a long-lived socket needs revocation *on an open connection*, which was a mechanism nobody had asked for. Since: the stream re-checks its session every 15 s ([§ 9](#9-read-side-authentication)) and could re-check a token the same way, so the blocker is gone — and admitting machines is an authorization ruling with its own costs (a worker per consumer, a rate limit that means nothing on a stream), and the operator ruled it **no, for now**, on 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15) | a future consumer needing sub-second fleet state gets polling latency, and that need reopens item 15; reversing this is one row here, one tick check and a new ruling — not a mechanism |
+| 11 | **REST carries the compatibility discipline; the stream does not** | apply `docs/VERSIONING.md § Wire compatibility` to both | Only REST has a consumer that upgrades on someone else's schedule. An N/N-1 window on a channel whose two ends ship in one act is an obligation nobody can exercise, and therefore one nobody maintains | if the delta feed ever gains an independent consumer this is wrong — which is a checkable condition, stated in [§ 8.1](#81-two-surfaces-two-compatibility-postures) as the trigger |
+| 12 | **`events` is not partitioned** | RANGE partition on `received_at` for O(1) purge by `DROP PARTITION` | MariaDB requires every unique key to contain every partitioning column, so `uq_dedup` would become `(seat_ref, event_id, received_at)` — under which a re-sent event on a later day no longer conflicts and **`D2-MUST` #3's dedup silently stops working**. A cheap purge is not worth the guarantee it would break | purge is bounded `DELETE`s with a wall-clock budget instead, and `purge_backlog_rows` says when that stops keeping up |
 | 13 | **`data` stays opaque JSON; the fold projects every field the state model reads** | generated/stored columns or functional indexes over `data` | One home per fact, and a projection change needs no `ALTER` on the largest table — just a rebuild. Indexing into a JSON column would make the log's shape part of the query plan | the projections must be kept in step with D1's field tables, which is what [AT-D2-10](#at-d2-10-rebuild-equals-fold) and the fixtures are for |
 | 14 | **ULIDs stored as `CHAR(26) ascii_bin`** | `BINARY(16)` | 10 B/row cheaper is ~0.1 MB/seat/day against every diagnostic query needing a conversion function, on a store whose total is single-digit gigabytes. Legibility wins where storage is not scarce | ~1.4 % of the store |
 | 15 | **Integer surrogate keys (`seat_ref`) on every hot table** | natural keys (`install_id`, `seat_id`) everywhere | ~76 B against 4 on every event row *and* in every index entry — the one place in this schema where the storage argument actually binds | one join to render a seat name, on a table with tens of rows |
@@ -3478,7 +5444,7 @@ review can reverse it deliberately rather than discover it later.
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
 | 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
 | 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
-| 25 | **The task-title merge is specified; the producers of tiers 1 and 2 are not** | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly. [§ 14](#14-open-questions-for-the-review-loop) item 3 is the unblock |
+| 25 | **The task-title merge is specified here; its producers are not** — ⚠ **narrowed since, three times**: tier 2's producer was designed at [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer); then ⭐ **tier 2 itself was RETIRED by operator ruling, card#9234 (2026-09-10)**; and then tier 1's board poller was designed too, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (`card#7582`, ratified 2026-09-12). ⇒ **this row's decision stands and its waiting is over**: every producer is designed OUTSIDE this document, which is the decision, and what this document gained is the store column and the merge ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), [§ 6.4](#64-ddl)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly — tier 1 is designed and unbuilt rather than unspecified, and `BOARD-TASK.md § 10` names the three conditions that keep it dark. ⛔ Retiring tier 2 did **not** retire the coordination producer: it removed the second consumer of one producer, and [§ 8.3.3](#833-the-coordination-objects) is the first one, unchanged |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
 | 27 | **The guard asserts the resolved value (`config()`), not the declaration** | assert the `phpunit.xml` contents | All three mechanisms above leave the declaration correct. Reading `getenv()` would have shown `force="true"` "working" in the measurement that disproved it | one extra bootstrap assertion, and a hostile-export run in CI |
 | 28 | **`DB_CONNECTION` is deliberately not forced** | force every DB variable | Forcing a variable a CI matrix exports to select a backend silently re-runs every leg on the wrong backend: green, testing nothing. Nothing in this repo does that today, and the absence is commented as load-bearing so nobody "fixes" it | if a future matrix does select by export, this comment is what stops the next person forcing it |
@@ -3491,6 +5457,19 @@ review can reverse it deliberately rather than discover it later.
 | 35 | **`retired` is a `render_state` member, and a retired seat leaves the read surfaces AT `retired_at`** — ⚠ **REVERSED by operator ruling, card#9078 (2026-09-09)**; this row previously decided the opposite and the alternative column is where that reading now lives | keep the seat in the snapshot for the 14-day retention window, rendered `retired` with its `at` / `by` / `reason` — the shape this row chose until the ruling | The window was defended as keeping *"we removed it"* distinguishable from *"it went quiet"*, and that is false on this document's own render table: a quiet seat is visibly present and degraded, so a removed seat being gone is maximally different from it. [§ 4.5](#45-link-states)'s "never vanishes between two refreshes" is a guard against a client INFERRING a removal from missing data, and an operator retirement is an announcement, not an inference — so the invariant is fully served by removing on the explicit event | the retirement record has no rendered home, so the admin console gains one (card#9070) — better than a ghost desk: queryable, unbounded by a window, and it consumes no slot on a finite floor. And the removal path must now be exactly one thing: the announcement |
 | 36 | **A server counter never writes a member of D1's `degraded` array** | follow D1 § 12.7's `seq_gap` row literally and raise `lossy` | D1 contradicts itself here — § 9.3 declares `seq_gap` a server badge and *not* a member, § 12.7 and § 10.2 say the server renders the seat `lossy` — and § 9.3's reading is the one with a mechanism: `lossy` means the reporter discarded events *and counted them*, so a server-raised `lossy` with a zero counter beside it is a badge contradicting its own number | D2 carries its own `seq_gap` badge, so a consumer sees two members where D1's text implies one; filed as an amendment need ([§ 14](#14-open-questions-for-the-review-loop) item 12) |
 | 37 | **A D2 verifier ships with this document** | leave it to the build phase, as an earlier draft of [§ 14](#14-open-questions-for-the-review-loop) item 8 recommended | The review that produced this revision found four blockers and nineteen majors, of which ten were single-surface edits to multi-surface facts — a class a set-difference catches in milliseconds and a reader catches on the third pass, if ever. Deferring the guard until after the facts had been fixed by hand would be deferring it past the moment it was most needed | one more script to keep true, and every figure in this document is now a figure a change must move in all its homes at once |
+| 38 | **The floor map is SERVED AT RUNTIME from the admin console's store, on a surface of its own ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)); the fleet plane still publishes no map member, and the seat→desk binding is still the whole of what it declares for a floor** ([§ 8.2](#82-rest), [§ 8.2.1](#821-the-seat-state-object)) — ⚠ **REVERSED by operator ruling, card#9208 (2026-09-12)**; this row previously decided the opposite — *a build artifact of the client, never served at runtime* — and the alternative column is where that reading now lives, beside the two shapes the first ruling also declined | **the first ruling's shape (2026-09-09)**: the map is a build artifact shipped with the client, never served, and a floor edit is a redeploy; **(c)** the map riding the snapshot as an additive member; **(a′)** a map endpoint under `/api/fleet/` rather than under a prefix of its own | The reason the first ruling was taken — a map that changes is a design act, not a runtime event — was answered by the operator at the product level: floors ARE to be configured at runtime, separately, and the scope widened from a map of desk slots to **room design** — walls, furniture, the layout itself — which is authoring, and authoring wants a save to take effect without a deploy. That is a reason that was not on the table on 2026-09-09, which is the bar [FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 16 set for a reversal. (c) is still refused for the reason it was refused then — bytes that change on a designer's schedule on every snapshot of every seat, and a watchdog paying for furniture; (a′) is refused because an authored document on the fleet plane looks like something the fleet reported ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) | **Floor layout leaves version control** — no diff, no review, no revert and no blame for free — and the answer to that is designed rather than defaulted: [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s append-only revisions give back three of the four and say which one they do not. A second irreplaceable population joins `events` in the store ([§ 6.10](#610-durability-posture)). And the read plane gains a surface, a compatibility posture ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) and two feed messages, each priced in § 8.7 |
+| 39 | **The coordination objects are first-class objects on the existing feed, not members of the seat object** ([§ 8.3.3](#833-the-coordination-objects)) | a `coord` member on [§ 8.2.1](#821-the-seat-state-object)'s seat object, replicated onto each participant's desk | A thread spans desks and its participants may name agents no desk holds, so a per-seat copy is one fact with N homes, free to disagree with itself and free to make a seat object's size a function of another plane's traffic. The ruling's own words are that **the thread is the object on the wire**, and [§ 4.8](#48-what-may-never-mint-a-state) is where the corollary is written — a coordination fact touches no seat state — added there in this same change rather than asserted here, so the rule sits with the rules of its kind | a consumer wanting *this desk's threads* filters `participants` itself, over whatever the feed has delivered since it connected — over names that resolve to a desk only where that desk's seat **declared** the name (`card#7957`'s (d), built on `card#9296`; [§ 8.3.3](#833-the-coordination-objects)), and to no desk at all where none did |
+| 40 | **The coordination objects ride the delta feed only — no snapshot member, no fifth endpoint** ([§ 8.3.3](#833-the-coordination-objects)) | a `threads[]` member on `GET /api/fleet/snapshot`, or a coordination endpoint beside [§ 8.2](#82-rest)'s four | A snapshot is a read of stored state, and the coordination store is explicitly a later slice: [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish) hands both of its open decisions — the receipt route's counters, and the idempotency digest's retention — to *"the slice that designs the coordination store"*. Specifying a read over a store nobody has designed is how a guessed rule enters a contract | a client that has just connected draws no thread line until the next post on that thread. Priced at § 8.3.3 and carried as [§ 14](#14-open-questions-for-the-review-loop) item 14, rather than discovered when the floor is built |
+| 41 | **The building surface is its own REST prefix, `/api/building/*`, browser-only — not a fleet endpoint and not a snapshot member** ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | a fifth row in [§ 8.2](#82-rest)'s table; `installs[].map_version` and the layout as additive snapshot members; the layout inlined with the page and only the map fetched | An authored document is not a fact the fleet reported, and putting it on the fleet plane would make it look like one ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — and the fleet plane has a machine consumer with a support window that furniture must not be billed to. A snapshot member would put a designer's bytes on every seat of every snapshot, which is (c)'s cost under another name. Inlining the layout with the page while fetching the map from an endpoint gives one building two delivery paths, which is the *which of the two am I looking at* question that section refuses | two more routes behind one gate, and a client that fetches three things on connect instead of one. If a machine consumer ever wants the map, [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s third row says which row it moves to and what that costs |
+| 42 | **A client learns that a map or the layout changed from a feed notification carrying the new version, and then fetches — never by polling, never by `fleet.reload`, and the message never carries the document** ([§ 8.3](#83-the-websocket-delta-feed), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | poll `/api/building` on a cadence; publish `fleet.reload` on every save; carry the document on the message; a `private-building` channel of its own | Polling is N seconds of a wrong building per save and a request per client per N seconds for a document that changes on a designer's schedule. `fleet.reload` ends every open stream, and on a changed `feed_version` demands a reload, which is the right response to a deploy and the wrong one to furniture. The document cannot ride the message: 512 KiB against an 8 KiB bound. A channel of its own was one more subscription and one more authorization for two messages that already had a home — both rode every channel, as the heartbeat did, `room.map` too, because the client's subscriptions were the snapshot's installs and the room just drawn may have no seat reporting — and since card#9287 there are no channels: both ride the one fleet-wide stream ([§ 8.3](#83-the-websocket-delta-feed)), so the alternative has no referent | a client in polling mode (F1) sees neither message and holds the old building until it reconnects, stated in § 8.7 rather than met on a floor; and each save is one message on the one stream, which every client receives once and fetches on by version. **And `room.map` spends a property**: it is the one message carrying another install's `install_id` to every subscriber, so a per-install ACL, should [§ 14](#14-open-questions-for-the-review-loop) item 7 reopen, must filter it per subscriber — and the fleet-wide `fleet{}` every subscriber receives is that ACL's other unanswered question, recorded on that item beside it |
+| 43 | **Recovery is an append-only revision log: every save is a revision, a restore is a forward revision that copies an older one, a removal is a revision with no document, and nothing is ever purged** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | *the database is the record* — the current row and nothing else; a ring of the last N revisions; export-only, with the repository as the one history | The ruling owes an answer on recovery and refuses the default. The current row alone is what the console shipped with (card#9085) and it loses a layout on the first bad save. A ring bounds a population that is already bounded by a person pressing *save* and would purge exactly the revision someone wants back. Export-only puts the history where an operator has to remember to put it. Append-only with restore-as-forward keeps the log a log: nothing rewrites it, and *undo* is a row rather than a deletion | the store grows by one document per save, forever ([§ 6.7](#67-retention-and-purge)) — costed in § 6.11 and small; and **review is not recovered**, said in that section's own table rather than implied by the word *revisions* |
+| 44 | **One shipped default map, `resources/floor/default.tmj`, is what every room renders until it is authored — and there is no per-room shipped tier** ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed), [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) | `resources/floor/<install_id>.tmj` per room, then the default; seed the store from vendored files at first boot; no default — an unauthored room draws every desk in the overflow row | A per-room shipped file is a third answer to *where does this room's map come from* on top of *authored* and *default*, and the first question anyone asks of a wrong room is which of the three they are looking at. Seeding is a write-site with an *already seeded?* state of its own. No default draws a new install as a room full of overflow, which is legal and honest and a bad product for the case [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) exists to make good — provisioning an install renders it without a deploy | card#7341's floor-v1 map lands at **this** path rather than at the per-room `resources/floor/aimla.tmj` the reversed ruling declared for it, and nothing is renamed because the path moved before any file existed at either. ⛔ **Whether a map is vendored at it is not restated here.** An earlier revision of this cell said the map was *still that card's to author* and that the tileset pull *vendored no map*; both were false the day card#9269 authored one (`PupFuzz/mezzanine#115`), which is how a state written into a cell drifts. Re-derive it — `git ls-files resources/floor` — and note that `verify-floor.py` holds the tree to § 10.3's declared path in both directions, so a map landing at the old path reds by name in every state: CONTRADICTED while § 10.3 still declares the absence, MISPLACED after it — instead of the default, or beside it ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states the branches) |
+| 45 | **The floor plan — a room's position and a floor's hallway — rides the layout document: no new table, no new `authored_revisions.kind`, no new endpoint and no new message** ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed); the plan's shape is [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s, card#9292) | a `floor_plan` revision kind with a subject of its own; `GET /api/building/floors/{floor}/hallway`; a `floor.plan` message | A revision subject and an endpoint both need a key, and a floor's key is derived and moves when a lower-sorting room is added ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)) — a document keyed by it has to move when it does, its history split across subjects on every re-key. Inside the layout the plan has the layout's revisions, its restore, its diff, its `building.layout` and its one fetch for free, and the reason maps were given revisions (row 43) is satisfied by inheritance rather than by a second mechanism | `GET /api/building` carries every hallway inline on every connect, and the layout document — one revision per save — grows by every hallway toward the 512 KiB write bound: a building of many large hallways meets it at a save, refused by name. And a room map's write now reads the layout for the overlap check ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), a second table in that transaction |
+| 46 | **The feed's transport is native Server-Sent Events served by PHP-FPM — no daemon, no broadcasting package, no protocol library, no websocket-capable proxy** ([§ 8.3](#83-the-websocket-delta-feed)). ⭐ **Operator ruling, 2026-09-12, card#9287**, reversing the Reverb pin on the fact that the feed is one-way | **(1)** install Reverb by downgrading guzzle 8.1 / psr7 3.1 / promises 3.0 to their previous majors — a configuration the framework declares supported, inert for this app's code, reversible the day Reverb moves; **(2)** wait for Reverb to widen its pin — issues disabled, no branch, no timeline; **(3)** a hosted broadcaster — a data-governance decision made by default, the fleet's activity picture transiting a third party; **(4)** a fork of Reverb with the pin widened — verified to resolve and pass its own suite, costing a fork to rebase forever; **(5)** the runner-up, Centrifugo — Apache-2.0, current, a unidirectional SSE transport of its own, the one candidate with a verified byte bound on a slow consumer, costing a daemon | Every option on the card that priced the four was an answer to *how do we keep a Reverb-shaped thing*; the question was *what does the feed require*. It requires server→client only, a session-gated read, and per-message publish. SSE from the framework's own `eventStream()` is those three with nothing to install, nothing to supervise, nothing to proxy, an on-connect `fleet.health` that was previously *not built and cannot be*, and a revocation re-check that was previously the reason the feed was browser-only. What it costs is priced under § 8.3 — a worker per browser, an outbox write per message, ≥ 2 s of delivery latency, two host conditions that are requirements and not assumptions — and the two things on the card's F1 that this transport does **not** provide: a count-or-bytes backpressure bound and a `resync_required` close frame, replaced by a time bound and a last message ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). ⚠ **And a correction to that F1, recorded where the ruling is:** it said the bound was *provided by no candidate transport* — true of the four it priced, false of the field. Centrifugo bounds it (`centrifuge/writer.go:299-301`, `client.queue_max_size`, disconnect 3008) and Mercure bounds it (`localsubscriber.go`, `outBufferLength = 1000`), both read at source on the card's 2026-09-12 comment. The claim that survives is that no candidate provides exactly *256 messages or 512 KiB closed with `resync_required`* — and under SSE that exact shape has no referent anyway. The sentence lives on the card and nowhere in this repository (audited by grep for its shape across every design document); it is corrected here because this row is where the ruling it misled is recorded | **switch to the runner-up if** the host cannot stream from FPM — R1 or R2 unmeetable — or one worker per browser is judged unacceptable at the fleet's real browser count, or the design grows a client→server need on the feed. **Reversing to Reverb** re-imports the pin, the daemon, the proxy module, the on-connect hook that does not exist, and the § 2.1 gap; the message table, the envelope and the snapshot protocol are unchanged by this row and survive either way, which is what bounds the reversal at the transport section rather than the document |
+| 47 | **Fan-in is a `feed_outbox` table polled at the stream's own 250 ms tick — transient, retained 60 s, never resumed from** ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge), [§ 8.3](#83-the-websocket-delta-feed)) | Redis pub/sub between the daemons and the handlers; an in-process channel in a daemon of the feed's own; no fan-in — each handler recomputes from `seat_state` on a timer | Redis is not in this tree — no `predis`, no `ext-redis` — and the host's Redis is unknown, so a design resting on it would rest on an assumption this document refuses to make. A daemon of the feed's own is the thing this ruling removed. Recomputing from `seat_state` per stream loses the messages that are not state — `seat.retired`, the coordination objects, the building notifications. A table is the one primitive every writer here already has a transaction open on, and it makes [§ 6.5](#65-the-fold)'s *enqueues a delta in the same transaction* literally true | a write per message, retained a minute; four index seeks per second per open stream; and one visibility lag of delivery latency, all priced in § 8.3. If Redis is ever provisioned and read into this tree, the outbox becomes the durable half of a pub/sub and the tick becomes a subscription — a migration of one read loop, not of the contract |
+| 48 | **Two host conditions — R1, the proxy must not buffer the stream; R2, the FPM pool must hold a worker per browser and release a dead one — are declared as checked deploy requirements with named observables, never assumed** ([§ 8.3](#83-the-websocket-delta-feed)) | assume them and let the first deploy find out; design around them silently — a short stream lifetime the handler ends on a timer, or a chunked-polling fallback | Neither condition can be established from this repository, and a design that assumed either would be reporting a clean that nobody measured. Designing around them silently would cost every browser a reconnect-and-snapshot on the handler's timer, to hedge a host fact an operator can check in one command. Declaring them with a check and an observable is what lets a false one be found on the day it is false, by name | a deploy that skips the checks and meets neither: R1 false renders every floor *feed down* against a healthy fleet with REST green; R2 false takes the console down with the fleet healthy. Both are named in [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19/F20 so the symptom is recognisable |
+| 49 | **The declared agent-name join is resolved by the CONSUMER against the seat population; this plane publishes the DECLARATION and never a desk reference** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)) | resolve it server-side and publish `seat_id` on `coord_thread` / `coord_round`, which is where a reader first looks for it | `card#7957`'s (d) rests on **one party knowing both facts**, and that party is the SEAT. This plane knows only what the seat said, so resolving here would move a join whose weaker end is a human-typed string onto objects whose every other field is token-bound or hook-bound — and a consumer could no longer tell which kind it was reading. It would also give one fact N homes: a thread spans desks, so a desk reference per participant per message is a copy free to disagree with the seat object it was copied from, which is [§ 13](#13-decisions-taken-revisable-at-review) row 39's argument one field along | every consumer implements the same three join rules instead of reading one member. [§ 8.3.3](#833-the-coordination-objects) states them once so the implementations are the same, and a consumer that gets them wrong is wrong in its own client rather than in the store |
+| 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
 
 ---
 
@@ -3505,8 +5484,9 @@ is never a reason to leave two readings live.
 **All seven, and item 13's marker convention, were ruled on and landed in D1 (card#7521); each is
 closed below with the D1 anchor its amendment landed at.** Where D2 had stated a reading, the
 amendment adopted that reading, so no rule in this document moved — what changed is that the second
-reading is gone from D1 rather than merely unused here. Items 3, 6, 7 and 9 remain open and are not
-D1's: they need an operator answer, a proposal document, or D3.
+reading is gone from D1 rather than merely unused here. Items 3, 6 and 9 remain open and are not
+D1's: they need an operator answer, a proposal document, or D3. Item 7, the fourth such item when this
+was written, has since been closed by operator ruling.
 
 1. **✅ CLOSED — the flusher's `inferred_silence` `session.end` carries no `turn.end`.**
    D1 § 6.0's kind table lists `turn.end` as hook-emitted, and § 6.2's turn-closing reap is on the
@@ -3527,13 +5507,26 @@ D1's: they need an operator answer, a proposal document, or D3.
    because seat clock skew must not move a server ceiling. It matches
    [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), so no rule here moves.
 
-3. **⇢ Review / operator — the proposal's three-tier status fallback, and who designs the board and
-   GitHub producers.**
+3. **⇢ Review / operator — the proposal's three-tier status fallback, and the board producer.**
    `docs/PLAN.md § 2` assigns D2 a three-source merge and names a "three-tier status fallback from the
    proposal"; the proposal is not in this repo and this document **does not invent its tiers**
-   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). **Blocks:** tiers 1 and 2 of the
-   task title — a floor built today shows telemetry-derived titles only. **Closes it:** the proposal's
-   text, plus a ruling on whether the two producers are a D2 addendum or their own card.
+   ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)). ⚠ **All three of this item's producer
+   questions have closed since it was written, by three different acts.** *(a)* The GitHub producer was designed —
+   [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer) — and this document carries its read
+   surface at [§ 8.3.3](#833-the-coordination-objects). *(b)* ⭐ **Tier 2 was then RETIRED outright by
+   operator ruling, card#9234 (2026-09-10)**, which took the tier-2 join with it: the join was needed
+   because a GitHub-sourced *title* had to reach a desk, and there is no longer such a title. The
+   agent-name→`seat_id` declaration `card#7957` ruled was still wanted — for the **thread line**, which
+   is [D3 § 5.7](FLOOR.md#57-the-coordination-thread-line)'s and not this merge's — so it was not
+   closed here, it moved off this item, and it was **built on `card#9296`**
+   ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)). *(c)* ⭐ **The LAST third closed on `card#7582`: the board
+   producer is designed**, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md), and the ruling this item
+   asked for is that it is a **document of its own** — which is where
+   [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) had already put
+   it. **Blocks:** nothing here any longer — tier 1 has a producer; what it does not have is a BUILT
+   one, and `BOARD-TASK.md § 10` names the three conditions that keep it dark and how each one
+   reads. A floor built today still shows telemetry-derived titles only, now for that reason rather
+   than for want of a design. **Closes what is left:** the proposal's text.
 
 4. **✅ CLOSED — `D2-MUST` #4's ordering key gained `seq_epoch`.**
    The key was written `(event_time, seq)`; `seq` restarts at a new epoch, so the two-part key was
@@ -3554,22 +5547,38 @@ D1's: they need an operator answer, a proposal document, or D3.
    member with `uptime_s` beside it. **No wire change**, and
    [§ 7.3](#73-how-the-reporters-own-counters-are-handled) is unchanged.
 
-6. **⇢ Operator — backups for the store, and where the sandbox's MySQL lives.**
+6. **⇢ Operator — backups for the store, and where the sandbox's MariaDB lives.**
    [§ 6.10](#610-durability-posture) argues that backups are an operational choice rather than a
    correctness requirement, because everything but `events` is rebuildable and `events` expires in 14
    days. That is a recommendation, not a ruling. Separately: prod's store is on a dedicated host
    (D-15), but D-13's **sandbox** instance may land on a shared box — if it does, the pinned names of
    [§ 6.2](#62-database-names-pinned-and-published) are load-bearing rather than precautionary.
    **Blocks:** provisioning (D-15). **Closes it:** two operator answers.
+   ⚠ **Raised, not closed, by card#9208's reversal (2026-09-12):** the store now also holds the
+   authored room maps and the building layout ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), which no replay re-derives
+   and which [§ 6.10](#610-durability-posture) now names as the second irreplaceable population — so the
+   backup answer this item asks for covers everything an operator ever drew, not fourteen days of
+   history. The console's export is the operator's own copy in the meantime, and it is a copy someone
+   has to remember to take.
 
-7. **⇢ Operator — is fleet-read all-or-nothing?**
-   Today any MFA-authenticated user and any `fleet_read` token sees every install
-   ([§ 9](#9-read-side-authentication)). The channel and endpoint shapes are per-install so an ACL has
-   somewhere to attach. **Blocks:** nothing while every install belongs to one operator.
-   **Closes it:** a ruling, ideally before a second organisation's install reports in.
+7. **✅ CLOSED — fleet-read is all-or-nothing, for now.** ⭐ **Operator ruling, 2026-09-13.** Any
+   MFA-authenticated user and any `fleet_read` token sees every install
+   ([§ 9](#9-read-side-authentication)). **What it changes:** nothing in the design. It confirms the read
+   § 9 already specified, so the stream handler's per-subscriber filter
+   ([§ 8.3](#83-the-websocket-delta-feed)) keeps admitting everything and no ACL is built.
+   **Reopens:** before a second organisation's install reports in. The price of the ACL that reopening
+   would buy stays here so it is not re-derived, as three edits. First, the handler's one
+   per-subscriber filter becomes a predicate over `feed_outbox.install_id` (card#9287 moved the
+   attachment point there from a channel per install), and that predicate is also the filter
+   [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
+   `room.map` needs, because it carries another install's `install_id`. Second, a product answer for
+   the fleet-wide `fleet{}` that `feed.heartbeat` and `fleet.health` carry (the `NULL`-`install_id`
+   rows), which is a design question and not a filter. Third, per-caller filtering of `installs[]` on
+   the fleet-wide snapshot and health endpoints, which take no per-install parameter
+   ([§ 8.2](#82-rest)).
 
 8. **✅ CLOSED — a D2 verifier exists and ships with this document.**
-   `tools/design/verify-fleet-state.py` mechanises **eleven** guard classes (G1–G11), listed with their
+   `tools/design/verify-fleet-state.py` mechanises **fourteen** guard classes (G1–G14), listed with their
    status in [§ 12](#12-every-number-and-where-it-comes-from); it is a separate script and D1's two
    verifiers are unmodified. It runs green on this document, and every check in it has been watched
    failing against a planted defect.
@@ -3602,9 +5611,9 @@ D1's: they need an operator answer, a proposal document, or D3.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **2,021 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **1,859 B** of
    spare under the 8 KiB bound. Seven more therefore fit and an eighth does not: **the cap could
-   reach 15**, where the worst-case delta is 8,012 B, and at 16 it is 8,275 B, which **breaches**
+   reach 15**, where the worst-case delta is 8,174 B, and at 16 it is 8,437 B, which **breaches**
    the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 
@@ -3656,6 +5665,78 @@ D1's: they need an operator answer, a proposal document, or D3.
     over. The manual sweep is **one row**, not fourteen: **S25**, whose D1-source column names a
     decision-register row rather than a section number, so no marker convention in D1 can reach it.
     The tool prints that residue per row on every run rather than folding it into a pass count.
+
+14. **⇢ The slice that designs the coordination store — a snapshot half for the coordination objects.**
+    [§ 8.3.3](#833-the-coordination-objects) puts both objects on the delta feed and on no REST
+    surface, because a snapshot is a read of stored state and that store is
+    [D1 § 18.13](EVENT-SCHEMA.md#1813-what-this-section-does-not-establish)'s named later slice.
+    **Blocks:** a floor that has just connected, which draws no thread line until the next post on a
+    thread — and, transitively, any render that needs to know a thread is *currently* open rather than
+    that it was opened while this client was listening. **Closes it:** that slice, which owes three
+    things this one deliberately does not answer — the store and its retention (and with it *which
+    threads are current enough to serve*), a home on [§ 7.1](#71-d1s-server-side-counters--where-they-live)'s
+    plane for the receipt route's counters, and a stated bound on the idempotency digest. ⚠ **The last
+    two are D1 § 18.13's own last two rows, addressed to that slice by name; this item is where they
+    are visible from this document rather than only from D1.** If the objects are then served over
+    [§ 8.2](#82-rest)'s REST surface, D1 § 18.7's enum-classification obligation attaches at that
+    publication — the trigger is the act, not a review round.
+
+15. **✅ CLOSED — no: a machine consumer may not hold the stream, for now.** ⭐ **Operator ruling,
+    2026-09-13.** The known machine consumer polls REST at a cadence of minutes and is served exactly
+    that way. **What it changes:** nothing is built. [§ 9](#9-read-side-authentication)'s surface table
+    keeps *the stream, from a machine consumer* at **not supported**, and the refusal now rests on this
+    ruling. It no longer rests on a missing revocation story: card#9287's stream re-checks its session
+    every 15 s and could re-check an `mzr_` token against `feed_tokens.revoked_at` on the same tick.
+    **Reopens:** a machine consumer that needs fleet state faster than REST polling gives it. A yes would
+    cost one FPM worker pinned per machine consumer under R2's arithmetic, a 120 req/min token limit
+    that bounds nothing on a stream, and the all-or-nothing fleet read (item 7) granted to a credential
+    rather than a person. It would land as one row in § 9's surface table, the token re-check on the
+    tick, and a per-token stream cap, in one change.
+
+16. **⇢ Operator — DEFERRED by operator ruling, 2026-09-13: a floor left open re-authenticates every
+    `SESSION_LIFETIME`.** ⭐ The operator will revisit this once the floor exists, and the likely shape is
+    **a kiosk credential with its own expiry**. **Meanwhile the current behaviour stands:**
+    [§ 9](#9-read-side-authentication)'s 15 s re-check reads the session from the store and deliberately
+    does **not** refresh it, so an open stream does not keep a session alive, and a floor on a wall asks
+    for MFA again 120 minutes after it connected, every time. Touching `last_activity` on the tick stays
+    refused: it would make an unattended tab immortal and spend an idle-expiry property on the screen
+    most likely to be unattended. **Blocks:** nothing; the floor renders
+    [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F6 correctly and an operator signs in.
+    **Closes it:** that revisit. The three shapes priced for it were a longer lifetime for this route
+    only, a kiosk credential with its own expiry, or a re-auth that restores the stream without blanking
+    the floor. ⚠ The number is **this application's configuration, not a constant**: it is
+    `SESSION_LIFETIME` in `server/.env`, and a deployment that changes it changes this item's answer
+    without touching this document.
+
+17. **✅ CLOSED (card#9300, 2026-09-13, operator ruling D15: decide it when the feed is built) — what ends a
+    stream that misses `fleet.reload`: the deploy SIGTERMs it, found through the stream pool's status.**
+    [§ 2.1](#21-processes)'s feed-reload row states the mechanism and [§ 8.3](#83-the-websocket-delta-feed) R2
+    the pool it needs; `bin/deploy.sh`'s `drain_previous_streams` is the build, and its selftest drives it
+    both ways (a stream the previous release opened is ended, one younger than `fleet.reload` is not, and the
+    release's own deploy.sh with the kill cut out leaves it running). **Measured before it was written**, on
+    the sandbox host, against a throwaway non-root `php-fpm8.5` master serving this route behind a throwaway
+    Apache with the host's vhost shape — never the live pools:
+    - **The listing identifies a stream by its START, not its URI.** Behind the front controller every request
+      in `pm.status_path`'s full listing is `request uri=/index.php`; a `Running` request whose `request
+      duration` exceeds the time since `fleet.reload` was written is one that began before it, and in a
+      DEDICATED pool that is a stream — which is why R2's dedication is a premise of this mechanism and not
+      only of F20.
+    - **The status must be read over `pm.status_listen`**: with every worker pinned, the pool's own socket
+      queued the status request until a 5 s timeout; the listener answered in 0.17 s (R2).
+    - **SIGTERM from the pool's user ends the worker at once, and the master replaces it**: FPM logged `child
+      … exited on signal 15 (SIGTERM)` then `child … started`, and the listing showed the fresh worker idle.
+    - **What the client sees**: the stream simply stops, with no `feed.close` — curl reported the transfer cut
+      (`exit 18`, *transfer closed with outstanding read data remaining*) on one run and a clean end (`exit 0`)
+      on the real route through the proxy on another. Either way it is the unexplained end
+      [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 routes to reconnect, which is correct
+      for a stream whose consumer had stopped taking messages.
+    - **The ordinary path, for contrast**: `mezzanine:feed-reload` under an open stream delivered `fleet.reload`
+      2.5 s after the command started and `feed.close{reason:"reload"}` 0.03 s later; the stream ended, and
+      the command returned after it had.
+    ⚠ **Not measured, and named:** the live pool workers under this host's ROOT master carry real, effective
+    and saved uid 1002 (read from `/proc`, nothing signalled), which is what `kill(2)` checks — but the
+    respawn was exercised under a non-root master only; and no browser was driven, so what an `EventSource`
+    does with the cut transfer is DOCS-CITED (a network error, WHATWG HTML § *Server-sent events*), not seen.
 
 ---
 
@@ -3776,16 +5857,16 @@ everything from step 3 onward.
 |---|---|---|
 | 0 | the pinned test database, the paired `phpunit.xml` entries and the resolved-value guard | **[AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)** RED (delete one half of a pin under an export — NOT the hostile export alone, which correctly passes) then GREEN — first, because every test below runs against a database, and a suite that cannot prove its isolation must not run |
 | 1 | migrations: `installs`, `seats`, `events`, `batches` | the ingest can write and the dedup key holds — [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them) |
-| 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens` | schema only |
+| 2 | migrations: `sessions`, `calls`, `attention_requests`, `seat_state`, `seat_state_transitions`, counters, predicates, `feed_tokens`, `feed_outbox` | schema only |
 | 3 | `project()` — the per-kind projections, with the LWW comparator | [AT-D2-11](#at-d2-11-out-of-order-batches-converge) |
 | 4 | `derive_activity()` + link states + `render_state` | [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule), **[AT-D2-2](#at-d2-2-the-clear-trace-mints-no-idle)** — the gate on trusting the derived signal at all — [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost), [AT-D2-6](#at-d2-6-stalled-is-a-state-with-three-exits) |
 | 5 | `mezzanine:fold` — cursor, transaction, claim, visibility lag, poison rule | [AT-D2-9](#at-d2-9-the-fold-is-idempotent-across-a-restart), [AT-D2-10](#at-d2-10-rebuild-equals-fold), [AT-D2-22](#at-d2-22-concurrent-ingest-cannot-strand-an-event-behind-the-cursor) |
 | 6 | `mezzanine:rebuild` | [AT-D2-10](#at-d2-10-rebuild-equals-fold) |
 | 7 | `mezzanine:sweep` — the seven time-derived jobs [§ 2.1](#21-processes) lists, which is their one home | [AT-D2-3](#at-d2-3-stale-offline-and-disabled-are-rendered-never-idle), [AT-D2-4](#at-d2-4-a-heartbeat-only-seat-never-looks-busy), [AT-D2-13](#at-d2-13-every-predicate-can-answer-both-ways), [AT-D2-16](#at-d2-16-server-side-closes-write-no-wire-events) |
-| 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly), [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
-| 9 | Reverb channel, deltas, coalescing, feed heartbeat, backpressure | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others) |
+| 8 | REST: snapshot, seat detail (with `resync_from`), timeline, health — with the fail-closed postures and the retirement read filter | [AT-D2-12](#at-d2-12-the-store-failing-is-never-a-quiet-zero), [AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — **its REST, token and MFA legs only; every leg that opens a stream gates step 9, where the handler they drive is built** — [AT-D2-20](#at-d2-20-catching-up-is-not-current-and-not-stale), [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
+| 9 | ✅ **BUILT — card#9300 (2026-09-13).** The stream handler and `feed_outbox` — the on-connect `fleet.health`, deltas in `id` order behind the visibility lag, the feed heartbeat, the stall bound, the session re-check — are `App\Feed\FeedStream` behind `GET /api/fleet/stream` (session + MFA), `App\Feed\Outbox` (every writer's row as its transaction's last statement: the fold, the sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — no coordination receipt route exists yet, so nothing writes `coord.*`), the migration, `mezzanine:purge`'s 60 s pass, and `mezzanine:feed-reload`. `bin/deploy.sh`'s edit — the Reverb unit was already retired, with systemd (`docs/PLAN.md § 5`) — runs `mezzanine:feed-reload` immediately **before** the opcache wait, where the ⚑ marker stood, and then drains the stream pool ([§ 2.1](#21-processes)'s feed-reload row; [§ 14](#14-open-questions-for-the-review-loop) item 17, closed). ⭐ **The R1/R2 ini and pool gate IS in this row now**, and was built only after its measurement landed, which is the rule [§ 8.3](#83-the-websocket-delta-feed) R1 states: `fpm_code_reload_ready` refuses `zlib.output_compression`, `output_handler` and `ignore_user_abort` on the stream pool, a stream pool that is not the deploy user's, has a non-zero `request_terminate_timeout`, or lacks `pm.status_path` / `pm.status_listen`, and a status that does not answer; `output_buffering`, measured defeated by the handler's flush, is reported and never refused. R1's **wire** half is `bin/feed-stream-check.sh`, an operator runbook step (`docs/PLAN.md § 5`), seen PASS/FAIL/FAIL/PASS against a proxy before it was trusted. The retirement of the previous transport's wiring is done: `->withBroadcasting()`, `/broadcasting/auth`, `routes/channels.php`, the `ShouldBroadcastNow` markers (`App\Events\SeatRetired` moved to `App\Feed`), `CapturingBroadcaster` and `BROADCAST_CONNECTION` are gone; the MFA-stack assertions MOVED to the stream route (`AuthSurfaceTest`, `MfaGateTest`, `IngestAuthSeparationTest`); and every test that reached the broadcaster — re-derived with `grep -rlF '$this->wire->' server/tests` and, because that grep misses them, `grep -rl 'SeatRetired' server/tests` — was re-pointed to `feed_outbox` rows and a consumed `text/event-stream` in the commit BEFORE the one that deleted it. ⚠ **What the gates below reach and what they cannot**: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15's slow leg and the frozen leg's in-process half run two concurrent streams on one clock, and the frozen leg's worker return (the proxy's send timeout) and the stalled worker's RSS need a real deployment; AT-D2-19's stream legs inject the failed read at the handler's boundary rather than revoking a grant; AT-D2-25 runs its race on the real MariaDB connections `At25ConcurrentWriterTest::CONNECTIONS` names, on a clock that only moves forward — so it never reverses stamp order against id order, and the row that reversal skips is card#9398's, not this gate's | [AT-D2-7](#at-d2-7-snapshot-then-deltas-has-no-window), [AT-D2-8](#at-d2-8-a-delta-gap-is-detected-and-resynced), [AT-D2-15](#at-d2-15-feed-backpressure-closes-one-connection-and-no-others), **[AT-D2-19](#at-d2-19-read-side-auth-refuses-correctly) — its stream legs, which step 8 scopes out of its own gate because the handler does not exist until this row**, [AT-D2-25](#at-d2-25-a-concurrent-writer-cannot-strand-a-message-behind-a-streams-cursor) |
 | 10 | `mezzanine:purge`, the size alarm, `fold_lag` fleet health | [AT-D2-17](#at-d2-17-dedup-retention-and-the-chain-between-them), [AT-D2-21](#at-d2-21-a-frozen-fold-cannot-look-healthy) |
-| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
+| 11 | **retirement** — the three columns, the recomputed render, the `cause: operator` transition row and the two publishes, in one transaction, behind whichever operator entry points § 2.1 lists ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)). It comes after step 9 because it publishes on the feed. ⚠ **And it therefore DEPENDED on what step 9 deleted**: its gate AT-D2-23 drove step 9's `CapturingBroadcaster`. ✅ Step 9 (card#9300) re-pointed every AT-D2-23 test — the store half and the wire half — to `feed_outbox` rows and a consumed stream BEFORE deleting the class, so this row's gate runs against the transport that ships | [AT-D2-23](#at-d2-23-a-retired-seats-desk-goes-and-only-an-announcement-removes-it) |
 
 **Three of these are hard requirements before anything downstream may treat this state as true:**
 **AT-D2-2** (the `/clear` trace mints no idle — the D2 half of D1's headline test, and the reason both

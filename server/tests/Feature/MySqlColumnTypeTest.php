@@ -16,15 +16,20 @@ use Tests\TestCase;
  * `$table->binary('last_used_ip')` — which `Illuminate\…\Grammars\MySqlGrammar::typeBinary()`
  * compiles to **`blob`**, because it emits `varbinary({$length})` only `if ($column->length)` and
  * otherwise falls through. Two copies of one line, a document saying something else, and NOTHING
- * that could notice: the suite is pinned to SQLite (§ 6.2), where `binary()` is `blob` either way,
- * so the divergence was invisible to every green run this card ever produced.
+ * that could notice: the suite then ran on SQLite, where `binary()` is `blob` either way, so the
+ * divergence was invisible to every green run this card ever produced.
  *
  * ⚠ WHAT THIS IS AND IS NOT EVIDENCE OF, stated because a green here is easy to over-read.
  * It proves the SQL TEXT this application would send to MySQL. It proves nothing about what MySQL
  * then DOES with it — that a `VARBINARY(16)` rejects a 17th byte, that an `ENUM` refuses an
- * unlisted value, that `ascii_bin` compares case-exactly. Those need the engine, they remain on
- * the PR body's unexercised list, and they are card #7523's (the store host). The gap this closes
- * is the narrow one that actually bit: a column TYPE that silently differs from the document.
+ * unlisted value, that `ascii_bin` compares case-exactly. ⚠ **Since card#9250 the blocker on those
+ * three has MOVED, and this file's old claim that they "need the engine … they are card #7523's"
+ * is no longer why they are unexercised.** CI's `php-tests` lane runs the whole suite against a
+ * real MariaDB — the only engine since card#9328 — so the engine is reachable from CI on every PR — what is missing is
+ * a TEST that inserts a 17th byte, an unlisted ENUM member, or two ULIDs differing only in case
+ * and asserts the refusal. Nothing here does; they remain unexercised for want of a test, not for
+ * want of a store. The gap this file closes is still the narrow one that actually bit: a column
+ * TYPE that silently differs from the document.
  *
  * ⚠ NO SERVER IS CONTACTED. `Connection::statement()` returns `true` before it ever reaches
  * `getPdo()` while `pretending()`, so the migration below compiles and is never executed. The
@@ -81,7 +86,7 @@ class MySqlColumnTypeTest extends TestCase
     /**
      * ⛔ CARD#9077's RESET-TOKEN TABLE, ON THE STORE IT DEPLOYS TO. `token_hash` is an identifier
      * column in § 6.1's sense — it is LOOKED UP BY EQUALITY and nothing else — so it must compare
-     * exactly. MySQL's default `utf8mb4_0900_ai_ci` is case- AND accent-insensitive, and a digest
+     * exactly. The store's configured collation `utf8mb4_unicode_ci` is case-insensitive, and a digest
      * matched case-insensitively is a digest that matches rows it does not equal: on a 64-character
      * hex value that is a 2^64-fold reduction in the work of finding a colliding lookup key.
      *

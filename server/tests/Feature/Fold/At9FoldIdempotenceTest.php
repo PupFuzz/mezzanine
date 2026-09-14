@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠ WHAT IS AND IS NOT DRIVEN HERE, STATED BEFORE THE ASSERTIONS RATHER THAN AFTER THEM.
  * § 11's build is "`SIGKILL` the fold daemon mid-pass (inside the transaction); restart it", 20
- * times. The suite runs against SQLite `:memory:` on ONE in-process connection: there is no second
- * process to kill, and no second connection from which a partial state could be observed. A real
- * SIGKILL is not reachable on this store, and the 20-iteration race is not either.
+ * times. The suite runs on ONE in-process connection to MariaDB: there is no second process to
+ * kill, and no second connection from which a partial state could be observed. A real SIGKILL is
+ * not reachable here, and the 20-iteration race is not either.
  *
  * What IS driven is the PROPERTY the kill is a way of reaching — "the cursor advance is in the same
  * transaction as the projections, so a crash mid-pass rolls back BOTH" (§ 6.5's mechanism 1). The

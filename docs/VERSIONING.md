@@ -60,9 +60,10 @@ specific to Mezzanine and has no counterpart there.
    branch, merged with a **merge commit — never squashed**. Squashing a back-merge copies
    the content without the ancestry, so `main`'s tip never becomes an ancestor of `dev` and
    the *next* release PR's three-dot diff re-shows the previous release's `VERSION` bump as
-   an incoming change. `dev` was briefly squash-only, which made this rule unsatisfiable; that
-   was resolved on 2026-08-23 and `dev` now allows `merge` too — see the ✅ under
-   [§ Branch model](#branch-model).
+   an incoming change. `dev` is squash-only for everyone, and its merge-method ruleset carries an
+   **admin bypass that exists solely so this merge commit can land**: the admin identity merges
+   the back-merge with `gh pr merge <N> --merge`, never with `solo-self-merge`, which always
+   squashes. [§ Branch model](#branch-model) carries the measured ruleset.
 
 ---
 
@@ -83,15 +84,19 @@ right button on a control that remembers the *last* choice. Measured on the live
 | `dev` | `squash` only | PR required, no deletion, no force-push |
 
 So a release PR into `main` *cannot* be squashed and a feature PR into `dev` *cannot* be
-merge-committed: the buttons for the wrong method are not offered. That matters beyond
+merge-committed: the buttons for the wrong method are not offered — except to the admin
+role on `dev`, whose bypass exists for core rule 5's back-merge alone (the ✅ block at the end of
+this section). That matters beyond
 tidiness — `docs/KANBAN.md § Release PRs into main must land as MERGE COMMITS` explains what
 a squashed release would cost the card mover (it collapses the per-PR subjects the mover
 correlates on).
 
-**No ruleset requires a status check** (also measured 2026-08-23; neither branch has classic
-protection either). "Wait for CI" in the release flow below is therefore a *process*
-obligation with nothing mechanical behind it. Do not read a green-looking merge button as CI
-having passed.
+> ⛔ **SUPERSEDED — the state is the ✅ block at the end of this stack; read that, not this.**
+> As measured 2026-08-23: *"No ruleset requires a status check (neither branch has classic
+> protection either). 'Wait for CI' in the release flow below is therefore a process obligation
+> with nothing mechanical behind it."* **It is kept as the head of the history below rather than
+> deleted, and it is marked because it was the one paragraph in this stack that was not** — bold,
+> first, and read by anyone who skims one paragraph of this section (card#9054).
 >
 > ⚠ **Updated 2026-08-23:** `card-token-lint` **is** now a required status check on both
 > branches, so that one check is mechanically enforced. Everything else in CI still is not —
@@ -113,33 +118,71 @@ having passed.
 > above is kept rather than deleted because it is the reason the requirement was safe to add;
 > read it as history.** *(And this block is history too — see the state below.)*
 >
-> ✅ **THE STATE, re-measured live 2026-09-08 (card#8301). Both rulesets — `21222661`
-> "dev — integration branch" and `21222660` "main — release branch", both `enforcement: active`,
-> both with `bypass_actors: []` — require the SAME FIVE contexts:**
+> ✅ **THE STATE — what a PR into `dev` or `main` must pass. TWO independent layers require status
+> checks on each branch, and BOTH apply: a PR merges only when every context required by EITHER
+> layer has passed.**
 >
-> > `asset-provenance` · `card-token-lint` · `design-artifact` · `design-docs` · `release-pr-guard`
+> 1. **Rulesets** — `21222661` "dev — integration branch" and `21222660` "main — release branch",
+>    both `enforcement: active`, both with `bypass_actors: []`.
+> 2. **Classic branch protection** on `dev` and on `main`, with `enforce_admins` on, so it binds the
+>    shared admin identity as well. The superseded 2026-08-23 paragraph above measured *no* classic
+>    protection on either branch; it was there when this block was measured on 2026-09-13.
 >
-> **This list is a RESTATEMENT of a repository-settings fact and this file is its one home** — no
-> other document may carry a copy, because two of them already drifted from it (the copies in
+> ⛔ **The two layers carry DIFFERENT lists, and neither is a copy of the other.** A context added to
+> or removed from one layer is not added to or removed from the other — so a context removed from
+> one layer and left in the other is STILL required, and a job deleted on that belief blocks every
+> PR on a check that never reports. They have already come apart: in the 2026-09-13 reading below,
+> `php-tests` is required by the rulesets and not by classic protection, and every classic context
+> is also a ruleset context, so the ruleset list was the effective set that day. That is a reading
+> of the settings, not a property to rely on. **Change a required context on BOTH layers, and
+> re-derive both afterwards.**
+>
+> **This is a RESTATEMENT of a repository-settings fact and this file is its one home** — no other
+> document may carry a copy, because two of them already drifted from it (the copies in
 > `.github/workflows/asset-provenance.yml` and `docs/ATTRIBUTION.md` both still said
 > `asset-provenance` was *not* required, i.e. that a red there did not block a merge, for as long
 > as it had been required). ⛔ **A doc cannot verify this; only the API can.** Re-derive it, never
-> relay it:
+> relay it — this prints both layers for both branches:
 >
 > ```
-> for id in 21222661 21222660; do
->   gh api repos/PupFuzz/mezzanine/rulesets/$id --jq \
->     '.name, ([.rules[] | select(.type=="required_status_checks")
->              | .parameters.required_status_checks[].context] | sort)'
+> for b in dev main; do
+>   echo "== $b · rulesets (every active ruleset that targets the branch)"
+>   gh api "repos/PupFuzz/mezzanine/rules/branches/$b" --jq \
+>     '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | unique'
+>   echo "== $b · classic branch protection"
+>   gh api "repos/PupFuzz/mezzanine/branches/$b/protection" --jq \
+>     '.required_status_checks | {strict, contexts: (.contexts | sort)}'
 > done
 > ```
 >
+> The ruleset half reads `rules/branches/<branch>` — the rules in force on the branch, from every
+> active ruleset — rather than looping over ruleset ids, because a per-id loop cannot see a ruleset
+> created after the loop was written. A `404 Branch not protected` from the classic half means that
+> layer is absent; any other 4xx means the read did not happen, not that nothing is required.
+>
+> **Measured 2026-09-13 with that command (card#9328) — a dated reading, not the state:**
+>
+> | Context | Rulesets (`dev`, `main`) | Classic protection (`dev`, `main`) |
+> |---|---|---|
+> | `asset-provenance` | required | required |
+> | `card-token-lint` | required | required |
+> | `design-artifact` | required | required |
+> | `design-docs` | required | required |
+> | `php-tests` | required | **not listed** |
+> | `release-pr-guard` | required | required |
+>
+> Also read that day: classic protection on `main` has `strict: true` — a PR's head must be up to
+> date with `main` before it merges — while classic protection on `dev` and both rulesets'
+> `strict_required_status_checks_policy` are `false`; and classic protection pins every context to
+> the GitHub Actions app (`checks[].app_id`, the id `GET /apps/github-actions` returns), where the
+> rulesets name the context alone.
+>
 > **The 2026-08-23 caveat above is not superseded and must stay:** *a workflow that is added later
 > is not automatically required*, and a required check that never runs reads as *pending*, not
-> *passed*. That sentence is exactly why this block goes stale — **three more contexts were added on
-> 2026-08-31** (the rulesets' own `updated_at`: `dev` 15:47, `main` 01:03, both −04:00), one day
-> after the measurement above, **and no document moved with them for eight days** — so **re-read and
-> re-measure this section whenever a workflow is added, and update the copies that point here.**
+> *passed*. That sentence is exactly why this block goes stale — contexts were added to the rulesets
+> on 2026-08-31 (their `updated_at`, as read on 2026-09-08) and **no document moved with them for
+> eight days** — so **re-read and re-measure this section whenever a workflow is added or removed,
+> and update the copies that point here.**
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:
@@ -163,15 +206,38 @@ the agent. What the ruleset buys is a **deliberate act** — approve, or knowing
 admin — rather than a silent merge. That is friction on the path PR #38 took, not a wall across
 it, and it is why the release gate asks *what* is merged rather than *who* merges it.
 
-> ✅ **Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`.** It was briefly
+> ✅ **THE MERGE-METHOD STATE ON `dev`: squash-only for everyone, plus an admin bypass for the
+> back-merge.** Read on 2026-09-13 from `GET /repos/PupFuzz/mezzanine/rulesets/21953633`: ruleset
+> `21953633` "dev — merge method (squash only)" (created 2026-08-31, `enforcement: active`,
+> `refs/heads/dev`) allows only `squash`. Its one bypass actor is `RepositoryRole` `actor_id` 5, the
+> admin role, in mode `always`, and the shared identity reads `current_user_can_bypass: always`.
+> **The bypass exists solely so core rule 5's `main` → `dev` back-merge lands as a merge commit.**
+> This is deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
+>
+> - **How the back-merge lands:** the admin identity merges the `sync/main-to-dev-post-v<version>`
+>   PR with `gh pr merge <N> --merge`. **Not `solo-self-merge`**: it always squashes, which is what
+>   rule 5 forbids. The post-`v0.3.0` back-merge (PR #76, merge commit `834a638`, 2026-09-09) landed
+>   as a merge commit after the ruleset existed, which only the bypass admits.
+> - **What the bypass does not skip:** it bypasses this ruleset only. The required status checks
+>   live in ruleset `21222661`, which has no bypass actor (`current_user_can_bypass: never`), and in
+>   classic protection with `enforce_admins` on, so a back-merge still waits for every required
+>   check. Classic protection on `dev` does not require linear history, which would refuse a merge
+>   commit from anyone.
+> - **The cost, stated:** one identity is shared by the agent and the operator (above), so that
+>   identity *can* merge-commit any PR into `dev`, not only a back-merge. For it, squash on a feature
+>   PR is convention, and `solo-self-merge` is the path that keeps it.
+> - **Re-derive it, never relay it:**
+>   `gh api repos/PupFuzz/mezzanine/rulesets/21953633 --jq '{bypass_actors,current_user_can_bypass,rules}'`.
+>
+> ⛔ **SUPERSEDED on 2026-08-31 by that ruleset — read as history.** The 2026-08-23 block read:
+> *"✅ Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`."* It was briefly
 > squash-only, which made core rule 5 unsatisfiable: a `sync/main-to-dev-post-v<version>` PR
 > could not land as a merge commit, so `main`'s tip would never have become an ancestor of
 > `dev` and every subsequent release PR's three-dot diff would have re-shown the previous
 > `VERSION` bump. A ruleset cannot scope allowed methods by *head* branch, so the choice was
-> "allow both on `dev`" or "a bypass actor for the sync branch"; allowing both is simpler and
-> its failure mode is cosmetic (a feature PR merged with the wrong button), whereas a bypass
-> actor is a standing hole. **Squash for feature PRs is therefore convention here, not
-> enforcement — the enforced half is that `main` takes merge commits only.**
+> "allow both on `dev`" or "a bypass actor for the sync branch"; that block chose allowing both and
+> called a bypass actor a standing hole. Ruleset `21953633` took the other branch, with the bypass
+> on the admin role rather than on a head branch, and the cost bullet above is that hole, named.
 
 ---
 
@@ -256,8 +322,9 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
     `--base` is the escape; `docs/KANBAN.md § G-2` owns the three cases where that happens.
     **Do not restate them here** — a second copy of that rule is what went stale last time.
 11. **Open the back-merge `sync/main-to-dev-post-v<version>` → `dev`** and merge it with a
-    merge commit — never a squash (core rule 5). `dev` allows `merge` since 2026-08-23, so
-    nothing blocks this; the post-`v0.2.0` back-merge landed this way.
+    merge commit — never a squash (core rule 5). `dev` is squash-only, so the admin identity
+    lands it through the ruleset's admin bypass with `gh pr merge <N> --merge`
+    ([§ Branch model](#branch-model)); not with `solo-self-merge`, which always squashes.
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
 
