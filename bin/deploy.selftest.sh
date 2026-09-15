@@ -453,6 +453,30 @@ run_refusal "missing .env" "does not exist" --dry-run
 mkfix loose_env; chmod 644 "$ROOT/server/.env"
 run_refusal "world-readable .env" "readable beyond its owner" --dry-run
 
+# card#9605 — the I/O sibling of the two cases above, and the one that was missing. A `.env` that EXISTS, is
+# a regular file, and whose mode's other-digit is 0 passes both of them, and can still be one the deploy user
+# cannot OPEN (created by another user when the host was stood up, left 640 to an owner and group this script
+# is in neither of). `env_lines_load` wrote its `2>/dev/null` BEFORE the input redirect, so stderr was already
+# gone when the OPEN failed, and a failed open returns the same status 1 a complete read to EOF returns: the
+# loader handed back an empty file, `env_file_scan` certified a file it had never read, and A5 then refused on
+# `APP_ENV is 'unset'` — the deploy stopped on a cause that is not the real one, with no stderr at all. That
+# is the failure the NUL refusal exists to end (§ A5 below), reproduced on a different input.
+env_openability() { if { : < "$1"; } 2>/dev/null; then printf 'openable'; else printf 'unopenable'; fi; }
+mkfix unreadable_env; chmod 000 "$ROOT/server/.env"
+# The condition is ASSERTED, not assumed. Root opens every mode, so under a root runner this fixture is a
+# readable file and the case below would certify nothing while looking like it had; it reds HERE, naming why,
+# rather than skipping (canon #9 — a check that cannot fail is a decoration). GitHub's ubuntu-latest runs
+# this suite as the non-root `runner` user, where the condition holds.
+eq "unreadable .env: the fixture really is unopenable by this user (a root runner cannot hold this)" \
+  unopenable "$(env_openability "$ROOT/server/.env")"
+run_refusal "unreadable .env" "cannot be read" --dry-run
+hasnt "unreadable .env: does not name the wrong cause (every key read as unset)" "APP_ENV is 'unset'" "$OUT"
+hasnt "unreadable .env: no DB password is printed" "$FAKE_PW" "$OUT"
+hasnt "unreadable .env: no store verdict is reached on a file that was never read" "store on this host" "$OUT"
+# The twin, one variable away: the same file, openable by this user, passes every check.
+chmod 640 "$ROOT/server/.env"; run --dry-run
+eq "the same .env, readable: exit 0" 0 "$RC"
+
 mkfix wrong_app_env; sed -i 's/^APP_ENV=.*/APP_ENV=local/' "$ROOT/server/.env"
 run_refusal "APP_ENV=local" "APP_ENV is 'local'" --dry-run
 

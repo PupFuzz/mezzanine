@@ -196,8 +196,10 @@ done
 # that outlives the deploy.
 #
 # env_lines_load — $ENV_FILE as the LINES Laravel's own parser reads it as, in ENV_LINES; ENV_LINES_NUL is 1
-# when the read STOPPED at a NUL byte rather than reaching EOF. This is the ONE place in this script that
-# turns the file into lines, and both readers below iterate ENV_LINES, so "a line" is a single thing here.
+# when the read STOPPED at a NUL byte rather than reaching EOF, and ENV_LINES_UNREADABLE is 1 when the file
+# could not be OPENED at all, in which case ENV_LINES is empty because nothing was read. This is the ONE
+# place in this script that turns the file into lines, and both readers below iterate ENV_LINES, so
+# "a line" is a single thing here.
 # It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
 # and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
 # was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
@@ -208,14 +210,26 @@ done
 #   · the split is Dotenv\Parser\Parser::parse's `Regex::split("/(\r\n|\n|\r)/")`, mirrored (v5.7.0);
 #   · `read -d ''` ends at EOF with status 1, which is a complete read, not a failure. Status 0 is the other
 #     thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag, not a line.
+#   · the OPEN is a step of its own, with a status of its own, because `read`'s statuses cannot carry its
+#     failure and a silenced open is indistinguishable from an empty file (card#9605). Until this, the open
+#     rode on the read: `read … 2>/dev/null < "$ENV_FILE"` applies its redirections LEFT TO RIGHT, so stderr
+#     was already `/dev/null` when the OPEN reported, and a failed open left the `if` with status 1 — the
+#     very status a complete read to EOF returns. A `.env` the deploy user cannot read came back as an empty
+#     one, silently, and `env_file_scan` certified a file it had never read.
 # It re-reads per call rather than caching: this is a bash builtin over a small file, cheaper than the `grep`
 # fork it replaced, and a cached copy would invent a staleness and ordering coupling that does not exist.
 ENV_LINES=()
 ENV_LINES_NUL=0
+ENV_LINES_UNREADABLE=0
 env_lines_load() {
-  local content="" line
-  ENV_LINES=(); ENV_LINES_NUL=0
-  if IFS= read -r -d '' content 2>/dev/null < "$ENV_FILE"; then ENV_LINES_NUL=1; fi
+  local content="" line fd=
+  ENV_LINES=(); ENV_LINES_NUL=0; ENV_LINES_UNREADABLE=0
+  # The group's `2>/dev/null` is established before the open inside it runs, which is the ordering the old
+  # one-liner got wrong; the open's own status is what sets the flag, and nothing below runs on a file that
+  # was never opened.
+  if ! { exec {fd}< "$ENV_FILE"; } 2>/dev/null; then ENV_LINES_UNREADABLE=1; return 0; fi
+  if IFS= read -r -d '' content <&"$fd"; then ENV_LINES_NUL=1; fi
+  exec {fd}<&-
   content="${content//$'\r\n'/$'\n'}"
   content="${content//$'\r'/$'\n'}"
   # `<<<` appends exactly the terminator the last line needs, so ${#ENV_LINES[@]} is the number of lines
@@ -324,6 +338,9 @@ env_read() {
 #   · a NUL byte anywhere in the file is refused, where phpdotenv reads it as a character like any other.
 # Nothing else here is a judgement call — a line this does not refuse is one phpdotenv parses, as the one
 # line it is. Each narrowing refuses a file Laravel could boot on; none of them certifies one it could not.
+# A file that does not OPEN is refused too, before any of that, and it is NOT a fourth narrowing: it judges
+# nothing about what the file contains. It is an I/O failure of the same kind as A5's missing-file refusal —
+# there is no text to be narrower than phpdotenv about, because nothing was read (card#9605).
 ENV_SCAN_SPACE=$' \t\v\f\r'   # PHP's ctype_space, less the \n that no single line can hold
 ENV_SCAN_TRIM=$' \t\v\r'      # the set Dotenv's own trims use (" \n\r\t\0\x0B"), same caveat
 
@@ -380,6 +397,20 @@ env_file_scan() {
   # The file is loaded once, here, by the one loader both readers use; ENV_LINES is what is scanned, so the
   # lines this certifies are the lines env_get then reads, which is the whole point of there being one.
   env_lines_load
+  # An I/O refusal, the same kind as A5's "does not exist" one and not a fourth narrowing: this says nothing
+  # about what the file CONTAINS. The mode check before it reads the file's permissions and not its own
+  # access to it, so a `.env` that exists, is a regular file and is 640 to an owner this script is not can
+  # reach here — and every line below would then certify a file nothing had read.
+  if [ "$ENV_LINES_UNREADABLE" = 1 ]; then
+    refuse "$ENV_FILE exists but cannot be read by the user this deploy runs as" \
+      "The file is there and its mode's other-digit is 0, so the two checks above passed — opening it for" \
+      "reading is what failed. The usual cause is ownership: a .env written by another user when the host" \
+      "was stood up, and left mode 640, is readable by its owner and its group alone. Check \`ls -l\` on it" \
+      "and give it to the user this deploy runs as, keeping mode 640." \
+      "Nothing was read out of it. Without this refusal every key comes back 'unset' and the deploy stops" \
+      "on the first key A5 checks, naming a cause that is not the real one." \
+      "Its content is not printed here — it may carry a credential."
+  fi
   if [ "$ENV_LINES_NUL" = 1 ]; then
     # The NUL is on the line the load stopped in the middle of — the last one ENV_LINES holds.
     refuse "$ENV_FILE line ${#ENV_LINES[@]} carries a NUL byte, which nothing here can read past" \
