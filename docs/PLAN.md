@@ -486,7 +486,7 @@ rule violations anyone could have committed at the time.
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
-  an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
   own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a

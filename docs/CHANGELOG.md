@@ -19,6 +19,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9605** — **`bin/deploy.sh` refuses a `server/.env` it cannot read, instead of certifying it and
+  stopping on the wrong cause.** A `.env` that exists, is a regular file and whose mode's other-digit is `0`
+  passes A5's two file checks and can still be one the deploy user cannot OPEN — written by another user when
+  the host was stood up and left mode 640 to an owner and group this script is in neither of. The loader
+  silenced exactly that: its `2>/dev/null` was written BEFORE the input redirect, so stderr was already gone
+  when the OPEN failed, and a failed open returns the same status 1 that a complete read to EOF returns. The
+  file came back EMPTY, `env_file_scan` certified a file it had never read, and the deploy stopped on
+  `APP_ENV is 'unset'` — a cause that is not the real one, with no stderr at all. That is the failure
+  card#9561's NUL refusal exists to end, reproduced on a different input. The open is now a step of its own,
+  with a status of its own (`ENV_LINES_UNREADABLE`), and A5 refuses by name: it says the file is there and
+  that opening it for reading is what failed, that ownership is the usual cause, and that nothing was read
+  out of it — printing no line and no value. It is an I/O refusal like the missing-file one beside it, and
+  NOT a fourth thing this reader is narrower than phpdotenv about: it judges nothing about what the file
+  contains, because nothing was read. **Installer action:** none beyond what card#9561 already asks — leave
+  `server/.env` owned by the account the deploy runs as, mode 640. `bin/deploy.selftest.sh` covers it beside
+  the same file made openable again, and ASSERTS that its fixture really is unopenable by the user running
+  the suite rather than skipping when it is not (root opens every mode, and would otherwise certify nothing
+  while looking green).
+
 - **card#9561** — **`bin/deploy.sh` requires a TLS CA only for a store on another host.** A5 refused
   every host whose `server/.env` left `MYSQL_ATTR_SSL_CA` unset, which refused production's local
   MariaDB. It now reads where the `mysql` connection goes, the way Laravel resolves it: a set
