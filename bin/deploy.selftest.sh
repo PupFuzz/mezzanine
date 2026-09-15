@@ -562,6 +562,33 @@ store_passes "a commented-out remote DB_HOST above DB_HOST=localhost, no CA" "st
 store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA='/etc/ssl/\$certs/ca.crt'"; run --dry-run
 eq  "a \$ inside a single-quoted value is literal to Dotenv, and read: exit 0" 0 "$RC"
 
+section "A5 — a value Laravel reads as null, false or empty is not the TEXT of it (card#9561 r1)"
+# Illuminate\Support\Env::get maps `null`, `false`, `empty` and their `(…)` forms, case-insensitively, to
+# PHP null, false and '' before any config file sees them (measured 2026-09-15 against server/vendor).
+# config/database.php wraps the CA in array_filter, which drops all three — so each of these is a store on
+# another host reached with NO TLS, while the .env line reads as a CA that is set. The twin that passes is
+# the `remote DB_HOST with a CA` case above, which differs only in the value being a path.
+ca_literal_refused() { # ca_literal_refused <literal>
+  store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA=$1"
+  run_refusal "remote DB_HOST, MYSQL_ATTR_SSL_CA=$1 (Laravel: no CA)" \
+    "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+  has "MYSQL_ATTR_SSL_CA=$1: says why the literal is not a CA" "array_filter then drops the option" "$OUT"
+}
+ca_literal_refused null
+ca_literal_refused NULL
+ca_literal_refused '(null)'
+ca_literal_refused false
+ca_literal_refused empty
+ca_literal_refused '(empty)'
+# On a store on THIS host the same literal is still unset: no "set, though not required" line, no TLS warning.
+store_passes "DB_HOST=localhost with MYSQL_ATTR_SSL_CA=null" \
+  "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" DB_HOST=localhost MYSQL_ATTR_SSL_CA=null
+hasnt "MYSQL_ATTR_SSL_CA=null on this host: not reported as a CA that is set" "though not required" "$OUT"
+# APP_KEY reads through the same literals: env('APP_KEY') of `null` is no key, and every session and
+# encrypted column depends on it. The control is every other case in this file, whose APP_KEY is a key.
+store_env; sed -i 's/^APP_KEY=.*/APP_KEY=null/' "$ROOT/server/.env"
+run_refusal "APP_KEY=null (Laravel: no key at all)" "APP_KEY is empty" --dry-run
+
 section "REFUSAL — a tool the supervision needs is missing (A1)"
 # PATH is rebuilt from every stub and every host binary, minus ONE command. The control is the same
 # rebuilt PATH minus nothing, so a refusal is the missing command and never the rebuilt PATH.

@@ -28,14 +28,19 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `server/.env` alone; a variable set in the PHP-FPM or process environment, which Laravel prefers, is
   outside what it reads. Every key A5 reads is refused by name when `.env` writes it in a form other than
   plain `KEY=value` (an `export` prefix, whitespace around `=`, a `$` outside single quotes, an inline comment, a bare key, or a
-  second definition), because Laravel reads those differently; the refusal prints no value. No value from
-  `DB_URL` is printed. A same-host store with the CA set passes with a warning: pdo_mysql then
+  second definition), because Laravel reads those differently; the refusal prints no value. A CA written as
+  Laravel's own `null`, `false` or `empty` literal counts as UNSET, so a store on another host carrying one is
+  refused: `Illuminate\Support\Env::get` turns each of them into a falsy PHP value and
+  `server/config/database.php`'s `array_filter` then drops the option, which is a connection with no TLS at
+  all. An `APP_KEY` written as one of those literals is no key, and is refused the way an empty one is. No
+  value from `DB_URL` is printed. A same-host store with the CA set passes with a warning: pdo_mysql then
   requires TLS over the socket too, and a store that offers none refuses every connection
   (measured against the sandbox host's MariaDB). `docs/design/FLEET-STATE.md § 6.1` and
   `docs/PLAN.md` D-15 record the operator's 2026-09-14 ruling, and `bin/deploy.selftest.sh` covers
   each case. **Installer action:** write every key A5 reads (`APP_ENV`, `APP_DEBUG`, `APP_KEY`,
   `DB_CONNECTION`, `CACHE_STORE`, `MYSQL_ATTR_SSL_CA`, `DB_URL`, `DB_SOCKET`, `DB_HOST`) once, as plain
-  `KEY=value`. An install whose store is on the same host may leave
+  `KEY=value`, and write a key that has no value by leaving it empty (`MYSQL_ATTR_SSL_CA=`) rather than as
+  `null`. An install whose store is on the same host may leave
   `MYSQL_ATTR_SSL_CA` unset, and leaves it unset when that store serves no TLS. An install whose store is on another host keeps it set.
 - **card#9559** — **The app's `.htaccess` now redirects plain HTTP to HTTPS, with the ACME challenge
   exempt.** `server/public/.htaccess` sends a plain-HTTP request to `https://` on the same host name when

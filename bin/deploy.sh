@@ -241,6 +241,20 @@ env_read() {
   return "$_env_rc"
 }
 
+# env_laravel_falsy VALUE — true when Illuminate\Support\Env::get turns this TEXT into a value PHP treats
+# as absent. Env::get maps `null`, `false`, `empty` and their `(…)` forms — case-insensitively, before any
+# config file sees them — to null, false and '' (measured 2026-09-15 against server/vendor's phpdotenv and
+# Illuminate\Support\Env). So the text of such a line is never what the app receives, and a check that
+# compares the text is reading something the app does not use.
+# `true`/`(true)` is NOT here: Env::get makes it bool true, which config/database.php's array_filter KEEPS,
+# and pdo_mysql then fails to open a CA by that name — it fails closed at connect rather than silently.
+env_laravel_falsy() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    '' | null | '(null)' | false | '(false)' | empty | '(empty)') return 0 ;;
+  esac
+  return 1
+}
+
 # store_locality — whether the `mysql` connection reaches its store without leaving this host, which is the
 # whole of what decides A5's TLS requirement (FLEET-STATE.md § 6.1's Transport row, docs/PLAN.md D-15's
 # 2026-09-14 amendment). Sets STORE_LOCALITY to `socket`, `loopback` or `remote`, and STORE_WHY to a
@@ -805,7 +819,7 @@ phase_a() {
   [ "$app_debug" = "false" ] || refuse "APP_DEBUG is '${app_debug:-unset}', not 'false'" \
     "Debug mode renders stack traces — including environment values — to any visitor."
   env_read app_key APP_KEY || true
-  [ -n "$app_key" ] || refuse "APP_KEY is empty" \
+  ! env_laravel_falsy "$app_key" || refuse "APP_KEY is empty, or is one of Laravel's own literals (null, false, empty), which is no key at all" \
     "server/.env.example ships it empty deliberately; it is minted per host with" \
     "\`php artisan key:generate\` (docs/PLAN.md § 5). Minting one HERE would silently" \
     "invalidate every existing session and encrypted column."
@@ -847,12 +861,18 @@ phase_a() {
   # PHP 8.5.4 against the sandbox host's MariaDB and a non-existent account: over the socket the connection
   # reached authentication without a CA, and failed "[2002] Cannot connect to MySQL using SSL" with one.
   env_read ssl_ca MYSQL_ATTR_SSL_CA || true
+  # server/config/database.php wraps the CA in `array_filter`, which DROPS Env::get's null, false and ''.
+  # `MYSQL_ATTR_SSL_CA=null` is therefore a connection with NO CA, whatever the line reads as; counting it
+  # set would pass a store on another host that connects in plaintext.
+  ! env_laravel_falsy "$ssl_ca" || ssl_ca=""
   store_locality
   if [ "$STORE_LOCALITY" = remote ]; then
     [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset for a store on another host ($STORE_WHY)" \
       "FLEET-STATE.md § 6.1: TLS is REQUIRED to a store on another host, certificate verified, with no" \
       "plaintext fallback — the credential and every descriptor cross a network between hosts." \
-      "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST localhost, 127.0.0.1 or ::1."
+      "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST localhost, 127.0.0.1 or ::1." \
+      "A CA written as null, false or empty is unset: Env::get makes each of them falsy and" \
+      "server/config/database.php's array_filter then drops the option. Give the CA's path."
   elif [ -z "$ssl_ca" ]; then
     say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — TLS not required, FLEET-STATE.md § 6.1 (decided from .env; a variable set in the PHP-FPM or process environment is not seen)"
   else
