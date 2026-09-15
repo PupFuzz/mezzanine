@@ -1,0 +1,69 @@
+# shell-lint.yml — ShellCheck over this repo's shell scripts, on every PR (card#9635).
+#
+# WHAT IT DOES. Runs `bin/shell-lint.sh`, which derives the file population from the checkout,
+# runs ShellCheck over it, and reds when a (file, code) class carries MORE findings than the
+# committed baseline `bin/shell-lint.baseline.tsv`. That script owns every rule this lane applies —
+# how the population is derived, why the baseline is keyed by count and not by line, why an
+# IMPROVED count reports rather than reds, and why the analyser version is asserted rather than
+# accepted. Read its header; none of it is restated here, so none of it can drift from here.
+#
+# WHY IT EXISTS. `bin/deploy.sh` is the script that deploys production and it grew by roughly 400
+# lines in one cycle with no analyser run over it even once: `shellcheck` appeared nowhere under
+# `.github/`, and the pinned build sitting on the agent box answered only to a name nobody tried
+# (`_shellcheck-pinned`), so three rounds in a row concluded the tool was absent and skipped the
+# lint. A local wrapper alone would only help the rounds that remember to look, which is the same
+# failure with better odds — this lane is the half that does not depend on remembering.
+#
+# THE LANE STARTS GREEN, DELIBERATELY. The baseline was measured over `dev` at the commit this
+# landed on, so every finding that already existed is recorded and only NEW ones red. It is a debt
+# ledger and not an approval: nothing in it has been judged correct. Fixing those findings is
+# separate, reviewed work — a lint fix inside `bin/deploy.sh` changes behaviour on the production
+# deploy path, and this lane is not the place to smuggle one in.
+#
+# VERSION. The runner's preinstalled `shellcheck` is used, and `bin/shell-lint.sh` REFUSES to run
+# unless it reports the version the baseline was measured under. A verdict from an unnamed analyser
+# is what the pin in `agent-board-toolkit/.shellcheck-version` exists to stop, and two versions
+# genuinely disagree at ERROR severity over the same file. So when the runner image moves, this
+# lane reds naming both versions instead of silently re-deciding what the project gates on — the
+# answer to that red is to move the pin deliberately (run both versions over the population and
+# diff the findings), never to relax the assert. The upstream pin file is NOT reachable from a
+# runner; the script says so in the log by name rather than implying a cross-check it could not do.
+#
+# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: a path-filtered
+# workflow produces NO RUN, which reads as *pending* rather than *passed*. The lint is seconds of
+# analysis over a handful of files.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
+# list is a repository-settings fact that no file in the checkout can verify, and copies of it in
+# workflow headers have already gone stale in this repo. `docs/VERSIONING.md § Branch model` is its
+# one home and carries the command that re-derives it from the API.
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK: git + bash + the runner's preinstalled ShellCheck.
+
+name: Shell lint
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # The population is derived from the checkout, so print it: a lane that lints nothing passes
+      # exactly like a lane that lints everything, and only this list tells them apart.
+      - name: File population (derived, not listed in any file)
+        run: bash bin/shell-lint.sh --list
+
+      # `bash` explicitly rather than relying on the executable bit surviving a checkout.
+      - name: ShellCheck against the committed baseline
+        run: bash bin/shell-lint.sh
