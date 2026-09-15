@@ -19,6 +19,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9637** — **CI now asks whether this repository satisfies `bin/deploy.sh`'s own phase-A
+  gates, so a release that the deploy would refuse reds at PR time instead of in a maintenance
+  window.** `bin/deploy-gate-inputs.sh` + `.github/workflows/deploy-gate-inputs.yml`. The class it
+  closes is not the lockfile (card#9631 committed that): it is that **the suite's fixtures were more
+  complete than the repository.** `bin/deploy.selftest.sh` runs the gates against FIXTURE repos and
+  its fixtures mint a lockfile, so it proved the gate behaves correctly given a well-formed release
+  while saying nothing about whether this repo is one — which is how A12 refused every real deploy
+  from the day it landed, through three fix rounds and four adversarial reviews. The new check
+  **derives** its population, every run, from the `bin/deploy.sh` at the commit under test — its
+  `git_read_at`/`git_ls_at` call sites against `"$SHA"` — rather than carrying a written list of
+  required paths, because a written list is the restatement that drifts the moment a gate is added.
+  What is written down is the far smaller judgement the source text cannot answer: whether an absent
+  path makes that gate refuse, warn or pass. That table is guarded — a derived read it has not
+  classified stops the check (exit 2) instead of quietly covering less than it did yesterday — and
+  an empty derivation is refused rather than reported as a pass. **Seen to fail against the one
+  natural regression this check will ever have:** exit 1 at `057e051`, naming `server/package-lock.json
+  (A12)`, and exit 0 at `578e1b3`, the commit that committed it — one variable, and `bin/deploy.sh`'s
+  read set is byte-identical at both. Three further exits are each seen to fire beside a control that
+  passes: an unclassified new read, a read set that derives to nothing, and a required input present
+  but zero bytes. **A green means less than the card's title and the run says so in its own output:**
+  it covers the files phase A reads out of the target tree, and names every excluded gate with its
+  reason (A0–A5, A7–A9 and A14 need the deploy HOST; A6's version half compares against the runner's
+  php; A10b's comparison half and A13's crontab half need `.env` and a crontab). The gates' content
+  predicates — A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's crontab
+  render — stay uncovered because they live inline in `phase_a`, which runs only as a whole and
+  refuses at A5 without a production `server/.env`; reaching them needs a seam in `bin/deploy.sh`
+  that exposes its target-tree gates as callable units, which is filed rather than carved here.
+  Restating them would drift from the gate, which is the shape of the defect card#9203 filed and
+  which `bin/deploy.sh`'s own A6 comment names. `bin/deploy.sh` is untouched; the lane needs no host,
+  database, network, checkout or credential and runs in 0.2 s.
+
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
   unconditionally when it is absent; the file had never been committed, at `dev`, at `main` or at
