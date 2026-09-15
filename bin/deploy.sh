@@ -108,7 +108,7 @@
 # CARD / DECISION TOKENS, kept in the script on purpose (handover item 4 — they make it
 # answerable): card#7459 (this script) · card#9287 (the feed re-pinned to SSE; no Reverb daemon) · card#7344 (CI
 # lanes) · D-08 (separate prod host; named 2026-09-14, never deployed to) · D-13 (prod moves only by this script) ·
-# D-15 (the store on a dedicated host; MariaDB per its 2026-09-09 amendment) · D-16 (the app
+# D-15 (the store; MariaDB per its 2026-09-09 amendment, TLS only to another host per its 2026-09-14 one) · D-16 (the app
 # lives in server/) · rt#347 (the sample and the binding handover) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
@@ -186,17 +186,372 @@ done
 # config cache is stale by construction (it was built by the PREVIOUS deploy, from the previous
 # release's config/*.php), so `config()` is the one source here that is guaranteed wrong.
 #
-# ⚠ SECRETS. `env_get` RETURNS values; nothing in this script PRINTS one. APP_KEY, DB_PASSWORD and
-# every credential are tested for shape only (`-n`, a prefix), never echoed, never put in an argv
-# and never in an error message — a deploy log is a transcript that outlives the deploy.
+# ⚠ SECRETS. `env_get` RETURNS values, and the only ones this script PRINTS are printed deliberately, each
+# for a key it names and none of them a credential: A5 prints APP_ENV, APP_DEBUG, DB_CONNECTION, CACHE_STORE
+# and DB_HOST, and phase B's smoke step prints APP_URL — in `Smoke: GET …/up` and in the report that the app
+# is up but `/up` answered something other than 200. A public base URL is the one thing that step can name.
+# APP_KEY, DB_PASSWORD, DB_URL and every other value are tested for shape only (`-n`, a prefix), never
+# echoed, never put in an argv and never in an error message —
+# a refusal about a `.env` line names the line's NUMBER, never its text. A deploy log is a transcript
+# that outlives the deploy.
+#
+# env_lines_load — $ENV_FILE as the LINES Laravel's own parser reads it as, in ENV_LINES; ENV_LINES_NUL is 1
+# when the read STOPPED at a NUL byte rather than reaching EOF. This is the ONE place in this script that
+# turns the file into lines, and both readers below iterate ENV_LINES, so "a line" is a single thing here.
+# It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
+# and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
+# was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
+# plaintext while A5 read DB_HOST as unset, took the config default of 127.0.0.1, and exempted the store from
+# TLS. Its mirror: a whole-file CRLF `.env`, which Laravel boots on perfectly, was one line to `grep` and so
+# unreadable for EVERY key. Both are the same defect — two notions of "a line" — and both end here rather
+# than in a refusal, because a file Laravel reads is one this script should read the same way.
+#   · the split is Dotenv\Parser\Parser::parse's `Regex::split("/(\r\n|\n|\r)/")`, mirrored (v5.7.0);
+#   · `read -d ''` ends at EOF with status 1, which is a complete read, not a failure. Status 0 is the other
+#     thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag, not a line.
+# It re-reads per call rather than caching: this is a bash builtin over a small file, cheaper than the `grep`
+# fork it replaced, and a cached copy would invent a staleness and ordering coupling that does not exist.
+ENV_LINES=()
+ENV_LINES_NUL=0
+env_lines_load() {
+  local content="" line
+  ENV_LINES=(); ENV_LINES_NUL=0
+  if IFS= read -r -d '' content 2>/dev/null < "$ENV_FILE"; then ENV_LINES_NUL=1; fi
+  content="${content//$'\r\n'/$'\n'}"
+  content="${content//$'\r'/$'\n'}"
+  # `<<<` appends exactly the terminator the last line needs, so ${#ENV_LINES[@]} is the number of lines
+  # Dotenv sees — including the partial one a NUL cut short, which is the line the refusal below names.
+  while IFS= read -r line; do ENV_LINES+=("$line"); done <<< "$content"
+}
+
+# env_get KEY — prints KEY's value and returns 0; returns 1 when no line defines KEY; returns 2, printing nothing,
+# when a line defining KEY is in a form this reader does not read EXACTLY as Laravel does (vlucas/phpdotenv's
+# Dotenv\Parser, then Illuminate\Support\Env::get). Status 2 is never "unset": a check that took an unread value
+# as absent would pass the value Laravel then uses.
+#
+# PRECONDITION: `env_file_scan` has passed on $ENV_FILE. `env_lines_load` decides where a line ENDS; the
+# scan is what makes one of those lines a SETTING — Dotenv reads a `KEY="` value its own line does not close
+# as running ON into the lines below it, so without that scan a `DB_SOCKET=` line could be part of another
+# key's value, and this reader would hand back a setting the app never receives. Both run over the same
+# lines, which is the one thing that makes this precondition mean anything (card#9561 r5).
+# A5 runs it before its first read, and phase B's one read runs on the same file.
+#
+# The one form read: `KEY=value` on one line, optionally indented, KEY on no other line, the value either
+# unquoted and free of whitespace, quotes, `#` and `$`, or wholly inside '…', or wholly inside "…" free
+# of `\` and `$`. That is Dotenv\Parser\EntryParser::parseLiteral's form, whose value Dotenv takes verbatim.
+# Every other line Dotenv reads as KEY is status 2, because Laravel reads each one differently:
+#   · `export KEY=`, `KEY = value`, a quoted name — Dotenv strips the prefix, the whitespace and the quotes;
+#   · a `$` unquoted or inside "…" — Dotenv interpolates `${NAME}` (inside '…' a `$` is literal, and read here);
+#   · an inline comment, trailing whitespace, a `\` inside "…" — stripped, or unescaped;
+#   · a bare `KEY` with no `=` — Dotenv CLEARS the key;
+#   · KEY on a second line — Dotenv applies every line in order, so the last one wins;
+#   · a value that is itself quoted, `"'value'"` — Env::get strips that second pair of quotes.
+#
+# What this reads is `.env` and nothing else. Laravel prefers a variable already in the process environment —
+# a PHP-FPM pool's `env[KEY]`, a daemon's environment — over `.env`, and this script cannot see those.
 env_get() {
-  local key="$1" line
-  line="$(grep -E "^[[:space:]]*${key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)"
-  [ -n "$line" ] || return 1
-  line="${line#*=}"
-  line="${line%\"}"; line="${line#\"}"
-  line="${line%\'}"; line="${line#\'}"
-  printf '%s' "$line"
+  local key="$1" lines="" line value re
+  env_lines_load
+  # The pattern is the one this reader has always used; what changed in card#9561 r5 is what it runs over.
+  # bash's `=~` is ERE, so the text is unchanged — but it matches the lines ENV_LINES holds, which are the
+  # lines Dotenv reads, rather than the ones a `\n`-only splitter would have found. The matches are joined
+  # with a literal newline below, which is what the duplicate-key note relies on.
+  re="^[[:space:]]*(export[[:space:]]+)?[\"']?${key}[\"']?[[:space:]]*(=|\$)"
+  for line in "${ENV_LINES[@]}"; do
+    [[ $line =~ $re ]] || continue
+    [ -z "$lines" ] || lines+=$'\n'
+    lines+="$line"
+  done
+  [ -n "$lines" ] || return 1
+  lines="${lines#"${lines%%[![:space:]]*}"}"
+  [ "${lines#"$key="}" != "$lines" ] || return 2
+  # KEY on a second line needs no guard of its own, and card#9561 r2 MINOR 1 is that a guard here could
+  # not be made to fail: the loop above joins the matches with a newline, and the value below carries it.
+  # `re_plain` excludes every [[:space:]] character; `re_single` and `re_double` would have to run across
+  # the newline, which needs the FIRST line to open a quote it never closes — and env_file_scan has
+  # already refused that file, because Dotenv rejects an unterminated '…' and folds an unterminated "…"
+  # into the lines below it. So a second definition returns 2 through the value's shape.
+  value="${lines#"$key="}"
+  local re_plain='^[^[:space:]\'"'"'"#$]*$' re_single="^'[^']*'\$" re_double='^"[^"\$]*"$'
+  if [[ "$value" =~ $re_single || "$value" =~ $re_double ]]; then
+    value="${value:1:${#value}-2}"
+    case "$value" in \'*\' | \"*\") return 2 ;; esac
+  elif ! [[ "$value" =~ $re_plain ]]; then
+    return 2
+  fi
+  printf '%s' "$value"
+}
+
+# env_read VAR KEY — env_get KEY into VAR, in THIS shell: returns 1 with VAR empty when KEY is unset, and REFUSES
+# when env_get cannot read KEY. The refusal names the key and never the line, which may carry a credential.
+env_read() {
+  local _env_value _env_rc=0
+  _env_value="$(env_get "$2")" || _env_rc=$?
+  [ "$_env_rc" -ne 2 ] || refuse ".env defines $2 in a form this deploy does not read, so what Laravel reads for it is not established" \
+    "$ENV_FILE sets $2 with an export prefix, whitespace around =, a quoted name, a \$ outside '…' (Dotenv" \
+    "interpolates \${…}), an inline comment, trailing whitespace, a \\ inside \"…\", a doubly quoted value, a bare" \
+    "$2 with no =, or on more than one line. Write it once, as plain $2=value (the value may be" \
+    "wholly '…'- or \"…\"-quoted)."
+  printf -v "$1" '%s' "$_env_value"
+  return "$_env_rc"
+}
+
+# env_file_scan — refuse unless Laravel's own parser reads $ENV_FILE as the LINES it is written in.
+# env_get reads a LINE; Dotenv reads the FILE, and two file-level facts decide whether those are the same
+# thing (both measured 2026-09-15 against server/vendor's phpdotenv v5.7.0):
+#   · a `KEY="` value its own line does not close is MULTI-LINE. Dotenv\Parser\Lines folds every following
+#     line into that value up to the next `"`, so a `DB_SOCKET=/run/…` line inside one is never defined at
+#     all — and a value nothing ever closes is DISCARDED with every line it swallowed, silently, with no
+#     exception raised. Read a line at a time, that file says "socket, this host, no TLS needed" while
+#     Laravel goes to DB_HOST over TCP with no CA.
+#   · one line the parser REJECTS fails the WHOLE file: Dotenv\Parser\Parser throws InvalidFileException,
+#     Laravel reads no value from `.env` at all, and every request and every artisan command dies at boot —
+#     on keys written perfectly, because of one that is not. A stray quote in an unread key is enough.
+# Either one makes "what Laravel reads for this key is established" false for EVERY key, the ones A5 never
+# reads included, so this runs over the whole file before A5's first read. Without it phase A certifies a
+# file phase B cannot boot on, and that failure lands INSIDE the maintenance window with the app down,
+# instead of before it, where a refusal promises nothing was touched.
+#
+# It mirrors Dotenv\Parser v5.7.0: the file is split by `env_lines_load` the way Parser::parse splits it
+# (`\r\n`, `\n` or `\r` alike, and the same split `env_get` reads), every line is tested for a multi-line
+# start BEFORE the comment/blank test (Lines::process's order — a `#` before the `="` makes it a comment),
+# and each remaining line goes through EntryParser's own name and value rules. THREE places are deliberately
+# narrower than Dotenv, and they are the whole of what this does not certify:
+#   · a name outside `[A-Za-z0-9_.]` is refused, where EntryParser::isValidName also accepts Unicode letters,
+#     marks and digits;
+#   · ANY `"` value a line does not close is refused — including one phpdotenv folds correctly and reads as
+#     the multi-line value it was written as. A closed fold is not a defect; it is a shape this script's own
+#     line-at-a-time reader cannot follow, and a fold that is wrong is indistinguishable from it HERE;
+#   · a NUL byte anywhere in the file is refused, where phpdotenv reads it as a character like any other.
+# Nothing else here is a judgement call — a line this does not refuse is one phpdotenv parses, as the one
+# line it is. Each narrowing refuses a file Laravel could boot on; none of them certifies one it could not.
+ENV_SCAN_SPACE=$' \t\v\f\r'   # PHP's ctype_space, less the \n that no single line can hold
+ENV_SCAN_TRIM=$' \t\v\r'      # the set Dotenv's own trims use (" \n\r\t\0\x0B"), same caveat
+
+# env_scan_multiline_start LINE — Dotenv\Parser\Lines::looksLikeMultilineStart, mirrored.
+env_scan_multiline_start() {
+  local line="$1" stripped i count=0 backslashes='\\'
+  case "$line" in *'="'*) ;; *) return 1 ;; esac
+  case "${line%%'="'*}" in *'#'*) return 1 ;; esac
+  # looksLikeMultilineStop(line, true): with `\\` pairs removed, count the `"` that follow a character
+  # which is not a backslash — the `"` that OPENS the value follows the `=`, so it counts — and a line
+  # carrying more than one of them closes on itself.
+  stripped="${line//"$backslashes"/}"
+  for (( i = 0; i + 1 < ${#stripped}; i++ )); do
+    [ "${stripped:i:1}" = '\' ] || [ "${stripped:i+1:1}" != '"' ] || count=$((count + 1))
+  done
+  [ "$count" -le 1 ]
+}
+
+# env_scan_value_cause VALUE — sets ENV_SCAN_CAUSE to the cause Dotenv\Parser\EntryParser::parseValue
+# rejects VALUE with and returns 0; returns 1 when it accepts. The states below are that transducer's and
+# the causes are its own words. Its parseLiteral fast path is deliberately NOT mirrored: it accepts a
+# subset of what these states accept, so mirroring it would only add a second statement of one form.
+ENV_SCAN_CAUSE=""
+env_scan_value_cause() {
+  local value="$1" c i state=initial
+  for (( i = 0; i < ${#value}; i++ )); do
+    c="${value:i:1}"
+    case "$state" in
+      initial)  case "$c" in "'") state=single ;; '"') state=double ;; '#') state=comment ;; *) state=unquoted ;; esac ;;
+      unquoted) case "$c" in '#') state=comment ;; [$ENV_SCAN_SPACE]) state=closed ;; esac ;;
+      single)   [ "$c" != "'" ] || state=closed ;;
+      double)   case "$c" in '"') state=closed ;; '\') state=escape ;; esac ;;
+      escape)   case "$c" in '"' | '\' | '$' | f | n | r | t | v) state=double ;;
+                  *) ENV_SCAN_CAUSE="an unexpected escape sequence"; return 0 ;; esac ;;
+      closed)   case "$c" in '#') state=comment ;; [$ENV_SCAN_SPACE]) ;;
+                  *) ENV_SCAN_CAUSE="unexpected whitespace"; return 0 ;; esac ;;
+    esac
+  done
+  case "$state" in single | double | escape) ENV_SCAN_CAUSE="a missing closing quote"; return 0 ;; esac
+  return 1
+}
+
+# env_scan_refuse LINE-NUMBER CAUSE — one refusal for every way Dotenv's parser turns this file down.
+env_scan_refuse() {
+  refuse "$ENV_FILE line $1 is not one Laravel's own .env parser reads ($2)" \
+    "vlucas/phpdotenv refuses the WHOLE file on a single line it cannot parse, so Laravel would read no" \
+    "value from it at all: every request and every artisan command on this host would fail at boot," \
+    "however the other lines are written, and nothing this deploy just read for any key is established." \
+    "Fix line $1. Its text is not printed here — it may carry a credential."
+}
+
+env_file_scan() {
+  local raw line n=0 name value quote
+  # The file is loaded once, here, by the one loader both readers use; ENV_LINES is what is scanned, so the
+  # lines this certifies are the lines env_get then reads, which is the whole point of there being one.
+  env_lines_load
+  if [ "$ENV_LINES_NUL" = 1 ]; then
+    # The NUL is on the line the load stopped in the middle of — the last one ENV_LINES holds.
+    refuse "$ENV_FILE line ${#ENV_LINES[@]} carries a NUL byte, which nothing here can read past" \
+      "phpdotenv reads a NUL as a character like any other, so Laravel boots on this file — and no reader" \
+      "in this script can see it as Laravel does. bash's \`read\` stops at the first NUL, and every reader" \
+      "here goes through that one load, so no line below that byte is scanned at all and EVERY key defined" \
+      "below it comes back 'unset', whatever the file sets it to. Without this refusal the deploy still" \
+      "stops — on the first key A5 checks, naming a cause that is not the real one. Rewrite the line" \
+      "without it." \
+      "Its text is not printed here — it may carry a credential."
+  fi
+  for raw in "${ENV_LINES[@]}"; do
+    n=$((n + 1))
+    ! env_scan_multiline_start "$raw" || refuse \
+      "$ENV_FILE line $n opens a \"…\" value that its own line does not close" \
+      "Laravel's .env parser reads that as a value running ON into the lines below it, to the next line" \
+      "carrying a \". Every line it swallows stops being a setting of its own — a DB_SOCKET= or" \
+      "MYSQL_ATTR_SSL_CA= line inside one is never defined — and a value that nothing ever closes is" \
+      "discarded with all of them, silently. This deploy reads .env a line at a time, so while one is" \
+      "open no key's value is established. Close the value on its own line." \
+      "Its text is not printed here — it may carry a credential."
+    # Lines::isCommentOrWhitespace, on the trimmed line, AFTER the multi-line test.
+    line="${raw#"${raw%%[!$ENV_SCAN_TRIM]*}"}"
+    line="${line%"${line##*[!$ENV_SCAN_TRIM]}"}"
+    [ -n "$line" ] || continue
+    [ "${line:0:1}" != '#' ] || continue
+    # EntryParser::splitStringIntoParts — the name and value are trimmed only when there IS an `=`; a line
+    # with none is a name on its own (Dotenv CLEARS that key), and carries nothing to reject.
+    if [ "${raw#*=}" != "$raw" ]; then
+      name="${raw%%=*}"; value="${raw#*=}"
+      name="${name#"${name%%[!$ENV_SCAN_TRIM]*}"}"; name="${name%"${name##*[!$ENV_SCAN_TRIM]}"}"
+      value="${value#"${value%%[!$ENV_SCAN_TRIM]*}"}"; value="${value%"${value##*[!$ENV_SCAN_TRIM]}"}"
+      [ -n "$name" ] || env_scan_refuse "$n" "an unexpected equals"
+    else
+      name="$raw"; value=""
+    fi
+    # EntryParser::parseName — an `export ` prefix and a wrapping quote pair are stripped before the name
+    # is judged, so `export DB_HOST=…` and `"DB_HOST"=…` are Dotenv's DB_HOST (env_get refuses them by
+    # name for that reason; they are not this file's defect).
+    if [ "${#name}" -gt 6 ] && [ "${name:0:6}" = export ] && [[ ${name:6:1} == [$ENV_SCAN_SPACE] ]]; then
+      name="${name:6}"
+      name="${name#"${name%%[!$ENV_SCAN_SPACE]*}"}"
+    fi
+    if [ "${#name}" -ge 3 ]; then
+      quote="${name:0:1}"
+      if [ "$quote" = "${name: -1}" ] && { [ "$quote" = '"' ] || [ "$quote" = "'" ]; }; then
+        name="${name:1:${#name}-2}"
+      fi
+    fi
+    [[ $name =~ ^[A-Za-z0-9_.]+$ ]] || env_scan_refuse "$n" "a name outside [A-Za-z0-9_.]"
+    # A blank value is Value::blank() and cannot be rejected; anything else goes through the transducer.
+    [ -n "$value" ] || continue
+    ! env_scan_value_cause "$value" || env_scan_refuse "$n" "$ENV_SCAN_CAUSE"
+  done
+}
+
+# env_laravel_value VAR TEXT — sets VAR to a tag for the value the APP RECEIVES for a key whose `.env` text
+# is TEXT: `null`, `false`, `true`, or `string:` followed by the string itself. This is the ONE place this
+# script says what Illuminate\Support\Env::get does to a line's text, and every check below decides on the
+# tag rather than on the text: a check that compares the text is reading something the app never uses.
+# Env::get maps `null`, `false`, `true`, `empty` and their `(…)` forms — case-insensitively, before any
+# config file sees them — to null, false, true and '', and passes everything else through unchanged
+# (measured 2026-09-15 against server/vendor's phpdotenv v5.7.0 and Illuminate\Support\Env).
+# Env::get also strips ONE pair of wrapping quotes; that is not mirrored because it cannot arrive here.
+# env_get has already stripped the pair Dotenv strips, and returns 2 for a value quoted a second time.
+env_laravel_value() {
+  local _tag
+  case "${2,,}" in
+    null | '(null)')   _tag=null ;;
+    false | '(false)') _tag=false ;;
+    true | '(true)')   _tag=true ;;
+    empty | '(empty)') _tag='string:' ;;
+    *)                 _tag="string:$2" ;;
+  esac
+  printf -v "$1" '%s' "$_tag"
+}
+
+# env_app_falsy TEXT — true when the value the app receives for this text is one PHP treats as FALSE.
+# That is the rule `server/config/database.php` applies to the CA: `array_filter` with no callback drops
+# every falsy value, a strictly larger set than Env::get's literals, so the option the connection carries
+# is only the one PHP reads as true. It is also what "no key at all" means for APP_KEY.
+# The falsy values a `.env` line can reach are null, false, '' and the STRING '0'; `0.0`, `0e0`, `off` and
+# `no` are non-empty strings, which PHP reads as TRUE — array_filter KEEPS them, and pdo_mysql then fails
+# to open a CA by that name, closed at connect rather than silently (measured 2026-09-15, same run).
+env_app_falsy() {
+  local _value
+  env_laravel_value _value "$1"
+  case "$_value" in null | false | 'string:' | 'string:0') return 0 ;; esac
+  return 1
+}
+
+# store_locality — whether the `mysql` connection reaches its store without leaving this host, which is the
+# whole of what decides A5's TLS requirement (FLEET-STATE.md § 6.1's Transport row, docs/PLAN.md D-15's
+# 2026-09-14 amendment). Sets STORE_LOCALITY to `socket`, `loopback` or `remote`, and STORE_WHY to a
+# sentence naming the key that decided it. Neither carries a credential: DB_URL is never printed, and the
+# host PHP parses out of it is compared, never echoed.
+#
+# The keys are server/config/database.php's, resolved the way Laravel resolves them:
+#   · DB_URL, when it parses to a host, REPLACES DB_HOST (Illuminate\Support\ConfigurationUrlParser merges
+#     parse_url's rawurldecoded host over the connection's keys); a URL naming no host leaves DB_HOST in
+#     force. Its query string is merged over EVERY key, so a `?host=` or `?unix_socket=` replaces the URL's
+#     host and DB_SOCKET alike: a URL carrying either is not followed here and counts as remote, as does a
+#     URL parse_url refuses. PHP's own parse_url and parse_str read it — the functions the parser uses — with
+#     the URL on stdin, because it carries the password and an argv is readable by every user of the host.
+#   · DB_SOCKET makes Illuminate\Database\Connectors\MySqlConnector build a unix_socket DSN whatever the host
+#     says. Only a value starting with `/` counts: Laravel reads `null`, `false`, `(empty)` and an inline
+#     comment as no socket at all, and env_get returns each of them as a non-empty string.
+#   · DB_HOST, else the config's own default, 127.0.0.1. Which hosts are ON this host is stated once, in
+#     ENV_LOOPBACK_HOSTS below; any other value, an empty one included, is remote.
+# It reads `server/.env` only (env_get's closing note): a variable the process environment sets, which Laravel
+# prefers, is not seen. Within `.env`, what this cannot establish is REMOTE: a URL it does not follow counts as
+# another host, and a key env_get cannot read refuses by name, so neither is exempted. A URL's host is judged
+# INSIDE the `php` that parsed it, which is what makes that true of the host too: no byte of it has to survive
+# the trip back into a bash string to be judged, and every byte that crosses a boundary is one a boundary can
+# eat (card#9561 r3 MAJOR).
+#
+# ENV_LOOPBACK_HOSTS — the one statement of which host names the connection reaches without leaving this host.
+# `localhost` is pdo_mysql's name for the Unix socket (measured 2026-09-14, PHP 8.5.4: `host=localhost`
+# connected to /var/run/mysqld/mysqld.sock); 127.0.0.1 and ::1 are loopback TCP, and `[::1]` is how parse_url
+# returns ::1 out of a URL. BOTH deciders read this array — host_locality for DB_HOST, and the `php -r` below
+# for DB_URL's host, through its environment — so the two cannot drift apart.
+ENV_LOOPBACK_HOSTS=(localhost 127.0.0.1 ::1 '[::1]')
+
+# host_locality VAR HOST — sets VAR to `loopback` or `remote`.
+host_locality() {
+  local _h
+  for _h in "${ENV_LOOPBACK_HOSTS[@]}"; do
+    [ "$2" != "$_h" ] || { printf -v "$1" loopback; return 0; }
+  done
+  printf -v "$1" remote
+}
+
+store_locality() {
+  local url url_locality="" host socket from
+  host="127.0.0.1"; from="DB_HOST is unset, and server/config/database.php defaults it to 127.0.0.1"
+  env_read url DB_URL || true
+  if [ -n "$url" ]; then
+    # It prints the VERDICT — one of `loopback`, `remote`, `none` — and exits 1 on a URL it will not follow.
+    # A host's BYTES never cross back into bash, because `$(…)` is not a lossless channel for them: it
+    # deletes NUL bytes and strips trailing newlines, so a host judged on what survived it read
+    # `local%00host` as `localhost` (r3 MAJOR) and `localhost%0A` as `localhost` (r1) — both a store on
+    # another host, certified as this one. A token from a fixed set is the same token after either edit.
+    # Anything else it prints, and any failure to run it at all, is remote.
+    url_locality="$(printf '%s' "$url" | MEZZ_LOOPBACK_HOSTS="${ENV_LOOPBACK_HOSTS[*]}" php -r '
+      $p = parse_url(stream_get_contents(STDIN));
+      if ($p === false) exit(1);
+      parse_str($p["query"] ?? "", $q);
+      if (array_key_exists("host", $q) || array_key_exists("unix_socket", $q)) exit(1);
+      if (! isset($p["host"])) { echo "none"; exit(0); }
+      echo in_array(rawurldecode($p["host"]), explode(" ", getenv("MEZZ_LOOPBACK_HOSTS")), true)
+        ? "loopback" : "remote";' 2>/dev/null)" || {
+      STORE_LOCALITY=remote
+      STORE_WHY="DB_URL does not parse, or its query string sets host or unix_socket, so this host is not established"
+      return 0; }
+    case "$url_locality" in loopback | remote | none) ;; *) url_locality=remote ;; esac
+  fi
+  env_read socket DB_SOCKET || true
+  if [ "${socket:0:1}" = "/" ]; then
+    STORE_LOCALITY=socket; STORE_WHY="DB_SOCKET names a Unix socket"; return 0
+  fi
+  if [ -n "$url_locality" ] && [ "$url_locality" != none ]; then
+    STORE_LOCALITY="$url_locality"; from=""
+  elif env_read host DB_HOST; then
+    host_locality STORE_LOCALITY "$host"
+    from="DB_HOST is '$host'"
+  else
+    # env_read emptied `host` on its way to saying DB_HOST is unset; the default is the config's own.
+    host="127.0.0.1"; host_locality STORE_LOCALITY "$host"
+  fi
+  # A URL's host stays out of the sentence: a malformed URL can put credential bytes where a host should be.
+  STORE_WHY="${from:-DB_URL names a $STORE_LOCALITY host}"
+  return 0
 }
 
 git_at() { git -C "$DEPLOY_ROOT" "$@"; }
@@ -683,28 +1038,48 @@ phase_a() {
     "$(printf '%s' "$dirty" | sed 's/^/  | /')" \
     "Prod moves only by this script (D-13). Nothing may be edited on the host."
 
-  # A5 — the environment file. Shape only; no value is printed.
+  # A5 — the environment file. No secret value is printed: a line below prints a key's value only for a
+  # non-secret key, and APP_KEY, DB_URL and every credential are tested for shape only. Every key is read
+  # through env_read, so a line it cannot read exactly as Laravel does refuses here by name; and wherever
+  # Laravel resolves a line's text to something else, the check below decides on the value the app
+  # RECEIVES (env_laravel_value) rather than on that text — APP_DEBUG, CACHE_STORE, APP_KEY and the CA.
+  # The text is compared only where no text the check ACCEPTS resolves to another value: APP_ENV,
+  # DB_CONNECTION, store_locality's `/`-prefixed DB_SOCKET, and the loopback DB_HOST names. A text those
+  # four do NOT accept may still resolve to something else, and every one of them falls on the strict side
+  # of that line rather than the exempting one: `DB_HOST=null` is a host of null, which pdo_mysql reads as
+  # the local socket, and is read here as a store on ANOTHER host — a CA demanded that Laravel would not
+  # need, never a network hop waved through.
   [ -f "$ENV_FILE" ] || refuse "$ENV_FILE does not exist" \
     "It is created once when the host is stood up: copy server/.env.example, fill it in," \
     "and run \`php artisan key:generate\` there (docs/PLAN.md § 5)."
   local perm other; perm="$(stat -c '%a' "$ENV_FILE")"; other="${perm: -1}"
   [ "$other" = "0" ] || refuse ".env is readable beyond its owner and group (mode $perm)" \
     "chmod 640 $ENV_FILE"
+  # Before the first read: whether a LINE is what Laravel reads is a property of the whole FILE.
+  env_file_scan
 
   local app_env app_debug app_key db_conn ssl_ca
-  app_env="$(env_get APP_ENV || true)"
+  env_read app_env APP_ENV || true
   [ "$app_env" = "production" ] || refuse "APP_ENV is '${app_env:-unset}', not 'production'" \
     "This script deploys PROD. Pointing it at a sandbox checkout is how the two instances" \
     "(D-13) become one."
-  app_debug="$(env_get APP_DEBUG || true)"
-  [ "$app_debug" = "false" ] || refuse "APP_DEBUG is '${app_debug:-unset}', not 'false'" \
-    "Debug mode renders stack traces — including environment values — to any visitor."
-  app_key="$(env_get APP_KEY || true)"
-  [ -n "$app_key" ] || refuse "APP_KEY is empty" \
+  env_read app_debug APP_DEBUG || true
+  # `server/config/app.php` is `(bool) env('APP_DEBUG', false)`, so what decides debug is the value the app
+  # RECEIVES: Env::get lowercases first, and `FALSE`, `False` and `(false)` each reach it as PHP false —
+  # debug OFF, a correct production config, which a text compare refused.
+  local app_debug_value; env_laravel_value app_debug_value "$app_debug"
+  [ "$app_debug_value" = "false" ] || refuse "APP_DEBUG is '${app_debug:-unset}', not 'false'" \
+    "Debug mode renders stack traces — including environment values — to any visitor." \
+    "Write it as false — FALSE, False and (false) are the same value to Laravel and pass here. Any other" \
+    "text is refused even where PHP would cast it to false (0, null, an empty value, no line at all): a" \
+    "production host states that debug is off. 'off' is not one of them — PHP reads that string as TRUE."
+  env_read app_key APP_KEY || true
+  # A key the app receives as a falsy value is no key at all, whatever the line reads as (env_app_falsy).
+  ! env_app_falsy "$app_key" || refuse "APP_KEY is empty, or is a value the app receives as no key at all" \
     "server/.env.example ships it empty deliberately; it is minted per host with" \
     "\`php artisan key:generate\` (docs/PLAN.md § 5). Minting one HERE would silently" \
     "invalidate every existing session and encrypted column."
-  db_conn="$(env_get DB_CONNECTION || true)"
+  env_read db_conn DB_CONNECTION || true
   # ⚠ 'mysql' HERE IS THE LARAVEL CONNECTION NAME (server/config/database.php), NOT THE SERVER
   # PRODUCT. D-15's 2026-09-09 amendment repinned the product to MariaDB; the app is still
   # wired to the `mysql` connection — Tests\TestCase and § 6.2's pin guard both key on
@@ -714,8 +1089,8 @@ phase_a() {
   # for a MariaDB-specific Laravel feature, and would change what this script accepts and what those
   # guards key on.
   [ "$db_conn" = "mysql" ] || refuse "DB_CONNECTION is '${db_conn:-unset}', not 'mysql'" \
-    "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MariaDB on a dedicated host, at" \
-    "the version floor § 6.1 states, reached through Laravel's 'mysql' connection. sqlite here" \
+    "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MariaDB, at the version floor" \
+    "§ 6.1 states, reached through Laravel's 'mysql' connection. sqlite here" \
     "would be a prod store that silently cannot do what the fold needs (FOR UPDATE SKIP LOCKED)" \
     "and that no backup or provisioning decision covers."
   # A cache store that PERSISTS between requests (docs/PLAN.md § 5) — a security obligation, not a
@@ -725,17 +1100,53 @@ phase_a() {
   # against one — and the timing gap is a user-enumeration oracle on an endpoint whose rate limiter
   # keys on email+IP and so does not throttle probing N addresses from one IP at all. UNSET is fine
   # and is not checked: config/cache.php's own default is 'database'.
-  local cache_store; cache_store="$(env_get CACHE_STORE || true)"
-  case "$cache_store" in
-    array|null) refuse "CACHE_STORE is '$cache_store', which does not survive a request" \
+  #
+  # The decision is on the value the app RECEIVES, because the two non-persistent stores are reached by
+  # more texts than spell them. A value the app receives as PHP null leaves `config('cache.default')`
+  # null, `CacheManager::getDefaultDriver()` falls back to `'null'`, and `getConfig('null')` returns the
+  # DISCARD driver — a cache that keeps nothing, silently, which is this oracle wide open. `array` is the
+  # per-request store. Every other value either names a store in config/cache.php or throws "Cache store
+  # [x] is not defined" at boot: loud, and not this hole. (Measured 2026-09-15 against server/vendor:
+  # CACHE_STORE=NULL, Null, (null) and (NULL) each reached the discard driver.)
+  local cache_store cache_value; env_read cache_store CACHE_STORE || true
+  env_laravel_value cache_value "$cache_store"
+  case "$cache_value" in
+    null | string:array) refuse "CACHE_STORE is '$cache_store', which does not survive a request" \
       "docs/PLAN.md § 5: the login path's non-enumerability depends on the dummy bcrypt" \
       "outliving the request that minted it. server/.env.example ships 'database'." ;;
   esac
 
-  ssl_ca="$(env_get MYSQL_ATTR_SSL_CA || true)"
-  [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset" \
-    "FLEET-STATE.md § 6.1: TLS is REQUIRED to the store, certificate verified, with no" \
-    "plaintext fallback — the credential and every descriptor cross a network between hosts."
+  # TLS to the store is required BECAUSE the credential and every descriptor cross a network, so it is
+  # required exactly when they do (FLEET-STATE.md § 6.1; the operator's ruling of 2026-09-14, docs/PLAN.md
+  # D-15's amendment: "database is local; there is no SSL support nor is it needed when mysql is on
+  # localhost"). A store on this host passes with the CA unset, and with it set: setting one is the
+  # operator's choice, not a defect. store_locality names what decided it, and fails closed.
+  # A CA set for a store on this host is WARNED about: pdo_mysql then requires TLS over the socket as well,
+  # so a MariaDB that offers none refuses every connection the release makes. Measured 2026-09-14 with
+  # PHP 8.5.4 against the sandbox host's MariaDB and a non-existent account: over the socket the connection
+  # reached authentication without a CA, and failed "[2002] Cannot connect to MySQL using SSL" with one.
+  env_read ssl_ca MYSQL_ATTR_SSL_CA || true
+  # The CA the connection carries is the one server/config/database.php's `array_filter` KEEPS, and that
+  # is the value the app receives when PHP reads it as true — env_app_falsy owns that rule and the reason
+  # it is larger than Env::get's literals. A line whose value falls in it is a connection with NO CA
+  # whatever its text says; counting it set would pass a store on another host that connects in plaintext.
+  ! env_app_falsy "$ssl_ca" || ssl_ca=""
+  store_locality
+  if [ "$STORE_LOCALITY" = remote ]; then
+    [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset for a store on another host ($STORE_WHY)" \
+      "FLEET-STATE.md § 6.1: TLS is REQUIRED to a store on another host, certificate verified, with no" \
+      "plaintext fallback — the credential and every descriptor cross a network between hosts." \
+      "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST one of ${ENV_LOOPBACK_HOSTS[*]}." \
+      "A CA the app receives as a value PHP reads as false is UNSET here, whatever the line says:" \
+      "server/config/database.php's array_filter drops the option, so that line is a connection with no" \
+      "CA at all (this script's env_app_falsy states which values those are). Give the CA's path."
+  elif [ -z "$ssl_ca" ]; then
+    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — TLS not required, FLEET-STATE.md § 6.1 (decided from .env; a variable set in the PHP-FPM or process environment is not seen)"
+  else
+    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — MYSQL_ATTR_SSL_CA is set, though not required, FLEET-STATE.md § 6.1 (decided from .env; a variable set in the PHP-FPM or process environment is not seen)"
+    warn "MYSQL_ATTR_SSL_CA is set for a store on this host: pdo_mysql then requires TLS to it, over the socket too," \
+      "and a MariaDB that offers no TLS refuses every connection. Leave it unset unless this store serves TLS."
+  fi
 
   # NOT CHECKED HERE, on purpose: § 6.1's MariaDB version floor, the storage engine and the
   # collations. FLEET-STATE.md § 6.1 assigns every one of them to "verified at provisioning", and a
@@ -866,13 +1277,25 @@ phase_a() {
   # because an absent key is not automatically a defect — several have framework defaults, and
   # `.env.example`'s commented lines are deliberately optional — but nothing else on this host will
   # ever mention it.
-  local want missing_keys=()
+  # Whether this host sets a key is asked through env_get, the one reader that answers it the way Laravel
+  # would: a hand-rolled `^[[:space:]]*KEY=` line-grep reported `export FOO=…` and `"FOO"=…` — both of them
+  # Dotenv's FOO — as a key the host does not set. Its third answer is kept apart: status 2 is a key written
+  # in a form this deploy does not read, which is not "missing" and not "set" but "not established", and
+  # saying "does not set" of it sends the operator to add a line that is already there. (A5 has run
+  # env_file_scan on this file, which is what makes a LINE a unit here at all — env_get's precondition.)
+  local want missing_keys=() unread_keys=() k k_rc
   want="$(git_at show "$SHA:server/.env.example" 2>/dev/null | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
   for k in $want; do
-    grep -Eq "^[[:space:]]*$k=" "$ENV_FILE" || missing_keys+=("$k")
+    k_rc=0; env_get "$k" >/dev/null || k_rc=$?
+    case "$k_rc" in
+      1) missing_keys+=("$k") ;;
+      2) unread_keys+=("$k") ;;
+    esac
   done
   [ ${#missing_keys[@]} -eq 0 ] \
     || warn "the target release's .env.example names keys this host's .env does not set: ${missing_keys[*]}"
+  [ ${#unread_keys[@]} -eq 0 ] \
+    || warn "the target release's .env.example names keys this host's .env writes in a form this deploy does not read, so whether the release's default or the host's value is in force is not established: ${unread_keys[*]}"
 
   # A11 — trusted proxies (docs/PLAN.md § 5). Checked against the TARGET tree for the same reason
   # as A10. `trustProxies('*')` lets any client forge X-Forwarded-For, which defeats the key that
@@ -1439,9 +1862,17 @@ phase_b_post_checkout() {
   # taking traffic. It is still not a success: exit 3, and the marker stays, so the next run
   # refuses and an operator has to look. `/up` is Laravel's health route (server/bootstrap/app.php
   # `health: '/up'`); it needs no credential and it is the one endpoint that answers before MFA.
-  local url code
-  url="$(env_get APP_URL || true)"
-  if [ -z "$url" ]; then
+  # APP_URL is read with env_get rather than env_read: a refusal promises nothing was changed, and here the new
+  # release is already serving. A value env_get cannot read gets the unset case's warning, named.
+  local url code url_rc=0
+  url="$(env_get APP_URL)" || url_rc=$?
+  # The same rule as every A5 check: what the app has is the value it RECEIVES. An APP_URL Laravel
+  # resolves to a falsy value is no URL — `config('app.url')` is null or '' — so it takes the unset
+  # case's warning rather than a smoke request to a host named `null` and a failure report naming it.
+  ! env_app_falsy "$url" || url=""
+  if [ "$url_rc" -eq 2 ]; then
+    warn "APP_URL is in a form this script does not read (env_get, bin/deploy.sh) — no smoke check was made. The deploy is UNVERIFIED."
+  elif [ -z "$url" ]; then
     warn "APP_URL is unset — no smoke check was made. The deploy is UNVERIFIED."
   else
     step "Smoke: GET $url/up"

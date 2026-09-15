@@ -412,6 +412,7 @@ eq  "control: exit 0"                       0 "$RC"
 has "control: the § 6.9 migration gate ran and passed" "no undeclared ALTER" "$OUT"
 has "control: prints the plan"              "DRY RUN" "$OUT"
 hasnt "control: no config drift on a host whose .env covers .env.example" "does not set:" "$OUT"
+hasnt "control: no key of .env.example is written in a form this deploy cannot read" "in a form this deploy does not read, so whether" "$OUT"
 has "control: the release's crontab block is what is installed" "is what is installed; the window rewrites it unchanged" "$OUT"
 has "control: the release keeps the daemons' lock files where the serving release's are" "keeps the daemons' lock files at $ROOT/server/" "$OUT"
 has "control: PHP-FPM is not reloaded, and the posture that makes that safe was read" "php-fpm  not reloaded — opcache revalidates a changed file within 0 s" "$OUT"
@@ -458,6 +459,28 @@ run_refusal "APP_ENV=local" "APP_ENV is 'local'" --dry-run
 mkfix debug_on; sed -i 's/^APP_DEBUG=.*/APP_DEBUG=true/' "$ROOT/server/.env"
 run_refusal "APP_DEBUG=true" "APP_DEBUG is 'true'" --dry-run
 
+# card#9561 r3 MINOR 1. APP_DEBUG was the one A5 check still comparing the TEXT. Env::get lowercases before
+# the app sees it and `server/config/app.php` is `(bool) env('APP_DEBUG', false)`, so FALSE, False, (false)
+# and (FALSE) each reach the app as debug OFF — a correct production config that A5 refused. The twin, one
+# variable away, is `APP_DEBUG=true` above, still refused; with the rule reverted to `= "false"` every case
+# below reds at the EXIT level (measured 2026-09-15 against server/vendor's Illuminate\Support\Env).
+mkfix debug_literals
+debug_is() { # debug_is <text> <expected exit>
+  sed -i "s/^APP_DEBUG=.*/APP_DEBUG=$1/" "$ROOT/server/.env"; run --dry-run
+  eq "APP_DEBUG=$1: exit $2" "$2" "$RC"
+}
+debug_is FALSE 0
+debug_is False 0
+debug_is '(false)' 0
+debug_is '(FALSE)' 0
+# `off` is a non-empty string, which PHP reads as TRUE — debug ON, and refused. `0` and `null` ARE cast to
+# false, and are refused too: a production host says debug is off rather than resolving to it.
+debug_is off 1
+debug_is 0 1
+debug_is null 1
+sed -i 's/^APP_DEBUG=.*/APP_DEBUG=off/' "$ROOT/server/.env"; run --dry-run
+has "APP_DEBUG=off: names the value and what is wanted" "APP_DEBUG is 'off', not 'false'" "$OUT"
+
 mkfix no_key; sed -i 's/^APP_KEY=.*/APP_KEY=/' "$ROOT/server/.env"
 run_refusal "empty APP_KEY" "APP_KEY is empty" --dry-run
 
@@ -468,8 +491,323 @@ hasnt "sqlite refusal leaks no DB password" "$FAKE_PW" "$OUT"
 mkfix cache_array; sed -i 's/^CACHE_STORE=.*/CACHE_STORE=array/' "$ROOT/server/.env"
 run_refusal "non-persistent cache store" "CACHE_STORE is 'array'" --dry-run
 
-mkfix no_tls; sed -i '/^MYSQL_ATTR_SSL_CA=/d' "$ROOT/server/.env"
-run_refusal "no TLS to the store" "MYSQL_ATTR_SSL_CA is unset" --dry-run
+section "A5 — TLS to the store is required for a store on another host, and only there (FLEET-STATE.md § 6.1)"
+# One fixture; each case rewrites its .env from write_env's, which sets no DB_HOST, DB_SOCKET or DB_URL and
+# sets MYSQL_ATTR_SSL_CA. The .env is git-ignored, so rewriting it leaves the tree clean for A4. Every
+# refusal here has a same-host twin that differs in the one key deciding locality, and passes.
+store_env() { # store_env <KEY=value…> — write_env's .env with the CA removed, then each pair appended
+  write_env "$ROOT"; sed -i '/^MYSQL_ATTR_SSL_CA=/d' "$ROOT/server/.env"
+  local kv; for kv in "$@"; do printf '%s\n' "$kv" >> "$ROOT/server/.env"; done
+}
+store_passes() { # store_passes <label> <needle> <KEY=value…>
+  local label="$1" needle="$2"; shift 2
+  store_env "$@"; run --dry-run
+  eq  "$label: exit 0" 0 "$RC"
+  has "$label: names why TLS is not required" "$needle" "$OUT"
+}
+mkfix store_locality
+store_passes "DB_HOST unset, no CA" "store on this host (loopback; DB_HOST is unset, and server/config/database.php defaults it to 127.0.0.1) — TLS not required"
+store_passes "DB_HOST=localhost, no CA" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" DB_HOST=localhost
+store_passes "DB_HOST=127.0.0.1, no CA" "store on this host (loopback; DB_HOST is '127.0.0.1') — TLS not required" DB_HOST=127.0.0.1
+store_passes "DB_HOST=::1, no CA" "store on this host (loopback; DB_HOST is '::1') — TLS not required" DB_HOST=::1
+store_passes "DB_SOCKET over a remote DB_HOST, no CA" "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock
+store_passes "DB_URL host localhost over a remote DB_HOST, no CA" "store on this host (loopback; DB_URL names a loopback host) — TLS not required" \
+  DB_HOST=db.internal DB_URL=mysql://u:p@localhost/mezzanine
+hasnt "DB_URL localhost: the URL's credentials are not printed" "u:p" "$OUT"
+store_env DB_HOST=localhost MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt; run --dry-run
+eq  "same host with a CA set: exit 0 — the operator's choice is not refused" 0 "$RC"
+has "same host with a CA set: says it is not required" "MYSQL_ATTR_SSL_CA is set, though not required" "$OUT"
+has "same host with a CA set: warns that pdo_mysql then requires TLS to it" "a MariaDB that offers no TLS refuses every connection" "$OUT"
+store_env DB_HOST=localhost; run --dry-run
+hasnt "same host without a CA: no TLS warning" "offers no TLS" "$OUT"
+
+store_env DB_HOST=db.internal
+run_refusal "remote DB_HOST, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+store_env DB_HOST=db.internal MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt; run --dry-run
+eq    "remote DB_HOST with a CA: exit 0" 0 "$RC"
+hasnt "remote DB_HOST with a CA: prints no same-host line" "store on this host" "$OUT"
+# DB_HOST unset would pass on its own (the case above), so this refusal is the URL's host replacing it.
+store_env DB_URL=mysql://u:p@db.internal/mezzanine "DB_PASSWORD=$FAKE_PW"
+run_refusal "remote DB_URL, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "remote DB_URL: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "remote DB_URL: the URL's host is not printed" "db.internal" "$OUT"
+hasnt "remote DB_URL: no DB password is printed" "$FAKE_PW" "$OUT"
+# Fail closed on what A5 does not follow: a query string Laravel merges over host, and a socket keyword.
+store_env DB_URL=mysql://u:p@localhost/mezzanine?host=db.internal
+run_refusal "DB_URL whose query sets host, no CA" "its query string sets host or unix_socket" --dry-run
+store_env DB_HOST=db.internal DB_SOCKET=null
+run_refusal "DB_SOCKET=null (Laravel: no socket) over a remote DB_HOST, no CA" "store on another host (DB_HOST is 'db.internal')" --dry-run
+# A `%0A` decodes to a trailing newline, which `$(…)` would strip back to `localhost`. Its twin is the passing
+# `DB_URL host localhost` case above.
+store_env 'DB_URL=mysql://u:p@localhost%0A/mezzanine'
+run_refusal "DB_URL host localhost%0A, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "DB_URL host localhost%0A: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "DB_URL host localhost%0A: no DB password is printed" "$FAKE_PW" "$OUT"
+# card#9561 r3 MAJOR, the same defect one byte later: a `%00` decodes to a NUL, which `$( )` does not strip
+# but DELETES, so a host read back through one was `localhost` — this store certified as loopback, exit 0,
+# no CA, while pdo_mysql takes the DSN's host as a C string and resolves `local` over the network. The host
+# is judged inside the `php` that parsed the URL now, and a TOKEN crosses back. Same twin as above.
+store_env 'DB_URL=mysql://u:p@local%00host/mezzanine'
+run_refusal "DB_URL host local%00host, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "DB_URL host local%00host: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "DB_URL host local%00host: no DB password is printed" "$FAKE_PW" "$OUT"
+# A percent-encoding that decodes to a name that IS loopback is still loopback: the decode is Laravel's own
+# (ConfigurationUrlParser rawurldecodes every component), so this is not a narrowing, and it is the control
+# that says the refusals above are about the decoded BYTES and not about the `%`.
+store_passes "DB_URL host %6cocalhost (decodes to localhost), no CA" \
+  "store on this host (loopback; DB_URL names a loopback host) — TLS not required" \
+  'DB_URL=mysql://u:p@%6cocalhost/mezzanine'
+
+section "A5 — a key in a form env_get does not read exactly as Laravel does is refused by name (card#9561 r1)"
+# Each case is a .env Laravel reads as a store on ANOTHER host (or a non-persistent cache), in a form the old reader
+# took as unset, loopback or a socket. Measured against vlucas/phpdotenv v5.7.0 + Illuminate\Support\Env on
+# 2026-09-14. The refusal names the key and prints no line: a DB_URL line carries the password.
+# The twins that pass: the plain `DB_HOST=db.internal` refusal above says "for a store on another host", not this.
+unread_refused() { # unread_refused <label> <KEY> — after the caller wrote the .env
+  run_refusal "$1" ".env defines $2 in a form this deploy does not read" --dry-run
+  hasnt "$1: no URL credentials are printed" "u:p" "$OUT"
+  hasnt "$1: no DB password is printed" "$FAKE_PW" "$OUT"
+  hasnt "$1: no TLS verdict is reached on a value that was not read" "store on this host" "$OUT"
+}
+store_env 'export DB_HOST=db.internal';                                  unread_refused "export DB_HOST" DB_HOST
+store_env 'DB_HOST = db.internal';                                       unread_refused "whitespace around = in DB_HOST" DB_HOST
+store_env '"DB_HOST"=db.internal';                                       unread_refused "a quoted name DB_HOST" DB_HOST
+store_env DB_HOST=localhost 'export DB_URL=mysql://u:p@db.internal/mezzanine'; unread_refused "export DB_URL over a plain DB_HOST=localhost" DB_URL
+hasnt "export DB_URL: the URL's host is not printed" "db.internal" "$OUT"
+store_env REMOTE=db.internal 'DB_URL=mysql://u:p@${REMOTE}/mezzanine';  unread_refused "\${REMOTE} interpolated into DB_URL" DB_URL
+store_env REMOTE=db.internal 'DB_URL="mysql://u:p@${REMOTE}/mezzanine"'; unread_refused "\${REMOTE} interpolated into a double-quoted DB_URL" DB_URL
+store_env DB_HOST=localhost DB_HOST=db.internal;                         unread_refused "DB_HOST defined twice (local, then remote)" DB_HOST
+# The duplicate above is read the same way by the old reader (`tail -n 1` and Dotenv both take the last
+# line), so it reds here only on the REASON. This one flips the verdict: the old grep matched only the
+# plain line and passed a remote store, while Laravel applies both and connects to db.internal.
+store_env DB_HOST=localhost 'export DB_HOST=db.internal';                unread_refused "a plain DB_HOST=localhost with a later export DB_HOST naming a remote host" DB_HOST
+store_env DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock 'export DB_SOCKET='; unread_refused "a later export DB_SOCKET= emptying the socket" DB_SOCKET
+store_env DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock DB_SOCKET; unread_refused "a later bare DB_SOCKET clearing the socket" DB_SOCKET
+store_env 'DB_HOST=localhost # was db.internal';                         unread_refused "an inline comment on DB_HOST" DB_HOST
+# CACHE_STORE: write_env sets it once, so the case REPLACES that line rather than appending a second one.
+store_env; sed -i 's/^CACHE_STORE=.*/export CACHE_STORE=array/' "$ROOT/server/.env"; unread_refused "export CACHE_STORE=array" CACHE_STORE
+store_env; sed -i 's/^CACHE_STORE=.*/CACHE_STORE=array # per-request/' "$ROOT/server/.env"; unread_refused "CACHE_STORE=array with an inline comment" CACHE_STORE
+store_env; sed -i "s/^CACHE_STORE=.*/CACHE_STORE=\"'array'\"/" "$ROOT/server/.env"; unread_refused "CACHE_STORE doubly quoted (Env::get strips the inner pair)" CACHE_STORE
+# The forms env_get reads keep reading: a quoted value, a comment line naming the key, a `$` inside '…'.
+store_passes "DB_SOCKET double-quoted over a remote DB_HOST, no CA" "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal 'DB_SOCKET="/run/mysqld/mysqld.sock"'
+store_passes "DB_SOCKET single-quoted over a remote DB_HOST, no CA" "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal "DB_SOCKET='/run/mysqld/mysqld.sock'"
+store_passes "a commented-out remote DB_HOST above DB_HOST=localhost, no CA" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" \
+  '# DB_HOST=db.internal' '  # export DB_HOST=db.internal' DB_HOST=localhost
+store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA='/etc/ssl/\$certs/ca.crt'"; run --dry-run
+eq  "a \$ inside a single-quoted value is literal to Dotenv, and read: exit 0" 0 "$RC"
+
+section "A5 — a value Laravel reads as null, false or empty is not the TEXT of it (card#9561 r1)"
+# Illuminate\Support\Env::get maps `null`, `false`, `empty` and their `(…)` forms, case-insensitively, to
+# PHP null, false and '' before any config file sees them (measured 2026-09-15 against server/vendor).
+# config/database.php wraps the CA in array_filter, which drops all three — so each of these is a store on
+# another host reached with NO TLS, while the .env line reads as a CA that is set. The twin that passes is
+# the `remote DB_HOST with a CA` case above, which differs only in the value being a path.
+ca_literal_refused() { # ca_literal_refused <literal>
+  store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA=$1"
+  run_refusal "remote DB_HOST, MYSQL_ATTR_SSL_CA=$1 (Laravel: no CA)" \
+    "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+  has "MYSQL_ATTR_SSL_CA=$1: says why the literal is not a CA" "array_filter drops the option" "$OUT"
+}
+ca_literal_refused null
+ca_literal_refused NULL
+ca_literal_refused '(null)'
+ca_literal_refused false
+ca_literal_refused empty
+ca_literal_refused '(empty)'
+# card#9561 r2 BLOCKER. The gate is `array_filter`, which with no callback drops every PHP-falsy value —
+# a strictly LARGER set than Env::get's literals, and the string '0' is in it. Each of these three was a
+# store on another host connecting with no TLS while A5 read the line as a CA that is set (measured
+# 2026-09-15 against server/vendor: ca=ABSENT for all three, ca=SET for all four twins below).
+ca_literal_refused 0
+ca_literal_refused '"0"'
+ca_literal_refused "'0'"
+# The twins, one variable away: array_filter KEEPS these, the connection really does carry a CA by that
+# name, and pdo_mysql fails closed at connect on a file that does not exist rather than silently.
+ca_kept() { # ca_kept <value>
+  store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA=$1"; run --dry-run
+  eq "remote DB_HOST, MYSQL_ATTR_SSL_CA=$1 (Laravel: a CA by that name): exit 0" 0 "$RC"
+}
+ca_kept 0.0
+ca_kept 0e0
+ca_kept off
+ca_kept true
+# On a store on THIS host the same literal is still unset: no "set, though not required" line, no TLS warning.
+store_passes "DB_HOST=localhost with MYSQL_ATTR_SSL_CA=null" \
+  "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" DB_HOST=localhost MYSQL_ATTR_SSL_CA=null
+hasnt "MYSQL_ATTR_SSL_CA=null on this host: not reported as a CA that is set" "though not required" "$OUT"
+store_passes "DB_HOST=localhost with MYSQL_ATTR_SSL_CA=0" \
+  "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" DB_HOST=localhost MYSQL_ATTR_SSL_CA=0
+hasnt "MYSQL_ATTR_SSL_CA=0 on this host: not reported as a CA that is set" "though not required" "$OUT"
+# APP_KEY reads through the same rule: env('APP_KEY') of `null` — or of `0` — is no key, and every session
+# and encrypted column depends on it. The control is every other case in this file, whose APP_KEY is a key.
+store_env; sed -i 's/^APP_KEY=.*/APP_KEY=null/' "$ROOT/server/.env"
+run_refusal "APP_KEY=null (Laravel: no key at all)" "APP_KEY is empty" --dry-run
+store_env; sed -i 's/^APP_KEY=.*/APP_KEY=0/' "$ROOT/server/.env"
+run_refusal "APP_KEY=0 (Laravel: a falsy key, which is no key)" "APP_KEY is empty" --dry-run
+
+# card#9561 r2 MAJOR 1. CACHE_STORE decided on the TEXT, case-sensitively, while Env::get lowercases
+# first: `NULL`, `Null`, `(null)` and `(NULL)` all reach the app as PHP null, `config('cache.default')`
+# is then null, `CacheManager::getDefaultDriver()` falls back to `'null'` and `getConfig('null')` returns
+# the DISCARD driver — a cache that keeps nothing, which is the login-path enumeration oracle back open
+# (measured 2026-09-15 against server/vendor: cache_driver=null(DISCARD) for each).
+cache_refused() { # cache_refused <text>
+  store_env; sed -i "s/^CACHE_STORE=.*/CACHE_STORE=$1/" "$ROOT/server/.env"
+  run_refusal "CACHE_STORE=$1 (Laravel: a store that keeps nothing)" "which does not survive a request" --dry-run
+}
+cache_refused NULL
+cache_refused Null
+cache_refused '(null)'
+cache_refused '(NULL)'
+cache_refused '"null"'
+# The twin: a store that IS persistent passes. `Array` is not `array` — Env::get lowercases only its own
+# literals, so the app receives the string 'Array', which names no store in config/cache.php and throws
+# "Cache store [Array] is not defined" at boot (measured 2026-09-15). Loud is not this check's hole.
+store_env; sed -i 's/^CACHE_STORE=.*/CACHE_STORE=file/' "$ROOT/server/.env"; run --dry-run
+eq "CACHE_STORE=file: exit 0 — a persistent store is not refused" 0 "$RC"
+
+section "A5 — a .env Laravel's own parser does not read as the lines it is written in (card#9561 r2)"
+# env_get reads a LINE; Dotenv reads the FILE. Two file-level defects make every key's value
+# unestablished — including the keys A5 never reads — and the refusal must land in phase A, where
+# nothing has been touched, rather than at boot inside the maintenance window. Every fixture here was
+# measured against server/vendor's phpdotenv v5.7.0 on 2026-09-15. The refusal names the line NUMBER.
+scan_refused() { # scan_refused <label> <needle>
+  run_refusal "$1" "$2" --dry-run
+  hasnt "$1: no DB password is printed" "$FAKE_PW" "$OUT"
+  hasnt "$1: no store verdict is reached on a file that was not established" "store on this host" "$OUT"
+}
+# 1. A `KEY="` value its line does not close swallows the lines below it. Laravel ends with NO DB_SOCKET
+# and a remote DB_HOST with no CA, while a line-at-a-time reader saw a socket and exempted the store.
+store_env DB_HOST=db.internal 'NOTE="line one' DB_SOCKET=/run/mysqld/mysqld.sock 'line three"'
+scan_refused "a multi-line value swallowing DB_SOCKET" 'opens a "…" value that its own line does not close'
+# Worse: with nothing ever closing it, Dotenv DISCARDS the buffer and every line in it, with no exception.
+store_env DB_HOST=db.internal 'NOTE="line one' DB_SOCKET=/run/mysqld/mysqld.sock
+scan_refused "a multi-line value nothing ever closes" 'opens a "…" value that its own line does not close'
+# The twin, one variable away: the same NOTE closed on its own line is no fold, and the socket is read.
+store_passes "a closed \"…\" NOTE above DB_SOCKET" \
+  "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal 'NOTE="line one"' DB_SOCKET=/run/mysqld/mysqld.sock
+# 2. ONE line the parser rejects fails the WHOLE file: Laravel reads nothing from it and every request and
+# artisan command dies at boot. A5 used to certify such a file — "what Laravel reads is established" for a
+# file Laravel cannot read at all. None of these keys is one A5 reads.
+store_env DB_HOST=127.0.0.1 "NOTE='oops"
+scan_refused "an unterminated '…' on a key A5 never reads" "a missing closing quote"
+store_env DB_HOST=127.0.0.1 'MAIL_FROM_NAME=Mezzanine App'
+scan_refused "an unquoted value carrying a space" "unexpected whitespace"
+store_env DB_HOST=127.0.0.1 'NOTE="a\qb"'
+scan_refused "an unknown escape inside a \"…\" value" "an unexpected escape sequence"
+store_env DB_HOST=127.0.0.1 '=oops'
+scan_refused "a line with no name before its =" "an unexpected equals"
+store_env DB_HOST=127.0.0.1 'NOT-A-NAME=x'
+scan_refused "a name Dotenv rejects" "a name outside [A-Za-z0-9_.]"
+# card#9561 r2 MINOR 1: the shape that would have discriminated env_get's own duplicate-key guard — two
+# DB_HOST lines whose concatenation satisfies the single-quoted form. The file scan refuses it one step
+# earlier (Dotenv rejects an unterminated '…'), which is why that guard is gone rather than covered.
+store_env "DB_HOST='a" "DB_HOST=b'"
+scan_refused "a duplicate key split across an unterminated quote" "a missing closing quote"
+# card#9561 r3 MINOR 4. THE shape where the multi-line rule is the only refuser: a `="` inside an otherwise
+# valid UNQUOTED value. phpdotenv ACCEPTS this file and yields only APP_ENV and DB_HOST — the fold swallows
+# DB_SOCKET and is discarded at EOF with no exception — so Laravel goes to db.internal over TCP with no CA,
+# while a line-at-a-time reader sees the socket and exempts the store. Every other fixture in this section
+# is ALSO refused by the value transducer, so with the multi-line rule reverted only this one moves the
+# EXIT code (measured 2026-09-15 against server/vendor's phpdotenv v5.7.0, both halves).
+store_env DB_HOST=db.internal 'NOTE=a="b' DB_SOCKET=/run/mysqld/mysqld.sock
+scan_refused "an unquoted value carrying =\" swallows the DB_SOCKET line below it" 'opens a "…" value that its own line does not close'
+# card#9561 r3 MINOR 3. A NUL byte blinds every reader in this script: bash's `read` stops at the first one,
+# so no line below it is scanned, and `grep` matches nothing in a file carrying one, so every key comes back
+# "unset". The deploy stopped anyway — on APP_ENV, naming a cause that was not the real one, which is the
+# failure r2's `tr` control exists to prevent. phpdotenv reads the NUL as a character like any other and
+# Laravel boots on this file (measured 2026-09-15: the parser yields all four keys, NOTE with the NUL in it).
+store_env DB_HOST=127.0.0.1; printf 'NOTE=a\0b\n' >> "$ROOT/server/.env"
+scan_refused "a NUL byte in .env" "carries a NUL byte"
+has   "a NUL byte in .env: names the line it is on" "line $(wc -l < "$ROOT/server/.env") carries a NUL byte" "$OUT"
+hasnt "a NUL byte in .env: does not name the wrong cause (every key read as unset)" "APP_ENV is 'unset'" "$OUT"
+# The twin, one byte away: the same file with a printable character in place of the NUL is read normally.
+store_env DB_HOST=127.0.0.1; printf 'NOTE=aXb\n' >> "$ROOT/server/.env"
+run --dry-run
+eq  "the same .env with no NUL: exit 0" 0 "$RC"
+# The twins: every form Dotenv DOES parse passes the scan — including the ones env_get then refuses BY
+# NAME, which is a different refusal, and including a `#` before a `="` (Dotenv's own comment rule).
+store_passes "interpolation, an export prefix, an inline comment, a spaced = and a bare key all parse" \
+  "store on this host (loopback; DB_HOST is '127.0.0.1') — TLS not required" \
+  DB_HOST=127.0.0.1 APP_NAME=Mezzanine 'MAIL_FROM_NAME="${APP_NAME}"' 'export FOO=1' 'BAR=2 # a comment' \
+  'BAZ = 3' '# FOO="an unterminated quote inside a comment' QUX
+
+section "A5 — a line ENDS where Laravel's parser ends it, in every reader (card#9561 r4 BLOCKER)"
+# Dotenv\Parser\Parser::parse splits on `\r\n`, `\n` or `\r` alike. Until r5, `env_file_scan` split that way
+# and `env_get` shelled to `grep`, whose terminator is `\n` ONLY — two readers, two notions of "a line", and
+# the scan CERTIFIED the file for the one it did not implement. Measured at 4626060 against the real boot
+# path (server/vendor's phpdotenv v5.7.0 through Illuminate\Support\Env, then server/config/database.php
+# through ConfigurationUrlParser, PHP 8.5.4): a `.env` ending `# note\rDB_HOST=db.internal` reaches Laravel
+# as a REMOTE store with NO CA, while `--dry-run` exited 0 saying "store on this host (loopback; DB_HOST is
+# unset…) — TLS not required". Both readers go through `env_lines_load` now, so there is ONE split — which
+# is also why a `\r` is not refused: a file Laravel reads is one this script reads the same way.
+env_after() { # env_after <printf-format> — store_env's .env with the format appended, its escapes expanded
+  store_env; printf '%b' "$1" >> "$ROOT/server/.env"
+}
+crlf_env() { # crlf_env <KEY=value…> — store_env's .env with every line ending CRLF, as a Windows editor writes it
+  store_env "$@"; sed -i 's/$/\r/' "$ROOT/server/.env"
+}
+mkfix env_line_endings
+# THE BLOCKER: one lone CR, no LF. Two lines to Dotenv, one to a `\n`-only reader, and the line it hides is
+# the one that decides the store.
+env_after '# note\rDB_HOST=db.internal\n'
+run_refusal "a lone CR above DB_HOST=db.internal" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+hasnt "a lone CR above a remote DB_HOST: no same-host verdict is reached" "ok — store on this host" "$OUT"
+hasnt "a lone CR above a remote DB_HOST: no DB password is printed" "$FAKE_PW" "$OUT"
+# The twin one byte away: the same file with an LF. It refused before this round and refuses now, which is
+# what makes the case above evidence about the CR rather than about the fixture.
+env_after '# note\nDB_HOST=db.internal\n'
+run_refusal "the same file with an LF in place of the CR" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+# The other twin: a CR is not itself a refusal. Laravel boots on this file and reaches a loopback store,
+# and so does A5 — the line the CR ended is read, not narrowed away.
+env_after '# note\rDB_HOST=localhost\n'
+run --dry-run
+eq  "a lone CR above DB_HOST=localhost: exit 0" 0 "$RC"
+has "a lone CR above DB_HOST=localhost: the store is judged on the line the CR ended" \
+  "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" "$OUT"
+# The same root, the login-path enumeration oracle (docs/PLAN.md § 5): a CACHE_STORE the app receives as
+# `array` while A5's case never fired — the check written to stop that shipping it.
+store_env; sed -i '/^CACHE_STORE=/d' "$ROOT/server/.env"; printf '%b' '# note\rCACHE_STORE=array\n' >> "$ROOT/server/.env"
+run_refusal "a lone CR above CACHE_STORE=array" "which does not survive a request" --dry-run
+# The same root again: a DB_URL naming another host, hidden behind a DB_HOST=localhost that ends in a CR.
+env_after 'DB_HOST=localhost\rDB_URL=mysql://u:p@db.internal/mezzanine\n'
+run_refusal "a DB_URL hidden behind a CR-terminated DB_HOST=localhost" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "a hidden DB_URL: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "a hidden DB_URL: the URL's host is not printed" "db.internal" "$OUT"
+# THE MIRROR IMAGE: a whole-file CRLF `.env`, which Laravel boots on perfectly. `grep` saw the whole file as
+# ONE line, so every key came back "in a form this deploy does not read" and A5 refused on APP_ENV — naming
+# a cause that was not the real one and never naming the line endings. It simply works now, as it does for
+# Laravel, which is the product behaviour a `\r` refusal would have got wrong.
+crlf_env DB_HOST=localhost
+run --dry-run
+eq  "a whole-file CRLF .env, loopback store: exit 0" 0 "$RC"
+has "a whole-file CRLF .env: the store is judged" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" "$OUT"
+hasnt "a whole-file CRLF .env: no key is reported unreadable" "in a form this deploy does not read" "$OUT"
+# Its remote twin still refuses — on the host, which is the reason, and not on the line endings.
+crlf_env DB_HOST=db.internal
+run_refusal "a whole-file CRLF .env, remote store, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+hasnt "a whole-file CRLF .env, remote store: not refused for being unreadable" "in a form this deploy does not read" "$OUT"
+# The NUL refusal counts its line out of that same load now (`${#ENV_LINES[@]}` in place of the newlines it
+# used to count), so the number has to survive a CR: the NUL below is on Dotenv's line `wc -l` + 2, because
+# the two CRs end two lines that `\n` alone does not.
+store_env; printf 'A=1\rB=2\rNOTE=a\0b\n' >> "$ROOT/server/.env"
+scan_refused "a NUL byte below CR-terminated lines" "carries a NUL byte"
+has "a NUL below CR-terminated lines: the line named is Dotenv's, not \\n's" \
+  "line $(( $(wc -l < "$ROOT/server/.env") + 2 )) carries a NUL byte" "$OUT"
+
+# card#9561 r4 MINOR 3. The hosts the TLS refusal offers as same-host are ENV_LOOPBACK_HOSTS interpolated,
+# not prose restating it, so the message cannot drift from the array both deciders read. The expected text
+# is DERIVED from that array in the release under test rather than typed here — a literal would be the same
+# unguarded copy one line further out. It discriminates: the prose it replaces listed three of the four
+# (`[::1]`, which is how parse_url returns ::1 out of a DB_URL, was missing from it).
+loopback_hosts="$(sed -n "s/^ENV_LOOPBACK_HOSTS=(\(.*\))$/\1/p" "$DEPLOY" | tr -d "'")"
+eq "the release names some same-host hosts to offer" "yes" "$([ -n "$loopback_hosts" ] && echo yes || echo no)"
+store_env DB_HOST=db.internal
+run_refusal "remote DB_HOST, no CA: the same-host hosts are named out of ENV_LOOPBACK_HOSTS" \
+  "or DB_HOST one of $loopback_hosts." --dry-run
 
 section "REFUSAL — a tool the supervision needs is missing (A1)"
 # PATH is rebuilt from every stub and every host binary, minus ONE command. The control is the same
@@ -489,6 +827,14 @@ for hide in crontab flock fuser setsid ps cgi-fcgi; do
   eq  "no $hide: exit 1" 1 "$RC"
   has "no $hide: names it" "missing required command(s): $hide" "$OUT"
 done
+# card#9561 r2 MINOR 2: A5's reading of `.env` must not shell out to a command A1 does not require. It
+# once lowercased through `tr`, and with `tr` off PATH every value compared equal to '' — so the APP_KEY
+# guard refused every deploy on this host, naming a cause that was not the real one. (A10b's key-drift
+# WARNING still uses `tr`, and degrades to no warning here; that is a separate gap, not A5's.)
+mkfix tool_tr; path_without "$T/path-no-tr" tr
+: > "$CALL_LOG"; OUT="$(PATH="$T/path-no-tr" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+eq    "no tr on PATH: exit 0 — A5 reads .env with bash alone" 0 "$RC"
+hasnt "no tr on PATH: APP_KEY is not refused for want of a lowercasing tool" "APP_KEY is empty" "$OUT"
 
 section "CRON SUPERVISION (A13) — the deployed release's block, judged by that release's own install"
 drop_lines() { grep -v -E -- "$1" "$STUB_CRONTAB_FILE" > "$STUB_CRONTAB_FILE.new"; mv "$STUB_CRONTAB_FILE.new" "$STUB_CRONTAB_FILE"; }
@@ -819,6 +1165,19 @@ mkfix env_drift_case env_drift
 run --dry-run
 eq  "config drift: still deploys (a warning, not a refusal)" 0 "$RC"
 has "config drift: names the key the host does not set" "does not set: NEW_FEATURE_TOKEN" "$OUT"
+# card#9561 r3 MINOR 2. A10b was the last reader judging a `.env` line by a hand-rolled `^[[:space:]]*KEY=`
+# grep — the pre-r1 one — so a key written `export KEY=…` or `"KEY"=…`, both of which ARE that key to
+# Dotenv, was reported as one this host does not set. It asks env_get now, whose third answer it keeps
+# apart: a key written in a form this deploy does not read is not established either way, and telling the
+# operator to add a line that is already there is the wrong instruction. DB_PASSWORD is used because A5
+# never reads it, so the run reaches A10b (a key A5 reads would refuse by name before this point).
+sed -i "s/^DB_PASSWORD=/export DB_PASSWORD=/" "$ROOT/server/.env"
+run --dry-run
+eq    "a key written \`export KEY=\`: still deploys (a warning, not a refusal)" 0 "$RC"
+has   "a key written \`export KEY=\`: reported as written in a form this deploy does not read" \
+      "does not read, so whether the release's default or the host's value is in force is not established: DB_PASSWORD" "$OUT"
+hasnt "a key written \`export KEY=\`: NOT reported as a key the host does not set" "does not set: DB_PASSWORD" "$OUT"
+hasnt "a key written \`export KEY=\`: no DB password is printed" "$FAKE_PW" "$OUT"
 
 no_lockfile() { rm -f "$1/server/package-lock.json"; }
 mkfix no_lock no_lockfile
@@ -1333,6 +1692,21 @@ eq  "smoke fails: exit 3 (up, but unverified)"          3 "$RC"
 has "smoke fails: says the app IS serving"              "THE APP IS UP BUT" "$OUT"
 logged "smoke fails: the window WAS closed"             "artisan up"
 eq  "smoke fails: the marker stays, so the next run refuses" "present" "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
+
+mkfix smoke_unread_url; sed -i 's/^APP_URL=/export APP_URL=/' "$ROOT/server/.env"
+run
+eq  "APP_URL in a form env_get does not read: exit 0, as for an unset APP_URL" 0 "$RC"
+has "APP_URL unread: says so, and that the deploy is unverified" "APP_URL is in a form this script does not read" "$OUT"
+unlogged "APP_URL unread: no smoke request was made to a URL that was not read" "curl "
+
+# card#9561 r2: the smoke check reads the value the app RECEIVES too. `APP_URL=null` is config('app.url')
+# of null — no URL — so it takes the unset case rather than requesting `null/up` and then reporting that
+# `null/up` answered 000. The control is every other case here, whose APP_URL is a URL and IS requested.
+mkfix smoke_null_url; sed -i 's|^APP_URL=.*|APP_URL=null|' "$ROOT/server/.env"
+run
+eq  "APP_URL=null (Laravel: no URL at all): exit 0, as for an unset APP_URL" 0 "$RC"
+has "APP_URL=null: reported as unset, and the deploy as unverified" "APP_URL is unset" "$OUT"
+unlogged "APP_URL=null: no smoke request was made to a URL the app does not have" "curl "
 
 printf '\n──────────────────────────────────────────────\n'
 if [ "$fails" -eq 0 ]; then

@@ -157,6 +157,32 @@ its date, its decider and the scope of what it moved. The original row above sta
   clause, § 6.2's pinned database names and isolation posture, and SQLite's unsupported status.
   **Reopens:** a MariaDB-specific Laravel feature the application needs.
 
+- **D-15 · TLS to the store is required only across a network — operator, 2026-09-14 (card#9561).**
+  In the operator's words: *"database is local; there is no SSL support nor is it needed when mysql
+  is on localhost"*. D-15 placed the store on a *dedicated DB host*, and
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) required TLS to it, certificate verified, because
+  the credential and every descriptor would cross a network; `bin/deploy.sh` A5 refused every host whose
+  `.env` set no `MYSQL_ATTR_SSL_CA`, which refused production's local store. **What moves:** the store may
+  be on the application's own host, and production's is. A store reached over its Unix socket or over
+  loopback crosses no network, and TLS is not required for it; a store on another host still requires TLS
+  with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
+  `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
+  not read exactly as Laravel does is refused by name, a `.env` Laravel's own parser does not read as the
+  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can —
+  is refused before any key is read, and a variable set in the process environment (a
+  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every
+  verdict whose answer could differ is on the value the app RECEIVES rather than the text of the line — a CA
+  Laravel resolves to a value PHP treats as false is UNSET, because `server/config/database.php`'s
+  `array_filter` drops it (`bin/deploy.sh`'s `env_app_falsy` states which values those are) — and where it
+  does compare text (`APP_ENV`, `DB_CONNECTION`, a `/`-prefixed `DB_SOCKET`, the loopback host names), no
+  text it ACCEPTS resolves to another value. Which host a `DB_URL` names is decided inside the `php` that
+  parses it, so no byte of a URL is ever judged after a shell has had a chance to eat one. **Why:** the requirement was always a consequence of the
+  network hop, and on one host there is none. **What does NOT move:** the engine,
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the `mysql` connection name,
+  § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
+  requirement for a store on another host. **Reopens:** a store that moves off the application's host,
+  which then carries the TLS requirement again with no further decision.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
@@ -297,7 +323,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
 | | fleet-state store + SSE feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
-| | MariaDB provisioning on the dedicated DB host (new card, D-15, as amended 2026-09-09) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
+| | MariaDB provisioning (new card, D-15, as amended 2026-09-09 and 2026-09-14) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified for a store on another host (a store on the app host needs none, D-15's 2026-09-14 amendment); the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
@@ -461,8 +487,9 @@ rule violations anyone could have committed at the time.
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
-  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
-  non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
+  non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
+  own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
@@ -622,7 +649,9 @@ rule violations anyone could have committed at the time.
   repo's half — the namespaces stay dev-only, and nothing under a production autoload root mints a
   credential from a literal.
 - **A deployed host sets `CACHE_STORE` to a store that PERSISTS between requests — `.env.example`
-  ships `database` — and `array` or `null` is a security regression rather than a tuning choice.**
+  ships `database` — and a store that does not survive the request is a security regression rather than a
+  tuning choice: the `array` driver, and the discard store Laravel selects for ANY value it resolves to
+  null, whatever that line spells.**
   The login path's non-enumerability depends on it: `server/app/Auth/ActiveUserProvider` pays for
   its dummy bcrypt **once per deployment** by keeping it in the cache, so an unknown address and a
   known one with a wrong password cost the same hashing work. On a store that does not survive the
