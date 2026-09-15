@@ -19,6 +19,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
+  first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
+  unconditionally when it is absent; the file had never been committed, at `dev`, at `main` or at
+  `v0.4.0`, and no `.gitignore` rule ever mentioned it. So every `bin/deploy.sh --ref <any>` refused
+  at phase A and the prod host (D-08) could not be deployed to at all, while `bin/deploy.selftest.sh`
+  stayed green — its fixtures MINT a lockfile (`printf '{"lockfileVersion":3}'`), so the one thing
+  that was broken was the one thing no fixture had. **The gate is untouched and was never the
+  defect**: `docs/PLAN.md § 5`'s *"What the deploy refuses on"* already names a missing npm lockfile,
+  and `server/package.json` floats every range it declares, so a lockfile-less prod build can ship
+  different JavaScript from the same commit on two consecutive days with nothing in the repo
+  recording which. The lockfile records those ranges' own resolution under node v22.22.1 / npm 9.2.0
+  and **no declared range moved** — narrowing one decides what prod builds and is an operator
+  decision, not a side effect of this card. `lockfileVersion` is 3, which npm 7 and newer read; the
+  prod host's npm version is unknown (D-08) and is a provisioning check, not something this commit
+  can establish. Proved on the real surface rather than by the selftest: `npm ci` into an empty
+  `server/node_modules` from the committed file, then `npm run build` (vite 8.3.0, 3 modules, into
+  the git-ignored `server/public/build/`), then `bin/deploy.sh --dry-run` against this branch
+  reaching A13 and A14 where the same command against the parent commit refuses at A12 — one
+  discriminating pair, the gate seen to fail and then to pass.
 - **card#9608** — **`bin/deploy.sh` refuses a read of the target release that git could not complete,
   where it used to read the failure as a finding about the release.** Phase A judges the release being
   deployed before it is checked out, so it reads that release's files out of git — and it read them as
