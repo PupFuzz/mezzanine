@@ -1357,6 +1357,17 @@ return new class { public function up(): void { Schema::create('feeds', fn ($t) 
 MIG
 }
 mkfix git_read_non_ascii_name migration_non_ascii
+# The fixture's OWN precondition, pinned the way its three siblings pin theirs. Without it every
+# assertion below is satisfied by a plain-ASCII tree too, so a name that stopped being non-ASCII — an
+# edit to the printf escapes above, a filesystem that mangles, a checkout that normalises — would
+# leave this case passing as "a healthy release deploys" while certifying the core.quotePath=false
+# fix it exists to guard. It asserts A BYTE OUTSIDE PRINTABLE ASCII rather than the literal `créé`,
+# so the needle cannot move WITH the fixture and go on agreeing with itself; core.quotePath=false so
+# that ls-tree prints the name's own bytes (under git's default quoting every name it prints is ASCII,
+# which is the very defect this case exists for).
+eq "non-ASCII fixture: exactly one migration in the release's tree really has a non-ASCII name" 1 \
+   "$(gitc "$SRC" -c core.quotePath=false ls-tree --name-only -r HEAD -- server/database/migrations \
+      | LC_ALL=C grep -c '[^ -~]')"
 run --dry-run
 eq    "a migration with a non-ASCII NAME: the healthy release still deploys" 0 "$RC"
 has   "a migration with a non-ASCII NAME: the § 6.9 gate read it and passed" "no undeclared ALTER" "$OUT"

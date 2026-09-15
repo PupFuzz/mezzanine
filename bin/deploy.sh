@@ -616,18 +616,49 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 #     optimisation, and whose removal would have made `refuse` a one-way door: "Nothing was changed.
 #     The previous release is still serving." printed with the checkout landed and the app down.
 
+# git_read_call_site <var> — the line THE CALLER of these readers is on, into <var>. The frame depth
+# is DERIVED rather than assumed, because git_read_unusable is reached at three different depths:
+# straight from git_read_at (a mode refusal), through git_read_failed from git_read_at (a failed
+# `git show`), and through git_read_failed from _git_ls_at (a failed `ls-tree` — the commonest of the
+# three in the window, because presence is established before content is ever read). A fixed
+# BASH_LINENO index is therefore right for ONE path and names THIS FILE for the other two: measured
+# on the shape this replaces (bash 5.3.9, git 2.53.0), BASH_LINENO[1] gave the line INSIDE _git_ls_at
+# that calls git_read_failed, and the one INSIDE git_read_at — so `failed_line:` in the marker and in
+# the banner pointed an operator recovering a down app at the primitive instead of at the precondition
+# that was running. (The line NUMBERS of that measurement are on card#9608, not restated here, where
+# every edit to this file would move them.) When one of these
+# readers fails they are the innermost CONTIGUOUS frames, so the OUTERMOST of them is the frame the
+# caller itself invoked and BASH_LINENO at that index is the caller's own line, at every depth. The
+# family is named below rather than matched by prefix, so that a CALLER whose name happens to look
+# like a reader's cannot be walked past; a reader added here and not named falls back to reporting
+# its own call site — what the fixed index did — never some further caller's.
+git_read_call_site() {
+  local __i __outer=0
+  for __i in "${!FUNCNAME[@]}"; do
+    case "${FUNCNAME[__i]}" in
+      git_read_call_site | git_read_unusable | git_read_failed | git_read_at | git_ls_at | _git_ls_at)
+        __outer="$__i" ;;
+      *) break ;;
+    esac
+  done
+  printf -v "$1" '%s' "${BASH_LINENO[__outer]:-0}"
+}
+
 # git_read_unusable <headline> <detail line…> — the ONE exit these readers take, and the ONE place
 # the phase is read. Phase A REFUSES: nothing has been touched, and the refusal says exactly that.
 # Phase B cannot say it — the window is open and the checkout has landed — so it takes the in-window
 # failure path, which writes the marker and says the app is down and stays down. POST_CHECKOUT_SHA is
 # what phase B re-enters with, so no caller has to remember which side of the window it is on.
 git_read_unusable() {
+  local __line
   if [ -n "$POST_CHECKOUT_SHA" ]; then
+    git_read_call_site __line
     printf '%s\n' "${@:2}" >&2
     FAILED_STEP="reading the release out of git — $1"
     # `false ||` so the banner reports a failing status, as it does for every other in-window failure
-    # (in_window_failure reads `$?`); BASH_LINENO[1] is the line in the reader's CALLER.
-    false || in_window_failure "${BASH_LINENO[1]:-0}"
+    # (in_window_failure reads `$?`) — which is also why the line is resolved into $__line ABOVE and
+    # not in the argument: a command substitution there would run between the `false` and the call.
+    false || in_window_failure "$__line"
   fi
   refuse "$@"
 }
