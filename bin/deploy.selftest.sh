@@ -541,6 +541,10 @@ hasnt "export DB_URL: the URL's host is not printed" "db.internal" "$OUT"
 store_env REMOTE=db.internal 'DB_URL=mysql://u:p@${REMOTE}/mezzanine';  unread_refused "\${REMOTE} interpolated into DB_URL" DB_URL
 store_env REMOTE=db.internal 'DB_URL="mysql://u:p@${REMOTE}/mezzanine"'; unread_refused "\${REMOTE} interpolated into a double-quoted DB_URL" DB_URL
 store_env DB_HOST=localhost DB_HOST=db.internal;                         unread_refused "DB_HOST defined twice (local, then remote)" DB_HOST
+# The duplicate above is read the same way by the old reader (`tail -n 1` and Dotenv both take the last
+# line), so it reds here only on the REASON. This one flips the verdict: the old grep matched only the
+# plain line and passed a remote store, while Laravel applies both and connects to db.internal.
+store_env DB_HOST=localhost 'export DB_HOST=db.internal';                unread_refused "a plain DB_HOST=localhost with a later export DB_HOST naming a remote host" DB_HOST
 store_env DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock 'export DB_SOCKET='; unread_refused "a later export DB_SOCKET= emptying the socket" DB_SOCKET
 store_env DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock DB_SOCKET; unread_refused "a later bare DB_SOCKET clearing the socket" DB_SOCKET
 store_env 'DB_HOST=localhost # was db.internal';                         unread_refused "an inline comment on DB_HOST" DB_HOST
