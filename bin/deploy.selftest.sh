@@ -1214,6 +1214,80 @@ trust_star() {
 mkfix trust_all trust_star
 run_refusal "trustProxies('*')" "trusts ALL proxies" --dry-run
 
+# card#9608 — A GIT READ THAT FAILED, then read as a finding about the release. `git_at <cmd> …
+# 2>/dev/null || true` silenced git's own error AND discarded its status, so "there is no such path at
+# this commit" and "git could not read it" both arrived as an empty string, and three phase A gates read
+# that empty as a fact about the tree: the § 6.9 gate printed `ok — no undeclared ALTER` over a file list
+# it never got, A11 emitted `no trustProxies() configured` about a file it never opened — which made the
+# `*` refusal UNREACHABLE — and A10b compared zero keys. THE FAILURE MODE IS A CHECK THAT PASSES, so each
+# case below is paired with the assertion that the false statement is gone, not only with an exit code.
+#
+# The condition is produced FOR REAL: one loose object of the fixture's own store, mode 000. Nothing is
+# stubbed and no path is removed — the path is still in the tree at $V2, which is what makes each of these
+# the read-failed case and not the file-missing case beside it.
+blind_object() { # blind_object <rev-expr> — the ONE object <rev-expr> names, unreadable in $ROOT
+  local o f
+  o="$(git -C "$ROOT" rev-parse "$1")"
+  f="$ROOT/.git/objects/${o:0:2}/${o:2}"
+  cases=$((cases+1))
+  if [ -f "$f" ]; then chmod 000 "$f"; ok "fixture: $1 is a loose object, now mode 000"
+  else bad "fixture: $1 is not a loose object under \$ROOT ($f is not there)"; return 1; fi
+  # ASSERTED, not assumed — root opens every mode, and under a root runner these cases would certify
+  # nothing while looking like they had. They red HERE, naming why, rather than skipping (canon #9).
+  cases=$((cases+1))
+  if git -C "$ROOT" cat-file -p "$1" >/dev/null 2>&1
+  then bad "fixture: git can still read $1 (a root runner cannot hold this condition)"
+  else ok "fixture: git really cannot read $1 as this user"; fi
+}
+
+# THE SECURITY INSTANCE, in the release where it costs something: this v2 DOES `trustProxies('*')` — the
+# case four lines above, which refuses on it — and with its blob unreadable the old reader handed A11 an
+# empty string, so the refusal could not fire and the run reported the SAFE state and exited 0.
+mkfix git_read_trust_star trust_star
+blind_object "$V2:server/bootstrap/app.php"
+run_refusal "unreadable bootstrap/app.php (a release that DOES trust \`*\`)" \
+  "git could not read server/bootstrap/app.php" --dry-run
+hasnt "unreadable bootstrap/app.php: makes no claim about a file it never read" \
+  "no trustProxies() configured" "$OUT"
+
+# The § 6.9 gate's own denominator: the migrations TREE object, unreadable, with every migration still in
+# the tree. Both directions are proven — this, and the legitimate empty directly below it.
+mkfix git_read_migrations
+blind_object "$V2:server/database/migrations"
+run_refusal "unreadable migrations tree" "git could not read server/database/migrations" --dry-run
+hasnt "unreadable migrations tree: does not certify the list it never got" "no undeclared ALTER" "$OUT"
+
+# THE OTHER DIRECTION, one variable away: a release that genuinely ships no migration at all. An empty
+# list at status 0 is an honest answer and must still PASS — a fix that refused here would be a
+# regression, not a fix — and the line it prints says what was actually read.
+no_migrations() { rm -rf "$1/server/database/migrations"; }
+mkfix git_read_no_migrations no_migrations
+run --dry-run
+eq  "a release with no migrations at all: still deploys" 0 "$RC"
+has "a release with no migrations at all: says THAT, not that it read a list" "ships no migrations" "$OUT"
+hasnt "a release with no migrations at all: claims nothing about migrations it never had" \
+  "no undeclared ALTER" "$OUT"
+
+# The reader's third answer, and the one that is not about I/O at all: the path is THERE and is not a
+# file. `git show` prints a TREE's listing, so the old reader handed A11 a directory listing and the
+# `trustProxies` grep found nothing in it — the same false reading of a file never opened, arrived at
+# from the other side, and the deploy went green.
+bootstrap_is_a_dir() {
+  rm -f "$1/server/bootstrap/app.php"
+  mkdir -p "$1/server/bootstrap/app.php"
+  printf 'not the bootstrap file\n' > "$1/server/bootstrap/app.php/x"
+}
+mkfix git_read_bootstrap_dir bootstrap_is_a_dir
+run_refusal "server/bootstrap/app.php is a directory in the release" \
+  "server/bootstrap/app.php is a tree" --dry-run
+hasnt "app.php as a directory: claims nothing about the trusted proxies it never read" \
+  "no trustProxies() configured" "$OUT"
+
+# A10b's key list, from a .env.example whose blob cannot be read: zero keys compared, nothing warned.
+mkfix git_read_env_example
+blind_object "$V2:server/.env.example"
+run_refusal "unreadable .env.example" "git could not read server/.env.example" --dry-run
+
 section "REFUSAL — the PHP floor (A6), DERIVED from the release being deployed"
 # ⛔ card#9203, and this section is what that card exists for. A6 used to carry its OWN copy of
 # the floor — `8.3*|8.4*|8.5*|9.*` — and that copy went on saying ^8.3 for as long as the

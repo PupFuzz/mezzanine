@@ -590,6 +590,74 @@ store_locality() {
 
 git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 
+# ── reading the TARGET RELEASE out of git ─────────────────────────────────────────────────────
+# Phase A judges the release being deployed BEFORE it is checked out, so every precondition that
+# reads a file OF that release reads it out of the object database. These are the ONE place that
+# does it, and they exist because the shape they replace could not tell two different things apart:
+# `git_at show … 2>/dev/null || true` silences git's own error AND discards its status, so "there is
+# no such path at this commit" and "git could not read it" both arrive as an empty string — and a
+# gate that reads empty as a finding then certifies a file it never opened. card#9608; card#9605 was
+# this same shape on the `.env` reader, which is why the fix is a primitive and not three call-sites.
+#   · THE STATUS IS THE DISCRIMINATOR, never the emptiness. `git ls-tree` exits 0 for a pathspec that
+#     matches nothing — an honest "not at this commit" — and non-zero when it could not READ the trees
+#     it had to walk (measured, git 2.53.0: 1 on an unreadable tree object, 128 on a rev that will not
+#     resolve). `git show` and `git cat-file -e` cannot be asked this question at all: both exit 128
+#     for an absent path and for a failure alike, and `cat-file -e` exits 0 for a blob that is present
+#     and UNREADABLE. So presence is established by ls-tree, and only then is content read, where a
+#     non-zero status can only mean the read failed.
+#   · STDERR IS NOT SILENCED. git's own message is what names WHICH object and why, and hiding it is
+#     half of how this class survives: the refusal below names the read, git names the cause, and they
+#     are read together. The absent case prints nothing, because ls-tree is silent about it.
+#   · A FAILED READ REFUSES HERE, rather than handing back a status a caller could drop. Every caller
+#     is in phase A, where refusing is the correct disposition — nothing has been touched — and doing
+#     it here is what makes the caller inside fpm_code_reload_ready safe STRUCTURALLY rather than by
+#     the accident of running after two other reads of the same $SHA happened to succeed.
+git_read_failed() { # git_read_failed <git subcommand> <rev> <path> <status>
+  refuse "git could not read $3 at $2 (\`git $1\` exited $4)" \
+    "git's own error is above this refusal and names the object it could not read." \
+    "Nothing was read, so nothing about $3 at that commit is known — this is not a finding" \
+    "about the release. A deploy that carried on here would be certifying a file it never" \
+    "opened, which is the defect card#9608 ends."
+}
+
+# _git_ls_at <var> <rev> <path> [ls-tree option…] — THE ls-tree, and THE status rule, in one place.
+# :(literal) because the pathspec is a PATH and not a pattern: `.user.ini`'s name comes from phpinfo.
+_git_ls_at() {
+  local __var="$1" rev="$2" path="$3"; shift 3
+  local out rc=0
+  out="$(git_at ls-tree "$@" "$rev" -- ":(literal)$path")" || rc=$?
+  [ "$rc" -eq 0 ] || git_read_failed ls-tree "$rev" "$path" "$rc"
+  printf -v "$__var" '%s' "$out"
+}
+
+# git_ls_at <var> <rev> <pathspec> — the paths under <pathspec> at <rev>, one per line, into <var>.
+# EMPTY IS A REAL ANSWER: at status 0 it means there is no such path at that commit. The names are
+# ls-tree's own, which C-quotes one carrying unusual bytes; every path this script lists is plain
+# ASCII, and a quoted name would fail the read that follows it rather than read as another file.
+git_ls_at() { _git_ls_at "$1" "$2" "$3" --name-only -r; }
+
+# git_read_at <var> <rev> <path> — the CONTENT of one file at <rev>, into <var>.
+#   0 — read. <var> is the content; a file that is genuinely empty reads as empty AT STATUS 0.
+#   1 — there is no such file at <rev>, and <var> is empty. The caller must say what that means:
+#       it is a different answer from "the file is empty", and neither is a reading of the text.
+# A git failure does not return: it refuses above.
+git_read_at() {
+  local __var="$1" rev="$2" path="$3" entry type content rc=0
+  printf -v "$__var" '%s' ""
+  _git_ls_at entry "$rev" "$path"
+  [ -n "$entry" ] || return 1
+  # The entry's TYPE, which is its second field — read rather than its name, because ls-tree quotes
+  # a name carrying unusual bytes and this path can come from outside this script. A tree here would
+  # otherwise be handed to `git show`, which prints its LISTING, and the caller would read that
+  # listing as the file's text.
+  type="${entry#* }"; type="${type%% *}"
+  [ "$type" = blob ] || refuse "$path is a $type at $rev, not a file" \
+    "This deploy reads it as a file, and will not read anything else as one."
+  content="$(git_at show "$rev:$path")" || rc=$?
+  [ "$rc" -eq 0 ] || git_read_failed show "$rev" "$path" "$rc"
+  printf -v "$__var" '%s' "$content"
+}
+
 # whole_seconds <value> — a whole number of seconds read from OUTSIDE this script (an ini, a pool, the environment,
 # the serving release's hand-over), printed in base 10; fails, printing nothing, on anything but digits. Every such
 # number is parsed through here, because bash arithmetic reads a leading zero as octal: `08` aborts the script with
@@ -840,7 +908,7 @@ fpm_code_reload_ready() {
   fi
 
   # The .user.ini files that can override a pool for the requests under them (see above).
-  local uif docroot f i x ue uv uf
+  local uif docroot f i x ue uv uf rel_uif
   local -a ui_src=() ui_text=()
   uif="$(phpinfo_value "$info" user_ini.filename)"
   if [ "$uif" != "no value" ]; then
@@ -859,10 +927,14 @@ fpm_code_reload_ready() {
       ui_src+=("$f"); ui_text+=("$(cat "$f")")
     done
     # Phase A reads the RELEASE's copy as well, which the checkout has not written yet; phase B, run after
-    # the checkout, has already read it from disk above.
-    if [ -z "$POST_CHECKOUT_SHA" ] && git_at cat-file -e "$SHA:server/public/$uif" 2>/dev/null; then
+    # the checkout, has already read it from disk above. Through git_read_at (card#9608): this was the one
+    # `cat-file -e` whose false reading SKIPPED a file rather than refusing, and it was safe only because
+    # two earlier reads of the same $SHA had already succeeded — an ordering nothing here stated. It was
+    # not even safe against the case it looks safe against: `cat-file -e` exits 0 for a blob that is
+    # present and unreadable, so the `git show` below was what would have failed, mid-check, under set -e.
+    if [ -z "$POST_CHECKOUT_SHA" ] && git_read_at rel_uif "$SHA" "server/public/$uif"; then
       ui_src+=("server/public/$uif at $(git_at rev-parse --short "$SHA")")
-      ui_text+=("$(git_at show "$SHA:server/public/$uif")")
+      ui_text+=("$rel_uif")
     fi
   fi
 
@@ -1234,8 +1306,10 @@ phase_a() {
   # marker on disk, nothing rolled back and a bare re-run refused (card#7459). This check is that
   # same failure, moved to before anything is touched — and it is DERIVED from composer.json rather
   # than restated, because a restated copy of it is what card#9203 was.
-  local composer_json floor_constraint floor_op floor_min floor_max phpver
-  composer_json="$(git_at show "$SHA:server/composer.json" 2>/dev/null || true)"
+  local composer_json="" floor_constraint floor_op floor_min floor_max phpver
+  # The `|| true` drops ONE status — "no such file at $SHA" — and the line below disposes of it by name,
+  # together with a file that is there and empty. A git read that FAILED never reaches either.
+  git_read_at composer_json "$SHA" server/composer.json || true
   [ -n "$composer_json" ] || refuse \
     "server/composer.json is missing or empty at $(git_at rev-parse --short "$SHA")" \
     "It is where the PHP floor is declared. Without it this check cannot run, and a deploy" \
@@ -1285,15 +1359,21 @@ phase_a() {
   # which is the backstop. What it removes is the silent case: an ALTER that nobody thought about,
   # taking the ingest down for the length of a table copy.
   step "Checking migrations against FLEET-STATE.md § 6.9"
-  local mig body offenders=()
+  local mig body mig_list offenders=()
+  # The file list is this gate's DENOMINATOR: an empty one certifies the entire tree in a single line,
+  # so where it came from is what decides whether that line is evidence. git_ls_at answers "nothing at
+  # this commit" at status 0 and refuses a read that failed (card#9608) — until it, a git error left the
+  # list empty and the gate printed `ok — no undeclared ALTER` over a tree it had never listed.
+  git_ls_at mig_list "$SHA" server/database/migrations
   while IFS= read -r mig; do
     [ -n "$mig" ] || continue
-    body="$(git_at show "$SHA:$mig")"
+    git_read_at body "$SHA" "$mig" \
+      || refuse "$mig is in $SHA's tree and then was not there to read"
     if printf '%s' "$body" | grep -Eqi "Schema::table\([[:space:]]*['\"]events['\"]|ALTER[[:space:]]+TABLE[[:space:]]+\`?events\`?"; then
       printf '%s' "$body" | grep -Eqi "ALGORITHM[[:space:]]*=[[:space:]]*(INSTANT|INPLACE)" \
         || offenders+=("$mig")
     fi
-  done < <(git_at ls-tree --name-only -r "$SHA" -- server/database/migrations 2>/dev/null || true)
+  done <<< "$mig_list"
   if [ ${#offenders[@]} -gt 0 ]; then
     refuse "migration(s) alter \`events\` without stating an ALGORITHM" \
       "$(printf '  | %s\n' "${offenders[@]}")" \
@@ -1302,7 +1382,13 @@ phase_a() {
       "migration at all — \`events\` is written on the ingest's request path and a blocking" \
       "ALTER is an ingest outage."
   fi
-  say "  ok — no undeclared ALTER on \`events\` in $(git_at rev-parse --short "$SHA")"
+  if [ -n "$mig_list" ]; then
+    say "  ok — no undeclared ALTER on \`events\` in $(git_at rev-parse --short "$SHA")"
+  else
+    # A release that ships no migration at all passes — there is no ALTER to declare — but it says
+    # THAT, rather than saying it read a list of migrations and found them all declared.
+    say "  ok — $(git_at rev-parse --short "$SHA") ships no migrations: nothing under server/database/migrations"
+  fi
 
   # A10b — config drift between the release and the host. A release that introduces a setting ships
   # it in `server/.env.example`; the host's `.env` was written by hand when the host was stood up
@@ -1317,8 +1403,14 @@ phase_a() {
   # in a form this deploy does not read, which is not "missing" and not "set" but "not established", and
   # saying "does not set" of it sends the operator to add a line that is already there. (A5 has run
   # env_file_scan on this file, which is what makes a LINE a unit here at all — env_get's precondition.)
-  local want missing_keys=() unread_keys=() k k_rc
-  want="$(git_at show "$SHA:server/.env.example" 2>/dev/null | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
+  local want="" example missing_keys=() unread_keys=() k k_rc
+  # "no key of .env.example is unset on this host" and "that file was not read" are the same silence
+  # from here, so the read that produced the key list has to be the one that can tell them apart.
+  if git_read_at example "$SHA" server/.env.example; then
+    want="$(printf '%s\n' "$example" | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
+  else
+    warn "the target release has no server/.env.example at $(git_at rev-parse --short "$SHA"), so no key of it was compared against this host's .env"
+  fi
   for k in $want; do
     k_rc=0; env_get "$k" >/dev/null || k_rc=$?
     case "$k_rc" in
@@ -1337,20 +1429,31 @@ phase_a() {
   # § 12.3 says it must not be. Trusting NOTHING is the state § 5 describes as fail-safe-but-coarse
   # (every request appears to come from the proxy), so it is a loud warning here and not a
   # refusal — the doc's own reading, not a softened one.
-  local bootstrap; bootstrap="$(git_at show "$SHA:server/bootstrap/app.php" 2>/dev/null || true)"
-  if printf '%s' "$bootstrap" | grep -Eq "trustProxies\(.*['\"]\*['\"]"; then
-    refuse "server/bootstrap/app.php trusts ALL proxies (\`*\`)" \
-      "docs/PLAN.md § 5: never \`*\`. Name the actual reverse proxy."
+  # Both answers below are positive statements about this file's TEXT, and neither can be made about a
+  # file that was not read — which is why the read is git_read_at's (card#9608). A silenced git error
+  # used to leave `bootstrap` empty: the `*` refusal became UNREACHABLE and the run emitted `no
+  # trustProxies() configured` as its finding, so the gate that exists to stop a forgeable
+  # X-Forwarded-For shipping reported the coarse-but-safe state instead, about a file it never opened.
+  local bootstrap
+  if git_read_at bootstrap "$SHA" server/bootstrap/app.php; then
+    if printf '%s' "$bootstrap" | grep -Eq "trustProxies\(.*['\"]\*['\"]"; then
+      refuse "server/bootstrap/app.php trusts ALL proxies (\`*\`)" \
+        "docs/PLAN.md § 5: never \`*\`. Name the actual reverse proxy."
+    fi
+    printf '%s' "$bootstrap" | grep -q "trustProxies" \
+      || warn "no trustProxies() configured — the failed-auth limit will key on the reverse proxy's IP for every request (docs/PLAN.md § 5; coarse, not forgeable)"
+  else
+    warn "server/bootstrap/app.php is not in $(git_at rev-parse --short "$SHA"), so which proxies that release trusts was NOT checked (docs/PLAN.md § 5)"
   fi
-  printf '%s' "$bootstrap" | grep -q "trustProxies" \
-    || warn "no trustProxies() configured — the failed-auth limit will key on the reverse proxy's IP for every request (docs/PLAN.md § 5; coarse, not forgeable)"
 
   # A12 — a lockfile for the asset build. `npm ci` is used below and requires one; more to the
   # point, package.json floats (vite ^8, tailwind ^4), so a lockfile-less prod build can ship
   # different JavaScript from the same commit on two consecutive days, and nothing in the repo
   # would record which. Refusing here is not this script being strict — it is the only place the
   # question is still cheap.
-  git_at cat-file -e "$SHA:server/package-lock.json" 2>/dev/null || refuse \
+  local lock_at=""
+  git_ls_at lock_at "$SHA" server/package-lock.json
+  [ -n "$lock_at" ] || refuse \
     "server/package-lock.json is missing from $(git_at rev-parse --short "$SHA")" \
     "The prod asset build must be reproducible: package.json floats (vite ^8, tailwind ^4)," \
     "so without a lockfile the same commit can build different assets on different days." \
@@ -1381,7 +1484,8 @@ phase_a() {
   local php_bin short target_sup work eval_err installed added removed serving_locks target_locks
   short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
-  target_sup="$(git_at show "$SHA:bin/supervision.sh" 2>/dev/null || true)"
+  target_sup=""
+  git_read_at target_sup "$SHA" bin/supervision.sh || true
   [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $short" \
     "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
     "A release without it cannot be supervised by this deploy."

@@ -503,10 +503,16 @@ rule violations anyone could have committed at the time.
   `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
   pool `zlib.output_compression`, `output_handler` or `ignore_user_abort` set in the ini, the pool
   or a `.user.ini`. `output_buffering` is reported and **not** refused — measured, the handler's
-  flush defeats this host's 4096. It warns, rather than refusing, where the doc's own reading is that the state is
+  flush defeats this host's 4096. And **a read of the release itself that git could not complete**: every
+  precondition that judges the target tree reads it out of the object database before the checkout, and a
+  read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
+  not read it"* are different answers, only the first is a finding about the release, and a gate handed the
+  second as an empty string certifies a file it never opened. It warns, rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
-  from does not exist — a gap it says out loud rather than a state it calls safe.
+  from does not exist, and when the release carries no `server/bootstrap/app.php` or no
+  `server/.env.example` for the check that reads it — each a gap it says out loud rather than a state it
+  calls safe.
 - **The feed's stream needs three things from the host, and one check after a deploy that only an
   operator can run** (card#9300; `docs/design/FLEET-STATE.md § 8.3` R1 and R2 own the requirements
   and their measurements — this bullet is the runbook, not a second copy of them).

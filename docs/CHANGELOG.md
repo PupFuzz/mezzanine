@@ -19,6 +19,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9608** — **`bin/deploy.sh` refuses a read of the target release that git could not complete,
+  where it used to read the failure as a finding about the release.** Phase A judges the release being
+  deployed before it is checked out, so it reads that release's files out of git — and it read them as
+  `git_at show … 2>/dev/null || true`, which silences git's own error AND discards its status. *"There is no
+  such path at this commit"* and *"git could not read it"* both arrived as an empty string, and three gates
+  read that empty as a fact about the tree: the `§ 6.9` migration gate printed `ok — no undeclared ALTER on
+  events` over a file list it never got; A11 could not reach its `trustProxies('*')` refusal at all and
+  emitted `no trustProxies() configured` — a positive statement about a file it had never opened, and
+  `*` is what makes D1 `§ 12.3`'s failed-auth limit forgeable, so the gate that exists to stop that shipping
+  was the one silenced; A10b compared zero keys. The fix is ONE reader, `git_read_at`/`git_ls_at`, that the
+  seven target-tree reads now go through: presence is established with `git ls-tree`, whose status
+  discriminates (0 with no output is an honest *"not at this commit"*; non-zero is a failed read — measured,
+  git 2.53.0), content is read only after that, git's stderr is no longer silenced, and a failed read refuses
+  by name instead of returning a status a caller could drop. **Installer action:** none — the new refusal
+  fires only on a git read that genuinely failed (an unreadable or corrupt object, a rev that will not
+  resolve), where the deploy previously passed while certifying files it had not read. A release that does
+  not CARRY `server/bootstrap/app.php` or `server/.env.example` is warned about by name rather than refused,
+  and one that ships no migration at all still passes, saying that rather than claiming a list it read.
+  `bin/deploy.selftest.sh` produces the condition for real — one loose object of its own fixture, mode 000,
+  with the path still in the tree — and asserts per case that the false statement is gone, not only that the
+  exit code changed.
+
 - **card#9605** — **`bin/deploy.sh` refuses a `server/.env` it cannot read, instead of certifying it and
   stopping on the wrong cause.** A `.env` that exists, is a regular file and whose mode's other-digit is `0`
   passes A5's two file checks and can still be one the deploy user cannot OPEN — written by another user when
