@@ -1214,6 +1214,224 @@ trust_star() {
 mkfix trust_all trust_star
 run_refusal "trustProxies('*')" "trusts ALL proxies" --dry-run
 
+# card#9608 — A GIT READ THAT FAILED, then read as a finding about the release. `git_at <cmd> …
+# 2>/dev/null || true` silenced git's own error AND discarded its status, so "there is no such path at
+# this commit" and "git could not read it" both arrived as an empty string, and three phase A gates read
+# that empty as a fact about the tree: the § 6.9 gate printed `ok — no undeclared ALTER` over a file list
+# it never got, A11 emitted `no trustProxies() configured` about a file it never opened — which made the
+# `*` refusal UNREACHABLE — and A10b compared zero keys. THE FAILURE MODE IS A CHECK THAT PASSES, so each
+# case below is paired with the assertion that the false statement is gone, not only with an exit code.
+#
+# The condition is produced FOR REAL: one loose object of the fixture's own store, mode 000. Nothing is
+# stubbed and no path is removed — the path is still in the tree at $V2, which is what makes each of these
+# the read-failed case and not the file-missing case beside it.
+blind_object() { # blind_object <rev-expr> — the ONE object <rev-expr> names, unreadable in $ROOT
+  local o f
+  o="$(git -C "$ROOT" rev-parse "$1")"
+  f="$ROOT/.git/objects/${o:0:2}/${o:2}"
+  cases=$((cases+1))
+  if [ -f "$f" ]; then chmod 000 "$f"; ok "fixture: $1 is a loose object, now mode 000"
+  else bad "fixture: $1 is not a loose object under \$ROOT ($f is not there)"; return 1; fi
+  # ASSERTED, not assumed — root opens every mode, and under a root runner these cases would certify
+  # nothing while looking like they had. They red HERE, naming why, rather than skipping (canon #9).
+  cases=$((cases+1))
+  if git -C "$ROOT" cat-file -p "$1" >/dev/null 2>&1
+  then bad "fixture: git can still read $1 (a root runner cannot hold this condition)"
+  else ok "fixture: git really cannot read $1 as this user"; fi
+}
+
+# THE SECURITY INSTANCE, in the release where it costs something: this v2 DOES `trustProxies('*')` — the
+# case four lines above, which refuses on it — and with its blob unreadable the old reader handed A11 an
+# empty string, so the refusal could not fire and the run reported the SAFE state and exited 0.
+mkfix git_read_trust_star trust_star
+blind_object "$V2:server/bootstrap/app.php"
+run_refusal "unreadable bootstrap/app.php (a release that DOES trust \`*\`)" \
+  "git could not read server/bootstrap/app.php" --dry-run
+hasnt "unreadable bootstrap/app.php: makes no claim about a file it never read" \
+  "no trustProxies() configured" "$OUT"
+
+# The § 6.9 gate's own denominator: the migrations TREE object, unreadable, with every migration still in
+# the tree. Both directions are proven — this, and the legitimate empty directly below it.
+mkfix git_read_migrations
+blind_object "$V2:server/database/migrations"
+run_refusal "unreadable migrations tree" "git could not read server/database/migrations" --dry-run
+hasnt "unreadable migrations tree: does not certify the list it never got" "no undeclared ALTER" "$OUT"
+
+# THE OTHER DIRECTION, one variable away: a release that genuinely ships no migration at all. An empty
+# list at status 0 is an honest answer and must still PASS — a fix that refused here would be a
+# regression, not a fix — and the line it prints says what was actually read.
+no_migrations() { rm -rf "$1/server/database/migrations"; }
+mkfix git_read_no_migrations no_migrations
+run --dry-run
+eq  "a release with no migrations at all: still deploys" 0 "$RC"
+has "a release with no migrations at all: says THAT, not that it read a list" "ships no migrations" "$OUT"
+hasnt "a release with no migrations at all: claims nothing about migrations it never had" \
+  "no undeclared ALTER" "$OUT"
+
+# The reader's third answer, and the one that is not about I/O at all: the path is THERE and is not a
+# file. `git show` prints a TREE's listing, so the old reader handed A11 a directory listing and the
+# `trustProxies` grep found nothing in it — the same false reading of a file never opened, arrived at
+# from the other side, and the deploy went green.
+bootstrap_is_a_dir() {
+  rm -f "$1/server/bootstrap/app.php"
+  mkdir -p "$1/server/bootstrap/app.php"
+  printf 'not the bootstrap file\n' > "$1/server/bootstrap/app.php/x"
+}
+mkfix git_read_bootstrap_dir bootstrap_is_a_dir
+run_refusal "server/bootstrap/app.php is a directory in the release" \
+  "server/bootstrap/app.php is a tree" --dry-run
+hasnt "app.php as a directory: claims nothing about the trusted proxies it never read" \
+  "no trustProxies() configured" "$OUT"
+
+# A10b's key list, from a .env.example whose blob cannot be read: zero keys compared, nothing warned.
+mkfix git_read_env_example
+blind_object "$V2:server/.env.example"
+run_refusal "unreadable .env.example" "git could not read server/.env.example" --dry-run
+
+# ── card#9608 r2 — the reader's remaining false readings ──────────────────────────────────────
+# ⛔ A SYMLINK IS `blob` TO ls-tree (measured, git 2.53.0: `120000 blob …`), so the TYPE check passed
+# one and `git show` printed the link's TARGET PATH. The caller then read that path string as the
+# file's text: A11 grepped `app.real.php` for `trustProxies`, found none, and emitted `no trustProxies()
+# configured` — a positive statement about a file it never opened, the exact defect this card ends —
+# about a release that DOES `trustProxies('*')`. The reader discriminates on the MODE now.
+bootstrap_is_a_symlink() {
+  printf '<?php return Application::configure()->trustProxies(at: "*")->create();\n' \
+    > "$1/server/bootstrap/app.real.php"
+  rm -f "$1/server/bootstrap/app.php"
+  ln -s app.real.php "$1/server/bootstrap/app.php"
+}
+mkfix git_read_bootstrap_symlink bootstrap_is_a_symlink
+eq "symlink fixture: app.php really is mode 120000 in the release" "120000" \
+   "$(gitc "$SRC" ls-tree HEAD -- server/bootstrap/app.php | cut -d' ' -f1)"
+run_refusal "server/bootstrap/app.php is a SYMLINK in the release" \
+  "server/bootstrap/app.php is a symbolic link" --dry-run
+hasnt "app.php as a symlink: claims nothing about the trusted proxies it never read" \
+  "no trustProxies() configured" "$OUT"
+
+# The same defeat at the § 6.9 gate, where it hides an ALTER instead of a forgeable header: a migration
+# that is a symlink. The gate read `../alter_events.inc` as the migration's body, found no
+# `Schema::table('events'` in that path string, and printed `ok — no undeclared ALTER`.
+migration_is_a_symlink() {
+  cat > "$1/server/database/alter_events.inc" <<'MIG'
+<?php
+return new class { public function up(): void {
+    Schema::table('events', fn ($t) => $t->string('trace_id')->nullable());
+} };
+MIG
+  ln -s ../alter_events.inc "$1/server/database/migrations/2026_02_02_000000_add_col_to_events.php"
+}
+mkfix git_read_migration_symlink migration_is_a_symlink
+run_refusal "a migration that is a SYMLINK in the release" \
+  "2026_02_02_000000_add_col_to_events.php is a symbolic link" --dry-run
+hasnt "a symlinked migration: does not certify a body it never read" "no undeclared ALTER" "$OUT"
+
+# A gitlink (mode 160000). Its type is `commit`, so the old type check did stop it — what the mode
+# case adds is a refusal in the reader's own vocabulary, saying why there is no text here at all:
+# the entry is a commit id in a repository this deploy never clones.
+# The entry is written with plumbing rather than by embedding a repository: the directory left on disk
+# is EMPTY, so the fixture's own `git add -A` has nothing to stage there and leaves the gitlink alone.
+bootstrap_is_a_submodule() {
+  rm -f "$1/server/bootstrap/app.php"
+  mkdir -p "$1/server/bootstrap/app.php"
+  gitc "$1" update-index --add --cacheinfo "160000,$(gitc "$1" rev-parse HEAD),server/bootstrap/app.php"
+}
+mkfix git_read_bootstrap_submodule bootstrap_is_a_submodule
+eq "submodule fixture: app.php really is mode 160000 in the release" "160000" \
+   "$(gitc "$SRC" ls-tree HEAD -- server/bootstrap/app.php | cut -d' ' -f1)"
+run_refusal "server/bootstrap/app.php is a SUBMODULE in the release" \
+  "server/bootstrap/app.php is a submodule" --dry-run
+hasnt "app.php as a submodule: claims nothing about the trusted proxies it never read" \
+  "no trustProxies() configured" "$OUT"
+
+# ⛔ THE OTHER DIRECTION OF THE SAME READER — A HEALTHY RELEASE IT BLOCKED. ls-tree C-quotes a
+# non-ASCII name by default and then cannot match the quoted string it is handed back, so git_read_at
+# answered "not there" about a file it had just listed and A10 refused a well-formed release with a
+# message that reads as an internal contradiction. `-c core.quotePath=false` makes the name it PRINTS
+# one it will also MATCH. This release is healthy — its extra migration creates its own table — so the
+# assertion is that the run REACHES THE END.
+migration_non_ascii() {
+  cat > "$(printf '%s/server/database/migrations/2026_02_02_000000_cr\303\251\303\251.php' "$1")" <<'MIG'
+<?php
+// A migration whose NAME is not ASCII. It creates its own table and alters nothing.
+return new class { public function up(): void { Schema::create('feeds', fn ($t) => $t->id()); } };
+MIG
+}
+mkfix git_read_non_ascii_name migration_non_ascii
+# The fixture's OWN precondition, pinned the way its three siblings pin theirs. Without it every
+# assertion below is satisfied by a plain-ASCII tree too, so a name that stopped being non-ASCII — an
+# edit to the printf escapes above, a filesystem that mangles, a checkout that normalises — would
+# leave this case passing as "a healthy release deploys" while certifying the core.quotePath=false
+# fix it exists to guard. It asserts A BYTE OUTSIDE PRINTABLE ASCII rather than the literal `créé`,
+# so the needle cannot move WITH the fixture and go on agreeing with itself; core.quotePath=false so
+# that ls-tree prints the name's own bytes (under git's default quoting every name it prints is ASCII,
+# which is the very defect this case exists for).
+eq "non-ASCII fixture: exactly one migration in the release's tree really has a non-ASCII name" 1 \
+   "$(gitc "$SRC" -c core.quotePath=false ls-tree --name-only -r HEAD -- server/database/migrations \
+      | LC_ALL=C grep -c '[^ -~]')"
+run --dry-run
+eq    "a migration with a non-ASCII NAME: the healthy release still deploys" 0 "$RC"
+has   "a migration with a non-ASCII NAME: the § 6.9 gate read it and passed" "no undeclared ALTER" "$OUT"
+hasnt "a migration with a non-ASCII NAME: not refused as absent from its own tree" \
+      "was not there to read" "$OUT"
+
+# ⛔ A CALLER'S VARIABLE SHADOWED BY THE READER'S OWN LOCAL — the other way these readers blocked a
+# healthy release. The internals were `out`, `rc`, `rev`, `path`, `entry`, `type`, `content`, and a call
+# site naming its variable one of those got the reader's local instead: `printf -v` wrote the shadow,
+# the caller's variable stayed empty, NOTHING failed, and A13 refused a release shipping a perfectly
+# good bin/supervision.sh. No call site collided — which is why this mutant IS one, renaming A13's
+# variable to `content`. It runs on the SERVING release's copy (v1), because A13 is phase A's.
+collide_with_reader_local() { sed -i 's/\btarget_sup\b/content/g' "$1/bin/deploy.sh"; }
+mkfix git_read_local_collision "" collide_with_reader_local
+eq "collision mutant: the call site really asks for a variable named \`content\`" 1 \
+   "$(gitc "$SRC" show "$V1:bin/deploy.sh" | grep -c 'git_read_at content "\$SHA" bin/supervision.sh')"
+run --dry-run
+eq    "a call site naming its variable \`content\`: the healthy release still deploys" 0 "$RC"
+hasnt "a call site naming its variable \`content\`: no false 'missing or empty'" \
+      "bin/supervision.sh is missing or empty" "$OUT"
+
+# ⛔ THE PHASE-A PROMISE, MADE STRUCTURAL. `refuse` ends with "Nothing was changed. The previous release
+# is still serving." That is true of every caller of these readers today, and what keeps it true is one
+# `[ -z "$POST_CHECKOUT_SHA" ] &&` at fpm_code_reload_ready — the single function that runs on BOTH
+# sides of the window, and a guard the readers cannot see. This mutant is the future edit that drops it:
+# the DEPLOYED release (v2, the copy phase B re-execs into) reads the target tree again after the
+# checkout, with a rev that will not resolve. The promise would be false — the window is open, the app
+# is down — so the reader takes the in-window failure path instead, marker and all.
+read_fails_in_phase_b() {
+  sed -i 's|.*git_read_at rel_uif .*|    if git_read_at rel_uif "${SHA}-no-such-rev" "server/public/$uif"; then # phase-A guard cut out by the selftest mutant|' "$1/bin/deploy.sh"
+}
+mkfix git_read_in_window read_fails_in_phase_b
+eq "phase-B mutant: the deployed release really re-reads the tree after the checkout" 1 \
+   "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'phase-A guard cut out by the selftest mutant')"
+run
+eq    "a git read that fails INSIDE the window: exit 2 (not 1)"     2 "$RC"
+has   "a git read that fails in the window: the banner"             "THE APP IS DOWN AND STAYS DOWN" "$OUT"
+has   "a git read that fails in the window: names the read"         "reading the release out of git" "$OUT"
+hasnt "a git read that fails in the window: never promises nothing was changed" \
+      "Nothing was changed. The previous release is still serving." "$OUT"
+eq    "a git read that fails in the window: the marker is on disk"  "present" \
+      "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
+unlogged "a git read that fails in the window: the app is NEVER brought up" "artisan up"
+
+# ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
+# `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan
+# command of such a release fails, the first of them `php artisan optimize:clear`, INSIDE the window,
+# with the app down and recovery a human act. A6 and A13 move exactly that failure forward already.
+no_bootstrap() { rm -f "$1/server/bootstrap/app.php"; }
+mkfix no_bootstrap_file no_bootstrap
+run_refusal "a release with no server/bootstrap/app.php" \
+  "server/bootstrap/app.php is not in" --dry-run
+has "no bootstrap/app.php: names the command that would fail first, and where" \
+  "php artisan optimize:clear" "$OUT"
+
+# The control, one variable away: the absent file that stays a WARNING. A release with no
+# server/.env.example costs a comparison against this host's .env, not a boot, so it deploys.
+no_env_example() { rm -f "$1/server/.env.example"; }
+mkfix no_env_example_file no_env_example
+run --dry-run
+eq  "a release with no server/.env.example: still deploys (a warning, not a refusal)" 0 "$RC"
+has "no .env.example: says which comparison did not happen" \
+    "no key of it was compared against this host's .env" "$OUT"
+
 section "REFUSAL — the PHP floor (A6), DERIVED from the release being deployed"
 # ⛔ card#9203, and this section is what that card exists for. A6 used to carry its OWN copy of
 # the floor — `8.3*|8.4*|8.5*|9.*` — and that copy went on saying ^8.3 for as long as the
