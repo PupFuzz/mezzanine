@@ -108,7 +108,7 @@
 # CARD / DECISION TOKENS, kept in the script on purpose (handover item 4 — they make it
 # answerable): card#7459 (this script) · card#9287 (the feed re-pinned to SSE; no Reverb daemon) · card#7344 (CI
 # lanes) · D-08 (separate prod host; named 2026-09-14, never deployed to) · D-13 (prod moves only by this script) ·
-# D-15 (the store on a dedicated host; MariaDB per its 2026-09-09 amendment) · D-16 (the app
+# D-15 (the store; MariaDB per its 2026-09-09 amendment, TLS only to another host per its 2026-09-14 one) · D-16 (the app
 # lives in server/) · rt#347 (the sample and the binding handover) · `docs/design/FLEET-STATE.md § 2.1` (the daemons), `§ 6.1` (store posture),
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
@@ -197,6 +197,63 @@ env_get() {
   line="${line%\"}"; line="${line#\"}"
   line="${line%\'}"; line="${line#\'}"
   printf '%s' "$line"
+}
+
+# store_locality — whether the `mysql` connection reaches its store without leaving this host, which is the
+# whole of what decides A5's TLS requirement (FLEET-STATE.md § 6.1's Transport row, docs/PLAN.md D-15's
+# 2026-09-14 amendment). Sets STORE_LOCALITY to `socket`, `loopback` or `remote`, and STORE_WHY to a
+# sentence naming the key that decided it. Neither carries a credential: DB_URL is never printed, and the
+# host PHP parses out of it is compared, never echoed.
+#
+# The keys are server/config/database.php's, resolved the way Laravel resolves them:
+#   · DB_URL, when it parses to a host, REPLACES DB_HOST (Illuminate\Support\ConfigurationUrlParser merges
+#     parse_url's rawurldecoded host over the connection's keys); a URL naming no host leaves DB_HOST in
+#     force. Its query string is merged over EVERY key, so a `?host=` or `?unix_socket=` replaces the URL's
+#     host and DB_SOCKET alike: a URL carrying either is not followed here and counts as remote, as does a
+#     URL parse_url refuses. PHP's own parse_url and parse_str read it — the functions the parser uses — with
+#     the URL on stdin, because it carries the password and an argv is readable by every user of the host.
+#   · DB_SOCKET makes Illuminate\Database\Connectors\MySqlConnector build a unix_socket DSN whatever the host
+#     says. Only a value starting with `/` counts: Laravel reads `null`, `false`, `(empty)` and an inline
+#     comment as no socket at all, and env_get returns each of them as a non-empty string.
+#   · DB_HOST, else the config's own default, 127.0.0.1. `localhost` is pdo_mysql's name for the Unix
+#     socket (measured 2026-09-14, PHP 8.5.4: `host=localhost` connected to /var/run/mysqld/mysqld.sock);
+#     127.0.0.1 and ::1 are loopback TCP, and `[::1]` is how parse_url returns ::1 out of a URL. Any other
+#     value, an empty one included, is remote.
+# What this cannot establish is REMOTE, so a configuration it does not read is refused, never exempted.
+store_locality() {
+  local url host socket from
+  host="127.0.0.1"; from="DB_HOST is unset, and server/config/database.php defaults it to 127.0.0.1"
+  url="$(env_get DB_URL || true)"
+  if [ -n "$url" ]; then
+    # Prints `host <value>` or `none`, and exits 1 on a URL it will not follow.
+    url="$(printf '%s' "$url" | php -r '
+      $p = parse_url(stream_get_contents(STDIN));
+      if ($p === false) exit(1);
+      parse_str($p["query"] ?? "", $q);
+      if (array_key_exists("host", $q) || array_key_exists("unix_socket", $q)) exit(1);
+      echo isset($p["host"]) ? "host " . rawurldecode($p["host"]) : "none";' 2>/dev/null)" || {
+      STORE_LOCALITY=remote
+      STORE_WHY="DB_URL does not parse, or its query string sets host or unix_socket, so this host is not established"
+      return 0; }
+  fi
+  socket="$(env_get DB_SOCKET || true)"
+  if [ "${socket:0:1}" = "/" ]; then
+    STORE_LOCALITY=socket; STORE_WHY="DB_SOCKET names a Unix socket"; return 0
+  fi
+  if [ "${url%% *}" = "host" ]; then
+    host="${url#host }"; from=""
+  elif host="$(env_get DB_HOST)"; then
+    from="DB_HOST is '$host'"
+  else
+    host="127.0.0.1"
+  fi
+  case "$host" in
+    localhost | 127.0.0.1 | ::1 | '[::1]') STORE_LOCALITY=loopback ;;
+    *) STORE_LOCALITY=remote ;;
+  esac
+  # A URL's host stays out of the sentence: a malformed URL can put credential bytes where a host should be.
+  STORE_WHY="${from:-DB_URL names a $STORE_LOCALITY host}"
+  return 0
 }
 
 git_at() { git -C "$DEPLOY_ROOT" "$@"; }
@@ -714,8 +771,8 @@ phase_a() {
   # for a MariaDB-specific Laravel feature, and would change what this script accepts and what those
   # guards key on.
   [ "$db_conn" = "mysql" ] || refuse "DB_CONNECTION is '${db_conn:-unset}', not 'mysql'" \
-    "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MariaDB on a dedicated host, at" \
-    "the version floor § 6.1 states, reached through Laravel's 'mysql' connection. sqlite here" \
+    "D-15 and docs/design/FLEET-STATE.md § 6.1 pin the store to MariaDB, at the version floor" \
+    "§ 6.1 states, reached through Laravel's 'mysql' connection. sqlite here" \
     "would be a prod store that silently cannot do what the fold needs (FOR UPDATE SKIP LOCKED)" \
     "and that no backup or provisioning decision covers."
   # A cache store that PERSISTS between requests (docs/PLAN.md § 5) — a security obligation, not a
@@ -732,10 +789,29 @@ phase_a() {
       "outliving the request that minted it. server/.env.example ships 'database'." ;;
   esac
 
+  # TLS to the store is required BECAUSE the credential and every descriptor cross a network, so it is
+  # required exactly when they do (FLEET-STATE.md § 6.1; the operator's ruling of 2026-09-14, docs/PLAN.md
+  # D-15's amendment: "database is local; there is no SSL support nor is it needed when mysql is on
+  # localhost"). A store on this host passes with the CA unset, and with it set: setting one is the
+  # operator's choice, not a defect. store_locality names what decided it, and fails closed.
+  # A CA set for a store on this host is WARNED about: pdo_mysql then requires TLS over the socket as well,
+  # so a MariaDB that offers none refuses every connection the release makes. Measured 2026-09-14 with
+  # PHP 8.5.4 against the sandbox host's MariaDB and a non-existent account: over the socket the connection
+  # reached authentication without a CA, and failed "[2002] Cannot connect to MySQL using SSL" with one.
   ssl_ca="$(env_get MYSQL_ATTR_SSL_CA || true)"
-  [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset" \
-    "FLEET-STATE.md § 6.1: TLS is REQUIRED to the store, certificate verified, with no" \
-    "plaintext fallback — the credential and every descriptor cross a network between hosts."
+  store_locality
+  if [ "$STORE_LOCALITY" = remote ]; then
+    [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset for a store on another host ($STORE_WHY)" \
+      "FLEET-STATE.md § 6.1: TLS is REQUIRED to a store on another host, certificate verified, with no" \
+      "plaintext fallback — the credential and every descriptor cross a network between hosts." \
+      "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST localhost, 127.0.0.1 or ::1."
+  elif [ -z "$ssl_ca" ]; then
+    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — TLS not required, FLEET-STATE.md § 6.1"
+  else
+    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — MYSQL_ATTR_SSL_CA is set, though not required, FLEET-STATE.md § 6.1"
+    warn "MYSQL_ATTR_SSL_CA is set for a store on this host: pdo_mysql then requires TLS to it, over the socket too," \
+      "and a MariaDB that offers no TLS refuses every connection. Leave it unset unless this store serves TLS."
+  fi
 
   # NOT CHECKED HERE, on purpose: § 6.1's MariaDB version floor, the storage engine and the
   # collations. FLEET-STATE.md § 6.1 assigns every one of them to "verified at provisioning", and a

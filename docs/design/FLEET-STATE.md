@@ -43,9 +43,10 @@ contract every consumer reads.
    never `idle` ([D1 § 9.1](EVENT-SCHEMA.md#91-the-cadence-and-the-alarm), `D2-MUST` #2). The same
    property is built one layer out, in the feed itself: a browser can always tell "the fleet is quiet"
    from "the feed died" ([§ 8.3](#83-the-websocket-delta-feed)).
-6. **The store is MariaDB on a dedicated host** (operator decision, `docs/PLAN.md` D-15 and
-   its 2026-09-09 amendment). Every
-   query crosses a network, so the design batches writes, reads a snapshot in one query, and states a
+6. **The store is MariaDB, on the application's host or on a host of its own** (operator decision,
+   `docs/PLAN.md` D-15 and its 2026-09-09 and 2026-09-14 amendments; production's is local). The design
+   is sized for the worse of the two, where every query crosses a network, so it batches writes, reads a
+   snapshot in one query, and states a
    fail-posture for the store being unreachable on every path that touches it ([§ 2.2](#22-fail-posture-per-path)).
 7. **Two read surfaces with two different compatibility postures.** The REST snapshot has an
    independently-upgraded consumer (the bridge's autonomy watchdog), so it carries a version line and
@@ -71,7 +72,7 @@ contract every consumer reads.
    fleet-reporter ──▶ POST /api/ingest/events        (D1 § 12, card #7338)
                         │        │                                          │
                         │        ▼  one transaction                         │
-                        │   ┌──────────────┐    MariaDB, dedicated host     │
+                        │   ┌──────────────┐    MariaDB, local or own host  │
                         │   │  events      │◀── durable log, 14-day         │
                         │   │  batches     │    retention, dedup key        │
                         │   └──────┬───────┘                                │
@@ -1140,10 +1141,12 @@ its own volume can reach, that it fires visibly, and that it has been **seen to 
 
 ### 6.1 Deployment posture
 
-**MariaDB, on a host dedicated to it, at the version floor the table below pins**
-(`docs/PLAN.md` D-15 and its 2026-09-09 amendment; the operator's decision, and the reason
-[§ 2.2](#22-fail-posture-per-path) has a row for the store being unreachable at all). The version
-floor is not decorative — the requirements below are load-bearing:
+**MariaDB, at the version floor the table below pins, on the application's own host or on a host of
+its own** (`docs/PLAN.md` D-15 and its 2026-09-09 and 2026-09-14 amendments; the operator's decision,
+and the reason [§ 2.2](#22-fail-posture-per-path) has a row for the store being unreachable at all).
+The two placements differ in one requirement, the transport's, and the Transport row states both.
+Production's store is local: operator ruling, 2026-09-14, *"database is local; there is no SSL support
+nor is it needed when mysql is on localhost"*. The version floor is not decorative — the requirements below are load-bearing:
 
 | Requirement | Value | Why it is required, and its state |
 |---|---|---|
@@ -1151,9 +1154,9 @@ floor is not decorative — the requirements below are load-bearing:
 | Storage engine | InnoDB, `ROW_FORMAT=DYNAMIC` | transactions; the fold's cursor advance and its projections are one transaction |
 | Character set | `utf8mb4` / `utf8mb4_unicode_ci` (the value's one home is `server/config/database.php`); **all identifier columns `ascii_bin`** | descriptors are arbitrary valid UTF-8 ([D1 § 7.3](EVENT-SCHEMA.md#73-redaction-rules-applied-in-this-order) rule 13 guarantees validity); ULIDs, slugs and session ids are ASCII, and an `ascii_bin` key is 1 byte per character and compares exactly. ⭐ **`ascii_bin` is the correctness guard, not the default collation**: `utf8mb4_unicode_ci` is case-INSENSITIVE, and two ULIDs differing only in case must not compare equal in `uq_dedup`. `utf8mb4_0900_ai_ci` — what this row named before the repin — is **not a native MariaDB collation**; it is accepted as an alias onto the UCA-1400 family from 11.4.5, and MariaDB's own ticket cautions the resulting ordering is not guaranteed byte-identical to MySQL's, so the name is not used here at all |
 | Session time zone | **`SET time_zone = '+00:00'`** on every connection | every `DATETIME` in this schema is UTC. A `DATETIME` is *not* converted by MariaDB, but a `TIMESTAMP` is — and while every column this plane defines is `DATETIME(3)` ([§ 6.3](#63-conventions)), the auth tables and `failed_jobs` keep `TIMESTAMP` columns (`git grep -nE "timestamp\(|timestamps\(" -- server/database/migrations` lists them), which this setting is what makes read and write UTC whatever the store host's zone. Set by `server/config/database.php`'s `timezone` key, which Laravel's connector issues on every connect. [AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites) asserts the connection's resolved time zone |
-| Transport | **TLS required**, certificate verified, no fallback to plaintext | the app and the store are on different machines, so the credential and every descriptor cross a network. Loosening verification "because it is our own network" is the constraint-weakening fix D1 refuses for the reporter's TLS, and it ships to production the same way. Fail **closed**: no TLS, no connection, `503` |
+| Transport | **A store on another host: TLS required**, certificate verified, no fallback to plaintext. **A store on the application's host** — reached over its Unix socket (`DB_SOCKET`, or `localhost`, which pdo_mysql connects to the socket) or over loopback TCP (`127.0.0.1`, `::1`): **TLS not required** | **On another host** the credential and every descriptor cross a network. Loosening verification "because it is our own network" is the constraint-weakening fix D1 refuses for the reporter's TLS, and it ships to production the same way. Fail **closed**: no TLS, no connection, `503`. **On the same host** no network is crossed, which is the whole of what TLS was required against: operator ruling, 2026-09-14, *"database is local; there is no SSL support nor is it needed when mysql is on localhost"* (`docs/PLAN.md` D-15's 2026-09-14 amendment). `bin/deploy.sh` A5 holds the line from `server/.env`: it refuses an unset `MYSQL_ATTR_SSL_CA` unless `DB_SOCKET` names a socket or the connection's effective host — `DB_URL`'s when it names one, else `DB_HOST`, else the config's `127.0.0.1` — is a loopback name, and it counts as another host whatever it cannot read. A CA set for a same-host store is not refused, and A5 warns about it: pdo_mysql then requires TLS over the socket as well, so a store that offers none refuses every connection — measured 2026-09-14 with PHP 8.5.4's pdo_mysql against the sandbox host's MariaDB and a non-existent account: over the socket, and with `host=localhost` (which connected to the socket), the connection reached authentication without a CA and failed with `[2002] Cannot connect to MySQL using SSL` with one set. Loopback TCP with a CA set was not exercised |
 | Connections | request path: one per request (PHP-FPM), no persistent connections; daemons: one long-lived connection each, with reconnect-on-`gone away` and capped backoff | a persistent pool under FPM keeps `wait_timeout` sessions alive across unrelated requests and makes the time-zone and session-variable posture per-worker rather than per-request |
-| Query budget | the fleet snapshot is **one query**; the fold's per-batch work is **one transaction** | every round trip is a WAN round trip. An N+1 over 50 seats is 50 round trips on the dashboard's critical path |
+| Query budget | the fleet snapshot is **one query**; the fold's per-batch work is **one transaction** | sized for a store on another host, where every round trip crosses the network; on the application's host the same budget holds with room to spare. An N+1 over 50 seats is 50 round trips on the dashboard's critical path |
 | Application clock | **one clock across every app host that writes or reads `feed_outbox`** — one host, or hosts synchronized to well inside [§ 8.3](#83-the-websocket-delta-feed)'s 2 s visibility lag — and **no step backwards** as large as that lag (card#9467) | [§ 8.3](#83-the-websocket-delta-feed)'s visible prefix compares a writer's `created_at` with a reader's `now()` — the store's clock is never consulted ([§ 6.4](#64-ddl)) — so a writer ahead of a reader, or a clock stepped back, holds every stream's delivery for the size of the difference, and a hold past [§ 6.7](#67-retention-and-purge)'s outbox retention loses rows to the purge. It is condition (c) of that section's property. **NOT VERIFIED, and not establishable from this repository**: nothing here pins an app-host count or a clock-synchronization discipline, and the sandbox host ran **162 s fast** on 2026-09-13/14. The observables when it is false are `feed_prefix_future` and `feed_outbox_boundary_stalled` ([§ 7.2](#72-this-planes-own-counters-and-badges)) |
 
 **The repin, and what was checked before it was made.** Operator ruling, 2026-09-09 (card#7523,
@@ -1217,9 +1220,9 @@ that thread that this section acts on, each one someone else's measurement:
    mechanisms above leave the declaration looking correct. ⚠ **For mechanism 3, `config()` is not the
    whole resolved value** — measured here on card#9328; the guard below also reads the connection.
 
-**Mezzanine's values, claimed and published here.** Mezzanine's production store is on a dedicated host,
-but its **sandbox** instance (D-13) runs wherever its agent runs, and that may be a shared box — so the
-pinning is adopted from birth, before it costs anything.
+**Mezzanine's values, claimed and published here.** Mezzanine's production store is local to the production
+host (D-15's 2026-09-14 amendment), but its **sandbox** instance (D-13) runs wherever its agent runs, and that
+may be a shared box — so the pinning is adopted from birth, before it costs anything.
 
 | Environment | Database | Redis `REDIS_DB` / `REDIS_CACHE_DB` | Set by |
 |---|---|---|---|
@@ -5770,9 +5773,9 @@ operator ruling.
 6. **⇢ Operator — backups for the store, and where the sandbox's MariaDB lives.**
    [§ 6.10](#610-durability-posture) argues that backups are an operational choice rather than a
    correctness requirement, because everything but `events` is rebuildable and `events` expires in 14
-   days. That is a recommendation, not a ruling. Separately: prod's store is on a dedicated host
-   (D-15), but D-13's **sandbox** instance may land on a shared box — if it does, the pinned names of
-   [§ 6.2](#62-database-names-pinned-and-published) are load-bearing rather than precautionary.
+   days. That is a recommendation, not a ruling. Separately: prod's store is local to the prod host
+   (D-15's 2026-09-14 amendment), but D-13's **sandbox** instance may land on a shared box — if it
+   does, the pinned names of [§ 6.2](#62-database-names-pinned-and-published) are load-bearing rather than precautionary.
    **Blocks:** provisioning (D-15). **Closes it:** two operator answers.
    ⚠ **Raised, not closed, by card#9208's reversal (2026-09-12):** the store now also holds the
    authored room maps and the building layout ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), which no replay re-derives

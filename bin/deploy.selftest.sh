@@ -468,8 +468,53 @@ hasnt "sqlite refusal leaks no DB password" "$FAKE_PW" "$OUT"
 mkfix cache_array; sed -i 's/^CACHE_STORE=.*/CACHE_STORE=array/' "$ROOT/server/.env"
 run_refusal "non-persistent cache store" "CACHE_STORE is 'array'" --dry-run
 
-mkfix no_tls; sed -i '/^MYSQL_ATTR_SSL_CA=/d' "$ROOT/server/.env"
-run_refusal "no TLS to the store" "MYSQL_ATTR_SSL_CA is unset" --dry-run
+section "A5 — TLS to the store is required for a store on another host, and only there (FLEET-STATE.md § 6.1)"
+# One fixture; each case rewrites its .env from write_env's, which sets no DB_HOST, DB_SOCKET or DB_URL and
+# sets MYSQL_ATTR_SSL_CA. The .env is git-ignored, so rewriting it leaves the tree clean for A4. Every
+# refusal here has a same-host twin that differs in the one key deciding locality, and passes.
+store_env() { # store_env <KEY=value…> — write_env's .env with the CA removed, then each pair appended
+  write_env "$ROOT"; sed -i '/^MYSQL_ATTR_SSL_CA=/d' "$ROOT/server/.env"
+  local kv; for kv in "$@"; do printf '%s\n' "$kv" >> "$ROOT/server/.env"; done
+}
+store_passes() { # store_passes <label> <needle> <KEY=value…>
+  local label="$1" needle="$2"; shift 2
+  store_env "$@"; run --dry-run
+  eq  "$label: exit 0" 0 "$RC"
+  has "$label: names why TLS is not required" "$needle" "$OUT"
+}
+mkfix store_locality
+store_passes "DB_HOST unset, no CA" "store on this host (loopback; DB_HOST is unset, and server/config/database.php defaults it to 127.0.0.1) — TLS not required"
+store_passes "DB_HOST=localhost, no CA" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" DB_HOST=localhost
+store_passes "DB_HOST=127.0.0.1, no CA" "store on this host (loopback; DB_HOST is '127.0.0.1') — TLS not required" DB_HOST=127.0.0.1
+store_passes "DB_HOST=::1, no CA" "store on this host (loopback; DB_HOST is '::1') — TLS not required" DB_HOST=::1
+store_passes "DB_SOCKET over a remote DB_HOST, no CA" "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock
+store_passes "DB_URL host localhost over a remote DB_HOST, no CA" "store on this host (loopback; DB_URL names a loopback host) — TLS not required" \
+  DB_HOST=db.internal DB_URL=mysql://u:p@localhost/mezzanine
+hasnt "DB_URL localhost: the URL's credentials are not printed" "u:p" "$OUT"
+store_env DB_HOST=localhost MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt; run --dry-run
+eq  "same host with a CA set: exit 0 — the operator's choice is not refused" 0 "$RC"
+has "same host with a CA set: says it is not required" "MYSQL_ATTR_SSL_CA is set, though not required" "$OUT"
+has "same host with a CA set: warns that pdo_mysql then requires TLS to it" "a MariaDB that offers no TLS refuses every connection" "$OUT"
+store_env DB_HOST=localhost; run --dry-run
+hasnt "same host without a CA: no TLS warning" "offers no TLS" "$OUT"
+
+store_env DB_HOST=db.internal
+run_refusal "remote DB_HOST, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+store_env DB_HOST=db.internal MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt; run --dry-run
+eq    "remote DB_HOST with a CA: exit 0" 0 "$RC"
+hasnt "remote DB_HOST with a CA: prints no same-host line" "store on this host" "$OUT"
+# DB_HOST unset would pass on its own (the case above), so this refusal is the URL's host replacing it.
+store_env DB_URL=mysql://u:p@db.internal/mezzanine "DB_PASSWORD=$FAKE_PW"
+run_refusal "remote DB_URL, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "remote DB_URL: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "remote DB_URL: the URL's host is not printed" "db.internal" "$OUT"
+hasnt "remote DB_URL: no DB password is printed" "$FAKE_PW" "$OUT"
+# Fail closed on what A5 does not follow: a query string Laravel merges over host, and a socket keyword.
+store_env DB_URL=mysql://u:p@localhost/mezzanine?host=db.internal
+run_refusal "DB_URL whose query sets host, no CA" "its query string sets host or unix_socket" --dry-run
+store_env DB_HOST=db.internal DB_SOCKET=null
+run_refusal "DB_SOCKET=null (Laravel: no socket) over a remote DB_HOST, no CA" "store on another host (DB_HOST is 'db.internal')" --dry-run
 
 section "REFUSAL — a tool the supervision needs is missing (A1)"
 # PATH is rebuilt from every stub and every host binary, minus ONE command. The control is the same

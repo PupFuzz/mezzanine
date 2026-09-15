@@ -157,6 +157,22 @@ its date, its decider and the scope of what it moved. The original row above sta
   clause, § 6.2's pinned database names and isolation posture, and SQLite's unsupported status.
   **Reopens:** a MariaDB-specific Laravel feature the application needs.
 
+- **D-15 · TLS to the store is required only across a network — operator, 2026-09-14 (card#9561).**
+  In the operator's words: *"database is local; there is no SSL support nor is it needed when mysql
+  is on localhost"*. D-15 placed the store on a *dedicated DB host*, and
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) required TLS to it, certificate verified, because
+  the credential and every descriptor would cross a network; `bin/deploy.sh` A5 refused every host whose
+  `.env` set no `MYSQL_ATTR_SSL_CA`, which refused production's local store. **What moves:** the store may
+  be on the application's own host, and production's is. A store reached over its Unix socket or over
+  loopback crosses no network, and TLS is not required for it; a store on another host still requires TLS
+  with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split, and
+  counts as another host whatever it cannot read. **Why:** the requirement was always a consequence of the
+  network hop, and on one host there is none. **What does NOT move:** the engine,
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the `mysql` connection name,
+  § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
+  requirement for a store on another host. **Reopens:** a store that moves off the application's host,
+  which then carries the TLS requirement again with no further decision.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
@@ -297,7 +313,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
 | | fleet-state store + SSE feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
-| | MariaDB provisioning on the dedicated DB host (new card, D-15, as amended 2026-09-09) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
+| | MariaDB provisioning (new card, D-15, as amended 2026-09-09 and 2026-09-14) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified for a store on another host (a store on the app host needs none, D-15's 2026-09-14 amendment); the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |

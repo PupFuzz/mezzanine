@@ -19,6 +19,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9561** — **`bin/deploy.sh` requires a TLS CA only for a store on another host.** A5 refused
+  every host whose `server/.env` left `MYSQL_ATTR_SSL_CA` unset, which refused production's local
+  MariaDB. It now reads where the `mysql` connection goes, the way Laravel resolves it: a set
+  `DB_SOCKET`, or an effective host (`DB_URL`'s host when it names one, else `DB_HOST`, else
+  `127.0.0.1`) of `localhost`, `127.0.0.1` or `::1`, is a store on this host, and A5 passes it and
+  prints why. Any other host, and anything A5 cannot parse, still needs the CA. No value from
+  `DB_URL` is printed. A same-host store with the CA set passes with a warning: pdo_mysql then
+  requires TLS over the socket too, and a store that offers none refuses every connection
+  (measured against the sandbox host's MariaDB). `docs/design/FLEET-STATE.md § 6.1` and
+  `docs/PLAN.md` D-15 record the operator's 2026-09-14 ruling, and `bin/deploy.selftest.sh` covers
+  each case. **Installer action:** an install whose store is on the same host may leave
+  `MYSQL_ATTR_SSL_CA` unset, and leaves it unset when that store serves no TLS. An install whose store is on another host keeps it set.
 - **card#9559** — **The app's `.htaccess` now redirects plain HTTP to HTTPS, with the ACME challenge
   exempt.** `server/public/.htaccess` sends a plain-HTTP request to `https://` on the same host name when
   Apache terminates TLS itself. A request carrying `X-Forwarded-Proto` passes through unredirected, so the
