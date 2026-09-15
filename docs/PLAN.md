@@ -645,9 +645,21 @@ rule violations anyone could have committed at the time.
   request that reaches PHP over plain HTTP, a null default sends the session cookie without the flag,
   and a browser then returns it over plaintext. Outside production the null default is kept, so a local
   checkout on `http://localhost:8000` still signs in. A production host served only over plain HTTP
-  sets `SESSION_SECURE_COOKIE=false`, and its browsers then send the session over plaintext.
+  sets `SESSION_SECURE_COOKIE=false`, and its browsers then send the session over plaintext; on a host
+  where Apache serves the app directly, the next bullet's redirect sends every such request to HTTPS.
   `server/tests/Feature/Admin/SessionCookieSecureDefaultTest` holds the default, the override and
   the resulting cookie on a plain-HTTP request.
+- **The vhost's document root is a symlink to the checkout's `server/public`, so the `.htaccess` Apache
+  reads is the tracked one** (card#9559). On the Virtualmin layout, `~/public_html` → `<checkout>/server/public`
+  as one symlink; a host-specific edit to the served `.htaccess` is an edit to the checkout, which the
+  deploy refuses as a modified tree. `server/public/.htaccess` redirects plain HTTP to HTTPS, on the
+  requested host name, when Apache terminates TLS itself: a request carrying `X-Forwarded-Proto` passes
+  through unredirected, so behind a proxy the proxy owns the scheme and the rule cannot loop. Requests
+  under `/.well-known/acme-challenge/` are served over plain HTTP, so Let's Encrypt's HTTP-01 challenge
+  issues a first certificate on a fresh host before HTTPS exists. Virtualmin writes those challenge
+  files through the symlink into `server/public/.well-known/`, which `server/.gitignore` ignores, so a
+  certificate renewal leaves the tree clean for the next deploy. A direct-Apache host therefore has its
+  certificate before it serves the app.
 - **A deployed host that wants the two-factor reset sets `MAIL_MAILER` to a real transport and
   PROVES it, and a host that does not sets nothing and the path stays closed** (card#9077). The
   operator ruled that a locked-out user may reset their second factor by email; the code path is

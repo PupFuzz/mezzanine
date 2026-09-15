@@ -19,6 +19,20 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9559** — **The app's `.htaccess` now redirects plain HTTP to HTTPS, with the ACME challenge
+  exempt.** `server/public/.htaccess` sends a plain-HTTP request to `https://` on the same host name when
+  Apache terminates TLS itself. A request carrying `X-Forwarded-Proto` passes through unredirected, so the
+  rule is inert behind a proxy, which owns the scheme there, and it cannot loop. Requests under
+  `/.well-known/acme-challenge/` stay on plain HTTP, so Let's Encrypt's HTTP-01 challenge can issue a first
+  certificate on a fresh host. `server/.gitignore` ignores `server/public/.well-known/`, where a document root
+  symlinked to `server/public` receives those challenge files, so a renewal leaves the tree clean for
+  `bin/deploy.sh`. `docs/PLAN.md § 5` states the document-root layout. Verified on a throwaway non-root Apache
+  2.4.66 executing the file: plain HTTP 301 to HTTPS on the requested host, the challenge path 200 over HTTP,
+  `X-Forwarded-Proto` 200, HTTPS 200, and the stock file 200 as the control. **Installer action:** point the
+  vhost's document root at `server/public` as one symlink (`~/public_html` on Virtualmin). A host whose
+  document root held its own copy of `.htaccess` switches to the symlink, and the tracked file's redirect
+  supersedes any host-specific redirect that copy carried. A host where Apache serves the app directly
+  obtains its certificate first, because every other plain-HTTP request now redirects to HTTPS.
 - **card#9543** — **A production install now marks the session cookie Secure without a `.env`
   key.** `server/config/session.php` defaults `session.secure` to `true` when `APP_ENV` is
   `production`, including an unset `APP_ENV`, and `SESSION_SECURE_COOKIE` still overrides it. The

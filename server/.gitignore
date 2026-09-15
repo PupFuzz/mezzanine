@@ -28,3 +28,6 @@ Thumbs.db
 
 # Editor backups (e.g. .env~) can hold a real APP_KEY/DB password; never stage them.
 *~
+
+# A symlinked document root puts Let's Encrypt's HTTP-01 challenge files here; deploy.sh refuses a dirty tree.
+/public/.well-known/
