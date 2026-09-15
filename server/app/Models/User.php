@@ -4,6 +4,12 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Auth\TwoFactorIssuer;
+use BaconQrCode\Renderer\Color\Rgb;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\RendererStyle\Fill;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -78,19 +84,59 @@ class User extends Authenticatable
     }
 
     /**
-     * The otpauth URL the enrolment QR code encodes (`twoFactorQrCodeSvg()` calls this).
+     * The enrolment page's QR code: the account's STORED secret, through `twoFactorQrCodeSvgFor()`.
      *
-     * Overrides Fortify's `TwoFactorAuthenticatable::twoFactorQrCodeUrl()` for ONE argument: the
-     * issuer comes from `App\Auth\TwoFactorIssuer` (the site's hostname label) instead of
-     * `config('app.name')`. ⚠ The rest restates Fortify 1.x's body, so a Fortify upgrade that
-     * changes that method must be re-read against this one.
+     * Overrides Fortify's `TwoFactorAuthenticatable::twoFactorQrCodeSvg()`, which can only draw the
+     * stored secret, so that the enrolment page and card#9471's move page (which draws a secret that
+     * is not stored yet) share one renderer and one issuer.
+     */
+    public function twoFactorQrCodeSvg(): string
+    {
+        return $this->twoFactorQrCodeSvgFor(Fortify::currentEncrypter()->decrypt($this->two_factor_secret));
+    }
+
+    /**
+     * The otpauth URL for the account's STORED secret, through `twoFactorQrCodeUrlFor()`.
      */
     public function twoFactorQrCodeUrl(): string
+    {
+        return $this->twoFactorQrCodeUrlFor(Fortify::currentEncrypter()->decrypt($this->two_factor_secret));
+    }
+
+    /**
+     * ⛔ THE ONE QR RENDERER, for any plaintext secret this account is being shown.
+     *
+     * ⚠ The body restates Fortify 1.x's `TwoFactorAuthenticatable::twoFactorQrCodeSvg()` (read at
+     * v1.38.0) with the secret as a parameter, so a Fortify upgrade that changes that method must be
+     * re-read against this one.
+     */
+    public function twoFactorQrCodeSvgFor(string $secret): string
+    {
+        $svg = (new Writer(
+            new ImageRenderer(
+                new RendererStyle(192, 0, null, null, Fill::uniformColor(new Rgb(255, 255, 255), new Rgb(45, 55, 72))),
+                new SvgImageBackEnd
+            )
+        ))->writeString($this->twoFactorQrCodeUrlFor($secret));
+
+        return trim(substr($svg, strpos($svg, "\n") + 1));
+    }
+
+    /**
+     * The otpauth URL a QR code encodes, for any plaintext secret this account is being shown.
+     *
+     * Differs from Fortify's `TwoFactorAuthenticatable::twoFactorQrCodeUrl()` in two ways: the secret
+     * is a parameter rather than the stored column, and the issuer comes from
+     * `App\Auth\TwoFactorIssuer` (the site's hostname label) instead of `config('app.name')`.
+     * ⚠ The rest restates Fortify 1.x's body, so a Fortify upgrade that changes that method must be
+     * re-read against this one.
+     */
+    public function twoFactorQrCodeUrlFor(string $secret): string
     {
         return app(TwoFactorAuthenticationProvider::class)->qrCodeUrl(
             TwoFactorIssuer::resolve(),
             $this->{Fortify::username()},
-            Fortify::currentEncrypter()->decrypt($this->two_factor_secret)
+            $secret
         );
     }
 }

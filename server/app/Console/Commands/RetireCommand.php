@@ -6,6 +6,7 @@ use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Support\RetirementAttribution;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 
 /**
  * The operator's SHELL surface for `docs/design/FLEET-STATE.md § 2.1` / § 4.10's retirement act.
@@ -60,7 +61,23 @@ class RetireCommand extends Command
 
         [$installId, $seatId] = explode('/', $seat, 2);
 
-        $result = $retirement->retire($installId, $seatId, $by, $reason);
+        try {
+            $result = $retirement->retire($installId, $seatId, $by, $reason);
+        } catch (\Throwable $e) {
+            // card#9466: the same classified refusal the console's retire route gives — the act
+            // rolled back whole once its bounded wait and retries were spent, so the operator gets
+            // a sentence and a non-zero exit instead of a stack trace. Any other error still throws.
+            if (! app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
+                throw $e;
+            }
+
+            $this->error(sprintf(
+                'busy: %s was held by another writer for longer than retirement waits — nothing was changed; try again',
+                $seat,
+            ));
+
+            return self::FAILURE;
+        }
 
         if ($result->outcome === SeatRetirementOutcome::NO_SUCH_SEAT) {
             $this->error('no such seat: '.$seat);

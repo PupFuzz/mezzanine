@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Fold\Clock;
 use App\Fold\StateRecompute;
+use App\Http\Controllers\Concerns\ServesAClosedRead;
 use App\Ingest\Counters;
 use App\Read\FleetHealth;
 use App\Read\ReadRefusal;
@@ -30,9 +31,10 @@ use Illuminate\Support\Facades\Log;
  * here: "a `200` with an empty fleet … on a dashboard it renders as an empty office, which is
  * indistinguishable from a fleet that has gone home."
  *
- * That is why the `try` below wraps the WHOLE body build and not a query at a time: a partial
- * catch is exactly how a `200` with a short install list gets shipped. Authentication's own
- * store failure is caught one layer out, in `App\Http\Middleware\FleetReadGate`, because § 2.2
+ * That is why `serve()` wraps the WHOLE body build and not a query at a time: a partial catch is
+ * exactly how a `200` with a short install list gets shipped. It is `ServesAClosedRead`'s, shared
+ * with § 8.7's building surface, which owes the same posture for its own reason. Authentication's
+ * own store failure is caught one layer out, in `App\Http\Middleware\FleetReadGate`, because § 2.2
  * gives it its own row and the same answer for a different reason.
  *
  * ⚠ WHAT IS NOT CAUGHT: `SeatFacts::foldLagMs()`'s `LogicException` on an unseeded cursor clock.
@@ -43,6 +45,8 @@ use Illuminate\Support\Facades\Log;
  */
 class FleetController extends Controller
 {
+    use ServesAClosedRead;
+
     /** § 8.2: "the whole fleet: every install, every seat, current state." */
     public function snapshot(): JsonResponse
     {
@@ -169,7 +173,7 @@ class FleetController extends Controller
         });
     }
 
-    /** § 8.2: "fleet-level health only, NO SEAT DATA … plus the nine fleet-scoped counters". */
+    /** § 8.2: "fleet-level health only, NO SEAT DATA … plus the fleet-scoped counters". */
     public function health(): JsonResponse
     {
         try {
@@ -191,22 +195,6 @@ class FleetController extends Controller
         }
 
         return $this->json($body);
-    }
-
-    /**
-     * @param  \Closure(): (array<string, mixed>|ReadRefusal)  $build
-     */
-    private function serve(\Closure $build): JsonResponse
-    {
-        try {
-            $body = $build();
-        } catch (QueryException $e) {
-            Log::error('mezzanine.read: the fleet store could not be read', ['error' => $e->getMessage()]);
-
-            return ReadRefusal::fleetUnavailable()->response();
-        }
-
-        return $body instanceof ReadRefusal ? $body->response() : $this->json($body);
     }
 
     /**
@@ -362,18 +350,6 @@ class FleetController extends Controller
         }
 
         return $out;
-    }
-
-    /** @param  array<string, mixed>  $body */
-    private function json(array $body): JsonResponse
-    {
-        // § 8.2: "All responses are `application/json; charset=utf-8` and carry `server_time`."
-        return new JsonResponse($body, 200, ['Content-Type' => 'application/json; charset=utf-8']);
-    }
-
-    private function serverTime(): string
-    {
-        return Clock::wire(Clock::sql(now()));
     }
 
     private function nowMs(): int

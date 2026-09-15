@@ -173,7 +173,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // today's building, one floor per install." Nothing seeds a row to say that — a seeded
         // revision 1 would claim an operator pressed save.
         $this->assertSame(0, Layouts::version());
-        $this->assertSame(['floors' => []], Layouts::document());
+        $this->assertEquals((object) ['floors' => []], Layouts::document());
         $this->assertSame([], Layouts::layout()->floors);
         $this->assertNull(Layouts::current());
     }
@@ -480,5 +480,80 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
             Clock::wire(Revisions::get(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, 1)->authored_at),
             $announced[0]['payload']['at'],
         );
+    }
+
+    /**
+     * ⛔ THE MESSAGE AND THE REVISION COMMIT TOGETHER OR NOT AT ALL — every one of the five writes.
+     *
+     * The refused-save test above proves a write that fails VALIDATION publishes nothing, but a
+     * refusal throws before anything is written, so it cannot tell a message committed in the
+     * revision's transaction from one published after that transaction commits (§ 8.3's retired
+     * broadcast-after-commit shape). This can: the write's LAST statement — the `feed_outbox` INSERT
+     * `App\Feed\Outbox::transaction()` places immediately before the COMMIT — is made to fail after
+     * the revision and the current row are already written. In one transaction that rolls all three
+     * back; published after a commit, the revision survives with no message behind it, and a client
+     * holding the old `map_version` is never told.
+     */
+    public function test_a_write_whose_transaction_fails_at_its_last_statement_leaves_neither_the_revision_nor_its_message(): void
+    {
+        $this->save('aimla', FloorMapFixture::valid(12));
+        $this->save('aimla', FloorMapFixture::valid(8));
+        $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $this->compose([['rooms' => ['sola' => ['form' => 'open']]]]);
+
+        $writes = [
+            'a room map save' => fn () => $this->save('aimla', FloorMapFixture::valid(4)),
+            'a room map restore' => fn () => Floors::restore('aimla', 1, self::OPERATOR),
+            'a room map removal' => fn () => Floors::remove('aimla', self::OPERATOR),
+            'a layout save' => fn () => $this->compose([['rooms' => ['zeta' => ['form' => 'office']]]]),
+            'a layout restore' => fn () => Layouts::restore(1, self::OPERATOR),
+        ];
+
+        $failing = false;
+
+        DB::listen(function ($query) use (&$failing) {
+            if ($failing && str_starts_with($query->sql, 'insert into '.$this->wrapTable('feed_outbox'))) {
+                throw new \RuntimeException('the outbox INSERT failed');
+            }
+        });
+
+        foreach ($writes as $write => $run) {
+            $before = [
+                'revisions' => DB::table('authored_revisions')->count(),
+                'room' => Floors::forInstall('aimla'),
+                'layout' => Layouts::current(),
+            ];
+            $this->wire->forget();
+
+            $failing = true;
+
+            try {
+                $run();
+                $this->fail("$write: the planted outbox failure never fired, so this proves nothing");
+            } catch (\RuntimeException $e) {
+                $this->assertSame('the outbox INSERT failed', $e->getMessage(), "$write raised for another reason");
+            } finally {
+                $failing = false;
+            }
+
+            $this->assertSame([], $this->wire->all(), "$write: a rolled-back write left a message");
+            $this->assertEquals($before, [
+                'revisions' => DB::table('authored_revisions')->count(),
+                'room' => Floors::forInstall('aimla'),
+                'layout' => Layouts::current(),
+            ], "$write: the store kept a revision whose message never committed");
+        }
+
+        // CONTROL — the same five writes, unplanted, each commit one revision AND one message, so the
+        // assertions above were reachable and the failure was the only thing that changed.
+        foreach ($writes as $write => $run) {
+            $revisions = DB::table('authored_revisions')->count();
+            $this->wire->forget();
+
+            $run();
+
+            $this->assertSame($revisions + 1, DB::table('authored_revisions')->count(), "$write: control wrote no revision");
+            $this->assertCount(1, $this->wire->all(), "$write: control announced nothing");
+        }
     }
 }

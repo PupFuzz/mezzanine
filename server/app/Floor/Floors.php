@@ -55,6 +55,22 @@ final class Floors
         return DB::table('floors')->orderBy('install_id')->get()->keyBy('install_id');
     }
 
+    /**
+     * Every authored room's current version and when it was authored, WITHOUT the documents —
+     * `docs/design/FLEET-STATE.md § 8.7`'s `rooms[]`, which a client fetches on every connect. A map
+     * is up to 512 KiB (§ 12), so `all()` here would read every one to answer three columns.
+     *
+     * `updated_at` IS the current revision's `authored_at`: both writers stamp the row and the
+     * revision from one `$at` (`writeCurrent()`), and the migration that added `map_version` seeded
+     * revision 1 from the row's own `updated_at` (§ 6.11).
+     *
+     * @return Collection<int, object{install_id: string, map_version: int, updated_at: string}>
+     */
+    public static function versions(): Collection
+    {
+        return DB::table('floors')->orderBy('install_id')->get(['install_id', 'map_version', 'updated_at']);
+    }
+
     public static function forInstall(string $installId): ?object
     {
         return DB::table('floors')->where('install_id', $installId)->first();

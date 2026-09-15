@@ -20,6 +20,8 @@ WHAT IT COVERS THAT NOTHING ELSE DOES
   3. AT-13 — the reporter half: a permanently-refused batch quarantines rather than retrying,
              and `next_seq` does not advance past events that were never accepted
   4. the health surface answering the reporter's own `schema_version_accepted` selftest
+  5. D1 § 3.1's declaration pair — every `protocol_agent_name_check` state the reporter builds is
+     accepted, stored and folded onto the seat, with its RED (card#9375)
 
 RUNNING IT
 ──────────
@@ -322,10 +324,11 @@ class Harness:
             time.sleep(1.0)
         return False
 
-    def flush(self, script=None):
+    def flush(self, script=None, env=None):
         """One flusher pass, through the script's own `FLEET_REPORTER_ONE_PASS` test seam."""
         e = self.reporter_env()
         e["FLEET_REPORTER_ONE_PASS"] = "1"
+        e.update(env or {})
         return subprocess.run(
             ["node", str(script or REPORTER), "flusher"],
             capture_output=True, text=True, env=e, timeout=90,
@@ -601,6 +604,66 @@ def check_at13_reporter_half(h):
            f"{len(h.stored_events())} stored after the poison pill")
 
 
+def check_declaration(h):
+    """D1 § 3.1 / § 6.14 — the declaration pair the REAL reporter builds, through the REAL ingest.
+
+    The PHPUnit suite proves the ingest accepts the pair as D1 writes it; only this proves it accepts
+    the pair as `fleet-reporter.js` writes it (card#9375). `protocol_agent_name_check` is a
+    reporter-minted enum, so a value outside § 3.1's set is a `422` that quarantines a whole batch —
+    which is why each state the reporter can build is sent here, and why the RED below sends one it
+    must not.
+    """
+    print(f"\n{BOLD}The declared protocol agent name, over the wire (D1 § 3.1, § 6.14){OFF}")
+
+    home = h.work / "declaration-home"
+    home.mkdir(exist_ok=True)
+    roster = h.work / "declaration-coord" / "coordination.config.json"
+    roster.parent.mkdir(exist_ok=True)
+    roster.write_text(json.dumps({"roster": [{"name": "pm"}, {"name": "magento"}]}))
+
+    def run(declared, coord_config, script=None):
+        """A fresh spool, two passes: the first spools its heartbeat after its drain, the second sends it."""
+        h.stop_background_flusher()
+        h.reset_store()
+        shutil.rmtree(h.spool, ignore_errors=True)
+        h.spool.mkdir(parents=True)
+        h.write_config(protocol_agent_name=declared)
+        env = {"HOME": str(home), "COORD_CONFIG": coord_config}
+        h.flush(script=script, env=env)
+        h.flush(script=script, env=env)
+        return [json.loads(e["data"]) for e in h.stored_events() if e["kind"] == "reporter.heartbeat"]
+
+    cases = [
+        ("checked", "magento", str(roster)),
+        ("unchecked", "magento", str(h.work / "declaration-nowhere" / "coordination.config.json")),
+        ("disagreed", "magenta", str(roster)),
+        ("undeclared", None, str(roster)),
+    ]
+    for state, declared, coord_config in cases:
+        beats = run(declared, coord_config)
+        pairs = sorted({(b.get("protocol_agent_name"), b.get("protocol_agent_name_check")) for b in beats}, key=str)
+        record(f"a `{state}` heartbeat is accepted and stored with the pair the reporter built",
+               bool(beats) and pairs == [(declared, state)] and not (h.spool / "REJECTED.txt").exists(),
+               f"stored pairs={pairs}")
+        h.artisan("mezzanine:fold", "--once")
+        folded = h.query("select protocol_agent_name, protocol_agent_name_check from seat_state")
+        record(f"  … and the fold puts `{state}` on the seat",
+               [(r["protocol_agent_name"], r["protocol_agent_name_check"]) for r in folded] == [(declared, state)],
+               f"seat_state={folded}")
+
+    defective = h.work / "fleet-reporter-bad-check.js"
+    src = REPORTER.read_text()
+    # The heartbeat's member, and not `runSelftestChecks`' detail object, which spells the same key.
+    anchor = "    protocol_agent_name_check: declaration.check,\n    degraded:"
+    if not record("declaration RED plant found its target in fleet-reporter.js", src.count(anchor) == 1,
+                  "the heartbeat's check member moved; the RED below is not evidence"):
+        return
+    defective.write_text(src.replace(anchor, "    protocol_agent_name_check: 'verified',\n    degraded:", 1))
+    beats = run("magento", str(roster), script=defective)
+    record("declaration RED — a check value outside § 3.1's set is refused: nothing stored, REJECTED.txt written",
+           not beats and (h.spool / "REJECTED.txt").exists(), f"{len(beats)} heartbeats stored")
+
+
 def check_auth_over_the_wire(h):
     """The seat token is the ONLY credential this surface accepts, proven on a real connection."""
     print(f"\n{BOLD}Auth, over the real transport{OFF}")
@@ -656,6 +719,7 @@ def main():
         check_auth_over_the_wire(h)
         check_at9(h)
         check_at13_reporter_half(h)
+        check_declaration(h)
     finally:
         h.stop()
         if not args.keep:

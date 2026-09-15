@@ -52,7 +52,7 @@ final class Layouts
     /** § 8.7: the current `layout_version`, and **0** when no layout was ever saved. */
     public static function version(): int
     {
-        return (int) (self::current()->layout_version ?? 0);
+        return self::versionOf(self::current());
     }
 
     /**
@@ -61,32 +61,62 @@ final class Layouts
      */
     public static function documentText(): ?string
     {
+        return self::textOf(self::current());
+    }
+
+    /** The stored document, decoded as `BuildingLayout` reads it — `{"floors": []}` when no layout was ever saved. */
+    public static function document(): \stdClass
+    {
+        return self::decode(self::documentText());
+    }
+
+    /**
+     * ⛔ THE CURRENT LAYOUT AND ITS `layout_version`, FROM ONE READ OF THE ROW. Anything that answers
+     * both takes them from here rather than calling `version()` and `layout()`: each of those reads
+     * the row again, so a save committing between the two calls pairs one revision's version with
+     * another's floors — and a client holding that version treats the matching `building.layout`
+     * message as already applied (§ 8.7), keeping the wrong building with nothing left to replace it.
+     *
+     * It throws as `layout()` does, on a stored document the reader refuses.
+     */
+    public static function read(): CurrentLayout
+    {
         $row = self::current();
 
+        return new CurrentLayout(self::versionOf($row), BuildingLayout::parse(self::decode(self::textOf($row))));
+    }
+
+    private static function versionOf(?object $row): int
+    {
+        return (int) ($row->layout_version ?? 0);
+    }
+
+    private static function textOf(?object $row): ?string
+    {
         return $row === null ? null : (string) $row->document;
     }
 
     /**
-     * The stored document, decoded — `['floors' => []]` when no layout was ever saved.
+     * A stored document's text, decoded — `{"floors": []}` for no row.
      *
-     * @return array<mixed>
+     * ⛔ IN OBJECT MODE, as `BuildingLayout::fromJson()` decodes the console's text (card#9322). A
+     * rule tightened after a document was written is re-asked per request (§ 4.6), and a stored
+     * `"floors": {}` can only reach its refusal through a decode that kept it apart from `[]`.
      */
-    public static function document(): array
+    private static function decode(?string $text): \stdClass
     {
-        $text = self::documentText();
-
         if ($text === null) {
-            return ['floors' => []];
+            return (object) ['floors' => []];
         }
 
         try {
-            $decoded = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($text, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new InvalidBuildingLayout(self::storedDocumentIsNot('JSON at all ('.$e->getMessage().')'), previous: $e);
         }
 
-        if (! is_array($decoded)) {
-            // No JSON error to report — the decode succeeded and answered with a scalar. Saying
+        if (! $decoded instanceof \stdClass) {
+            // No JSON error to report — the decode succeeded and answered with an array or a scalar. Saying
             // so is the news; a `json_last_error_msg()` here would print *(No error)* beside a
             // sentence that says something went wrong (card#9295's shape, one surface over).
             throw new InvalidBuildingLayout(self::storedDocumentIsNot('a document at all, but a JSON '.get_debug_type($decoded)));
@@ -118,7 +148,7 @@ final class Layouts
      */
     public static function layout(): BuildingLayout
     {
-        return BuildingLayout::parse(self::document());
+        return self::read()->layout;
     }
 
     /**

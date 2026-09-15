@@ -66,7 +66,7 @@ jobs:
       # sound, do the vendored fixtures still match what the code reads?" answer on its own.
       # It exits non-zero here because no config and no ingest are present, which is correct and
       # is why its verdict is read per check rather than from the exit code.
-      - name: Reporter selftest (per-check verdicts; the two network checks are unprobed here)
+      - name: Reporter selftest (per-check verdicts; the two network checks are not measured here)
         run: |
           node fleet-reporter/fleet-reporter.js selftest > selftest.json || true
           python3 - <<'PY'

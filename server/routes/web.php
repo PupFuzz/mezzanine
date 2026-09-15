@@ -1,6 +1,6 @@
 <?php
 
-use App\Building\Layouts;
+use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
 use Illuminate\Support\Facades\Route;
@@ -9,12 +9,19 @@ Route::get('/', fn () => redirect()->route('dashboard'));
 
 /*
  * Reachable once authenticated, deliberately NOT behind `mfa`: it is the screen a user with
- * no second factor is sent to, so gating it would be a redirect loop. It shows nothing but
- * the enrolment controls, which are Fortify's own routes under `password.confirm`.
+ * no second factor is sent to, so gating it would be a redirect loop. It renders one of three
+ * states — the enrolment controls (Fortify's own routes under `password.confirm`), the recovery
+ * codes after enabling, or a confirmed state — and the ⚠ paragraphs below own the last two.
  *
- * ⚠ IT NOW ALSO SHOWS THE RECOVERY CODES (card#9077), and that does not weaken the paragraph
- * above: the branch that renders them is only reachable after `two-factor.enable` has run, and
- * THAT route is `auth` + `password.confirm`. See the view.
+ * ⚠ IT NOW ALSO SHOWS THE RECOVERY CODES (card#9077): the branch that renders them is only
+ * reachable after `two-factor.enable` has run, and THAT route is `auth` + `password.confirm`. The
+ * view states how far that gate reaches — the session that ran it, not a later one.
+ *
+ * ⚠ A CONFIRMED ACCOUNT SEES NO ENROLMENT CONTROLS HERE (card#9445). The view renders a confirmed
+ * state with links onward instead, which is what keeps this route loop-free without a redirect: `mfa`
+ * sends only UNconfirmed accounts here, and a confirmed account that arrives by the back button or a
+ * bookmark is shown where to go rather than bounced. The confirm POST itself lands on the dashboard
+ * (`App\Http\Responses\TwoFactorConfirmedResponse`).
  */
 Route::middleware('auth')->group(function () {
     Route::view('/two-factor-enroll', 'auth.two-factor-enroll')->name('two-factor.enroll');
@@ -31,10 +38,41 @@ Route::middleware('auth')->group(function () {
  * There is no application-owned REGENERATE route: Fortify's POST on that same path already calls
  * `Actions\GenerateNewRecoveryCodes`, and `App\Http\Responses\RecoveryCodesGeneratedResponse` is
  * bound so a browser lands back here instead of on a raw translation key.
+ *
+ * ⛔ CARD#9471 · THE MOVE TO A NEW AUTHENTICATOR IS APPLICATION-OWNED, CONFIRM-THEN-SWAP. It starts
+ * from this page and lives under the same three gates. The new secret waits in the session until a
+ * code from it is confirmed, and the account keeps its current second factor until then;
+ * `App\Http\Controllers\Auth\TwoFactorMoveController` owns the argument. The confirm is throttled
+ * by `two-factor-move` (`App\Providers\FortifyServiceProvider`). It replaces the recovery codes by
+ * calling the `Actions\GenerateNewRecoveryCodes` that Fortify's regenerate route calls, so both
+ * routes that replace the codes share one action.
+ *
+ * ⚠ FORTIFY'S `DELETE /user/two-factor-authentication` (`two-factor.disable`) STAYS REGISTERED. It is
+ * part of `Features::twoFactorAuthentication()` and cannot be removed without the feature. It clears
+ * the second factor outright, so no page a CONFIRMED account sees links it: its only form is the
+ * enrolment page's "Start over", which that page draws for an account that has not confirmed.
+ *
+ * ⚠ SO DOES FORTIFY'S `POST /user/two-factor-authentication` (`two-factor.enable`), AND WITH `force=1`
+ * IT REPLACES A CONFIRMED ACCOUNT'S SECOND FACTOR. `TwoFactorAuthenticationController::store` calls
+ * `EnableTwoFactorAuthentication` with `force` true, which writes a new secret and a new set of
+ * recovery codes and leaves `two_factor_confirmed_at` set (read at laravel/fortify v1.38.0,
+ * `routes/routes.php` and `Actions\EnableTwoFactorAuthentication`). It is gated by `auth` +
+ * `password.confirm` (`confirmPassword => true` in `config/fortify.php`), without `mfa`. No page a
+ * confirmed account sees links it: its only form is the enrolment page's "Generate a secret", which
+ * that page draws for an account with no secret. It adds no capability beyond the move: a session
+ * inside the password-confirmation window can already replace the secret and codes through the move.
  */
 Route::middleware(['auth', 'mfa', 'password.confirm'])->group(function () {
     Route::get('/two-factor/recovery-codes', [TwoFactorRecoveryCodeController::class, 'show'])
         ->name('two-factor.codes');
+
+    Route::post('/two-factor/move', [TwoFactorMoveController::class, 'start'])
+        ->name('two-factor.move.start');
+    Route::get('/two-factor/move', [TwoFactorMoveController::class, 'show'])
+        ->name('two-factor.move');
+    Route::post('/two-factor/move/confirm', [TwoFactorMoveController::class, 'confirm'])
+        ->middleware('throttle:two-factor-move')
+        ->name('two-factor.move.confirm');
 });
 
 /*
@@ -83,21 +121,11 @@ Route::middleware('guest')->group(function () {
  * (§ 9 adds the `mzr_` machine path) and could not be expressed by leaving the route here.
  */
 Route::middleware(['auth', 'mfa'])->group(function () {
-    // The lobby is served WITH the building layout — `docs/design/FLOOR.md § 4.6`. An invalid
-    // layout refuses here, per request, on this surface — never at boot, where it would take
-    // ingest down too.
-    //
-    // ⭐ THE DOCUMENT NOW COMES FROM THE CONSOLE'S STORE (card#9208's reversal, 2026-09-12;
-    // `App\Building\Layouts`, `docs/design/FLEET-STATE.md § 6.11`) rather than from
-    // `config/building.php`. The READER is unchanged, which is § 4.6's promise being kept: "the
-    // SHAPE is the contract; the store is the caller's."
-    //
-    // ⚠ AND THE DELIVERY IS STILL THE PAGE'S, WHICH IS BUILD SLICE 3's TO MOVE. § 4.6 now reaches
-    // the browser from `GET /api/building` (D2 § 8.7) "because a layout an operator saves has to
-    // reach a client that is already open, and a page-inlined document reaches only a page that is
-    // loaded after it" — that surface is Appendix B row 12's and the client's fetch is row 13's.
-    // Until then this inlines what the store holds, hallways and all.
-    Route::get('/dashboard', fn () => view('dashboard', ['layout' => Layouts::layout()->floors]))
+    // The lobby. ⛔ IT CARRIES NO BUILDING LAYOUT (`docs/design/FLOOR.md` Appendix B row 13,
+    // card#9208): the client fetches the layout from `GET /api/building` (D2 § 8.7,
+    // `routes/fleet.php`), so the one place a layout is read for a browser — and refused, per
+    // request, when the stored document no longer passes the reader — is that surface.
+    Route::get('/dashboard', fn () => view('dashboard'))
         ->name('dashboard');
 });
 

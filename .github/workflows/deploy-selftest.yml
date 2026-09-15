@@ -4,8 +4,8 @@
 # down-and-stay-down path, the anti-"bare re-run" guard, the daemon restarts and the load-bearing
 # cache order, each against a throwaway git fixture with php/php-fpm/composer/npm/crontab/curl
 # stubbed on PATH — and the daemon restart itself run for real (flock, fuser, setsid, kill) against
-# stub daemons inside the temp dir. It deploys nothing and reaches no host — there is no host
-# (docs/PLAN.md D-08).
+# stub daemons inside the temp dir. It deploys nothing and reaches no host; the prod host (docs/PLAN.md
+# D-08) has never been deployed to.
 #
 # WHY IT EXISTS. card#7459's acceptance is that the script is "seen to fail on a broken
 # precondition before trusted", and that property decays silently: a refusal that stops firing

@@ -5,7 +5,6 @@ namespace Tests\Feature\Feed;
 use App\Feed\BuildingLayoutChanged;
 use App\Feed\FeedStream;
 use App\Feed\Outbox;
-use App\Fold\Fold;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -43,7 +42,7 @@ class At19StreamReadAuthTest extends FeedTestCase
         parent::setUp();
 
         DB::beforeExecuting(function (string $query) {
-            if ($this->armed && ($this->failOn === null || str_contains($query, $this->failOn))) {
+            if ($this->armed && ($this->failOn === null || str_contains(strtolower($query), $this->failOn))) {
                 throw new \PDOException('SQLSTATE[HY000]: General error: 2006 MySQL server has gone away');
             }
         });
@@ -187,7 +186,7 @@ class At19StreamReadAuthTest extends FeedTestCase
         $this->armed = false;
 
         $this->writeLayoutRow();                                  // written before the reconnect
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
         $stream = $this->openStream($user, [...$this->idle(12), $this->reloadStep(), ...$this->idle(10)]);
 
@@ -227,10 +226,10 @@ class At19StreamReadAuthTest extends FeedTestCase
     public function test_a_connect_read_that_fails_alone_ends_the_stream_rather_than_replaying_from_zero(): void
     {
         $this->writeLayoutRow();                                   // history a cursor at 0 would replay
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
         $user = $this->enrolled();
 
-        $this->failOn = 'max(';                                    // the head read — and FleetHealth's max()
+        $this->failOn = 'max(';                                    // the head read (VisiblePrefix's MAX) — and FleetHealth's max()
         $this->armed = true;
 
         try {

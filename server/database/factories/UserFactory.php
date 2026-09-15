@@ -31,7 +31,7 @@ class UserFactory extends Factory
      * `composer install --no-dev` obligation on deployed hosts (`docs/PLAN.md § 5`).
      *
      * That fix closes the class only on hosts that honour the flag, and nothing reds if one never
-     * does — no `bin/deploy.sh` exists yet to honour it (D-08: the host is not provisioned). A
+     * does — when this was written no `bin/deploy.sh` existed to honour it, and a hand install still need not. A
      * random value closes it IN CODE, on every host, whatever flags the installer used, and costs
      * three call-sites to adopt. So the `--no-dev` obligation stays, and it is now defence in depth
      * rather than the whole defence.

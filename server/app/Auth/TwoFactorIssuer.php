@@ -4,7 +4,7 @@ namespace App\Auth;
 
 /**
  * ⛔ THE ONE DERIVATION OF THE OTPAUTH ISSUER — the name an authenticator app files this site's
- * entry under. `App\Models\User::twoFactorQrCodeUrl()` is its only caller.
+ * entry under. `App\Models\User::twoFactorQrCodeUrlFor()` is its only caller.
  *
  * Fortify's stock issuer is `config('app.name')`, which is `Mezzanine` on every host, so the
  * sandbox's and production's entries were indistinguishable in the app. The issuer is instead the

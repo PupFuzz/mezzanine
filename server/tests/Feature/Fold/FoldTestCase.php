@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Console\Commands\RebuildCommand;
+use App\Feed\Outbox;
+use App\Fleet\SeatRetirement;
 use App\Fold\Clock;
 use App\Fold\Fold;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,8 +57,17 @@ abstract class FoldTestCase extends TestCase
     {
         parent::setUp();
 
-        // A FIXED SERVER CLOCK, so the 2 s visibility lag and § 4.5's 300/900 s thresholds are
-        // driven rather than waited for. Every test that cares about an age moves it explicitly.
+        // card#9466's seams, cleared before every test of this rig. `CommittedSeatTestCase` clears
+        // them in its own `tearDown()`, but a test on THIS rig that sets one (`SeatConsoleTest`
+        // does) has only its own `finally` between it and the next test's first rebuild or
+        // retirement in the same process.
+        RebuildCommand::$beforeReset = null;
+        RebuildCommand::$afterFirstDelete = null;
+        SeatRetirement::$beforeRetire = null;
+        SeatRetirement::$afterBefore = null;
+
+        // A FIXED SERVER CLOCK, so § 4.5's 300/900 s thresholds and every other age are driven
+        // rather than waited for. Every test that cares about an age moves it explicitly.
         Carbon::setTestNow(Carbon::parse('2026-08-26 12:00:00.000', 'UTC'));
         $this->clockMs = Clock::toMs('2026-08-26 12:00:00.000');
 
@@ -65,6 +77,8 @@ abstract class FoldTestCase extends TestCase
     protected function tearDown(): void
     {
         Fold::$afterEmptinessProof = null;
+        Fold::$beforeLock = null;
+        Fold::$afterReadable = null;
         Carbon::setTestNow();
 
         parent::tearDown();
@@ -98,11 +112,12 @@ abstract class FoldTestCase extends TestCase
     // ── driving ──────────────────────────────────────────────────────────────────────────────
 
     /**
-     * POST a batch through the real ingest, then AGE ITS RECEIPT past the visibility lag so the
-     * next fold pass can read it. Ageing is done by moving the SERVER clock forward rather than by
-     * back-dating `events.received_at`, because back-dating would be the suite writing a column
-     * the ingest owns — and § 2.3's whole argument is that the fold and the ingest write different
-     * columns.
+     * POST a batch through the real ingest, then move the SERVER clock past `Outbox::VISIBILITY_LAG_S`.
+     *
+     * The fold does not need the move to read the batch — it reads `events` by id (card#9398). The
+     * move stays the default because the suite's clock arithmetic was derived on top of it
+     * (`At10RebuildEqualsFoldTest`'s "receipt + 8 s" is one such derivation), and taking it away
+     * from every caller would re-derive each of them for no change in what the fold does.
      *
      * @param  list<array<string, mixed>>  $events
      * @param  array<string, mixed>  $envelope
@@ -137,7 +152,7 @@ abstract class FoldTestCase extends TestCase
             'runtime_version' => 'v22.11.0',
             'seq_epoch' => '01K3T0000A5N7M2X9V4B6D0FGH',
             // The batch's SEND time, not its newest event's time — which is what a real flusher
-            // stamps and what D1 § 10.1's `clock_skew_ms` gauge is `received_at − sent_at` of. A
+            // stamps and what D1 § 10.1's `clock_skew_ms` gauge is `arrival − sent_at` of. A
             // fixture that stamped the seat's event clock here would badge `clock_skew` on every
             // test that moves the seat clock, which is most of them, and the badge is
             // version-bearing — so the fixture's own bookkeeping would show up as state changes.
@@ -157,10 +172,10 @@ abstract class FoldTestCase extends TestCase
 
         $response->assertStatus(202);
 
-        // AT-D2-22 is the one caller that wants the batch left INSIDE the lag, because that window
-        // is its subject. Everything else wants it aged out, so ageing is the default.
+        // `age: false` leaves the clock where the POST found it, for a test whose subject is the
+        // batch's own age — AT-D2-22's control, a fresh batch folding on the very next pass.
         if ($age) {
-            $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+            $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
         }
     }
 

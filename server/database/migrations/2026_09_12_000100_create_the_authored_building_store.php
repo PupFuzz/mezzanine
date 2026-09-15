@@ -189,10 +189,15 @@ return new class extends Migration
             return null;
         }
 
-        $document = ['floors' => array_map($this->toRecords(...), array_values($floors))];
+        $text = (string) json_encode(
+            ['floors' => array_map($this->toRecords(...), array_values($floors))],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
 
+        // The TEXT that will be seeded is what is validated, through the reader's own decode
+        // (card#9322), so the refusal below is about the bytes the store will hold.
         try {
-            BuildingLayout::parse($document);
+            BuildingLayout::fromJson($text);
         } catch (InvalidBuildingLayout $e) {
             // ⛔ FAIL LOUD RATHER THAN SEED A DOCUMENT THE READER WILL REFUSE PER REQUEST. The
             // deploy stops here with the reason in front of the person running it; seeding it
@@ -207,7 +212,7 @@ return new class extends Migration
             );
         }
 
-        return (string) json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return $text;
     }
 
     /** § 6.11's invariant 2, second half: the validated document, as the store's revision 1. */

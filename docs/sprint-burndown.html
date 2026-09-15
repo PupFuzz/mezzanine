@@ -155,13 +155,13 @@ footer td { font-family:var(--mono); }
 <body>
 <div class="wrap">
 <header class="top"><h1>Sprint burn-down — mezzanine</h1><span class="tot"><b>3</b> remaining · <b>19</b> done · <b>22</b> total</span></header>
-<p class="meta"><span>Derived at <strong>2026-09-14T00:28:47Z</strong></span><span>board 14</span><span>config <code>/home/mezzanine/.config/coord/coordination.config.json</code></span><span>digest 2bf903c1e9b8</span><span>1 lane(s), in declaration order</span><span>sprint-burndown.py</span></p>
+<p class="meta"><span>Derived at <strong>2026-09-14T16:20:19Z</strong></span><span>board 14</span><span>config <code>/home/mezzanine/.config/coord/coordination.config.json</code></span><span>digest 2bf903c1e9b8</span><span>1 lane(s), in declaration order</span><span>sprint-burndown.py</span></p>
 <p class="rule">A burn-down, not a plan — <strong>do not edit by hand</strong>. <b>A card leaves this page by MOVING on the board</b>, never by being edited off it. The page and the lane-enforcement config are two projections of the board reads the lanes declare, so they cannot drift apart.</p>
 <nav class="race" aria-label="Lanes">
-<a class="rl lane--unmeasured" href="#lane-1-a"><span class="rl__k">A</span><span class="rl__t">MEZZANINE - next release to main</span><span class="rl__n">3<span class="rl__of">of 22</span></span><span class="rl__bar" role="img" aria-label="19 of 22 done"><i style="inline-size:86%"></i></span><span class="rl__g">STAFFING-UNMEASURED</span></a>
+<a class="rl lane--unmeasured" href="#lane-1-a"><span class="rl__k">A</span><span class="rl__t">MEZZANINE - next release to main (v0.5.0)</span><span class="rl__n">3<span class="rl__of">of 22</span></span><span class="rl__bar" role="img" aria-label="19 of 22 done"><i style="inline-size:86%"></i></span><span class="rl__g">STAFFING-UNMEASURED</span></a>
 </nav>
 <section class="lane lane--unmeasured" id="lane-1-a">
-<header class="lane__h"><div class="lane__id"><h2>A <span class="t">MEZZANINE - next release to main</span></h2></div><div class="lane__count"><b>3</b><span>remaining of 22 · 19 done</span></div></header>
+<header class="lane__h"><div class="lane__id"><h2>A <span class="t">MEZZANINE - next release to main (v0.5.0)</span></h2></div><div class="lane__count"><b>3</b><span>remaining of 22 · 19 done</span></div></header>
 <p class="gate"><span class="gate__chip">STAFFING-UNMEASURED</span><span class="gate__why">a live dispatch could not be placed on any lane, so idle is suppressed fleet-wide; pullable work behind this lane</span></p>
 <p class="done"><span>Done when</span>no card carries lane:A — every committed card has shipped to dev</p>
 <div class="tw"><table><thead><tr><th>Card</th><th>Title</th><th>Stage (live)</th><th>Open PR / thread</th></tr></thead><tbody>
@@ -171,7 +171,7 @@ footer td { font-family:var(--mono); }
 </tbody></table></div>
 </section>
 <footer><h2>Ledger</h2><div class="tw"><table><thead><tr><th>Lane</th><th>Title</th><th>Remaining</th><th>Done</th><th>Total</th><th>Enforcement</th></tr></thead><tbody>
-<tr><td class="lane--unmeasured">A</td><td>MEZZANINE - next release to main</td><td>3</td><td>19</td><td>22</td><td>STAFFING-UNMEASURED</td></tr>
+<tr><td class="lane--unmeasured">A</td><td>MEZZANINE - next release to main (v0.5.0)</td><td>3</td><td>19</td><td>22</td><td>STAFFING-UNMEASURED</td></tr>
 <tr><td><strong>total</strong></td><td></td><td><strong>3</strong></td><td><strong>19</strong></td><td><strong>22</strong></td><td></td></tr></tbody></table></div>
 <p><strong>Remaining</strong> is what the board still has open in the lane — the cards in the tables above. <strong>Done</strong> is what the lane selects and the board has moved OUT of the sprint's open stages. <strong>Total</strong> is the lane's whole selected population, i.e. the burn-down's denominator, so <code>N of T</code> on a tile reads as progress. A card whose stage this board does not publish is <strong>unclassified</strong>: counted in the total, never in done, and shown as its own figure — a card this tool cannot place must not read as shipped. <strong>Each tile's bar is that lane's progress</strong> — done ÷ total — so it fills as the lane burns down; a lane that selects nothing reads empty, never complete; and a lane whose membership filters on the <code>column</code> reads <strong>0 done</strong> with an empty bar BY CONSTRUCTION — a card that ships leaves the column, so it leaves the selection rather than crossing to done.</p>
 <p>State digest <code>2bf903c1e9b8acbb11ab0a82895b104264f72073e942601064a48f6be9760fb3</code> — <code>sprint-burndown.py --check</code> reds when the board no longer agrees with this page. It compares the MEMBER SET — the REMAINING cards, in order — and not this markup: a re-titled or re-labelled lane, or an already-shipped card later archived off the board, is not a change to what is LEFT and does not red it. The lanes, their membership rules and their done rules are declared in <code>sprint</code> in the config above; see the framework's <code>docs/SPRINT.md</code>.</p>

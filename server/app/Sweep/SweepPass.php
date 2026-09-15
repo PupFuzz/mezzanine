@@ -18,6 +18,11 @@ namespace App\Sweep;
  * `seats` is every seat the pass VISITED (§ 2.1's recompute covers "**every** seat"), failures
  * included — it is the denominator, so `failed / seats` is a rate rather than two numbers over
  * different populations.
+ *
+ * `failed` counts the seats whose pass THREW and was skipped. A seat the pass YIELDED to another
+ * writer — its `seat_state` row held, or a concurrency error on a downstream row (card#9466) — is
+ * not a failure: it wrote nothing, the next pass retries it, and it is counted per seat as
+ * `sweep_seat_contended` instead (§ 7.2). It is still in `seats`, because the pass visited it.
  */
 final class SweepPass
 {

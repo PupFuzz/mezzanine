@@ -95,6 +95,46 @@ use Illuminate\Support\Facades\DB;
  */
 final class SeatRetirement
 {
+    /**
+     * The lock wait, in seconds, pinned on THIS act's own session for the length of its
+     * transaction — card#9466.
+     *
+     * Both callers have a person waiting: `SeatController::retire()` answers an operator's browser
+     * and `RetireCommand` an operator's shell. At the server default of 50 s a retirement queued
+     * behind a busy seat would hold that person for minutes before it said anything, and a proxy in
+     * front of the web request may give up first while PHP still commits the act behind it. 2 s
+     * absorbs a fold window over the few new events of a seat that is keeping up, so that collision
+     * waits and never raises. It is pinned the way
+     * `IngestPipeline::boundTheWriteSession()` pins the ingest's: `SET SESSION`, never `SET GLOBAL`.
+     *
+     * THE BOUND IS PER BLOCKED STATEMENT, NOT PER ATTEMPT: at most `LOCK_WAIT_TIMEOUT_S` for any one
+     * statement, across `LOCK_ATTEMPTS` attempts. The typical contention case — the seat lock is held
+     * and released — costs at most `LOCK_ATTEMPTS` × `LOCK_WAIT_TIMEOUT_S`. Once this act holds the
+     * seat lock, only a writer that does not lock the seat first can still hold a row it touches.
+     *
+     * A DRAINING SEAT CAN STILL ANSWER BUSY. A fold window over a backlog holds the seat lock for up to
+     * `Fold::WINDOW_BUDGET_MS`, plus the event in flight and its commit (§ 6.5), and at these values
+     * `LOCK_ATTEMPTS` × `LOCK_WAIT_TIMEOUT_S` is less than that budget. Retiring a seat whose fold is
+     * draining can therefore spend every attempt waiting on one window: the callers then answer
+     * "busy — try again", and nothing was changed.
+     */
+    public const LOCK_WAIT_TIMEOUT_S = 2;
+
+    /**
+     * Attempts at the whole transaction when it throws a concurrency error (`1020`/`1205`/`1213`):
+     * the count includes the first attempt. A real `1213` is broken by MariaDB's deadlock detector in
+     * milliseconds, so its retry is nearly free; a `1205` retry pays off against a holder that
+     * releases inside the next attempt's wait. `RebuildCommand::REPLAY_LOCK_ATTEMPTS` is the same
+     * count at the server's default wait.
+     */
+    public const LOCK_ATTEMPTS = 3;
+
+    /** Test seam: runs inside the transaction, before the seat lock, once per attempt. */
+    public static $beforeRetire = null;
+
+    /** Test seam: runs right after `$before` is sampled. */
+    public static $afterBefore = null;
+
     public function __construct(private readonly StateRecompute $recompute) {}
 
     /**
@@ -123,7 +163,34 @@ final class SeatRetirement
         $seatRef = (int) $row->id;
         $at = Clock::sql(now());
 
+        // THE SHORT WAIT IS RESTORED ON EVERY EXIT, not pinned and left: the `finally` covers the
+        // retired return, the already-retired return (both return from inside the callback) and a
+        // throw once the attempts are spent, so nothing run later on this connection inherits it.
+        // The value restored is read from this session rather than assumed to be the server's.
+        $wait = (int) DB::selectOne('SELECT @@session.innodb_lock_wait_timeout AS v')->v;
+        DB::statement('SET SESSION innodb_lock_wait_timeout = '.self::LOCK_WAIT_TIMEOUT_S);
+
+        try {
+            return $this->act($seatRef, $installId, $seatId, $at, $by, $reason);
+        } finally {
+            DB::statement('SET SESSION innodb_lock_wait_timeout = '.$wait);
+        }
+    }
+
+    private function act(int $seatRef, string $installId, string $seatId, string $at, string $by, string $reason): SeatRetirementOutcome
+    {
         return Outbox::transaction(function () use ($seatRef, $installId, $seatId, $at, $by, $reason): SeatRetirementOutcome {
+            if (self::$beforeRetire !== null) {
+                (self::$beforeRetire)($seatRef);
+            }
+
+            // ⛔ THE SEAT'S `seat_state` ROW LOCK FIRST, BEFORE `$before` IS SAMPLED — card#9466,
+            // § 6.5's lock-first rule. Without it, a writer that commits to this seat between the
+            // sample and the recompute's own `seat_state` write turns that write into a `1020`
+            // ("Record has changed since last read"), and a writer that holds the row and then
+            // needs one this act already holds closes a deadlock.
+            DB::table('seat_state')->where('seat_ref', $seatRef)->lockForUpdate()->value('seat_ref');
+
             // ⛔ SAMPLED BEFORE THE `seats` WRITE BELOW — card #7837, and this is a SIBLING of that
             // card's fold defect rather than a precaution.
             //
@@ -139,6 +206,10 @@ final class SeatRetirement
             // The UPDATE cannot move below the recompute instead: `render_state` is DERIVED from
             // `retired_at`, so a recompute run first would derive the un-retired render.
             $before = SeatFacts::versionBearing($seatRef);
+
+            if (self::$afterBefore !== null) {
+                (self::$afterBefore)($seatRef);
+            }
 
             // § 2.1: "Re-running it on an already-retired seat is a NO-OP." Not an error — an
             // operator re-running a command they are unsure landed must not be told the fleet is
@@ -183,6 +254,11 @@ final class SeatRetirement
                 // hand back the `null` this transaction started with and print an empty time. A
                 // locking read is a current read. The value cannot then go stale: nothing in this
                 // application un-retires a seat or rewrites those three columns.
+                //
+                // Since card#9466 the seat lock at the top of this transaction serialises two
+                // retirements of one seat, so the second one's snapshot is taken after the first
+                // committed and a plain read would see the time as well. The locking read stays, so
+                // that this answer does not rest on every retirement taking that lock first.
                 $already = DB::table('seats')
                     ->where('id', $seatRef)
                     ->lockForUpdate()
@@ -247,6 +323,6 @@ final class SeatRetirement
             Outbox::enqueue(new SeatRetired($seatRef, $installId, $seatId, $at, $by, $reason, $version));
 
             return SeatRetirementOutcome::retired($at, $version);
-        });
+        }, self::LOCK_ATTEMPTS);
     }
 }

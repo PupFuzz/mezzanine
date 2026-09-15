@@ -16,10 +16,12 @@
         "a floor that fails quietly is indistinguishable from a fleet that has gone home."
 
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
-          · the tiled MAP, the camera and the desks — card#9208: the authored floor map is a BUILD
-            ARTIFACT and none is vendored (§ 10.3), so there is no floor screen for a camera to
-            arrive at and `/floor/{floor}` is still an unbuilt route. § 1.3 corollary 2 forbids
-            guessing one.
+          · the tiled MAP, the camera and the desks — the floor screen is `docs/design/FLOOR.md`
+            Appendix B step 7 (card#7341) and is not built, so there is no floor screen for a
+            camera to arrive at and `/floor/{floor}` is still an unbuilt route. The maps it will
+            draw are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7) and held by
+            version in `public/js/wire/building.js`; nothing on this page draws one, because a
+            plate names its rooms and never draws a room interior (§ 4.1).
           · the elevator's DESTINATION, for the same reason — card#7343 builds the elevator as
             § 4.1's way between the stacked plates of THIS screen, and a ride moves the cab and
             nothing else. The plate's own link is still the only thing pointing at that route.
@@ -37,6 +39,15 @@
         <p id="lobby-kept" hidden></p>
 
         {{--
+            § 9 F17's statement region: "the building layout could not be loaded — HTTP N", over
+            the floors the client already holds labelled *last known layout*, or over the
+            uncomposed list of rooms on a cold start. A region of its own because it can stand
+            beside F4/F5's store statement above, which is the snapshot's.
+        --}}
+        <p id="lobby-layout-statement" role="status" hidden></p>
+        <p id="lobby-layout-kept" hidden></p>
+
+        {{--
             § 4.1 row 1: one row per floor, the row being the link to the floor.
 
             ⛔ THE LABEL IS REQUIRED, NOT DECORATION. § 2.1 row 5: the per-floor count "is
@@ -52,16 +63,15 @@
 
         {{--
             THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install
-            and a floor is an operator-composed set of rooms. The composed floors reach the client
-            WITH THE PAGE, validated and normalised by `App\Building\BuildingLayout`, and never
-            from an endpoint: the layout is not fleet state, and § 1.2 forbids D3 minting a read
-            surface for it. The client adds one floor per install the snapshot carries that no
-            floor here places (§ 4.6's default rule) and composes nothing else.
+            and a floor is an operator-composed set of rooms. ⛔ THIS PAGE CARRIES NONE: the
+            client fetches it from `GET /api/building` (`docs/design/FLEET-STATE.md § 8.7`) after
+            the snapshot (Appendix B row 13, card#9208), because one building on two delivery
+            paths is the *which of the two am I looking at* question D2 § 13 row 41 refuses.
+            `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
 
-            ⚠ A page loaded before the building was rearranged draws the old building until it
-            is reloaded — the same deploy-shaped staleness § 10.3 already accepted for the map.
+            ⚠ The lobby opens no stream yet (Appendix B step 3), so a building rearranged after
+            the fetch is drawn when the viewer presses Refresh or reloads.
         --}}
-        <script type="application/json" id="lobby-layout">@json($layout, JSON_HEX_TAG | JSON_HEX_AMP)</script>
 
         {{--
             § 4.1's ELEVATOR — card#7343. The ratified cross-section stacks one floor plate per
@@ -111,8 +121,11 @@
 
     {{--
         Native ES modules, no bundler and no `@vite` (§ 1.2 leaves the choice to the implementer).
-        There is no `package-lock.json` in this repository and `npm ci` cannot run, so a build
-        step would be a dependency this slice cannot honestly gate.
+        The reason this slice was written that way — no `package-lock.json`, so `npm ci` could not
+        run and a build step was a dependency it could not honestly gate — ENDED with card#9631,
+        which committed the lockfile. What did not change is this page: moving it onto `@vite`
+        means a built manifest this script tag would then depend on, which is its own card, and a
+        stale reason left standing here would read as one.
     --}}
     <script type="module" src="{{ asset('js/lobby/main.js') }}"></script>
 
@@ -123,8 +136,9 @@
 
     {{-- And the recovery codes from here, for the same reason (card#9077): a page nobody can find
          is the same defect as a page that does not exist, which is how the codes came to be stored,
-         accepted at the challenge, and never once displayed. --}}
-    <p><a href="{{ route('two-factor.codes') }}">Two-factor recovery codes</a></p>
+         accepted at the challenge, and never once displayed. The same page hosts the move to a new
+         authenticator (card#9471). --}}
+    <p><a href="{{ route('two-factor.codes') }}">Two-factor recovery codes and authenticator</a></p>
 
     <form method="POST" action="{{ route('logout') }}">
         @csrf

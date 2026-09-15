@@ -135,7 +135,7 @@ one file plus one config; a dependency tree is a supply-chain surface on every a
 | `node fleet-reporter.js hook <HookName>` | one-shot, one process per hook fire | parse stdin, build ≤ 1 event, append to spool, exit 0 |
 | `node fleet-reporter.js statusline` | one-shot, fires on every status-line render | sample context ([§ 6.11](#611-contextsample)), write the session's last-sample state, **pass the wrapped status line through to stdout**, exit 0 |
 | `node fleet-reporter.js flusher` | long-lived, one per seat | own the spool cursor, POST batches, emit heartbeats |
-| `node fleet-reporter.js selftest` | one-shot, run by the installer and by CI | run the checks [§ 6.14](#614-reporterheartbeat)'s member table declares — that table names each one and what it asserts, and is the same set the heartbeat reports `pass`/`fail` for, so the subcommand and the wire object cannot drift apart. One of them, **`harness_payload_keys`**, is required outright by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
+| `node fleet-reporter.js selftest` | one-shot, run by the installer and by CI | run the checks [§ 6.14](#614-reporterheartbeat)'s member table declares — that table names each one and what it asserts, and is the same set the heartbeat reports `pass`/`fail` for, so the subcommand and the wire object cannot drift apart. One of them, **`harness_payload_keys`**, is required outright by [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST`. The subcommand's `not_measured` result and its exit code are stated in [§ 6.14](#614-reporterheartbeat) too |
 
 Hook wiring lives in the seat's Claude Code settings; the complete set of hooks this design
 subscribes to, and what each one produces, is
@@ -240,29 +240,48 @@ The heartbeat is only a liveness signal if its absence means something. Two mech
    it, and why the install rewrites the start and restarts the flusher when that value changes).
 2. **Opportunistic respawn** — every `hook` invocation checks `spool/flusher.lock`. If the lock is
    absent, or its `mtime` is older than **90 s**, the hook spawns a detached flusher (`windowsHide`,
-   per P-7). Derivation of 90 s: the flusher touches the lock at the start of every flush pass
-   (`touchLock` in `fleet-reporter/fleet-reporter.js`), so between touches a live flusher's lock ages by
-   one flush interval plus that pass's own awaited requests. 90 s = 1.5 heartbeat intervals, which is
-   long enough that a flusher busy in a 15 s POST is never declared dead, and under two heartbeat
+   per P-7). Derivation of 90 s: the flusher touches the lock at the start of every flush pass **and
+   immediately before every request it awaits** — the health probe and each batch POST, a 413 retry
+   included (`renewLock` in `fleet-reporter/fleet-reporter.js`) — so between touches a live flusher's
+   lock ages by at most one request (15 s, [§ 3.5](#35-transport-is-wan-always)) plus one flush interval
+   plus the pass's local work, however many requests one pass makes. Touching once per pass is not
+   enough: a pass can await several batch POSTs, so on a slow ingest a live flusher's lock would pass
+   90 s inside one pass and a hook would start a second flusher. 90 s = 1.5 heartbeat intervals, which
+   is long enough that a flusher busy in a 15 s POST is never declared dead, and under two heartbeat
    intervals, so a crashed flusher is replaced by the next hook fire.
 
 **Flusher exclusivity is mandatory, not advisory.** `flusher.lock` is created with
 `O_CREAT|O_EXCL` (`fs.openSync(path, 'wx')`), which is atomic on both platforms: exactly one process
-can win it. It holds `{"pid":…,"started_at":…,"seq_epoch":…}`, and its `mtime` is touched every
-flush pass. A starting flusher that loses the create reads the lock: if the `mtime` is newer than 90 s
+can win it. It holds `{"pid":…,"started_at":…,"seq_epoch":…}`, and its `mtime` is touched on item 2's cadence.
+A flusher that exits removes the lock only while its body still names that flusher's own `pid` and
+`started_at`; a lock that names another flusher is left in place, because removing it lets the next
+hook start a third. A starting flusher that loses the create reads the lock: if the `mtime` is newer than 90 s
 it **exits 0 immediately**; if it is older it re-stats, unlinks the lock **only if the `mtime` it
 read is still the one on disk**, and retries the exclusive create exactly once. Losing that retry is
 also an immediate exit 0.
 
 **The lock is not the correctness mechanism, though — ownership is.** `state.json` carries
-`owner_pid` and `owner_started_at`. Before every write of `state.json` the flusher re-reads it and
-writes only if it still names itself as owner; one that finds another owner increments
-`flusher_lost_ownership`, logs, and exits 0 without writing. Two flushers overlapping is therefore
+`owner_pid` and `owner_started_at`. Before every write of `state.json` (and of `index/snapshot.json`),
+before every lock touch, before every request it sends, and on resuming from every request it awaited
+(the health probe and each batch POST), the flusher re-reads it and proceeds only if it still names
+itself as owner. The check on resuming is what keeps a flusher taken over while it waited from acting on
+that pass's remaining work — disposing of the batch the ingest just answered, spooling a heartbeat,
+dropping spool buckets past the bounds of [§ 11.3](#113-rotation-and-the-overflow-policy), or deleting
+counter buckets the new owner has not folded. One that finds another owner sends nothing more and
+writes nothing more to either file: it increments `flusher_lost_ownership` once, in the counter sink
+([§ 11.1](#111-layout)) that the new owner folds, logs once, and exits 0. The flusher's own
+counters (`count()`) that it had folded into `state.json`'s totals but never saved go to that
+sink with it, so a bucket drop counted in a pass that could not save is still counted
+([§ 0](#0-overview) item 9). Two flushers overlapping is therefore
 **not** a tolerated state. It was, in an earlier draft, on the grounds that server-side dedup absorbs
 the duplicate events — but dedup absorbs *events*, not the `seq` counter. Two flushers each reading
 `next_seq = X` produce either a gap (and the seat renders `lossy` from nothing) or two events sharing
-one `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing. The residual window is the
-microseconds between that re-read and the `rename`, and even that is not assumed away. **D2:** the
+one `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing. Two residual windows
+remain: the microseconds between a re-read and the `rename`, and one request — a new owner can take
+over between the check before a send and the ingest's answer, and that one batch is not recalled.
+Neither is assumed away. A third window is local: a new owner can claim `state.json` during the
+synchronous work between a pass's last check and its save, and a counter bucket that pass deletes in
+it loses the hook counter lines the new owner had not folded. **D2:** the
 server treats a repeated `(seq_epoch, seq)` carrying two different `event_id`s as `seq_collision`,
 counted and badged ([§ 10.2](#102-ordering-seq-and-gap-detection)).
 
@@ -462,9 +481,11 @@ framework's, in another repository, and it can move without a single check here 
   all, and the ⛔ RED beneath them is a reporter that stats only the home path — which finds
   nothing on case E, reports `unchecked`, and passes. **Case F** starts the flusher through the
   supervised start with nothing inherited, and its ⛔ RED is a start definition written without the
-  variable. ⚠ **That half is specified and not
-  discharged**: `fleet-reporter/fleet-reporter.js` reads no roster yet, so nothing has been seen to
-  fail. **The half this repository can check today, it does:** `tools/design/verify-event-schema.py`
+  variable. **That half is discharged on `card#9375`**: `fleet-reporter/fleet-reporter.selftest.py`
+  § 19 drives every case and every RED above against `fleet-reporter/fleet-reporter.js`, and each RED
+  has been seen to fail. Its case F runs the start line `fleet-reporter/INSTALL-LINUX.md` writes, read
+  out of that runbook, under `sh -c` from an environment carrying no `$COORD_CONFIG`; that is not cron
+  itself, and it is not the entry an install actually wrote. **The half this repository can check today, it does:** `tools/design/verify-event-schema.py`
   re-derives the resolution order from the list above on every run, and reds when AT-27 stops naming
   a site, when [§ 18.13](#1813-what-this-section-does-not-establish) row 6 stops naming them in order,
   when this document names any other location for a coordination config, or when the DECLARED leg
@@ -480,7 +501,7 @@ framework's, in another repository, and it can move without a single check here 
 | `checked` | declared, a roster is readable here, and the name is a member of it | the name, and `checked` | — |
 | `unchecked` | declared, and **no roster is readable here** | the name, and `unchecked` — ⛔ **never the field silently omitted**, which is the whole of what this state exists to prevent | `protocol_agent_name_unchecked` ([§ 9.3](#93-degradation-counters)) |
 | `disagreed` | declared, a roster is readable here, and the name is **not** a member of it | the name **exactly as declared**, and `disagreed` | `protocol_agent_name_disagreed` ([§ 9.3](#93-degradation-counters)) |
-| `undeclared` | the config declares no name | `null`, and `undeclared` | — |
+| `undeclared` | the config declares no **valid** name: the key is absent or `null`, or its value is **malformed** (the paragraph below) | `null`, and `undeclared` | — |
 
 **`checked` and `unchecked` both resolve; `disagreed` and `undeclared` do not**, and the asymmetry is
 the point. The declaration is the join's authority — the roster read is a guard against a typo, not
@@ -489,9 +510,21 @@ is the ordinary case for a seat box and the case (d) exists to serve. What such 
 claim to have been checked, so the state travels with the name to every consumer and a reader can see
 which of the two any drawn line rests on.
 
+**A malformed name declares nothing, and the seat keeps reporting.** A value that is present but is
+not a valid declaration — not a string, not the `slug` pattern, or over the bound
+[§ 6.14](#614-reporterheartbeat)'s row states — is `undeclared`: the heartbeat carries `null`, never
+the value, because the ingest would refuse a heartbeat carrying it and the whole batch with it
+([§ 12.4](#124-batches-are-atomic)). ⛔ **It is not a config error**: `config_readable`
+passes and `config_invalid` is not counted, because that badge means the flusher spools and sends
+nothing ([§ 9.3](#93-degradation-counters)), and a typo in an optional label must not silence a seat
+whose identity and ingest are sound. What says the declaration is wrong is the act below:
+`protocol_agent_name_in_roster` **fails**, and the `selftest` subcommand's `detail` names the value, a
+non-string by its type alone (`<number>`). The reporter writes the value there and nowhere else: not
+on the wire, and not in its log (card#9375).
+
 **The act that fails when the two identity surfaces disagree, named rather than implied.**
 `disagreed` fails the `selftest` check `protocol_agent_name_in_roster`
-([§ 6.14](#614-reporterheartbeat)'s member table) — the subcommand
+([§ 6.14](#614-reporterheartbeat)'s member table), and so does a malformed name — the subcommand
 [§ 2.1](#21-one-file-four-subcommands) runs at install and an operator runs on demand: **the act
 exits non-zero and names the check**, and the same result rides every heartbeat inside `selftest`, so
 the seat carries a named failing check for as long as the config stays wrong. ⚠ **A `pass` on that
@@ -587,11 +620,12 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 | Scheme | `https://` only | the bearer token is in the header; cleartext is a credential broadcast |
 | A `http://` `ingest_url` | **refused** at install (`selftest` fails) and at runtime (flusher refuses to send, sets `config_invalid`, keeps spooling) | fail closed, loudly, on the client's own surface |
 | TLS | ≥ 1.2, certificate verification **always on** | — |
-| Disabling verification | **forbidden**: no `rejectUnauthorized:false`, no `NODE_TLS_REJECT_UNAUTHORIZED=0` | a sandbox host with a private CA is supported by `ca_file` → `NODE_EXTRA_CA_CERTS`. Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it ships to production seats |
-| Connection reuse | keep-alive, ≤ 2 sockets | a TLS handshake is 2 RTTs; at 6 flushes/min a fresh handshake each time is ~12 avoidable RTTs/min/seat |
+| Disabling verification | **forbidden**: no `rejectUnauthorized:false`, no `NODE_TLS_REJECT_UNAUTHORIZED=0`, no `checkServerIdentity` override | a sandbox host with a private CA is supported by `ca_file`: the reporter passes the file as the TLS `ca` option, which replaces the default trust store, so a seat with `ca_file` set trusts only the certificates in that file. Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it ships to production seats |
+| A `ca_file` that is not an absolute path (the empty string included), or that the seat cannot read | **refused** at install (`selftest`'s `config_readable` fails, its error naming the [§ 3.1](#31-the-seat-config-file) rule, or the path and the errno) and at runtime (the reporter makes no request: the flusher sends nothing, sets `config_invalid`, logs the same error, and keeps spooling). **Never** a fallback to the default trust store: only `null` or an absent key leaves `ca_file` unset | `ca` replaces the default trust store, so a request sent without the file would trust every publicly trusted CA instead of the one file the seat pins: verification stays on and the trust still widens. An empty string read as unset widens it the same way, and a relative path is read against the process's working directory, which a flusher inherits from whatever starts it: the agent's project directory when a hook forks it, the account's home directory when the user crontab starts it. The file is read for each request, so one that becomes unreadable while the flusher runs is refused from that request on. A flusher started while the file is unreadable re-reads it on each pass, and from the first pass that reads it the same process probes, sends and heartbeats `config_readable` `pass`, with no restart. Every other config error, a `ca_file` that is not an absolute path included, holds until the flusher restarts on a corrected config (card#9500) |
+| Connection reuse | keep-alive, ≤ 2 sockets, on the direct route; through `proxy_url` each request opens its own `CONNECT` tunnel | a TLS handshake is 2 RTTs; at 6 flushes/min a fresh handshake each time is ~12 avoidable RTTs/min/seat |
 | Total request deadline | **15 s** | 256 KiB on a 1 Mbit/s uplink is 2.1 s; plus TLS setup (~1 s pathological) plus server processing (target < 500 ms) ≈ 4 s worst realistic case. 15 s ≈ 3.5× that — past it, retrying beats waiting |
-| Connect deadline | **5 s** | a cross-continent TLS connect is ~300 ms typical, ~2 s pathological; 5 s ≈ 2.5× pathological. *Enforceable only via `https.request` + `socket.setTimeout`; with global `fetch` only the 15 s total deadline is enforceable. Either implementation is acceptable — the binding requirement is the 15 s ceiling.* |
-| Proxies | `config.proxy_url` only; `HTTP(S)_PROXY` environment variables are **ignored** | § 3.4 rule 1 — no transport decision from ambient environment |
+| Connect deadline | **5 s** | a cross-continent TLS connect is ~300 ms typical, ~2 s pathological; 5 s ≈ 2.5× pathological. *It runs from the start of a request to a verified TLS session with the ingest: DNS, the TCP connect, the proxy's `CONNECT` answer when `proxy_url` is set, and the handshake all spend it, and a kept-alive socket spends none. It bounds the batch POST and the health probe alike, so a proxy that accepts TCP and never answers `CONNECT` holds a flusher pass for 5 s, never 15 s. Enforceable with `https.request` and a timer; with global `fetch` only the 15 s total deadline is enforceable. Either implementation is acceptable — the binding requirement is the 15 s ceiling.* |
+| Proxies | `config.proxy_url` only, for **every** request to the ingest: the batch POST and the health probe (the flusher's and `selftest`'s) take one route, with the same TLS options and both deadlines above. `HTTP(S)_PROXY` environment variables are **ignored** | § 3.4 rule 1 — no transport decision from ambient environment. One route, because a probe that takes another path measures a path the batches never use (card#9473) |
 | Compression | `Content-Encoding: gzip` permitted, at the flusher's discretion, when the body exceeds 8 KiB | below 8 KiB gzip's CPU and header cost outweighs the saving on a WAN; the server must accept both |
 
 ---
@@ -684,7 +718,7 @@ counter would need cross-process locking inside the latency budget P-5 buys.
 |---|---|---|
 | One serialized event | **4 KiB** | typical events are ~500 B ([§ 14](#14-every-number-and-where-it-comes-from)); 4 KiB is 8× headroom and equals the conventional atomic-small-write floor (`PIPE_BUF` on Linux), which keeps one event = one `write()`. An event that would exceed it is truncated at `data.descriptor` and flagged `oversize:true` |
 | Events per batch | **200** | at the ~500 B typical size a full batch is ~100 KB; 200 also bounds the blast radius of the atomic-batch rule ([§ 12.4](#124-batches-are-atomic)) |
-| Batch body, uncompressed | **256 KiB** | binds before the 200-event cap in the worst case (200 × 4 KiB = 800 KiB). 256 KiB is 4× under the tightest common default in a Laravel stack — nginx `client_max_body_size` 1 MiB (PHP's `post_max_size` default 8 MiB is looser) — so a stock reverse proxy never silently `413`s a healthy seat. **The deploy host's actual value is unverified** (the host is not provisioned yet, `docs/PLAN.md` D-08); read it at first deploy and move this number if it is tighter |
+| Batch body, uncompressed | **256 KiB** | binds before the 200-event cap in the worst case (200 × 4 KiB = 800 KiB). 256 KiB is 4× under the tightest common default in a Laravel stack — nginx `client_max_body_size` 1 MiB (PHP's `post_max_size` default 8 MiB is looser) — so a stock reverse proxy never silently `413`s a healthy seat. **The deploy host's actual value is unverified** (nothing has been deployed to the prod host yet, `docs/PLAN.md` D-08); read it at first deploy and move this number if it is tighter |
 | `data.descriptor` | **200 B** | [§ 7.4](#74-truncation) |
 | `data.title` (subagent) | **120 B** | a dispatch description is 3–8 words; 120 B holds ~18 English words and fits the drill-down panel's one-line intern label |
 | Total spool on disk | **32 MiB** | [§ 11.3](#113-rotation-and-the-overflow-policy) |
@@ -1155,7 +1189,7 @@ reference, the measurement wins and the row says so.
 | `UserPromptSubmit.source` ∈ `user` \| `sdk` \| `system` \| `loop_wakeup` \| `schedule_wakeup` \| `poll_event` | `source` | **DOCS-CITED** (binary payload schema, 2026-08-23). **Deliberately not read**: [§ 6.3](#63-turnstart) does not branch on who authored a prompt, and reading it would add a harness-sourced enum with no consumer. Recorded so a future editor knows it exists |
 | The harness offers further hook events this design does **not** subscribe: `PostToolBatch`, `Setup`, `UserPromptExpansion`, `TeammateIdle`, `TaskCreated`, `TaskCompleted`, `Elicitation`, `ElicitationResult`, `ConfigChange`, `InstructionsLoaded`, `WorktreeCreate`, `WorktreeRemove`, `FileChanged`, `DirectoryAdded`, `MessageDisplay`, `CwdChanged` | — | **DOCS-CITED** — all 31 hook events the installed build declares, read from the binary 2026-08-23, minus the 15 subscribed above. Listed because "we did not subscribe it" and "we did not know it existed" are different states, and only the first is a decision |
 | the `Bash` tool's 10-minute timeout ceiling | — | **UNVERIFIED** against the installed build — the 15-minute orphan timeout ([§ 12.5](#125-late-completions-and-orphan-timeouts)) is derived from it and moves with it. Cost if wrong: a long `Bash` call is orphan-closed server-side before it returns, then re-opened by its late close. Closed by reading the installed build's Bash timeout |
-| nginx `client_max_body_size` on the actual deploy host | — | **UNVERIFIED** — the host is not provisioned yet (`docs/PLAN.md` D-08). Cost if wrong: a `413` on every batch over the real limit, retried once at half size ([§ 11.5](#115-retry-and-backoff)), so a tighter limit degrades throughput rather than losing events. Read it at first deploy ([§ 4.4](#44-size-caps-and-their-derivations)) |
+| nginx `client_max_body_size` on the actual deploy host | — | **UNVERIFIED** — nothing has been deployed to the prod host yet (`docs/PLAN.md` D-08). Cost if wrong: a `413` on every batch over the real limit, retried once at half size ([§ 11.5](#115-retry-and-backoff)), so a tighter limit degrades throughput rather than losing events. Read it at first deploy ([§ 4.4](#44-size-caps-and-their-derivations)) |
 | `tool_response`'s per-tool schema | — | **UNVERIFIED**, and **not needed**: which hook closed the call carries the error fact ([§ 6.6](#66-toolend)) and `PostToolUseFailure.error` carries the detail. Nothing to close |
 
 #### Harness enum value sets are bound to the binary, not transcribed
@@ -1234,8 +1268,8 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
    `payload_key_missing.<key>` ([§ 9.3](#93-degradation-counters)). **It never suppresses the event.**
 2. **No branch of any payload read decides *whether* to emit — only *what to label*.** One hook is
    carved out of this rule, explicitly, and it is the only one: `Notification` fires for events that
-   are not requests for human attention at all (`auth_success`, `agent_completed`, the
-   `quota_auto_resume_*` family), and emitting an `attention.request` for those would put every seat
+   are not requests for human attention at all (`idle_prompt` — a timer on human ABSENCE —
+   `auth_success`, `agent_completed`, the `quota_auto_resume_*` family), and emitting an `attention.request` for those would put every seat
    into a false *blocked* — the exact mirror of the false-idle defect this document exists to
    prevent. [§ 6.12](#612-attentionrequest) gates that hook on its `notification_type` and **counts
    every suppressed type individually** as `notification_not_attention.<type>`, which is what
@@ -2199,9 +2233,9 @@ deleted and `notification_kind` is a table lookup:
 | `notification_type` | Emits? | `notification_kind` |
 |---|---|---|
 | `permission_prompt`, `worker_permission_prompt` | yes | `permission_required` |
-| `idle_prompt`, `agent_needs_input` | yes | `input_awaited` |
+| `agent_needs_input` | yes | `input_awaited` |
 | `elicitation_dialog`, `elicitation_url_dialog` | yes | `elicitation` |
-| `auth_success`, `agent_completed`, `elicitation_complete`, `elicitation_response`, `push_notification`, `computer_use_enter`, `computer_use_exit`, `quota_auto_resume_fired`, `quota_auto_resume_disabled`, `quota_auto_resume_stale` | **no** | — |
+| `idle_prompt`, `auth_success`, `agent_completed`, `elicitation_complete`, `elicitation_response`, `push_notification`, `computer_use_enter`, `computer_use_exit`, `quota_auto_resume_fired`, `quota_auto_resume_disabled`, `quota_auto_resume_stale` | **no** | — |
 | anything else | **no** | — |
 
 **Most `Notification` types are not attention requests, and emitting for them would mint a false
@@ -2217,6 +2251,23 @@ as the reason, and **every suppressed type is counted individually** as
 [§ 3.4](#34-why-identity-never-comes-from-the-environment) actually requires: not that nothing is
 suppressed, but that no suppression is silent, and that the counters say which types a real fleet
 produces.
+
+**`idle_prompt` is on the suppressed side, and it is the row that has to be argued rather than
+read off the name (card#9419).** The harness fires it when *"Claude finished responding about 60
+seconds ago and you haven't typed since"* — a **timer on human absence**, not a request for a
+human. The seats it fires on are precisely the ones that finished a turn cleanly and are available
+for work, so mapping it to `input_awaited` did not describe a wait; it manufactured one, on every
+seat, about a minute after it went quiet, and held it there until that seat's next event (D2's
+rule 1 renders any open attention request *blocked* ahead of every other rule). Measured on one
+seat over one day before this row moved: **19** `input_awaited` requests against **3**
+`permission_required` — the field's own instrument saying the emitting side was mostly noise. The
+mapping was wrong in the same direction as an unconditional emission, and it is corrected the same
+way: `idle_prompt` takes the counted suppression path, `agent_needs_input` stays on the emitting
+side because it *is* a wait, and `idle` is then held by D2's rule 4 until a real event moves it.
+**What this row cannot be checked by, and is not:** no mechanism here can decide whether a harness
+type "is a wait on a human" — the value set is bound to the binary but the *side of the table* each
+member sits on is a per-member judgement, re-made by a reader. The instrument that catches it going
+wrong again is the counter ratio above, read on real seats, not a gate.
 
 **The table above is this document's one home for the `notification_type` value set, and a guard binds
 it to the binary.** Its sixteen members are the build's own `Notification` matcher declaration, and
@@ -2506,13 +2557,42 @@ against `degraded` — a member set stated nowhere is not implementable — one 
 
 | Member | Asserts | Stated at |
 |---|---|---|
-| `config_readable` | the seat config parses and passes validation, including the `https://` `ingest_url` rule | [§ 3.1](#31-the-seat-config-file) |
+| `config_readable` | the seat config parses and passes validation, including the `https://` `ingest_url` rule and a `ca_file` that is an absolute path the seat can read ([§ 3.5](#35-transport-is-wan-always)) | [§ 3.1](#31-the-seat-config-file) |
 | `tls_verify` | the ingest is reachable with certificate verification on, and refuses to proceed without it | [§ 3.5](#35-transport-is-wan-always) |
 | `schema_version_accepted` | this reporter's `schema_version` is in the set the ingest's health surface reports — the set this document deliberately does not restate ([§ 15](#15-decisions-taken-revisable-at-review)) | [`docs/VERSIONING.md § Wire compatibility` rule 2](../VERSIONING.md#the-rules) |
 | `sanitizer_fixtures` | every RED fixture redacts to its stated output | [§ 7.5](#75-red-fixtures--required-tests) |
 | `predicate_discrimination` | every predicate in [§ 9.4](#94-the-predicate-constant-alarm)'s table is present in `predicates` and has a criterion its own volume can reach | [§ 9.4](#94-the-predicate-constant-alarm) |
 | `harness_payload_keys` | every payload key this reporter reads is present in that hook's vendored fixture, and every enum value it recognises is a member of the declared set | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
-| `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which | [§ 3.1](#31-the-seat-config-file) |
+| `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on a **malformed** declaration ([§ 3.1](#31-the-seat-config-file)'s state table: `undeclared`, with the value named in the subcommand's `detail` and never on the wire), and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which | [§ 3.1](#31-the-seat-config-file) |
+
+**A check the subcommand could not measure is `not_measured`, and it is neither a pass nor a fail.**
+`tls_verify` and `schema_version_accepted` are measured by one `GET /api/ingest/health`
+([§ 4.1](#41-endpoints)) against the configured ingest — the probe the flusher runs for the heartbeat,
+with the same route (`proxy_url` included), TLS path, `ca_file` and deadlines ([§ 3.5](#35-transport-is-wan-always)) — and the subcommand runs it once, only when
+`config_readable` passes. Each result is one of three values:
+
+| Result | `tls_verify` | `schema_version_accepted` |
+|---|---|---|
+| `pass` | the health surface answered over TLS with verification on, **and** the source carries no verification-disabling spelling ([AT-15](#at-15-transport-posture)) | a `200` answer carries an `accepted_schema_versions` set that contains this reporter's `schema_version` |
+| `fail` | the source carries a verification-disabling spelling, whatever the probe saw; **or** a connection to the ingest was made (through `proxy_url`, the proxy answered `CONNECT` with `200`) and the TLS handshake then failed | a `200` answer carries a set that does **not** contain this reporter's `schema_version` |
+| `not_measured` | no probe ran (the config is not readable), no connection to the ingest was made (a proxy that refused or never answered `CONNECT` included), or no answer arrived for any other reason — a deadline, or a failure after the handshake completed | no `200` answer carrying a set arrived — no probe ran, the ingest was unreachable, or it answered with another status (a refused token, an outage page), whose body carries no set to refuse the version with |
+
+**The subcommand's exit code:** `0` when every check is `pass`; `1` when any check is `fail`; `2` when
+none is `fail` and at least one is `not_measured`. An installer reading `2` has an install nothing
+has falsified and a verification that did not happen — re-run it once the ingest is reachable, and
+read the check's `detail` for the probe's error or status.
+
+**The heartbeat keeps each network check at its last measured value.** The heartbeat's `selftest`
+object carries two values (the field row above), and `not_measured` exists only in the subcommand's own
+report. The flusher runs the same probe for the heartbeat. A probe that measures a check replaces that
+check's value, `fail` included. A probe that measures nothing for a check (its `not_measured` column
+above: a deadline, a dropped connection, an answer carrying no set) leaves the value the last measuring
+probe set, so a probe that falsified nothing never puts a `fail` on the wire. A check no probe has
+measured yet rides the wire as `fail`. While the last probe left either check unmeasured, the flusher
+probes again no sooner than one heartbeat interval ([§ 9.1](#91-the-cadence-and-the-alarm)) after that
+probe began, instead of at its ordinary cadence (`K.HEALTH_MS` in `fleet-reporter/fleet-reporter.js`).
+The heartbeat is where the result is read, so a shorter interval would change nothing on the wire. A
+kept value is the last measurement, not a current one.
 
 **The keys are declared, not closed at the ingest, and the difference is deliberate.** The field-table
 row above is where this object's *shape* is stated — the value set, the key pattern, the per-key bound
@@ -3203,7 +3283,7 @@ named here because they read the same payload value against two different index 
 - `agent_id` present but **unbound**, and **exactly one** open `is_dispatch` call → close it, `match:
   "sole_open"`. This is not a defence against a missing `agent_id` — the key is always there. It is
   the recovery path for a **lost `bind` record**: a torn index-journal line drops the binding while
-  leaving the call open ([§ 11.4](#114-corruption-the-torn-last-line-and-a-lost-statejson)), and
+  leaving the call open ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)), and
   without this row that call would sit open to its 60-minute orphan ceiling;
 - otherwise → emit nothing, increment `subagent_stop_unmatched`.
 
@@ -3408,6 +3488,8 @@ statusLine processes reach the flusher through the counter sink
 | `events_rejected_dropped` | events lost with a permanently-rejected batch — incremented by that batch's event count at quarantine time | seat badge `lossy`; this is the counter that makes `§ 0` item 9's promise true for the rejection path |
 | `oversize_event_dropped` | a single event over the 4 KiB cap, undeliverable, quarantined | seat badge `lossy` |
 | `batches_rejected` | permanent-status rejections | seat badge `degraded`; the last status and error code are shown |
+| `batches_ok` | a batch the server accepted (`202` or `200`) | informational; the denominator the other batch counters are read against |
+| `batches_retried` | a batch that will be sent again: a retryable status (`408`, `429`, any `5xx`) or a transport failure or timeout ([§ 11.5](#115-retry-and-backoff)) | informational — **no loss**, because the batch stays spooled and a retry commits once ([§ 10.4](#104-batch-level-idempotency)). For a `5xx` it is the reporter's side of the server's `batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)) |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
 | `payload_key_missing.<key>` | an expected harness key was absent | `degraded` when > 0 for a key marked required in [§ 6](#6-event-kinds) |
 | `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
@@ -3422,7 +3504,7 @@ statusLine processes reach the flusher through the counter sink
 | `payload_key_missing.is_interrupt` | `PostToolUseFailure` arrived without `is_interrupt`, so the close defaulted to `failed` ([§ 6.6](#66-toolend)) | `degraded`; an interrupted call would be mislabelled as a failure while this is non-zero |
 | `index_fold_truncated` | the index journal tail exceeded 8 MiB and history was skipped | `degraded` |
 | `flusher_lost_ownership` | a flusher found `state.json` owned by another and exited | informational; > 1/day means the lock is being lost, not just raced |
-| `state_reset` | `state.json` was unreadable; a new epoch was minted and the spool re-sent from its oldest bucket ([§ 11.4](#114-corruption-the-torn-last-line-and-a-lost-statejson)) | informational, rendered `epoch_reset`; **not** `lossy`, because nothing was discarded |
+| `state_reset` | `state.json` existed and could not be used (a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape); a new epoch was minted and the spool re-sent from its oldest bucket ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)). **A missing `state.json` is not a reset:** it is a first start, or state lost with the file, and it mints an epoch and re-sends the same way while counting nothing. Lost state on a seat that has already reported is badged by the server's `seq_epoch_change` ([§ 10.2](#102-ordering-seq-and-gap-detection)) | informational, rendered `epoch_reset`; **not** `lossy`, because nothing was discarded |
 | `subagent_stop_unmatched` | `SubagentStop` that could name no call | informational; expected ~0 once the `agent_id` binding works, so a rising share is the signal that it does not |
 | `agent_bind_sole_unbound` | a `SubagentStart` bound by being the only unbound dispatch call — the **only** binding rule, since the payload carries no parent reference ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)) | informational; its share of `SubagentStart`s is the binding's success rate |
 | `agent_bind_ambiguous` / `agent_bind_unresolved` | two unbound dispatch calls at `SubagentStart`; a subagent hook whose parent could not be resolved | informational; `parent_call_id` is `null` for those events. `agent_bind_ambiguous` is the trigger to revisit [§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call) with a real parallel-dispatch capture |
@@ -3434,7 +3516,7 @@ statusLine processes reach the flusher through the counter sink
 | `kill_close_same_session` | a `PostToolUseFailure` reported **exit 137** with `is_interrupt: false` under the **same** `session_id` its call was opened in, **or** on a close whose open was never seen at all ([§ 6.6](#66-toolend)'s synthesized pair), where the call's session is unknowable — either way the kill signature's second leg did not fire ([§ 6.6](#66-toolend)) | informational, and the observable for that section's stated residual: an OOM kill increments it legitimately, so it is a rate to look at rather than an alarm. A `/clear` kill appearing here means the close beat both `/clear` signals and closed the call `failed` |
 | `compaction_double_close` | both `PostCompact` and `SessionStart(compact)` closed one compaction | informational; a zero means one of the two signals is dead |
 | `bad_session_id` | `session_id` failed its pattern and was sent as `null` ([§ 3.2](#32-session-identity)) | `degraded` |
-| `config_invalid` | the config failed validation at runtime (e.g. a non-`https` `ingest_url`) | `degraded`; the flusher keeps spooling and sends nothing |
+| `config_invalid` | the config failed validation at runtime (e.g. a non-`https` `ingest_url`, or a `ca_file` that is not an absolute path or that the seat cannot read) | `degraded`; the flusher keeps spooling and sends nothing |
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
@@ -3497,7 +3579,7 @@ members stated nowhere and its two examples spelling one member two different wa
 | `bad_session_id` | `bad_session_id` | a `session_id` failed its pattern and was sent as `null` |
 | `config_invalid` | `config_invalid` | the config failed runtime validation; the flusher spools and sends nothing |
 | `statusline_degraded` | `wrapped_statusline_failures` | the wrapped status-line command is failing; the seat's own UI is affected |
-| `epoch_reset` | `state_reset` | a new `seq_epoch` was minted and the spool re-sent; **not** `lossy` — nothing was discarded |
+| `epoch_reset` | `state_reset` | a `state.json` that existed could not be used, so a new `seq_epoch` was minted and the spool re-sent; **not** `lossy` — nothing was discarded. A first start raises nothing |
 
 **Twelve members, and the array's bound is twelve.** The bound is not a chosen number: the array
 carries at most one of each member, so its ceiling is the size of this table and moves only when this
@@ -3588,8 +3670,10 @@ Rules:
    that is the only record of what the seat believed.
 2. **D2: the UI never renders a seat-supplied timestamp as an absolute clock**, and renders age from
    `received_at`. Otherwise one skewed seat displays "last seen in 3 hours".
-3. **D2:** the server computes `clock_skew_ms = received_at − sent_at` per batch and stores the
-   latest per seat. `|skew| > 120 s` → the seat renders a `clock_skew` badge and the number.
+3. **D2:** the server computes `clock_skew_ms` per batch as the request's arrival on the server clock
+   − `sent_at`, and stores the latest per seat. (Arrival, not the stored `received_at`, which the
+   server stamps once the seat's write lock is held: a post that waited for that lock must not carry
+   the wait into its skew.) `|skew| > 120 s` → the seat renders a `clock_skew` badge and the number.
    **120 s derivation:** 2× the heartbeat interval, well above any NTP-managed drift (sub-second) and
    below the 300 s stale threshold, so the two alarms cannot alias into one another.
 4. `event_time` values within a seat may be non-monotonic if the clock steps; ordering falls back to
@@ -3602,12 +3686,18 @@ a `seq_epoch`. Exactly one flusher runs per seat ([§ 2.3](#23-the-flusher-must-
 which is what makes a lock-free counter correct — and this is why `seq` is not assigned in the hook,
 where cross-process locking would sit inside the 250 ms budget P-5 protects.
 
-- `seq_epoch` is a ULID minted when `state.json` is created. Losing state (reinstall, wiped state dir,
-  an unreadable `state.json`) mints a **new epoch**, which the server treats as an intentional
-  discontinuity: logged, counted as `seq_epoch_change`, rendered per seat as `epoch_reset`, and not
-  alarmed — because it is a re-numbering, not a loss ([§ 11.4](#114-corruption-the-torn-last-line-and-a-lost-statejson)
+- `seq_epoch` is a ULID minted when `state.json` is created: on a seat's first start, and again
+  whenever state is lost (reinstall, wiped state dir, a deleted or unreadable `state.json`). A **new
+  epoch** on a seat that has already sent under an earlier one is treated by the server as an
+  intentional discontinuity: logged, counted as `seq_epoch_change`, rendered per seat as `epoch_reset`,
+  and not alarmed — because it is a re-numbering, not a loss ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)
   states what happens to the events themselves, and the answer is that they are re-sent, not skipped).
-  Without a new epoch, a reset counter would look like a 48,000-event gap.
+  A seat's first epoch follows none, so it counts nothing. Without a new epoch, a reset counter would
+  look like a 48,000-event gap.
+- **The reporter counts only an unreadable `state.json`**, as [§ 9.3](#93-degradation-counters)'s
+  `state_reset`. A missing one looks the same on a first start as after lost state, so the reporter
+  counts neither: a first start is not a degradation, and lost state on a seat that has already
+  reported is badged by the server's `seq_epoch_change` alone.
 - The ordering key is `(seq_epoch, seq)`. A **missing `seq`** within an epoch is a real gap — events
   lost after the flusher counted them — and the server counts `seq_gap` and raises its **own**
   `seq_gap` badge on that seat. **D2:** that badge belongs to the server's vocabulary
@@ -3864,7 +3954,7 @@ plus one flush interval in that case, which is a bounded overshoot of a disk-spa
 `tool.end` survives. That is the `synthesized` path in [§ 6.6](#66-toolend) — the ledger stays total,
 and the anomaly is flagged rather than silently producing a negative open-call count.
 
-### 11.4 Corruption, the torn last line, and a lost `state.json`
+### 11.4 Corruption, the torn last line, and a missing or unreadable `state.json`
 
 | Case | Rule | Observable |
 |---|---|---|
@@ -3874,13 +3964,14 @@ and the anomaly is flagged rather than silently producing a negative open-call c
 | A line longer than 4 KiB | quarantine | `spool_corrupt_lines` |
 | An entire bucket file unreadable | record the filename in `quarantine/corrupt.jsonl`, skip it, continue | **`spool_dropped_events`** += the bucket's estimated line count (its byte size ÷ the ~500 B typical event size, [§ 4.4](#44-size-caps-and-their-derivations)); badge `lossy` |
 | A torn or unparseable **index journal** line | skipped by the fold, counted `spool_corrupt_lines`; a lost `open` record makes its close `synthesized`, a lost `close` makes the entry reapable — both already-handled paths | `lossy` |
-| `state.json` unreadable or corrupt | **state reset** — see below | `state_reset`, `seq_epoch_change` server-side, badge `epoch_reset` |
+| `state.json` present but unusable: a read error other than a missing file, or empty, truncated, unparseable, or the wrong shape | **state reset** — see below | `state_reset`, badge `epoch_reset`; `seq_epoch_change` server-side on a seat that has already reported |
+| `state.json` missing: a first start, or state lost with the file (a reinstall, a wiped state dir, a deleted file) | a new `seq_epoch` and the same re-send from the oldest bucket, **not** a state reset | none from the reporter. On a seat that has already reported, the server's `seq_epoch_change` and its badge `epoch_reset`; a first start raises nothing |
 
 **One torn line never poisons a batch and never wedges the queue.** The failure is bounded to the
 line, counted, and quarantined for inspection — never "abort the batch", which would let one bad byte
 stop a seat's telemetry indefinitely.
 
-**The state reset re-sends; it does not skip.** When `state.json` cannot be read, the flusher mints a
+**The state reset re-sends; it does not skip.** When `state.json` cannot be read, or is missing, the flusher mints a
 fresh `seq_epoch` **and sets its cursor to the start of the OLDEST bucket still on disk**, not the
 newest. An earlier draft did the opposite, and the cost was severe and silent: up to a full spool of
 unsent events — days of them — discarded with no counter incremented, while
@@ -3895,7 +3986,11 @@ server's dedup window (10 days) exceeds the spool's residency cap (8 days) **by 
 outage recovery ([§ 11.5](#115-retry-and-backoff)) — and the visible signal is `state_reset` plus a
 non-zero `duplicates` on the next batches. If a bucket cannot be read at all during that re-send it
 follows the unreadable-bucket row above: counted into `spool_dropped_events`, badge `lossy`. Nothing
-is discarded uncounted.
+is discarded uncounted. A missing `state.json` takes the same path and counts no `state_reset`: a
+first start has delivered nothing, so there is nothing to duplicate, and after lost state the signal
+is the server's `seq_epoch_change` beside the `duplicates`. The reporter does not tell those two apart,
+because the spool cannot: a hook spools its event before it respawns the flusher, so a first start
+usually finds data waiting.
 
 **One path, one counter.** An earlier draft counted the unreadable bucket into `spool_corrupt_lines`
 in the table and into `spool_dropped_events` in this paragraph — two counters for one loss, so any
@@ -4022,7 +4117,7 @@ for equality and are never used to name a seat. Concretely:
 | Where the refusal happens | Attributed to | Rendered |
 |---|---|---|
 | steps 1–3, before authentication | nothing — the request has no established identity | counted globally as `unattributed_refusals`; **no seat is rendered degraded**, because no seat is known. The reporter still surfaces it locally ([§ 11.5](#115-retry-and-backoff)) |
-| step 4 (`401`, and the `429` the failed-auth limit returns) | the presented token's **hash prefix**, plus the source IP the limit is keyed on | an operator-visible auth-failure count; **no seat is rendered degraded**, because a token that resolves to nothing names no seat |
+| step 4 (`401`, and the `429` the failed-auth limit returns) | the presented token's **hash prefix**, plus the source IP the limit is keyed on | counted globally as `unattributed_refusals`, beside the specific fact [§ 12.7](#127-server-side-counters) counts for it (`auth_failed_by_ip` for a token that resolves to nothing, `revoked_token_presented` for a revoked one); **no seat is rendered degraded**, because a token that resolves to nothing names no seat |
 | steps 5–11 | the token's bound `(install_id, seat_id)` | that seat renders degraded |
 
 Without this rule, a `400 unsupported_schema_version` at step 6 — which happens *before* the identity
@@ -4048,7 +4143,16 @@ reporter can branch on `error` and a human can read `message`.
 | **batch** envelope validation failure ([§ 12.1](#121-validation-order) step 8) | `422` | `invalid_batch` | `field`, `reason` | permanent → quarantine, badge `degraded` |
 | **event** validation failure ([§ 12.1](#121-validation-order) steps 9–10) | `422` | `invalid_event` | `index`, `field`, `reason`; **and, on a per-field byte-bound overrun, `kind`, `max_bytes`, `received_bytes`** | permanent → quarantine, badge `degraded` |
 | rate limited | `429` | `rate_limited` | `retry_after_s`, `limit`, `window_s` | back off, retry |
-| server fault | `5xx` | `server_error` | `detail` (no internals) | back off, retry |
+| server fault — the store failed, or a defect ([FLEET-STATE.md § 2.2](FLEET-STATE.md#22-fail-posture-per-path)) | `503` for the store, `500` for a defect | `server_error` | `detail`: `store_contended` \| `store_failed` \| `internal` — the fault's class, never its message (no internals) | back off, retry |
+
+**A `server_error` is counted as a failure, never as a refusal.** The server increments
+`batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)), keyed by the `detail` above: against
+the token's binding once step 4 has resolved one, and globally under the same key before it
+([§ 12.1](#121-validation-order)'s attribution rule). It is neither `batches_refused.<error>` nor
+`unattributed_refusals`, because the reporter retries it ([§ 11.5](#115-retry-and-backoff)) and a retry
+commits once ([§ 10.4](#104-batch-level-idempotency)): the reporter's side of the fault is its
+[§ 9.3](#93-degradation-counters)'s `batches_retried`, not its `batches_rejected`, and a refusal counter
+would report a stored batch as refused.
 
 **There are two `422` codes, and this table carried one.** [§ 12.1](#121-validation-order) step 8
 names `422 invalid_batch` and steps 9–10 name `422 invalid_event`; this table had a single
@@ -4206,7 +4310,7 @@ about the store is D2's to decide.
 | 2 | **`stale` (300 s) and `offline` (900 s) are visibly degraded rendered states, never `idle`,** and a seat with `degraded` non-empty renders its badge. |
 | 3 | **Per-event dedup on `(install_id, seat_id, event_id)` with a 10-day window,** and the window must exceed the spool's 8-day residency cap ([§ 10.3](#103-idempotency-and-the-dedup-window)). |
 | 4 | **State transitions are ordered by `(event_time, seq_epoch, seq)`, never by arrival order,** `received_at` is the only clock used for liveness, retention and cross-seat comparison, and a repeated `(seq_epoch, seq)` with differing `event_id`s is counted as `seq_collision` rather than silently applied. **`seq_epoch` is part of the key because `seq` restarts at an epoch reset** ([§ 10.2](#102-ordering-seq-and-gap-detection)), so a two-part key is not total across one — two events either side of a reset can carry the same `seq` and the comparator has nothing left to separate them. The three-part key reduces to `(event_time, seq)` whenever the epoch is constant, which is every seat that has never lost its `state.json`, so this is a refinement of the old key and not a different one. |
-| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat leaving live state — and never rendered for longer than the 60-minute ceiling without a resolution ([§ 6.13](#613-attentionresolved)). This holds because D1 guarantees `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: every member of that field (`permission_required`, `input_awaited`, `elicitation`) *is* a wait on a human, because the gate emits nothing for anything else. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
+| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat leaving live state — and never rendered for longer than the 60-minute ceiling without a resolution ([§ 6.13](#613-attentionresolved)). This holds because D1 undertakes that `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed`, `idle_prompt` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: no member of that field (`permission_required`, `input_awaited`, `elicitation`) can arrive from a type the gate suppresses, so D2 has nothing left to exclude at the field. **The undertaking is a per-row JUDGEMENT in D1's table, not a property any check can establish** ([§ 6.12](#612-attentionrequest) says so at the table), and it has been wrong once: `idle_prompt` — the harness's ~60-second *nobody has typed* timer, which is a wait on nothing — sat on the emitting side and rendered every cleanly-finished seat *blocked* a minute after it went quiet (card#9419). It was moved to the no-emit row rather than patched on D2's side, because a second predicate here would have made *blocked* depend on two documents' agreement about the same thing. **What D2 is owed, and what it is not:** D1 owns the gate and the counters that instrument it (`notification_not_attention.<type>`, and the `input_awaited`-to-`permission_required` ratio those make readable); D1 does **not** offer a mechanized proof that each emitting row is a real wait, and D2 must not build a render branch on the assumption that one exists. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
 
 ### 12.7 Server-side counters
 
@@ -4240,12 +4344,13 @@ number that raised it.
 | `session_reopened` | an event arrived for a session closed by `inferred_silence` | **re-derives the 90-minute rule** ([§ 6.2](#62-sessionend)) |
 | `seq_gap` | a missing `seq` inside an epoch | the **server's own** `seq_gap` badge on that seat, per the rule above — **not** a `lossy` member of [§ 9.3](#93-degradation-counters)'s array, which only the reporter mints ([§ 10.2](#102-ordering-seq-and-gap-detection)) |
 | `seq_collision` | one `(seq_epoch, seq)` carrying two different `event_id`s | seat badge `degraded`; the only mechanism that produces it is two flushers ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) |
-| `seq_epoch_change` | a batch arrived under a new `seq_epoch` | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
-| `batches_refused.<error>` | any 4xx refusal, keyed by error code | counted **against the token's binding**; the seat renders degraded ([§ 12.1](#121-validation-order)) |
-| `unattributed_refusals` | a refusal at validation steps 1–3, before any identity is established | global only; **no seat is degraded by it**, because no seat is known ([§ 12.1](#121-validation-order)) |
+| `seq_epoch_change` | a batch arrived under a new `seq_epoch` on a seat that has already sent under an earlier one; a seat's first epoch is not a change | seat renders `epoch_reset`, informational — a re-numbering, not a loss |
+| `batches_refused.<error>` | any 4xx refusal, keyed by error code | counted **against the token's binding** ([§ 12.1](#121-validation-order)). A permanent refusal renders the seat degraded by one route, the reporter's own `batches_rejected` member ([§ 9.3](#93-degradation-counters)), raised when it quarantines the batch; the server raises **no** badge for this counter ([FLEET-STATE.md § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)), so the preamble's server-badge reading does not apply to this row |
+| `batches_failed.<detail>` | a request the server could not finish, answered `server_error` ([§ 12.2](#122-error-responses)), keyed by its `detail` | counted **against the token's binding** once step 4 has resolved one, and globally under the same key before it ([§ 12.1](#121-validation-order)). **Not a refusal, and no badge:** the reporter retries it ([§ 11.5](#115-retry-and-backoff)) and counts [§ 9.3](#93-degradation-counters)'s `batches_retried`, and a retry commits once ([§ 10.4](#104-batch-level-idempotency)) |
+| `unattributed_refusals` | a refusal at validation steps 1–4, before any identity is established; at step 4, a token that resolves to nothing or to a revoked row, on either [§ 4.1](#41-endpoints) endpoint | global only; **no seat is degraded by it**, because no seat is known ([§ 12.1](#121-validation-order)) |
 | `auth_failed_by_ip` | a token that resolves to nothing — incremented at [§ 12.1](#121-validation-order) **step 4**, which is also where the limit it feeds is evaluated | the 60/h limit ([§ 12.3](#123-rate-limits)); log-volume control, not a guessing defence. Counted globally and per source IP; it degrades no seat, because the token named none |
 | `revoked_token_presented` | a token that resolves to a revoked row | **operator alert**: a seat is still holding a dead credential and only the server can see it |
-| `clock_skew_ms` | *(a gauge, not a counter)* per batch, `received_at − sent_at` | seat badge `clock_skew` past ±120 s ([§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what)) |
+| `clock_skew_ms` | *(a gauge, not a counter)* per batch, request arrival − `sent_at` | seat badge `clock_skew` past ±120 s ([§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what)) |
 
 **The coordination route's counters are NOT in this table, and the reason is a property of the table
 rather than an oversight.** They are declared at
@@ -4599,8 +4704,8 @@ recorded here because they are what a re-run will hit first:
   dropped; (c) `202`, and `GET /api/ingest/health` returns an accepted set containing the reporter's
   own `schema_version`.
 - **RED:** set `rejectUnauthorized: false` → (b) passes, which is the wrong answer and must be caught
-  in review; a lint rule forbidding `rejectUnauthorized` and `NODE_TLS_REJECT_UNAUTHORIZED` in the
-  reporter source makes it mechanical.
+  in review; a lint rule forbidding `rejectUnauthorized`, `NODE_TLS_REJECT_UNAUTHORIZED` and
+  `checkServerIdentity` in the reporter source makes it mechanical.
 
 ### AT-16 the counter sink survives concurrency
 
@@ -4649,6 +4754,12 @@ alarm — the structural backstop — is built on sand.*
   silent hole is the failure being designed out.
 - **Discriminating control:** the same run **without** corrupting `state.json` → `duplicates == 0`,
   proving the duplicates in GREEN come from the reset path and not from ordinary retry.
+- **A missing `state.json` is not a reset:** a first start with an empty spool, a first start whose
+  spool already holds a hook event, and a `state.json` deleted after the seat reported each count
+  `state_reset == 0` through a start and a restart, and no heartbeat carries `epoch_reset`; the
+  deleted one sends under a new `seq_epoch` and re-sends the spool. An empty, truncated,
+  unparseable, wrong-shaped or unreadable `state.json` counts `state_reset` exactly once.
+  **RED:** count a missing file as a reset → every first start carries `epoch_reset` for good.
 
 ### AT-18 an unknown enum value costs one field, not a batch
 
@@ -4742,8 +4853,9 @@ call ledger turns on.*
   anywhere marks the state as unresolved. A state with an entry event and no exit event is the defect.
 - **Discriminating control:** a seat that is never blocked emits neither kind and never renders
   *blocked*. **This control is only reachable because [§ 6.12](#612-attentionrequest) gates the
-  `Notification` hook** — an ordinary seat *does* receive notifications (`auth_success`,
-  `agent_completed`), and under an unconditional emission it would open an `attention.request` and
+  `Notification` hook** — an ordinary seat *does* receive notifications (`idle_prompt` about a
+  minute after every turn it finishes, `auth_success`, `agent_completed`), and under an
+  unconditional emission it would open an `attention.request` and
   render *blocked* for each one, so the control would fail on a healthy seat and the test would
   measure nothing. **Fourth RED:** remove the `notification_type` gate → the never-blocked seat
   renders *blocked* after an ordinary `auth_success`, which is the false-*blocked* mirror of AT-1's
@@ -5062,6 +5174,22 @@ indistinguishable.*
   nothing remains there, a stale roster where a copy does — and no act fails: that is the residual
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6 names, and this variant is where a
   missing rewrite is caught.
+- **Case G — a MALFORMED declaration.** The config carries `protocol_agent_name`, and the value is
+  not a valid declaration ([§ 3.1](#31-the-seat-config-file)): one byte past
+  [§ 6.14](#614-reporterheartbeat)'s bound, a string off the `slug` pattern, and a non-string — one
+  seat each, with a roster readable at the home path that lists both string values, so roster
+  membership cannot rescue them. Run one hook and `selftest`, and flush until a heartbeat reaches the
+  ingest. **GREEN:** the config stays readable — `config_readable` passes, and `config_invalid` is
+  counted **nowhere**: not in the heartbeat's counters, not in `state.json`, not in the spool's counter
+  files. The seat **still sends**: its flush POSTs a batch whose heartbeat carries
+  `protocol_agent_name: null`, `protocol_agent_name_check: "undeclared"`,
+  `selftest.protocol_agent_name_in_roster: "fail"`, both [§ 9.3](#93-degradation-counters) counters
+  0, and the same `degraded` as case D. `selftest` exits **1** with `protocol_agent_name_in_roster`
+  its only failing check, and its `detail` carries `declared: null`, the check `undeclared`, and
+  `malformed_declaration` naming the value — a string exactly as written, a non-string by its type
+  alone (`<number>`). ⛔ **Assert the value is ABSENT**, for each string value, from every batch the
+  ingest received and from the seat's log: `selftest`'s detail is its only home. The flusher's start
+  log line says the declaration is not valid.
 - **⛔ RED — the silent omission.** Make case B's reporter drop the member rather than emit
   `unchecked` → its heartbeat becomes byte-identical to case D's on both members, and no consumer can
   tell a seat that declares nothing from one nobody could check. This is
@@ -5089,6 +5217,14 @@ indistinguishable.*
   trades a wrong label for a silent seat, gating emission on the environment
   ([§ 3.4](#34-why-identity-never-comes-from-the-environment) rule 1). Assert a heartbeat arrives in
   both arms.
+- **⛔ RED — the malformed name that SILENCES the seat.** Make case G's reporter refuse the name as
+  a config error → `config_readable` fails, `config_invalid` is counted, and the flush POSTs nothing:
+  a typo in an optional label has silenced a seat whose identity and ingest are sound, which is what
+  [§ 3.1](#31-the-seat-config-file) forbids. Assert a POST arrives.
+- **⛔ RED — the malformed value that leaks.** Make case G's reporter send the value verbatim → it
+  reaches the wire, where the ingest would refuse the heartbeat and the whole batch with it
+  ([§ 12.4](#124-batches-are-atomic)); or name it in the flusher's start log line → it reaches the
+  seat's log. Assert the string in neither.
 - **RED — the name in the identity.** Add `protocol_agent_name` to `config_fingerprint`'s input, or
   to anything seeding a character → editing a label re-identifies a desk, which
   [§ 3.1](#31-the-seat-config-file) forbids in as many words.
@@ -5257,7 +5393,7 @@ what a field on the wire means.
 | 15 | **Counters and predicates travel to the flusher through an hour-bucketed append-only sink** | let hook processes write `state.json` directly, or drop the counters that hooks compute | `state.json` is flusher-owned and the counters are computed in short-lived concurrent processes — the earlier draft specified both and reconciled neither, which left [§ 9.4](#94-the-predicate-constant-alarm)'s alarm unbuildable from this document. The sink reuses the spool's own primitive, so there is one concurrency discipline in the design rather than two | one extra small append per process exit, and counters up to one flush interval stale in a heartbeat. StatusLine-side counters remain a floor because the harness cancels renders — stated at [§ 9.3](#93-degradation-counters) rather than hidden |
 | 16 | **A `state.json` reset re-sends from the OLDEST spool bucket** | keep the cursor jump to the newest bucket, or count the skipped lines as loss | the jump discarded up to a full spool — days of events — with no counter and no badge, while [§ 0](#0-overview) item 9 promises a counter for every discarded event. Re-sending is nearly free: dedup absorbs it, and the 10-day window exceeds the 8-day residency cap by design | one extra drain after a rare event, visible as a `duplicates` spike and an `epoch_reset` badge. AT-17 asserts the id-set equality |
 | 17 | **Spool residency is capped by age (8 days) as well as by size (32 MiB)** | derive maximum residency from the size bound and the volume estimate alone | residency-from-size is rate-dependent, and the *quiet* seat is the dangerous one: at heartbeat-only volume a 32 MiB spool takes longer to fill than the 10-day dedup window, so its oldest event would age out of that window while still queued and be re-ingested as new. An age cap makes the dedup coupling exact and rate-independent | a quiet seat's week-old events are dropped and counted rather than kept; that is the same judgement the drop-oldest policy already makes. **Amended 2026-08-23 (round 6):** the fill time this row carried — "50+ days" — had been superseded twice in [§ 10.3](#103-idempotency-and-the-dedup-window) and never here, and [§ 11.3](#113-rotation-and-the-overflow-policy) and [§ 14](#14-every-number-and-where-it-comes-from) carried it too. It is **deleted** at all three rather than re-synced by hand: what this decision rests on is that the fill time exceeds the dedup window, not its value, and the value now has one home that the gate re-measures from the worked heartbeat |
-| 18 | **Exactly one flusher runs per seat: `O_EXCL` lock plus an ownership check on `state.json`** | tolerate brief overlap and let server-side dedup absorb the duplicates | dedup absorbs *events*, not the `seq` counter: two flushers each reading `next_seq = X` produce either a gap (the seat renders `lossy` from nothing) or a duplicated `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing | a losing flusher exits silently (counted). The residual microsecond window is not assumed away: the server counts `seq_collision` |
+| 18 | **Exactly one flusher runs per seat: `O_EXCL` lock plus an ownership check on `state.json`** | tolerate brief overlap and let server-side dedup absorb the duplicates | dedup absorbs *events*, not the `seq` counter: two flushers each reading `next_seq = X` produce either a gap (the seat renders `lossy` from nothing) or a duplicated `(seq_epoch, seq)` — the ordering key `D2-MUST` #4 makes load-bearing | a flusher that loses ownership stops sending and exits 0 (counted and logged). The residual windows, microseconds before a write and one in-flight request before a send, are not assumed away: the server counts `seq_collision` |
 | 19 | **`schema_version` rides every event as well as the batch** | keep it batch-only, or make D2 stamp it onto each event at ingest | the policy's rule 1 says *every event* carries it, and the stored event is what gets replayed, quoted and pasted; a field that tells a reader what the other fields **mean** is the last one to leave the durable unit. Making the store stamp it would put a compliance obligation in another document | ~20 B/event (~4 %). Equality with the batch is enforced, so it cannot drift |
 | 20 | **An unrecognised closed-enum value is coerced to the field's unknown member and counted, at both ends** | pass the harness's value through verbatim and let the ingest validate strictly | verbatim pass-through plus atomic batches means one unannounced harness value (`SessionStart.source: "fork"` was exactly this, and is now a known member) destroys up to 200 good events and quarantines them permanently. Coercion costs one mislabelled field | a genuinely new harness state is rendered as `unknown` until this document is updated — visible in `enum_value_unknown.<wire field>`, which is the edit's trigger |
 | 21 | **`agent_scope` is labelled from the documented `agent_id` payload field** | keep it permanently `null`, as an earlier draft did on the grounds that any presence-based inference repeats the 30-day outage | the outage was an **undocumented environment variable** with nothing watching it. This is a documented payload field, and it is watched: both branches ride the heartbeat and the predicate-constant alarm fires if it goes constant either way | if the harness starts or stops sending `agent_id` universally, the label is wrong until the alarm fires — which is precisely the instrument the incident lacked |
@@ -5268,7 +5404,7 @@ what a field on the wire means.
 | 26 | **Sanitizer rule order is part of the contract: paths are rewritten before blobs are redacted, and every fixture carries its rule trace** | keep the earlier order and maintain the fixture table by hand beside the rule table | the blob class `[A-Za-z0-9+/]` matches a long absolute path, so under the old order `Read: /home/…/IngestController.php` sanitized to `‹redacted:blob›.php` — a descriptor that answers nothing. Hand-maintained twins drift, which is how the draft shipped two fixtures no rule could produce | rule numbering moved, so every cross-reference to a rule number had to move with it. The trace column makes the next such change mechanical (AT-2 asserts it) |
 | 27 | **Every harness fact carries one of three states — MEASURED / DOCS-CITED / UNVERIFIED — and MEASURED means a captured payload, vendored as a fixture, asserted by `selftest`** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read), [§ 17](#17-appendix--the-captured-harness-payloads), [AT-21](#at-21-the-harness-fact-drift-guard)) | keep hand-transcribing from the vendor reference and fix the errors each review finds | **This is the round-3 class fix, and the evidence for it is the two rounds before it.** Round 1 found two transcribed hook facts wrong. The round-2 fix corrected those two instances — and built new designs on five more transcribed facts, which round 2 found wrong or absent. Per-instance correction had then failed twice, so the defect is not any instance: it is that **nothing bound the transcription to a source and nothing could red when they diverged** — a restatement with neither a pointer nor a guard. Round 3 stopped correcting instances first and landed the binding first. It immediately paid for itself: the capture found a defect no review had — the dispatch tool's payload `tool_name` is `"Agent"`, not `"Task"` (row 28) — and refuted three of round 2's own key-name findings, which a fourth round of transcription would have "fixed" into being wrong | the capture is a snapshot of one build on one OS. A fact that is true at 2.1.240 and false at 2.2.0 is MEASURED-and-wrong, which is why the version pin and the re-capture obligation are part of the rule and `harness_label` rides the wire. The residual is a harness upgrade nobody re-captures — which `harness_label` makes queryable and `payload_key_missing.<key>` makes visible, but only after deployment |
 | 28 | **The subagent-dispatch hook matches `tool_name ∈ {"Agent", "Task"}`, counting which fired** | match `"Task"`, as every prior draft did | the payload says **`"Agent"`** at 2.1.240 (MEASURED). Matching `"Task"` alone would emit no `subagent.spawn` on any current seat, bind no `agent_id`, and render every dispatch as an ordinary tool call — the interns feature reading zero forever, from one transcribed string that no review round caught. Both names are matched because both are live across harness versions; `dispatch_tool_name.<name>` reports which the fleet actually sends | a future third name is missed until the counter's total diverges from the `subagent.spawn` count. That divergence is the observable, and it is cheap |
-| 29 | **The `Notification` hook's emission is gated on `notification_type`; every suppressed type is counted individually** | emit an `attention.request` for every notification, per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 2's never-suppress wording | the documented types include `auth_success`, `agent_completed` and the `quota_auto_resume_*` family — none of which is an agent waiting on a human. Unconditional emission would put a seat into *blocked* every time it **finished** something, which is the false-idle defect mirrored, and `D2-MUST` #5 makes `attention.request` the only source of *blocked*. Rule 2 is right for a *classification* and wrong for a hook that legitimately fires outside this design's subject; what [§ 3.4](#34-why-identity-never-comes-from-the-environment) actually requires is that no suppression is **silent**, and `notification_not_attention.<type>` satisfies that literally | a genuinely attention-bearing type this list misses opens no request until someone reads `enum_value_unknown.notification_type`. Adding a second carve-out to rule 2 is review-blocking, so the exception cannot spread quietly |
+| 29 | **The `Notification` hook's emission is gated on `notification_type`; every suppressed type is counted individually** | emit an `attention.request` for every notification, per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 2's never-suppress wording | the documented types include `auth_success`, `agent_completed` and the `quota_auto_resume_*` family — none of which is an agent waiting on a human. Unconditional emission would put a seat into *blocked* every time it **finished** something, which is the false-idle defect mirrored, and `D2-MUST` #5 makes `attention.request` the only source of *blocked*. Rule 2 is right for a *classification* and wrong for a hook that legitimately fires outside this design's subject; what [§ 3.4](#34-why-identity-never-comes-from-the-environment) actually requires is that no suppression is **silent**, and `notification_not_attention.<type>` satisfies that literally | a genuinely attention-bearing type this list misses opens no request until someone reads `enum_value_unknown.notification_type`. **The inverse risk is the one that fired:** a type on the *emitting* side that is not a wait on a human mints *blocked* on healthy seats, and `idle_prompt` did exactly that until card#9419 moved it — caught by the `input_awaited`-to-`permission_required` ratio on a real seat, not by any gate, because which side of the table a member belongs on is a judgement and nothing re-derives it. Adding a second carve-out to rule 2 is review-blocking, so the exception cannot spread quietly |
 | 30 | **`StopFailure` is subscribed and emits `turn.end` with `end_reason: "api_error"`, which mints `stalled` — a state of its own, not `idle` and not `unknown`** | leave it unsubscribed, as every prior draft did, or fold it into `unknown` | unsubscribed, a rate-limited turn emits **no `turn.end` at all**: no reap, open calls to their orphan ceiling, and a desk rendering *working* for up to an hour — on the busiest seats, because those are the ones that get rate-limited. Folding it into `unknown` would then hide a rate-limited *fleet* behind the same state a killed subagent produces, and a rate-limited fleet is a thing an operator acts on | one more `turn.end.end_reason` member and one more rendered state for D2. `api_error_type` is DOCS-CITED, not MEASURED — provoking a real rate limit was not a cost worth paying — so the sub-classification is the part most likely to need correcting, and `enum_value_unknown.turn.end.api_error_type` is what will say so |
 | 31 | **One bucket-deletion precondition on the shared primitive: `now ≥ bucket_end + grace`, `grace = 5 s`, writers re-derive the bucket name immediately before the `writeSync`, and no hook may drop the current bucket** | keep "a bucket older than the current UTC hour has no living writer", the argument the four append-only trees shared | that argument bounds a hook's **lifetime** and not its **straddle** of the hour boundary: a hook entering at `13:59:59.900` and writing at `14:00:00.050` writes into a bucket the flusher may unlink ≤ 10 s later. One primitive, four trees, four consequences — a lost counter delta (which would have flaked [AT-16](#at-16-the-counter-sink-survives-concurrency)'s exact-equality GREEN and been debugged as flakiness), a lost index record (a false `aborted` blocking *idle*), a lost **event** (breaking [§ 0](#0-overview) item 9 outright), and a cosmetic log gap. Fixing it once at the primitive is the only version of this fix worth making | one extra flush pass of retention per bucket, and a bounded overshoot of the spool size bound when the only over-bound bucket is the current one (`spool_overflow_deferred`) |
 | 32 | **The call index carries two `agent_id` fields — `agent_scope_id` (the scope a call was opened in) and `child_agent_id` (the subagent a dispatch call spawned) — and the turn reap keys on the first** | ~~one `agent_id` field, `null` until `SubagentStart` bound it, read by both the binding and the reap~~ | One field could not hold both facts, and the two are *opposites* on the call that matters most. A dispatch call is opened in the main agent (scope `null`) and bound to the child's id a moment later; with one field the bind overwrote the scope, so the parent's own `Stop` — which carries no `agent_id` and therefore always scopes to `"main"` (MEASURED) — excluded the one call it most needed to close. The mirror case was as bad: a call opened *inside* a subagent had nowhere to record its scope, so the reap key for it was undefined, and the three places this document promises a permission-refused call "survives to the turn's reap" were false inside a subagent | **Superseded 2026-08-23 (round 4).** Two index fields instead of one, and one new reap row (row 33). The cost is one more field on every `open` record — ~20 B of a journal that is compacted every flush — against a dispatch call sitting open to its **60-minute** orphan ceiling with the seat rendered *working* the whole time, which is [§ 8.1](#81-the-problem-restated)'s defect reached through [§ 8.3](#83-the-reap-rules)'s own scoping rule. [AT-1](#at-1-kill-vs-complete-the-headline-test) case C is the regression test and its RED reproduces on every build |
@@ -6614,8 +6750,9 @@ unsupported**: on the seat this was written on there is no reporter config at al
 example rather than a measured one. The conclusion is unchanged and the supporting claim was the
 weaker for being stated. So this section derives the name and stops there — and since
 `card#9296` the other end of the join exists: a seat DECLARES its own protocol agent name in its own
-config ([§ 3.1](#31-the-seat-config-file)), emitted on [§ 6.14](#614-reporterheartbeat)'s heartbeat,
-checked against the roster where one sits on the same box, and named *unchecked* where it does not.
+config ([§ 3.1](#31-the-seat-config-file)), emitted on [§ 6.14](#614-reporterheartbeat)'s heartbeat
+by a seat running a build that includes `card#9375`, checked against the roster where one sits on
+the same box, and named *unchecked* where it does not.
 ⛔ **That changes nothing about THIS producer and must not**: it holds no seat identity, acquires
 none, and emits no `seat_id` — the join is resolved by the consumer against the seat population, not
 by this route learning a mapping it has no source for, which is exactly why ruling (a) was rejected.
@@ -6667,7 +6804,7 @@ read it is a row somebody can close.
 | **What GitHub does with a 4xx or a 5xx from this endpoint** — UNVERIFIED, and it is why [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) mints no rate limit **on the deliveries that pass step 3**. It says nothing about the step-3 refusal path, whose caller is by construction not GitHub — which is the scope the round that added that limit had to correct, and this cell carried the unqualified claim across it | if refusals are never redelivered, every refused delivery is permanent loss of a fact with no other source | read GitHub's documented redelivery behaviour, then decide whether a limit is affordable; until then the design assumes the worst and refuses almost nothing |
 | **GitHub's maximum delivery size** — still UNVERIFIED, and **half of the closing act is now done**: the largest bodies a live coordination repository actually produces are **21,963 B** for a comment and **31,087 B** for an issue, measured over its whole population 2026-08-28, so the 1 MiB cap has ~30× headroom against real traffic even before the rest of the payload is counted. What stays open is the **sender's** documented maximum, which is a vendor fact no read on this box reaches ⚠ a figure for it was offered in review and is deliberately **not** recorded here, because relaying an unsourced number is the defect this table exists to prevent | a real delivery over the cap takes a `413` and is lost — now bounded by the measurement, not eliminated by it | read GitHub's own published maximum and cite it, or capture a delivery and measure the envelope overhead the body figures above exclude |
 | **Whether a `[CLOSE]` token is added to a body this producer will not see** — a post edited to add it fires `issue_comment.edited`, which [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 does not derive from | a close act declared by an edit is missed, and its thread draws `lifecycle: closed` with no spark and no closer — the same render an undeclared close produces, so the two are indistinguishable. **The deferral IS backfillable, and that is a consequence of two things [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) now states rather than a hope**: the hook subscribes the whole `issue_comment` event, so those deliveries **were** sent and are in GitHub's delivery list; and step 8 commits **no digest** for a delivery it ignored, so a Redeliver after step 8 widens is derived rather than absorbed as a duplicate. ⚠ **What bounds the backfill is not this design**: GitHub's retention of redeliverable deliveries is a vendor fact no read on this box reaches, and anything older than it — or older than the hook registration itself — stays missed | add `issue_comment.edited` to step 8's derive set. That is **one action in the derive set and no re-registration**, which is what the subscription above was written wide to buy; the earlier draft of this row priced it as a subscription change and then, in the same cell, as a step-8 edit — the two were incompatible and the subscription set is what had gone unstated |
-| **That a protocol agent name identifies the same thing a `seat_id` does** — **SPECIFIED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat; built on the server's side, and not yet on the reporter's (`card#9375`).** The artifact that owns the mapping is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, which [§ 6.14](#614-reporterheartbeat)'s heartbeat is specified to carry with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second, on Linux only; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. And — **added on `card#9296` round 3** — **that the supervised start's launch delivers `$COORD_CONFIG`**: § 3.1's delivery contract requires it, because the OS-started flusher inherits nothing from the harness and is the one that heartbeats on a healthy seat, but nothing here checks that a start definition delivers the value. On Linux, since `card#9368`, the start definition is a crontab entry that `fleet-reporter/INSTALL-LINUX.md` writes with the assignment on its own command line, and no check reads that entry. On Windows the route is owed when the Windows agent seat onboards ([§ 3.1](#31-the-seat-config-file)). A start definition without the value reports `unchecked` on every heartbeat of a box whose hooks can read the roster. And — **added on `card#9296` round 4** — **that the value it delivers is still current**: the install resolves `$COORD_CONFIG` once, so a coordination config that later moves leaves the flusher reading the path as it stood — `unchecked` where nothing remains, or a check against a roster nothing else on the box reads where a copy does — until the start definition is rewritten and the flusher restarted, which [§ 3.1](#31-the-seat-config-file) requires of whoever installed the seat and nothing here can see. ⚠ Unchanged: the two **still** cannot be compared on a live seat. Since `card#9368` one seat reports, `mezzanine` / `mezzanine-solo` on the sandbox, and its config declares a name. But `fleet-reporter/fleet-reporter.js` does not yet read that key, so that seat's heartbeat carries no name. **`"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value** | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)*'s SERVER half is BUILT on `card#9296`:** the ingest accepts and the store folds the two heartbeat members, and the consumer-side rule that only a declaration joins is applied ([§ 3.1](#31-the-seat-config-file)). **Its REPORTER half is `card#9375` and UNBUILT:** the config row is specified, and the Linux runbook writes it, but `fleet-reporter/fleet-reporter.js` does not read it, emits neither heartbeat member, and has no `protocol_agent_name_in_roster` self-test to **fail the act** on a disagreement. What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives — so that the two ends read one published statement instead of each holding its own; and, for the start-path residual, [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) case F and its moved variant, run against a real supervised start. On Linux that is the crontab entry `fleet-reporter/INSTALL-LINUX.md` writes, and it can run only once the reporter reads the roster (`card#9375`). ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
+| **That a protocol agent name identifies the same thing a `seat_id` does** — **SPECIFIED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat; built on the server's side on `card#9296`, and on the reporter's on `card#9375`.** The artifact that owns the mapping is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, which [§ 6.14](#614-reporterheartbeat)'s heartbeat is specified to carry with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second, on Linux only; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. And — **added on `card#9296` round 3** — **that the supervised start's launch delivers `$COORD_CONFIG`**: § 3.1's delivery contract requires it, because the OS-started flusher inherits nothing from the harness and is the one that heartbeats on a healthy seat, but nothing here checks that a start definition delivers the value. On Linux, since `card#9368`, the start definition is a crontab entry that `fleet-reporter/INSTALL-LINUX.md` writes with the assignment on its own command line. Since `card#9375` the acceptance suite reads that runbook's start line and runs it outside cron (AT-27 case F), and no check reads the entry an install actually wrote. On Windows the route is owed when the Windows agent seat onboards ([§ 3.1](#31-the-seat-config-file)). A start definition without the value reports `unchecked` on every heartbeat of a box whose hooks can read the roster. And — **added on `card#9296` round 4** — **that the value it delivers is still current**: the install resolves `$COORD_CONFIG` once, so a coordination config that later moves leaves the flusher reading the path as it stood — `unchecked` where nothing remains, or a check against a roster nothing else on the box reads where a copy does — until the start definition is rewritten and the flusher restarted, which [§ 3.1](#31-the-seat-config-file) requires of whoever installed the seat and nothing here can see. ⚠ Unchanged: the two **still** cannot be compared on a live seat. Since `card#9368` one seat reports, `mezzanine` / `mezzanine-solo` on the sandbox, and its config declares a name. `fleet-reporter/fleet-reporter.js` reads that key since `card#9375`. That seat was installed from a build before it (`fleet-reporter/INSTALL-LINUX.md` Step 1), so it sends a name only once its artifact is replaced and its flusher restarted, and `card#9375` did not read which build it runs now. **`"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value** | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)*'s SERVER half is BUILT on `card#9296`:** the ingest accepts and the store folds the two heartbeat members, and the consumer-side rule that only a declaration joins is applied ([§ 3.1](#31-the-seat-config-file)). **Its REPORTER half is BUILT on `card#9375`:** `fleet-reporter/fleet-reporter.js` reads the declaration and resolves the roster at flusher start and on `selftest`, emits both heartbeat members on every heartbeat, and **fails the act** — `protocol_agent_name_in_roster` — on a disagreement. AT-27's cases and REDs run in `fleet-reporter/fleet-reporter.selftest.py` § 19. What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives — so that the two ends read one published statement instead of each holding its own; and, for the start-path residual, [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) case F and its moved variant, run against a real supervised start. On Linux that is the crontab entry `fleet-reporter/INSTALL-LINUX.md` writes, run by cron on a real seat; the suite runs the runbook's line outside cron, which checks the line and not an installed entry. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
 | **That a thread CONVERGED, as the protocol defines convergence** — the protocol's convergence is a **quorum**: *"An issue closes when every required participant has posted `zero open questions`. Required participants are those on `to:` labels who are not observer-CC'd"*. Neither object carries an observer-CC flag, a required-participant set, or a per-participant ACK ledger, and `participants` includes observers with nothing to exclude them by. **The quorum is not computable from anything emitted here** | a consumer that reads `lifecycle: closed` or `declares_close: true` as *"the thread converged"* is making a claim the wire does not carry — and it would be right about many threads and wrong about every stale-close, with no way to tell which. What this design offers instead is two weaker facts that are true: the thread ended, and somebody declared the close act | the protocol names required participants **on the wire** — an observer-CC marker in the body or a distinct label — at which point the quorum is a count. Until then this row is the answer, and [§ 18.5](#185-the-three-findings-the-audit-turns-on) states in terms that `declares_close` is not it |
 | **That the coordination route's counters have anywhere to live** — [§ 18.8.1](#1881-the-counters-this-route-mints) declares eleven, and [§ 12.7](#127-server-side-counters)'s table is the surface that would give them storage and a badge. Membership there is an **obligation on the store's counter plane**, so this section declares the counters and does not enrol them | an implementer builds the receipt path, increments ten counters, and no operator can read any of them — the alarms `coord_targets_unresolved` and `coord_roster_unknown_name` exist for are the two that matter most, and both would be write-only | the slice that designs the coordination store adopts the ten into [§ 12.7](#127-server-side-counters) and gives each a row on the counter plane, in one change with the plane's own document. **The evidence that this is a real obligation and not bookkeeping is mechanical**: enrolling them early makes `tools/design/verify-fleet-state.py` red with one failure per counter, which is how this row was found |
 | **That the idempotency key cannot expire into a double-derivation** — a uniqueness constraint has no window, but the store that holds it has a retention, and **nothing bounds how old a redelivered coordination delivery can be**. The reporter's equivalent is bounded by [§ 11.3](#113-rotation-and-the-overflow-policy)'s 8-day spool residency; GitHub's Redeliver button has no such floor | an operator redelivering a delivery older than the store's retention re-derives it: one thread line or round bead drawn twice, from one real post. Bounded and recoverable, and invisible while it happens | either state the digest store's retention as unbounded and price it — the key is 64 B and this repository's whole history is under 12,000 deliveries — or bound the redelivery age at receipt by refusing a payload timestamp older than the retention. Both are decisions for the slice that builds the store, and each is cheap; what is not affordable is the sentence an earlier draft carried, which asserted the problem away |

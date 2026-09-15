@@ -83,6 +83,17 @@ its date, its decider and the scope of what it moved. The original row above sta
   is untouched and permanent, and nothing here widens the licence allowlist, which remains an
   operator decision taken separately.
 
+- **D-08 · the target is named — operator, 2026-09-14.**
+  D-08 reads *"App deploys to a **separate host** (operator provisions; target TBD)"*. The
+  operator named the target on the 2026-09-14 Decision Docket: the production host is
+  **`mezzanine.neeba.com`**, a clean Virtualmin install. **What moves:** *target TBD* only — the
+  host is identified, and how the application gets onto it is stated: the operator runs the
+  install, from commands this project's build agent supplies (D-13). **What does NOT move, and
+  each is load-bearing:** the host is still *separate* and still the operator's to provision.
+  Nothing has been deployed to it, so `bin/deploy.sh` has still never run against a host and every
+  live-host leg § 5 names stays unexercised. Installing on the host and deploying
+  to it both stay ask-first: this amendment records a target, and clears no act on it.
+
 - **D-12 · the required-check clause only — measured, not re-decided; 2026-09-09 (card#9054).**
   D-12 records *"`card-token-lint` is a required check on both"*. That was the measured state on
   2026-08-23 and it is no longer the whole list — contexts have been added since, and a reader who
@@ -132,6 +143,45 @@ its date, its decider and the scope of what it moved. The original row above sta
   blast radius grew with this change — the guards, the CI template check and the round-trip harness
   now key on the connection name `mysql` too. Re-derive the sites rather than trusting a list:
   `git grep -nE "'mysql'|mysql\\||DB_CONNECTION=mysql" -- server .github bin`.
+
+- **D-15 · the Laravel connection keeps the name `mysql` — operator, 2026-09-14.**
+  In the operator's words, answering a decision brief: *"Keep mysql and close the question."* This
+  takes the separate decision the 2026-09-09 amendment left open as the operator's to take, and
+  the 2026-09-13 amendment carried forward: whether the application moves from Laravel's `mysql`
+  connection to `config/database.php`'s `mariadb` connection. **What moves:** the question is
+  closed, and the application stays on the `mysql` connection. **Why:** no defect has been traced
+  to the name; a rename would move `bin/deploy.sh`'s refusal and the test-isolation guards that key
+  on `database.connections.mysql.database`, for a cosmetic gain; and the engine is MariaDB either
+  way, as the 2026-09-09 and 2026-09-13 amendments pin it. **What does NOT move:** the engine,
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the *dedicated DB host*
+  clause, § 6.2's pinned database names and isolation posture, and SQLite's unsupported status.
+  **Reopens:** a MariaDB-specific Laravel feature the application needs.
+
+- **D-15 · TLS to the store is required only across a network — operator, 2026-09-14 (card#9561).**
+  In the operator's words: *"database is local; there is no SSL support nor is it needed when mysql
+  is on localhost"*. D-15 placed the store on a *dedicated DB host*, and
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture) required TLS to it, certificate verified, because
+  the credential and every descriptor would cross a network; `bin/deploy.sh` A5 refused every host whose
+  `.env` set no `MYSQL_ATTR_SSL_CA`, which refused production's local store. **What moves:** the store may
+  be on the application's own host, and production's is. A store reached over its Unix socket or over
+  loopback crosses no network, and TLS is not required for it; a store on another host still requires TLS
+  with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
+  `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
+  not read exactly as Laravel does is refused by name, a `.env` Laravel's own parser does not read as the
+  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can —
+  is refused before any key is read, and a variable set in the process environment (a
+  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every
+  verdict whose answer could differ is on the value the app RECEIVES rather than the text of the line — a CA
+  Laravel resolves to a value PHP treats as false is UNSET, because `server/config/database.php`'s
+  `array_filter` drops it (`bin/deploy.sh`'s `env_app_falsy` states which values those are) — and where it
+  does compare text (`APP_ENV`, `DB_CONNECTION`, a `/`-prefixed `DB_SOCKET`, the loopback host names), no
+  text it ACCEPTS resolves to another value. Which host a `DB_URL` names is decided inside the `php` that
+  parses it, so no byte of a URL is ever judged after a shell has had a chance to eat one. **Why:** the requirement was always a consequence of the
+  network hop, and on one host there is none. **What does NOT move:** the engine,
+  [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the `mysql` connection name,
+  § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
+  requirement for a store on another host. **Reopens:** a store that moves off the application's host,
+  which then carries the TLS requirement again with no further decision.
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
@@ -273,7 +323,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | **P2 server** | Laravel skeleton + MFA on stock packages (#7334, re-scoped per D-04) | — | Fortify + TOTP; MFA gates page, **the feed** (SSE since card#9287), and REST snapshot; seat-token ingest is separate and never browser-facing |
 | | ingest endpoint (#7338) | D1, skeleton | rejects unknown schema loudly; per-seat tokens; rate limits; statusLine sampled not streamed |
 | | fleet-state store + SSE feed + REST snapshot (#7339) | D2, ingest | snapshot+delta observed in a browser; REST snapshot serves the watchdog case |
-| | MariaDB provisioning on the dedicated DB host (new card, D-15, as amended 2026-09-09) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified; the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
+| | MariaDB provisioning (new card, D-15, as amended 2026-09-09 and 2026-09-14) | D2 schema | prod/sandbox/test databases created as `docs/design/FLEET-STATE.md § 6.2` pins them; TLS from the app host verified for a store on another host (a store on the app host needs none, D-15's 2026-09-14 amendment); the test-DB guard seen to refuse **under the one lever that moves the resolved value — deleting half a pin** (an intact pin correctly defeats a hostile export; corrected 2026-08-25, card#7334) before any suite is trusted |
 | **P3 floor** | character port + ATTRIBUTION (#7340) | — | renders in a plain browser; lineage file complete |
 | | floor v1 (#7341) | D3, P2 feed, #7340 | live desks from real telemetry; CC0 tiles; Tiled map |
 | | drill-down + interns (#7342) | #7341 | subagent titles appear from real Task dispatches |
@@ -281,7 +331,7 @@ overlap where the dependency arrows allow. "Accept:" lines are the review floor,
 | | CI lanes for app code (#7344) | first PHP/JS code | required-check list updated the same PR (see `docs/VERSIONING.md` — a new workflow is not auto-required) |
 | **cont.** | changelog + card-entry gate (card#8174, per #344) — ✅ **landed 2026-08-30** as `release-pr-guard` R4 (the card's bullet) and R5 (the size gate § 4 had claimed since D-11) | — | § 4; every arm seen to red on a planted defect first — eight guard mutations, each producing a targeted failure |
 | | `CLAUDE*.md` structure (new card, blocked on #346) | #346 answer | index + chapters per sola-inventory's pattern |
-| | `bin/deploy.sh` prod deploy (#7459) | P2 server host (D-08) | prod moves only via the script; seen to fail on a broken precondition before trusted — `bin/deploy.selftest.sh` is that evidence, and the live-host leg stays unexercised until a host exists |
+| | `bin/deploy.sh` prod deploy (#7459) | P2 server host (D-08) | prod moves only via the script; seen to fail on a broken precondition before trusted — `bin/deploy.selftest.sh` is that evidence, and the live-host leg stays unexercised until the first deploy to the prod host (D-08) |
 
 Deliberately **not** in this plan: the autonomy watchdog (roundtable #341 + our `[WAKE]` prototype
 #659 — separate track; Mezzanine's contribution to it is the REST snapshot), and the aimla
@@ -436,9 +486,10 @@ rule violations anyone could have committed at the time.
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
-  an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
-  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
-  non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, world-readable, non-production,
+  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
+  non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
+  own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
@@ -452,10 +503,23 @@ rule violations anyone could have committed at the time.
   `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
   pool `zlib.output_compression`, `output_handler` or `ignore_user_abort` set in the ini, the pool
   or a `.user.ini`. `output_buffering` is reported and **not** refused — measured, the handler's
-  flush defeats this host's 4096. It warns, rather than refusing, where the doc's own reading is that the state is
+  flush defeats this host's 4096. And **a read of the release itself that git could not complete**: every
+  precondition that judges the target tree reads it out of the object database before the checkout, and a
+  read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
+  not read it"* are different answers, only the first is a finding about the release, and a gate handed the
+  second as an empty string certifies a file it never opened. **A path in that tree which is not a regular
+  file** is refused the same way, on its MODE: `ls-tree` calls a symlink's type `blob` exactly as it does a
+  file's, and a symlink's blob is the PATH IT POINTS AT, so a type check passed one through and handed A11
+  the string `../app.real.php` to grep — the same positive statement about a file never opened, reached from
+  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. And **a release
+  with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
+  a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
+  app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
+  rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
-  from does not exist — a gap it says out loud rather than a state it calls safe.
+  from does not exist, and when the release carries no `server/.env.example` for the check that reads
+  it — each a gap it says out loud rather than a state it calls safe.
 - **The feed's stream needs three things from the host, and one check after a deploy that only an
   operator can run** (card#9300; `docs/design/FLEET-STATE.md § 8.3` R1 and R2 own the requirements
   and their measurements — this bullet is the runbook, not a second copy of them).
@@ -463,21 +527,86 @@ rule violations anyone could have committed at the time.
     deploy can end a stream without root), with `request_terminate_timeout = 0`, a `pm.status_path`,
     a `pm.status_listen` (a status listener the pool's pinned workers cannot block — measured: without
     it the deploy's status read queued behind the streams until it timed out), and a `pm.max_children`
-    sized in open browser tabs, not browsers. The vhost routes `/api/fleet/stream` — and nothing else —
-    to it; every other request stays on the application's pool. Name the pool to the deploy with
-    `MEZZ_STREAM_POOL=<pool name>`. Both are root acts (Virtualmin); the deploy refuses a host without
-    them, and says which part is missing. ⚠ **The first deploy of the release that introduced this check
-    does not refuse — it warns, in the window**: its preconditions ran in the previous release's copy of the
-    script, which never asked, and staying down over a pool nobody was asked for would be the worse outcome.
-    Its streams are then not drained, and the deploy after it refuses until the pool exists.
-  - **`flushpackets=on` for that pool's socket in the vhost**, e.g. `<Proxy
-    "unix:/run/php/<stream pool>.sock|fcgi://127.0.0.1"> ProxySet flushpackets=on </Proxy>`, and no
-    compression filter on `text/event-stream`. ⛔ **Without it every browser renders *feed down — polling*
-    against a healthy fleet** (FLOOR.md § 9 F19): measured on a throwaway Apache with this host's vhost
-    shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response, headers included, until the
-    request ended. The deploy cannot see the vhost; the check below can.
-  - **A finite client-send timeout on the proxy** (Apache `Timeout`), so a frozen client's worker comes
-    back (R2's teardown clause). The heartbeat keeps a healthy stream writing every 15 s.
+    sized in open browser tabs, not browsers. Name the pool to the deploy with
+    `MEZZ_STREAM_POOL=<pool name>` (`mezz-stream` below). The pool and the vhost lines below are root acts (Virtualmin); the
+    deploy refuses a host without the pool, and says which part is missing. ⚠ **The first deploy of the
+    release that introduced this check does not refuse — it warns, in the window**: its preconditions ran
+    in the previous release's copy of the script, which never asked, and staying down over a pool nobody
+    was asked for would be the worse outcome. Its streams are then not drained, and the deploy after it
+    refuses until the pool exists.
+
+    Append the pool to the site's existing pool file (`/etc/php/8.5/fpm/pool.d/<site id>.conf`, after
+    that file's own `[<site id>]` pool), then reload PHP-FPM with `systemctl reload php8.5-fpm`. The
+    sandbox host has run this pool since 2026-09-13:
+
+    ```ini
+    [mezz-stream]
+    user = mezzanine
+    group = mezzanine
+    listen = /run/php/mezz-stream.sock
+    listen.owner = mezzanine
+    listen.group = mezzanine
+    listen.mode = 0660
+    pm = dynamic
+    pm.max_children = 8
+    pm.start_servers = 2
+    pm.min_spare_servers = 1
+    pm.max_spare_servers = 3
+    pm.status_path = /stream-status
+    pm.status_listen = /run/php/mezz-stream-status.sock
+    request_terminate_timeout = 0
+    php_value[upload_tmp_dir] = /home/mezzanine/tmp
+    php_value[session.save_path] = /home/mezzanine/tmp
+    php_value[error_log] = /home/mezzanine/logs/php_log
+    php_value[log_errors] = On
+    ```
+
+    Substitute the application user and its home for `mezzanine` on another host.
+  - **The vhost routes `/api/fleet/stream`, and nothing else, to that pool, with `flushpackets=on`.** Add
+    these lines to **both** `<VirtualHost>` blocks Virtualmin writes (`*:80` and `*:443`) in
+    `/etc/apache2/sites-available/<domain>.conf`, directly above the block's existing
+    `<FilesMatch \.php$>` / `SetHandler proxy:unix:…|fcgi://127.0.0.1` section and below any
+    `RewriteCond`/`RewriteRule` pair, then `apache2ctl -t && systemctl reload apache2`:
+
+    ```apache
+    <Proxy "unix:/run/php/mezz-stream.sock|fcgi://mezz-stream">
+        ProxySet flushpackets=on
+    </Proxy>
+    ProxyPassMatch "^/api/fleet/stream$" "unix:/run/php/mezz-stream.sock|fcgi://mezz-stream/home/mezzanine/public_html/index.php"
+    ```
+
+    The path after `fcgi://mezz-stream` is the vhost's `DocumentRoot` followed by `/index.php`. Leave the
+    `SetHandler` line exactly as Virtualmin wrote it. These are the lines the sandbox host has run since
+    2026-09-14.
+    - ⛔ **The name after `fcgi://` is `mezz-stream`, never `fcgi://127.0.0.1`.** Virtualmin's `SetHandler`
+      already uses `fcgi://127.0.0.1`, and Apache reuses a worker by that name, so a stream worker named
+      the same sends every PHP request on the site to the stream pool. The site still answers, so nothing
+      looks broken: ordinary requests compete with open streams for the stream pool's workers, and the
+      deploy's stream drain signals workers that are serving them. Measured 2026-09-13 on this host's
+      Apache 2.4.66, with a throwaway non-root Apache in front of both live pools: with the shared name, 20
+      of 20 ordinary PHP requests landed on the stream pool; with `fcgi://mezz-stream`, none did, and the
+      stream route still reached its pool. The live host reproduced it after its first reload and passed
+      after the rename.
+    - ⛔ **`flushpackets=on` is what lets a browser see the stream.** Without it every browser renders
+      *feed down — polling* against a healthy fleet (FLOOR.md § 9 F19): measured on a throwaway Apache
+      with this host's vhost shape as Virtualmin writes it, `mod_proxy_fcgi` held the whole response,
+      headers included, until the request ended.
+    - **No compression filter on `text/event-stream`.** This host's `mods-enabled/deflate.conf`
+      does not list it; do not add it.
+    - **After the reload, check the routing on the host as the application user.** Read the stream pool's
+      `accepted conn`, request an ordinary page a few times, and read it again. It must not move while no browser tab has the floor open, since an open tab
+      reconnects to the stream on its own. Then request `/api/fleet/stream` (an unauthenticated `401` is fine); it must move.
+
+      ```
+      SCRIPT_NAME=/stream-status SCRIPT_FILENAME=/stream-status REQUEST_METHOD=GET QUERY_STRING= \
+        cgi-fcgi -bind -connect /run/php/mezz-stream-status.sock | grep 'accepted conn'
+      ```
+
+      The deploy cannot see the vhost. This check proves the routing, and the wire check below proves
+      the flushing.
+  - **A finite client-send timeout on the proxy** (Apache `Timeout`; this host's `apache2.conf` sets 300),
+    so a frozen client's worker comes back (R2's teardown clause). The heartbeat keeps a healthy stream
+    writing every 15 s.
   - **After any deploy that changed the stream path, the proxy or the stream pool — and once when the host
     is stood up — run the R1 wire check as an operator.** Sign in to the site in a browser (MFA
     included), copy the session cookie's `name=value` from the browser's developer tools into a file
@@ -510,8 +639,8 @@ rule violations anyone could have committed at the time.
   correct for an unproxied host and fails safe either way: behind an untrusted proxy every request
   appears to come from the proxy and the limit is merely coarse, whereas `trustProxies('*')` would
   let any client forge the header and defeat the key entirely — the limit would then be a
-  decoration, which is the one thing § 12.3 says it must not be. The deploy host is not
-  provisioned (D-08), so the value cannot be set now; setting it is part of standing that host up.
+  decoration, which is the one thing § 12.3 says it must not be. The application is not
+  yet installed on the prod host (D-08), so the value cannot be set now; setting it is part of that install.
   `bin/deploy.sh` enforces the half that is enforceable: it **refuses** a target tree carrying
   `trustProxies('*')` and **warns** when none is configured — this paragraph's own reading of the
   two states, not a stricter one.
@@ -533,7 +662,9 @@ rule violations anyone could have committed at the time.
   repo's half — the namespaces stay dev-only, and nothing under a production autoload root mints a
   credential from a literal.
 - **A deployed host sets `CACHE_STORE` to a store that PERSISTS between requests — `.env.example`
-  ships `database` — and `array` or `null` is a security regression rather than a tuning choice.**
+  ships `database` — and a store that does not survive the request is a security regression rather than a
+  tuning choice: the `array` driver, and the discard store Laravel selects for ANY value it resolves to
+  null, whatever that line spells.**
   The login path's non-enumerability depends on it: `server/app/Auth/ActiveUserProvider` pays for
   its dummy bcrypt **once per deployment** by keeping it in the cache, so an unknown address and a
   known one with a wrong password cost the same hashing work. On a store that does not survive the
@@ -547,6 +678,30 @@ rule violations anyone could have committed at the time.
   and by `::test_the_dummy_hash_survives_the_request_that_minted_it` — the second is the arm that
   reds when the value stops outliving a request, which is exactly what a non-persistent store does
   to it.
+- **A production host's session cookie is Secure by default, with no `.env` key to set.**
+  `server/config/session.php` resolves `session.secure` to `true` when `APP_ENV` is `production` (or
+  unset, which `config/app.php` also reads as production), and `SESSION_SECURE_COOKIE` overrides it
+  either way. Laravel's own default is null, and on null Symfony's `Response::prepare()` sets the flag
+  only when PHP itself sees the request as HTTPS. Behind a TLS-terminating proxy the app does not
+  trust (the state the trusted-proxies bullet above describes until the host is stood up), or on any
+  request that reaches PHP over plain HTTP, a null default sends the session cookie without the flag,
+  and a browser then returns it over plaintext. Outside production the null default is kept, so a local
+  checkout on `http://localhost:8000` still signs in. A production host served only over plain HTTP
+  sets `SESSION_SECURE_COOKIE=false`, and its browsers then send the session over plaintext; on a host
+  where Apache serves the app directly, the next bullet's redirect sends every such request to HTTPS.
+  `server/tests/Feature/Admin/SessionCookieSecureDefaultTest` holds the default, the override and
+  the resulting cookie on a plain-HTTP request.
+- **The vhost's document root is a symlink to the checkout's `server/public`, so the `.htaccess` Apache
+  reads is the tracked one** (card#9559). On the Virtualmin layout, `~/public_html` → `<checkout>/server/public`
+  as one symlink; a host-specific edit to the served `.htaccess` is an edit to the checkout, which the
+  deploy refuses as a modified tree. `server/public/.htaccess` redirects plain HTTP to HTTPS, on the
+  requested host name, when Apache terminates TLS itself: a request carrying `X-Forwarded-Proto` passes
+  through unredirected, so behind a proxy the proxy owns the scheme and the rule cannot loop. Requests
+  under `/.well-known/acme-challenge/` are served over plain HTTP, so Let's Encrypt's HTTP-01 challenge
+  issues a first certificate on a fresh host before HTTPS exists. Virtualmin writes those challenge
+  files through the symlink into `server/public/.well-known/`, which `server/.gitignore` ignores, so a
+  certificate renewal leaves the tree clean for the next deploy. A direct-Apache host therefore has its
+  certificate before it serves the app.
 - **A deployed host that wants the two-factor reset sets `MAIL_MAILER` to a real transport and
   PROVES it, and a host that does not sets nothing and the path stays closed** (card#9077). The
   operator ruled that a locked-out user may reset their second factor by email; the code path is

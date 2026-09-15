@@ -108,6 +108,17 @@ final class FloorMapFixture
         return max(20, $slots + 2);
     }
 
+    /**
+     * A map written as a PHP array, as `App\Floor\FloorMap` decodes one — objects as `stdClass`
+     * (card#9322). What a floor's `hallway` is when the layout's reader hands it on.
+     *
+     * @param  array<string, mixed>  $map
+     */
+    public static function asDecoded(array $map): \stdClass
+    {
+        return json_decode((string) json_encode($map), false, 512, JSON_THROW_ON_ERROR);
+    }
+
     /** @param array<string, mixed> $map */
     public static function encode(array $map): string
     {

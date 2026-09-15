@@ -55,7 +55,10 @@ class SweepCommand extends Command
             // seat's time-derived transitions — and the consequence is that a pass can succeed
             // overall while some desks silently did not advance. `sweep_last_run_at` cannot say
             // that: it is a liveness timestamp and the pass really did run. This line and the
-            // per-seat `sweep_seat_error` counter are what make it visible instead.
+            // per-seat `sweep_seat_error` counter are what make it visible instead. A seat the pass
+            // YIELDED to another writer is not in this count and not on this line: that is
+            // contention the next pass retries, counted per seat as `sweep_seat_contended`
+            // (card#9466), and `sweep_seat_error` stays the counter for a seat that genuinely threw.
             if ($result->partial()) {
                 $this->error(sprintf(
                     'sweep pass %d: %d of %d seats failed and were skipped — see the log and each '
