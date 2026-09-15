@@ -136,7 +136,15 @@ locality_one() ( # the same subshell contract; `tag` names which check the refus
 )
 
 VALUE_FILE="$WORK/value"
+# ⚠ THE READER IS ALLOWED TO LEAVE EARLY, AND THAT IS NOT AN ERROR HERE. A control in the driver stops at
+# the FIRST dangerous cell and closes this pipe; the rest of the population is then work nobody wants. Where
+# SIGPIPE is DEFAULT that kills this script silently, but a caller may have it IGNORED — GitHub Actions
+# runs a step that way — and an ignored SIGPIPE turns every further write into an EPIPE that bash reports,
+# one line per fixture. Measured: 6119 `write error: Broken pipe` lines on one run, burying the harness's
+# own output. So the whole cell is built first and emitted by ONE printf whose failure is the signal to
+# stop. Only that printf's stderr is dropped: a real error from anything inside the cell still speaks.
 while IFS= read -r DIR; do
   [ -n "$DIR" ] || continue
-  "${MODE}_one"
+  CELL="$("${MODE}_one")"
+  printf '%s\n' "$CELL" 2>/dev/null || break
 done
