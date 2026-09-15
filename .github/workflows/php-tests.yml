@@ -59,9 +59,10 @@
 #   * **The JS half of card#7344.** `server/package.json` declares exactly two scripts, `build`
 #     and `dev`; no JS test framework is installed anywhere in `server/`. A JS *test* lane would
 #     have nothing to run and would be decoration. A `npm ci && npm run build` lane WOULD be
-#     meaningful — but `server/package-lock.json` does not exist and `npm ci` requires one, and
-#     minting a lockfile is a dependency-pinning decision on its own, not a side effect of adding
-#     a test lane. That half of the card stays open.
+#     meaningful, and card#9631 removed the reason it could not be built: `server/package-lock.json`
+#     is committed, so `npm ci` has the file it requires. Building that lane is a card of its own —
+#     this one records only that the dependency on a lockfile is discharged. That half of card#7344
+#     stays open.
 #
 #   * **Any PHP but the one the floor names.** The version is DERIVED from
 #     `server/composer.json`'s `require.php`, by `tools/verify-php-floor.py`, and is not written

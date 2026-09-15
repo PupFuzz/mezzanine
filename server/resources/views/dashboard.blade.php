@@ -121,8 +121,11 @@
 
     {{--
         Native ES modules, no bundler and no `@vite` (§ 1.2 leaves the choice to the implementer).
-        There is no `package-lock.json` in this repository and `npm ci` cannot run, so a build
-        step would be a dependency this slice cannot honestly gate.
+        The reason this slice was written that way — no `package-lock.json`, so `npm ci` could not
+        run and a build step was a dependency it could not honestly gate — ENDED with card#9631,
+        which committed the lockfile. What did not change is this page: moving it onto `@vite`
+        means a built manifest this script tag would then depend on, which is its own card, and a
+        stale reason left standing here would read as one.
     --}}
     <script type="module" src="{{ asset('js/lobby/main.js') }}"></script>
 
