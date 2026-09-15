@@ -24,12 +24,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   MariaDB. It now reads where the `mysql` connection goes, the way Laravel resolves it: a set
   `DB_SOCKET`, or an effective host (`DB_URL`'s host when it names one, else `DB_HOST`, else
   `127.0.0.1`) of `localhost`, `127.0.0.1` or `::1`, is a store on this host, and A5 passes it and
-  prints why. Any other host, and anything A5 cannot parse, still needs the CA. No value from
+  prints why. Any other host, and a `DB_URL` A5 does not follow, still needs the CA. A5 decides from
+  `server/.env` alone; a variable set in the PHP-FPM or process environment, which Laravel prefers, is
+  outside what it reads. Every key A5 reads is refused by name when `.env` writes it in a form other than
+  plain `KEY=value` (an `export` prefix, whitespace around `=`, a `$` outside single quotes, an inline comment, a bare key, or a
+  second definition), because Laravel reads those differently; the refusal prints no value. No value from
   `DB_URL` is printed. A same-host store with the CA set passes with a warning: pdo_mysql then
   requires TLS over the socket too, and a store that offers none refuses every connection
   (measured against the sandbox host's MariaDB). `docs/design/FLEET-STATE.md § 6.1` and
   `docs/PLAN.md` D-15 record the operator's 2026-09-14 ruling, and `bin/deploy.selftest.sh` covers
-  each case. **Installer action:** an install whose store is on the same host may leave
+  each case. **Installer action:** write every key A5 reads (`APP_ENV`, `APP_DEBUG`, `APP_KEY`,
+  `DB_CONNECTION`, `CACHE_STORE`, `MYSQL_ATTR_SSL_CA`, `DB_URL`, `DB_SOCKET`, `DB_HOST`) once, as plain
+  `KEY=value`. An install whose store is on the same host may leave
   `MYSQL_ATTR_SSL_CA` unset, and leaves it unset when that store serves no TLS. An install whose store is on another host keeps it set.
 - **card#9559** — **The app's `.htaccess` now redirects plain HTTP to HTTPS, with the ACME challenge
   exempt.** `server/public/.htaccess` sends a plain-HTTP request to `https://` on the same host name when

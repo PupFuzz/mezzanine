@@ -515,6 +515,48 @@ store_env DB_URL=mysql://u:p@localhost/mezzanine?host=db.internal
 run_refusal "DB_URL whose query sets host, no CA" "its query string sets host or unix_socket" --dry-run
 store_env DB_HOST=db.internal DB_SOCKET=null
 run_refusal "DB_SOCKET=null (Laravel: no socket) over a remote DB_HOST, no CA" "store on another host (DB_HOST is 'db.internal')" --dry-run
+# A `%0A` decodes to a trailing newline, which `$(…)` would strip back to `localhost`. Its twin is the passing
+# `DB_URL host localhost` case above.
+store_env 'DB_URL=mysql://u:p@localhost%0A/mezzanine'
+run_refusal "DB_URL host localhost%0A, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "DB_URL host localhost%0A: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "DB_URL host localhost%0A: no DB password is printed" "$FAKE_PW" "$OUT"
+
+section "A5 — a key in a form env_get does not read exactly as Laravel does is refused by name (card#9561 r1)"
+# Each case is a .env Laravel reads as a store on ANOTHER host (or a non-persistent cache), in a form the old reader
+# took as unset, loopback or a socket. Measured against vlucas/phpdotenv v5.7.0 + Illuminate\Support\Env on
+# 2026-09-14. The refusal names the key and prints no line: a DB_URL line carries the password.
+# The twins that pass: the plain `DB_HOST=db.internal` refusal above says "for a store on another host", not this.
+unread_refused() { # unread_refused <label> <KEY> — after the caller wrote the .env
+  run_refusal "$1" ".env defines $2 in a form this deploy does not read" --dry-run
+  hasnt "$1: no URL credentials are printed" "u:p" "$OUT"
+  hasnt "$1: no DB password is printed" "$FAKE_PW" "$OUT"
+  hasnt "$1: no TLS verdict is reached on a value that was not read" "store on this host" "$OUT"
+}
+store_env 'export DB_HOST=db.internal';                                  unread_refused "export DB_HOST" DB_HOST
+store_env 'DB_HOST = db.internal';                                       unread_refused "whitespace around = in DB_HOST" DB_HOST
+store_env '"DB_HOST"=db.internal';                                       unread_refused "a quoted name DB_HOST" DB_HOST
+store_env DB_HOST=localhost 'export DB_URL=mysql://u:p@db.internal/mezzanine'; unread_refused "export DB_URL over a plain DB_HOST=localhost" DB_URL
+hasnt "export DB_URL: the URL's host is not printed" "db.internal" "$OUT"
+store_env REMOTE=db.internal 'DB_URL=mysql://u:p@${REMOTE}/mezzanine';  unread_refused "\${REMOTE} interpolated into DB_URL" DB_URL
+store_env REMOTE=db.internal 'DB_URL="mysql://u:p@${REMOTE}/mezzanine"'; unread_refused "\${REMOTE} interpolated into a double-quoted DB_URL" DB_URL
+store_env DB_HOST=localhost DB_HOST=db.internal;                         unread_refused "DB_HOST defined twice (local, then remote)" DB_HOST
+store_env DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock 'export DB_SOCKET='; unread_refused "a later export DB_SOCKET= emptying the socket" DB_SOCKET
+store_env DB_HOST=db.internal DB_SOCKET=/run/mysqld/mysqld.sock DB_SOCKET; unread_refused "a later bare DB_SOCKET clearing the socket" DB_SOCKET
+store_env 'DB_HOST=localhost # was db.internal';                         unread_refused "an inline comment on DB_HOST" DB_HOST
+# CACHE_STORE: write_env sets it once, so the case REPLACES that line rather than appending a second one.
+store_env; sed -i 's/^CACHE_STORE=.*/export CACHE_STORE=array/' "$ROOT/server/.env"; unread_refused "export CACHE_STORE=array" CACHE_STORE
+store_env; sed -i 's/^CACHE_STORE=.*/CACHE_STORE=array # per-request/' "$ROOT/server/.env"; unread_refused "CACHE_STORE=array with an inline comment" CACHE_STORE
+store_env; sed -i "s/^CACHE_STORE=.*/CACHE_STORE=\"'array'\"/" "$ROOT/server/.env"; unread_refused "CACHE_STORE doubly quoted (Env::get strips the inner pair)" CACHE_STORE
+# The forms env_get reads keep reading: a quoted value, a comment line naming the key, a `$` inside '…'.
+store_passes "DB_SOCKET double-quoted over a remote DB_HOST, no CA" "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal 'DB_SOCKET="/run/mysqld/mysqld.sock"'
+store_passes "DB_SOCKET single-quoted over a remote DB_HOST, no CA" "store on this host (socket; DB_SOCKET names a Unix socket) — TLS not required" \
+  DB_HOST=db.internal "DB_SOCKET='/run/mysqld/mysqld.sock'"
+store_passes "a commented-out remote DB_HOST above DB_HOST=localhost, no CA" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" \
+  '# DB_HOST=db.internal' '  # export DB_HOST=db.internal' DB_HOST=localhost
+store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA='/etc/ssl/\$certs/ca.crt'"; run --dry-run
+eq  "a \$ inside a single-quoted value is literal to Dotenv, and read: exit 0" 0 "$RC"
 
 section "REFUSAL — a tool the supervision needs is missing (A1)"
 # PATH is rebuilt from every stub and every host binary, minus ONE command. The control is the same
@@ -1378,6 +1420,12 @@ eq  "smoke fails: exit 3 (up, but unverified)"          3 "$RC"
 has "smoke fails: says the app IS serving"              "THE APP IS UP BUT" "$OUT"
 logged "smoke fails: the window WAS closed"             "artisan up"
 eq  "smoke fails: the marker stays, so the next run refuses" "present" "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
+
+mkfix smoke_unread_url; sed -i 's/^APP_URL=/export APP_URL=/' "$ROOT/server/.env"
+run
+eq  "APP_URL in a form env_get does not read: exit 0, as for an unset APP_URL" 0 "$RC"
+has "APP_URL unread: says so, and that the deploy is unverified" "APP_URL is in a form this script does not read" "$OUT"
+unlogged "APP_URL unread: no smoke request was made to a URL that was not read" "curl "
 
 printf '\n──────────────────────────────────────────────\n'
 if [ "$fails" -eq 0 ]; then

@@ -189,14 +189,56 @@ done
 # ⚠ SECRETS. `env_get` RETURNS values; nothing in this script PRINTS one. APP_KEY, DB_PASSWORD and
 # every credential are tested for shape only (`-n`, a prefix), never echoed, never put in an argv
 # and never in an error message — a deploy log is a transcript that outlives the deploy.
+#
+# env_get KEY — prints KEY's value and returns 0; returns 1 when no line defines KEY; returns 2, printing nothing,
+# when a line defining KEY is in a form this reader does not read EXACTLY as Laravel does (vlucas/phpdotenv's
+# Dotenv\Parser, then Illuminate\Support\Env::get). Status 2 is never "unset": a check that took an unread value
+# as absent would pass the value Laravel then uses.
+#
+# The one form read: `KEY=value` on one line, optionally indented, KEY on no other line, the value either
+# unquoted and free of whitespace, quotes, `\`, `#` and `$`, or wholly inside '…', or wholly inside "…" free
+# of `\` and `$`. That is Dotenv\Parser\EntryParser::parseLiteral's form, whose value Dotenv takes verbatim.
+# Every other line Dotenv reads as KEY is status 2, because Laravel reads each one differently:
+#   · `export KEY=`, `KEY = value`, a quoted name — Dotenv strips the prefix, the whitespace and the quotes;
+#   · a `$` unquoted or inside "…" — Dotenv interpolates `${NAME}` (inside '…' a `$` is literal, and read here);
+#   · an inline comment, trailing whitespace, a backslash, an unclosed quote — stripped, unescaped, or multi-line;
+#   · a bare `KEY` with no `=` — Dotenv CLEARS the key;
+#   · KEY on a second line — Dotenv applies every line in order, so the last one wins;
+#   · a value that is itself quoted, `"'value'"` — Env::get strips that second pair of quotes.
+# NOT DETECTED: a `KEY=` line inside ANOTHER key's multi-line "…" value, which Dotenv reads as part of that value.
+#
+# What this reads is `.env` and nothing else. Laravel prefers a variable already in the process environment —
+# a PHP-FPM pool's `env[KEY]`, a daemon's environment — over `.env`, and this script cannot see those.
 env_get() {
-  local key="$1" line
-  line="$(grep -E "^[[:space:]]*${key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)"
-  [ -n "$line" ] || return 1
-  line="${line#*=}"
-  line="${line%\"}"; line="${line#\"}"
-  line="${line%\'}"; line="${line#\'}"
-  printf '%s' "$line"
+  local key="$1" lines value
+  lines="$(grep -E "^[[:space:]]*(export[[:space:]]+)?[\"']?${key}[\"']?[[:space:]]*(=|\$)" "$ENV_FILE" 2>/dev/null || true)"
+  [ -n "$lines" ] || return 1
+  case "$lines" in *$'\n'*) return 2 ;; esac
+  lines="${lines#"${lines%%[![:space:]]*}"}"
+  [ "${lines#"$key="}" != "$lines" ] || return 2
+  value="${lines#"$key="}"
+  local re_plain='^[^[:space:]\'"'"'"#$]*$' re_single="^'[^']*'\$" re_double='^"[^"\$]*"$'
+  if [[ "$value" =~ $re_single || "$value" =~ $re_double ]]; then
+    value="${value:1:${#value}-2}"
+    case "$value" in \'*\' | \"*\") return 2 ;; esac
+  elif ! [[ "$value" =~ $re_plain ]]; then
+    return 2
+  fi
+  printf '%s' "$value"
+}
+
+# env_read VAR KEY — env_get KEY into VAR, in THIS shell: returns 1 with VAR empty when KEY is unset, and REFUSES
+# when env_get cannot read KEY. The refusal names the key and never the line, which may carry a credential.
+env_read() {
+  local _env_value _env_rc=0
+  _env_value="$(env_get "$2")" || _env_rc=$?
+  [ "$_env_rc" -ne 2 ] || refuse ".env defines $2 in a form this deploy does not read, so what Laravel reads for it is not established" \
+    "$ENV_FILE sets $2 with an export prefix, whitespace around =, a quoted name, a \$ outside '…' (Dotenv" \
+    "interpolates \${…}), an inline comment, trailing whitespace, a backslash, a multi-line or doubly-quoted value, a bare" \
+    "$2 with no =, or on more than one line. Write it once, as plain $2=value (the value may be" \
+    "wholly '…'- or \"…\"-quoted)."
+  printf -v "$1" '%s' "$_env_value"
+  return "$_env_rc"
 }
 
 # store_locality — whether the `mysql` connection reaches its store without leaving this host, which is the
@@ -219,30 +261,34 @@ env_get() {
 #     socket (measured 2026-09-14, PHP 8.5.4: `host=localhost` connected to /var/run/mysqld/mysqld.sock);
 #     127.0.0.1 and ::1 are loopback TCP, and `[::1]` is how parse_url returns ::1 out of a URL. Any other
 #     value, an empty one included, is remote.
-# What this cannot establish is REMOTE, so a configuration it does not read is refused, never exempted.
+# It reads `server/.env` only (env_get's closing note): a variable the process environment sets, which Laravel
+# prefers, is not seen. Within `.env`, what this cannot establish is REMOTE: a URL it does not follow counts as
+# another host, and a key env_get cannot read refuses by name, so neither is exempted.
 store_locality() {
   local url host socket from
   host="127.0.0.1"; from="DB_HOST is unset, and server/config/database.php defaults it to 127.0.0.1"
-  url="$(env_get DB_URL || true)"
+  env_read url DB_URL || true
   if [ -n "$url" ]; then
-    # Prints `host <value>` or `none`, and exits 1 on a URL it will not follow.
+    # Prints `host <value>|` or `none|`, and exits 1 on a URL it will not follow. The `|` is stripped and nothing
+    # else is: `$(…)` drops trailing newlines, which would read a host of `localhost%0A` as `localhost`.
     url="$(printf '%s' "$url" | php -r '
       $p = parse_url(stream_get_contents(STDIN));
       if ($p === false) exit(1);
       parse_str($p["query"] ?? "", $q);
       if (array_key_exists("host", $q) || array_key_exists("unix_socket", $q)) exit(1);
-      echo isset($p["host"]) ? "host " . rawurldecode($p["host"]) : "none";' 2>/dev/null)" || {
+      echo isset($p["host"]) ? "host " . rawurldecode($p["host"]) . "|" : "none|";' 2>/dev/null)" || {
       STORE_LOCALITY=remote
       STORE_WHY="DB_URL does not parse, or its query string sets host or unix_socket, so this host is not established"
       return 0; }
+    url="${url%|}"
   fi
-  socket="$(env_get DB_SOCKET || true)"
+  env_read socket DB_SOCKET || true
   if [ "${socket:0:1}" = "/" ]; then
     STORE_LOCALITY=socket; STORE_WHY="DB_SOCKET names a Unix socket"; return 0
   fi
   if [ "${url%% *}" = "host" ]; then
     host="${url#host }"; from=""
-  elif host="$(env_get DB_HOST)"; then
+  elif env_read host DB_HOST; then
     from="DB_HOST is '$host'"
   else
     host="127.0.0.1"
@@ -740,7 +786,9 @@ phase_a() {
     "$(printf '%s' "$dirty" | sed 's/^/  | /')" \
     "Prod moves only by this script (D-13). Nothing may be edited on the host."
 
-  # A5 — the environment file. Shape only; no value is printed.
+  # A5 — the environment file. No secret value is printed: a line below prints a key's value only for a
+  # non-secret key, and APP_KEY, DB_URL and every credential are tested for shape only. Every key is read
+  # through env_read, so a line it cannot read exactly as Laravel does refuses here by name.
   [ -f "$ENV_FILE" ] || refuse "$ENV_FILE does not exist" \
     "It is created once when the host is stood up: copy server/.env.example, fill it in," \
     "and run \`php artisan key:generate\` there (docs/PLAN.md § 5)."
@@ -749,19 +797,19 @@ phase_a() {
     "chmod 640 $ENV_FILE"
 
   local app_env app_debug app_key db_conn ssl_ca
-  app_env="$(env_get APP_ENV || true)"
+  env_read app_env APP_ENV || true
   [ "$app_env" = "production" ] || refuse "APP_ENV is '${app_env:-unset}', not 'production'" \
     "This script deploys PROD. Pointing it at a sandbox checkout is how the two instances" \
     "(D-13) become one."
-  app_debug="$(env_get APP_DEBUG || true)"
+  env_read app_debug APP_DEBUG || true
   [ "$app_debug" = "false" ] || refuse "APP_DEBUG is '${app_debug:-unset}', not 'false'" \
     "Debug mode renders stack traces — including environment values — to any visitor."
-  app_key="$(env_get APP_KEY || true)"
+  env_read app_key APP_KEY || true
   [ -n "$app_key" ] || refuse "APP_KEY is empty" \
     "server/.env.example ships it empty deliberately; it is minted per host with" \
     "\`php artisan key:generate\` (docs/PLAN.md § 5). Minting one HERE would silently" \
     "invalidate every existing session and encrypted column."
-  db_conn="$(env_get DB_CONNECTION || true)"
+  env_read db_conn DB_CONNECTION || true
   # ⚠ 'mysql' HERE IS THE LARAVEL CONNECTION NAME (server/config/database.php), NOT THE SERVER
   # PRODUCT. D-15's 2026-09-09 amendment repinned the product to MariaDB; the app is still
   # wired to the `mysql` connection — Tests\TestCase and § 6.2's pin guard both key on
@@ -782,7 +830,7 @@ phase_a() {
   # against one — and the timing gap is a user-enumeration oracle on an endpoint whose rate limiter
   # keys on email+IP and so does not throttle probing N addresses from one IP at all. UNSET is fine
   # and is not checked: config/cache.php's own default is 'database'.
-  local cache_store; cache_store="$(env_get CACHE_STORE || true)"
+  local cache_store; env_read cache_store CACHE_STORE || true
   case "$cache_store" in
     array|null) refuse "CACHE_STORE is '$cache_store', which does not survive a request" \
       "docs/PLAN.md § 5: the login path's non-enumerability depends on the dummy bcrypt" \
@@ -798,7 +846,7 @@ phase_a() {
   # so a MariaDB that offers none refuses every connection the release makes. Measured 2026-09-14 with
   # PHP 8.5.4 against the sandbox host's MariaDB and a non-existent account: over the socket the connection
   # reached authentication without a CA, and failed "[2002] Cannot connect to MySQL using SSL" with one.
-  ssl_ca="$(env_get MYSQL_ATTR_SSL_CA || true)"
+  env_read ssl_ca MYSQL_ATTR_SSL_CA || true
   store_locality
   if [ "$STORE_LOCALITY" = remote ]; then
     [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset for a store on another host ($STORE_WHY)" \
@@ -806,9 +854,9 @@ phase_a() {
       "plaintext fallback — the credential and every descriptor cross a network between hosts." \
       "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST localhost, 127.0.0.1 or ::1."
   elif [ -z "$ssl_ca" ]; then
-    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — TLS not required, FLEET-STATE.md § 6.1"
+    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — TLS not required, FLEET-STATE.md § 6.1 (decided from .env; a variable set in the PHP-FPM or process environment is not seen)"
   else
-    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — MYSQL_ATTR_SSL_CA is set, though not required, FLEET-STATE.md § 6.1"
+    say "  ok — store on this host ($STORE_LOCALITY; $STORE_WHY) — MYSQL_ATTR_SSL_CA is set, though not required, FLEET-STATE.md § 6.1 (decided from .env; a variable set in the PHP-FPM or process environment is not seen)"
     warn "MYSQL_ATTR_SSL_CA is set for a store on this host: pdo_mysql then requires TLS to it, over the socket too," \
       "and a MariaDB that offers no TLS refuses every connection. Leave it unset unless this store serves TLS."
   fi
@@ -1515,9 +1563,13 @@ phase_b_post_checkout() {
   # taking traffic. It is still not a success: exit 3, and the marker stays, so the next run
   # refuses and an operator has to look. `/up` is Laravel's health route (server/bootstrap/app.php
   # `health: '/up'`); it needs no credential and it is the one endpoint that answers before MFA.
-  local url code
-  url="$(env_get APP_URL || true)"
-  if [ -z "$url" ]; then
+  # APP_URL is read with env_get rather than env_read: a refusal promises nothing was changed, and here the new
+  # release is already serving. A value env_get cannot read gets the unset case's warning, named.
+  local url code url_rc=0
+  url="$(env_get APP_URL)" || url_rc=$?
+  if [ "$url_rc" -eq 2 ]; then
+    warn "APP_URL is in a form this script does not read (env_get, bin/deploy.sh) — no smoke check was made. The deploy is UNVERIFIED."
+  elif [ -z "$url" ]; then
     warn "APP_URL is unset — no smoke check was made. The deploy is UNVERIFIED."
   else
     step "Smoke: GET $url/up"

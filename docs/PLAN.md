@@ -165,8 +165,10 @@ its date, its decider and the scope of what it moved. The original row above sta
   `.env` set no `MYSQL_ATTR_SSL_CA`, which refused production's local store. **What moves:** the store may
   be on the application's own host, and production's is. A store reached over its Unix socket or over
   loopback crosses no network, and TLS is not required for it; a store on another host still requires TLS
-  with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split, and
-  counts as another host whatever it cannot read. **Why:** the requirement was always a consequence of the
+  with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
+  `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
+  not read exactly as Laravel does is refused by name, and a variable set in the process environment (a
+  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. **Why:** the requirement was always a consequence of the
   network hop, and on one host there is none. **What does NOT move:** the engine,
   [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the `mysql` connection name,
   § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
@@ -477,8 +479,8 @@ rule violations anyone could have committed at the time.
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
-  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, TLS-less, a
-  non-persistent `CACHE_STORE`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
+  non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
