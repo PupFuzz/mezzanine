@@ -255,10 +255,3 @@ main() {
 }
 
 main "$@"
-
-# SYNTHETIC FINDING — injected ONLY to show this lane red on a new finding, on the surface it will
-# actually guard. The very next commit removes it. Nothing calls it.
-synthetic_probe() {
-  local path="$1"
-  echo $path
-}
