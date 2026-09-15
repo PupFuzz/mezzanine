@@ -1,0 +1,59 @@
+# deploy-gate-inputs.yml — does THIS repository satisfy bin/deploy.sh's own phase-A gates? card#9637
+#
+# WHAT IT DOES. Runs `bin/deploy-gate-inputs.sh` over the commit under test: it derives, from that
+# commit's OWN `bin/deploy.sh`, every path phase A reads out of the target release, and checks the
+# repository's tree carries the ones an absent copy makes the deploy REFUSE on. It deploys nothing,
+# reaches no host, opens no `.env` and needs no credential — git and bash over the object database.
+#
+# WHY IT EXISTS. `bin/deploy.sh`'s A12 required `server/package-lock.json`, a file this repository
+# had never contained, so every real deploy refused at phase A from the day that gate landed — and
+# kept refusing through three fix rounds and four adversarial reviews of the script. `deploy-selftest`
+# was green the whole time and structurally had to be: it runs the gates against FIXTURE repositories
+# and its fixtures mint a lockfile, so it proves the gate behaves correctly given a well-formed
+# release and says nothing about whether this repo IS one. The suite's fixtures were more complete
+# than the repository. Nothing else in CI ever put the deploy's demands and this tree in the same
+# room. That is the gap this lane closes.
+#
+# SCOPE, STATED HERE SO A GREEN IS NOT READ AS MORE THAN IT IS. This lane checks the PRESENCE
+# population — the files phase A reads out of the target tree. It does not evaluate the gates'
+# content predicates (A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's
+# crontab render), which are inline in `phase_a` — a single straight-line function reachable only by
+# running the whole script, which refuses at A5 without a production `server/.env`. The script's own
+# output names every excluded gate and every uncovered predicate on each run, so the log says what
+# was and was not measured rather than this comment being the only place it is written.
+#
+# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: it is a second of
+# bash, and a path-filtered workflow produces NO RUN, which reads as *pending* rather than *passed*
+# for a required check. Filtering on `bin/deploy*` would also be wrong in both directions: a PR that
+# deletes `server/composer.json` and touches no `bin/` file is exactly what this must catch.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
+# list is a repository-settings fact that no file in the checkout can verify, and copies of it in
+# workflow headers have already gone stale in this repo (card#9054), in the direction that tells a
+# reviewer to ignore a red. `docs/VERSIONING.md § Branch model` is its one home and carries the
+# command that re-derives it from the API.
+
+name: Deploy gate inputs
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-gate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      # Depth 1 is enough and is the default: the check reads bin/deploy.sh and the tree AT the
+      # commit under test, and asks git nothing about that commit's history.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # `bash` explicitly rather than relying on the executable bit surviving a checkout: the check
+      # is the evidence, so it must fail on its own finding and never on a file mode.
+      - name: Does this repository satisfy bin/deploy.sh phase A?
+        run: bash bin/deploy-gate-inputs.sh --ref HEAD
