@@ -58,3 +58,64 @@ jobs:
       # suite is the evidence, so it must fail on its own assertions and never on a file mode.
       - name: Self-test (every refusal exercised against the real script)
         run: bash bin/deploy.selftest.sh
+
+  # ── the mirror, held against the parser it mirrors ──────────────────────────────────────────────────
+  # `bin/deploy.sh` re-implements, in bash, the part of vlucas/phpdotenv that decides where a `.env` line
+  # ENDS, whether a line is a SETTING and what the app then RECEIVES for it — because at phase A it cannot
+  # ask PHP (the config cache is stale by construction and the host may have no working app). Every one of
+  # those is a claim about somebody else's code, and card#9561 round 4 is what a false one costs: a lone
+  # `\r` made a `.env` two lines to Dotenv and one to the reader that decides, so Laravel went to a remote
+  # store in plaintext while A5 read DB_HOST as unset and exempted the store from TLS. `bin/env-mirror-diff.sh`
+  # is the differential that found it, landed — so a phpdotenv upgrade that moves the parser out from under
+  # the mirror reds HERE, on a PR, instead of inside a maintenance window.
+  #
+  # A SEPARATE JOB, not a step of the one above, for two reasons. It is the only thing in this workflow
+  # that needs PHP and an installed `server/vendor/`, and a `composer install` in front of `deploy.selftest.sh`
+  # would make the fast lane wait on it. And GitHub runs the two in PARALLEL, so what this adds to a PR's
+  # critical path is nothing while it finishes inside the self-test above.
+  #
+  # `server/vendor/` IS THE ORACLE, so it is installed from the committed lock rather than stubbed: a
+  # re-implementation of phpdotenv here would be a second copy of the very thing under test. The floor is
+  # DERIVED from `server/composer.json` by the same tool `php-tests.yml` uses (card#9203 is what a retyped
+  # copy of it cost), and `pdo_mysql` is load-bearing rather than incidental — without the driver
+  # `server/config/database.php` builds no `options` array at all, the CA axis reports "no CA" for every
+  # fixture and agrees with anything. The harness refuses to run rather than report that.
+  env-mirror-differential:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Derive the PHP floor from server/composer.json, and check it against the lock
+        id: php-floor
+        run: python3 tools/verify-php-floor.py --github-output
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
+        with:
+          php-version: ${{ steps.php-floor.outputs.minor }}
+          extensions: pdo_mysql
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate composer's download cache
+        id: composer-cache
+        working-directory: server
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore composer's download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ steps.php-floor.outputs.minor }}-${{ hashFiles('server/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ steps.php-floor.outputs.minor }}-
+
+      # `install`, never `update`: the lock is the authority, and the parser this compares against must be
+      # the one a deploy would actually put on the host. `--no-dev` because nothing here needs a dev tool.
+      - name: Install server/'s dependencies — this vendor tree is the oracle
+        working-directory: server
+        run: composer install --no-interaction --prefer-dist --no-progress --no-dev
+
+      # No `.env` is created and none is read: every fixture is written into the harness's own temp dir.
+      - name: The mirror agrees with the parser, and every control reds when mutated
+        run: bash bin/env-mirror-diff.sh

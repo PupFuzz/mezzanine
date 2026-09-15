@@ -19,6 +19,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9591** — **the differential that found card#9561's round-4 blocker is now a committed test, run on
+  every PR.** `bin/deploy.sh` cannot ask PHP what `server/.env` means at phase A — the config cache is stale
+  by construction and the host may have no working app — so it mirrors, in bash, the part of
+  vlucas/phpdotenv that decides where a line ENDS, whether a line is a SETTING, and what the app then
+  RECEIVES for it. Every one of those is a claim about somebody else's code, and a false one already cost a
+  BLOCKER: a lone `\r` made a `.env` two lines to `Dotenv\Parser\Parser` and one to the reader that decides,
+  so Laravel connected to a remote store in plaintext while A5 read `DB_HOST` as unset and exempted the
+  store from TLS. That was found by a differential built in a scratchpad and thrown away — four review
+  rounds running, four rebuilds of the same harness. **`bin/env-mirror-diff.sh` + `bin/env-mirror-diff.mirror.sh`
+  + `bin/env-mirror-diff.oracle.php`** are that harness, landed as a second job in the existing
+  `deploy-selftest` lane (parallel with the self-test, so it adds nothing to a PR's critical path while it
+  finishes inside it). Two differentials: the **scan** (`env_file_scan` / `env_lines_load` / `env_get`
+  against the vendored parser — does phpdotenv parse the file at all, and does the script read each key to
+  the same value it holds) and the **locality** (A5's store verdict against where `server/config/database.php`,
+  `ConfigurationUrlParser` and `MySqlConnector::getDsn()` actually send the app, and against the cache driver
+  `server/config/cache.php` resolves). **Nothing in it is a re-implementation** — `server/vendor/` is the
+  oracle, installed from the committed lock with the same `--no-dev` a deploy uses, and the mirror side runs
+  `bin/deploy.sh`'s own text, extracted at run time. **The population is derived on every run and never
+  written down**: the line-ending axis is read out of `Parser::parse`'s own split regex (a phpdotenv release
+  that adds a terminator adds cells), the keys compared are read out of `bin/deploy.sh`'s own `env_read`
+  call sites (a script that starts reading a new key covers it with no edit here), and the cell count is
+  counted as the run emits cells and printed — a recorded count would be a quoted authority that outlives
+  the run that falsified it. **Every differential carries a control seen to fail**: after the clean run the
+  harness mutates a *copy* of `bin/deploy.sh` — the `\n`-only splitter that was the blocker, a scan that
+  certifies everything, the NUL refusal cut out, a CA judged by its text rather than the value the app
+  receives, a `store_locality` blind to `DB_URL`, any `DB_SOCKET` text taken for a socket — and **fails
+  unless each one reds the differential**, naming the cell. The oracle carries one too: it runs the whole
+  population in one process, so it re-runs it in reverse and requires every cell to answer identically, with
+  a deliberately leaky variant proving that check discriminates. `bin/deploy.sh` is read and **not changed**
+  by this card.
+
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
   unconditionally when it is absent; the file had never been committed, at `dev`, at `main` or at
