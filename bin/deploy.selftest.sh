@@ -412,6 +412,7 @@ eq  "control: exit 0"                       0 "$RC"
 has "control: the § 6.9 migration gate ran and passed" "no undeclared ALTER" "$OUT"
 has "control: prints the plan"              "DRY RUN" "$OUT"
 hasnt "control: no config drift on a host whose .env covers .env.example" "does not set:" "$OUT"
+hasnt "control: no key of .env.example is written in a form this deploy cannot read" "in a form this deploy does not read, so whether" "$OUT"
 has "control: the release's crontab block is what is installed" "is what is installed; the window rewrites it unchanged" "$OUT"
 has "control: the release keeps the daemons' lock files where the serving release's are" "keeps the daemons' lock files at $ROOT/server/" "$OUT"
 has "control: PHP-FPM is not reloaded, and the posture that makes that safe was read" "php-fpm  not reloaded — opcache revalidates a changed file within 0 s" "$OUT"
@@ -457,6 +458,28 @@ run_refusal "APP_ENV=local" "APP_ENV is 'local'" --dry-run
 
 mkfix debug_on; sed -i 's/^APP_DEBUG=.*/APP_DEBUG=true/' "$ROOT/server/.env"
 run_refusal "APP_DEBUG=true" "APP_DEBUG is 'true'" --dry-run
+
+# card#9561 r3 MINOR 1. APP_DEBUG was the one A5 check still comparing the TEXT. Env::get lowercases before
+# the app sees it and `server/config/app.php` is `(bool) env('APP_DEBUG', false)`, so FALSE, False, (false)
+# and (FALSE) each reach the app as debug OFF — a correct production config that A5 refused. The twin, one
+# variable away, is `APP_DEBUG=true` above, still refused; with the rule reverted to `= "false"` every case
+# below reds at the EXIT level (measured 2026-09-15 against server/vendor's Illuminate\Support\Env).
+mkfix debug_literals
+debug_is() { # debug_is <text> <expected exit>
+  sed -i "s/^APP_DEBUG=.*/APP_DEBUG=$1/" "$ROOT/server/.env"; run --dry-run
+  eq "APP_DEBUG=$1: exit $2" "$2" "$RC"
+}
+debug_is FALSE 0
+debug_is False 0
+debug_is '(false)' 0
+debug_is '(FALSE)' 0
+# `off` is a non-empty string, which PHP reads as TRUE — debug ON, and refused. `0` and `null` ARE cast to
+# false, and are refused too: a production host says debug is off rather than resolving to it.
+debug_is off 1
+debug_is 0 1
+debug_is null 1
+sed -i 's/^APP_DEBUG=.*/APP_DEBUG=off/' "$ROOT/server/.env"; run --dry-run
+has "APP_DEBUG=off: names the value and what is wanted" "APP_DEBUG is 'off', not 'false'" "$OUT"
 
 mkfix no_key; sed -i 's/^APP_KEY=.*/APP_KEY=/' "$ROOT/server/.env"
 run_refusal "empty APP_KEY" "APP_KEY is empty" --dry-run
@@ -521,6 +544,20 @@ store_env 'DB_URL=mysql://u:p@localhost%0A/mezzanine'
 run_refusal "DB_URL host localhost%0A, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
 hasnt "DB_URL host localhost%0A: the URL's credentials are not printed" "u:p" "$OUT"
 hasnt "DB_URL host localhost%0A: no DB password is printed" "$FAKE_PW" "$OUT"
+# card#9561 r3 MAJOR, the same defect one byte later: a `%00` decodes to a NUL, which `$( )` does not strip
+# but DELETES, so a host read back through one was `localhost` — this store certified as loopback, exit 0,
+# no CA, while pdo_mysql takes the DSN's host as a C string and resolves `local` over the network. The host
+# is judged inside the `php` that parsed the URL now, and a TOKEN crosses back. Same twin as above.
+store_env 'DB_URL=mysql://u:p@local%00host/mezzanine'
+run_refusal "DB_URL host local%00host, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "DB_URL host local%00host: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "DB_URL host local%00host: no DB password is printed" "$FAKE_PW" "$OUT"
+# A percent-encoding that decodes to a name that IS loopback is still loopback: the decode is Laravel's own
+# (ConfigurationUrlParser rawurldecodes every component), so this is not a narrowing, and it is the control
+# that says the refusals above are about the decoded BYTES and not about the `%`.
+store_passes "DB_URL host %6cocalhost (decodes to localhost), no CA" \
+  "store on this host (loopback; DB_URL names a loopback host) — TLS not required" \
+  'DB_URL=mysql://u:p@%6cocalhost/mezzanine'
 
 section "A5 — a key in a form env_get does not read exactly as Laravel does is refused by name (card#9561 r1)"
 # Each case is a .env Laravel reads as a store on ANOTHER host (or a non-persistent cache), in a form the old reader
@@ -670,6 +707,27 @@ scan_refused "a name Dotenv rejects" "a name outside [A-Za-z0-9_.]"
 # earlier (Dotenv rejects an unterminated '…'), which is why that guard is gone rather than covered.
 store_env "DB_HOST='a" "DB_HOST=b'"
 scan_refused "a duplicate key split across an unterminated quote" "a missing closing quote"
+# card#9561 r3 MINOR 4. THE shape where the multi-line rule is the only refuser: a `="` inside an otherwise
+# valid UNQUOTED value. phpdotenv ACCEPTS this file and yields only APP_ENV and DB_HOST — the fold swallows
+# DB_SOCKET and is discarded at EOF with no exception — so Laravel goes to db.internal over TCP with no CA,
+# while a line-at-a-time reader sees the socket and exempts the store. Every other fixture in this section
+# is ALSO refused by the value transducer, so with the multi-line rule reverted only this one moves the
+# EXIT code (measured 2026-09-15 against server/vendor's phpdotenv v5.7.0, both halves).
+store_env DB_HOST=db.internal 'NOTE=a="b' DB_SOCKET=/run/mysqld/mysqld.sock
+scan_refused "an unquoted value carrying =\" swallows the DB_SOCKET line below it" 'opens a "…" value that its own line does not close'
+# card#9561 r3 MINOR 3. A NUL byte blinds every reader in this script: bash's `read` stops at the first one,
+# so no line below it is scanned, and `grep` matches nothing in a file carrying one, so every key comes back
+# "unset". The deploy stopped anyway — on APP_ENV, naming a cause that was not the real one, which is the
+# failure r2's `tr` control exists to prevent. phpdotenv reads the NUL as a character like any other and
+# Laravel boots on this file (measured 2026-09-15: the parser yields all four keys, NOTE with the NUL in it).
+store_env DB_HOST=127.0.0.1; printf 'NOTE=a\0b\n' >> "$ROOT/server/.env"
+scan_refused "a NUL byte in .env" "carries a NUL byte"
+has   "a NUL byte in .env: names the line it is on" "line $(wc -l < "$ROOT/server/.env") carries a NUL byte" "$OUT"
+hasnt "a NUL byte in .env: does not name the wrong cause (every key read as unset)" "APP_ENV is 'unset'" "$OUT"
+# The twin, one byte away: the same file with a printable character in place of the NUL is read normally.
+store_env DB_HOST=127.0.0.1; printf 'NOTE=aXb\n' >> "$ROOT/server/.env"
+run --dry-run
+eq  "the same .env with no NUL: exit 0" 0 "$RC"
 # The twins: every form Dotenv DOES parse passes the scan — including the ones env_get then refuses BY
 # NAME, which is a different refusal, and including a `#` before a `="` (Dotenv's own comment rule).
 store_passes "interpolation, an export prefix, an inline comment, a spaced = and a bare key all parse" \
@@ -1033,6 +1091,19 @@ mkfix env_drift_case env_drift
 run --dry-run
 eq  "config drift: still deploys (a warning, not a refusal)" 0 "$RC"
 has "config drift: names the key the host does not set" "does not set: NEW_FEATURE_TOKEN" "$OUT"
+# card#9561 r3 MINOR 2. A10b was the last reader judging a `.env` line by a hand-rolled `^[[:space:]]*KEY=`
+# grep — the pre-r1 one — so a key written `export KEY=…` or `"KEY"=…`, both of which ARE that key to
+# Dotenv, was reported as one this host does not set. It asks env_get now, whose third answer it keeps
+# apart: a key written in a form this deploy does not read is not established either way, and telling the
+# operator to add a line that is already there is the wrong instruction. DB_PASSWORD is used because A5
+# never reads it, so the run reaches A10b (a key A5 reads would refuse by name before this point).
+sed -i "s/^DB_PASSWORD=/export DB_PASSWORD=/" "$ROOT/server/.env"
+run --dry-run
+eq    "a key written \`export KEY=\`: still deploys (a warning, not a refusal)" 0 "$RC"
+has   "a key written \`export KEY=\`: reported as written in a form this deploy does not read" \
+      "does not read, so whether the release's default or the host's value is in force is not established: DB_PASSWORD" "$OUT"
+hasnt "a key written \`export KEY=\`: NOT reported as a key the host does not set" "does not set: DB_PASSWORD" "$OUT"
+hasnt "a key written \`export KEY=\`: no DB password is printed" "$FAKE_PW" "$OUT"
 
 no_lockfile() { rm -f "$1/server/package-lock.json"; }
 mkfix no_lock no_lockfile

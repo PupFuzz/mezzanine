@@ -33,8 +33,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   a `KEY="` value that its line does not close swallows the lines below it (a `DB_SOCKET=` line inside one is
   never defined, and a value nothing closes is discarded with everything it swallowed), and one line the
   parser rejects fails the WHOLE file, so Laravel reads nothing from it and every request dies at boot. Both
-  were certified as readable before; the refusal names the line's NUMBER and never its text. Every A5 check
-  now decides on the value the app RECEIVES rather than the text of the line. A CA is UNSET whenever Laravel
+  were certified as readable before; the refusal names the line's NUMBER and never its text. A `.env` carrying
+  a NUL byte is refused too, and for the opposite reason: Laravel reads it and boots, while nothing in this
+  script can — `bash` stops at the first NUL and `grep` matches nothing in a file that has one, so every key
+  came back "unset" and the deploy stopped on `APP_ENV`, naming a cause that was not the real one.
+  Every A5 check whose answer could differ decides on the value the app RECEIVES rather than the text of the
+  line — `APP_DEBUG=FALSE`, `False` and `(false)` are each debug OFF to Laravel and now pass, where the text
+  compare refused them. Where A5 still compares text (`APP_ENV`, `DB_CONNECTION`, a `/`-prefixed `DB_SOCKET`,
+  the loopback host names) no text it ACCEPTS resolves to another value, and a text that does — `DB_HOST=null`
+  is a host of null — falls on the refusing side. Which host a `DB_URL` names is decided inside the `php` that
+  parses the URL, and only its verdict is read back: a host carrying a `%00` was read as `localhost` when the
+  host itself crossed that boundary, because a command substitution deletes NUL bytes — a store on another
+  host, certified as this one and deployed with no TLS. A CA is UNSET whenever Laravel
   resolves it to a value PHP treats as false — `server/config/database.php` wraps the option in
   `array_filter`, which drops every falsy value, so such a line is a connection with no TLS at all, and a
   store on another host carrying one is refused; `bin/deploy.sh`'s `env_app_falsy` states which values those
@@ -50,7 +60,12 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `KEY=value`, and write a key that has no value by leaving it empty (`MYSQL_ATTR_SSL_CA=`) rather than as
   `null` or any other value Laravel resolves to a falsy one. Keep every value on the line that opens it: a
   `"` that its own line does not close now refuses the deploy, and so does any line phpdotenv cannot parse,
-  whichever key it belongs to. An install whose store is on the same host may leave
+  and so does a NUL byte anywhere in the file, whichever key it belongs to. `APP_DEBUG` must SAY off —
+  `false` in any capitalisation, or `(false)`; `0`, `null` and an empty value are refused even though PHP
+  casts them to false. The warning about keys `.env.example` names and this host's `.env` does not is asked
+  through the same reader as every other check now, so a key written `export KEY=…` or `"KEY"=…` — which IS
+  that key to Laravel — is no longer reported as one the host does not set; it is reported as one whose
+  value is not established, which is a different instruction. An install whose store is on the same host may leave
   `MYSQL_ATTR_SSL_CA` unset, and leaves it unset when that store serves no TLS. An install whose store is on another host keeps it set.
 - **card#9559** — **The app's `.htaccess` now redirects plain HTTP to HTTPS, with the ACME challenge
   exempt.** `server/public/.htaccess` sends a plain-HTTP request to `https://` on the same host name when

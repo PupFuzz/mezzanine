@@ -168,11 +168,15 @@ its date, its decider and the scope of what it moved. The original row above sta
   with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
   `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
   not read exactly as Laravel does is refused by name, a `.env` Laravel's own parser does not read as the
-  lines it is written in is refused before any key is read, and a variable set in the process environment (a
-  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every one
-  of its verdicts is on the value the app RECEIVES, never on the text of the line — a CA Laravel resolves to
-  a value PHP treats as false is UNSET, because `server/config/database.php`'s `array_filter` drops it
-  (`bin/deploy.sh`'s `env_app_falsy` states which values those are). **Why:** the requirement was always a consequence of the
+  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can —
+  is refused before any key is read, and a variable set in the process environment (a
+  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every
+  verdict whose answer could differ is on the value the app RECEIVES rather than the text of the line — a CA
+  Laravel resolves to a value PHP treats as false is UNSET, because `server/config/database.php`'s
+  `array_filter` drops it (`bin/deploy.sh`'s `env_app_falsy` states which values those are) — and where it
+  does compare text (`APP_ENV`, `DB_CONNECTION`, a `/`-prefixed `DB_SOCKET`, the loopback host names), no
+  text it ACCEPTS resolves to another value. Which host a `DB_URL` names is decided inside the `php` that
+  parses it, so no byte of a URL is ever judged after a shell has had a chance to eat one. **Why:** the requirement was always a consequence of the
   network hop, and on one host there is none. **What does NOT move:** the engine,
   [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the `mysql` connection name,
   § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
@@ -485,7 +489,7 @@ rule violations anyone could have committed at the time.
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
-  own parser does not read as the lines it is written in), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
