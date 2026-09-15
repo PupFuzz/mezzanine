@@ -28,11 +28,19 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `server/.env` alone; a variable set in the PHP-FPM or process environment, which Laravel prefers, is
   outside what it reads. Every key A5 reads is refused by name when `.env` writes it in a form other than
   plain `KEY=value` (an `export` prefix, whitespace around `=`, a `$` outside single quotes, an inline comment, a bare key, or a
-  second definition), because Laravel reads those differently; the refusal prints no value. A CA written as
-  Laravel's own `null`, `false` or `empty` literal counts as UNSET, so a store on another host carrying one is
-  refused: `Illuminate\Support\Env::get` turns each of them into a falsy PHP value and
-  `server/config/database.php`'s `array_filter` then drops the option, which is a connection with no TLS at
-  all. An `APP_KEY` written as one of those literals is no key, and is refused the way an empty one is. No
+  second definition), because Laravel reads those differently; the refusal prints no value. A5 also refuses,
+  before it reads any key, a `.env` that Laravel's own parser does not read as the lines it is written in:
+  a `KEY="` value that its line does not close swallows the lines below it (a `DB_SOCKET=` line inside one is
+  never defined, and a value nothing closes is discarded with everything it swallowed), and one line the
+  parser rejects fails the WHOLE file, so Laravel reads nothing from it and every request dies at boot. Both
+  were certified as readable before; the refusal names the line's NUMBER and never its text. Every A5 check
+  now decides on the value the app RECEIVES rather than the text of the line. A CA is UNSET whenever Laravel
+  resolves it to a value PHP treats as false — `server/config/database.php` wraps the option in
+  `array_filter`, which drops every falsy value, so such a line is a connection with no TLS at all, and a
+  store on another host carrying one is refused; `bin/deploy.sh`'s `env_app_falsy` states which values those
+  are. An `APP_KEY` the app receives as a falsy value is no key, and is refused the way an empty one is. A
+  `CACHE_STORE` the app receives as PHP null is the DISCARD store, which keeps nothing — the login path's
+  user-enumeration oracle — and is refused beside `array`. No
   value from `DB_URL` is printed. A same-host store with the CA set passes with a warning: pdo_mysql then
   requires TLS over the socket too, and a store that offers none refuses every connection
   (measured against the sandbox host's MariaDB). `docs/design/FLEET-STATE.md § 6.1` and
@@ -40,7 +48,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   each case. **Installer action:** write every key A5 reads (`APP_ENV`, `APP_DEBUG`, `APP_KEY`,
   `DB_CONNECTION`, `CACHE_STORE`, `MYSQL_ATTR_SSL_CA`, `DB_URL`, `DB_SOCKET`, `DB_HOST`) once, as plain
   `KEY=value`, and write a key that has no value by leaving it empty (`MYSQL_ATTR_SSL_CA=`) rather than as
-  `null`. An install whose store is on the same host may leave
+  `null` or any other value Laravel resolves to a falsy one. Keep every value on the line that opens it: a
+  `"` that its own line does not close now refuses the deploy, and so does any line phpdotenv cannot parse,
+  whichever key it belongs to. An install whose store is on the same host may leave
   `MYSQL_ATTR_SSL_CA` unset, and leaves it unset when that store serves no TLS. An install whose store is on another host keeps it set.
 - **card#9559** — **The app's `.htaccess` now redirects plain HTTP to HTTPS, with the ACME challenge
   exempt.** `server/public/.htaccess` sends a plain-HTTP request to `https://` on the same host name when

@@ -167,8 +167,12 @@ its date, its decider and the scope of what it moved. The original row above sta
   loopback crosses no network, and TLS is not required for it; a store on another host still requires TLS
   with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
   `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
-  not read exactly as Laravel does is refused by name, and a variable set in the process environment (a
-  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. **Why:** the requirement was always a consequence of the
+  not read exactly as Laravel does is refused by name, a `.env` Laravel's own parser does not read as the
+  lines it is written in is refused before any key is read, and a variable set in the process environment (a
+  PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every one
+  of its verdicts is on the value the app RECEIVES, never on the text of the line — a CA Laravel resolves to
+  a value PHP treats as false is UNSET, because `server/config/database.php`'s `array_filter` drops it
+  (`bin/deploy.sh`'s `env_app_falsy` states which values those are). **Why:** the requirement was always a consequence of the
   network hop, and on one host there is none. **What does NOT move:** the engine,
   [`§ 6.1`](design/FLEET-STATE.md#61-deployment-posture)'s version floor, the `mysql` connection name,
   § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
@@ -480,7 +484,8 @@ rule violations anyone could have committed at the time.
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
   an unreviewed failure marker, a modified prod tree, `.env` (missing, world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
-  non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
+  non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
+  own parser does not read as the lines it is written in), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
   same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
@@ -640,7 +645,9 @@ rule violations anyone could have committed at the time.
   repo's half — the namespaces stay dev-only, and nothing under a production autoload root mints a
   credential from a literal.
 - **A deployed host sets `CACHE_STORE` to a store that PERSISTS between requests — `.env.example`
-  ships `database` — and `array` or `null` is a security regression rather than a tuning choice.**
+  ships `database` — and a store that does not survive the request is a security regression rather than a
+  tuning choice: the `array` driver, and the discard store Laravel selects for ANY value it resolves to
+  null, whatever that line spells.**
   The login path's non-enumerability depends on it: `server/app/Auth/ActiveUserProvider` pays for
   its dummy bcrypt **once per deployment** by keeping it in the cache, so an unknown address and a
   known one with a wrong password cost the same hashing work. On a store that does not survive the
