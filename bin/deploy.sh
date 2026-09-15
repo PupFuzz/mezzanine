@@ -208,8 +208,11 @@ done
 # unreadable for EVERY key. Both are the same defect — two notions of "a line" — and both end here rather
 # than in a refusal, because a file Laravel reads is one this script should read the same way.
 #   · the split is Dotenv\Parser\Parser::parse's `Regex::split("/(\r\n|\n|\r)/")`, mirrored (v5.7.0);
-#   · `read -d ''` ends at EOF with status 1, which is a complete read, not a failure. Status 0 is the other
-#     thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag, not a line.
+#   · `read -d ''` returns status 1 at EOF **and** on a read ERROR, so status 1 alone does not mean the read
+#     completed. Splitting the OPEN out below discriminates the open's failure; the read's own two meanings
+#     stay fused, so a path that yields no bytes (a mid-read EIO) still reads here as an empty file — the
+#     residual is card#9610, and A5's `-f` at the call site closes the directory case for phase A. Status 0
+#     is the other thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag.
 #   · the OPEN is a step of its own, with a status of its own, because `read`'s statuses cannot carry its
 #     failure and a silenced open is indistinguishable from an empty file (card#9605). Until this, the open
 #     rode on the read: `read … 2>/dev/null < "$ENV_FILE"` applies its redirections LEFT TO RIGHT, so stderr
