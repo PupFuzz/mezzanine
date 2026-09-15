@@ -32,14 +32,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   seven target-tree reads now go through: presence is established with `git ls-tree`, whose status
   discriminates (0 with no output is an honest *"not at this commit"*; non-zero is a failed read — measured,
   git 2.53.0), content is read only after that, git's stderr is no longer silenced, and a failed read refuses
-  by name instead of returning a status a caller could drop. **Installer action:** none — the new refusal
-  fires only on a git read that genuinely failed (an unreadable or corrupt object, a rev that will not
-  resolve), where the deploy previously passed while certifying files it had not read. A release that does
-  not CARRY `server/bootstrap/app.php` or `server/.env.example` is warned about by name rather than refused,
-  and one that ships no migration at all still passes, saying that rather than claiming a list it read.
-  `bin/deploy.selftest.sh` produces the condition for real — one loose object of its own fixture, mode 000,
-  with the path still in the tree — and asserts per case that the false statement is gone, not only that the
-  exit code changed.
+  by name instead of returning a status a caller could drop. That reader judges an entry by its **mode**, not
+  its type: `ls-tree` calls a SYMLINK's type `blob` exactly as it does a regular file's, and a symlink's blob
+  is the path it points at — so a type check passed one through, `git show` printed `../app.real.php`, and A11
+  grepped that path string and again emitted `no trustProxies() configured` about a file it had never opened.
+  `100644` and `100755` are read; a tree, a symlink, a submodule and any other mode are refused by name. And
+  the refusal's own promise — *"Nothing was changed. The previous release is still serving."* — is now
+  structural rather than asserted in a comment: a read that fails once the window is open takes the in-window
+  failure path instead, so that sentence can never print with the app down.
+  **Installer action: make sure the release you deploy carries `server/bootstrap/app.php`** — a release
+  without it is now REFUSED before the window, where it used to be warned about and deployed. `server/artisan`
+  line 14 is `$app = require_once __DIR__.'/bootstrap/app.php';`, so every artisan command of such a release
+  fails, the first being `php artisan optimize:clear` INSIDE the maintenance window with the app already down
+  and recovery a human act; this refusal is that failure moved to before anything is touched, as the PHP floor
+  and a missing `bin/supervision.sh` already are. For a healthy release nothing else changes: the read-failure
+  refusal fires only on a git read that genuinely failed (an unreadable or corrupt object, a rev that will not
+  resolve), where the deploy previously passed while certifying files it had not read; a release that does not
+  carry `server/.env.example` is still warned about by name; one that ships no migration at all still passes,
+  saying that rather than claiming a list it read; and a migration whose NAME is not ASCII is now read rather
+  than refused as absent from the tree it was just listed in (`core.quotePath=false`, so the name `ls-tree`
+  prints is the name it will match). `bin/deploy.selftest.sh` produces every condition for real — a loose
+  object of its own fixture at mode 000 with the path still in the tree, a symlinked `bootstrap/app.php` in a
+  release that DOES `trustProxies('*')`, a hand-written `160000` entry, a deployed release mutated to re-read
+  the tree after the checkout — and asserts per case that the false statement is gone, not only that the exit
+  code changed.
 
 - **card#9605** — **`bin/deploy.sh` refuses a `server/.env` it cannot read, instead of certifying it and
   stopping on the wrong cause.** A `.env` that exists, is a regular file and whose mode's other-digit is `0`

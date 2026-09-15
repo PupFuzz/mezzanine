@@ -608,12 +608,32 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 #   · STDERR IS NOT SILENCED. git's own message is what names WHICH object and why, and hiding it is
 #     half of how this class survives: the refusal below names the read, git names the cause, and they
 #     are read together. The absent case prints nothing, because ls-tree is silent about it.
-#   · A FAILED READ REFUSES HERE, rather than handing back a status a caller could drop. Every caller
-#     is in phase A, where refusing is the correct disposition — nothing has been touched — and doing
-#     it here is what makes the caller inside fpm_code_reload_ready safe STRUCTURALLY rather than by
-#     the accident of running after two other reads of the same $SHA happened to succeed.
+#   · A FAILED READ IS TERMINAL HERE, rather than handing back a status a caller could drop — and
+#     WHICH terminal it takes is decided by git_read_unusable, from the PHASE, rather than asserted in
+#     this comment. The assertion it replaces ("every caller is in phase A") was true, and what kept it
+#     true was one `[ -z "$POST_CHECKOUT_SHA" ] &&` at the single caller that runs on both sides of the
+#     window (fpm_code_reload_ready) — a guard these readers cannot see, that reads like a phase-A
+#     optimisation, and whose removal would have made `refuse` a one-way door: "Nothing was changed.
+#     The previous release is still serving." printed with the checkout landed and the app down.
+
+# git_read_unusable <headline> <detail line…> — the ONE exit these readers take, and the ONE place
+# the phase is read. Phase A REFUSES: nothing has been touched, and the refusal says exactly that.
+# Phase B cannot say it — the window is open and the checkout has landed — so it takes the in-window
+# failure path, which writes the marker and says the app is down and stays down. POST_CHECKOUT_SHA is
+# what phase B re-enters with, so no caller has to remember which side of the window it is on.
+git_read_unusable() {
+  if [ -n "$POST_CHECKOUT_SHA" ]; then
+    printf '%s\n' "${@:2}" >&2
+    FAILED_STEP="reading the release out of git — $1"
+    # `false ||` so the banner reports a failing status, as it does for every other in-window failure
+    # (in_window_failure reads `$?`); BASH_LINENO[1] is the line in the reader's CALLER.
+    false || in_window_failure "${BASH_LINENO[1]:-0}"
+  fi
+  refuse "$@"
+}
+
 git_read_failed() { # git_read_failed <git subcommand> <rev> <path> <status>
-  refuse "git could not read $3 at $2 (\`git $1\` exited $4)" \
+  git_read_unusable "git could not read $3 at $2 (\`git $1\` exited $4)" \
     "git's own error is above this refusal and names the object it could not read." \
     "Nothing was read, so nothing about $3 at that commit is known — this is not a finding" \
     "about the release. A deploy that carried on here would be certifying a file it never" \
@@ -622,40 +642,67 @@ git_read_failed() { # git_read_failed <git subcommand> <rev> <path> <status>
 
 # _git_ls_at <var> <rev> <path> [ls-tree option…] — THE ls-tree, and THE status rule, in one place.
 # :(literal) because the pathspec is a PATH and not a pattern: `.user.ini`'s name comes from phpinfo.
+# core.quotePath=false so that a name ls-tree PRINTS is a name it will also MATCH. With git's default
+# quoting a non-ASCII name comes back C-quoted — measured, git 2.53.0:
+# `"server/database/migrations/2026_01_01_cr\303\251\303\251.php"` — which the read that follows
+# cannot find, so A10 refused a HEALTHY release with "is in <sha>'s tree and then was not there to
+# read". ⚠ Measured the same way: a name carrying `"`, `\` or a control byte is still quoted with it
+# off. Such a name does not round-trip either and fails that same read — wrongly, but loudly; it can
+# never read as a DIFFERENT file, which is the property that matters here.
+#
+# EVERY LOCAL OF THESE READERS IS `__`-PREFIXED, and that is the contract, not a style: <var> is
+# written with `printf -v`, so a caller passing the name of a variable one of them declares `local`
+# has its own variable shadowed — the write lands on the shadow, NOTHING fails, the caller reads an
+# empty string as the release's content, and the gate downstream refuses a healthy release with
+# "… is missing or empty". `__` is reserved to these readers; a caller's variable must not start with it.
 _git_ls_at() {
-  local __var="$1" rev="$2" path="$3"; shift 3
-  local out rc=0
-  out="$(git_at ls-tree "$@" "$rev" -- ":(literal)$path")" || rc=$?
-  [ "$rc" -eq 0 ] || git_read_failed ls-tree "$rev" "$path" "$rc"
-  printf -v "$__var" '%s' "$out"
+  local __var="$1" __rev="$2" __path="$3"; shift 3
+  local __out __rc=0
+  __out="$(git_at -c core.quotePath=false ls-tree "$@" "$__rev" -- ":(literal)$__path")" || __rc=$?
+  [ "$__rc" -eq 0 ] || git_read_failed ls-tree "$__rev" "$__path" "$__rc"
+  printf -v "$__var" '%s' "$__out"
 }
 
 # git_ls_at <var> <rev> <pathspec> — the paths under <pathspec> at <rev>, one per line, into <var>.
 # EMPTY IS A REAL ANSWER: at status 0 it means there is no such path at that commit. The names are
-# ls-tree's own, which C-quotes one carrying unusual bytes; every path this script lists is plain
-# ASCII, and a quoted name would fail the read that follows it rather than read as another file.
+# ls-tree's own, unquoted for every byte that can be (core.quotePath=false, above), so a name this
+# prints is one git_read_at can read back.
 git_ls_at() { _git_ls_at "$1" "$2" "$3" --name-only -r; }
 
 # git_read_at <var> <rev> <path> — the CONTENT of one file at <rev>, into <var>.
 #   0 — read. <var> is the content; a file that is genuinely empty reads as empty AT STATUS 0.
 #   1 — there is no such file at <rev>, and <var> is empty. The caller must say what that means:
 #       it is a different answer from "the file is empty", and neither is a reading of the text.
-# A git failure does not return: it refuses above.
+# A git failure does not return, and neither does an entry that is not a regular file: both are
+# terminal above.
 git_read_at() {
-  local __var="$1" rev="$2" path="$3" entry type content rc=0
+  local __var="$1" __rev="$2" __path="$3" __entry __what="" __why="" __content __rc=0
   printf -v "$__var" '%s' ""
-  _git_ls_at entry "$rev" "$path"
-  [ -n "$entry" ] || return 1
-  # The entry's TYPE, which is its second field — read rather than its name, because ls-tree quotes
-  # a name carrying unusual bytes and this path can come from outside this script. A tree here would
-  # otherwise be handed to `git show`, which prints its LISTING, and the caller would read that
-  # listing as the file's text.
-  type="${entry#* }"; type="${type%% *}"
-  [ "$type" = blob ] || refuse "$path is a $type at $rev, not a file" \
+  _git_ls_at __entry "$__rev" "$__path"
+  [ -n "$__entry" ] || return 1
+  # The entry's MODE, which is its FIRST field — NOT its type, and not its name. Its name is quoted
+  # for some bytes (above) and this path can come from outside this script; its TYPE is `blob` for a
+  # SYMLINK exactly as it is for a regular file (measured, git 2.53.0: `120000 blob …`), and a
+  # symlink's blob is its TARGET PATH — so a type check passed one through and handed the caller the
+  # string `../../top.txt` as the file's text, which every grep below then answered about instead of
+  # the file. Only 100644 and 100755 are a file whose blob IS its content; every other mode is
+  # refused BY NAME rather than read as one.
+  case "${__entry%% *}" in
+    100644 | 100755) ;;
+    040000) __what="a tree"
+            __why="\`git show\` prints a tree's LISTING, and a caller grepping that listing is reading file NAMES as a file's text." ;;
+    120000) __what="a symbolic link"
+            __why="A symlink's blob is the PATH it points at, not the text at the other end, and ls-tree calls its type \`blob\` exactly as it does a file's." ;;
+    160000) __what="a submodule"
+            __why="Its entry is a commit id in another repository. This deploy checks out one tree and clones nothing, so there is no text here for it to read." ;;
+    *)      __what="mode ${__entry%% *}"
+            __why="A regular file is 100644 or 100755. This deploy refuses every other mode by name rather than guess what its blob holds." ;;
+  esac
+  [ -z "$__what" ] || git_read_unusable "$__path is $__what at $__rev, not a file" "$__why" \
     "This deploy reads it as a file, and will not read anything else as one."
-  content="$(git_at show "$rev:$path")" || rc=$?
-  [ "$rc" -eq 0 ] || git_read_failed show "$rev" "$path" "$rc"
-  printf -v "$__var" '%s' "$content"
+  __content="$(git_at show "$__rev:$__path")" || __rc=$?
+  [ "$__rc" -eq 0 ] || git_read_failed show "$__rev" "$__path" "$__rc"
+  printf -v "$__var" '%s' "$__content"
 }
 
 # whole_seconds <value> — a whole number of seconds read from OUTSIDE this script (an ini, a pool, the environment,
@@ -1443,7 +1490,20 @@ phase_a() {
     printf '%s' "$bootstrap" | grep -q "trustProxies" \
       || warn "no trustProxies() configured — the failed-auth limit will key on the reverse proxy's IP for every request (docs/PLAN.md § 5; coarse, not forgeable)"
   else
-    warn "server/bootstrap/app.php is not in $(git_at rev-parse --short "$SHA"), so which proxies that release trusts was NOT checked (docs/PLAN.md § 5)"
+    # NOT a warning, and not because the unchecked proxies are worth a refusal on their own: a release
+    # without this file cannot RUN. `server/artisan` line 14 is
+    # `$app = require_once __DIR__.'/bootstrap/app.php';`, so every artisan command fails on it — the
+    # first of them `php artisan optimize:clear`, INSIDE the maintenance window, with the app already
+    # down and recovery a human act. This is that failure moved to before anything is touched, which is
+    # the same reading A6 makes of the PHP floor and A13 of a missing bin/supervision.sh.
+    refuse "server/bootstrap/app.php is not in $(git_at rev-parse --short "$SHA")" \
+      "server/artisan requires it (\`\$app = require_once __DIR__.'/bootstrap/app.php';\`), so EVERY" \
+      "artisan command of that release fails — the first being \`php artisan optimize:clear\`, which" \
+      "runs inside the maintenance window. A deploy that carried on here would take the app down and" \
+      "leave it down." \
+      "" \
+      "It is also where docs/PLAN.md § 5's trusted proxies are declared, and which proxies that" \
+      "release trusts cannot be read either."
   fi
 
   # A12 — a lockfile for the asset build. `npm ci` is used below and requires one; more to the

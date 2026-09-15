@@ -507,12 +507,19 @@ rule violations anyone could have committed at the time.
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
   not read it"* are different answers, only the first is a finding about the release, and a gate handed the
-  second as an empty string certifies a file it never opened. It warns, rather than refusing, where the doc's own reading is that the state is
+  second as an empty string certifies a file it never opened. **A path in that tree which is not a regular
+  file** is refused the same way, on its MODE: `ls-tree` calls a symlink's type `blob` exactly as it does a
+  file's, and a symlink's blob is the PATH IT POINTS AT, so a type check passed one through and handed A11
+  the string `../app.real.php` to grep — the same positive statement about a file never opened, reached from
+  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. And **a release
+  with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
+  a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
+  app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
+  rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
-  from does not exist, and when the release carries no `server/bootstrap/app.php` or no
-  `server/.env.example` for the check that reads it — each a gap it says out loud rather than a state it
-  calls safe.
+  from does not exist, and when the release carries no `server/.env.example` for the check that reads
+  it — each a gap it says out loud rather than a state it calls safe.
 - **The feed's stream needs three things from the host, and one check after a deploy that only an
   operator can run** (card#9300; `docs/design/FLEET-STATE.md § 8.3` R1 and R2 own the requirements
   and their measurements — this bullet is the runbook, not a second copy of them).
