@@ -735,6 +735,80 @@ store_passes "interpolation, an export prefix, an inline comment, a spaced = and
   DB_HOST=127.0.0.1 APP_NAME=Mezzanine 'MAIL_FROM_NAME="${APP_NAME}"' 'export FOO=1' 'BAR=2 # a comment' \
   'BAZ = 3' '# FOO="an unterminated quote inside a comment' QUX
 
+section "A5 — a line ENDS where Laravel's parser ends it, in every reader (card#9561 r4 BLOCKER)"
+# Dotenv\Parser\Parser::parse splits on `\r\n`, `\n` or `\r` alike. Until r5, `env_file_scan` split that way
+# and `env_get` shelled to `grep`, whose terminator is `\n` ONLY — two readers, two notions of "a line", and
+# the scan CERTIFIED the file for the one it did not implement. Measured at 4626060 against the real boot
+# path (server/vendor's phpdotenv v5.7.0 through Illuminate\Support\Env, then server/config/database.php
+# through ConfigurationUrlParser, PHP 8.5.4): a `.env` ending `# note\rDB_HOST=db.internal` reaches Laravel
+# as a REMOTE store with NO CA, while `--dry-run` exited 0 saying "store on this host (loopback; DB_HOST is
+# unset…) — TLS not required". Both readers go through `env_lines_load` now, so there is ONE split — which
+# is also why a `\r` is not refused: a file Laravel reads is one this script reads the same way.
+env_after() { # env_after <printf-format> — store_env's .env with the format appended, its escapes expanded
+  store_env; printf '%b' "$1" >> "$ROOT/server/.env"
+}
+crlf_env() { # crlf_env <KEY=value…> — store_env's .env with every line ending CRLF, as a Windows editor writes it
+  store_env "$@"; sed -i 's/$/\r/' "$ROOT/server/.env"
+}
+mkfix env_line_endings
+# THE BLOCKER: one lone CR, no LF. Two lines to Dotenv, one to a `\n`-only reader, and the line it hides is
+# the one that decides the store.
+env_after '# note\rDB_HOST=db.internal\n'
+run_refusal "a lone CR above DB_HOST=db.internal" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+hasnt "a lone CR above a remote DB_HOST: no same-host verdict is reached" "ok — store on this host" "$OUT"
+hasnt "a lone CR above a remote DB_HOST: no DB password is printed" "$FAKE_PW" "$OUT"
+# The twin one byte away: the same file with an LF. It refused before this round and refuses now, which is
+# what makes the case above evidence about the CR rather than about the fixture.
+env_after '# note\nDB_HOST=db.internal\n'
+run_refusal "the same file with an LF in place of the CR" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+# The other twin: a CR is not itself a refusal. Laravel boots on this file and reaches a loopback store,
+# and so does A5 — the line the CR ended is read, not narrowed away.
+env_after '# note\rDB_HOST=localhost\n'
+run --dry-run
+eq  "a lone CR above DB_HOST=localhost: exit 0" 0 "$RC"
+has "a lone CR above DB_HOST=localhost: the store is judged on the line the CR ended" \
+  "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" "$OUT"
+# The same root, the login-path enumeration oracle (docs/PLAN.md § 5): a CACHE_STORE the app receives as
+# `array` while A5's case never fired — the check written to stop that shipping it.
+store_env; sed -i '/^CACHE_STORE=/d' "$ROOT/server/.env"; printf '%b' '# note\rCACHE_STORE=array\n' >> "$ROOT/server/.env"
+run_refusal "a lone CR above CACHE_STORE=array" "which does not survive a request" --dry-run
+# The same root again: a DB_URL naming another host, hidden behind a DB_HOST=localhost that ends in a CR.
+env_after 'DB_HOST=localhost\rDB_URL=mysql://u:p@db.internal/mezzanine\n'
+run_refusal "a DB_URL hidden behind a CR-terminated DB_HOST=localhost" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_URL names a remote host)" --dry-run
+hasnt "a hidden DB_URL: the URL's credentials are not printed" "u:p" "$OUT"
+hasnt "a hidden DB_URL: the URL's host is not printed" "db.internal" "$OUT"
+# THE MIRROR IMAGE: a whole-file CRLF `.env`, which Laravel boots on perfectly. `grep` saw the whole file as
+# ONE line, so every key came back "in a form this deploy does not read" and A5 refused on APP_ENV — naming
+# a cause that was not the real one and never naming the line endings. It simply works now, as it does for
+# Laravel, which is the product behaviour a `\r` refusal would have got wrong.
+crlf_env DB_HOST=localhost
+run --dry-run
+eq  "a whole-file CRLF .env, loopback store: exit 0" 0 "$RC"
+has "a whole-file CRLF .env: the store is judged" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" "$OUT"
+hasnt "a whole-file CRLF .env: no key is reported unreadable" "in a form this deploy does not read" "$OUT"
+# Its remote twin still refuses — on the host, which is the reason, and not on the line endings.
+crlf_env DB_HOST=db.internal
+run_refusal "a whole-file CRLF .env, remote store, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
+hasnt "a whole-file CRLF .env, remote store: not refused for being unreadable" "in a form this deploy does not read" "$OUT"
+# The NUL refusal counts its line out of that same load now (`${#ENV_LINES[@]}` in place of the newlines it
+# used to count), so the number has to survive a CR: the NUL below is on Dotenv's line `wc -l` + 2, because
+# the two CRs end two lines that `\n` alone does not.
+store_env; printf 'A=1\rB=2\rNOTE=a\0b\n' >> "$ROOT/server/.env"
+scan_refused "a NUL byte below CR-terminated lines" "carries a NUL byte"
+has "a NUL below CR-terminated lines: the line named is Dotenv's, not \\n's" \
+  "line $(( $(wc -l < "$ROOT/server/.env") + 2 )) carries a NUL byte" "$OUT"
+
+# card#9561 r4 MINOR 3. The hosts the TLS refusal offers as same-host are ENV_LOOPBACK_HOSTS interpolated,
+# not prose restating it, so the message cannot drift from the array both deciders read. The expected text
+# is DERIVED from that array in the release under test rather than typed here — a literal would be the same
+# unguarded copy one line further out. It discriminates: the prose it replaces listed three of the four
+# (`[::1]`, which is how parse_url returns ::1 out of a DB_URL, was missing from it).
+loopback_hosts="$(sed -n "s/^ENV_LOOPBACK_HOSTS=(\(.*\))$/\1/p" "$DEPLOY" | tr -d "'")"
+eq "the release names some same-host hosts to offer" "yes" "$([ -n "$loopback_hosts" ] && echo yes || echo no)"
+store_env DB_HOST=db.internal
+run_refusal "remote DB_HOST, no CA: the same-host hosts are named out of ENV_LOOPBACK_HOSTS" \
+  "or DB_HOST one of $loopback_hosts." --dry-run
+
 section "REFUSAL — a tool the supervision needs is missing (A1)"
 # PATH is rebuilt from every stub and every host binary, minus ONE command. The control is the same
 # rebuilt PATH minus nothing, so a refusal is the missing command and never the rebuilt PATH.

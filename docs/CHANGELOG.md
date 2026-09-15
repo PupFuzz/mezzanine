@@ -35,8 +35,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   parser rejects fails the WHOLE file, so Laravel reads nothing from it and every request dies at boot. Both
   were certified as readable before; the refusal names the line's NUMBER and never its text. A `.env` carrying
   a NUL byte is refused too, and for the opposite reason: Laravel reads it and boots, while nothing in this
-  script can — `bash` stops at the first NUL and `grep` matches nothing in a file that has one, so every key
-  came back "unset" and the deploy stopped on `APP_ENV`, naming a cause that was not the real one.
+  script can — `bash`'s `read` stops at the first NUL, so no line below that byte is loaded and every key
+  defined below it came back "unset", and the deploy stopped on `APP_ENV`, naming a cause that was not the
+  real one.
+  **A line ends where Laravel's parser ends it, in every reader.** `.env` is split once, on `\r\n`, `\n` or a
+  lone `\r` alike, exactly as `vlucas/phpdotenv` splits it, and both the whole-file check and the key reader
+  work from that one split. They did not before: the key reader used `grep`, whose line terminator is `\n`
+  only, so a `.env` written with Windows (CRLF) line endings — which Laravel boots on perfectly — was ONE
+  line to it and every key was reported as written "in a form this deploy does not read", never naming the
+  line endings as the cause; and a lone `\r` anywhere in the file HID the line after it, so a `.env` ending
+  `# note\rDB_HOST=db.internal` sent Laravel to another host in plaintext while the deploy read `DB_HOST` as
+  unset, took the local default and certified the store as being on this host. A CRLF `.env` now simply
+  works, as it does for Laravel, and a value hidden behind a `\r` is read and judged like any other.
   Every A5 check whose answer could differ decides on the value the app RECEIVES rather than the text of the
   line — `APP_DEBUG=FALSE`, `False` and `(false)` are each debug OFF to Laravel and now pass, where the text
   compare refused them. Where A5 still compares text (`APP_ENV`, `DB_CONNECTION`, a `/`-prefixed `DB_SOCKET`,
@@ -60,7 +70,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `KEY=value`, and write a key that has no value by leaving it empty (`MYSQL_ATTR_SSL_CA=`) rather than as
   `null` or any other value Laravel resolves to a falsy one. Keep every value on the line that opens it: a
   `"` that its own line does not close now refuses the deploy, and so does any line phpdotenv cannot parse,
-  and so does a NUL byte anywhere in the file, whichever key it belongs to. `APP_DEBUG` must SAY off —
+  and so does a NUL byte anywhere in the file, whichever key it belongs to. Line endings need no attention:
+  LF, CRLF and a lone CR are each read the way Laravel reads them, so a `.env` edited on Windows deploys
+  without being converted first. `APP_DEBUG` must SAY off —
   `false` in any capitalisation, or `(false)`; `0`, `null` and an empty value are refused even though PHP
   casts them to false. The warning about keys `.env.example` names and this host's `.env` does not is asked
   through the same reader as every other check now, so a key written `export KEY=…` or `"KEY"=…` — which IS

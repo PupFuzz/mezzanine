@@ -186,22 +186,54 @@ done
 # config cache is stale by construction (it was built by the PREVIOUS deploy, from the previous
 # release's config/*.php), so `config()` is the one source here that is guaranteed wrong.
 #
-# ⚠ SECRETS. `env_get` RETURNS values, and the only ones this script PRINTS are the ones A5 prints
-# deliberately, each for a key it names and none of them a credential (APP_ENV, APP_DEBUG,
-# DB_CONNECTION, CACHE_STORE, DB_HOST). APP_KEY, DB_PASSWORD, DB_URL and every other value are tested
-# for shape only (`-n`, a prefix), never echoed, never put in an argv and never in an error message —
+# ⚠ SECRETS. `env_get` RETURNS values, and the only ones this script PRINTS are printed deliberately, each
+# for a key it names and none of them a credential: A5 prints APP_ENV, APP_DEBUG, DB_CONNECTION, CACHE_STORE
+# and DB_HOST, and phase B's smoke step prints APP_URL — in `Smoke: GET …/up` and in the report that the app
+# is up but `/up` answered something other than 200. A public base URL is the one thing that step can name.
+# APP_KEY, DB_PASSWORD, DB_URL and every other value are tested for shape only (`-n`, a prefix), never
+# echoed, never put in an argv and never in an error message —
 # a refusal about a `.env` line names the line's NUMBER, never its text. A deploy log is a transcript
 # that outlives the deploy.
 #
+# env_lines_load — $ENV_FILE as the LINES Laravel's own parser reads it as, in ENV_LINES; ENV_LINES_NUL is 1
+# when the read STOPPED at a NUL byte rather than reaching EOF. This is the ONE place in this script that
+# turns the file into lines, and both readers below iterate ENV_LINES, so "a line" is a single thing here.
+# It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
+# and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
+# was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
+# plaintext while A5 read DB_HOST as unset, took the config default of 127.0.0.1, and exempted the store from
+# TLS. Its mirror: a whole-file CRLF `.env`, which Laravel boots on perfectly, was one line to `grep` and so
+# unreadable for EVERY key. Both are the same defect — two notions of "a line" — and both end here rather
+# than in a refusal, because a file Laravel reads is one this script should read the same way.
+#   · the split is Dotenv\Parser\Parser::parse's `Regex::split("/(\r\n|\n|\r)/")`, mirrored (v5.7.0);
+#   · `read -d ''` ends at EOF with status 1, which is a complete read, not a failure. Status 0 is the other
+#     thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag, not a line.
+# It re-reads per call rather than caching: this is a bash builtin over a small file, cheaper than the `grep`
+# fork it replaced, and a cached copy would invent a staleness and ordering coupling that does not exist.
+ENV_LINES=()
+ENV_LINES_NUL=0
+env_lines_load() {
+  local content="" line
+  ENV_LINES=(); ENV_LINES_NUL=0
+  if IFS= read -r -d '' content 2>/dev/null < "$ENV_FILE"; then ENV_LINES_NUL=1; fi
+  content="${content//$'\r\n'/$'\n'}"
+  content="${content//$'\r'/$'\n'}"
+  # `<<<` appends exactly the terminator the last line needs, so ${#ENV_LINES[@]} is the number of lines
+  # Dotenv sees — including the partial one a NUL cut short, which is the line the refusal below names.
+  while IFS= read -r line; do ENV_LINES+=("$line"); done <<< "$content"
+}
+
 # env_get KEY — prints KEY's value and returns 0; returns 1 when no line defines KEY; returns 2, printing nothing,
 # when a line defining KEY is in a form this reader does not read EXACTLY as Laravel does (vlucas/phpdotenv's
 # Dotenv\Parser, then Illuminate\Support\Env::get). Status 2 is never "unset": a check that took an unread value
 # as absent would pass the value Laravel then uses.
 #
-# PRECONDITION: `env_file_scan` has passed on $ENV_FILE. It is what makes "a line" a unit at all — Dotenv
-# reads a `KEY="` value its own line does not close as running ON into the lines below it, so without that
-# scan a `DB_SOCKET=` line could be part of another key's value, and this reader would hand back a setting
-# the app never receives. A5 runs it before its first read, and phase B's one read runs on the same file.
+# PRECONDITION: `env_file_scan` has passed on $ENV_FILE. `env_lines_load` decides where a line ENDS; the
+# scan is what makes one of those lines a SETTING — Dotenv reads a `KEY="` value its own line does not close
+# as running ON into the lines below it, so without that scan a `DB_SOCKET=` line could be part of another
+# key's value, and this reader would hand back a setting the app never receives. Both run over the same
+# lines, which is the one thing that makes this precondition mean anything (card#9561 r5).
+# A5 runs it before its first read, and phase B's one read runs on the same file.
 #
 # The one form read: `KEY=value` on one line, optionally indented, KEY on no other line, the value either
 # unquoted and free of whitespace, quotes, `#` and `$`, or wholly inside '…', or wholly inside "…" free
@@ -217,13 +249,23 @@ done
 # What this reads is `.env` and nothing else. Laravel prefers a variable already in the process environment —
 # a PHP-FPM pool's `env[KEY]`, a daemon's environment — over `.env`, and this script cannot see those.
 env_get() {
-  local key="$1" lines value
-  lines="$(grep -E "^[[:space:]]*(export[[:space:]]+)?[\"']?${key}[\"']?[[:space:]]*(=|\$)" "$ENV_FILE" 2>/dev/null || true)"
+  local key="$1" lines="" line value re
+  env_lines_load
+  # The pattern is the one this reader has always used; what changed in card#9561 r5 is what it runs over.
+  # bash's `=~` is ERE, so the text is unchanged — but it matches the lines ENV_LINES holds, which are the
+  # lines Dotenv reads, rather than the ones a `\n`-only splitter would have found. The matches are joined
+  # with a literal newline below, which is what the duplicate-key note relies on.
+  re="^[[:space:]]*(export[[:space:]]+)?[\"']?${key}[\"']?[[:space:]]*(=|\$)"
+  for line in "${ENV_LINES[@]}"; do
+    [[ $line =~ $re ]] || continue
+    [ -z "$lines" ] || lines+=$'\n'
+    lines+="$line"
+  done
   [ -n "$lines" ] || return 1
   lines="${lines#"${lines%%[![:space:]]*}"}"
   [ "${lines#"$key="}" != "$lines" ] || return 2
   # KEY on a second line needs no guard of its own, and card#9561 r2 MINOR 1 is that a guard here could
-  # not be made to fail: `grep` joins the lines with a newline, and the value below carries it.
+  # not be made to fail: the loop above joins the matches with a newline, and the value below carries it.
   # `re_plain` excludes every [[:space:]] character; `re_single` and `re_double` would have to run across
   # the newline, which needs the FIRST line to open a quote it never closes — and env_file_scan has
   # already refused that file, because Dotenv rejects an unterminated '…' and folds an unterminated "…"
@@ -269,9 +311,9 @@ env_read() {
 # file phase B cannot boot on, and that failure lands INSIDE the maintenance window with the app down,
 # instead of before it, where a refusal promises nothing was touched.
 #
-# It mirrors Dotenv\Parser v5.7.0: the file is split the way Parser::parse splits it (`\r\n`, `\n` or `\r`
-# alike — grep's lines are not Dotenv's), every line is tested for a multi-line start BEFORE the
-# comment/blank test (Lines::process's order — a `#` before the `="` is what makes a comment a comment),
+# It mirrors Dotenv\Parser v5.7.0: the file is split by `env_lines_load` the way Parser::parse splits it
+# (`\r\n`, `\n` or `\r` alike, and the same split `env_get` reads), every line is tested for a multi-line
+# start BEFORE the comment/blank test (Lines::process's order — a `#` before the `="` makes it a comment),
 # and each remaining line goes through EntryParser's own name and value rules. THREE places are deliberately
 # narrower than Dotenv, and they are the whole of what this does not certify:
 #   · a name outside `[A-Za-z0-9_.]` is refused, where EntryParser::isValidName also accepts Unicode letters,
@@ -334,26 +376,22 @@ env_scan_refuse() {
 }
 
 env_file_scan() {
-  local content raw line n=0 name value quote nul had_nul=0
-  # Whole file, then split the way Dotenv splits it. `read -d ''` ends at EOF with status 1, which is a
-  # complete read, not a failure. Status 0 is the other thing: it STOPPED, at a NUL, and everything past
-  # that byte is unread — so the scan's promise would be false for the tail of the file, silently. The
-  # refusal waits for the line endings to be normalised below, so that it can count LINES as Dotenv does.
-  if IFS= read -r -d '' content < "$ENV_FILE"; then had_nul=1; fi
-  content="${content//$'\r\n'/$'\n'}"
-  content="${content//$'\r'/$'\n'}"
-  if [ "$had_nul" = 1 ]; then
-    nul="${content//[!$'\n']/}"   # the NUL is on the line after the last one that ENDED before it
-    refuse "$ENV_FILE line $(( ${#nul} + 1 )) carries a NUL byte, which nothing here can read past" \
+  local raw line n=0 name value quote
+  # The file is loaded once, here, by the one loader both readers use; ENV_LINES is what is scanned, so the
+  # lines this certifies are the lines env_get then reads, which is the whole point of there being one.
+  env_lines_load
+  if [ "$ENV_LINES_NUL" = 1 ]; then
+    # The NUL is on the line the load stopped in the middle of — the last one ENV_LINES holds.
+    refuse "$ENV_FILE line ${#ENV_LINES[@]} carries a NUL byte, which nothing here can read past" \
       "phpdotenv reads a NUL as a character like any other, so Laravel boots on this file — and no reader" \
-      "in this script can see it as Laravel does. bash stops at the first NUL and DELETES the ones it did" \
-      "read, so no line below that byte is scanned at all; and \`grep\` treats a file carrying one as" \
-      "binary and matches nothing in it, so EVERY key this deploy reads comes back 'unset', whatever the" \
-      "file sets it to. Without this refusal the deploy still stops — on the first key A5 checks, naming a" \
-      "cause that is not the real one. Rewrite the line without it." \
+      "in this script can see it as Laravel does. bash's \`read\` stops at the first NUL, and every reader" \
+      "here goes through that one load, so no line below that byte is scanned at all and EVERY key defined" \
+      "below it comes back 'unset', whatever the file sets it to. Without this refusal the deploy still" \
+      "stops — on the first key A5 checks, naming a cause that is not the real one. Rewrite the line" \
+      "without it." \
       "Its text is not printed here — it may carry a credential."
   fi
-  while IFS= read -r raw; do
+  for raw in "${ENV_LINES[@]}"; do
     n=$((n + 1))
     ! env_scan_multiline_start "$raw" || refuse \
       "$ENV_FILE line $n opens a \"…\" value that its own line does not close" \
@@ -395,7 +433,7 @@ env_file_scan() {
     # A blank value is Value::blank() and cannot be rejected; anything else goes through the transducer.
     [ -n "$value" ] || continue
     ! env_scan_value_cause "$value" || env_scan_refuse "$n" "$ENV_SCAN_CAUSE"
-  done <<< "$content"
+  done
 }
 
 # env_laravel_value VAR TEXT — sets VAR to a tag for the value the APP RECEIVES for a key whose `.env` text
@@ -1098,7 +1136,7 @@ phase_a() {
     [ -n "$ssl_ca" ] || refuse "MYSQL_ATTR_SSL_CA is unset for a store on another host ($STORE_WHY)" \
       "FLEET-STATE.md § 6.1: TLS is REQUIRED to a store on another host, certificate verified, with no" \
       "plaintext fallback — the credential and every descriptor cross a network between hosts." \
-      "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST localhost, 127.0.0.1 or ::1." \
+      "A store on this host needs none: DB_SOCKET naming its socket, or DB_HOST one of ${ENV_LOOPBACK_HOSTS[*]}." \
       "A CA the app receives as a value PHP reads as false is UNSET here, whatever the line says:" \
       "server/config/database.php's array_filter drops the option, so that line is a connection with no" \
       "CA at all (this script's env_app_falsy states which values those are). Give the CA's path."
