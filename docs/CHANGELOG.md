@@ -50,10 +50,11 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   precisely because prose copies go stale. Keyed by count and not by line so that edits above a
   finding do not red a PR that changed nothing about it. **A finding count is evidence about a
   MEASUREMENT, and that measurement has three inputs — the file population, the analyser version,
-  and the analyser's effective CONFIGURATION — so the ledger records all three and any NARROWING of
-  any of them takes one typed acceptance.** Guarding the population alone leaves the cheapest input
-  of the three completely open, and it is the only one that narrows coverage without touching a
-  single file the ledger names: measured on this tree, a one-line `.shellcheckrc` at the repo root
+  and the analyser's effective CONFIGURATION — so the ledger records all three and every narrowing
+  it can SEE takes one typed acceptance.** That is narrower than every narrowing there is: the two
+  it cannot see are named below, measured, and left open as a decision on this card. Guarding the population alone leaves the cheapest
+  input of the three completely open, and it is the only one that narrows coverage without touching
+  a single file the ledger names: measured on this tree, a one-line `.shellcheckrc` at the repo root
   plus a real `rm -rf $MEZZ_DOCROOT` added to `bin/supervision.sh` printed *"every finding the
   ledger carried for the pair is fixed"*, exited 0, and asked for the narrowed ledger to be
   committed; `disable=SC2317,SC2016` took the same tree from 114 findings to 31 the same way; a
@@ -61,11 +62,30 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   environment did it with no file at all. So the ledger's `#cfg` block now records the analyser
   version, the exact invocation, every `# shellcheck` directive inside a population file (count-keyed,
   like the findings), and the set of codes the analyser actually emits over a fixed probe script the
-  run writes and throws away — the control that catches an analyser told to keep quiet, which no
-  restatement of intent can. `--norc` makes every `.shellcheckrc` inert and an emptied
-  `SHELLCHECK_OPTS` makes that channel inert, both recorded rather than merely done; a file-scope
-  disable is REFUSED at exit 2 by file and line, because it blinds a whole class at once and this
-  gate would read the blinding as an improvement. **The asymmetry this closes was exact and
+  run writes and throws away — the control that catches an analyser gone quiet about a code THE
+  PROBE CARRIES, which no restatement of intent can, and which says nothing about a code it does not
+  carry. `--norc` makes every `.shellcheckrc` inert and an emptied `SHELLCHECK_OPTS` makes that
+  channel inert, both recorded rather than merely done; a file-scope disable is REFUSED at exit 2 by
+  file and line, because it blinds a whole class at once and this gate would read the blinding as an
+  improvement. **What a green run proves, at its measured width:** the rc channel and the
+  environment channel are closed and closed visibly, since both flags ride in the `#cfg invocation`
+  row and dropping either is a narrowing that takes a typed `--accept-shrink`; and IN CI the
+  analyser's identity is closed as well, because the lane installs it as a sha256-verified download
+  of the release the pin names instead of asking a program on PATH what it is — which is what makes
+  a CI green stronger than a local one. **Two narrowings stay open, both measured on this tree and
+  both left open deliberately.** The ANALYSER BINARY is a channel no `#cfg` row closes and the probe
+  is blind to it by construction: a wrapper reporting 0.9.0 truthfully while passing
+  `--exclude=SC2317` — a code the probe does not carry — exits 0, prints the ledger's whole SC2317
+  class, 60 of its 114 findings, as gone entirely, and calls the run clean; a probe notices only a
+  code it contains, so widening it moves that frontier rather than closing it. And DIRECTIVE SCOPE
+  lives inside the files unrecorded: the `#cfg directive` rows are keyed by (file, directive) with a
+  count, so a directive APPEARING is caught while an EXISTING one RELOCATING is not — a new SC2016
+  inside `bin/deploy.sh`'s `previous_stream_pids()` reds at exit 1 (`SC2016 baseline 3 -> now 4`),
+  and with that file's own `# shellcheck disable=SC2016` lifted off the line it annotates and
+  re-seated over that function the same tree is exit 0 clean, with `--update-baseline` re-deriving
+  the ledger byte-identical (`bf8b271c…` either side). Closing either is a WON'T-DO recorded on
+  card#9635 — identifying the analyser locally the way CI does is the shape that would close the
+  first — and card#9645 owns the count-keying expiry. **The asymmetry this closes was exact and
   inverted: adding debt to the ledger has always taken a typed `--accept-new`, and removing coverage
   from it took nothing at all** — including through `--update-baseline`, which accepted an arbitrary
   shrink and is the command the population-loss error instructs you to run. That error is the right
@@ -96,9 +116,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   genuinely reaches zero is the one case that still asks for the re-baseline. The parser assert was
   seen to fire by putting a colon in a tracked script's name: the pre-assert code called that tree
   clean at exit 0 with the unquoted expansion inside it dropped unread, and the assert makes it exit
-  2 naming both lost lines. Each configuration channel was then re-run against the pinned ledger and
-  each is closed: the root `.shellcheckrc` is inert and the `rm -rf $MEZZ_DOCROOT` under it reds at
-  exit 1 by name; the file-scope directive is exit 2 at its file and line; the broad rc and the
+  2 naming both lost lines. Each configuration channel the ledger RECORDS was then re-run against
+  the pinned ledger and each is closed: the root `.shellcheckrc` is inert and the `rm -rf
+  $MEZZ_DOCROOT` under it reds at exit 1 by name; the file-scope directive is exit 2 at its file and line; the broad rc and the
   exported `SHELLCHECK_OPTS` both leave the measurement at 8 files and 114 findings where they used
   to leave it at 31. The probe row was seen to discriminate the way a control must: an analyser
   wrapper that reports version 0.9.0 truthfully and passes `--exclude=SC2086` underneath is exit 2

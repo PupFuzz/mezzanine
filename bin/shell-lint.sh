@@ -64,8 +64,9 @@
 #   1. the FILE POPULATION — derived above, recorded in the ledger's `#pop` lines;
 #   2. the ANALYSER VERSION — pinned in `bin/shell-lint.analyser.pin`, asserted before every run;
 #   3. the ANALYSER'S EFFECTIVE CONFIGURATION — a `.shellcheckrc` in any parent directory, a
-#      `SHELLCHECK_OPTS` in the environment, a `# shellcheck disable=` directive inside a file, the
-#      flags this script passes, a severity floor.
+#      `SHELLCHECK_OPTS` in the environment, a `# shellcheck disable=` directive inside a file and
+#      the REGION that directive covers, the flags this script passes, a severity floor, and the
+#      analyser BUILD itself, which can exclude a code while reporting the pinned version truthfully.
 #
 # Earlier rounds of this lane guarded input 1 by ENUMERATING THE CAUSES of a falling count and
 # handling each. That enumeration is over the wrong dimension, and the evidence is that every review
@@ -78,12 +79,14 @@
 # committed. `disable=SC2317,SC2016` took the same tree from 114 findings to 31 the same way. A
 # file-scope directive did it with no new file at all; `SHELLCHECK_OPTS` did it with no file at all.
 #
-# SO: THE LEDGER RECORDS THE WHOLE MEASUREMENT CONFIGURATION, AND ANY NARROWING OF IT TAKES ONE
+# SO: THE LEDGER RECORDS THE MEASUREMENT CONFIGURATION, AND EVERY NARROWING IT CAN SEE TAKES ONE
 # TYPED ACCEPTANCE. Until this change the asymmetry was exact and inverted — ADDING DEBT took a
 # typed override (`--accept-new`), REMOVING COVERAGE took nothing at all. `--accept-shrink` is the
-# symmetric gate, and it covers every narrowing in one place: a file leaving the population, a
-# directive appearing, the analyser pin moving, the flag vector changing, the analyser going quiet
-# about a check it used to report.
+# symmetric gate, and it covers in one place: a file leaving the population, a directive appearing,
+# the analyser pin moving, the flag vector changing, and the analyser going quiet about a code the
+# probe carries. Two narrowings sit OUTSIDE that set — the analyser build, and an existing directive
+# widening the region it covers — and both were measured rather than assumed away; THE RESIDUAL,
+# below, is where they are named, with what a green run does and does not prove because of them.
 #
 # The ledger's `#cfg` lines are that record, and they are CHECKED on every run:
 #
@@ -96,11 +99,15 @@
 #                    this run writes to a temp directory and throws away (`probe_source`, below),
 #                    under the very same invocation. This is the control (canon #9): the other rows
 #                    say what the configuration is SUPPOSED to be, and this one is the analyser's
-#                    own answer. A severity floor, an exclusion, or a build that silently dropped a
-#                    check shows up here as a code that stopped being reported.
+#                    own answer — about the codes this probe CONTAINS, a spread across all four
+#                    severities and not every code in the ledger. A severity floor, or an exclusion
+#                    or a silently dropped check touching one of THOSE codes, shows up here as a
+#                    code that stopped being reported; one touching any other code is invisible
+#                    here, which is what THE RESIDUAL below is about.
 #   #cfg directive   every `# shellcheck <key>=<value>` directive inside a population file, keyed by
 #                    (file, directive) with a COUNT — the same count-keying, and for the same
-#                    reason, as the finding rows: a directive that moves lines is not a change.
+#                    reason, as the finding rows: a directive that moves lines is not a change,
+#                    which is also how a relocated one widens its scope unseen (THE RESIDUAL).
 #
 # AND A FILE-SCOPE `disable=` IS REFUSED OUTRIGHT (exit 2), not recorded. A `# shellcheck disable=`
 # before the first non-comment, non-blank line of a file is ShellCheck's own file-scope form: it
@@ -124,15 +131,45 @@
 #     while the measurement has narrowed. `--accept-new` and `--accept-shrink` are the two
 #     overrides, so that each is a decision somebody typed rather than advice this tool gave itself.
 #
-# THE RESIDUAL, named rather than implied. A swap INSIDE one (file, code) pair still passes: remove
-# one finding and add one of the same code in the same file and the count nets to zero silently;
-# remove two and add one and the count falls. That is the price of keying by count, paid
-# deliberately for the reason above (card#9645 owns it). The probe is a control over the codes IT
-# contains, which is a spread across all four severities and not every code in the ledger — it
-# catches a floor or a blanket exclusion, and it is not a proof that no single unrelated check was
-# disabled. What closes that door is `--norc` plus the emptied `SHELLCHECK_OPTS` plus the recorded
-# flag vector: those are ShellCheck 0.9.0's documented configuration channels, and the ones that
-# remain after them live inside the files, where the `#cfg directive` rows record them.
+# THE RESIDUAL, named rather than implied — and a DECISION ON THE RECORD rather than an oversight:
+# card#9635 carries the measurements below and the won't-do that left them open, and card#9645 owns
+# the count-keying half. Read this before concluding that a green run here means no second guard is
+# wanted on the analyser, because the claim stops short of that.
+#
+# WHAT A GREEN RUN PROVES. Over the population the ledger names, analysed by a program reporting the
+# pinned version with `--norc` and an emptied `SHELLCHECK_OPTS`: no (file, code) class carries MORE
+# findings than the ledger records, no file left the population, no `# shellcheck` directive
+# appeared, the flag vector is the recorded one, and the analyser still reports every code the probe
+# carries. Two configuration channels are genuinely CLOSED, and closed visibly: `--norc` makes every
+# `.shellcheckrc` in every parent directory inert, the emptied `SHELLCHECK_OPTS` contributes no
+# arguments, and both ride in the `#cfg invocation` row, so dropping either is a ledger narrowing
+# that takes a typed `--accept-shrink`. UNDER CI a third thing is closed that a local run cannot
+# close: the lane INSTALLS the analyser as a sha256-verified download of the release
+# `bin/shell-lint.analyser.pin` names, so the program behind a CI verdict is identified by DIGEST
+# instead of by its own self-report. That is what makes a CI green stronger than a local one, and it
+# is why the lane refuses to fall back to the runner image's ShellCheck.
+#
+# WHAT IT DOES NOT PROVE — three shapes, each measured on this tree rather than supposed:
+#   * A SWAP INSIDE one (file, code) pair. Remove one finding and add one of the same code in the
+#     same file and the count nets to zero silently; remove two and add one and the count falls.
+#     That is the price of keying by count, paid deliberately for the reason above.
+#   * THE ANALYSER BINARY, a configuration channel none of these rows close and one the probe is
+#     blind to BY CONSTRUCTION. Locally the analyser is whatever `$SHELLCHECK`, the pinned path or
+#     PATH resolves to, and the `#cfg analyser` row records what that program SAYS about itself. A
+#     build that reports the pinned version truthfully while excluding a code the probe does not
+#     carry runs GREEN and reports that whole class as fixed: measured with a wrapper passing
+#     `--exclude=SC2317`, which exits 0, prints the ledger's entire SC2317 class as "gone entirely",
+#     and calls the run clean. A probe notices only a code it contains, so widening it moves that
+#     frontier rather than closing it — the next exclusion is of a code the widened probe does not
+#     carry either. What closes this is IDENTIFYING the binary instead of asking it, which is what
+#     the CI download does and what a local run does not.
+#   * DIRECTIVE SCOPE, which lives inside the files and is not recorded. The `#cfg directive` rows
+#     are keyed by (file, directive) with a count, so a directive APPEARING is caught while an
+#     EXISTING one RELOCATING is not. Measured: a new SC2016 inside `bin/deploy.sh`'s
+#     `previous_stream_pids()` reds at exit 1 (`SC2016 baseline 3 -> now 4`); lift that file's own
+#     `# shellcheck disable=SC2016` off the line it annotates, re-seat it over that function, and
+#     the same tree is exit 0 clean with `--update-baseline` re-deriving this ledger BYTE-IDENTICAL.
+#     The widest relocation — to file scope — is the one case refused outright (exit 2, above).
 #
 # THE ANALYSER VERSION IS ASSERTED, NOT ACCEPTED. Two ShellCheck versions genuinely disagree about
 # the same file (the reasoning and a worked example are in agent-board-toolkit's
@@ -250,8 +287,10 @@ sc_exec() { # sc_exec <analyser> <file>...
 invocation_record() { printf "SHELLCHECK_OPTS='' <analyser> %s" "${SC_FLAGS[*]}"; }
 
 # The fixed input the configuration probe measures. Every line here exists to make one ShellCheck
-# code fire, across all four severities, so that a floor or an exclusion anywhere in the analyser's
-# configuration shows up as a code that stopped being reported. Changing this changes the recorded
+# code fire, across all four severities, so that a floor, or an exclusion of one of THESE codes,
+# shows up as a code that stopped being reported. An exclusion of a code this list omits is
+# invisible to the probe — a limit of the control, stated in THE RESIDUAL in this file's header,
+# rather than a list to keep extending. Changing this changes the recorded
 # fingerprint and therefore needs a re-baseline, deliberately.
 probe_source() {
   cat <<'PROBE'
