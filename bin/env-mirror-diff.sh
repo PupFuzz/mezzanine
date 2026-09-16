@@ -26,8 +26,9 @@
 #              dangerous cell: the app is on another host with no CA, or on a cache that keeps nothing,
 #              and A5 says `ok`.
 #
-# WHAT THE POPULATION IS DERIVED FROM, AND WHAT IS WRITTEN DOWN. The two AXES are derived per run and
-# nothing here retypes them: the line-ending axis is read out of BOTH `Dotenv\Parser\Parser::parse`'s own
+# WHAT THE POPULATION IS DERIVED FROM, AND WHAT IS WRITTEN DOWN. Both AXES are derived per run rather
+# than listed here, and they are held to their sources by DIFFERENT strengths — the block below says which
+# is which. The line-ending axis is read out of BOTH `Dotenv\Parser\Parser::parse`'s own
 # split regex AND `env_lines_load`'s own normalisation statements, held against each other in both
 # directions; the keys compared are read out of the THREE idioms that read a key from `.env` — deploy.sh's
 # `env_read VAR KEY` sites, its literal-key `env_get KEY` sites, and `server/.env.example`'s key list,

@@ -36,8 +36,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `ConfigurationUrlParser` and `MySqlConnector::getDsn()` actually send the app, and against the cache driver
   `server/config/cache.php` resolves). **Nothing in it is a re-implementation** — `server/vendor/` is the
   oracle, installed from the committed lock with the same `--no-dev` a deploy uses, and the mirror side runs
-  `bin/deploy.sh`'s own text, extracted at run time. **Both AXES are derived on every run, from BOTH sides, and neither
-  derivation is allowed to narrow quietly.** The line-ending axis is read out of `Parser::parse`'s own split
+  `bin/deploy.sh`'s own text, extracted at run time. **Both AXES are derived on every run rather than listed in the
+  harness, and they are held to their sources by DIFFERENT strengths — the LINE-ENDING axis is read from both
+  sides and a narrowing on either side reds, while the KEY axis has a floor whose reach is one key, stated below
+  and on card#9591.** The line-ending axis is read out of `Parser::parse`'s own split
   regex AND out of `env_lines_load`'s own `content="${content//…}"` normalisation statements, and the two
   sets are held against each other in BOTH directions: a phpdotenv release that adds a terminator adds
   cells, and one that DROPS a terminator `bin/deploy.sh` still splits on reds instead of silently deleting
