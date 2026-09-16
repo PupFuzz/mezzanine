@@ -1658,7 +1658,119 @@ has "unreadable ancestry: names the repair as the next step" \
 has "unreadable ancestry: tells the operator the recovery deploy meets this same refusal" \
   "--ref <sha> --allow-unreleased" "$OUT"
 has "unreadable ancestry: and how to restore the object it could not read" \
+  "git -C $ROOT fetch --prune origin" "$OUT"
+has "unreadable ancestry: and how to rebuild the packs from what still reads" \
+  "git -C $ROOT repack -a -d" "$OUT"
+# ⛔ SAFETY, and the reason this assertion exists at all (card#9611 r3). This refusal is read by an
+# operator with the app DOWN, and the advice used to end "re-fetch it from origin, or RE-CLONE
+# $DEPLOY_ROOT from it". A re-clone destroys `server/.env` — created on the host, in no commit (this
+# repo's own .gitignore), so this host's APP_KEY and DB_PASSWORD exist nowhere else and backups are
+# out of scope on this install — along with `server/storage/` (the logs the in-window banner tells
+# the operator to tail) and `.deploy-failed` (the marker it says must be reviewed). Every repair the
+# refusal now names works inside the checkout's .git and touches none of them.
+hasnt "unreadable ancestry: never tells a mid-incident operator to re-clone the deploy root" \
   "re-clone $ROOT from it" "$OUT"
+has "unreadable ancestry: says so, so the operator does not reach for one" \
+  "DO NOT RE-CLONE $ROOT" "$OUT"
+has "unreadable ancestry: and names what a re-clone would destroy" "server/.env" "$OUT"
+
+# ── card#9611 r3 — ONE CASE PER DECLARED ANSWER OF git_ref_oid ─────────────────────────────────
+# ⛔ WHY THE COVERAGE IS SHAPED THIS WAY, which is this round's lesson and not a note. r2 covered
+# git_ref_oid's status-1 half — an absence, and the object-store walk that wears an absence's status
+# — and NONE of its rc ∉ {0,1} half. So the branch no case exercised was the branch still making the
+# over-read this whole card exists to end: it read every non-0/1 status as "the REFS could not be
+# read", under git_rev_read_failed's fixed line saying git's error was above the refusal, and
+# `--ref HEAD@{1}` reached it on a COMPLETELY HEALTHY host with git having printed nothing at all.
+# The cases below are therefore one per ANSWER the function declares — the status AND git's silence
+# together, the two things it actually reads — rather than one per failure someone thought of.
+#
+# The blinded-store answers (1-loud through the object store) are the block above; these add the
+# ones a healthy store gives, plus the one answer that is not reachable through this script, named
+# as that rather than skipped.
+three_releases git_ref_oid_answers
+
+# ANSWER 0 — <var> is a full object id, and the deploy goes on to use it.
+run --dry-run --ref main
+eq  "answer 0: a name that resolves deploys" 0 "$RC"
+has "answer 0: and it is what origin/main points at that would be checked out" \
+  "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V3")" "$OUT"
+
+# ANSWER 1 + git SILENT — the one answer that RETURNS. An absence, and A7 says what it means.
+run_refusal "answer 1-silent: a name that is not there is an absence" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "answer 1-silent: claims no read that failed" "git could not resolve" "$OUT"
+
+# ANSWER 1 + git LOUD, WITHOUT THE OBJECT STORE. A dangling symref is the shape that proves this
+# refusal must not name where the read failed: measured (git 2.53.0) `warning: ignoring dangling
+# symref refs/heads/dangling` → exit 1, on a store where every object reads, and `git fetch`
+# survives it — so it is reachable on a healthy host, unlike the blinded-store case above.
+printf 'ref: refs/heads/nowhere-at-all\n' > "$ROOT/.git/refs/heads/dangling"
+run_refusal "answer 1-loud: a ref the refs themselves cannot follow" \
+  "git could not resolve 'dangling'" --dry-run --ref dangling
+has  "answer 1-loud: git's own message reaches the operator" "ignoring dangling symref" "$OUT"
+hasnt "answer 1-loud: does not call a loud 1 the ref's absence" \
+  "does not resolve to a commit on" "$OUT"
+# ⚠ The needle is the OLD text's own words — "went past", which ASSERTS a walk that did not happen
+# here — and it is one printed line of it, because these refusals are printed a line at a time and a
+# needle spanning two of them can never match, which would make this assertion a decoration.
+hasnt "answer 1-loud: and does not assert an object store that was never opened" \
+  "went past the refs and into the object" "$OUT"
+rm -f "$ROOT/.git/refs/heads/dangling"
+
+# ANSWER ∉ {0,1} + git SILENT — the branch this round fixes, reached the way an operator reaches it.
+# `refs/remotes/origin/HEAD` is in every clone, its reflog gets ONE entry at clone time and never
+# grows on a deploy root, and A7's first candidate is the concatenation `refs/remotes/origin/$REF` —
+# so `--ref HEAD@{1}` exits 128 with an EMPTY stderr here, permanently, on a healthy host.
+eq "fixture: the candidate really is 128 with git silent" "128|" \
+  "$(gitc "$ROOT" rev-parse --verify --quiet --end-of-options 'refs/remotes/origin/HEAD@{1}' \
+       2>"$T/ro.err" >/dev/null; printf '%s|%s' "$?" "$(cat "$T/ro.err")")"
+run_refusal "answer other-silent: reflog syntax on a completely healthy store" \
+  "git could not resolve 'refs/remotes/origin/HEAD@{1}'" --dry-run --ref 'HEAD@{1}'
+has  "answer other-silent: names the status it got" "exited 128" "$OUT"
+hasnt "answer other-silent: does NOT claim the refs could not be read" \
+  "the REFS could not be read" "$OUT"
+hasnt "answer other-silent: does not say git's error is above it — git printed nothing" \
+  "git's own error is above this refusal" "$OUT"
+has  "answer other-silent: says nothing was printed, so it claims no failed read" \
+  "NOTHING WAS PRINTED ABOVE THIS REFUSAL" "$OUT"
+has  "answer other-silent: names what a healthy store answers this way" \
+  "reflog syntax whose reflog does not go back that far" "$OUT"
+has  "answer other-silent: and tells the operator what to deploy from instead" \
+  "full 40-character commit id" "$OUT"
+
+# ⛔ AND THE NOTE ITSELF MUST NOT LIE (card#9611 r3). `--ref -foo` was classified by a
+# `check-ref-format` call with no option guard, which parsed the leading `-` as an OPTION: exit 129
+# with the usage message swallowed by 2>/dev/null, after which A7's note told the operator "'-foo'
+# is not a ref name: it carries rev syntax" — false, and false in this card's own direction. ⚠ The
+# guard git_ref_oid uses cannot be borrowed: check-ref-format accepts neither `--end-of-options` nor
+# `--` (measured, git 2.53.0 — both exit 129 for EVERY ref, valid or not), so the leading dashes are
+# stripped for the classification instead.
+run_refusal "a --ref beginning with a dash is refused as the NAME it is" \
+  "'-foo' does not resolve to a commit on origin" --dry-run --ref -foo
+hasnt "dash --ref: is not called rev syntax" "it carries rev syntax" "$OUT"
+hasnt "dash --ref: and is not called an abbreviated id" "ABBREVIATED commit id" "$OUT"
+run_refusal "a --ref beginning with a dash that DOES carry rev syntax is still called that" \
+  "'-foo~2' does not resolve to a commit on origin" --dry-run --ref -foo~2
+has "dash --ref with rev syntax: the note fires, one variable away" "it carries rev syntax" "$OUT"
+
+# ANSWER ∉ {0,1} + git LOUD — NAMED, NOT ASSERTED. Every shape measured that makes rev-parse exit
+# non-0/1 LOUDLY is a refs-storage read failure (packed-refs unreadable; packed-refs corrupt), and
+# A7's `git fetch` runs BEFORE anything is resolved and meets it first — so the branch is not
+# reachable through this script today. Both halves of that are asserted rather than assumed: git
+# really does answer that way, and the deploy really does die at the fetch with git's error on
+# screen, which is the loud, true failure an operator needs either way.
+three_releases git_ref_oid_refs_unreadable
+chmod 000 "$ROOT/.git/packed-refs"
+eq "fixture: a name resolve really is 128 AND loud with packed-refs unreadable (a root runner is not this)" \
+  "128|loud" \
+  "$(gitc "$ROOT" rev-parse --verify --quiet --end-of-options refs/remotes/origin/main \
+       2>"$T/ro.err" >/dev/null; printf '%s|%s' "$?" "$([ -s "$T/ro.err" ] && echo loud || echo silent)")"
+run --dry-run --ref main
+neq "answer other-loud: the deploy stops (the fetch meets it before git_ref_oid does)" 0 "$RC"
+has  "answer other-loud: git's own error is what the operator gets" "packed-refs" "$OUT"
+hasnt "answer other-loud: and nothing claims the ref is absent" \
+  "does not resolve to a commit on" "$OUT"
+chmod 644 "$ROOT/.git/packed-refs"
 
 # ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
 # `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan

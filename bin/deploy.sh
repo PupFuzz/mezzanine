@@ -763,9 +763,25 @@ git_read_at() {
 # WHAT SEPARATES THEM IS THE QUESTION, NOT THE STATUS. Resolving a ref NAME to an object id reads
 # the refs alone and never opens the object store — measured on that same broken checkout,
 # `rev-parse --verify --quiet refs/remotes/origin/main` still answers with the id — so THERE a
-# status 1 means the name is absent and can mean nothing else, and a 128 (unreadable `packed-refs`,
-# not a repository) is a failed read. Whether the object that id names is a readable commit is a
-# SECOND question, asked of `cat-file -t`, where a non-zero status can only be a failed read.
+# status 1 is the name being absent, and a LOUD 128 (unreadable `packed-refs`, not a repository) is
+# a failed read. Whether the object that id names is a readable commit is a SECOND question, asked
+# of `cat-file -t`, where a non-zero status can only be a failed read.
+#
+# ⚠ "AND CAN MEAN NOTHING ELSE" IS WHAT THIS PARAGRAPH USED TO SAY, AND IT IS FALSE — recorded here
+# rather than left as a premise the code leans on (card#9611 r3). Measured, git 2.53.0, on a store
+# where every object reads: ONE ref file at mode 000 → `rev-parse --verify --quiet refs/heads/<it>`
+# → 1, stderr EMPTY. A REFS-level read that failed, wearing the status and the silence that mean
+# absence, which no discriminator in this file can see. Two things follow, both stated rather than
+# assumed:
+#   · IT IS NOT REACHABLE THROUGH THIS SCRIPT TODAY. A7 fetches before it resolves anything, and a
+#     ref it cannot read fails THAT first — measured: `fatal: bad object refs/remotes/origin/main`,
+#     exit 1, so the deploy dies at the fetch with git's error on screen (card#9646 owns the fetch's
+#     own status reading; that is where a fix for this belongs).
+#   · IF IT EVER BECOMES REACHABLE, THE COUPLING IS A8's. An unreadable `refs/remotes/$REMOTE/main`
+#     would answer git_ref_oid with 1-silent, A8 would read that as "there is no release branch",
+#     and the run would conclude that nothing is released — so `--allow-unreleased` would apply —
+#     out of a read that failed. That is the card#9608 direction (an empty answer read as a
+#     finding), which is why it is written down here and not only measured.
 # Peeling with `^{commit}` asks both at once, which is what collapsed them. They are asked apart.
 #
 # ⚠ AND A CANDIDATE IS NOT ALWAYS A NAME (card#9611 r2). Everything above holds for a ref NAME;
@@ -786,10 +802,22 @@ git_rev_read_failed() {
 
 # git_ref_oid <var> <candidate> — the object id <candidate> names, into <var>. THE name question,
 # in ONE place: git_commit_of asks it of each of A7's candidates and A8 asks it of the release
-# branch, and both need the same three answers rather than two readings of "non-zero".
-#   0 — <var> is a full object id.
-#   1 — nothing of that name, and <var> is empty. The caller must say what that means.
-#   A read git could not complete does not return.
+# branch, and both need the same answers rather than two readings of "non-zero".
+#
+# ITS DECLARED ANSWERS ARE THE STATUS AND GIT'S SILENCE TOGETHER, and there are five of them:
+#   0                   — <var> is a full object id.
+#   1, git SILENT       — nothing of that name, and <var> is empty. The caller must say what that
+#                         means. THIS IS THE ONLY ANSWER THAT RETURNS 1.
+#   1, git LOUD         — does not return. git printed while reaching the status that means absence,
+#                         so it is not that; what it met is what git named.
+#   ∉ {0,1}, git LOUD   — does not return. A read that failed, named by git's own error.
+#   ∉ {0,1}, git SILENT — does not return, AND THE REFUSAL CLAIMS NO FAILURE (card#9611 r3): git
+#                         answered without printing anything, so nothing establishes a failed read.
+# ⚠ THOSE FIVE ARE THE COVERAGE UNIT, and that is this round's lesson rather than a note: r2 added
+# cases for the 1 half of this function and NONE for the ∉ {0,1} half — so the branch nothing
+# exercised was the branch still over-reading, and it reached an operator through `--ref HEAD@{1}`
+# on a completely healthy host. bin/deploy.selftest.sh now carries a case per ANSWER above, which is
+# coverage over this contract rather than over the failures someone thought of.
 #
 # ⛔ STATUS 1 ALONE DOES NOT MEAN ABSENCE — THE SILENCE IS THE OTHER HALF (card#9611 r2). A
 # candidate is not always a ref NAME, so resolving one can walk into the object store, and a read
@@ -804,14 +832,16 @@ git_rev_read_failed() {
 # in order to be READ, never to be hidden — every byte of it is printed back before anything is
 # decided, because git's message is what names the object (the rule stated for the readers above).
 #
-# ⚠ THE ONE SHAPE THIS CANNOT SEE, named rather than assumed away: a checkout whose PACK is
-# unreadable answers an ABBREVIATED id with 1 and says nothing (measured: `.pack` chmod 000 →
-# `git rev-parse --verify --quiet <abbrev>` → 1, silent), because git never opened an object to fail
-# on — the index it needed to find one is what it could not read. A FULL 40-character id cannot
-# reach that: it resolves to itself at status 0 with the store untouched (measured on that same
-# broken checkout, and on a healthy one for an id naming no object at all), so the object question
-# is asked of `cat-file -t` below, where a failure is loud. A7's refusal tells an operator that,
-# rather than calling an abbreviation's silence the ref's absence.
+# ⚠ THE SHAPE THIS CANNOT SEE, named rather than assumed away: a checkout whose PACK is unreadable
+# answers with 1 and says nothing, because git never opened an object to fail on — the index it
+# needed to FIND one is what it could not read. That is not one candidate shape but every candidate
+# whose resolution needs the pack, which is the shape a real host is in (objects arrive packed from
+# `fetch`) — measured, git 2.53.0, `.pack` chmod 000, stderr EMPTY at each: an abbreviated id → 1,
+# `main~1` → 1, `:/subject` → 1. A FULL 40-character id cannot reach that: it resolves to itself at
+# status 0 with the store untouched (measured on that same broken checkout, and on a healthy one for
+# an id naming no object at all), so the object question is asked of `cat-file -t` below, where a
+# failure is loud. A7's refusal tells an operator that, rather than calling that silence the ref's
+# absence.
 #
 # Its locals are `__ro_`-prefixed rather than `__`: git_commit_of calls it WITH `__oid` as <var>,
 # and a local of that name here would swallow the write — the shadowing hazard _git_ls_at states.
@@ -830,14 +860,35 @@ git_ref_oid() {
     [ -n "$__ro_msg" ] || return 1
     git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
       "Exit 1 is \"there is no ref of that name\" — and that answer is SILENT. This one printed the" \
-      "error above, so it is not that: resolving '$__ro_cand' went past the refs and into the object" \
-      "store, which an abbreviated id or rev syntax (~, ^, @{}, :/) asks git to do, and what it met" \
-      "there is what git named." \
+      "message above, so it is not that, and GIT'S OWN MESSAGE IS WHAT SAYS WHICH READ THIS WAS:" \
+      "resolving '$__ro_cand' goes past the refs and into the object store when it is an abbreviated" \
+      "id or rev syntax (~, ^, @{}, :/), which is the common case here — and a ref the refs" \
+      "themselves cannot follow is loud at this status too (measured: a dangling symref, on a" \
+      "completely healthy object store)." \
       "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
   fi
-  git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
-    "Exit 1 is \"there is no ref of that name\" and $__ro_rc is not that: the REFS could not be read." \
-    "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
+  if [ -n "$__ro_msg" ]; then
+    git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
+      "Exit 1 is \"there is no ref of that name\" and $__ro_rc is not that, and git printed the error" \
+      "above on the way there: the read failed, and git's own message names what it could not read." \
+      "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
+  fi
+  # ∉ {0,1} AND GIT SAID NOTHING. The same over-read this card exists to end, one branch further in
+  # (card#9611 r3): the text here used to be "the REFS could not be read", which is a positive claim
+  # about a failure that nothing above establishes — and `--ref HEAD@{1}` reaches it on a healthy
+  # host, permanently, because refs/remotes/origin/HEAD is in every clone and its reflog gets one
+  # entry at clone time and never grows on a deploy root. A8 splits --is-ancestor's 128 apart for
+  # exactly this reason three screens below; this is that same split, at the same discriminator the
+  # status-1 branch above uses — git's own silence.
+  git_read_unusable "git could not resolve '$__ro_cand' (\`git rev-parse --verify\` exited $__ro_rc)" \
+    "NOTHING WAS PRINTED ABOVE THIS REFUSAL, so it does not claim a read that failed — there is no" \
+    "error above it to name one, and --quiet silences only rev-parse's own diagnostic for this" \
+    "status. Measured, git 2.53.0: a COMPLETELY HEALTHY store answers exactly this way for @{…}" \
+    "reflog syntax whose reflog does not go back that far, and so does a reflog this checkout could" \
+    "not read. Which of those this is, is NOT established here." \
+    "Nothing was resolved, so nothing about what '$__ro_cand' names is known." \
+    "Deploy from a branch, a tag, or the full 40-character commit id: a reflog is this host's own" \
+    "local history of where a ref has pointed, not something $REMOTE can be asked for."
 }
 
 # git_commit_of <var> <candidate…> — the commit id the FIRST candidate that NAMES an object peels
@@ -1507,8 +1558,18 @@ phase_a() {
   # — git_ref_oid states it). check-ref-format is what separates a name from rev syntax; its stderr
   # is dropped because it reads NOTHING — it parses a string, and its status is the whole answer,
   # which is the opposite of the silenced reads this card is about.
-  local ref_note=() ref_note_head=""
-  if ! git_at check-ref-format --allow-onelevel "$REF" >/dev/null 2>&1; then
+  # ⚠ AND `$REF` IS ASKED OF check-ref-format WITH ITS LEADING DASHES OFF (card#9611 r3). That
+  # command has no `--end-of-options` and no `--`: BOTH are parsed as the refname and exit 129 with
+  # the usage message for EVERY ref, valid or not (measured, git 2.53.0 — `--allow-onelevel
+  # --end-of-options main` → 129), so the guard git_ref_oid uses cannot be used here. Without one,
+  # `--ref -foo` was read as an OPTION: exit 129, usage swallowed by 2>/dev/null, and the note below
+  # then told the operator "'-foo' is not a ref name: it carries rev syntax" — which is false, and
+  # false in the one direction this whole card is about. git_ref_oid resolves `$REF` with
+  # --end-of-options, so it IS asked as a name; the dashes are stripped for the classification only,
+  # which leaves `-foo` classified as the name it is and `-foo~2` as the rev syntax it is.
+  local ref_note=() ref_note_head="" ref_probe="$REF"
+  case "$REF" in -*) ref_probe="${REF#"${REF%%[!-]*}"}" ;; esac
+  if [ -n "$ref_probe" ] && ! git_at check-ref-format --allow-onelevel "$ref_probe" >/dev/null 2>&1; then
     ref_note_head="⚠ '$REF' is not a ref name: it carries rev syntax, so resolving it walked the commit graph —"
   else
     case "$REF" in
@@ -1522,9 +1583,8 @@ phase_a() {
     "store being read, so a failure behind it is named as the failed read it is." )
   git_commit_of SHA "refs/remotes/$REMOTE/$REF" "refs/tags/$REF" "$REF" \
     || refuse "'$REF' does not resolve to a commit on $REMOTE" \
-      "The refs were read and carry no such name, and git printed nothing while reading them — a" \
-      "read that failed is loud (card#9611). Check the spelling, and that the branch or tag is" \
-      "pushed." "${ref_note[@]}"
+      "The refs were read and carry no such name, and git printed nothing while reading them." \
+      "Check the spelling, and that the branch or tag is pushed." "${ref_note[@]}"
 
   # A8 — prod runs RELEASED code. `main` is the release branch (README § Branch model), so a
   # commit that is not an ancestor of $REMOTE/main has not been through the release PR, the
@@ -1549,6 +1609,12 @@ phase_a() {
   # answerable on a broken store (measured: that name still resolves while every object read fails).
   # What reaches --is-ancestor is then the ID it resolved to, so a 128 from it can only be the graph.
   local main_oid="" ancestry=0 short_sha
+  # THE ONE UNGUARDED READ HERE, and why it needs no guard (card#9611 r3, recorded rather than
+  # wrapped): $SHA is a full commit id that git_commit_of proved readable with `cat-file -t` one
+  # call earlier, and abbreviating it reads that same object. A store that could fail this fails
+  # A7's `git fetch` long before. If it somehow did fail, `set -e` ends phase A with git's own error
+  # on screen and nothing touched — the safe direction, which is why this is a comment and not a
+  # refusal path for a state that cannot be reached.
   short_sha="$(git_at rev-parse --short "$SHA")"
   if git_ref_oid main_oid "refs/remotes/$REMOTE/main"; then
     git_at merge-base --is-ancestor "$SHA" "$main_oid" || ancestry=$?
@@ -1562,8 +1628,16 @@ phase_a() {
       "NEXT STEP — THIS IS THE STORE, NOT THE RELEASE, so the same refusal meets the recovery" \
       "deploy the in-window banner names (--ref <sha> --allow-unreleased). Repair the read, then" \
       "run the same command again:" \
-      "  git -C $DEPLOY_ROOT fsck      names the object, and whether it is unreadable or absent" \
-      "and restore that object — re-fetch it from $REMOTE, or re-clone $DEPLOY_ROOT from it."
+      "  git -C $DEPLOY_ROOT fsck" \
+      "      names the object, and whether it is unreadable or absent" \
+      "  git -C $DEPLOY_ROOT fetch --prune $REMOTE" \
+      "      asks $REMOTE for the objects behind its refs again" \
+      "  git -C $DEPLOY_ROOT repack -a -d" \
+      "      rewrites this checkout's packs from what it can still read" \
+      "Each of those works inside $DEPLOY_ROOT/.git and leaves this host's own files alone." \
+      "⛔ DO NOT RE-CLONE $DEPLOY_ROOT. server/.env is created on this host and is in no commit, so" \
+      "its APP_KEY and DB_PASSWORD exist nowhere else; a fresh clone also takes server/storage/ —" \
+      "the logs — and .deploy-failed, the marker a failed window leaves to be read, with it."
   else
     # No release branch on $REMOTE at all. The fetch above ran --prune, so this is what $REMOTE
     # carries NOW, read from refs that were read — an ANSWER, and the answer is that nothing has

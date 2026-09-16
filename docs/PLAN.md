@@ -521,10 +521,24 @@ rule violations anyone could have committed at the time.
   refusal is allowed to claim**: resolving a ref NAME reads the refs alone, but `--ref` is the operator's
   own string, so rev syntax and an abbreviated id walk into the object store after all — there a failed
   read comes back as *"there is no ref of that name"* and is told apart by git's own SILENCE, which an
-  absence answers with and a failure does not. And a `origin/main` that is **not there at all** is an
+  absence answers with. **That discriminator has measured limits, and the refusals name them instead of
+  claiming more than was read**: a checkout whose PACK is unreadable answers SILENTLY for every candidate
+  that needs the pack — an abbreviated id, `main~1`, `:/subject` — which is the shape a real host is in, so
+  A7 tells an operator which of the two their `--ref` is and what resolves without the store being read at
+  all; and a REF FILE at mode 000 answers silently too, on a store where every object reads, which nothing
+  here can see — not reachable today only because the fetch meets that ref first (card#9646), and written
+  down in `bin/deploy.sh` beside the premise it falsifies rather than left as a premise. **A status that is
+  neither 0 nor 1 is split by that same silence**: git exits 128 without printing anything for `@{…}` reflog
+  syntax on a completely healthy store — `--ref HEAD@{1}` does it on any host — so that refusal states the
+  status, claims no failed read, and says what to deploy from instead, while a LOUD one is named as the
+  failed read it is. And a `origin/main` that is **not there at all** is an
   ANSWER rather than a read that failed — nothing is released, so neither is this commit — so
   `--allow-unreleased` applies to it exactly as to any other unreleased commit, and where the graph truly
-  could not be read the refusal names the repair, because the in-window recovery deploy meets it too. And **a release
+  could not be read the refusal names the repair, because the in-window recovery deploy meets it too. **The
+  repair it names works inside the deploy root's own `.git`** (`fsck`, `fetch --prune`, `repack -a -d`) and
+  says outright not to re-clone the deploy root: `server/.env` is created on the host and is in no commit,
+  so its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and
+  the `.deploy-failed` marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
   app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,

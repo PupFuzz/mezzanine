@@ -40,7 +40,9 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   nor the status 128 is ONE condition**, which is the second half of the same defect: `--ref` is the
   operator's own string, so rev syntax (`main~2`) or an abbreviated id makes the resolve walk into
   the object store, where a failed read also comes back as 1 — told apart now by git's own SILENCE,
-  which an absent name answers with and a failed read never does (measured both ways); and
+  which an absent name answers with (and the shapes that silence CANNOT see are named to the
+  operator rather than assumed away: on a checkout whose pack is unreadable, every candidate that
+  needs the pack answers silently); and
   `--is-ancestor` exits 128 for a `origin/main` THAT IS NOT THERE on a completely healthy store,
   exactly as for a graph it could not read, so the release branch is resolved by NAME first.
   **Three behaviour changes beyond the wording**: a git failure at either site now prints git's
@@ -53,6 +55,24 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   this card adds to `bin/deploy.selftest.sh` was seen to fail against the commit before it and pass
   with the fix, each paired with the other direction over the SAME broken store (a ref that is
   genuinely absent still refuses as absent) and with a control one variable away on a readable one.
+  **The `NEXT STEP` an unreadable ancestry prints is a repair INSIDE the deploy root's own `.git`** —
+  `fsck`, `fetch --prune`, `repack -a -d` — and it says outright not to re-clone the deploy root: an
+  operator reading it has the app down, `server/.env` is created on the host and is in no commit, so
+  its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone also takes `server/storage/`
+  and the `.deploy-failed` marker — the logs and the marker the failure banner sends that same
+  operator to. **And a status that is neither 0 nor 1 is split by that same silence**: `rev-parse`
+  exits 128 having printed NOTHING for `@{…}` reflog syntax on a completely healthy store, and
+  `refs/remotes/origin/HEAD` exists in every clone with a reflog that gets one entry and never grows
+  on a deploy root — so `--ref HEAD@{1}` refused with *"the REFS could not be read"*, under a line
+  saying git's error was above it, on a host where nothing was wrong. That refusal now states the
+  status, claims no failed read where git printed none, and says what to deploy from instead; a LOUD
+  non-zero is still named as the failed read it is. The coverage that missed it is fixed at the
+  contract rather than at the case: `bin/deploy.selftest.sh` carries one case per ANSWER
+  `git_ref_oid` declares — `0`, `1`-silent, `1`-loud, other-silent, other-loud — because the branch
+  no case exercised was the branch still over-reading. Also: a `--ref` beginning with `-` is
+  classified as the NAME it is (`check-ref-format` parsed it as an option and the note then called
+  it rev syntax; that command accepts neither `--end-of-options` nor `--`, measured, so the leading
+  dashes are stripped for the classification instead).
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
   unconditionally when it is absent; the file had never been committed, at `dev`, at `main` or at
