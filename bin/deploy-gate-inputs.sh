@@ -422,6 +422,13 @@ fi
 
 # ── what was derived, as rows: kind, arg, fn, digest ───────────────────────────────────────────
 : > "$WORK/derived.tsv"; : > "$WORK/derived.full"
+# `rend` is never READ, and it is still load-bearing: reads.tsv carries SIX fields (the layout
+# recorded above: idx, kind, arg, line, fn, region-end), and the last name in a `read` absorbs
+# everything left on the line. Drop `rend` and `fn` becomes "phase_a<TAB>145" — and `fn` is one of
+# the four fields the guard below compares against the table, so the corruption would surface as a
+# permanent mismatch, not as a tidier line. ShellCheck models a name's VALUE being read; it cannot
+# see a name whose whole job is to hold a field position.
+# shellcheck disable=SC2034  # terminal field sink for reads.tsv's 6th column — see above
 while IFS=$'\t' read -r idx kind arg lineno fn rend; do
   dg="$( (cat "$WORK/d.$idx" 2>/dev/null || true) | sha256sum | cut -c1-12)"
   printf '%s\t%s\t%s\t%s\n' "$kind" "$arg" "$fn" "$dg" >> "$WORK/derived.tsv"
@@ -478,6 +485,13 @@ fi
 # ── judge the repository's own tree ────────────────────────────────────────────────────────────
 n_fixed=0; n_runtime=0
 for row in "${CLASSIFIED[@]}"; do
+  # `c_gate` and `c_why` are never read anywhere, and both hold a CLASSIFIED row's shape open:
+  # `c_gate` occupies column 3 so that `c_rule` lands on column 4 (without it `c_rule` reads "A3",
+  # the gate name, and every row counts as fixed), and `c_why` is the terminal sink that keeps the
+  # trailing prose off `c_dg` at the sibling destructure above, whose printf writes `c_dg` into the
+  # table the guard compares. Nothing measured is dropped by their being unread: the `gate` and
+  # `why` columns are what the per-path report below prints.
+  # shellcheck disable=SC2034  # positional names holding the row shape — see above
   IFS=$'\t' read -r c_path c_kind c_gate c_rule c_fn c_dg c_why <<< "$row"
   if [ "$c_rule" = run-time ]; then n_runtime=$((n_runtime + 1)); else n_fixed=$((n_fixed + 1)); fi
 done

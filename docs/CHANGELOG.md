@@ -119,7 +119,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   2 naming both lost lines. Each configuration channel the ledger RECORDS was then re-run against
   the pinned ledger and each is closed: the root `.shellcheckrc` is inert and the `rm -rf
   $MEZZ_DOCROOT` under it reds at exit 1 by name; the file-scope directive is exit 2 at its file and line; the broad rc and the
-  exported `SHELLCHECK_OPTS` both leave the measurement at 8 files and 114 findings where they used
+  exported `SHELLCHECK_OPTS` both leave the measurement at the ledger's whole population and 114
+  findings where they used
   to leave it at 31. The probe row was seen to discriminate the way a control must: an analyser
   wrapper that reports version 0.9.0 truthfully and passes `--exclude=SC2086` underneath is exit 2
   naming the code that stopped being reported, and the identical wrapper without the exclusion is
@@ -132,6 +133,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   and only its own lines. A conflicted index, which `git ls-files` reports once per stage, is exit 2
   rather than a file counted three times; and a `#pop` line deleted by hand with its count rows left
   behind is exit 2 rather than a routine addition.
+
+  The ledger's first measurement now covers `bin/deploy-gate-inputs.sh` and `bin/deploy-gate-inputs.selftest.sh`. They reached `dev` through card#9637 while this lane was still on a branch, so they entered the tree ahead of the analyser that would have read them; merging `dev` here brought them under the gate for the first time and it reported every finding in them as new, which is the lane doing its job. Each was read as a suspected defect first and disposed of on its own line. The SC2034 names in `bin/deploy-gate-inputs.sh` are positional field sinks that hold a tab-separated row's shape open: the last name in a `read` absorbs everything left on the line, so each unread name is what keeps the field beside it intact, and the annotations name that field and the corruption that follows from dropping it — one of them guards `fn`, which the guard below it compares against the pinned table. In the selftest, `eq` now branches, which leaves `[ "$2" = "$3" ]` as the one thing deciding a case; the chained `A && ok || bad` it replaces gave the reporter's own exit status a second route to `bad`, so a `printf` failing under a CI lane's redirection could turn a case that passed into a FAIL for a reason that is not about the check. The rest carry the reason each single-quoted string has to reach its destination as literal text: they are the shell source a case injects into the fixture's `bin/deploy.sh` and the needles quoting the checker's own output, where a `$SHA` or a backquote expanding here would leave the case measuring something else. Every directive is line-scope with its reason on it, and the ledger's `#cfg directive` rows record them, which is what makes each one a decision somebody typed.
 
 - **card#9637** — **CI now asks whether this repository satisfies `bin/deploy.sh`'s own phase-A
   gates, so a release that the deploy would refuse reds at PR time instead of in a maintenance
