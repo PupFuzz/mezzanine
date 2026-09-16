@@ -36,6 +36,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { scriptedFetch } from '../Support/scripted-fetch.mjs';
+
 const dir = process.argv[2];
 
 if (typeof dir !== 'string' || dir === '') {
@@ -81,35 +83,12 @@ async function runScenario(scenario) {
     const entry = await import(url('lobby-entry.js'));
     const { Building } = await import(url('../wire/building.js'));
 
-    const queues = Object.create(null);
-
-    for (const [path, list] of Object.entries(scenario.responses ?? {})) {
-        queues[path] = [...list];
-    }
-
-    const requests = [];
-    const unscripted = [];
-
-    const fetchImpl = async (path) => {
-        requests.push(path);
-
-        const next = (queues[path] ?? []).shift();
-
-        if (next === undefined) {
-            unscripted.push(path);
-            throw new Error(`unscripted request: GET ${path}`);
-        }
-
-        if (next.unreachable === true) {
-            throw new TypeError('Failed to fetch');
-        }
-
-        return {
-            status: next.status,
-            ok: next.status >= 200 && next.status < 300,
-            json: async () => (next.text !== undefined ? JSON.parse(next.text) : next.body),
-        };
-    };
+    // ⚠ THE SCRIPTED FETCH IS `../Support/scripted-fetch.mjs`, HOISTED AT ITS SECOND CALLER
+    // (card#7341 step 3: `tests/Feature/Floor/fleet-client-probe.mjs` drives the client protocol
+    // through the identical fake transport). It was written inline here; what moved is the whole
+    // of it, unchanged in behaviour for this probe — this file scripts no response with a
+    // `delay_ms` and passes no `schedule`, so every response still settles on the next microtask.
+    const { fetch: fetchImpl, requests, unscripted } = scriptedFetch(scenario.responses);
 
     const surface = new Building(fetchImpl);
     const rendered = scenario.rendered ?? [];

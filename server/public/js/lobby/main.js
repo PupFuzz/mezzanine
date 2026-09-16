@@ -11,9 +11,13 @@
  * id it addresses exists on the page and vice versa (`LobbyPageWiringTest`). Keeping the split
  * sharp is what keeps the uncovered part free of decisions.
  *
- * ⛔ NO POLL, NO SOCKET, NO ADMIT. The delta feed (D2 § 8.3, § 8.4), § 2.2's ADMIT and § 9 F1's
- * 10 s degraded poll are all out of this slice. The one repeat fetch this file can make is
- * § 4.1's discrepancy budget, which is bounded by `DiscrepancyBudget` and is not a cadence.
+ * ⛔ NO POLL AND NO SOCKET ON THIS PAGE. The delta feed (D2 § 8.3, § 8.4) and § 2.2's ADMIT — which
+ * is the discovery snapshot itself since card#7341 step 3 — live in the client protocol,
+ * `wire/fleet-client.js`, which is built and which no page constructs before Appendix B step 8;
+ * § 9 F1's 10 s degraded poll is out of this slice too. The one repeat fetch this file can make is
+ * § 4.1's discrepancy budget, which is bounded by `DiscrepancyBudget` — now `wire/discrepancy-budget.js`,
+ * the same budget the protocol spends — and is not a cadence. ⚠ Step 9 replaces THIS file's own
+ * trigger with the protocol's, so that one disagreement costs one fetch rather than two.
  * ⚠ So no `building.layout` reaches this page, and F17's "retry with backoff" is not built either:
  * F17 publishes no backoff figure, and the snapshot's own F4 retry is unbuilt beside it. A failed
  * layout request is retried when the viewer presses Refresh, which re-runs the entry fetches.

@@ -409,7 +409,7 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
      */
     private function sourceDefects(?string $moduleDir = null): array
     {
-        $source = $this->moduleSource($moduleDir);
+        $source = $this->animationLogSource($moduleDir);
         $defects = [];
 
         if (preg_match('/export function createAnimationLog\(\s*\)/', $source) !== 1) {
