@@ -136,6 +136,66 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
   The ledger's first measurement now covers `bin/deploy-gate-inputs.sh` and `bin/deploy-gate-inputs.selftest.sh`. They reached `dev` through card#9637 while this lane was still on a branch, so they entered the tree ahead of the analyser that would have read them; merging `dev` here brought them under the gate for the first time and it reported every finding in them as new, which is the lane doing its job. Each was read as a suspected defect first and disposed of on its own line. The SC2034 names in `bin/deploy-gate-inputs.sh` are positional field sinks that hold a tab-separated row's shape open: the last name in a `read` absorbs everything left on the line, so each unread name is what keeps the field beside it intact, and the annotations name that field and the corruption that follows from dropping it — one of them guards `fn`, which the guard below it compares against the pinned table. In the selftest, `eq` now branches, which leaves `[ "$2" = "$3" ]` as the one thing deciding a case; the chained `A && ok || bad` it replaces gave the reporter's own exit status a second route to `bad`, so a `printf` failing under a CI lane's redirection could turn a case that passed into a FAIL for a reason that is not about the check. The rest carry the reason each single-quoted string has to reach its destination as literal text: they are the shell source a case injects into the fixture's `bin/deploy.sh` and the needles quoting the checker's own output, where a `$SHA` or a backquote expanding here would leave the case measuring something else. Every directive is line-scope with its reason on it, and the ledger's `#cfg directive` rows record them, which is what makes each one a decision somebody typed.
 
+- **card#9591** — **the differential that found card#9561's round-4 blocker is now a committed test, run on
+  every PR.** `bin/deploy.sh` cannot ask PHP what `server/.env` means at phase A — the config cache is stale
+  by construction and the host may have no working app — so it mirrors, in bash, the part of
+  vlucas/phpdotenv that decides where a line ENDS, whether a line is a SETTING, and what the app then
+  RECEIVES for it. Every one of those is a claim about somebody else's code, and a false one already cost a
+  BLOCKER: a lone `\r` made a `.env` two lines to `Dotenv\Parser\Parser` and one to the reader that decides,
+  so Laravel connected to a remote store in plaintext while A5 read `DB_HOST` as unset and exempted the
+  store from TLS. That was found by a differential built in a scratchpad and thrown away — four review
+  rounds running, four rebuilds of the same harness. **`bin/env-mirror-diff.sh` + `bin/env-mirror-diff.mirror.sh`
+  + `bin/env-mirror-diff.oracle.php`** are that harness, landed as a second job in the existing
+  `deploy-selftest` lane (parallel with the self-test, so it adds nothing to a PR's critical path while it
+  finishes inside it). Two differentials: the **scan** (`env_file_scan` / `env_lines_load` / `env_get`
+  against the vendored parser — does phpdotenv parse the file at all, and does the script read each key to
+  the same value it holds) and the **locality** (A5's store verdict against where `server/config/database.php`,
+  `ConfigurationUrlParser` and `MySqlConnector::getDsn()` actually send the app, and against the cache driver
+  `server/config/cache.php` resolves). **Nothing in it is a re-implementation** — `server/vendor/` is the
+  oracle, installed from the committed lock with the same `--no-dev` a deploy uses, and the mirror side runs
+  `bin/deploy.sh`'s own text, extracted at run time. **Both AXES are derived on every run rather than listed in the
+  harness, and they are held to their sources by DIFFERENT strengths — the LINE-ENDING axis is read from both
+  sides and a narrowing on either side reds, while the KEY axis has a floor whose reach is one key, stated below
+  and on card#9591.** The line-ending axis is read out of `Parser::parse`'s own split
+  regex AND out of `env_lines_load`'s own `content="${content//…}"` normalisation statements, and the two
+  sets are held against each other in BOTH directions: a phpdotenv release that adds a terminator adds
+  cells, and one that DROPS a terminator `bin/deploy.sh` still splits on reds instead of silently deleting
+  the axis that would have caught it — card#9561 round 4 with the arrow reversed. The keys compared are the
+  union of the three idioms that read a key from `.env` — `env_read VAR KEY`, a literal-key `env_get KEY`
+  (phase B's only smoke check is `url="$(env_get APP_URL)"`) and `server/.env.example`'s key list, which
+  A10b loops `env_get` over — held against a floor derived from A5's own refusal text. **What that floor
+  reaches is ONE key, and the header says so rather than claiming a refactor cannot narrow the
+  population**: the floor's power is the refused keys no other leg covers, which today is
+  `MYSQL_ATTR_SSL_CA` alone — every other refused key is in `server/.env.example` too and survives any
+  rename through that leg. Measured the other way as well: rename every `env_read` site EXCEPT the
+  `MYSQL_ATTR_SSL_CA` one and the harness runs green with `DB_SOCKET` — a key A5's store verdict turns on,
+  named by no refusal text and by no `.env.example` — silently gone from the compared keys. The
+  `.env.example` leg is likewise a SECOND TYPING of A10b's key grep, over the working tree's copy where
+  A10b reads the target release's, with nothing binding the two. Both are recorded on card#9591 as
+  won't-do with those measurements, and both are now stated where the derivation is written, in the shape
+  `bin/env-mirror-diff.sh`'s own key-floor control already used. What IS
+  written down is the fixture bases: `scan_bases` and `locality_bases` enumerate the `.env` shapes by hand,
+  and that list is the half a new shape must be ADDED to. The cell count is counted as the run emits cells
+  and printed — a recorded count would be a quoted authority that outlives the run that falsified it. **Every differential carries a control seen to fail**: after the clean run the
+  harness mutates a *copy* of `bin/deploy.sh` — the `\n`-only splitter that was the blocker, a scan that
+  certifies everything, the NUL refusal cut out, a CA judged by its text rather than the value the app
+  receives, a `store_locality` blind to `DB_URL`, any `DB_SOCKET` text taken for a socket — and **fails
+  unless each one reds the differential**, naming the cell. The oracle carries one too: it runs the whole
+  population in one process, so it re-runs it in reverse and requires every cell to answer identically, with
+  a deliberately leaky variant proving that check discriminates, and each of the two derivations above
+  carries one as well — a `Parser::parse` narrowed to `/(\r\n|\n)/`, an `env_lines_load` that stops
+  normalising a lone `\r`, and a `bin/deploy.sh` whose every `env_read` call site has been renamed away must
+  each red the check that exists to report it. **`bin/env-mirror-diff.mirror.sh` reads a `.env` only under
+  the fixture root its driver exports** (`MEZZ_ENV_MIRROR_WORK`): it takes fixture directories on stdin and
+  PRINTS the values it reads, so unbounded it is a general-purpose `.env` value printer for any directory a
+  caller names — one hand run pointed at a live host's `server/` puts that host's secrets in a terminal or a
+  CI log. It now dies naming the file it would have read, in every mode, and the refusal is watched on every
+  run by three legs: the same fixture answered INSIDE the root, refused outside it, and refused with the
+  variable unset. Each leg was seen to fail against a deliberately weakened copy. The root bounds a
+  DEFAULT, not a privilege: a caller who sets the variable at a real `.env` is reading a file they could
+  already `cat`, and the script's header says exactly that. `bin/deploy.sh` is read and **not changed** by
+  this card.
+
 - **card#9637** — **CI now asks whether this repository satisfies `bin/deploy.sh`'s own phase-A
   gates, so a release that the deploy would refuse reds at PR time instead of in a maintenance
   window.** `bin/deploy-gate-inputs.sh` + `.github/workflows/deploy-gate-inputs.yml`. The class it
