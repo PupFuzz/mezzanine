@@ -15,7 +15,9 @@
 # WHAT IT CHECKS, AND WHAT IT DOES NOT. Phase A's target-tree gates read the release out of the
 # object database. Each such read is a PATH the release must carry, and for several of them an
 # absent path is an unconditional refusal. This checks that population — *the files phase A reads
-# out of the target tree* — against the repository's own tree at the commit under test.
+# out of the target tree*, as far as the derivation below can see them — against the repository's
+# own tree at the commit under test. Where it cannot see them is printed on every run, and the
+# claim a green makes is exactly that narrow.
 #
 # It does NOT evaluate the gates' content predicates (A6's constraint shape, A10's `ALGORITHM=`
 # declaration, A11's `trustProxies('*')`, A13's crontab render). Those live INLINE in `phase_a`,
@@ -33,11 +35,12 @@
 # IS written here is the far smaller judgement the source text cannot answer: whether an ABSENT
 # path makes that gate refuse, warn, or pass.
 #
-# ⛔ AND THE DERIVATION IS TOTAL, NOT OPTIMISTIC — the whole point of round 2. A derivation that
-# only ever FINDS reads cannot protect anything: a read written in a shape its pattern misses is
-# absent from the derived set AND from the guard's comparison, the two sides stay equal, and the
-# run goes GREEN over a gate nobody checked. Measured on the first version of this file, six of
-# eight realistic ways to add a read escaped with exit 0. So the derivation has two halves:
+# ⛔ AND THE DERIVATION STOPS ON WHAT IT SEES, RATHER THAN ONLY FINDING WHAT IT MATCHES. A
+# derivation that only ever FINDS reads cannot protect anything: a read written in a shape its
+# pattern misses is absent from the derived set AND from the guard's comparison, the two sides stay
+# equal, and the run goes GREEN over a gate nobody checked. Measured on the first version of this
+# file, six of eight realistic ways to add a read escaped with exit 0. So the derivation has two
+# halves:
 #
 #   1. A STRICT pattern (`READ_RE`) that both FINDS a call site and takes the path out of it —
 #      one pattern, never two, because two notions of what a call site is would disagree one day.
@@ -54,6 +57,12 @@
 #   NON-READING subcommands named below; anything else — `cat-file`, `archive`, `log`, a subcommand
 #   nobody has thought of yet — stops the check rather than being assumed harmless.
 #
+#   ⚠ WHAT THAT BUYS IS BOUNDED BY THE SUPERSET, AND THE BOUND IS NOT NARROW. A read the superset
+#   does not SEE is invisible to the stop as well as to the guard, so it is still a green over a
+#   gate nobody checked — this half makes the derivation stop on shapes it cannot parse, not total.
+#   Shapes that add a real target-tree read and still exit 0 have been measured; they are
+#   enumerated ONCE, in the `NOT PROVED BY A GREEN` block this script PRINTS on every run.
+#
 # ⛔ AND THE TABLE PINS THE DISPOSITION, NOT JUST THE PATH — the other half of the same defect.
 # Comparing path SETS leaves a table that is silently WRONG the day a gate's `warn` becomes a
 # `refuse`: same path, same derivation, green run, and a row that now describes something the
@@ -62,12 +71,15 @@
 # stops the check and prints the new lines, so a maintainer who changes a disposition has to
 # re-read the row — which is the table's whole purpose.
 #
-# RESIDUAL ESCAPES, NAMED (canon: name what you cannot verify). This derivation reads ONE file:
-# `bin/deploy.sh` at the commit under test. A target-tree read added in a file it sources
-# (`bin/supervision.sh`), or reached through `eval`, or made with a git binary held in a variable
-# (`"$GIT" show …`), is outside the superset and would not be found. `bin/deploy.selftest.sh` is
-# where those would be caught behaviourally; `bin/deploy-gate-inputs.selftest.sh` holds every
-# escape shape this file DOES claim, each as a red.
+# RESIDUAL ESCAPES ARE NAMED IN ONE PLACE, AND THIS COMMENT IS NOT IT (canon: name what you cannot
+# verify — once). They are enumerated in the `NOT PROVED BY A GREEN` block this script PRINTS on
+# every run, so the CI log of the run being trusted carries them, and a reader who wants them runs
+# the check rather than trusting a comment. The workflow header, the changelog entry and the PR
+# body point there instead of keeping a copy: this list was restated on four surfaces and was
+# incomplete on all four at once — the same drift this file refuses to accept in the path table.
+# `bin/deploy.selftest.sh` is where such a read would be caught behaviourally;
+# `bin/deploy-gate-inputs.selftest.sh` holds every escape shape this file DOES claim to stop, each
+# as a red.
 #
 # DERIVING FROM THE COMMIT UNDER TEST is deliberate: the question is whether a release satisfies
 # ITS OWN deploy script, so a release that changed the gate is judged by the changed gate.
@@ -85,7 +97,8 @@
 #   about a specific commit instead.
 #
 # EXIT CODES — "the repo is not deployable" and "this check could not speak" are different events:
-#   0  every required input is present at <rev>
+#   0  every required input this check DERIVED is present at <rev> — which is not the same as every
+#      input phase A reads; the run's own `NOT PROVED BY A GREEN` block is where the difference is
 #   1  a required input is MISSING — a real `bin/deploy.sh --ref <rev>` refuses at phase A
 #   2  the check could not run: no bin/deploy.sh at <rev>, no reads derived from it (an empty
 #      derivation is a measurement that never happened, never a pass), a line that could be a read
@@ -473,7 +486,8 @@ printf 'bin/deploy.sh phase A — target-tree inputs at %s\n' "$SHORT"
 printf '  population derived from bin/deploy.sh at %s: %d fixed path(s), %d built at run time\n' \
   "$SHORT" "$n_fixed" "$n_runtime"
 printf '  reader family derived from that same file: %s\n' "$FAMILY"
-printf '  every one of the %d line(s) that could be a read was matched by the derivation\n\n' "$EXAMINED"
+printf '  every one of the %d line(s) this derivation SEES as a possible read was matched by it\n' "$EXAMINED"
+printf '  (which lines it does not see is printed below, under NOT PROVED BY A GREEN)\n\n'
 
 missing=()
 for row in "${CLASSIFIED[@]}"; do
@@ -581,6 +595,47 @@ cat <<'EXCLUDED'
   the defect card#9203 filed.
 EXCLUDED
 
+# ── the one home for what a green does NOT establish ───────────────────────────────────────────
+# Printed on every run, green or red, because the log of the run being trusted is the surface a
+# maintainer actually reads. Every other surface — this script's own header, the workflow header,
+# docs/CHANGELOG.md, the PR body — points HERE rather than keeping a copy; four copies of this list
+# existed and all four were incomplete, which is the drift this file refuses to accept in its path
+# table and had no business accepting in its own claim.
+cat <<'LIMITS'
+
+  WHAT A GREEN HERE PROVES, AND WHAT IT DOES NOT — the one home for this list (card#9637):
+
+  PROVED. Every target-tree read this derivation FOUND in the bin/deploy.sh above is classified in
+    the table, in the function it sits in, with a digest of the disposition lines its gate reaches
+    from it — and every fixed path those reads name is present at that commit, non-empty where the
+    gate requires it, in a file mode bin/deploy.sh's own reader accepts. Every line the derivation
+    SEES as a possible read was matched by the strict pattern: a read the superset sees but the
+    pattern cannot parse stops this check at exit 2 rather than being passed over.
+
+  NOT PROVED: that the derived population is every read phase A makes. The superset is lines naming
+    $SHA/${SHA} plus lines calling a derived reader-family member, over ONE file, and each shape
+    below was MEASURED — added to a fixture copy of this repository as a real target-tree read, and
+    this check run over it — to exit 0 with the read never classified:
+      * a rev aliased into another variable first (r="$SHA" on one line, `git show "$r:path"` on the
+        next): the reading line names neither $SHA nor a family member, so it is not in the superset.
+      * a genuine reader excluded by the family's `!own_sha` clause. That clause is what keeps
+        phase_a out of the family; it also drops a properly parameterised reader whose body names
+        $SHA for some other reason (a message, a comparison), and its call sites then match nothing.
+      * a reader name held in a QUOTED variable (fn="git_read_at", then `"$fn" v "$SHA" path`): the
+        call site carries no literal family name for the superset to catch.
+      * a read in bin/supervision.sh, which bin/deploy.sh sources UNCONDITIONALLY beside itself and
+        this derivation never opens — as would one reached through `eval`, or made with a git binary
+        held in a variable ("$GIT" show …).
+
+  THE GAP IS A RECORDED DECISION, NOT AN OVERSIGHT (card#9637). Closing it by widening this
+    derivation was tried and declined: every widening is one more pattern over the same source text,
+    and the shape nobody has thought of escapes the wider pattern exactly as it escaped the narrow
+    one. What makes the population total is card#9644's seam in bin/deploy.sh — its target-tree
+    gates exposed as callable units, so the reads are ENUMERATED by the deploy instead of
+    pattern-matched out of its source. Until that lands, a second guard over the same question is
+    welcome here: this check does not claim to make one unnecessary.
+LIMITS
+
 if [ "${#missing[@]}" -gt 0 ]; then
   printf '\n⛔ %s — this repository does NOT satisfy bin/deploy.sh at %s\n' "$ME" "$SHORT" >&2
   printf '   missing: %s\n' "${missing[@]}" >&2
@@ -592,4 +647,5 @@ END
   exit 1
 fi
 
-printf '\n✅ %s — every target-tree input bin/deploy.sh phase A reads is present at %s\n' "$ME" "$SHORT"
+printf '\n✅ %s — every target-tree input DERIVED from bin/deploy.sh phase A is present at %s\n' "$ME" "$SHORT"
+printf '   (what that does and does not establish is printed above, under NOT PROVED BY A GREEN)\n'

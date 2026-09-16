@@ -7,9 +7,12 @@
 # ever FOUND reads, so a read written in a shape its pattern missed was absent from the derived set
 # AND from the table it is compared against — the two sides stayed equal and the run went GREEN over
 # a gate nobody had checked. Six of eight realistic ways to add a read escaped that way. The fix is
-# a total derivation (a loose superset of lines that could be a read; anything in it the strict
-# pattern does not match stops the check) and a table that pins each read's DISPOSITION, not just
-# its path.
+# a derivation that STOPS on what it sees (a loose superset of lines that could be a read; anything
+# in it the strict pattern does not match stops the check) and a table that pins each read's
+# DISPOSITION, not just its path. That fix is not totality, and the checker does not claim it is:
+# shapes its superset does not see still run green, and they are enumerated in the one place —
+# the `NOT PROVED BY A GREEN` block `bin/deploy-gate-inputs.sh` prints on every run. The cases
+# below are the escapes it DOES claim to stop; each is a red here for that reason.
 #
 # ⛔ AND THAT FIX IS ONLY WORTH ANYTHING IF IT IS RE-RUN. The eight escapes were first measured
 # against throwaway fixtures in a temp dir that nothing in this repository kept, so the pattern
@@ -120,7 +123,13 @@ eq  "control: exit 0"                               0 "$RC"
 has "control: says every input is present"          "every target-tree input" "$OUT"
 has "control: the population is derived, not typed" "population derived from bin/deploy.sh" "$OUT"
 has "control: the reader family is derived too"     "reader family derived" "$OUT"
-has "control: says the superset was fully matched"  "was matched by the derivation" "$OUT"
+has "control: says every line it SEES was matched"  "SEES as a possible read was matched by it" "$OUT"
+# The claim about what a green does NOT establish has ONE home — the block the check prints — and
+# three in-repo surfaces (its own header, the workflow header, docs/CHANGELOG.md) point at it by name
+# rather than keeping a copy. Deleting the block would leave those three pointing at nothing, which
+# is how the four copies that preceded it all went stale; this is the assertion that reds instead.
+has "control: prints what a green does NOT prove"   "WHAT A GREEN HERE PROVES, AND WHAT IT DOES NOT" "$OUT"
+has "control: names the decision that left the gap" "card#9637" "$OUT"
 
 # ── the eight escape shapes ────────────────────────────────────────────────────────────────────
 # Each adds ONE read of a path this repository does not carry. Before round 2, six of the eight

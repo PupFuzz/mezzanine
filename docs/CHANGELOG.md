@@ -31,8 +31,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `git_read_at`/`git_ls_at` call sites against `"$SHA"` — rather than carrying a written list of
   required paths, because a written list is the restatement that drifts the moment a gate is added.
   What is written down is the far smaller judgement the source text cannot answer: whether an absent
-  path makes that gate refuse, warn or pass. **And that derivation is TOTAL rather than optimistic,
-  which is the whole of the difference:** a derivation that only ever FINDS reads protects nothing,
+  path makes that gate refuse, warn or pass. **And that derivation STOPS on what it sees rather than
+  only finding what it matches:** a derivation that only ever FINDS reads protects nothing,
   because a read written in a shape its pattern misses is absent from the derived set AND from the
   table it is compared against — the two sides agree and the run is GREEN over a gate nobody
   checked. So the strict pattern is paired with a deliberately loose SUPERSET of lines that could be
@@ -40,9 +40,16 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   **every superset line the strict pattern does not match stops the check at exit 2.** The reader
   family is itself derived two ways — the names `bin/deploy.sh` lists in `git_read_call_site`'s own
   `case`, plus any function that runs `git_at ls-tree|show|cat-file` on a rev it was handed — so a
-  third reader added tomorrow is found rather than walked past. The escapes that remain are named in
-  the script's header rather than left to be discovered: a read added to a file `bin/deploy.sh`
-  sources, one reached through `eval`, one made with a git binary held in a variable. **Each row
+  third reader added tomorrow is found rather than walked past. **That stop is bounded by the
+  superset and is not totality, and the check says so in its own output:** shapes the superset does
+  not SEE still run green, they have been measured, and they are enumerated in ONE place — the `NOT
+  PROVED BY A GREEN` block the script prints on every run, which is the surface to read rather than
+  this entry, the script's header or the workflow's. That list was restated on four surfaces and was
+  incomplete on all four; it now has one home that the run being trusted carries. **The remaining
+  gap is a recorded decision on card#9637, not an oversight** — widening the derivation was tried
+  and declined, because each widening is one more pattern over the same source text; what makes the
+  population total is card#9644's seam in `bin/deploy.sh`, its target-tree gates exposed as callable
+  units so the reads are enumerated by the deploy instead of pattern-matched out of it. **Each row
   also pins the DISPOSITION, not just the path** — the function the read sits in, and a digest of
   the `refuse`/`warn`/`say` lines the gate reaches from it — so a `warn` that becomes a `refuse`
   stops the check with the new lines printed, instead of leaving a table that quietly describes
@@ -65,9 +72,10 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   asserts on the MESSAGE and not on the exit code alone, against one control — the repository as it
   is — and the mutation point is derived from the checker's own pattern rather than written down.
   **A green means less than the card's title and the run says so in its own output:**
-  it covers the files phase A reads out of the target tree, and names every excluded gate with its
-  reason (A0–A5, A7–A9 and A14 need the deploy HOST; A6's version half compares against the runner's
-  php; A10b's comparison half and A13's crontab half need `.env` and a crontab). The gates' content
+  it covers the files phase A reads out of the target tree *that this derivation sees*, and names
+  every excluded gate with its reason (A0–A5, A7–A9 and A14 need the deploy HOST; A6's version half
+  compares against the runner's php; A10b's comparison half and A13's crontab half need `.env` and
+  a crontab). The gates' content
   predicates — A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's crontab
   render — stay uncovered because they live inline in `phase_a`, which runs only as a whole and
   refuses at A5 without a production `server/.env`; reaching them needs a seam in `bin/deploy.sh`
