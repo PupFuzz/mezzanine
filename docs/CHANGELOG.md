@@ -30,14 +30,16 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   lines in one cycle with no analyser run over it once. The wrapper resolves the analyser as
   `$SHELLCHECK`, then the pinned build, then PATH, and **refuses to run under any version other than
   the one the baseline was measured under**. The CI lane INSTALLS that version — a sha256-verified
-  download of the upstream 0.9.0 release, whose digest matches the toolkit pin's own `asset` line and
-  whose binary is byte-identical to the pinned build the baseline was measured under — rather than
-  taking whatever the runner image ships, so the refusal fires on a decision of this project's
-  instead of on GitHub's image schedule: two ShellCheck versions genuinely disagree at ERROR
-  severity over the same file, so a verdict from an unnamed program is the thing
-  `agent-board-toolkit/.shellcheck-version` exists to stop. That pin file is unreadable from a CI
-  runner; where it IS readable the wrapper cross-checks the repo's stated version against it, and
-  where it is not, it says so in the log by name rather than implying a check it could not do. The
+  download of the upstream 0.9.0 release, whose binary is byte-identical to the pinned build the
+  baseline was measured under — rather than taking whatever the runner image ships, so the refusal
+  fires on a decision of this project's instead of on GitHub's image schedule: two ShellCheck
+  versions genuinely disagree at ERROR severity over the same file, so a verdict from an unnamed
+  program is the thing `agent-board-toolkit/.shellcheck-version` exists to stop. The version AND the
+  release digest are written once, in `bin/shell-lint.analyser.pin`, which the workflow and the
+  wrapper both read — so the build CI installs and the build the refusal asserts cannot drift apart
+  by one of them being edited alone. That upstream pin file is unreadable from a CI runner; where it
+  IS readable the wrapper cross-checks both values against it, and where it is not, it says so in
+  the log by name rather than implying a check it could not do. The
   file population is DERIVED from the checkout — every tracked `*.sh` plus every tracked file with a
   shell shebang, which is how `bin/promote-cards-by-token` (1.4k lines of bash, no extension) is in
   the set that a `bin/*.sh` glob would have missed silently — and the lane prints it, because a lane
@@ -46,16 +48,34 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `bin/shell-lint.sh --update-baseline` and first measured at `578e1b3`: it is a ledger and not an
   approval, nothing in it has been judged correct, and a count is kept there rather than in prose
   precisely because prose copies go stale. Keyed by count and not by line so that edits above a
-  finding do not red a PR that changed nothing about it. **A count that DROPS is an event to be
-  explained rather than a reward**, because `c < b` has three possible causes that counts alone
-  cannot tell apart: the finding was fixed, a finding was swapped in under a co-located fix, or the
-  file left the population entirely. So the ledger carries the POPULATION it was measured over and
-  the lane refuses to report on a tree that has lost a file the ledger names; only a class that
-  reaches ZERO in a run carrying no new findings asks for a re-baseline; any other decrease prints
-  as an UNEXPLAINED DECREASE alongside the findings still standing in that class, with no
-  re-baseline instruction attached; and `--update-baseline` refuses outright while the tree carries
-  findings the ledger does not, unless `--accept-new` records them as debt deliberately. A decrease
-  still never reds, so a cleanup PR still never argues with the gate. The residual is named rather
+  finding do not red a PR that changed nothing about it. **A finding count is evidence about a
+  MEASUREMENT, and that measurement has three inputs — the file population, the analyser version,
+  and the analyser's effective CONFIGURATION — so the ledger records all three and any NARROWING of
+  any of them takes one typed acceptance.** Guarding the population alone leaves the cheapest input
+  of the three completely open, and it is the only one that narrows coverage without touching a
+  single file the ledger names: measured on this tree, a one-line `.shellcheckrc` at the repo root
+  plus a real `rm -rf $MEZZ_DOCROOT` added to `bin/supervision.sh` printed *"every finding the
+  ledger carried for the pair is fixed"*, exited 0, and asked for the narrowed ledger to be
+  committed; `disable=SC2317,SC2016` took the same tree from 114 findings to 31 the same way; a
+  file-scope `# shellcheck disable=` did it with no new file at all, and a `SHELLCHECK_OPTS` in the
+  environment did it with no file at all. So the ledger's `#cfg` block now records the analyser
+  version, the exact invocation, every `# shellcheck` directive inside a population file (count-keyed,
+  like the findings), and the set of codes the analyser actually emits over a fixed probe script the
+  run writes and throws away — the control that catches an analyser told to keep quiet, which no
+  restatement of intent can. `--norc` makes every `.shellcheckrc` inert and an emptied
+  `SHELLCHECK_OPTS` makes that channel inert, both recorded rather than merely done; a file-scope
+  disable is REFUSED at exit 2 by file and line, because it blinds a whole class at once and this
+  gate would read the blinding as an improvement. **The asymmetry this closes was exact and
+  inverted: adding debt to the ledger has always taken a typed `--accept-new`, and removing coverage
+  from it took nothing at all** — including through `--update-baseline`, which accepted an arbitrary
+  shrink and is the command the population-loss error instructs you to run. That error is the right
+  failure mode and is unchanged; its remedy is now gated by `--accept-shrink`, the one typed
+  acceptance for every narrowing: a file leaving the population, a directive appearing, the pin
+  moving, the flag vector changing, the analyser going quiet. A decrease still never reds, so a
+  cleanup PR still never argues with the gate; an unexplained one is now emitted as a `::warning`
+  and appended to the job summary, because a step that exits 0 renders collapsed in the GitHub UI
+  and the text was reaching nobody, and the run's last line then says so instead of saying "clean".
+  The residual is named rather
   than implied: a swap INSIDE one (file, code) pair — one finding out, one of the same code in the
   same file in — nets to zero silently, and that is the price of keying by count, paid for the
   reason above. Every ShellCheck line must also land in exactly one count: the run asserts that the
@@ -76,7 +96,22 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   genuinely reaches zero is the one case that still asks for the re-baseline. The parser assert was
   seen to fire by putting a colon in a tracked script's name: the pre-assert code called that tree
   clean at exit 0 with the unquoted expansion inside it dropped unread, and the assert makes it exit
-  2 naming both lost lines.
+  2 naming both lost lines. Each configuration channel was then re-run against the pinned ledger and
+  each is closed: the root `.shellcheckrc` is inert and the `rm -rf $MEZZ_DOCROOT` under it reds at
+  exit 1 by name; the file-scope directive is exit 2 at its file and line; the broad rc and the
+  exported `SHELLCHECK_OPTS` both leave the measurement at 8 files and 114 findings where they used
+  to leave it at 31. The probe row was seen to discriminate the way a control must: an analyser
+  wrapper that reports version 0.9.0 truthfully and passes `--exclude=SC2086` underneath is exit 2
+  naming the code that stopped being reported, and the identical wrapper without the exclusion is
+  green. `--update-baseline` over a tree that lost `bin/promote-cards-by-token` is refused at exit 2
+  with the ledger byte-identical (sha256 compared either side), and the same command with
+  `--accept-shrink` writes it while naming what left. The finding parser was defeated by a path
+  containing a SPACE — `awk`'s default splitting put the ShellCheck code in a field that was
+  discarded, so every code for that path collapsed onto one key while the totals still agreed and
+  the sum assert passed — and a tracked `bin/lint probe.sh` now reports its own code, its own count
+  and only its own lines. A conflicted index, which `git ls-files` reports once per stage, is exit 2
+  rather than a file counted three times; and a `#pop` line deleted by hand with its count rows left
+  behind is exit 2 rather than a routine addition.
 
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
