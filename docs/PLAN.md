@@ -520,6 +520,27 @@ rule violations anyone could have committed at the time.
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
   from does not exist, and when the release carries no `server/.env.example` for the check that reads
   it — each a gap it says out loud rather than a state it calls safe.
+- **The `.env` refusals above rest on a MIRROR, and the mirror's agreement with what it mirrors is a
+  standing CI property** (card#9591). A5 cannot ask PHP what `server/.env` means — at phase A the config
+  cache is stale by construction and the host may have no working app — so `bin/deploy.sh` re-implements
+  in bash the part of vlucas/phpdotenv that decides where a line ENDS, whether a line is a SETTING and
+  what the app then RECEIVES for it. Each of those is a claim about somebody else's code, and card#9561
+  round 4 is the cost of a false one: a lone `\r` made one `.env` two lines to Dotenv and one to the
+  reader that decides, so Laravel went to a remote store in plaintext while A5 read `DB_HOST` as unset
+  and exempted the store from TLS. **`bin/env-mirror-diff.sh`** holds the two against each other on every
+  PR, in the `deploy-selftest` lane: two differentials — the scan against `Dotenv\Parser\Parser`, and A5's
+  store verdict against where `server/config/database.php` and `MySqlConnector::getDsn()` actually send
+  the app — over a population whose axes it DERIVES per run from BOTH sides and holds against each other:
+  the line terminators out of the parser's own split regex AND out of `env_lines_load`'s own normalisation
+  statements, and the keys out of the three idioms that read one from `.env` (`env_read VAR KEY`, a
+  literal-key `env_get KEY`, and `server/.env.example`'s key list that A10b reads through `env_get`) held
+  against a floor derived from A5's own refusal text. A mutant of `bin/deploy.sh` per differential must red
+  it, and each of those two derivations carries a mutant of its own. **What a green run there does NOT
+  prove is written in that script's own header** — the floor reaches only the refused keys no other leg
+  covers, and the `.env.example` leg is a second typing of A10b's key grep — with the measurements on
+  card#9591, which records both as won't-do rather than as gaps nobody has looked at. So a
+  phpdotenv upgrade that moves the parser out from under the mirror is a red on a PR rather than a
+  discovery inside a maintenance window.
 - **The feed's stream needs three things from the host, and one check after a deploy that only an
   operator can run** (card#9300; `docs/design/FLEET-STATE.md § 8.3` R1 and R2 own the requirements
   and their measurements — this bullet is the runbook, not a second copy of them).
