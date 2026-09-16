@@ -517,7 +517,14 @@ rule violations anyone could have committed at the time.
   a commit on origin"*, and an ancestry git could not compute is refused as that, not as *"is not contained
   in `origin/main`"* — `--allow-unreleased` waives the FINDING that a commit is unreleased and does not
   apply where the question was never answered. Both named a cause that had never been established, which
-  costs an operator the debugging path rather than the deploy. And **a release
+  costs an operator the debugging path rather than the deploy. **What is READ, at either site, is what the
+  refusal is allowed to claim**: resolving a ref NAME reads the refs alone, but `--ref` is the operator's
+  own string, so rev syntax and an abbreviated id walk into the object store after all — there a failed
+  read comes back as *"there is no ref of that name"* and is told apart by git's own SILENCE, which an
+  absence answers with and a failure does not. And a `origin/main` that is **not there at all** is an
+  ANSWER rather than a read that failed — nothing is released, so neither is this commit — so
+  `--allow-unreleased` applies to it exactly as to any other unreleased commit, and where the graph truly
+  could not be read the refusal names the repair, because the in-window recovery deploy meets it too. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
   app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,

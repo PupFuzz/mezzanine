@@ -1539,6 +1539,127 @@ eq  "control: an ANNOTATED tag resolves and deploys" 0 "$RC"
 has "control: and it is the COMMIT the tag points at that would be checked out, not the tag object" \
   "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V2")" "$OUT"
 
+# ── card#9611 r2 — THE CANDIDATE IS NOT ALWAYS A NAME, AND 128 IS NOT ONE CONDITION ────────────
+# The cases above establish the split for ref NAMES, and that half is measured and holds. These are
+# the two places the SAME defect survived it, and both are the card's own acceptance turned around:
+# a refusal that positively asserts a cause nothing established.
+#
+# ⛔ 1. `$REF` IS THE OPERATOR'S OWN STRING, so a candidate can be rev syntax (`main~2`, `v1^{}`,
+# `:/subject`) or an abbreviated id — and resolving one of THOSE walks into the object store, where
+# a failed read comes back as 1, the status "there is no ref of that name". The loop consumed it as
+# absence and the refusal then told an operator to check the spelling, printed directly under git's
+# own `unable to open loose object … Permission denied`. The discriminator is git's SILENCE:
+# measured one variable apart (git 2.53.0, the fixture below), an absent name answers 1 with an
+# EMPTY stderr and the walk answers 1 having printed.
+#
+# ⛔ 2. `merge-base --is-ancestor` EXITS 128 FOR A TARGET REF THAT IS NOT THERE, on a completely
+# healthy store — measured below by removing the release branch from $ORIGIN, where every object
+# reads fine. A8 read every 128 as "git could not read the graph" and took --allow-unreleased away
+# with it, which is wrong twice: the read never failed, and the question IS answered — nothing is
+# released, so this commit is not released, which is the very finding the flag waives.
+#
+# THEY MUST DISCRIMINATE, NOT MERELY REFUSE: every fixture here refuses under the old code too, at
+# the same exit status, so each case asserts WHICH cause is named and that the other is not, and
+# each has a control one variable away.
+
+three_releases git_rev_syntax_walks_the_store
+blind_object "$V2"
+
+# `--ref main~2` is V1, and reaching it means READING V2 — the blinded object — for its parent. The
+# first candidate tried is `refs/remotes/origin/main~2`, so this is the string concatenation of
+# $REF, not some exotic third path.
+run_refusal "--ref <rev syntax> whose walk meets an unreadable object (A7)" \
+  "git could not resolve 'refs/remotes/origin/main~2'" --dry-run --ref 'main~2'
+hasnt "rev syntax over a broken store: does NOT call it the ref's absence" \
+  "does not resolve to a commit on" "$OUT"
+hasnt "rev syntax over a broken store: does not send the operator to check the spelling" \
+  "Check the spelling" "$OUT"
+has "rev syntax over a broken store: git's own error reaches the operator" \
+  "unable to open loose object" "$OUT"
+has "rev syntax over a broken store: names the discriminator it used — git's silence" \
+  "that answer is SILENT" "$OUT"
+# THE OTHER DIRECTION, same store, one --ref apart: an absent NAME is answered by the refs alone and
+# is still an absence. This is the claim the fix must not weaken, asserted against the fix that
+# could have.
+run_refusal "an absent name on that same store is still an absence, not a read" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "absent name beside it: no read-failure claim" "git could not resolve" "$OUT"
+hasnt "absent name beside it: no abbreviation note (the --ref is not hex)" \
+  "looked for it as an ABBREVIATED commit id" "$OUT"
+
+# ── CONTROL: the same --ref, one variable away — every object readable ─────────────────────────
+three_releases git_rev_syntax_readable_store
+run --dry-run --ref 'main~2' --redeploy
+eq  "control: that same rev syntax resolves and deploys once the object can be read" 0 "$RC"
+has "control: and it is V1 — the commit the walk arrives at — that would be checked out" \
+  "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V1")" "$OUT"
+# THE ABBREVIATION, which is the one shape the silence cannot discriminate: it is looked up IN the
+# object store, and a store too damaged to search says nothing. The refusal names that for a hex
+# --ref and for no other, so the operator is told what would tell them apart (the full id) instead
+# of being told a store failure is a typo.
+run_refusal "a hex --ref that names nothing is refused as absent, with the abbreviation named" \
+  "'0badc0de' does not resolve to a commit on origin" --dry-run --ref 0badc0de
+has "hex --ref: says the abbreviation lookup reads the object store" \
+  "looked for it as an ABBREVIATED commit id" "$OUT"
+has "hex --ref: and names the input that does not" "full 40-character commit id" "$OUT"
+# Rev syntax that resolves to nothing is the same shape from the other side: measured on a HEALTHY
+# store, `rev-parse --verify --quiet origin/main~99` is 1 and SILENT, so the silence cannot promise
+# there that the object store was never asked. The refusal says which of the two this --ref is.
+run_refusal "rev syntax that names nothing is refused as absent, with the walk named" \
+  "'main~99' does not resolve to a commit on origin" --dry-run --ref 'main~99'
+has "rev-syntax --ref: says it is not a ref name and that resolving it walks the graph" \
+  "it carries rev syntax, so resolving it walked the commit graph" "$OUT"
+hasnt "rev-syntax --ref: and does not call it an abbreviated id" \
+  "ABBREVIATED commit id" "$OUT"
+run --dry-run --ref no-such-branch
+hasnt "an ordinary branch name that is absent gets neither note" "READS THE OBJECT STORE" "$OUT"
+
+# ── A8: NO RELEASE BRANCH AT ALL, on a store where every object reads ──────────────────────────
+# The release branch is renamed on $ORIGIN, so the deploy's own `fetch --prune` removes
+# refs/remotes/origin/main. Nothing is unreadable; `--is-ancestor` exits 128 all the same.
+three_releases git_rev_no_release_branch
+gitc "$ORIGIN" symbolic-ref HEAD refs/heads/release
+gitc "$ORIGIN" branch -m main release
+eq  "fixture: \$ORIGIN has no main to be contained in" "" \
+  "$(gitc "$ORIGIN" rev-parse --verify --quiet refs/heads/main || true)"
+eq  "fixture: and every object of the checkout still reads" 0 \
+  "$(gitc "$ROOT" cat-file -t "$V2" >/dev/null 2>&1; echo $?)"
+
+run_refusal "no origin/main to compare against (A8)" \
+  "there is no origin/main for" --dry-run --ref hotfix
+hasnt "no release branch: states no read that failed" "git could not" "$OUT"
+hasnt "no release branch: does not claim the graph was unreadable" "could not read the graph" "$OUT"
+has "no release branch: says the flag applies, because the question WAS answered" \
+  "it is the same finding --allow-unreleased waives" "$OUT"
+
+# THE HATCH, which is what the old code took away here. `--ref <sha> --allow-unreleased` is the
+# shape the in-window recovery banner tells an operator with the app DOWN to run, so this is that
+# documented last resort exercised against the condition it now meets.
+run --dry-run --ref "$V2" --allow-unreleased
+eq  "the recovery banner's own shape (--ref <sha> --allow-unreleased) deploys with no release branch" \
+  0 "$RC"
+has "recovery shape: and says in the log WHY it is unreleased — there is no branch" \
+  "DEPLOYING UNRELEASED CODE: there is no origin/main to contain" "$OUT"
+run --dry-run --ref hotfix --allow-unreleased
+eq  "no release branch: the flag waives it for a branch too" 0 "$RC"
+
+# ── AND THE OTHER 128, one variable away: the graph that genuinely could not be read ───────────
+# Same flag, same refusal to deploy — the finding was never made, so there is none to waive — but
+# the refusal now carries the way out, because on THIS store the recovery deploy above is refused
+# too and the old text left an operator with the app down no next step at all.
+three_releases git_rev_unreadable_ancestry
+blind_object "$V2"
+run --dry-run --ref hotfix --allow-unreleased
+eq  "unreadable ancestry: still refused — a question never answered has no finding to waive" 1 "$RC"
+has "unreadable ancestry: says origin/main itself was THERE, and what was not read" \
+  "origin/main IS there" "$OUT"
+has "unreadable ancestry: names the repair as the next step" \
+  "git -C $ROOT fsck" "$OUT"
+has "unreadable ancestry: tells the operator the recovery deploy meets this same refusal" \
+  "--ref <sha> --allow-unreleased" "$OUT"
+has "unreadable ancestry: and how to restore the object it could not read" \
+  "re-clone $ROOT from it" "$OUT"
+
 # ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
 # `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan
 # command of such a release fails, the first of them `php artisan optimize:clear`, INSIDE the window,
