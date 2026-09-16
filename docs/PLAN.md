@@ -530,8 +530,12 @@ rule violations anyone could have committed at the time.
   and exempted the store from TLS. **`bin/env-mirror-diff.sh`** holds the two against each other on every
   PR, in the `deploy-selftest` lane: two differentials — the scan against `Dotenv\Parser\Parser`, and A5's
   store verdict against where `server/config/database.php` and `MySqlConnector::getDsn()` actually send
-  the app — over a population it DERIVES per run from the parser's own split regex and the script's own
-  `env_read` call sites, with a mutant of `bin/deploy.sh` per differential that must red it. So a
+  the app — over a population whose axes it DERIVES per run from BOTH sides and holds against each other:
+  the line terminators out of the parser's own split regex AND out of `env_lines_load`'s own normalisation
+  statements, and the keys out of the three idioms that read one from `.env` (`env_read VAR KEY`, a
+  literal-key `env_get KEY`, and `server/.env.example`'s key list that A10b reads through `env_get`) held
+  against a floor derived from A5's own refusal text. A mutant of `bin/deploy.sh` per differential must red
+  it, and each of those two derivations carries a mutant of its own. So a
   phpdotenv upgrade that moves the parser out from under the mirror is a red on a PR rather than a
   discovery inside a maintenance window.
 - **The feed's stream needs three things from the host, and one check after a deploy that only an

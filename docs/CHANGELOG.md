@@ -36,19 +36,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `ConfigurationUrlParser` and `MySqlConnector::getDsn()` actually send the app, and against the cache driver
   `server/config/cache.php` resolves). **Nothing in it is a re-implementation** — `server/vendor/` is the
   oracle, installed from the committed lock with the same `--no-dev` a deploy uses, and the mirror side runs
-  `bin/deploy.sh`'s own text, extracted at run time. **The population is derived on every run and never
-  written down**: the line-ending axis is read out of `Parser::parse`'s own split regex (a phpdotenv release
-  that adds a terminator adds cells), the keys compared are read out of `bin/deploy.sh`'s own `env_read`
-  call sites (a script that starts reading a new key covers it with no edit here), and the cell count is
-  counted as the run emits cells and printed — a recorded count would be a quoted authority that outlives
-  the run that falsified it. **Every differential carries a control seen to fail**: after the clean run the
+  `bin/deploy.sh`'s own text, extracted at run time. **Both AXES are derived on every run, from BOTH sides, and neither
+  derivation is allowed to narrow quietly.** The line-ending axis is read out of `Parser::parse`'s own split
+  regex AND out of `env_lines_load`'s own `content="${content//…}"` normalisation statements, and the two
+  sets are held against each other in BOTH directions: a phpdotenv release that adds a terminator adds
+  cells, and one that DROPS a terminator `bin/deploy.sh` still splits on reds instead of silently deleting
+  the axis that would have caught it — card#9561 round 4 with the arrow reversed. The keys compared are the
+  union of the three idioms that read a key from `.env` — `env_read VAR KEY`, a literal-key `env_get KEY`
+  (phase B's only smoke check is `url="$(env_get APP_URL)"`) and `server/.env.example`'s key list, which
+  A10b loops `env_get` over — held against a floor derived from A5's own refusal text, so a refactor that
+  moves the call sites out from under one idiom reds rather than running green over what is left. What IS
+  written down is the fixture bases: `scan_bases` and `locality_bases` enumerate the `.env` shapes by hand,
+  and that list is the half a new shape must be ADDED to. The cell count is counted as the run emits cells
+  and printed — a recorded count would be a quoted authority that outlives the run that falsified it. **Every differential carries a control seen to fail**: after the clean run the
   harness mutates a *copy* of `bin/deploy.sh` — the `\n`-only splitter that was the blocker, a scan that
   certifies everything, the NUL refusal cut out, a CA judged by its text rather than the value the app
   receives, a `store_locality` blind to `DB_URL`, any `DB_SOCKET` text taken for a socket — and **fails
   unless each one reds the differential**, naming the cell. The oracle carries one too: it runs the whole
   population in one process, so it re-runs it in reverse and requires every cell to answer identically, with
-  a deliberately leaky variant proving that check discriminates. `bin/deploy.sh` is read and **not changed**
-  by this card.
+  a deliberately leaky variant proving that check discriminates, and each of the two derivations above
+  carries one as well — a `Parser::parse` narrowed to `/(\r\n|\n)/`, an `env_lines_load` that stops
+  normalising a lone `\r`, and a `bin/deploy.sh` whose every `env_read` call site has been renamed away must
+  each red the check that exists to report it. `bin/deploy.sh` is read and **not changed** by this card.
 
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses

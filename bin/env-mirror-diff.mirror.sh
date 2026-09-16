@@ -72,10 +72,20 @@ fi
 
 case "$MODE" in scan | locality) ;; *) die "unknown mode '$MODE' (scan | locality | loopback-hosts)" ;; esac
 
-# ⚠ NOT ONE OF THESE HELPERS FORKS, AND THAT IS DELIBERATE. The population is in the hundreds of cells and
-# every mutant control re-runs it, so a `$(…)` per key would be most of this harness's wall clock — and a
-# check nobody can afford to run on every PR is a check that gets a `paths:` filter and then rots. Each
-# fixture costs exactly ONE fork, the subshell that gives deploy.sh's `refuse` something to exit.
+# ⚠ NOTHING ON THE `scan` PATH FORKS, AND THAT IS DELIBERATE. The population is in the hundreds of cells,
+# every key is read in every one of them, and every mutant control re-runs the lot — so a `$(…)` per key
+# would be most of this harness's wall clock, and a check nobody can afford to run on every PR is a check
+# that gets a `paths:` filter and then rots. A scan fixture costs exactly ONE fork: the subshell that gives
+# deploy.sh's `refuse` something to exit.
+#
+# ⚠ `locality` IS NOT IN THAT BUDGET, and a maintainer optimising it should know where its cost actually
+# is. It reads through `env_read`, which is deploy.sh's OWN function and whose first statement is
+# `_env_value="$(env_get "$2")"` — a command substitution, one fork per call, inside the script under test
+# and not this harness's to remove. `locality_one` calls it three times (APP_ENV, CACHE_STORE,
+# MYSQL_ATTR_SSL_CA) and `store_locality` up to three more (DB_URL, DB_SOCKET, DB_HOST), so a locality
+# fixture costs about SIX forks beside its own subshell — plus a `php -r` inside `store_locality` for every
+# fixture that sets DB_URL. The locality population is the smaller of the two, which is what keeps that
+# affordable; the fork-free rule below is what keeps the scan population affordable.
 #
 # esc VALUE → REPLY: env-mirror-diff.oracle.php's `enc`, on the bash side. A bash string cannot hold a NUL,
 # so a NUL needs no case here: a fixture carrying one is one the loader stopped at, and the scan refuses it.

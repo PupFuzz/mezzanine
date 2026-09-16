@@ -26,12 +26,20 @@
 #              dangerous cell: the app is on another host with no CA, or on a cache that keeps nothing,
 #              and A5 says `ok`.
 #
-# THE POPULATION IS DERIVED, NEVER WRITTEN DOWN. The line-ending axis is read out of
-# `Dotenv\Parser\Parser::parse`'s own split regex, so a phpdotenv release that adds a terminator adds
-# cells here. The keys compared are read out of `bin/deploy.sh`'s own `env_read` call sites, so a script
-# that starts reading a new key covers it without an edit. The cell count is COUNTED as the run emits
-# cells and printed at the end. Nothing here states a population size, because a written count becomes a
-# quoted authority that outlives the run that falsified it.
+# WHAT THE POPULATION IS DERIVED FROM, AND WHAT IS WRITTEN DOWN. The two AXES are derived per run and
+# nothing here retypes them: the line-ending axis is read out of BOTH `Dotenv\Parser\Parser::parse`'s own
+# split regex AND `env_lines_load`'s own normalisation statements, held against each other in both
+# directions; the keys compared are read out of the THREE idioms that read a key from `.env` — deploy.sh's
+# `env_read VAR KEY` sites, its literal-key `env_get KEY` sites, and `server/.env.example`'s key list,
+# which A10b loops `env_get` over — and held against a floor derived from A5's own refusal text. The cell
+# count is COUNTED as the run emits cells and printed at the end; no population size is stated, because a
+# written count becomes a quoted authority that outlives the run that falsified it.
+#
+# The fixture BASES are the half that IS written down: `scan_bases` and `locality_bases` are a
+# hand-maintained enumeration of `.env` shapes, and they are precisely the half that must GROW when a new
+# shape is found. This PR's own `lf-only` control is the worked example — it could not red the locality
+# differential until a comment line was added above each base's payload. A shape nobody has thought of is
+# not in here; adding it is an edit to those two functions, and that is the intended way to extend this.
 #
 # EVERY DIFFERENTIAL CARRIES A CONTROL SEEN TO FAIL. A differential reporting zero dangerous cells proves
 # nothing until it has been shown it can report one. After the real run this script mutates a COPY of
@@ -47,8 +55,10 @@
 # and never reads or writes the real `server/.env`.
 #
 # EXIT 0 no dangerous cells and every control red when mutated · 1 a dangerous cell, a refusal of a file
-# the app boots on where none is declared, or a control that failed to discriminate · 2 the harness could
-# not run (no vendor tree, no pdo_mysql, deploy.sh's reader block moved).
+# the app boots on where none is declared, a terminator set that has drifted, or a control that failed to
+# discriminate · 2 the harness could not run or would have compared less than it claims (no vendor tree, no
+# pdo_mysql, no server/.env.example, deploy.sh's reader block moved, a terminator that is not a CR/LF
+# sequence, or a key A5 refuses by name that the key derivation no longer covers).
 
 set -uo pipefail
 
@@ -84,36 +94,137 @@ WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 FAILURES=0
 fail() { printf '   ⛔ %s\n' "$*"; FAILURES=$((FAILURES + 1)); }
 
-# ── the line-ending axis, read out of the parser it mirrors ───────────────────────────────────────────
-# `Dotenv\Parser\Parser::parse` splits on `Regex::split("/(\r\n|\n|\r)/")`. That regex is the definition of
-# "a line" this whole differential is about, so it is READ rather than retyped: an upgrade that adds a
-# terminator adds axes here, and one that changes the pattern's shape stops this script rather than
-# quietly narrowing it.
+# ── the line terminators: stated twice, derived from BOTH, held together ──────────────────────────────
+# What "a LINE" is gets stated twice, once by each side this differential compares:
+#
+#   · `Dotenv\Parser\Parser::parse` splits on `Regex::split("/(\r\n|\n|\r)/")`;
+#   · `env_lines_load` rewrites each terminator to `\n` with its own `content="${content//$'…'/$'\n'}"`
+#     statements, and then splits on `\n`.
+#
+# BOTH are READ, and held against each other in BOTH directions, for exactly the reason the loopback set
+# below is. Deriving the axis from the PARSER ALONE is an OPTIMISTIC derivation: it dies on a terminator
+# the parser ADDS and is silent when it NARROWS. phpdotenv v6 moving to `/(\r\n|\n)/` would delete the
+# lone-`\r` axis — no `\r` fixture written at any position, this harness green — while `env_lines_load`
+# went on splitting on `\r`, so a host `.env` holding `DB_HOST=localhost\rMYSQL_ATTR_SSL_CA=/etc/ssl/ca.crt`
+# would be TWO lines to deploy.sh (loopback → A5 ok, TLS not required) and ONE to Dotenv (remote, and the
+# CA never defined). That is card#9561 round 4 with the arrow reversed. Deriving it from deploy.sh alone
+# has the mirror-image hole.
+#
+# So a difference EITHER WAY reds, and the fixture axis is the UNION of the two sets: the terminator one
+# side has stopped honouring is precisely the one whose fixtures must still be written, because those are
+# the cells that report the divergence rather than merely asserting it.
 PARSER="$REPO/server/vendor/vlucas/phpdotenv/src/Parser/Parser.php"
 [ -f "$PARSER" ] || die "no $PARSER — run \`composer install\` in server/. The vendored parser IS the oracle."
+
+parser_terms() { # parser_terms PARSER.php — Parser::parse's terminators, one escaped form per line
+  sed -n 's|.*Regex::split("/(\(.*\))/".*|\1|p' "$1" | tr '|' '\n' | grep -v '^$'
+}
+
+deploy_terms() { # deploy_terms DEPLOY — the terminators env_lines_load treats as ending a line
+  # `while IFS= read -r line` splits on `\n`, so `\n` ends a line whatever the rewrites above it say. Each
+  # `content="${content//$'X'/$'\n'}"` adds X. The REPLACEMENT is part of what is matched on purpose: a
+  # statement rewriting X to anything other than `\n` does not make X end a line and must not be counted,
+  # and the drift check then reds for the terminator that went missing rather than inventing one.
+  local q="'"
+  printf '%s\n' '\n'
+  grep -oE "content//\\\$${q}[^${q}]*${q}/\\\$${q}\\\\n${q}\}" "$1" \
+    | sed "s|^content//\\\$${q}||; s|${q}/.*\$||"
+}
+
+terms_key() { # terms_key TERM… — a set of terminators as one comparable string
+  printf '%s\n' "$@" | sort -u | tr '\n' ' '
+}
+
+terminator_drift() { # terminator_drift DEPLOY PARSER — prints the drift, and nothing when the two agree
+  local -a p d
+  mapfile -t p < <(parser_terms "$2")
+  mapfile -t d < <(deploy_terms "$1")
+  if [ "${#p[@]}" = 0 ] || [ "${#d[@]}" -lt 2 ]; then
+    printf 'one side names no terminator at all — parser: %d, env_lines_load: %d' "${#p[@]}" "$(( ${#d[@]} - 1 ))"
+    return 0
+  fi
+  local from_parser from_deploy
+  from_parser="$(terms_key "${p[@]}")"
+  from_deploy="$(terms_key "${d[@]}")"
+  [ "$from_parser" = "$from_deploy" ] || printf 'env_lines_load: [%s] Parser::parse: [%s]' "$from_deploy" "$from_parser"
+}
+
 SPLIT_PATTERN="$(sed -n 's|.*Regex::split("/(\(.*\))/".*|\1|p' "$PARSER")"
 [ -n "$SPLIT_PATTERN" ] || die "could not read Parser::parse's split pattern out of $PARSER"
 
 TERM_NAMES=(); TERM_BYTES=(); LF_INDEX=-1
 {
-  IFS='|' read -r -a _alts <<< "$SPLIT_PATTERN"
-  for _alt in "${_alts[@]}"; do
+  # The parser's order first — it is the order a reader of Parser.php expects — then anything only
+  # deploy.sh calls a terminator, appended. `sort -u` is not used for the merge: it would reorder the
+  # axis names on every run for no gain.
+  mapfile -t _p < <(parser_terms "$PARSER")
+  mapfile -t _d < <(deploy_terms "$DEPLOY")
+  [ "${#_p[@]}" -gt 0 ] || die "Parser::parse's split pattern named no terminator at all in $PARSER"
+  [ "${#_d[@]}" -gt 1 ] || die "env_lines_load in $DEPLOY normalises no line terminator at all — the \`content=\"\${content//\$'…'/\$'\\n'}\"\` statements this harness reads its half of the axis from have moved or been renamed"
+  for _alt in "${_p[@]}" "${_d[@]}"; do
     _rest="${_alt//\\r/}"; _rest="${_rest//\\n/}"
-    [ -z "$_rest" ] || die "Parser::parse now splits on '$_alt', which is not a CR/LF terminator — this harness's line-ending axis no longer describes it"
-    _bytes="${_alt//\\r/$'\r'}"; _bytes="${_bytes//\\n/$'\n'}"
+    [ -z "$_rest" ] || die "'$_alt' is named as a line terminator by Parser::parse or by env_lines_load and is not a CR/LF sequence — this harness's line-ending axis no longer describes them"
     _name="${_alt//\\/}"
     case "$_name" in rn) _name=crlf ;; n) _name=lf ;; r) _name=cr ;; esac
+    case " ${TERM_NAMES[*]} " in *" $_name "*) continue ;; esac
+    _bytes="${_alt//\\r/$'\r'}"; _bytes="${_bytes//\\n/$'\n'}"
     TERM_NAMES+=("$_name"); TERM_BYTES+=("$_bytes")
     [ "$_bytes" != $'\n' ] || LF_INDEX=$((${#TERM_NAMES[@]} - 1))
   done
 }
-[ "$LF_INDEX" -ge 0 ] || die "Parser::parse's split pattern does not include a bare \\n; this harness writes its baseline fixtures with one"
+[ "$LF_INDEX" -ge 0 ] || die "neither Parser::parse's split pattern nor env_lines_load's normalisation includes a bare \\n; this harness writes its baseline fixtures with one"
 
-# ── the keys compared, read out of the script under test ──────────────────────────────────────────────
-# Every `env_read VAR KEY` call site in deploy.sh. A script that starts reading a new key gets that key
-# compared with no edit here; a key nothing reads costs no cells.
-mapfile -t KEYS < <(grep -oE 'env_read [a-z_]+ [A-Z_][A-Z0-9_]*' "$DEPLOY" | awk '{print $3}' | sort -u)
-[ "${#KEYS[@]}" -gt 0 ] || die "no \`env_read VAR KEY\` call sites found in $DEPLOY — the reader has been renamed and this harness would compare nothing"
+# ── the keys compared: three idioms, unioned, held against a floor ────────────────────────────────────
+# THREE idioms read a key out of `.env`, and the population is their UNION. One of them alone is not it:
+#
+#   · `env_read VAR KEY` — A5's idiom, and the only one the first round of this harness covered;
+#   · a literal-key `env_get KEY` — `url="$(env_get APP_URL)"` is phase B's ONLY smoke check, and every
+#     fixture here writes an APP_URL. A divergence on it either drops the deploy's one verification ("The
+#     deploy is UNVERIFIED") or smoke-checks a URL the app does not have, with the window already CLOSED
+#     and the new release serving;
+#   · `server/.env.example`'s key list — A10b builds it at run time from the TARGET release's copy and
+#     reads every key of it through `env_get "$k"`. It is derived here exactly as bin/deploy.sh derives it
+#     there, so the two lists cannot be different lists. A divergence on one of those keys makes A10b tell
+#     an operator their host does not set a key it does set, or stay silent about one it does not.
+#
+# AND A FLOOR, because a derivation over call sites cannot notice that it has NARROWED. Nothing above
+# would report a refactor that routed eight of nine `env_read` sites through a new helper: the harness
+# would run green over the one key the new idiom did not hide. So the union is held against a set derived
+# from a surface none of the three idioms touches — the keys A5 REFUSES BY NAME in its own refusal text —
+# and a key that drops out of the union while A5 still refuses on it stops this script.
+ENV_EXAMPLE="$REPO/server/.env.example"
+[ -f "$ENV_EXAMPLE" ] || die "no $ENV_EXAMPLE — bin/deploy.sh's A10b reads every key of it through env_get, so it is one of the three idioms this harness's key population is derived from"
+
+derive_keys() { # derive_keys DEPLOY — the union of the three idioms, one key per line
+  {
+    grep -oE 'env_read [a-z_]+ [A-Z_][A-Z0-9_]*' "$1" | awk '{print $3}'
+    # Comment lines are struck out BEFORE the match: deploy.sh's own prose writes `env_get KEY` as the
+    # function's signature, and a signature in a comment is not a call site.
+    sed 's/^[[:space:]]*#.*//' "$1" | grep -oE 'env_get "?[A-Z_][A-Z0-9_]*"?' | sed 's/^env_get "\?//; s/"$//'
+    grep -Eo '^[A-Z][A-Z0-9_]*=' "$ENV_EXAMPLE" | tr -d '='
+  } | sort -u
+}
+
+derive_floor_keys() { # derive_floor_keys DEPLOY — the keys A5 refuses BY NAME, out of its refusal text
+  # `refuse "KEY is …"` is A5's own sentence about a key of `.env`. It is a DIFFERENT surface from every
+  # idiom above, which is the whole point: a refactor of the call sites does not touch it. A refusal about
+  # something that is not a `.env` key but is phrased that way would ADD a key here and red loudly — the
+  # safe direction for a floor, which exists to catch a SHRINK.
+  grep -oE 'refuse "[A-Z][A-Z0-9_]+ is ' "$1" | awk '{print $2}' | tr -d '"' | sort -u
+}
+
+uncovered_floor_keys() { # uncovered_floor_keys DEPLOY — the floor keys its derived union does not cover
+  local k derived
+  local -a floor
+  derived=" $(derive_keys "$1" | tr '\n' ' ')"
+  mapfile -t floor < <(derive_floor_keys "$1")
+  for k in "${floor[@]}"; do
+    case "$derived" in *" $k "*) ;; *) printf '%s ' "$k" ;; esac
+  done
+}
+
+mapfile -t KEYS < <(derive_keys "$DEPLOY")
+[ "${#KEYS[@]}" -gt 0 ] || die "no key at all was derived from $DEPLOY's \`env_read VAR KEY\` sites, its literal-key \`env_get KEY\` sites or $ENV_EXAMPLE — the readers have been renamed and this harness would compare nothing"
 
 # ── the loopback set: two statements, checked against each other ──────────────────────────────────────
 # Which host names are THIS host is the one judgement the oracle makes that no app code makes, so it is
@@ -132,6 +243,12 @@ check_loopback_sets() {
   read -r -a d <<< "$raw_deploy"
   from_oracle="$(printf '%s\n' "${o[@]}" | sort | tr '\n' ' ')"
   from_deploy="$(printf '%s\n' "${d[@]}" | sort | tr '\n' ' ')"
+  # ⚠ TO WHOEVER WIDENS THIS SET: a member bearing a SPACE would transport wrong and this check would
+  # not say so. Both sides are carried here space-joined and split again with `read -a`, so `[::1] x` would
+  # arrive as two members for the URL decider in env-mirror-diff.oracle.php and for the compare below —
+  # which would agree, on the wrong set — while deploy.sh's `host_locality` compares the array element
+  # whole and would decide on the one-member spelling. Unreachable today: every member of both statements
+  # is a host name or literal. A space-bearing member needs a transport that is not space-joined.
   if [ "$from_oracle" = "$from_deploy" ]; then
     say "   loopback set agrees: $from_deploy"
   else
@@ -423,7 +540,11 @@ print_rows() { # print_rows LIMIT CLASS-FILTER
 # nothing is itself a failure: it would leave an unmutated copy that reports zero dangerous cells and read
 # as "the control did not discriminate" for the wrong reason, so the copy is required to differ.
 mutant() { # mutant NAME SED-EXPR → prints the mutant's path
-  local name="$1" expr="$2" path="$WORK/mutants/$name.sh"
+  # Two `local` statements, not one: a single `local name="$1" path="…/$name.sh"` expands `$name` BEFORE
+  # this call's `local` assigns it, so the path would be built from whatever `name` the CALLER happens to
+  # have (shellcheck SC2318). It worked only while every caller had a local `name` holding the same string.
+  local name="$1" expr="$2"
+  local path="$WORK/mutants/$name.sh"
   mkdir -p "$WORK/mutants"
   cp "$DEPLOY" "$path"
   sed -i "$expr" "$path"
@@ -452,6 +573,93 @@ control() { # control MODE NAME DESCRIPTION SED-EXPR
     printf '                 → DANGEROUS at cell %d: %s %s — %s\n' "$i" "$base" "$axis" "$why"
   else
     fail "control '$name' ($desc) did NOT red the $mode differential over any of its ${#CELL_DIR[@]} cells. A differential that cannot report a dangerous cell is a decoration; either the mutation no longer expresses that defect, or the population no longer contains a fixture that exposes it."
+  fi
+}
+
+# ── the two derivations, held against their second statements and seen to fail ────────────────────────
+# Both of these are DRIFT CHECKS over a derivation, and a drift check nobody has watched red is the
+# decoration this harness exists to refuse. Each carries its own control, and the terminator one carries
+# ONE PER DIRECTION, because the failure that motivated it is the direction the first round did not have.
+# Neither control runs the population: what is under test is the derivation, and re-deriving is cheap.
+check_terminator_sets() {
+  local drift narrowed pat_esc nar_esc mutant_parser mutant_deploy q expr
+  drift="$(terminator_drift "$DEPLOY" "$PARSER")"
+  if [ -z "$drift" ]; then
+    say "   terminator sets agree: ${TERM_NAMES[*]} — Parser::parse's /($SPLIT_PATTERN)/ and env_lines_load's own normalisation"
+  else
+    fail "the line-terminator sets have DRIFTED — $drift. One side ends a line where the other does not, which is card#9561 round 4's shape; the axis below is the UNION of the two, so the cells that report it are still written."
+  fi
+
+  mkdir -p "$WORK/mutants"
+
+  # Direction 1 — the PARSER narrows. This is phpdotenv v6 dropping the lone `\r`, the case a
+  # parser-only derivation answers by generating fewer fixtures and going green.
+  narrowed="${SPLIT_PATTERN%|*}"
+  if [ "$narrowed" = "$SPLIT_PATTERN" ]; then
+    fail "the parser-narrowed control could not be built: Parser::parse's split pattern /($SPLIT_PATTERN)/ has a single alternative, so there is nothing to drop from it. That leaves this check unwatched in the direction that motivated it."
+  else
+    mutant_parser="$WORK/mutants/parser-narrowed.php"
+    cp "$PARSER" "$mutant_parser"
+    pat_esc="${SPLIT_PATTERN//\\/\\\\}"; nar_esc="${narrowed//\\/\\\\}"
+    sed -i "s@Regex::split(\"/($pat_esc)/\"@Regex::split(\"/($nar_esc)/\"@" "$mutant_parser"
+    cmp -s "$PARSER" "$mutant_parser" \
+      && die "the parser-narrowed control's sed matched nothing — Parser::parse's split call has moved in $PARSER"
+    if [ -n "$(terminator_drift "$DEPLOY" "$mutant_parser")" ]; then
+      say "   seen to fail  parser-narrowed   Parser::parse narrowed to /($narrowed)/ → the terminator check reds"
+    else
+      fail "the terminator check did NOT red for a Parser::parse narrowed to /($narrowed)/. A parser that stops splitting on a terminator env_lines_load still splits on is card#9561 round 4 with the arrow reversed, and this check is the only thing that reports it."
+    fi
+  fi
+
+  # Direction 2 — DEPLOY.SH narrows, ONE STATEMENT AT A TIME. The `lf-only` control below deletes BOTH
+  # normalisation statements and so tests only their total absence; nothing held either one alone.
+  # WHICH statement is deleted is DERIVED, not written here: the last non-`\n` terminator BOTH sides
+  # currently name. Naming `\r` outright would make this control stop expressing a narrowing the moment
+  # the parser stopped splitting on `\r` — deleting deploy.sh's `\r` statement then makes the two sets
+  # AGREE — and a control that quietly stops discriminating is what the whole round is about.
+  local -a p d
+  local victim="" i j
+  mapfile -t p < <(parser_terms "$PARSER")
+  mapfile -t d < <(deploy_terms "$DEPLOY")
+  for (( i = ${#d[@]} - 1; i >= 0; i-- )); do
+    [ "${d[i]}" != '\n' ] || continue
+    for j in "${!p[@]}"; do
+      [ "${p[j]}" != "${d[i]}" ] || { victim="${d[i]}"; break 2; }
+    done
+  done
+  if [ -z "$victim" ]; then
+    fail "the one-statement terminator control could not be built: Parser::parse and env_lines_load name no terminator in common beyond a bare \\n, so deleting one of env_lines_load's normalisation statements cannot express a narrowing. That is itself the drifted state reported above, and it leaves this check unwatched."
+    return 0
+  fi
+  q="'"
+  expr="\\@content//\\\$${q}${victim//\\/\\\\}${q}/@d"
+  mutant_deploy="$(mutant terminator-half "$expr")" || exit 2
+  if [ -n "$(terminator_drift "$mutant_deploy" "$PARSER")" ]; then
+    say "   seen to fail  terminator-half   env_lines_load stops normalising '$victim' → the terminator check reds"
+  else
+    fail "the terminator check did NOT red for an env_lines_load that stopped normalising '$victim' while Parser::parse still splits on it, so it does not hold the normalisation statements against the parser one at a time."
+  fi
+}
+
+check_key_derivation() {
+  local uncovered mutant_deploy
+  local -a floor
+  mapfile -t floor < <(derive_floor_keys "$DEPLOY")
+  [ "${#floor[@]}" -gt 0 ] \
+    || die "no \`refuse \"KEY is …\"\` refusal was found in $DEPLOY — the floor this harness holds its key derivation against is read out of A5's own refusal text, and that text has moved. Without it a derivation that has NARROWED cannot be reported, which is the one thing the floor exists for."
+  uncovered="$(uncovered_floor_keys "$DEPLOY")"
+  [ -z "$uncovered" ] || die "the key derivation does not cover ${uncovered% }, which $DEPLOY REFUSES BY NAME. Either an idiom that reads those keys has moved out from under \`env_read VAR KEY\`, a literal-key \`env_get KEY\` and $ENV_EXAMPLE, or the floor's own surface has. This harness compares only the keys it derives, so an uncovered key is a refusal nothing here tests."
+  say "   keys compared: ${#KEYS[@]}, derived from env_read sites + literal-key env_get sites + $(basename "$ENV_EXAMPLE")"
+  say "   floor met — every key A5 refuses by name is covered: $(derive_floor_keys "$DEPLOY" | tr '\n' ' ')"
+
+  # Seen to fail: a refactor that routes the `env_read` call sites through a new helper. The refused keys
+  # that `.env.example` also names survive it through that leg of the union; MYSQL_ATTR_SSL_CA — the key
+  # the TLS refusal turns on — is named by no `.env.example`, so the floor is what notices.
+  mutant_deploy="$(mutant key-idiom-moved 's/^\( *\)env_read \([a-z_]* [A-Z]\)/\1env_read_checked \2/')" || exit 2
+  if [ -n "$(uncovered_floor_keys "$mutant_deploy")" ]; then
+    say "   seen to fail  key-idiom-moved   every env_read site renamed → the floor reds"
+  else
+    fail "the key floor did NOT red for a deploy.sh whose every \`env_read VAR KEY\` site had been renamed, so it cannot report a derivation that has narrowed — which is what it exists for."
   fi
 }
 
@@ -497,8 +705,8 @@ do_scan() {
   scan_bases
   generate scan
   POP_SCAN=${#CELL_DIR[@]}
-  say "   population: $POP_SCAN cells — ${#BASES[@]} bases × the axes derived from Parser::parse's split pattern ($SPLIT_PATTERN)"
-  say "   keys compared, read out of $DEPLOY's own env_read call sites: ${KEYS[*]}"
+  say "   population: $POP_SCAN cells — ${#BASES[@]} bases × the terminator axes ${TERM_NAMES[*]}, derived from Parser::parse and from env_lines_load"
+  say "   keys compared, derived from the three idioms that read a key from .env: ${KEYS[*]}"
   run_oracle scan "$ORACLE"
   run_oracle_controls scan
   run_mirror scan "$DEPLOY"
@@ -557,6 +765,10 @@ printf 'oracle: %s (phpdotenv %s)\n' "$REPO/server/vendor" \
   "$(sed -n 's/.*"version": "\(v[0-9.]*\)".*/\1/p' <<< "$(grep -A2 '"name": "vlucas/phpdotenv"' "$REPO/server/composer.lock")" | head -1)"
 head2 'the loopback set — two statements, held together'
 check_loopback_sets
+head2 'the line terminators — two statements, held together'
+check_terminator_sets
+head2 'the keys compared — three idioms, held against a floor'
+check_key_derivation
 
 case "$ONLY" in
   both)     do_scan; do_locality ;;
