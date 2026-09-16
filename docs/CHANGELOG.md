@@ -101,6 +101,133 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   tree type` — so that branch told an operator git's error named what it could not read while every
   read had succeeded. It is split on git's own wording, the way `git_commit_of`'s tag branch already
   splits its own peel.
+
+- **card#9591** — **the differential that found card#9561's round-4 blocker is now a committed test, run on
+  every PR.** `bin/deploy.sh` cannot ask PHP what `server/.env` means at phase A — the config cache is stale
+  by construction and the host may have no working app — so it mirrors, in bash, the part of
+  vlucas/phpdotenv that decides where a line ENDS, whether a line is a SETTING, and what the app then
+  RECEIVES for it. Every one of those is a claim about somebody else's code, and a false one already cost a
+  BLOCKER: a lone `\r` made a `.env` two lines to `Dotenv\Parser\Parser` and one to the reader that decides,
+  so Laravel connected to a remote store in plaintext while A5 read `DB_HOST` as unset and exempted the
+  store from TLS. That was found by a differential built in a scratchpad and thrown away — four review
+  rounds running, four rebuilds of the same harness. **`bin/env-mirror-diff.sh` + `bin/env-mirror-diff.mirror.sh`
+  + `bin/env-mirror-diff.oracle.php`** are that harness, landed as a second job in the existing
+  `deploy-selftest` lane (parallel with the self-test, so it adds nothing to a PR's critical path while it
+  finishes inside it). Two differentials: the **scan** (`env_file_scan` / `env_lines_load` / `env_get`
+  against the vendored parser — does phpdotenv parse the file at all, and does the script read each key to
+  the same value it holds) and the **locality** (A5's store verdict against where `server/config/database.php`,
+  `ConfigurationUrlParser` and `MySqlConnector::getDsn()` actually send the app, and against the cache driver
+  `server/config/cache.php` resolves). **Nothing in it is a re-implementation** — `server/vendor/` is the
+  oracle, installed from the committed lock with the same `--no-dev` a deploy uses, and the mirror side runs
+  `bin/deploy.sh`'s own text, extracted at run time. **Both AXES are derived on every run rather than listed in the
+  harness, and they are held to their sources by DIFFERENT strengths — the LINE-ENDING axis is read from both
+  sides and a narrowing on either side reds, while the KEY axis has a floor whose reach is one key, stated below
+  and on card#9591.** The line-ending axis is read out of `Parser::parse`'s own split
+  regex AND out of `env_lines_load`'s own `content="${content//…}"` normalisation statements, and the two
+  sets are held against each other in BOTH directions: a phpdotenv release that adds a terminator adds
+  cells, and one that DROPS a terminator `bin/deploy.sh` still splits on reds instead of silently deleting
+  the axis that would have caught it — card#9561 round 4 with the arrow reversed. The keys compared are the
+  union of the three idioms that read a key from `.env` — `env_read VAR KEY`, a literal-key `env_get KEY`
+  (phase B's only smoke check is `url="$(env_get APP_URL)"`) and `server/.env.example`'s key list, which
+  A10b loops `env_get` over — held against a floor derived from A5's own refusal text. **What that floor
+  reaches is ONE key, and the header says so rather than claiming a refactor cannot narrow the
+  population**: the floor's power is the refused keys no other leg covers, which today is
+  `MYSQL_ATTR_SSL_CA` alone — every other refused key is in `server/.env.example` too and survives any
+  rename through that leg. Measured the other way as well: rename every `env_read` site EXCEPT the
+  `MYSQL_ATTR_SSL_CA` one and the harness runs green with `DB_SOCKET` — a key A5's store verdict turns on,
+  named by no refusal text and by no `.env.example` — silently gone from the compared keys. The
+  `.env.example` leg is likewise a SECOND TYPING of A10b's key grep, over the working tree's copy where
+  A10b reads the target release's, with nothing binding the two. Both are recorded on card#9591 as
+  won't-do with those measurements, and both are now stated where the derivation is written, in the shape
+  `bin/env-mirror-diff.sh`'s own key-floor control already used. What IS
+  written down is the fixture bases: `scan_bases` and `locality_bases` enumerate the `.env` shapes by hand,
+  and that list is the half a new shape must be ADDED to. The cell count is counted as the run emits cells
+  and printed — a recorded count would be a quoted authority that outlives the run that falsified it. **Every differential carries a control seen to fail**: after the clean run the
+  harness mutates a *copy* of `bin/deploy.sh` — the `\n`-only splitter that was the blocker, a scan that
+  certifies everything, the NUL refusal cut out, a CA judged by its text rather than the value the app
+  receives, a `store_locality` blind to `DB_URL`, any `DB_SOCKET` text taken for a socket — and **fails
+  unless each one reds the differential**, naming the cell. The oracle carries one too: it runs the whole
+  population in one process, so it re-runs it in reverse and requires every cell to answer identically, with
+  a deliberately leaky variant proving that check discriminates, and each of the two derivations above
+  carries one as well — a `Parser::parse` narrowed to `/(\r\n|\n)/`, an `env_lines_load` that stops
+  normalising a lone `\r`, and a `bin/deploy.sh` whose every `env_read` call site has been renamed away must
+  each red the check that exists to report it. **`bin/env-mirror-diff.mirror.sh` reads a `.env` only under
+  the fixture root its driver exports** (`MEZZ_ENV_MIRROR_WORK`): it takes fixture directories on stdin and
+  PRINTS the values it reads, so unbounded it is a general-purpose `.env` value printer for any directory a
+  caller names — one hand run pointed at a live host's `server/` puts that host's secrets in a terminal or a
+  CI log. It now dies naming the file it would have read, in every mode, and the refusal is watched on every
+  run by three legs: the same fixture answered INSIDE the root, refused outside it, and refused with the
+  variable unset. Each leg was seen to fail against a deliberately weakened copy. The root bounds a
+  DEFAULT, not a privilege: a caller who sets the variable at a real `.env` is reading a file they could
+  already `cat`, and the script's header says exactly that. `bin/deploy.sh` is read and **not changed** by
+  this card.
+
+- **card#9637** — **CI now asks whether this repository satisfies `bin/deploy.sh`'s own phase-A
+  gates, so a release that the deploy would refuse reds at PR time instead of in a maintenance
+  window.** `bin/deploy-gate-inputs.sh` + `.github/workflows/deploy-gate-inputs.yml`. The class it
+  closes is not the lockfile (card#9631 committed that): it is that **the suite's fixtures were more
+  complete than the repository.** `bin/deploy.selftest.sh` runs the gates against FIXTURE repos and
+  its fixtures mint a lockfile, so it proved the gate behaves correctly given a well-formed release
+  while saying nothing about whether this repo is one — which is how A12 refused every real deploy
+  from the day it landed, through three fix rounds and four adversarial reviews. The new check
+  **derives** its population, every run, from the `bin/deploy.sh` at the commit under test — its
+  `git_read_at`/`git_ls_at` call sites against `"$SHA"` — rather than carrying a written list of
+  required paths, because a written list is the restatement that drifts the moment a gate is added.
+  What is written down is the far smaller judgement the source text cannot answer: whether an absent
+  path makes that gate refuse, warn or pass. **And that derivation STOPS on what it sees rather than
+  only finding what it matches:** a derivation that only ever FINDS reads protects nothing,
+  because a read written in a shape its pattern misses is absent from the derived set AND from the
+  table it is compared against — the two sides agree and the run is GREEN over a gate nobody
+  checked. So the strict pattern is paired with a deliberately loose SUPERSET of lines that could be
+  a read (every call to a member of the reader family, every line naming `$SHA` in any quoting), and
+  **every superset line the strict pattern does not match stops the check at exit 2.** The reader
+  family is itself derived two ways — the names `bin/deploy.sh` lists in `git_read_call_site`'s own
+  `case`, plus any function that runs `git_at ls-tree|show|cat-file` on a rev it was handed — so a
+  third reader added tomorrow is found rather than walked past. **That stop is bounded by the
+  superset and is not totality, and the check says so in its own output:** shapes the superset does
+  not SEE still run green, they have been measured, and they are enumerated in ONE place — the `NOT
+  PROVED BY A GREEN` block the script prints on every run, which is the surface to read rather than
+  this entry, the script's header or the workflow's. That list was restated on four surfaces and was
+  incomplete on all four; it now has one home that the run being trusted carries. **The remaining
+  gap is a recorded decision on card#9637, not an oversight** — widening the derivation was tried
+  and declined, because each widening is one more pattern over the same source text; what makes the
+  population total is card#9644's seam in `bin/deploy.sh`, its target-tree gates exposed as callable
+  units so the reads are enumerated by the deploy instead of pattern-matched out of it. **Each row
+  also pins the DISPOSITION, not just the path** — the function the read sits in, and a digest of
+  the `refuse`/`warn`/`say` lines the gate reaches from it — so a `warn` that becomes a `refuse`
+  stops the check with the new lines printed, instead of leaving a table that quietly describes
+  something the deploy no longer does. An empty derivation is still refused rather than reported as
+  a pass. A required input that is present but is a SYMLINK is now a finding too, quoting
+  `git_read_at`'s own word for it: every mode but `100644`/`100755` is refused by name in the
+  window, so presence alone was never the question. **Seen to fail against the one
+  natural regression this check will ever have:** exit 1 at `057e051`, naming `server/package-lock.json
+  (A12)`, and exit 0 at `578e1b3`, the commit that committed it — one variable, and `bin/deploy.sh`'s
+  read set is byte-identical at both. **And `bin/deploy-gate-inputs.selftest.sh` now ships beside it
+  and runs FIRST in the same lane**, because a check whose discrimination nobody re-tests is one
+  whose pattern can be tightened tomorrow with the lane staying green forever: it builds fixture
+  repositories from this repository's own tree, mutates ONE thing in each, and watches the check
+  refuse — every escape shape above (an unquoted `$SHA`, a braced `${SHA}`, a different rev
+  variable, a third reader function, a wrapper around a reader, a call split over two lines with
+  `\`, a path assembled at run time, a raw `git show "$SHA:…"` with no reader involved), a gate's
+  disposition changed, a classified read deleted, a derivation that finds nothing, an absent reader
+  family, no `bin/deploy.sh` at all, a tool the check needs failing (exit 2, never the exit 1 that
+  means a finding), an absent input, an empty one, and one committed as a symlink. Every case
+  asserts on the MESSAGE and not on the exit code alone, against one control — the repository as it
+  is — and the mutation point is derived from the checker's own pattern rather than written down.
+  **A green means less than the card's title and the run says so in its own output:**
+  it covers the files phase A reads out of the target tree *that this derivation sees*, and names
+  every excluded gate with its reason (A0–A5, A7–A9 and A14 need the deploy HOST; A6's version half
+  compares against the runner's php; A10b's comparison half and A13's crontab half need `.env` and
+  a crontab). The gates' content
+  predicates — A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's crontab
+  render — stay uncovered because they live inline in `phase_a`, which runs only as a whole and
+  refuses at A5 without a production `server/.env`; reaching them needs a seam in `bin/deploy.sh`
+  that exposes its target-tree gates as callable units — card#9644, filed rather than carved here.
+  Restating them would drift from the gate, which is the shape of the defect card#9203 filed and
+  which `bin/deploy.sh`'s own A6 comment names. `bin/deploy.sh` is untouched, and neither the check
+  nor its selftest needs a host, database, network, checkout or credential: git and bash over the
+  object database, with every fixture under one temp dir.
+
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
   unconditionally when it is absent; the file had never been committed, at `dev`, at `main` or at
