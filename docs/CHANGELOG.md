@@ -19,6 +19,31 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9611** — **`bin/deploy.sh`'s ref resolve (A7) and release check (A8) name the cause they
+  actually established.** Both refused correctly and then stated a cause that had never been
+  established, which is canon #10's wrong-but-specific cause and costs an operator the debugging
+  path rather than the deploy: A7 said *"'<ref>' does not resolve to a commit on origin"* and A8
+  *"<sha> is not contained in origin/main"* on a checkout whose OBJECT STORE was what had failed.
+  **The status of the call A7 was making cannot discriminate**, and that is measured rather than
+  argued (git 2.53.0, packed and loose): `rev-parse --verify --quiet <ref>^{commit}` exits **1** for
+  a ref that is not there AND for every object-store failure tried — pack chmod 000, idx chmod 000,
+  pack deleted, one byte flipped mid-pack, loose object chmod 000 — and dropping `--quiet` gives
+  both **128** with the same `fatal: Needed a single revision`. So the fix is not a status threshold
+  on that call: resolving a NAME reads the refs alone and never opens the object store (measured on
+  a broken checkout, `rev-parse --verify --quiet refs/remotes/origin/main` still answers), and
+  whether the object it names is a readable commit is a SECOND question, asked of `cat-file -t`,
+  where a non-zero status can only be a failed read. `git_commit_of` asks them apart, peels an
+  annotated tag in a third step, and hands a failed read to card#9608's existing refusal helper
+  (`git_read_unusable`), which is the one place the PHASE decides whether a refusal may say
+  *"nothing was changed"*. A8 keeps `--is-ancestor`'s statuses apart the same way — 1 is *"it is not
+  an ancestor"*, 128 is *"git could not read the graph"* — and drops the `2>/dev/null` that hid
+  git's own error. **Two behaviour changes beyond the wording**: a git failure at either site now
+  prints git's error above the refusal, and `--allow-unreleased` no longer carries a deploy past an
+  ancestry that could not be read — it waives the FINDING that a commit is unreleased, and this run
+  has no finding to waive. Nine assertions in `bin/deploy.selftest.sh` were seen to fail against
+  `578e1b3` and pass with the fix, each paired with the other direction over the SAME broken store
+  (a ref that is genuinely absent still refuses as absent) and with the same three `--ref` values on
+  a readable one.
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
   unconditionally when it is absent; the file had never been committed, at `dev`, at `main` or at

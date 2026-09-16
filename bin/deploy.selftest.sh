@@ -1230,8 +1230,18 @@ blind_object() { # blind_object <rev-expr> — the ONE object <rev-expr> names, 
   o="$(git -C "$ROOT" rev-parse "$1")"
   f="$ROOT/.git/objects/${o:0:2}/${o:2}"
   cases=$((cases+1))
-  if [ -f "$f" ]; then chmod 000 "$f"; ok "fixture: $1 is a loose object, now mode 000"
+  if [ -f "$f" ]; then ok "fixture: $1 is a loose object"
   else bad "fixture: $1 is not a loose object under \$ROOT ($f is not there)"; return 1; fi
+  # $ROOT is a LOCAL clone, so its loose objects are hardlinks to $ORIGIN's and a chmod on one lands
+  # on both — which would make the fixture a broken REMOTE as well as a broken checkout, and the
+  # deploy's own `git fetch` would then be the thing that failed, before any of this. Break the link
+  # first: the condition these cases are about is this CHECKOUT's object store (card#9611).
+  cp -p "$f" "$f.unlinked" && mv -f "$f.unlinked" "$f"
+  chmod 000 "$f"
+  cases=$((cases+1))
+  if git -C "$ORIGIN" cat-file -p "$o" >/dev/null 2>&1
+  then ok "fixture: \$ORIGIN can still read $1 — only the checkout's copy is blinded"
+  else bad "fixture: \$ORIGIN lost $1 too (the hardlink was not broken)"; fi
   # ASSERTED, not assumed — root opens every mode, and under a root runner these cases would certify
   # nothing while looking like they had. They red HERE, naming why, rather than skipping (canon #9).
   cases=$((cases+1))
@@ -1411,6 +1421,123 @@ hasnt "a git read that fails in the window: never promises nothing was changed" 
 eq    "a git read that fails in the window: the marker is on disk"  "present" \
       "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
 unlogged "a git read that fails in the window: the app is NEVER brought up" "artisan up"
+
+# ── card#9611 — THE TWO READS THAT REFUSED CORRECTLY AND NAMED A FALSE CAUSE ───────────────────
+# card#9608 ended the DANGEROUS direction of this class: an empty git result read as a PASS. These
+# two are the SAFE direction, and what they cost an operator is the debugging path rather than the
+# deploy. A7 answered "'<ref>' does not resolve to a commit on origin" and A8 "<sha> is not
+# contained in origin/main" — a bad ref name and a statement about the commit graph — on a checkout
+# whose OBJECT STORE was what had failed. Neither cause was ever established (canon #10: a
+# wrong-but-specific cause is worse than an honest generic one).
+#
+# ⛔ THE STATUS OF THE CALL A7 WAS MAKING CANNOT DISCRIMINATE. `rev-parse --verify --quiet
+# <ref>^{commit}` exits 1 for "no such ref" AND for every object-store failure measured (git 2.53.0:
+# pack chmod 000, idx chmod 000, pack deleted, byte flipped mid-pack, loose object chmod 000), and
+# without `--quiet` both are 128 with the same sentence. So the fix is not a status threshold on
+# that call: resolving a NAME (which reads the refs alone) and reading the OBJECT it names are asked
+# as two questions now. The cases below are what says so.
+#
+# ⛔ THEY MUST DISCRIMINATE, NOT MERELY REFUSE. Old and new both exit 1 on every fixture here, so an
+# assertion on the exit code would have passed against the defect. Each case asserts WHICH cause is
+# named AND that the other is not, and each has a control one variable away — the same `--ref` on a
+# readable store, and a genuinely absent ref on the SAME broken one — so a fix that collapsed the
+# two answers into "git could not read it" reds here exactly as loudly as the defect did.
+
+# three_releases <case> — the fixture both halves use. main moves to $V3, so the commit these cases
+# blind ($V2) is no longer the TIP of any ref, and `hotfix` is an unreleased branch off $V1. Both
+# refs are fetched into the checkout before anything is broken.
+# ⚠ THE TIP IS NOT AVAILABLE TO BLIND, and that is measured, not a preference: a checkout whose
+# remote-tracking tip is unreadable cannot `git fetch` at all (it reads its own tips to say what it
+# has), so such a fixture dies at A7's `git fetch` and never reaches either read. A middle commit
+# leaves `git status` (A4) and the fetch working — the fetch prints git's error and still exits 0 —
+# and breaks exactly the two reads this card is about.
+three_releases() {
+  mkfix "$1"
+  printf '0.0.3\n' > "$SRC/VERSION"
+  gitc "$SRC" add -A >/dev/null
+  gitc "$SRC" commit -qm 'fixture v3 — origin/main moves past the commit these cases blind'
+  gitc "$SRC" push -q origin main
+  V3="$(gitc "$SRC" rev-parse HEAD)"
+  gitc "$SRC" checkout -q -b hotfix "$V1"
+  printf 'x\n' > "$SRC/hotfix.txt"; gitc "$SRC" add -A >/dev/null
+  gitc "$SRC" commit -qm 'unreleased hotfix'; gitc "$SRC" push -q origin hotfix
+  gitc "$ROOT" fetch -q --prune --tags origin
+  # The clone left a LOCAL branch `main` behind at $V2, and the fetch runs a connectivity check
+  # over every ref (`rev-list --not --all`), so a ref tip it cannot read aborts the FETCH ITSELF
+  # — the measurement above, reached from the other side. Move that branch too, so no ref of this
+  # checkout points at the commit these cases blind and the fetch stays a read that completes.
+  gitc "$ROOT" update-ref refs/heads/main "$V3"
+}
+
+three_releases git_rev_unreadable_object
+blind_object "$V2"
+
+# A7. `--ref <sha>` is the deploy's own documented recovery path (the in-window banner: "deploy the
+# previous commit deliberately with --ref <sha> --allow-unreleased"), and it is the path that meets
+# a damaged object first. The ref RESOLVES — a full object name always does — and the object behind
+# it does not come back. The old call got exit 1 for that, the same status a ref that is not there
+# gives, and told the operator to go looking for a bad ref name.
+run_refusal "--ref <sha> whose object git cannot read (A7)" \
+  "git could not read the object $V2" --dry-run --ref "$V2"
+hasnt "unreadable object: makes no claim about the ref, which resolved" \
+  "does not resolve to a commit on" "$OUT"
+has  "unreadable object: git's own error reaches the operator (never silenced)" \
+  "unable to open loose object" "$OUT"
+has  "unreadable object: says what was and was not established" \
+  "The REFS were read; the object behind them did not come back." "$OUT"
+
+# THE OTHER DIRECTION, over the SAME broken store, one --ref apart: a name that is genuinely not
+# there still refuses as absent. The refs are read from `packed-refs` and loose refs, never from the
+# object store, so this answer IS established even on this host — and a fix that answered "git could
+# not read it" here would be the same defect pointing the other way.
+run_refusal "a ref that is genuinely absent, on that same broken store" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "absent ref: names no read that failed" "git could not read" "$OUT"
+has  "absent ref: says the refs WERE read" "The refs were read and carry no such name" "$OUT"
+
+# A8, on the same fixture: `hotfix`'s own commit is readable, so A7 passes and the ancestry walk is
+# what meets the blinded object. `--is-ancestor` exits 1 for "it is not one" and 128 when it could
+# not read the graph; `2>/dev/null` on an `if !` read the second as the first.
+run_refusal "the ancestry cannot be read (A8)" \
+  "is contained in origin/main (\`git merge-base --is-ancestor\` exited 128)" --dry-run --ref hotfix
+hasnt "unreadable ancestry: states nothing about the commit graph" "is not contained in origin/main" "$OUT"
+has  "unreadable ancestry: git's own error reaches the operator" "unable to open loose object" "$OUT"
+
+# --allow-unreleased waives a FINDING — "this commit is not released". There is no finding here to
+# waive, so the flag does not apply and the deploy still refuses. Its control is two cases below,
+# where the same flag deploys the same hotfix once the store is readable.
+run --dry-run --ref hotfix --allow-unreleased
+eq  "unreadable ancestry: --allow-unreleased waives no question that was never answered" 1 "$RC"
+has "unreadable ancestry: and says why the flag does not apply" "--allow-unreleased does NOT apply here" "$OUT"
+
+# ── THE CONTROLS: the same fixture, the same three --ref values, every object readable ──────────
+three_releases git_rev_readable_object
+run --dry-run --ref "$V2"
+eq  "control: that same --ref <sha>, with its object readable, deploys" 0 "$RC"
+run_refusal "control: a ref that is genuinely absent, on a healthy store" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "control: absent ref on a healthy store names no read that failed" "git could not read" "$OUT"
+run_refusal "control: the ancestry is READ, and says the commit is not released" \
+  "is not contained in origin/main" --dry-run --ref hotfix
+hasnt "control: the read-failure refusal is not what fires when the graph is readable" \
+  "git could not" "$OUT"
+run --dry-run --ref hotfix --allow-unreleased
+eq  "control: --allow-unreleased deploys the hotfix once the graph can be read" 0 "$RC"
+
+# ⛔ THE ANNOTATED TAG, which A7's second candidate exists for. The old call peeled every candidate
+# with `^{commit}` and got this for free; git_commit_of resolves the NAME to an object and peels it
+# in a second step (that is the whole fix), so what a tag resolves to has to be asserted rather than
+# assumed — a reader that stopped at the tag OBJECT would hand the deploy a tag id to check out, and
+# every case above would still pass. The tag is created only on this fixture: a tag is a ref, `git
+# fetch` walks every ref, and a tag over the blinded commit would break the fetch itself.
+gitc "$SRC" tag -a v0.0.2 -m 'an annotated tag at the middle commit' "$V2"
+gitc "$SRC" push -q origin v0.0.2
+gitc "$ROOT" fetch -q --tags origin
+neq "tag fixture: the tag OBJECT is not the commit it points at" "$V2" "$(gitc "$ROOT" rev-parse refs/tags/v0.0.2)"
+run --dry-run --ref v0.0.2
+eq  "control: an ANNOTATED tag resolves and deploys" 0 "$RC"
+has "control: and it is the COMMIT the tag points at that would be checked out, not the tag object" \
+  "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V2")" "$OUT"
 
 # ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
 # `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan

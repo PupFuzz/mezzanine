@@ -636,7 +636,8 @@ git_read_call_site() {
   local __i __outer=0
   for __i in "${!FUNCNAME[@]}"; do
     case "${FUNCNAME[__i]}" in
-      git_read_call_site | git_read_unusable | git_read_failed | git_read_at | git_ls_at | _git_ls_at)
+      git_read_call_site | git_read_unusable | git_read_failed | git_read_at | git_ls_at | _git_ls_at | \
+      git_rev_read_failed | git_commit_of)
         __outer="$__i" ;;
       *) break ;;
     esac
@@ -734,6 +735,93 @@ git_read_at() {
   __content="$(git_at show "$__rev:$__path")" || __rc=$?
   [ "$__rc" -eq 0 ] || git_read_failed show "$__rev" "$__path" "$__rc"
   printf -v "$__var" '%s' "$__content"
+}
+
+# ── resolving a REF, and reading the COMMIT GRAPH ─────────────────────────────────────────────
+# A7 and A8's reads. The SAME status discipline as the readers above — the status is the
+# discriminator, never the emptiness — arrived at differently, because `rev-parse` cannot be asked
+# the question ls-tree can. card#9611.
+#
+# ⛔ THE STATUS OF THE CALL A7 WAS MAKING CANNOT DISCRIMINATE, AT ALL. Measured, git 2.53.0, on a
+# checkout whose objects are PACKED — which is how they arrive from `fetch`, so on a real host an
+# object-store failure is all-or-nothing and takes the REFS' reads down with everything else:
+#
+#   .pack chmod 000 · .idx chmod 000 · .pack deleted · one byte flipped mid-pack
+#     git rev-parse --verify --quiet <ref>^{commit}  → 1, silent      ← THE STATUS "NO SUCH REF" HAS
+#     git rev-parse --verify        <ref>^{commit}   → 128, "fatal: Needed a single revision"
+#                                                                    ← and a NO SUCH REF gives 128 and
+#                                                                      that same sentence, too
+#     git cat-file -t <oid>                          → 128, "could not get object info"
+#     git merge-base --is-ancestor <oid> <ref>       → 128, "Not a valid commit name <oid>"
+#
+# `--quiet` folds "git could not read the object" onto 1, the status that MEANS the ref is absent;
+# dropping it folds both onto 128 with one sentence. So `rev-parse … || true` then `[ -n "$SHA" ] ||
+# refuse "'<ref>' does not resolve to a commit on origin"` said the ref was bad about a host whose
+# object store was unreadable — and said it FIRST, before any of card#9608's readers is reached,
+# which makes it the first thing an operator meets when a real object store goes bad.
+#
+# WHAT SEPARATES THEM IS THE QUESTION, NOT THE STATUS. Resolving a ref NAME to an object id reads
+# the refs alone and never opens the object store — measured on that same broken checkout,
+# `rev-parse --verify --quiet refs/remotes/origin/main` still answers with the id — so THERE a
+# status 1 means the name is absent and can mean nothing else, and a 128 (unreadable `packed-refs`,
+# not a repository) is a failed read. Whether the object that id names is a readable commit is a
+# SECOND question, asked of `cat-file -t`, where a non-zero status can only be a failed read.
+# Peeling with `^{commit}` asks both at once, which is what collapsed them. They are asked apart.
+
+# git_rev_read_failed <what could not be done> <git subcommand> <status> <detail line…> — the
+# ref/graph counterpart of git_read_failed, through the SAME one exit, so the PHASE is read here too
+# rather than asserted (git_read_unusable).
+git_rev_read_failed() {
+  git_read_unusable "git could not $1 (\`git $2\` exited $3)" \
+    "git's own error is above this refusal and names what it could not read." \
+    "${@:4}"
+}
+
+# git_commit_of <var> <candidate…> — the commit id the FIRST candidate that NAMES an object peels
+# to, into <var>.
+#   0 — <var> is a full commit id.
+#   1 — no candidate names anything, and <var> is empty. That is the refs' own answer, read from
+#       refs that were read: the caller must say what it means.
+# A read git could not complete does not return, and neither does a name that is not a commit.
+# Every local is `__`-prefixed, for the reason stated at _git_ls_at: <var> is written with
+# `printf -v` and a caller naming one of these would have its own variable shadowed.
+git_commit_of() {
+  local __var="$1" __cand="" __oid="" __peeled __type __rc=0
+  shift
+  printf -v "$__var" '%s' ""
+  for __cand in "$@"; do
+    __rc=0
+    # --end-of-options because the last candidate is `$REF` as the operator typed it: a leading `-`
+    # is a ref name here and must not be read as an option. NO `^{commit}`: that peel is what drags
+    # the object store into this question and collapses its failure onto status 1 (above).
+    __oid="$(git_at rev-parse --verify --quiet --end-of-options "$__cand")" || __rc=$?
+    if [ "$__rc" -eq 0 ]; then break; fi
+    [ "$__rc" -eq 1 ] || git_rev_read_failed "resolve '$__cand'" "rev-parse --verify" "$__rc" \
+      "Exit 1 is \"there is no ref of that name\" and $__rc is not that: the REFS could not be read." \
+      "Nothing was resolved, so nothing about what '$__cand' names is known."
+    __oid=""
+  done
+  [ -n "$__oid" ] || return 1
+  __type="$(git_at cat-file -t "$__oid")" || __rc=$?
+  [ "$__rc" -eq 0 ] || git_rev_read_failed "read the object $__oid" "cat-file -t" "$__rc" \
+    "The REFS were read; the object behind them did not come back." \
+    "'$__cand' is the name that resolved to it. That object is either absent from this checkout's" \
+    "store or the store could not be read, and with a pack unreadable git cannot tell those apart —" \
+    "so neither does this refusal name one."
+  case "$__type" in
+    commit) printf -v "$__var" '%s' "$__oid" ;;
+    tag)    # An annotated tag: the object is readable, so peeling reads FURTHER objects, and a
+            # failure here is that read failing or a tag that dereferences to something else. git's
+            # own error says which; this refusal does not guess.
+            __rc=0
+            __peeled="$(git_at rev-parse --verify --end-of-options "$__oid^{commit}")" || __rc=$?
+            [ "$__rc" -eq 0 ] || git_rev_read_failed "peel the tag '$__cand' ($__oid) to a commit" \
+              "rev-parse --verify" "$__rc" \
+              "A tag object was read at that name; what it points at did not come back as a commit."
+            printf -v "$__var" '%s' "$__peeled" ;;
+    *)      git_read_unusable "'$__cand' names a $__type at $__oid, not a commit" \
+              "This deploy checks out a commit. It will not check out, or reason about, anything else." ;;
+  esac
 }
 
 # whole_seconds <value> — a whole number of seconds read from OUTSIDE this script (an ini, a pool, the environment,
@@ -1347,16 +1435,35 @@ phase_a() {
   step "Fetching $REMOTE"
   git_at fetch --prune --tags "$REMOTE"
 
-  SHA="$(git_at rev-parse --verify --quiet "refs/remotes/$REMOTE/$REF^{commit}" \
-      || git_at rev-parse --verify --quiet "refs/tags/$REF^{commit}" \
-      || git_at rev-parse --verify --quiet "$REF^{commit}" || true)"
-  [ -n "$SHA" ] || refuse "'$REF' does not resolve to a commit on $REMOTE"
+  # The candidates, in the order they have always been tried. git_commit_of (card#9611) asks the
+  # refs and the object store separately, so "there is no ref of that name" and "git could not read
+  # it" cannot arrive as the same answer: the refusal below is reached ONLY when the refs were read
+  # and none of the three names anything. A failed read refuses above it, naming the object.
+  git_commit_of SHA "refs/remotes/$REMOTE/$REF" "refs/tags/$REF" "$REF" \
+    || refuse "'$REF' does not resolve to a commit on $REMOTE" \
+      "The refs were read and carry no such name — this is the ref's absence, not a read that" \
+      "failed. Check the spelling, and that the branch or tag is pushed."
 
   # A8 — prod runs RELEASED code. `main` is the release branch (README § Branch model), so a
   # commit that is not an ancestor of $REMOTE/main has not been through the release PR, the
   # release-pr-guard or the tagger. The escape hatch is explicit and named in the log, never
   # implicit: a hotfix an operator has decided to deploy is a decision, not a default.
-  if ! git_at merge-base --is-ancestor "$SHA" "refs/remotes/$REMOTE/main" 2>/dev/null; then
+  #
+  # ⛔ AND THE ANSWER IS THE STATUS, NOT "non-zero" (card#9611). `--is-ancestor` exits 1 for "it is
+  # not one" and 128 when it could not read the graph — an unreadable object store, or no
+  # $REMOTE/main to compare against. `2>/dev/null` on an `if !` read the second as the first, so the
+  # deploy refused with a statement about the commit graph that was never established, and hid git's
+  # own error while doing it. Nothing is silenced now: exit 1 is silent anyway (measured, git
+  # 2.53.0), so what reaches the operator is exactly what git had to say.
+  local ancestry=0
+  git_at merge-base --is-ancestor "$SHA" "refs/remotes/$REMOTE/main" || ancestry=$?
+  [ "$ancestry" -le 1 ] || git_rev_read_failed \
+    "tell whether $(git_at rev-parse --short "$SHA") is contained in $REMOTE/main" \
+    "merge-base --is-ancestor" "$ancestry" \
+    "Exit 1 is \"it is not an ancestor\" and $ancestry is not that: git could not read the graph." \
+    "--allow-unreleased does NOT apply here. It waives a commit that is not released, which is a" \
+    "finding; this run has no finding to waive, because the question was never answered."
+  if [ "$ancestry" -ne 0 ]; then
     [ "$ALLOW_UNRELEASED" -eq 1 ] || refuse "$(git_at rev-parse --short "$SHA") is not contained in $REMOTE/main" \
       "Prod deploys released code. Cut the release PR, or — deliberately —" \
       "re-run with --allow-unreleased."

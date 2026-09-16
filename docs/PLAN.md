@@ -511,7 +511,13 @@ rule violations anyone could have committed at the time.
   file** is refused the same way, on its MODE: `ls-tree` calls a symlink's type `blob` exactly as it does a
   file's, and a symlink's blob is the PATH IT POINTS AT, so a type check passed one through and handed A11
   the string `../app.real.php` to grep — the same positive statement about a file never opened, reached from
-  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. And **a release
+  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. **The REF it
+  is asked for, and the ANCESTRY that says the commit is released, are read under that same rule**
+  (card#9611): a ref whose object the checkout cannot read is refused as that, not as *"does not resolve to
+  a commit on origin"*, and an ancestry git could not compute is refused as that, not as *"is not contained
+  in `origin/main`"* — `--allow-unreleased` waives the FINDING that a commit is unreleased and does not
+  apply where the question was never answered. Both named a cause that had never been established, which
+  costs an operator the debugging path rather than the deploy. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
   app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
