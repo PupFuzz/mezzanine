@@ -181,6 +181,14 @@ correlates on).
 > on 2026-08-31 (their `updated_at`, as read on 2026-09-08) and **no document moved with them for
 > eight days** — so **re-read and re-measure this section whenever a workflow is added or removed,
 > and update the copies that point here.**
+>
+> ⚠ **Re-read 2026-09-15 on adding the `Shell lint` workflow (card#9635), as that instruction
+> requires. Re-derived that day with the command above: the 2026-09-13 reading held unchanged on
+> both layers and both branches, and `shell-lint` is required by NEITHER layer.** So the lane runs on
+> every PR and a red there does not block a merge today. It is safe to require — it carries no
+> `branches:` filter, so it produces a completed run on every PR rather than the
+> no-run-reads-as-pending deadlock above — but requiring it is a repository-settings act, which is
+> the operator's to perform and not this repo's; it is raised on card#9635.
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:

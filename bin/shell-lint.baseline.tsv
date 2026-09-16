@@ -3,7 +3,20 @@
 # command overwrites them. WHAT THIS IS: a debt ledger of findings that existed when the
 # lane landed, so the lane starts green and reds on the NEXT one. Nothing here has been
 # judged correct. Read the header of bin/shell-lint.sh for why it is keyed by count and
-# not by line, and for why a drop in a count reports rather than reds.
+# not by line, and for what a FALLING count does and does not prove.
+#
+# THE "#pop" LINES ARE THE POPULATION this ledger was measured over, and they are CHECKED:
+# bin/shell-lint.sh re-derives the population on every run and refuses to report on a tree
+# that has lost one of them. A file leaving coverage drives its counts down exactly as a fix
+# does, and this list is the only record that tells the two apart.
+#pop	bin/deploy.selftest.sh
+#pop	bin/deploy.sh
+#pop	bin/feed-stream-check.sh
+#pop	bin/promote-cards-by-token
+#pop	bin/promote-cards-by-token.selftest.sh
+#pop	bin/shell-lint.sh
+#pop	bin/supervision.sh
+#pop	bin/vendor-pin-check.sh
 bin/deploy.selftest.sh	SC2015	4
 bin/deploy.selftest.sh	SC2016	18
 bin/deploy.selftest.sh	SC2034	2

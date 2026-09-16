@@ -3,8 +3,8 @@
 # WHAT IT DOES. Runs `bin/shell-lint.sh`, which derives the file population from the checkout,
 # runs ShellCheck over it, and reds when a (file, code) class carries MORE findings than the
 # committed baseline `bin/shell-lint.baseline.tsv`. That script owns every rule this lane applies —
-# how the population is derived, why the baseline is keyed by count and not by line, why an
-# IMPROVED count reports rather than reds, and why the analyser version is asserted rather than
+# how the population is derived, why the baseline is keyed by count and not by line, what a
+# FALLING count does and does not prove, and why the analyser version is asserted rather than
 # accepted. Read its header; none of it is restated here, so none of it can drift from here.
 #
 # WHY IT EXISTS. `bin/deploy.sh` is the script that deploys production and it grew by roughly 400
@@ -20,14 +20,17 @@
 # separate, reviewed work — a lint fix inside `bin/deploy.sh` changes behaviour on the production
 # deploy path, and this lane is not the place to smuggle one in.
 #
-# VERSION. The runner's preinstalled `shellcheck` is used, and `bin/shell-lint.sh` REFUSES to run
-# unless it reports the version the baseline was measured under. A verdict from an unnamed analyser
-# is what the pin in `agent-board-toolkit/.shellcheck-version` exists to stop, and two versions
-# genuinely disagree at ERROR severity over the same file. So when the runner image moves, this
-# lane reds naming both versions instead of silently re-deciding what the project gates on — the
-# answer to that red is to move the pin deliberately (run both versions over the population and
-# diff the findings), never to relax the assert. The upstream pin file is NOT reachable from a
-# runner; the script says so in the log by name rather than implying a cross-check it could not do.
+# VERSION — THE ANALYSER IS INSTALLED HERE, NOT TAKEN FROM THE IMAGE. This lane downloads
+# ShellCheck 0.9.0 from its upstream release and verifies the artifact's sha256 before running it,
+# and `bin/shell-lint.sh` still REFUSES to run unless the analyser reports the version the baseline
+# was measured under. Using the runner's preinstalled `shellcheck` left that refusal firing on
+# GitHub's image schedule instead of on a decision of this project's: the image moves on its own,
+# and the whole lane would go red on a day nobody chose, for a version nobody picked. A verdict
+# from an unnamed analyser is what the pin in `agent-board-toolkit/.shellcheck-version` exists to
+# stop, and two versions genuinely disagree at ERROR severity over the same file. So when the PIN
+# moves, the download below moves with it, deliberately — run both versions over the population and
+# diff the findings — and never by relaxing the assert. The upstream pin file is NOT reachable from
+# a runner; the script says so in the log by name rather than implying a cross-check it could not do.
 #
 # NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: a path-filtered
 # workflow produces NO RUN, which reads as *pending* rather than *passed*. The lint is seconds of
@@ -38,7 +41,11 @@
 # workflow headers have already gone stale in this repo. `docs/VERSIONING.md § Branch model` is its
 # one home and carries the command that re-derives it from the API.
 #
-# NEEDS NO CREDENTIAL AND NO NETWORK: git + bash + the runner's preinstalled ShellCheck.
+# NEEDS NO CREDENTIAL. IT DOES NEED NETWORK, which is a change: one anonymous download of the
+# pinned ShellCheck release from github.com, sha256-verified before it is executed. A download that
+# fails, or a digest that does not match, FAILS this lane — it never falls back to whatever
+# ShellCheck the image happens to carry, because that fallback is precisely the unnamed verdict the
+# gate refuses. Otherwise: git + bash.
 
 name: Shell lint
 
@@ -58,6 +65,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # The sha256 is the load-bearing constant in this file: it is what makes "ShellCheck 0.9.0"
+      # a claim about one artifact rather than about a name. PROVENANCE, so the next person does
+      # not have to trust it blind — it is the `asset linux.x86_64` digest recorded in
+      # `agent-board-toolkit/.shellcheck-version` (taken there from the artifact fetched
+      # 2026-08-21), it was re-fetched and re-hashed independently on 2026-09-15 and agreed, and
+      # the binary this tarball extracts is byte-identical to the pinned build the baseline in
+      # `bin/shell-lint.baseline.tsv` was measured under. Upstream publishes no checksum file, so
+      # this pins the artifact AS FETCHED: it detects a later substitution, and it is not an
+      # upstream-attested digest and is not claimed to be one.
+      - name: Install the pinned ShellCheck, sha256-verified
+        env:
+          SHELLCHECK_VERSION: '0.9.0'
+          SHELLCHECK_SHA256: '700324c6dd0ebea0117591c6cc9d7350d9c7c5c287acbad7630fa17b1d4d9e2f'
+        run: |
+          set -euo pipefail
+          tarball="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "${RUNNER_TEMP}/${tarball}" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${tarball}"
+          if ! printf '%s  %s\n' "${SHELLCHECK_SHA256}" "${RUNNER_TEMP}/${tarball}" | sha256sum --check --status; then
+            echo "::error::sha256 mismatch on ${tarball} — refusing to lint with an analyser this repo did not pin"
+            exit 1
+          fi
+          tar -xJf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}"
+          install -m 0755 "${RUNNER_TEMP}/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" "${RUNNER_TEMP}/shellcheck"
+          "${RUNNER_TEMP}/shellcheck" --version
+          # bin/shell-lint.sh resolves $SHELLCHECK first, and prints whichever program it chose.
+          echo "SHELLCHECK=${RUNNER_TEMP}/shellcheck" >> "${GITHUB_ENV}"
 
       # The population is derived from the checkout, so print it: a lane that lints nothing passes
       # exactly like a lane that lints everything, and only this list tells them apart.

@@ -29,7 +29,11 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   better odds. Meanwhile `bin/deploy.sh` — the script that deploys production — grew by roughly 400
   lines in one cycle with no analyser run over it once. The wrapper resolves the analyser as
   `$SHELLCHECK`, then the pinned build, then PATH, and **refuses to run under any version other than
-  the one the baseline was measured under**: two ShellCheck versions genuinely disagree at ERROR
+  the one the baseline was measured under**. The CI lane INSTALLS that version — a sha256-verified
+  download of the upstream 0.9.0 release, whose digest matches the toolkit pin's own `asset` line and
+  whose binary is byte-identical to the pinned build the baseline was measured under — rather than
+  taking whatever the runner image ships, so the refusal fires on a decision of this project's
+  instead of on GitHub's image schedule: two ShellCheck versions genuinely disagree at ERROR
   severity over the same file, so a verdict from an unnamed program is the thing
   `agent-board-toolkit/.shellcheck-version` exists to stop. That pin file is unreadable from a CI
   runner; where it IS readable the wrapper cross-checks the repo's stated version against it, and
@@ -42,14 +46,37 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `bin/shell-lint.sh --update-baseline` and first measured at `578e1b3`: it is a ledger and not an
   approval, nothing in it has been judged correct, and a count is kept there rather than in prose
   precisely because prose copies go stale. Keyed by count and not by line so that edits above a
-  finding do not red a PR that changed nothing about it; a count that DROPS reports and asks for a
-  re-baseline instead of reding, so cleanup never argues with the gate. **The existing findings are
-  reported, not fixed here** — a lint fix inside `bin/deploy.sh` is a behaviour change on the
-  production deploy path and belongs in its own reviewed change. Seen to fail before trusted (canon
-  #9): a synthetic unquoted expansion injected into a tracked script turned the gate red naming the
-  file, the code, the baseline-to-now counts and the offending lines, and removing it turned it
-  green again — locally and on this PR's own CI runs. The version assert, the pin cross-check, the
-  no-analyser path and the improved-count path were each exercised the same way.
+  finding do not red a PR that changed nothing about it. **A count that DROPS is an event to be
+  explained rather than a reward**, because `c < b` has three possible causes that counts alone
+  cannot tell apart: the finding was fixed, a finding was swapped in under a co-located fix, or the
+  file left the population entirely. So the ledger carries the POPULATION it was measured over and
+  the lane refuses to report on a tree that has lost a file the ledger names; only a class that
+  reaches ZERO in a run carrying no new findings asks for a re-baseline; any other decrease prints
+  as an UNEXPLAINED DECREASE alongside the findings still standing in that class, with no
+  re-baseline instruction attached; and `--update-baseline` refuses outright while the tree carries
+  findings the ledger does not, unless `--accept-new` records them as debt deliberately. A decrease
+  still never reds, so a cleanup PR still never argues with the gate. The residual is named rather
+  than implied: a swap INSIDE one (file, code) pair — one finding out, one of the same code in the
+  same file in — nets to zero silently, and that is the price of keying by count, paid for the
+  reason above. Every ShellCheck line must also land in exactly one count: the run asserts that the
+  two numbers it already computed agree, and refuses rather than report a narrower measurement as a
+  clean one. **The existing findings are reported, not fixed here** — a lint fix inside
+  `bin/deploy.sh` is a behaviour change on the production deploy path and belongs in its own
+  reviewed change. Seen to fail before trusted (canon #9): a synthetic unquoted expansion injected
+  into a tracked script turned the gate red naming the file, the code, the baseline-to-now counts
+  and the offending lines, and removing it turned it green again — locally and on this PR's own CI
+  runs, with the tree byte-identical either side. The version assert, the pin cross-check and the
+  no-analyser path were each exercised the same way. Every branch of the decrease rule was then
+  measured against the tree it guards: a fixed baselined finding alongside an injected `rm -rf
+  $target` reds at exit 1 as an unexplained decrease plus a new finding and the re-baseline that
+  used to be instructed there is refused at exit 2 with the ledger byte-unchanged; a script that
+  loses its shebang, and with it its place in the population, is exit 2 naming the file rather than
+  two classes "improved"; two findings removed and one of the same code added back reports the
+  decrease and prints the finding that survived, which is the injected one; and a class that
+  genuinely reaches zero is the one case that still asks for the re-baseline. The parser assert was
+  seen to fire by putting a colon in a tracked script's name: the pre-assert code called that tree
+  clean at exit 0 with the unquoted expansion inside it dropped unread, and the assert makes it exit
+  2 naming both lost lines.
 
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
