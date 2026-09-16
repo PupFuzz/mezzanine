@@ -90,7 +90,8 @@ sed -n "${start},$((end - 1))p" "$DEPLOY" > "$WORK/env.bash"
 # `refuse` is defined BEFORE the block is sourced and is the script's own contract: it never returns. Each
 # fixture therefore runs in a subshell, and the refusal is that subshell's whole output.
 refuse() { printf 'refuse\n'; exit 0; }
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # $WORK/env.bash is WRITTEN by the sed above, at run time, out of
+# whichever deploy.sh was named on the command line — there is no path here for ShellCheck to follow.
 . "$WORK/env.bash"
 
 # A silently-empty extraction reads as "nothing disagreed". Name every function this harness calls.
@@ -131,6 +132,12 @@ esc() {
   REPLY="${REPLY//$'\t'/\\t}"; REPLY="${REPLY//$'\r'/\\r}"; REPLY="${REPLY//$'\n'/\\n}"
 }
 
+# The two sentinels are QUOTED to say they are literal text: `unset` and `unread` are the words this
+# encoding uses for "no such key" and "a line this reader does not read exactly as Laravel does", and
+# env-mirror-diff.oracle.php prints the same two words, so each cell compares as one string. Running
+# either as a command instead would put its output in the cell: measured, `REPLY="$(unset)"` makes every
+# absent key answer with the EMPTY string, and the scan differential goes red on it.
+#
 # read_one KEY → REPLY: the value env_get hands back, encoded. `env_get` PRINTS, so its value has to be
 # captured — and `$(…)` forks. A redirection runs in THIS shell, and `$(<file)` is the one command
 # substitution bash performs without forking, so the value goes through a file.
@@ -138,8 +145,8 @@ read_one() {
   local rc=0
   env_get "$1" > "$VALUE_FILE" || rc=$?
   case "$rc" in
-    1) REPLY=unset ;;
-    2) REPLY=unread ;;
+    1) REPLY='unset' ;;
+    2) REPLY='unread' ;;
     0) esc "$(<"$VALUE_FILE")"; REPLY="=$REPLY" ;;
     *) REPLY="rc$rc" ;;
   esac
@@ -147,6 +154,10 @@ read_one() {
 
 scan_one() ( # a subshell: deploy.sh's refuse exits, which is the contract the sourced text is written to
   ENV_FILE="$DIR/.env"
+  # `refuse` is called by the SOURCED deploy.sh text and by no statement in this file, so ShellCheck —
+  # which reads this file alone — sees a body nothing here reaches. Measured: a fixture whose .env holds
+  # a NUL makes the sourced env_file_scan call it, and this printf is that cell's whole output.
+  # shellcheck disable=SC2317  # reached from the sourced deploy.sh reader — see above
   refuse() { printf '%s\trefuse\n' "$DIR"; exit 0; }
   env_file_scan
   printf '%s\taccept' "$DIR"
@@ -156,8 +167,14 @@ scan_one() ( # a subshell: deploy.sh's refuse exits, which is the contract the s
 )
 
 locality_one() ( # the same subshell contract; `tag` names which check the refusal came from
+  # ENV_FILE is deploy.sh's OWN input: env_file_scan and env_get read it out of the text sourced above,
+  # which ShellCheck cannot follow. Measured: delete this line and every locality cell comes back EMPTY
+  # with the mirror still exiting 0 — the silent answer this finding would be naming if it were true.
+  # shellcheck disable=SC2034  # read by the sourced deploy.sh reader — see above
   ENV_FILE="$DIR/.env"
   local tag=scan app_env cache_store cache_value ssl_ca ca
+  # Measured, same fixture: in locality mode that NUL .env answers `refuse:scan`, which is this printf.
+  # shellcheck disable=SC2317  # reached from the sourced deploy.sh reader, exactly as in scan_one above
   refuse() { printf '%s\trefuse:%s\t-\t-\n' "$DIR" "$tag"; exit 0; }
 
   env_file_scan
@@ -175,7 +192,10 @@ locality_one() ( # the same subshell contract; `tag` names which check the refus
   ! env_app_falsy "$ssl_ca" || ssl_ca=""
 
   tag=locality; store_locality
-  ca=none; [ -z "$ssl_ca" ] || ca=set
+  # Quoted for the same reason as read_one's sentinels: `set` is the word this column carries beside
+  # `none`, and it is compared as text. Measured in an EMPTY environment, `$(set)` is already a kilobyte
+  # of variable dump — in a real process it would put the whole environment into a cell this script prints.
+  ca=none; [ -z "$ssl_ca" ] || ca='set'
   if [ "$STORE_LOCALITY" = remote ] && [ -z "$ssl_ca" ]; then
     printf '%s\trefuse:no_ca_remote\t%s\t%s\n' "$DIR" "$STORE_LOCALITY" "$ca"; exit 0
   fi
