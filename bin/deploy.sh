@@ -809,7 +809,10 @@ git_rev_read_failed() {
 #   1, git SILENT       — nothing of that name, and <var> is empty. The caller must say what that
 #                         means. THIS IS THE ONLY ANSWER THAT RETURNS 1.
 #   1, git LOUD         — does not return. git printed while reaching the status that means absence,
-#                         so it is not that; what it met is what git named.
+#                         so it is not that; what it met is what git named — AND WHAT IT NAMES IS
+#                         NOT ALWAYS A FAILED READ (card#9611 r4): a peel to a type the object is
+#                         not is loud here on a healthy store, and the branch says so by git's own
+#                         wording rather than calling every loud 1 a read that failed.
 #   ∉ {0,1}, git LOUD   — does not return. A read that failed, named by git's own error.
 #   ∉ {0,1}, git SILENT — does not return, AND THE REFUSAL CLAIMS NO FAILURE (card#9611 r3): git
 #                         answered without printing anything, so nothing establishes a failed read.
@@ -858,6 +861,24 @@ git_ref_oid() {
   if [ "$__ro_rc" -eq 0 ]; then printf -v "$__ro_var" '%s' "$__ro_out"; return 0; fi
   if [ "$__ro_rc" -eq 1 ]; then
     [ -n "$__ro_msg" ] || return 1
+    # ⛔ AND 1-LOUD IS NOT ONE CONDITION EITHER — THERE IS A THIRD SHAPE, AND EVERY READ IN IT
+    # SUCCEEDED (card#9611 r4). A peel that asks for a type the object is not is LOUD at status 1 on
+    # a COMPLETELY HEALTHY store: measured, git 2.53.0, `rev-parse --verify --quiet
+    # --end-of-options refs/remotes/origin/main^{blob}` → 1, `error: refs/remotes/origin/main^{blob}:
+    # expected blob type, but the object dereferences to tree type`, with every object of that store
+    # readable. `--ref 'main^{blob}'` reaches it. Under git_rev_read_failed the refusal would head
+    # itself "git could not resolve" and state that git's error "names what it could not read" —
+    # a failed read that never happened, which is this card's own defect one branch further in.
+    # git_commit_of's tag branch already tells this shape apart for ITS peel; this is the same
+    # discrimination one level up, on git's own wording, which is the only thing that carries it.
+    case "$__ro_msg" in
+      *"dereferences to"*)
+        git_read_unusable "'$__ro_cand' does not name what it was asked to peel to" \
+          "git's message above is not a failed read: every object behind '$__ro_cand' WAS read, and" \
+          "git is saying what they are. The peel asked for a type they do not dereference to." \
+          "Nothing here says anything about the state of this checkout's object store." \
+          "This deploy checks out a commit. Deploy from a branch, a tag, or a commit id." ;;
+    esac
     git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
       "Exit 1 is \"there is no ref of that name\" — and that answer is SILENT. This one printed the" \
       "message above, so it is not that, and GIT'S OWN MESSAGE IS WHAT SAYS WHICH READ THIS WAS:" \
@@ -1555,32 +1576,55 @@ phase_a() {
   # assumed away (card#9611 r2): `$REF` is not always a ref NAME. Rev syntax (`~`, `^`, `@{}`, `:/`)
   # resolves by WALKING THE COMMIT GRAPH and an abbreviated id is a lookup IN the object store, and
   # a store too damaged to search answers either with the SAME SILENCE an absent name does (measured
-  # — git_ref_oid states it). check-ref-format is what separates a name from rev syntax; its stderr
-  # is dropped because it reads NOTHING — it parses a string, and its status is the whole answer,
-  # which is the opposite of the silenced reads this card is about.
+  # — git_ref_oid states it). The rev-syntax metacharacters are what separate rev syntax from a
+  # name; check-ref-format then separates a VALID name from one git refuses outright. Its stderr is
+  # dropped because it reads NOTHING — it parses a string, and its status is the whole answer, which
+  # is the opposite of the silenced reads this card is about.
   # ⚠ AND `$REF` IS ASKED OF check-ref-format WITH ITS LEADING DASHES OFF (card#9611 r3). That
   # command has no `--end-of-options` and no `--`: BOTH are parsed as the refname and exit 129 with
   # the usage message for EVERY ref, valid or not (measured, git 2.53.0 — `--allow-onelevel
-  # --end-of-options main` → 129), so the guard git_ref_oid uses cannot be used here. Without one,
-  # `--ref -foo` was read as an OPTION: exit 129, usage swallowed by 2>/dev/null, and the note below
-  # then told the operator "'-foo' is not a ref name: it carries rev syntax" — which is false, and
-  # false in the one direction this whole card is about. git_ref_oid resolves `$REF` with
-  # --end-of-options, so it IS asked as a name; the dashes are stripped for the classification only,
-  # which leaves `-foo` classified as the name it is and `-foo~2` as the rev syntax it is.
-  local ref_note=() ref_note_head="" ref_probe="$REF"
-  case "$REF" in -*) ref_probe="${REF#"${REF%%[!-]*}"}" ;; esac
-  if [ -n "$ref_probe" ] && ! git_at check-ref-format --allow-onelevel "$ref_probe" >/dev/null 2>&1; then
-    ref_note_head="⚠ '$REF' is not a ref name: it carries rev syntax, so resolving it walked the commit graph —"
-  else
-    case "$REF" in
-      '' | ? | ?? | ??? | *[!0-9a-fA-F]*) ;;
-      *) ref_note_head="⚠ '$REF' is hex, so git also looked for it as an ABBREVIATED commit id —" ;;
-    esac
-  fi
-  [ -z "$ref_note_head" ] || ref_note=( "$ref_note_head" \
+  # --end-of-options main` → 129, `-- main` → 129, `main` → 0), so the guard git_ref_oid uses cannot
+  # be used here. Without one, `--ref -foo` was read as an OPTION: exit 129, usage swallowed by
+  # 2>/dev/null, and the note below then told the operator "'-foo' is not a ref name: it carries rev
+  # syntax" — which is false, and false in the one direction this whole card is about. git_ref_oid
+  # resolves `$REF` with --end-of-options, so it IS asked as a name; the dashes are stripped for the
+  # classification only, which leaves `-foo` classified as the name it is.
+  #
+  # ⛔ AND THE REV-SYNTAX TEST IS POSITIVE, BECAUSE A check-ref-format FAILURE IS NOT EVIDENCE OF REV
+  # SYNTAX (card#9611 r4). r3 fixed the `-foo` input; the CLASS is that `--allow-onelevel` exits 1
+  # for around a dozen rules and rev syntax is only some of them. Measured, git 2.53.0, all exit 1
+  # and NONE is rev syntax: `a b`, `main..dev`, `foo.lock`, `ab[c`, `.foo`, `foo//bar`, `foo/`,
+  # `ab*c`, `ab?c`, `ab\c`, a tab. An ordinary typo — `--ref 'release 1.2'` — was therefore told
+  # "it carries rev syntax, so resolving it walked the commit graph", THREE false statements in one
+  # line, on a completely healthy host: measured, `rev-parse --verify --quiet --end-of-options
+  # 'refs/remotes/origin/release 1.2'` exits 1 with EMPTY stderr, a lookup in the refs that never
+  # touches the object store. So rev syntax is now detected by the metacharacters that ARE it —
+  # `~`, `^`, `:`, `@{` — each cross-checked against what rev-parse does with it, and a name git
+  # simply refuses gets the note that is TRUE of it, which is the more useful answer anyway.
+  local ref_note=() ref_probe="$REF" store_read_tail=(
     "a question that READS THE OBJECT STORE, where a store too damaged to search answers with the" \
     "same silence. Pass the full 40-character commit id if you have one: that resolves without the" \
     "store being read, so a failure behind it is named as the failed read it is." )
+  case "$REF" in -*) ref_probe="${REF#"${REF%%[!-]*}"}" ;; esac
+  case "$REF" in
+    *[~^:]* | *"@{"*)
+      ref_note=( "⚠ '$REF' carries rev syntax (~, ^, :, @{), so resolving it walked the commit graph —" \
+        "${store_read_tail[@]}" ) ;;
+    *)
+      if [ -n "$ref_probe" ] && ! git_at check-ref-format --allow-onelevel "$ref_probe" >/dev/null 2>&1; then
+        ref_note=( "⚠ '$REF' is not a valid ref NAME — git refuses it (check-ref-format), so no ref of" \
+          "that name can exist to be found. A space, '..', a trailing '.lock', a leading '.' and the" \
+          "characters git reserves are the usual causes; check the spelling of what you typed." \
+          "THIS SAYS NOTHING ABOUT THIS CHECKOUT'S OBJECT STORE, which was never read: an invalid" \
+          "name is answered out of the refs alone, silently (measured, git 2.53.0)." )
+      else
+        case "$REF" in
+          '' | ? | ?? | ??? | *[!0-9a-fA-F]*) ;;
+          *) ref_note=( "⚠ '$REF' is hex, so git also looked for it as an ABBREVIATED commit id —" \
+               "${store_read_tail[@]}" ) ;;
+        esac
+      fi ;;
+  esac
   git_commit_of SHA "refs/remotes/$REMOTE/$REF" "refs/tags/$REF" "$REF" \
     || refuse "'$REF' does not resolve to a commit on $REMOTE" \
       "The refs were read and carry no such name, and git printed nothing while reading them." \
@@ -1627,17 +1671,34 @@ phase_a() {
       "finding; this run has no finding to waive, because the question was never answered." \
       "NEXT STEP — THIS IS THE STORE, NOT THE RELEASE, so the same refusal meets the recovery" \
       "deploy the in-window banner names (--ref <sha> --allow-unreleased). Repair the read, then" \
-      "run the same command again:" \
-      "  git -C $DEPLOY_ROOT fsck" \
-      "      names the object, and whether it is unreadable or absent" \
-      "  git -C $DEPLOY_ROOT fetch --prune $REMOTE" \
-      "      asks $REMOTE for the objects behind its refs again" \
-      "  git -C $DEPLOY_ROOT repack -a -d" \
-      "      rewrites this checkout's packs from what it can still read" \
-      "Each of those works inside $DEPLOY_ROOT/.git and leaves this host's own files alone." \
-      "⛔ DO NOT RE-CLONE $DEPLOY_ROOT. server/.env is created on this host and is in no commit, so" \
-      "its APP_KEY and DB_PASSWORD exist nowhere else; a fresh clone also takes server/storage/ —" \
-      "the logs — and .deploy-failed, the marker a failed window leaves to be read, with it."
+      "run the same command again. Every step below works inside $DEPLOY_ROOT/.git and leaves this" \
+      "host's own files alone." \
+      "  1. NAME THE OBJECT, and learn which of the two states it is in:" \
+      "       git -C $DEPLOY_ROOT fsck" \
+      "     \"unable to mmap … Permission denied\" is a file that is THERE and cannot be read;" \
+      "     \"broken link from … to …\" with nothing else about it is a file that is GONE." \
+      "  2. IF IT IS UNREADABLE, restore that one file's mode and this checkout is whole again:" \
+      "       chmod 444 $DEPLOY_ROOT/.git/objects/<first 2 characters>/<the other 38>" \
+      "  3. IF IT IS GONE, replace the OBJECT STORE ONLY — never the deploy root:" \
+      "       git clone --no-checkout <this repo's URL> /tmp/mezz-fresh" \
+      "       mv $DEPLOY_ROOT/.git $DEPLOY_ROOT/.git.broken" \
+      "       mv /tmp/mezz-fresh/.git $DEPLOY_ROOT/.git" \
+      "       git -C $DEPLOY_ROOT checkout --force <the commit you are deploying>" \
+      "     Only .git is replaced, so server/.env, server/storage/ and .deploy-failed — this host's" \
+      "     own files, in no commit — are still there afterwards. There is no list to get right." \
+      "  4. CONFIRM the store is whole before re-running the deploy:" \
+      "       git -C $DEPLOY_ROOT repack -a -d" \
+      "     It rebuilds the packs and refuses outright if anything reachable cannot be read, so a" \
+      "     clean run is the answer you want. It repairs nothing — it reports." \
+      "⛔ git fetch CANNOT bring that object back. fetch negotiates from REFS, and the refs of this" \
+      "checkout ALREADY claim that commit, so $REMOTE is never asked for the objects behind it —" \
+      "measured, git 2.53.0: with the object unreadable \`fetch --prune\` exits 0 having transferred" \
+      "nothing and the file is still unreadable, and with the object DELETED it exits 0 too and the" \
+      "object is still gone. A clean fetch here is not a repair that worked." \
+      "⛔ DO NOT RE-CLONE $DEPLOY_ROOT ITSELF. server/.env is created on this host and is in no" \
+      "commit, so its APP_KEY and DB_PASSWORD exist nowhere else; a fresh clone of the whole root" \
+      "also takes server/storage/ — the logs — and .deploy-failed, the marker a failed window" \
+      "leaves to be read, with it. Step 3 replaces the objects without touching any of them."
   else
     # No release branch on $REMOTE at all. The fetch above ran --prune, so this is what $REMOTE
     # carries NOW, read from refs that were read — an ANSWER, and the answer is that nothing has

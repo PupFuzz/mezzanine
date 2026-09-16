@@ -1607,12 +1607,59 @@ has "hex --ref: and names the input that does not" "full 40-character commit id"
 # there that the object store was never asked. The refusal says which of the two this --ref is.
 run_refusal "rev syntax that names nothing is refused as absent, with the walk named" \
   "'main~99' does not resolve to a commit on origin" --dry-run --ref 'main~99'
-has "rev-syntax --ref: says it is not a ref name and that resolving it walks the graph" \
-  "it carries rev syntax, so resolving it walked the commit graph" "$OUT"
+has "rev-syntax --ref: says it carries rev syntax and that resolving it walks the graph" \
+  "carries rev syntax (~, ^, :, @{), so resolving it walked the commit graph" "$OUT"
 hasnt "rev-syntax --ref: and does not call it an abbreviated id" \
   "ABBREVIATED commit id" "$OUT"
 run --dry-run --ref no-such-branch
 hasnt "an ordinary branch name that is absent gets neither note" "READS THE OBJECT STORE" "$OUT"
+hasnt "an ordinary branch name that is absent is not called an invalid NAME either" \
+  "is not a valid ref NAME" "$OUT"
+
+# ⛔ A check-ref-format FAILURE IS NOT EVIDENCE OF REV SYNTAX (card#9611 r4). The note used to be
+# derived from the NEGATION of `check-ref-format --allow-onelevel`, which exits 1 for around a dozen
+# rules — measured, git 2.53.0, exit 1 and NONE of them rev syntax: `a b`, `main..dev`, `foo.lock`,
+# `ab[c`, `.foo`, `foo//bar`, `foo/`, `ab*c`, `ab?c`, `ab\c`, a tab. So an ordinary typo on a
+# COMPLETELY HEALTHY host — `--ref 'release 1.2'` — was told "it carries rev syntax, so resolving it
+# walked the commit graph" and then pointed at a possibly-damaged object store: three false
+# statements in one note, in this card's own direction. Measured for that same input: `rev-parse
+# --verify --quiet --end-of-options 'refs/remotes/origin/release 1.2'` → 1 with EMPTY stderr, a
+# lookup in the refs that never opens an object. r3 fixed ONE INPUT of this class (`-foo`); these
+# cases are over the CLASS, and each is paired with the assertion that the false statement is gone,
+# because the failure mode is a refusal that fires with the wrong reason attached.
+run_refusal "a --ref git refuses as a NAME is refused as that, not as rev syntax" \
+  "'release 1.2' does not resolve to a commit on origin" --dry-run --ref 'release 1.2'
+has  "invalid-name --ref: says git refuses the name" "is not a valid ref NAME" "$OUT"
+hasnt "invalid-name --ref: is NOT called rev syntax" "carries rev syntax" "$OUT"
+hasnt "invalid-name --ref: and no walk of the commit graph is claimed" "walked the commit graph" "$OUT"
+hasnt "invalid-name --ref: and no read of the object store is claimed" "READS THE OBJECT STORE" "$OUT"
+has  "invalid-name --ref: says outright that the store was not read" \
+  "THIS SAYS NOTHING ABOUT THIS CHECKOUT'S OBJECT STORE" "$OUT"
+hasnt "invalid-name --ref: and does not send a typo after a full commit id" \
+  "full 40-character commit id" "$OUT"
+# THE CLASS, not the one input: three more of check-ref-format's rules, none of them rev syntax.
+for bad_ref in 'main..dev' 'foo.lock' 'ab[c'; do
+  run --dry-run --ref "$bad_ref"
+  eq   "invalid-name --ref '$bad_ref': refused, nothing touched" 1 "$RC"
+  has  "invalid-name --ref '$bad_ref': named as a name git refuses" "is not a valid ref NAME" "$OUT"
+  hasnt "invalid-name --ref '$bad_ref': is NOT called rev syntax" "carries rev syntax" "$OUT"
+done
+
+# ⛔ AND THE THIRD SHAPE AT git_ref_oid's 1-LOUD ANSWER, WHERE EVERY READ SUCCEEDED (card#9611 r4).
+# A peel to a type the object is not is LOUD at status 1 on a COMPLETELY HEALTHY store — measured,
+# git 2.53.0: `rev-parse --verify --quiet --end-of-options refs/remotes/origin/main^{blob}` → 1,
+# `error: refs/remotes/origin/main^{blob}: expected blob type, but the object dereferences to tree
+# type`. The 1-loud branch read that as a failed read and said so under git_rev_read_failed's fixed
+# line "git's own error … names what it could not read" — a failure that never happened, reachable
+# with `--ref 'main^{blob}'`. git_commit_of's tag branch already tells this shape apart for its own
+# peel; this is that same discrimination one branch up.
+run --dry-run --ref 'main^{blob}'
+eq  "peel to a type the object is not: refused" 1 "$RC"
+has "peel mismatch: git's own message is what the operator gets" "dereferences to tree type" "$OUT"
+hasnt "peel mismatch: nothing claims git could not read" "git could not" "$OUT"
+hasnt "peel mismatch: and nothing claims git's error names something unreadable" \
+  "names what it could not read" "$OUT"
+has "peel mismatch: says the objects behind it WERE read" "WAS read" "$OUT"
 
 # ── A8: NO RELEASE BRANCH AT ALL, on a store where every object reads ──────────────────────────
 # The release branch is renamed on $ORIGIN, so the deploy's own `fetch --prune` removes
@@ -1657,10 +1704,51 @@ has "unreadable ancestry: names the repair as the next step" \
   "git -C $ROOT fsck" "$OUT"
 has "unreadable ancestry: tells the operator the recovery deploy meets this same refusal" \
   "--ref <sha> --allow-unreleased" "$OUT"
-has "unreadable ancestry: and how to restore the object it could not read" \
-  "git -C $ROOT fetch --prune origin" "$OUT"
-has "unreadable ancestry: and how to rebuild the packs from what still reads" \
+# ⛔ AND THE PRESCRIBED REPAIR MUST ACTUALLY REPAIR (card#9611 r4). The refusal used to name
+# `fetch --prune` as "asks origin for the objects behind its refs again" — and it does not: fetch
+# negotiates from REFS, and this refusal is reached only AFTER git_commit_of proved $SHA readable
+# and git_ref_oid resolved refs/remotes/origin/main, so the object that cannot be read is an
+# INTERIOR graph object this checkout's own refs already claim, and origin is never asked for it.
+# Measured, git 2.53.0, on clones of a local origin with one middle commit's loose object damaged
+# (the hardlink broken first, exactly as blind_object does):
+#   object mode 000, remote unchanged  → `fetch --prune origin` exit 0, nothing transferred, mode
+#                                         still 000, `cat-file -t` still 128
+#   object mode 000, remote advanced   → exit 128, object still unreadable
+#   object DELETED                     → exit 0, `cat-file -t` still 128 afterwards
+# An operator with the app down ran it, got exit 0 and no output, read that as the repair having
+# worked, and met the identical refusal. The two repairs that DO work were measured on those same
+# clones: `chmod 644` on the blinded file → `cat-file -t` 0; and replacing .git alone from a
+# `clone --no-checkout` then `checkout --force <sha>` → exit 0, object readable, with server/.env,
+# server/storage/ and .deploy-failed still in place because only .git moved.
+# ⚠ A `has` on a command STRING cannot catch advice that does not work — that is how the false
+# claim survived a green suite. So the assertions below are over the CLAIM: the prescription that
+# does not work must be named as not working, and the ones that do must be present with the
+# sentence that makes them usable.
+hasnt "unreadable ancestry: never prescribes a fetch as the way to get the object back" \
+  "asks origin for the objects behind its refs again" "$OUT"
+has "unreadable ancestry: says outright that fetch cannot restore it" \
+  "⛔ git fetch CANNOT bring that object back" "$OUT"
+has "unreadable ancestry: and why — the refs already claim the commit, so origin is never asked" \
+  "ALREADY claim that commit, so origin is never asked for the objects behind it" "$OUT"
+has "unreadable ancestry: names the in-place repair for a file that is there but unreadable" \
+  "chmod 444 $ROOT/.git/objects/" "$OUT"
+has "unreadable ancestry: and the last resort for one that is GONE — the object store only" \
+  "git clone --no-checkout" "$OUT"
+has "unreadable ancestry: which moves .git and nothing else" \
+  "mv $ROOT/.git $ROOT/.git.broken" "$OUT"
+has "unreadable ancestry: and puts the deploy's own commit back in the tree afterwards" \
+  "git -C $ROOT checkout --force" "$OUT"
+# repack stays in the refusal, described as what it IS. Measured all-or-nothing, git 2.53.0:
+# blinded object → `fatal: Failed to traverse parents of commit …`, exit 128, no new pack written
+# and nothing deleted; deleted object → exit 128; unreadable ref file → `fatal: bad object
+# refs/heads/keep`, exit 128, the pack and the branch-only commit both still there. It salvages
+# nothing, so it is named as the CONFIRMATION step it is.
+has "unreadable ancestry: names repack as the confirmation step" \
   "git -C $ROOT repack -a -d" "$OUT"
+hasnt "unreadable ancestry: and does not call repack a salvage" \
+  "from what it can still read" "$OUT"
+has "unreadable ancestry: says repack refuses outright rather than salvaging" \
+  "refuses outright if anything reachable cannot be read" "$OUT"
 # ⛔ SAFETY, and the reason this assertion exists at all (card#9611 r3). This refusal is read by an
 # operator with the app DOWN, and the advice used to end "re-fetch it from origin, or RE-CLONE
 # $DEPLOY_ROOT from it". A re-clone destroys `server/.env` — created on the host, in no commit (this
@@ -1747,11 +1835,11 @@ has  "answer other-silent: and tells the operator what to deploy from instead" \
 # stripped for the classification instead.
 run_refusal "a --ref beginning with a dash is refused as the NAME it is" \
   "'-foo' does not resolve to a commit on origin" --dry-run --ref -foo
-hasnt "dash --ref: is not called rev syntax" "it carries rev syntax" "$OUT"
+hasnt "dash --ref: is not called rev syntax" "carries rev syntax" "$OUT"
 hasnt "dash --ref: and is not called an abbreviated id" "ABBREVIATED commit id" "$OUT"
 run_refusal "a --ref beginning with a dash that DOES carry rev syntax is still called that" \
   "'-foo~2' does not resolve to a commit on origin" --dry-run --ref -foo~2
-has "dash --ref with rev syntax: the note fires, one variable away" "it carries rev syntax" "$OUT"
+has "dash --ref with rev syntax: the note fires, one variable away" "carries rev syntax" "$OUT"
 
 # ANSWER ∉ {0,1} + git LOUD — NAMED, NOT ASSERTED. Every shape measured that makes rev-parse exit
 # non-0/1 LOUDLY is a refs-storage read failure (packed-refs unreadable; packed-refs corrupt), and

@@ -535,10 +535,16 @@ rule violations anyone could have committed at the time.
   ANSWER rather than a read that failed — nothing is released, so neither is this commit — so
   `--allow-unreleased` applies to it exactly as to any other unreleased commit, and where the graph truly
   could not be read the refusal names the repair, because the in-window recovery deploy meets it too. **The
-  repair it names works inside the deploy root's own `.git`** (`fsck`, `fetch --prune`, `repack -a -d`) and
-  says outright not to re-clone the deploy root: `server/.env` is created on the host and is in no commit,
-  so its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and
-  the `.deploy-failed` marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
+  repair it names works inside the deploy root's own `.git` AND it is one that works**: `fsck` names the
+  object and says whether it is unreadable or gone, `chmod` restores an unreadable one in place, a GONE one
+  is replaced by swapping `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
+  `repack -a -d` confirms — it refuses outright if anything reachable cannot be read. It says outright that
+  `git fetch` CANNOT bring that object back (fetch negotiates from refs, and this checkout's refs already
+  claim the commit, so the remote is never asked — measured, git 2.53.0: exit 0 and nothing transferred with
+  the object unreadable, exit 0 and the object still gone with it deleted), and it says outright not to
+  re-clone the deploy root: `server/.env` is created on the host and is in no commit, so its `APP_KEY` and
+  `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and the `.deploy-failed`
+  marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
   app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
