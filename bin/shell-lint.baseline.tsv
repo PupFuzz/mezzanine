@@ -35,11 +35,17 @@
 #cfg	directive	bin/deploy.sh	disable=SC2016	1
 #cfg	directive	bin/deploy.sh	disable=SC2086	2
 #cfg	directive	bin/deploy.sh	source=bin/supervision.sh	1
+#cfg	directive	bin/env-mirror-diff.mirror.sh	disable=SC1091	1
+#cfg	directive	bin/env-mirror-diff.mirror.sh	disable=SC2034	1
+#cfg	directive	bin/env-mirror-diff.mirror.sh	disable=SC2317	2
+#cfg	directive	bin/env-mirror-diff.sh	disable=SC2016	6
 #cfg	directive	bin/shell-lint.sh	disable=SC2064	1
 #pop	bin/deploy-gate-inputs.selftest.sh
 #pop	bin/deploy-gate-inputs.sh
 #pop	bin/deploy.selftest.sh
 #pop	bin/deploy.sh
+#pop	bin/env-mirror-diff.mirror.sh
+#pop	bin/env-mirror-diff.sh
 #pop	bin/feed-stream-check.sh
 #pop	bin/promote-cards-by-token
 #pop	bin/promote-cards-by-token.selftest.sh
