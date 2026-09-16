@@ -357,6 +357,8 @@ scan_bases() {
   addbase spaced_equals         0 'DB_HOST = db.internal'
   addbase inline_comment        0 'DB_HOST=db.internal # was localhost'
   addbase trailing_space        0 'DB_HOST=db.internal   '
+  # shellcheck disable=SC2016  # the fixture must hold ${DB_DATABASE} as TEXT: whether phpdotenv
+  # interpolates it and whether the mirror does the same is exactly what this base measures.
   addbase interpolated          0 DB_DATABASE=mezz 'DB_HOST=db.${DB_DATABASE}.internal'
   addbase doubly_quoted         0 'DB_HOST="'"'"'db.internal'"'"'"'
   addbase duplicate_key         0 DB_HOST=localhost DB_HOST=db.internal
@@ -503,11 +505,18 @@ run_mirror() { # run_mirror MODE DEPLOY-PATH → fills MIRROR_OUT[]
 # costs an operator a refusal, never a plaintext credential.
 # It SETS CLASS and WHY rather than printing them: at a population in the hundreds, re-read once per
 # control, a `$(…)` around this would be a fork per cell and most of the harness's wall clock.
+# The two raw rows are `orow`/`mrow` and not `o`/`m` ON PURPOSE, and renaming them back re-mints two
+# findings: ShellCheck has one namespace per FILE, so a scalar `o` here and check_loopback_sets's
+# unrelated `local -a o` are one variable to it, and it reported this function destructuring an array
+# without an index — the shape that silently keeps only the first element. Bash does not agree (measured:
+# a scalar `local o=` called from inside a frame holding `local -a o` is still `declare --`, and the
+# read below still yields every field), so a disable here would have pinned a FALSE claim and blinded
+# these two lines to a real SC2178 later. Distinct names make the analyser's model true instead.
 classify() { # classify MODE INDEX ORACLE-FIELDS MIRROR-FIELDS → sets CLASS and WHY
-  local mode="$1" i="$2" o="$3" m="$4"
+  local mode="$1" i="$2" orow="$3" mrow="$4"
   local -a of mf
-  IFS=$'\t' read -r -a of <<< "$o"
-  IFS=$'\t' read -r -a mf <<< "$m"
+  IFS=$'\t' read -r -a of <<< "$orow"
+  IFS=$'\t' read -r -a mf <<< "$mrow"
   CLASS=ok; WHY=""
 
   if [ "$mode" = scan ]; then
@@ -777,6 +786,9 @@ run_oracle_controls() { # run_oracle_controls MODE
     fail "the oracle's answers depend on the ORDER the population is fed to it, so its per-fixture isolation is broken and every cell below is suspect"
   fi
   cp "$ORACLE" "$leaky"
+  # shellcheck disable=SC2016  # $repository and $leak are PHP source, and sed has to receive them as
+  # text. Measured: the expanding spelling reaches sed as `s|^     = freshRepository();$|…` and matches
+  # nothing, which the cmp below would then report as the oracle's repository having moved.
   sed -i 's|^    \$repository = freshRepository();$|    static $leak = null; $leak ??= freshRepository(); $repository = $leak;|' "$leaky"
   cmp -s "$ORACLE" "$leaky" && die "the oracle-leak control's sed matched nothing — env-mirror-diff.oracle.php's per-fixture repository has moved"
   if oracle_order_check "$mode" "$leaky"; then
@@ -810,16 +822,22 @@ do_scan() {
   [ "$VERBOSE" = 0 ] || print_rows 400 narrowing
 
   head2 'SCAN controls — the differential, seen to fail'
+  # shellcheck disable=SC2016  # `${content//…}` is deploy.sh's OWN source text — the two lines this
+  # address deletes are its `content="${content//$'\r\n'/$'\n'}"` pair — so it travels as literal text.
   control scan lf-only 'env_lines_load splits on \n alone (card#9561 r4)' \
     '/^  content="\${content\/\//d'
   control scan no-scan 'env_file_scan certifies every file' \
     's|^env_file_scan() {$|env_file_scan() { return 0|'
+  # shellcheck disable=SC2016  # $ENV_LINES_NUL is the variable NAME inside the deploy.sh line being
+  # matched. Measured: expanded, the pattern reaches sed as `\[ "" = 1 \]` and matches nothing.
   control scan nul-blind 'the NUL refusal is cut out' \
     's|^  if \[ "\$ENV_LINES_NUL" = 1 \]; then$|  if false; then|'
 }
 
 do_locality() {
-  head2 'LOCALITY — A5’s store verdict  vs  where Laravel really connects'
+  # Double-quoted, not single: the apostrophe is U+2019 in prose, and double quotes are how ShellCheck
+  # is told a unicode quote is literal (SC1112). The string holds nothing that expands.
+  head2 "LOCALITY — A5’s store verdict  vs  where Laravel really connects"
   locality_bases
   generate locality
   POP_LOCALITY=${#CELL_DIR[@]}
@@ -838,12 +856,15 @@ do_locality() {
   [ "$VERBOSE" = 0 ] || print_rows 400 narrowing
 
   head2 'LOCALITY controls — the differential, seen to fail'
+  # shellcheck disable=SC2016  # the same address over the same two deploy.sh lines as in do_scan.
   control locality lf-only 'env_lines_load splits on \n alone (card#9561 r4)' \
     '/^  content="\${content\/\//d'
   control locality ca-text 'the CA is judged by its TEXT, not by the value the app receives' \
     's|^env_app_falsy() {$|env_app_falsy() { return 1;|'
   control locality url-blind 'store_locality stops reading DB_URL' \
     's|^  env_read url DB_URL .*$|  url=""|'
+  # shellcheck disable=SC2016  # ${socket:0:1} is deploy.sh's own text on the pattern side and $socket is
+  # bash source on the replacement side. Measured: expanded, the pattern matches nothing.
   control locality socket-text 'any DB_SOCKET text counts as a socket' \
     's|^  if \[ "\${socket:0:1}" = "/" \]; then$|  if [ -n "$socket" ]; then|'
 }
@@ -858,7 +879,8 @@ head2 'the line terminators — two statements, held together'
 check_terminator_sets
 head2 'the keys compared — three idioms, held against a floor'
 check_key_derivation
-head2 'the mirror’s fixture root — which .env files it may read and print'
+# Double-quoted for the same reason as do_locality's heading above: a literal U+2019, nothing that expands.
+head2 "the mirror’s fixture root — which .env files it may read and print"
 check_mirror_confinement
 
 case "$ONLY" in

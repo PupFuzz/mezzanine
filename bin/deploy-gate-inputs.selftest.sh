@@ -54,7 +54,11 @@ trap 'rm -rf "$T"' EXIT
 fails=0; cases=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
-eq()  { cases=$((cases+1)); [ "$2" = "$3" ] && ok "$1" || bad "$1 — expected '$2', got '$3'"; }
+# `eq` branches rather than chaining `A && ok || bad`: in that chain the reporter's OWN exit status
+# is a second way to reach `bad`, so a printf that fails (a closed or full stdout under a CI lane's
+# redirection) turns a case that PASSED into a FAIL, for a reason that is not about the check. `has`
+# below already branches; this is the same shape written the same way.
+eq()  { cases=$((cases+1)); if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 — expected '$2', got '$3'"; fi; }
 has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
 section() { printf '\n── %s\n' "$1"; }
 
@@ -68,6 +72,10 @@ G() { local d="$1"; shift; git -c user.email=selftest@invalid -c user.name=selft
 # would be a second notion of what a read looks like — the exact defect this suite exists to pin.
 PFX="$(sed -n "s/^READ_PREFIX_RE='\(.*\)'\$/\1/p" "$CHECK")"
 ARG="$(sed -n "s/^READ_ARG_RE='\(.*\)'\$/\1/p" "$CHECK")"
+# Both operands here are TESTS with no side effect, so this chain is exactly `if ! (A && B)`: the
+# block runs when either pattern came back empty, which is the intent. The hazard SC2015 names —
+# `C` reached because `B` was an action that failed — has no operand to arrive through.
+# shellcheck disable=SC2015  # A and B are both tests; C is the "either was empty" branch
 [ -n "$PFX" ] && [ -n "$ARG" ] || {
   echo "selftest: could not extract READ_PREFIX_RE/READ_ARG_RE from $CHECK — the insertion point of" >&2
   echo "          every case below is derived from them, so nothing here would be testing anything." >&2
@@ -137,25 +145,39 @@ has "control: names the decision that left the gap" "card#9637" "$OUT"
 # set nor the table, so the two agreed and the lane was green over an unchecked gate.
 section "ESCAPES — a new read the derivation must never miss"
 
+# ⚠ THE SINGLE QUOTES BELOW ARE THE POINT, and each case says on its own line which shape it
+# holds open. Two kinds run through this section. Shell SOURCE, which this suite injects into the
+# fixture's `bin/deploy.sh`: there the `$` IS the escape shape under test, and letting it expand
+# here would inject THIS file's value and leave the case measuring a line nobody wrote. And
+# assertion NEEDLES, which quote the checker's own output, where those `$` and backquotes are
+# printed literally and an expansion would match nothing.
+
 mkcase esc_control
+# shellcheck disable=SC2016  # injected source: the matched `$SHA`
 insert '  git_read_at newv "$SHA" server/NEWPATH.json'
 run
 eq  "the matched shape (control for the seven below): exit 2" 2 "$RC"
 has "the matched shape: names the unclassified path"          "NOT classified here: server/NEWPATH.json" "$OUT"
 
 mkcase esc_a
+# shellcheck disable=SC2016  # injected source: an unquoted `$SHA`
 insert '  git_read_at newv $SHA server/NEWPATH.json'
 run
 eq  "A  \$SHA unquoted: exit 2"                     2 "$RC"
 has "A  \$SHA unquoted: the derivation stops"       "shape the derivation does not match" "$OUT"
 
 mkcase esc_b
+# shellcheck disable=SC2016  # injected source: a braced `${SHA}`
 insert '  git_read_at newv "${SHA}" server/NEWPATH.json'
 run
 eq  "B  \${SHA} braced: exit 2"                     2 "$RC"
 has "B  \${SHA} braced: the derivation stops"       "shape the derivation does not match" "$OUT"
 
 mkcase esc_c
+# shellcheck disable=SC2016  # injected source: `$SHA` on a call split over two lines
+# The backslash is the LITERAL trailing continuation this case injects; the `'`
+# after it closes the argument, since a single-quoted string has no escapes.
+# shellcheck disable=SC1003  # a literal trailing backslash — see above
 insert '  git_read_at newv "$SHA" \' '    server/NEWPATH.json'
 run
 eq  "C  the call split over two lines: exit 2"      2 "$RC"
@@ -163,13 +185,16 @@ has "C  split call: named as a continuation, not derived as the path \`\\\`" \
     "continued onto the NEXT line" "$OUT"
 
 mkcase esc_d
+# shellcheck disable=SC2016  # injected source: a different rev variable, `$TARGET_SHA`
 insert '  git_read_at newv "$TARGET_SHA" server/NEWPATH.json'
 run
 eq  "D  a different rev variable: exit 2"           2 "$RC"
 has "D  a different rev variable: the derivation stops" "shape the derivation does not match" "$OUT"
 
 mkcase esc_e
+# shellcheck disable=SC2016  # injected source: `$SHA` read by a third reader function
 insert '  git_show_at newv "$SHA" server/NEWPATH.json'
+# shellcheck disable=SC2016  # injected source: the `"$2:$3"` inside an appended reader body
 printf '%s\n' 'git_show_at() { git_at show "$2:$3"; }' >> "$DIR/bin/deploy.sh"
 run
 eq  "E  a THIRD reader function: exit 2"            2 "$RC"
@@ -177,6 +202,7 @@ has "E  a third reader: found by its body running a reading git subcommand" \
     "shape the derivation does not match" "$OUT"
 
 mkcase esc_f
+# shellcheck disable=SC2016  # injected source: the positionals and `$SHA` inside a wrapper
 insert '  read_target() { git_read_at "$1" "$SHA" "$2"; }' '  read_target newv server/NEWPATH.json'
 run
 eq  "F  a wrapper around a reader: exit 2"          2 "$RC"
@@ -184,18 +210,22 @@ has "F  a wrapper: the reader call inside it is the call site" \
     "shape the derivation does not match" "$OUT"
 
 mkcase esc_h
+# shellcheck disable=SC2016  # injected source: `$SHA` and the `$SRV` the path is built from
 insert '  SRV=server; git_read_at newv "$SHA" "$SRV/NEWPATH.json"'
 run
 eq  "H  a path assembled from a variable: exit 2"   2 "$RC"
+# shellcheck disable=SC2016  # assertion needle: `$SRV/NEWPATH.json`
 has "H  assembled path: classified as run-time or not at all, never passed over" \
     'NOT classified here: $SRV/NEWPATH.json' "$OUT"
 
 # Not one of the eight, and the reason the superset also covers $SHA lines: a read made with no
 # reader at all.
 mkcase esc_raw
+# shellcheck disable=SC2016  # injected source: the `$(...)` and `$SHA:` of a reader-less read
 insert '  body="$(git_at show "$SHA:server/NEWPATH.json")"'
 run
 eq  "raw \`git show \$SHA:…\`, no reader involved: exit 2" 2 "$RC"
+# shellcheck disable=SC2016  # assertion needle: the backquoted `git show`
 has "raw git show: named as a subcommand that is not one of the non-reading ones" \
     'runs `git show`' "$OUT"
 # …and ONE line is named, not two. A gate that reads the release inline must not be taken for a
