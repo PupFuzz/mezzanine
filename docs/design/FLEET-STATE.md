@@ -3104,7 +3104,9 @@ seat they diverge, and the divergence is the whole point — `delivery` keeps mo
 
 #### 8.2.3 The seat detail response
 
-`GET /api/fleet/seats/aimla/aimla-pm` returns the object above plus a `detail` member: the full
+`GET /api/fleet/seats/aimla/aimla-pm` returns `aimla-pm`'s object above inside the REST envelope — `api_version`
+and `server_time` first, as the snapshot carries them, then the object's own members, then a `detail`
+member. `detail` carries the full
 `heartbeat_counters` and `heartbeat_predicates` snapshots, this plane's `seat_counters` rows, the open
 call list in full (not capped at 8), the open attention request if any, and the current session's turn
 statistics. It is the drill-down's source and is deliberately **not** in the fleet snapshot: putting

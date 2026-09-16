@@ -190,7 +190,8 @@ function member(value) {
 /**
  * The panel, from the two requests § 4.3 puts on its open.
  *
- * @param seat      `GET /api/fleet/seats/{install}/{seat}` — the seat object plus `detail`
+ * @param seat      `GET /api/fleet/seats/{install}/{seat}` — `api_version` and `server_time`
+ *                  first, then the seat object's members, then `detail`
  * @param timeline  `GET …/timeline?limit=50`'s body, or `null` when it has not been fetched
  * @param options   `{ now_ms }` — the CORRECTED clock (§ 2.4), and `{ ref_bases }` (§ 5.2)
  */

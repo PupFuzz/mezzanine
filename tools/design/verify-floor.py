@@ -2623,6 +2623,92 @@ if _g12_arith == 0:
                 "age, so leg B measured nothing. The `stale` and `offline` rows are the two this "
                 "leg exists for")
 
+# ---- G13. a Never cell that forbids the empty desk is SCOPED to the client's confirmation ----
+#
+# Section 2.3's row 5 (card#7341 step 3, the operator's 2026-09-14 ruling) makes a HELD seat the
+# client cannot currently confirm render section 7.1's empty chair.  Two Never cells forbade exactly
+# that in ABSOLUTE terms -- `idle`'s ("never the empty desk") and `disabled`'s ("a seat that is off
+# and a seat that is gone must not look alike") -- so the document would state the rule and its own
+# prohibition at once, and no gate read a Never cell at all.
+#
+# ⛔ THE THIRD CELL IS THE ONE A NARROWER CHECK MISSES.  Appendix A's U5 RESTATES the off-versus-gone
+# obligation and names section 7.1 as where it is discharged.  A check reading only 7.1's table
+# returns CLEAN over a document that scopes the rule in 7.1 and publishes it absolutely at the row
+# citing 7.1 as its proof -- which is what happened (card#7341, pass-6 MAJOR 4), and is why this
+# check reads the DISCHARGE cell too.  It never reads U5's Obligation cell: that carries D1
+# § 6.14's own sentence, which this document does not get to scope.
+#
+# ⚠ WHAT IT CANNOT DO: judge whether a scoping clause is the RIGHT one, or that it qualifies the
+# prohibition rather than sitting elsewhere in the same cell.  It holds a cell that forbids the empty
+# desk to CARRYING the qualification in the words all three cells use for it; the argument for the
+# scope is section 7.3's and a reviewer's.
+#
+# ⛔ THE PHRASE, NOT THE WORD `confirm`.  Each of these cells goes on to explain what happens once a
+# read has failed "enough to leave it unconfirmed" — so a check greping the cell for `confirm` stays
+# green with the QUALIFICATION deleted and the explanation left behind, which is a gate that cannot
+# fail on the one edit it exists to catch.  The selftest plants exactly that edit.
+G13_SCOPED = re.compile(r"client can (?:currently )?confirm the seat", re.I)
+g13_rows = table_rows(raw, r"^\|\s*`render_state`\s*\|\s*Desk\s*\|\s*Label line\s*\|\s*Animation\s*\|\s*Never\s*\|")
+g13_seen = {}
+if g13_rows is None:
+    fail.append("G13: section 7.1's render_state table header was not found — this check could not "
+                "run at all, which is a false clean and not a skip")
+else:
+    if len(g13_rows) != len(render_m):
+        fail.append(f"G13: section 7.1's table has {len(g13_rows)} data rows against "
+                    f"{len(render_m)} `render_state` members — the row walk itself is broken, so "
+                    f"every verdict below would be about a table this gate cannot read")
+    for state, forbids, what in (("idle", "empty", "the empty desk"),
+                                 ("disabled", "offline", "rendering as `offline`")):
+        row = next((r for r in g13_rows if r.startswith(f"| `{state}`")), None)
+        if row is None:
+            fail.append(f"G13: no `{state}` row in section 7.1's table — the cell this gate reads "
+                        f"has moved or been deleted")
+            continue
+        c = cells(row)
+        if len(c) != 5:
+            fail.append(f"G13: section 7.1's `{state}` row has {len(c)} cells, not five")
+            continue
+        never = c[4]
+        if forbids not in never.lower():
+            fail.append(f"G13: `{state}`'s Never cell no longer forbids {what} at all — the anchor "
+                        f"this gate reads has moved, so its silence would mean nothing")
+            continue
+        g13_seen[state] = bool(G13_SCOPED.search(never))
+        if not g13_seen[state]:
+            fail.append(f"G13: section 7.1's `{state}` Never cell forbids {what} unconditionally and "
+                        f"names no scoping to the client's own confirmation — section 2.3 row 5 "
+                        f"makes that a live exception: a seat the client cannot confirm renders the "
+                        f"empty chair, which is the very render this cell forbids")
+
+g13_u_rows = table_rows(raw, r"^\|\s*#\s*\|\s*D1 source\s*\|\s*Obligation\s*\|\s*Discharged in\s*\|")
+g13_u5 = None
+if g13_u_rows is None:
+    fail.append("G13: Appendix A's table of obligations D1 addresses to the render layer was not "
+                "found — this leg could not run at all")
+else:
+    hits = [r for r in g13_u_rows if "must not look alike" in r and "`enabled: false`" in r]
+    if len(hits) != 1:
+        fail.append(f"G13: {len(hits)} rows of Appendix A restate D1 § 6.14's off-versus-gone "
+                    f"sentence, not the one this gate reads")
+    else:
+        c = cells(hits[0])
+        if len(c) != 4:
+            fail.append(f"G13: Appendix A's U5 row has {len(c)} cells, not four")
+        elif "7.1" not in c[3]:
+            fail.append("G13: Appendix A's U5 no longer names section 7.1 as where the obligation is "
+                        "discharged — the contradiction this leg reads is between that cell and "
+                        "7.1's own, so the anchor has moved")
+        else:
+            g13_u5 = bool(G13_SCOPED.search(c[3]))
+            if not g13_u5:
+                fail.append("G13: Appendix A's U5 states the off-versus-gone obligation as discharged "
+                            "in section 7.1 and names no scoping to the client's own confirmation — "
+                            "but 7.1's `disabled` cell holds that distinction only while the client "
+                            "can confirm the seat, so the document publishes the obligation as "
+                            "absolute at the very row that cites the scoped section as its proof")
+
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -2739,6 +2825,11 @@ print(f"    G9 table rows outside the render map: {len(g9_exempt)}, every one of
       f"marker-definition, {len(g9_gatedoc_lines)} guard-class")
 for ln, f, ex in g9_exempt:
     print(f"    G9 outside the render map, {ex} · L{ln}: `{f}`")
+print(f"G13 the empty-desk Never cells, scoped to the client's own confirmation (section 2.3 row 5): "
+      f"section 7.1 rows walked {len(g13_rows or [])}; cells read and scoped "
+      f"{sorted(s for s, ok in g13_seen.items() if ok)}; Appendix A's U5 discharge cell scoped: "
+      f"{g13_u5}. The U5 leg is why this is not two cells: a gate reading only 7.1's table returned "
+      f"CLEAN over the same obligation published absolutely one appendix away")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "

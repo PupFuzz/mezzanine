@@ -359,6 +359,20 @@ final class FleetClientPlants
         ],
     ];
 
+    /** P20b — § 5.5's 200-line cap removed: the record grows without bound, one line per act, for as long as the page is open. */
+    public const UNCAPPED = [
+        [
+            <<<'JS'
+                    if (this.#log.length > LOG_CAP) {
+                        this.#log.length = LOG_CAP;
+                    }
+            JS,
+            <<<'JS'
+                    // control: the record's own bound removed
+            JS,
+        ],
+    ];
+
     /** P22 — a failed discovery keeps its `(N, M)` pair spent, so the next heartbeat never retries. */
     public const SPEND = [
         [

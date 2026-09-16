@@ -69,8 +69,9 @@
             paths is the *which of the two am I looking at* question D2 § 13 row 41 refuses.
             `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
 
-            ⚠ The lobby opens no stream yet (Appendix B step 3), so a building rearranged after
-            the fetch is drawn when the viewer presses Refresh or reloads.
+            ⚠ The lobby opens no stream yet: the protocol that opens one is built (Appendix B
+            step 3) and no page constructs it before step 8, so a building rearranged after the
+            fetch is drawn when the viewer presses Refresh or reloads.
         --}}
 
         {{--

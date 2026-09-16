@@ -418,6 +418,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   moved. `tools/design/verify-design-docs.selftest.py` plants each red: the harness dropped, the
   harness swapped for a gate in a test that replays a fixture and in one that names none, an
   undeclared fixture name carrying a suffix, and one whose first hyphen is an underscore.
+  **Step 3 lands the client protocol and the fixture harness** (`docs/design/FLOOR.md` Appendix B
+  step 3). `server/public/js/wire/fleet-client.js` opens the feed, buffers the connect window,
+  applies the snapshot, drains, applies every delta through ONE per-seat primitive, resyncs a gap
+  from the last version it applied, inserts a seat it does not hold by fetching it, discovers an
+  install a `fleet.seats_total` disagreement points at, holds § 2.4's clock offset, and writes
+  § 5.5's record newest-first at 200 lines. `server/public/js/wire/discrepancy-budget.js` is § 4.1's
+  budget, hoisted out of `lobby-model.js` at its second caller and gaining the `refund` a failed
+  discovery needs; `lobby-model.js` re-exports it, so every lobby import is unchanged.
+  `server/tests/Feature/Support/scripted-fetch.mjs` is the lobby probe's own fake transport, hoisted
+  the same way and given a scheduling hook, and `server/tests/Feature/Floor/fleet-client-probe.mjs`
+  drives the shipped module under `node` on a scenario clock with a fake `EventSource` that replays
+  nothing, exactly as D2 does not. Four checked-in fixture files carry every byte the tests replay —
+  `fx-snapshot-4`, `fx-gap`, `fx-membership` and `fx-confirm` — and six test classes assert the three
+  step-3 acceptance halves, the determinism bound, the record's cap, the confirmation signal and the
+  fixtures' own agreement with `docs/design/FLEET-STATE.md § 8.2.1`, each with planted controls that
+  were run and seen to red. The protocol also reports what it CANNOT confirm: a held seat whose own
+  read has failed twice consecutively is `missing` in `readStatus()`, and `discrepancyState()` says
+  whether a check for the lobby's disagreement can still run — data only, drawn by nobody until
+  Appendix B step 10. FLOOR.md now says discovery IS admission, carries § 2.3's new row 5 for the
+  unconfirmed desk, scopes `idle`'s and `disabled`'s Never cells and Appendix A's U5 to what the
+  client can confirm, states the lobby's notice in the office's own nouns, and FLEET-STATE § 8.2.3
+  names the seat response's REST envelope, which `FeedSurfaceTest` now asserts in order.
   **Installer action:** none; no migration.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
   served with every `{}` it was authored with.** The layout reader decoded the document

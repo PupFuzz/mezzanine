@@ -22,8 +22,9 @@
  *
  * ⚠ WHO CALLS WHAT, TODAY. The lobby (`lobby/lobby-entry.js`) fetches the layout. NOTHING YET CALLS
  * `enterRooms()` OR THE TWO MESSAGE APPLIES: rooms are entered by § 4.4's floor route, which is
- * Appendix B step 7 (card#7341) and unbuilt, and messages arrive on § 2.2's stream, which is step 3
- * and unbuilt — the lobby opens no stream. They are here because row 13 is the cache, and are
+ * Appendix B step 7 (card#7341) and unbuilt, and messages arrive on § 2.2's stream, which the
+ * client protocol opens — `wire/fleet-client.js`, built at step 3, which NO PAGE CONSTRUCTS before
+ * step 8, so the lobby still opens no stream. They are here because row 13 is the cache, and are
  * exercised by `Tests\Feature\Building\TheClientHoldsRoomMapsByVersionTest`.
  */
 
@@ -93,7 +94,8 @@ function isMapAnswer(body, installId) {
  *
  * ⚠ THE WORDING IS NOT RATIFIED. § 2.5 states what the line names and publishes no string for it; this
  * is written from those two members and nothing else. The line is RETURNED, not written: the client's
- * event record is § 5.5's and Appendix B step 3's, and is not built.
+ * event record is § 5.5's, built at Appendix B step 3 in `wire/fleet-client.js`; step 7 is what
+ * delivers a `room.map` to this apply and writes the line it returns into that record.
  */
 export function roomMapLine(installId, mapVersion) {
     return mapVersion === null

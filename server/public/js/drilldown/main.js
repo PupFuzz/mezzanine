@@ -73,8 +73,9 @@ function correctedNowMs(seat, browserNowMs) {
 /**
  * Render one seat's panel into `root`.
  *
- * `seat` is `GET /api/fleet/seats/{install_id}/{seat_id}`'s body (the seat object plus
- * `detail`); `timeline` is `…/timeline?limit=50`'s, or `null` when it has not been fetched.
+ * `seat` is `GET /api/fleet/seats/{install_id}/{seat_id}`'s body — `api_version` and `server_time`
+ * first, then the seat object's members, then `detail`; `timeline` is `…/timeline?limit=50`'s, or
+ * `null` when it has not been fetched.
  */
 export function renderDrillDown(root, seat, timeline, options = {}) {
     const model = drillDownModel(seat, timeline, {

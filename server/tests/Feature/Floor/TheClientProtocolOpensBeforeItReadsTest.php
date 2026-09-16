@@ -204,14 +204,18 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
             .'arrived');
         $this->assertSame('working', $pm['render_state']);
 
-        // P2 — the delta AT the watermark is taken as a gap.
-        $lt = $this->replay('watermark', $this->plantedClient(FleetClientPlants::LT[0]));
+        // P2 — the delta AT the watermark is taken as a gap. ⚠ THE RESYNC IS UNSCRIPTED BY
+        // CONSTRUCTION: `watermark` scripts no seat response because the correct client issues no
+        // seat request, and the request itself IS this row's divergence — so this control opts out
+        // of the no-unscripted-request assertion rather than dying on it for the right reason at
+        // the wrong surface. The same holds for P2b below.
+        $lt = $this->replay('watermark', $this->plantedClient(FleetClientPlants::LT[0]), [], true);
 
         $this->assertSame(['/api/fleet/seats/aimla/aimla-pm?resync_from=48219'], $this->seatRequests($lt),
             'P2 did not bite: the boundary was moved and the at-watermark delta was still discarded');
 
         // P2b — the delta BELOW the watermark is taken as a gap.
-        $eqonly = $this->replay('watermark', $this->plantedClient(FleetClientPlants::EQONLY[0]));
+        $eqonly = $this->replay('watermark', $this->plantedClient(FleetClientPlants::EQONLY[0]), [], true);
 
         $this->assertSame(['/api/fleet/seats/aimla/aimla-pm?resync_from=48219'], $this->seatRequests($eqonly),
             'P2b did not bite: only equality was discarded and the below-watermark delta still did '
