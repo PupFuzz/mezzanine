@@ -44,8 +44,17 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   the axis that would have caught it — card#9561 round 4 with the arrow reversed. The keys compared are the
   union of the three idioms that read a key from `.env` — `env_read VAR KEY`, a literal-key `env_get KEY`
   (phase B's only smoke check is `url="$(env_get APP_URL)"`) and `server/.env.example`'s key list, which
-  A10b loops `env_get` over — held against a floor derived from A5's own refusal text, so a refactor that
-  moves the call sites out from under one idiom reds rather than running green over what is left. What IS
+  A10b loops `env_get` over — held against a floor derived from A5's own refusal text. **What that floor
+  reaches is ONE key, and the header says so rather than claiming a refactor cannot narrow the
+  population**: the floor's power is the refused keys no other leg covers, which today is
+  `MYSQL_ATTR_SSL_CA` alone — every other refused key is in `server/.env.example` too and survives any
+  rename through that leg. Measured the other way as well: rename every `env_read` site EXCEPT the
+  `MYSQL_ATTR_SSL_CA` one and the harness runs green with `DB_SOCKET` — a key A5's store verdict turns on,
+  named by no refusal text and by no `.env.example` — silently gone from the compared keys. The
+  `.env.example` leg is likewise a SECOND TYPING of A10b's key grep, over the working tree's copy where
+  A10b reads the target release's, with nothing binding the two. Both are recorded on card#9591 as
+  won't-do with those measurements, and both are now stated where the derivation is written, in the shape
+  `bin/env-mirror-diff.sh`'s own key-floor control already used. What IS
   written down is the fixture bases: `scan_bases` and `locality_bases` enumerate the `.env` shapes by hand,
   and that list is the half a new shape must be ADDED to. The cell count is counted as the run emits cells
   and printed — a recorded count would be a quoted authority that outlives the run that falsified it. **Every differential carries a control seen to fail**: after the clean run the
@@ -57,7 +66,16 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   a deliberately leaky variant proving that check discriminates, and each of the two derivations above
   carries one as well — a `Parser::parse` narrowed to `/(\r\n|\n)/`, an `env_lines_load` that stops
   normalising a lone `\r`, and a `bin/deploy.sh` whose every `env_read` call site has been renamed away must
-  each red the check that exists to report it. `bin/deploy.sh` is read and **not changed** by this card.
+  each red the check that exists to report it. **`bin/env-mirror-diff.mirror.sh` reads a `.env` only under
+  the fixture root its driver exports** (`MEZZ_ENV_MIRROR_WORK`): it takes fixture directories on stdin and
+  PRINTS the values it reads, so unbounded it is a general-purpose `.env` value printer for any directory a
+  caller names — one hand run pointed at a live host's `server/` puts that host's secrets in a terminal or a
+  CI log. It now dies naming the file it would have read, in every mode, and the refusal is watched on every
+  run by three legs: the same fixture answered INSIDE the root, refused outside it, and refused with the
+  variable unset. Each leg was seen to fail against a deliberately weakened copy. The root bounds a
+  DEFAULT, not a privilege: a caller who sets the variable at a real `.env` is reading a file they could
+  already `cat`, and the script's header says exactly that. `bin/deploy.sh` is read and **not changed** by
+  this card.
 
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses

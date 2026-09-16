@@ -535,7 +535,10 @@ rule violations anyone could have committed at the time.
   statements, and the keys out of the three idioms that read one from `.env` (`env_read VAR KEY`, a
   literal-key `env_get KEY`, and `server/.env.example`'s key list that A10b reads through `env_get`) held
   against a floor derived from A5's own refusal text. A mutant of `bin/deploy.sh` per differential must red
-  it, and each of those two derivations carries a mutant of its own. So a
+  it, and each of those two derivations carries a mutant of its own. **What a green run there does NOT
+  prove is written in that script's own header** — the floor reaches only the refused keys no other leg
+  covers, and the `.env.example` leg is a second typing of A10b's key grep — with the measurements on
+  card#9591, which records both as won't-do rather than as gaps nobody has looked at. So a
   phpdotenv upgrade that moves the parser out from under the mirror is a red on a PR rather than a
   discovery inside a maintenance window.
 - **The feed's stream needs three things from the host, and one check after a deploy that only an

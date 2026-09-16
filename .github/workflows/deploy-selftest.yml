@@ -116,6 +116,9 @@ jobs:
         working-directory: server
         run: composer install --no-interaction --prefer-dist --no-progress --no-dev
 
-      # No `.env` is created and none is read: every fixture is written into the harness's own temp dir.
+      # No real `.env` is created or read: every fixture is written into the harness's own temp dir, and
+      # the mirror that PRINTS `.env` values is bounded to that dir through `MEZZ_ENV_MIRROR_WORK`, with
+      # the bound's own refusal watched in the run below. What a green run does NOT prove about the key
+      # population is stated in `bin/env-mirror-diff.sh`'s header and recorded on card#9591.
       - name: The mirror agrees with the parser, and every control reds when mutated
         run: bash bin/env-mirror-diff.sh

@@ -35,6 +35,21 @@
 # count is COUNTED as the run emits cells and printed at the end; no population size is stated, because a
 # written count becomes a quoted authority that outlives the run that falsified it.
 #
+# WHAT A GREEN RUN DOES NOT PROVE, because "derived on every run" is not "cannot narrow". A green run
+# proves the mirror and the parser agree over the population THIS RUN derived, and that every control red
+# when its defect was introduced. It does not prove the population is everything it should cover:
+#
+#   · the `.env.example` leg is a SECOND TYPING of A10b's own key grep, over the WORKING TREE's copy where
+#     A10b reads the TARGET release's — two lists that agree by inspection, with no check binding them;
+#   · the FLOOR reaches only the refused keys no other leg covers — today MYSQL_ATTR_SSL_CA alone — so a
+#     key read only through `env_read` and named by no refusal, `DB_SOCKET` being one, can drop out of the
+#     compared keys with this script green.
+#
+# Both are stated again where they are derived, with the commands that re-measure them. Neither is an
+# oversight: card#9591 records both as won't-do, with the measurement that sized them. Knowing that a
+# SECOND guard over the key population is the thing to build if this ever costs something, rather than
+# believing the derivation is total, is what this paragraph is for.
+#
 # The fixture BASES are the half that IS written down: `scan_bases` and `locality_bases` are a
 # hand-maintained enumeration of `.env` shapes, and they are precisely the half that must GROW when a new
 # shape is found. This PR's own `lf-only` control is the worked example — it could not red the locality
@@ -52,7 +67,9 @@
 #   bin/env-mirror-diff.sh [--deploy PATH] [--only scan|locality] [--verbose]
 # Needs `php` with `pdo_mysql`, and `server/vendor/` installed (`composer install` in `server/`) — that
 # vendor tree IS the oracle. Reaches no host, needs no credential, writes only inside its own temp dir,
-# and never reads or writes the real `server/.env`.
+# and never reads or writes the real `server/.env` — env-mirror-diff.mirror.sh PRINTS the values it
+# reads, so it is bounded to that temp dir through `MEZZ_ENV_MIRROR_WORK`, exported here and checked
+# there. The bound's own refusal is watched on every run (`the mirror’s fixture root`, below).
 #
 # EXIT 0 no dangerous cells and every control red when mutated · 1 a dangerous cell, a refusal of a file
 # the app boots on where none is declared, a terminator set that has drifted, or a control that failed to
@@ -90,6 +107,9 @@ head2() { printf '\n── %s\n' "$*"; }
 command -v php >/dev/null || die 'no php on PATH. The vendored phpdotenv is the oracle; there is nothing to compare against without it.'
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+# Every fixture is generated under here, and this is also the ROOT env-mirror-diff.mirror.sh is bounded
+# to: that script prints `.env` values, so the directories it may open are the ones this run wrote.
+export MEZZ_ENV_MIRROR_WORK="$WORK"
 
 FAILURES=0
 fail() { printf '   ⛔ %s\n' "$*"; FAILURES=$((FAILURES + 1)); }
@@ -183,15 +203,40 @@ TERM_NAMES=(); TERM_BYTES=(); LF_INDEX=-1
 #     deploy is UNVERIFIED") or smoke-checks a URL the app does not have, with the window already CLOSED
 #     and the new release serving;
 #   · `server/.env.example`'s key list — A10b builds it at run time from the TARGET release's copy and
-#     reads every key of it through `env_get "$k"`. It is derived here exactly as bin/deploy.sh derives it
-#     there, so the two lists cannot be different lists. A divergence on one of those keys makes A10b tell
-#     an operator their host does not set a key it does set, or stay silent about one it does not.
+#     reads every key of it through `env_get "$k"`. A divergence on one of those keys makes A10b tell an
+#     operator their host does not set a key it does set, or stay silent about one it does not.
+#     ⚠ WHAT THIS LEG IS, EXACTLY: a SECOND TYPING of A10b's `grep -Eo '^[A-Z][A-Z0-9_]*='`, and nothing
+#     holds the two spellings together. They agree today by inspection — `derive_keys` below and
+#     bin/deploy.sh's A10b, read side by side — not by construction, and the two also read DIFFERENT
+#     COPIES of the file: A10b reads the TARGET release's through `git_read_at`, this reads the working
+#     tree's. So a change to either regex, or a `.env.example` whose committed copy differs from the
+#     checked-out one, narrows or widens this leg silently. Not an oversight: card#9591 records it as a
+#     won't-do, with the measurement. Binding the two would take a derivation A10b PUBLISHES and this
+#     reads — the same shape ENV_LOOPBACK_HOSTS uses — and that is the fix if this leg ever matters more.
 #
-# AND A FLOOR, because a derivation over call sites cannot notice that it has NARROWED. Nothing above
-# would report a refactor that routed eight of nine `env_read` sites through a new helper: the harness
-# would run green over the one key the new idiom did not hide. So the union is held against a set derived
-# from a surface none of the three idioms touches — the keys A5 REFUSES BY NAME in its own refusal text —
-# and a key that drops out of the union while A5 still refuses on it stops this script.
+# AND A FLOOR, because a derivation over call sites cannot notice that it has NARROWED: nothing above
+# would report a refactor that routed the `env_read` sites through a new helper, and the harness would run
+# green over whatever keys the new idiom hid. So the union is held against a set derived from a surface
+# none of the three idioms touches — the keys A5 REFUSES BY NAME in its own refusal text — and a key that
+# drops out of the union while A5 still refuses on it stops this script.
+#
+# ⚠ WHAT THE FLOOR ACTUALLY DISCRIMINATES, because it is less than "a narrowing reds". Its reach is the
+# refused keys NO OTHER LEG COVERS: a refused key that `.env.example` also names survives any refactor of
+# the call sites through the third leg, so losing it from the `env_read` leg reds nothing. Re-derive the
+# two sets rather than trust this sentence —
+#     comm -23 <(grep -oE 'refuse "[A-Z][A-Z0-9_]+ is ' bin/deploy.sh | awk '{print $2}' | tr -d '"' | sort -u) \
+#              <(grep -Eo '^[A-Z][A-Z0-9_]*=' server/.env.example | tr -d '=' | sort -u)
+# — and today that prints MYSQL_ATTR_SSL_CA alone, which is why the control below renames every
+# `env_read` site: that is the one rename the floor can see. AND THE CONVERSE, which is the real gap: a
+# key read ONLY through `env_read` and named by NO refusal has no floor at all. `DB_SOCKET` is one, today
+# and measurably — rename every `env_read` site EXCEPT the MYSQL_ATTR_SSL_CA one and this harness runs
+# green with DB_SOCKET quietly gone from the compared keys, while A5's store verdict still turns on it.
+# A floor read out of REFUSAL TEXT cannot cover it: `DB_SOCKET` feeds `store_locality`, whose refusal is
+# ABOUT the CA — `MYSQL_ATTR_SSL_CA is unset for a store on another host` — and names DB_SOCKET and
+# DB_HOST only in the remedy lines under it, which are not the `refuse "KEY is …"` subject
+# `derive_floor_keys` reads. That is a recorded decision and not an oversight — card#9591 holds the
+# won't-do and the measurement. What would close it is a surface naming the keys A5's verdict DEPENDS on,
+# which neither side states today.
 ENV_EXAMPLE="$REPO/server/.env.example"
 [ -f "$ENV_EXAMPLE" ] || die "no $ENV_EXAMPLE — bin/deploy.sh's A10b reads every key of it through env_get, so it is one of the three idioms this harness's key population is derived from"
 
@@ -641,6 +686,49 @@ check_terminator_sets() {
   fi
 }
 
+# ── the mirror's fixture root, seen to refuse ─────────────────────────────────────────────────────────
+# env-mirror-diff.mirror.sh PRINTS the values it reads, so which `.env` it may open is part of its
+# contract: only what lies under MEZZ_ENV_MIRROR_WORK, exported above. A bound nobody has watched refuse
+# is the decoration this harness exists to refuse, so it is checked in three legs — and the first leg is
+# what makes the other two mean anything: the SAME fixture, with the same key in it, is ANSWERED inside
+# the root. Without it "no value came out" is satisfied by a probe that never worked.
+# The canary is a literal written here and read back here; no real value is ever in play, and the failure
+# messages below say THAT a value came out rather than repeating it.
+MIRROR_CANARY='CONFINEMENT-CANARY-NOT-A-SECRET'
+check_mirror_confinement() {
+  local inside outside out rc leaked
+  inside="$WORK/confinement"; outside="$(mktemp -d)"
+  mkdir -p "$inside"
+  printf 'APP_ENV=production\nDB_PASSWORD=%s\n' "$MIRROR_CANARY" > "$inside/.env"
+  cp "$inside/.env" "$outside/.env"
+
+  out="$(printf '%s\n' "$inside" | bash "$MIRROR" "$DEPLOY" scan DB_PASSWORD 2>&1)"; rc=$?
+  case "$out" in
+    *"$MIRROR_CANARY"*) say '   a fixture INSIDE the root is answered, value and all — so the two refusals below are refusals' ;;
+    *) fail "the mirror did not answer a fixture inside its own root (exit $rc), so the two checks below would pass on a probe that never worked: $out" ;;
+  esac
+
+  out="$(printf '%s\n' "$outside" | bash "$MIRROR" "$DEPLOY" scan DB_PASSWORD 2>&1)"; rc=$?
+  leaked=0; case "$out" in *"$MIRROR_CANARY"*) leaked=1 ;; esac
+  if [ "$leaked" = 1 ]; then
+    fail "the mirror PRINTED a value out of a .env OUTSIDE its fixture root. It is then a general-purpose .env value printer for any directory a caller names — point it at a live host's server/ and it prints that host's secrets — which is the one thing the root exists to stop"
+  elif [ "$rc" = 0 ]; then
+    fail 'the mirror exited 0 for a fixture directory outside its fixture root, so it does not hold the bound its header states'
+  else
+    say '   seen to refuse  outside-root    a fixture directory outside MEZZ_ENV_MIRROR_WORK → the mirror dies, printing no value'
+  fi
+
+  out="$(printf '%s\n' "$inside" | env -u MEZZ_ENV_MIRROR_WORK bash "$MIRROR" "$DEPLOY" scan DB_PASSWORD 2>&1)"; rc=$?
+  leaked=0; case "$out" in *"$MIRROR_CANARY"*) leaked=1 ;; esac
+  if [ "$leaked" = 1 ] || [ "$rc" = 0 ]; then
+    fail 'the mirror ran with MEZZ_ENV_MIRROR_WORK UNSET, so the root is optional — and a bound a caller omits by doing nothing is not a bound'
+  else
+    say '   seen to refuse  no-root         MEZZ_ENV_MIRROR_WORK unset → the mirror dies before reading anything'
+  fi
+
+  rm -rf "$outside"
+}
+
 check_key_derivation() {
   local uncovered mutant_deploy
   local -a floor
@@ -769,6 +857,8 @@ head2 'the line terminators — two statements, held together'
 check_terminator_sets
 head2 'the keys compared — three idioms, held against a floor'
 check_key_derivation
+head2 'the mirror’s fixture root — which .env files it may read and print'
+check_mirror_confinement
 
 case "$ONLY" in
   both)     do_scan; do_locality ;;

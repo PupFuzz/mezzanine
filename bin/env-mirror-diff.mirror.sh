@@ -6,6 +6,20 @@
 # deploy.sh named on the command line and sourced, so every answer below is produced by the script's own
 # text. That is what lets the driver point this at a MUTANT of deploy.sh and watch the differential go red.
 #
+# ⚠ IT PRINTS `.env` VALUES, so WHICH `.env` it may open is part of its contract. Unbounded it is a
+# general-purpose value printer for any directory a caller names: `printf '%s\n' /path/to/site/server |
+# env-mirror-diff.mirror.sh … scan DB_PASSWORD` prints that host's secret on stdout, into whatever
+# transcript or CI log is attached. So the fixture root is REQUIRED — `MEZZ_ENV_MIRROR_WORK`, exported by
+# bin/env-mirror-diff.sh from its own temp dir — and every directory below has to resolve inside it.
+# What that closes is the reach of a hand run, a copied command line, a `find -exec` and a
+# `deploy.sh`-adjacent script: none of them names a fixture root, and all of them now get a refusal
+# naming the file they would have read instead of its contents.
+# What it does NOT close is a caller who sets `MEZZ_ENV_MIRROR_WORK` to the directory they want read.
+# That is deliberate and there is nothing here to close it with: this script runs with its caller's own
+# permissions, so a caller who can reach a `.env` can already `cat` it. The root is a declaration of
+# intent, not a privilege boundary — it makes reading a real `.env` an explicit act rather than the
+# default behaviour of a script sitting in `bin/`.
+#
 # USAGE — fixture directories on stdin, one per line, one TSV line out per directory:
 #   env-mirror-diff.mirror.sh <deploy.sh> scan KEY…  →  DIR  accept|refuse  VALUE-PER-KEY…
 #   env-mirror-diff.mirror.sh <deploy.sh> locality   →  DIR  ok|refuse:TAG  STORE  CA
@@ -33,6 +47,29 @@ KEYS=("$@")
 die() { printf 'env-mirror-diff.mirror.sh: %s\n' "$*" >&2; exit 2; }
 
 [ -f "$DEPLOY" ] || die "no such deploy script: $DEPLOY"
+
+# The root is required in EVERY mode, including `loopback-hosts`, which reads no `.env` at all: one
+# entry condition is a thing a reader can check, and a rule that holds on the paths that print values and
+# not on the one that does not is a rule somebody moves a value-printing path out from under.
+WORK_ROOT="${MEZZ_ENV_MIRROR_WORK:-}"
+[ -n "$WORK_ROOT" ] \
+  || die 'MEZZ_ENV_MIRROR_WORK is unset. This script PRINTS .env values, so it reads .env files only under the fixture root its driver exports — run bin/env-mirror-diff.sh, which generates those fixtures and exports the root.'
+WORK_ROOT="$(cd "$WORK_ROOT" 2>/dev/null && pwd -P)" \
+  || die "MEZZ_ENV_MIRROR_WORK=$MEZZ_ENV_MIRROR_WORK is not a directory this process can enter, so no fixture directory can be shown to be under it"
+# A trailing `/` is stripped so the prefix below is `<root>/` exactly once. Without this a root of `/`
+# compares every path against `//` and refuses ALL of them — safe, but by accident and for a reason no
+# message states, and a bound whose behaviour nobody can predict from its text gets worked around.
+WORK_ROOT="${WORK_ROOT%/}"
+
+# confined DIR → REPLY: DIR resolved to a physical path, and it is inside the fixture root.
+# `pwd -P` on both sides, so a symlinked fixture is judged by where it LANDS and `..` cannot walk out.
+# The prefix test is a quoted parameter expansion rather than a `case` pattern on purpose: a root path
+# holding `[`, `*` or `?` is a glob to `case`, and this has to compare text.
+confined() {
+  REPLY="$(cd "$1" 2>/dev/null && pwd -P)" || die "no such fixture directory: $1"
+  [ "$REPLY" = "$WORK_ROOT" ] || [ "${REPLY#"$WORK_ROOT"/}" != "$REPLY" ] \
+    || die "refusing to read $1/.env — it is outside MEZZ_ENV_MIRROR_WORK ($WORK_ROOT). This script prints the values it reads, and it reads only the fixtures bin/env-mirror-diff.sh generates."
+}
 
 # ── extracting the reader ─────────────────────────────────────────────────────────────────────────────
 # Both anchors must exist EXACTLY once, and in order. A `sed -n '/a/,/b/p'` whose end anchor has moved runs
@@ -155,6 +192,9 @@ VALUE_FILE="$WORK/value"
 # stop. Only that printf's stderr is dropped: a real error from anything inside the cell still speaks.
 while IFS= read -r DIR; do
   [ -n "$DIR" ] || continue
+  # Checked per directory, before the cell is built: the list arrives on stdin, so every line of it is an
+  # instruction to open a `.env` and this is the only place that instruction can be refused.
+  confined "$DIR"
   CELL="$("${MODE}_one")"
   printf '%s\n' "$CELL" 2>/dev/null || break
 done
