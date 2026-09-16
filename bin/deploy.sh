@@ -637,7 +637,7 @@ git_read_call_site() {
   for __i in "${!FUNCNAME[@]}"; do
     case "${FUNCNAME[__i]}" in
       git_read_call_site | git_read_unusable | git_read_failed | git_read_at | git_ls_at | _git_ls_at | \
-      git_rev_read_failed | git_commit_of | git_ref_oid)
+      git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid)
         __outer="$__i" ;;
       *) break ;;
     esac
@@ -891,7 +891,7 @@ git_ref_oid() {
   # store. It is asked here, ABOVE the status split rather than inside the status-1 branch, because
   # the discriminator is git's wording and not the status — git_peel_mismatch carries the
   # measurements and states why. The answer that MEANS absence (status 1, git SILENT) is settled
-  # first, below, and never reaches this: it has no message to ask the question of.
+  # below and cannot reach git_peel_mismatch: it has no message to ask the question of.
   [ -z "$__ro_msg" ] || git_peel_mismatch "'$__ro_cand'" "$__ro_msg" || :
   if [ "$__ro_rc" -eq 1 ]; then
     [ -n "$__ro_msg" ] || return 1
