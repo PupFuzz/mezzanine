@@ -372,7 +372,11 @@ awk -v out="$WORK" -v read_re="$READ_RE" -v prefix_re="$READ_PREFIX_RE" \
   "Nothing was measured. This check refuses rather than reporting a tree it never derived a" \
   "population for."
 
-FAMILY="$(awk -F'\t' '$1=="family"{print $2}' "$WORK/facts.tsv")"
+# Sorted, because awk's `for (name in FAM)` has no defined order and this line is printed on every
+# run: an unsorted list changes between awk implementations on the same tree, and a reader comparing
+# two runs would be reading an ordering difference as a change in the deploy.
+FAMILY="$(awk -F'\t' '$1=="family"{print $2}' "$WORK/facts.tsv" | tr ' ' '\n' | sort | tr '\n' ' ')"
+FAMILY="${FAMILY% }"
 EXAMINED="$(awk -F'\t' '$1=="examined"{print $2}' "$WORK/facts.tsv")"
 MODES="$(awk -F'\t' '$1=="modes"{print $2}' "$WORK/facts.tsv")"
 MODEFN="$(awk -F'\t' '$1=="modefn"{print $2}' "$WORK/facts.tsv")"
