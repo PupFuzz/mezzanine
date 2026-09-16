@@ -71,7 +71,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   host and is in no commit, so its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone
   also takes `server/storage/` and the `.deploy-failed` marker — the logs and the marker the failure
   banner sends that same operator to. The `.git`-only swap reaches the same place with no
-  preservation list to get wrong under pressure, which is why it is the last resort named. **And a status that is neither 0 nor 1 is split by that same silence**: `rev-parse`
+  preservation list to get wrong under pressure, which is why it is the last resort named.
+  **And a status that is neither 0 nor 1 is split by that same silence**: `rev-parse`
   exits 128 having printed NOTHING for `@{…}` reflog syntax on a completely healthy store, and
   `refs/remotes/origin/HEAD` exists in every clone with a reflog that gets one entry and never grows
   on a deploy root — so `--ref HEAD@{1}` refused with *"the REFS could not be read"*, under a line
@@ -99,8 +100,18 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   condition either**: a peel to a type the object is not is LOUD at status 1 on a COMPLETELY HEALTHY
   store — `--ref 'main^{blob}'` gives `error: …: expected blob type, but the object dereferences to
   tree type` — so that branch told an operator git's error named what it could not read while every
-  read had succeeded. It is split on git's own wording, the way `git_commit_of`'s tag branch already
-  splits its own peel.
+  read had succeeded. **And the same claim was live at a SECOND site, found by grepping the tree for
+  this round's own false claim rather than by the review that named the first one**:
+  `git_commit_of`'s tag branch has said since r2 that one of its two cases is git peeling the tag
+  perfectly well and arriving somewhere this deploy cannot use — and it still refused through the
+  wrapper whose fixed line states that git's error names what it could not read, so an annotated tag
+  over a TREE was called a failed read on a store where `git fsck` exits 0 (measured, git 2.53.0:
+  128, `error: …: expected commit type, but the object dereferences to tree type`). Both sites now
+  ask ONE function, `git_peel_mismatch`, and it keys on git's MESSAGE and not on its status, because
+  the same wording arrives at 1 from the `--quiet` call site and at 128 from the one without it — a
+  status rule would have had to be re-derived per caller and would have been wrong at the next one.
+  That call site captures git's stderr now instead of letting it go straight past, because the
+  message IS the discriminator.
 
 - **card#9591** — **the differential that found card#9561's round-4 blocker is now a committed test, run on
   every PR.** `bin/deploy.sh` cannot ask PHP what `server/.env` means at phase A — the config cache is stale

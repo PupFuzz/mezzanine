@@ -1539,6 +1539,33 @@ eq  "control: an ANNOTATED tag resolves and deploys" 0 "$RC"
 has "control: and it is the COMMIT the tag points at that would be checked out, not the tag object" \
   "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V2")" "$OUT"
 
+# ⛔ AND THE TAG THAT PEELS SOMEWHERE ELSE IS NOT A FAILED READ EITHER (card#9611 r4). This is the
+# SIBLING of the peel-mismatch case further down — same defect, second surface, found by grepping
+# the tree for r4's own false claim rather than by the review that named the other one. The tag
+# branch's comment has said since r2 that one of its two cases is "git peeling the tag perfectly
+# well and arriving somewhere this deploy cannot use" — but it refused through git_rev_read_failed,
+# whose FIXED second line states that git's error "names what it could not read". So an annotated
+# tag over a TREE refused under a claim of a failed read on a store where `git fsck` exits 0:
+# measured, git 2.53.0, `rev-parse --verify --end-of-options <tag oid>^{commit}` → 128, `error: …:
+# expected commit type, but the object dereferences to tree type`, `fatal: Needed a single
+# revision`. Note the status: 128 here, 1 at the --quiet call site below, SAME wording — which is
+# why git_peel_mismatch keys on git's message and is ONE function both sites call, rather than a
+# status rule re-derived per caller. The assertions are over the CLAIM, not over a command string.
+gitc "$SRC" tag -a treeonly -m 'a tag whose object is a TREE, not a commit' "$V2^{tree}"
+gitc "$SRC" push -q origin treeonly
+gitc "$ROOT" fetch -q --tags origin
+eq "tree-tag fixture: the store is whole — every object reads" \
+  0 "$(gitc "$ROOT" fsck >/dev/null 2>&1; echo $?)"
+run --dry-run --ref treeonly
+eq   "a tag that peels to a TREE: refused, nothing touched" 1 "$RC"
+has  "tree tag: git's own message is what the operator gets" "dereferences to tree type" "$OUT"
+has  "tree tag: says the objects behind the tag WERE read" "WAS read" "$OUT"
+hasnt "tree tag: nothing claims git could not read" "git could not" "$OUT"
+hasnt "tree tag: and nothing claims git's error names something unreadable" \
+  "names what it could not read" "$OUT"
+has  "tree tag: says outright that this establishes nothing about the object store" \
+  "Nothing here says anything about the state of this checkout's object store" "$OUT"
+
 # ── card#9611 r2 — THE CANDIDATE IS NOT ALWAYS A NAME, AND 128 IS NOT ONE CONDITION ────────────
 # The cases above establish the split for ref NAMES, and that half is measured and holds. These are
 # the two places the SAME defect survived it, and both are the card's own acceptance turned around:

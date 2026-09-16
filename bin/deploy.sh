@@ -800,6 +800,33 @@ git_rev_read_failed() {
     "${@:4}"
 }
 
+# git_peel_mismatch <subject> <git's stderr> — THE ONE PLACE that tells a peel git ANSWERED apart
+# from a read that failed, because git's own wording is the only thing that carries the difference.
+#
+# ⛔ A PEEL TO A TYPE THE OBJECT IS NOT IS NOT A FAILED READ (card#9611 r4). Every object behind the
+# name was read; git is reporting what they ARE. Measured, git 2.53.0, on stores where `fsck` exits
+# 0 — every object readable:
+#   rev-parse --verify --quiet --end-of-options refs/remotes/origin/main^{blob} → 1, LOUD,
+#     `error: …: expected blob type, but the object dereferences to tree type`  (`--ref main^{blob}`)
+#   rev-parse --verify --end-of-options <annotated tag over a tree>^{commit}    → 128, LOUD,
+#     `error: …: expected commit type, but the object dereferences to tree type` + `fatal: Needed a
+#     single revision`                                                          (`--ref <that tag>`)
+# Both reached git_rev_read_failed, whose fixed second line states that git's error "names what it
+# could not read" — a failure that never happened, which is this card's own defect one branch in.
+# THE DISCRIMINATOR IS THE MESSAGE AND NOT THE STATUS, which is why this is one function and not a
+# clause in each caller: the same wording arrives at 1 from the --quiet call site and at 128 from the
+# one without it, so a status rule would have to be re-derived per caller and would be wrong at the
+# next one. It refuses and does not return when git said the objects dereference somewhere else, and
+# returns 1 otherwise so the caller goes on to its own read-failure refusal.
+git_peel_mismatch() {
+  case "$2" in *"dereferences to"*) ;; *) return 1 ;; esac
+  git_read_unusable "$1 does not name what it was asked to peel to" \
+    "git's message above is not a failed read: every object behind $1 WAS read, and git is saying" \
+    "what they are. The peel asked for a type they do not dereference to." \
+    "Nothing here says anything about the state of this checkout's object store." \
+    "This deploy checks out a commit. It will not check out, or reason about, anything else."
+}
+
 # git_ref_oid <var> <candidate> — the object id <candidate> names, into <var>. THE name question,
 # in ONE place: git_commit_of asks it of each of A7's candidates and A8 asks it of the release
 # branch, and both need the same answers rather than two readings of "non-zero".
@@ -859,26 +886,15 @@ git_ref_oid() {
   __ro_msg="$(cat "$__ro_err")"; rm -f "$__ro_err"
   [ -z "$__ro_msg" ] || printf '%s\n' "$__ro_msg" >&2
   if [ "$__ro_rc" -eq 0 ]; then printf -v "$__ro_var" '%s' "$__ro_out"; return 0; fi
+  # ⛔ AND A LOUD ANSWER IS NOT ALWAYS A FAILED READ — THERE IS A THIRD SHAPE AT STATUS 1, AND EVERY
+  # READ IN IT SUCCEEDED (card#9611 r4). `--ref 'main^{blob}'` reaches it on a COMPLETELY HEALTHY
+  # store. It is asked here, ABOVE the status split rather than inside the status-1 branch, because
+  # the discriminator is git's wording and not the status — git_peel_mismatch carries the
+  # measurements and states why. The answer that MEANS absence (status 1, git SILENT) is settled
+  # first, below, and never reaches this: it has no message to ask the question of.
+  [ -z "$__ro_msg" ] || git_peel_mismatch "'$__ro_cand'" "$__ro_msg" || :
   if [ "$__ro_rc" -eq 1 ]; then
     [ -n "$__ro_msg" ] || return 1
-    # ⛔ AND 1-LOUD IS NOT ONE CONDITION EITHER — THERE IS A THIRD SHAPE, AND EVERY READ IN IT
-    # SUCCEEDED (card#9611 r4). A peel that asks for a type the object is not is LOUD at status 1 on
-    # a COMPLETELY HEALTHY store: measured, git 2.53.0, `rev-parse --verify --quiet
-    # --end-of-options refs/remotes/origin/main^{blob}` → 1, `error: refs/remotes/origin/main^{blob}:
-    # expected blob type, but the object dereferences to tree type`, with every object of that store
-    # readable. `--ref 'main^{blob}'` reaches it. Under git_rev_read_failed the refusal would head
-    # itself "git could not resolve" and state that git's error "names what it could not read" —
-    # a failed read that never happened, which is this card's own defect one branch further in.
-    # git_commit_of's tag branch already tells this shape apart for ITS peel; this is the same
-    # discrimination one level up, on git's own wording, which is the only thing that carries it.
-    case "$__ro_msg" in
-      *"dereferences to"*)
-        git_read_unusable "'$__ro_cand' does not name what it was asked to peel to" \
-          "git's message above is not a failed read: every object behind '$__ro_cand' WAS read, and" \
-          "git is saying what they are. The peel asked for a type they do not dereference to." \
-          "Nothing here says anything about the state of this checkout's object store." \
-          "This deploy checks out a commit. Deploy from a branch, a tag, or a commit id." ;;
-    esac
     git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
       "Exit 1 is \"there is no ref of that name\" — and that answer is SILENT. This one printed the" \
       "message above, so it is not that, and GIT'S OWN MESSAGE IS WHAT SAYS WHICH READ THIS WAS:" \
@@ -921,7 +937,7 @@ git_ref_oid() {
 # Every local is `__`-prefixed, for the reason stated at _git_ls_at: <var> is written with
 # `printf -v` and a caller naming one of these would have its own variable shadowed.
 git_commit_of() {
-  local __var="$1" __cand="" __oid="" __peeled __type __rc=0
+  local __var="$1" __cand="" __oid="" __peeled __type __rc=0 __err __msg
   shift
   printf -v "$__var" '%s' ""
   for __cand in "$@"; do
@@ -944,13 +960,26 @@ git_commit_of() {
             # not peel" either, because one of those two cases is git peeling the tag perfectly well
             # and arriving somewhere this deploy cannot use (measured: a tag over a tree gives
             # `expected commit type, but the object dereferences to tree type`). card#9611 r2.
+            #
+            # ⛔ AND SAYING SO IN THE BODY WAS NOT ENOUGH — THE WRAPPER'S OWN FIXED LINE CLAIMED THE
+            # FAILED READ THAT HAD NOT HAPPENED (card#9611 r4, the sibling of the same defect at
+            # git_ref_oid). git_rev_read_failed always states that git's error "names what it could
+            # not read", so an annotated tag over a TREE refused under that line on a store where
+            # `fsck` exits 0 — measured, git 2.53.0: 128, `error: <oid>^{commit}: expected commit
+            # type, but the object dereferences to tree type`, `fatal: Needed a single revision`.
+            # git's stderr is captured and re-printed here, as git_ref_oid does, because the
+            # discriminator IS that message and this call site used to let it go straight past.
             __rc=0
-            __peeled="$(git_at rev-parse --verify --end-of-options "$__oid^{commit}")" || __rc=$?
+            __err="$(mktemp)"
+            __peeled="$(git_at rev-parse --verify --end-of-options "$__oid^{commit}" 2>"$__err")" || __rc=$?
+            __msg="$(cat "$__err")"; rm -f "$__err"
+            [ -z "$__msg" ] || printf '%s\n' "$__msg" >&2
+            [ "$__rc" -eq 0 ] || git_peel_mismatch "the tag '$__cand' ($__oid)" "$__msg" || :
             [ "$__rc" -eq 0 ] || git_rev_read_failed "resolve the tag '$__cand' ($__oid) to a commit" \
               "rev-parse --verify" "$__rc" \
               "A tag object was read at that name; what it dereferences to did not come back as a" \
-              "commit. git's error above says which this is: a read that failed, or an object that" \
-              "is not a commit and never will be one."
+              "commit, and git's message above is a read that failed — a tag that simply peels to" \
+              "something else is refused above this line, by what git called it."
             printf -v "$__var" '%s' "$__peeled" ;;
     *)      git_read_unusable "'$__cand' names a $__type at $__oid, not a commit" \
               "This deploy checks out a commit. It will not check out, or reason about, anything else." ;;

@@ -530,14 +530,18 @@ rule violations anyone could have committed at the time.
   down in `bin/deploy.sh` beside the premise it falsifies rather than left as a premise. **A status that is
   neither 0 nor 1 is split by that same silence**: git exits 128 without printing anything for `@{…}` reflog
   syntax on a completely healthy store — `--ref HEAD@{1}` does it on any host — so that refusal states the
-  status, claims no failed read, and says what to deploy from instead, while a LOUD one is named as the
-  failed read it is. And a `origin/main` that is **not there at all** is an
-  ANSWER rather than a read that failed — nothing is released, so neither is this commit — so
-  `--allow-unreleased` applies to it exactly as to any other unreleased commit, and where the graph truly
-  could not be read the refusal names the repair, because the in-window recovery deploy meets it too. **The
-  repair it names works inside the deploy root's own `.git` AND it is one that works**: `fsck` names the
-  object and says whether it is unreadable or gone, `chmod` restores an unreadable one in place, a GONE one
-  is replaced by swapping `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
+  status, claims no failed read, and says what to deploy from instead. **A LOUD answer is named as the
+  failed read it is, unless git's own message says otherwise**: a peel to a type the object is not is
+  loud on a store where every object reads — `--ref 'main^{blob}'` at status 1, an annotated tag over a
+  TREE at 128, the same wording at both — so one function reads that wording and refuses it as what it
+  is, at both of the sites that can meet it, rather than each site re-deriving a rule out of the status.
+  And a `origin/main` that is **not there at all** is an ANSWER rather than a read that failed — nothing
+  is released, so neither is this commit — so `--allow-unreleased` applies to it exactly as to any other
+  unreleased commit, and where the graph truly could not be read the refusal names the repair, because
+  the in-window recovery deploy meets it too. **The repair it names works inside the deploy root's own
+  `.git`, and it is one that actually repairs**: `fsck` names the object and says whether it is
+  unreadable or gone, `chmod` restores an unreadable one in place, a GONE one is replaced by swapping
+  `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
   `repack -a -d` confirms — it refuses outright if anything reachable cannot be read. It says outright that
   `git fetch` CANNOT bring that object back (fetch negotiates from refs, and this checkout's refs already
   claim the commit, so the remote is never asked — measured, git 2.53.0: exit 0 and nothing transferred with
