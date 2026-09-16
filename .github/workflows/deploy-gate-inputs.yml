@@ -14,6 +14,13 @@
 # than the repository. Nothing else in CI ever put the deploy's demands and this tree in the same
 # room. That is the gap this lane closes.
 #
+# THE CHECK'S OWN DERIVATION IS CHECKED FIRST. `bin/deploy-gate-inputs.sh` derives what to look for
+# from `bin/deploy.sh` itself, so the way it fails is not a red — it is a GREEN over a read its
+# pattern did not match, which is absent from both sides of its guard. Six of eight realistic ways
+# to add a read escaped the first version that way. Every one of them is now a red case in
+# `bin/deploy-gate-inputs.selftest.sh`, which runs FIRST below: a verdict from a check that no
+# longer discriminates is worth nothing, in either direction.
+#
 # SCOPE, STATED HERE SO A GREEN IS NOT READ AS MORE THAN IT IS. This lane checks the PRESENCE
 # population — the files phase A reads out of the target tree. It does not evaluate the gates'
 # content predicates (A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's
@@ -22,9 +29,9 @@
 # output names every excluded gate and every uncovered predicate on each run, so the log says what
 # was and was not measured rather than this comment being the only place it is written.
 #
-# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: it is a second of
-# bash, and a path-filtered workflow produces NO RUN, which reads as *pending* rather than *passed*
-# for a required check. Filtering on `bin/deploy*` would also be wrong in both directions: a PR that
+# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: it is seconds of
+# bash with no service to stand up, and a path-filtered workflow produces NO RUN, which reads as
+# *pending* rather than *passed* for a required check. Filtering on `bin/deploy*` would also be wrong in both directions: a PR that
 # deletes `server/composer.json` and touches no `bin/` file is exactly what this must catch.
 #
 # ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
@@ -55,5 +62,14 @@ jobs:
 
       # `bash` explicitly rather than relying on the executable bit surviving a checkout: the check
       # is the evidence, so it must fail on its own finding and never on a file mode.
+      #
+      # FIRST, because a check that no longer discriminates makes the step below meaningless: it
+      # builds fixture repositories from this checkout, mutates ONE thing in each, and watches the
+      # check refuse — every shape of read the derivation must not miss, every disposition change
+      # the table must not sleep through, and the exit-1/exit-2 line between a finding about the
+      # release and the check having failed. It needs no host, network or credential either.
+      - name: Does the check itself still catch what it claims to?
+        run: bash bin/deploy-gate-inputs.selftest.sh
+
       - name: Does this repository satisfy bin/deploy.sh phase A?
         run: bash bin/deploy-gate-inputs.sh --ref HEAD

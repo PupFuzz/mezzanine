@@ -31,24 +31,51 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   `git_read_at`/`git_ls_at` call sites against `"$SHA"` — rather than carrying a written list of
   required paths, because a written list is the restatement that drifts the moment a gate is added.
   What is written down is the far smaller judgement the source text cannot answer: whether an absent
-  path makes that gate refuse, warn or pass. That table is guarded — a derived read it has not
-  classified stops the check (exit 2) instead of quietly covering less than it did yesterday — and
-  an empty derivation is refused rather than reported as a pass. **Seen to fail against the one
+  path makes that gate refuse, warn or pass. **And that derivation is TOTAL rather than optimistic,
+  which is the whole of the difference:** a derivation that only ever FINDS reads protects nothing,
+  because a read written in a shape its pattern misses is absent from the derived set AND from the
+  table it is compared against — the two sides agree and the run is GREEN over a gate nobody
+  checked. So the strict pattern is paired with a deliberately loose SUPERSET of lines that could be
+  a read (every call to a member of the reader family, every line naming `$SHA` in any quoting), and
+  **every superset line the strict pattern does not match stops the check at exit 2.** The reader
+  family is itself derived two ways — the names `bin/deploy.sh` lists in `git_read_call_site`'s own
+  `case`, plus any function that runs `git_at ls-tree|show|cat-file` on a rev it was handed — so a
+  third reader added tomorrow is found rather than walked past. The escapes that remain are named in
+  the script's header rather than left to be discovered: a read added to a file `bin/deploy.sh`
+  sources, one reached through `eval`, one made with a git binary held in a variable. **Each row
+  also pins the DISPOSITION, not just the path** — the function the read sits in, and a digest of
+  the `refuse`/`warn`/`say` lines the gate reaches from it — so a `warn` that becomes a `refuse`
+  stops the check with the new lines printed, instead of leaving a table that quietly describes
+  something the deploy no longer does. An empty derivation is still refused rather than reported as
+  a pass. A required input that is present but is a SYMLINK is now a finding too, quoting
+  `git_read_at`'s own word for it: every mode but `100644`/`100755` is refused by name in the
+  window, so presence alone was never the question. **Seen to fail against the one
   natural regression this check will ever have:** exit 1 at `057e051`, naming `server/package-lock.json
   (A12)`, and exit 0 at `578e1b3`, the commit that committed it — one variable, and `bin/deploy.sh`'s
-  read set is byte-identical at both. Three further exits are each seen to fire beside a control that
-  passes: an unclassified new read, a read set that derives to nothing, and a required input present
-  but zero bytes. **A green means less than the card's title and the run says so in its own output:**
+  read set is byte-identical at both. **And `bin/deploy-gate-inputs.selftest.sh` now ships beside it
+  and runs FIRST in the same lane**, because a check whose discrimination nobody re-tests is one
+  whose pattern can be tightened tomorrow with the lane staying green forever: it builds fixture
+  repositories from this repository's own tree, mutates ONE thing in each, and watches the check
+  refuse — every escape shape above (an unquoted `$SHA`, a braced `${SHA}`, a different rev
+  variable, a third reader function, a wrapper around a reader, a call split over two lines with
+  `\`, a path assembled at run time, a raw `git show "$SHA:…"` with no reader involved), a gate's
+  disposition changed, a classified read deleted, a derivation that finds nothing, an absent reader
+  family, no `bin/deploy.sh` at all, a tool the check needs failing (exit 2, never the exit 1 that
+  means a finding), an absent input, an empty one, and one committed as a symlink. Every case
+  asserts on the MESSAGE and not on the exit code alone, against one control — the repository as it
+  is — and the mutation point is derived from the checker's own pattern rather than written down.
+  **A green means less than the card's title and the run says so in its own output:**
   it covers the files phase A reads out of the target tree, and names every excluded gate with its
   reason (A0–A5, A7–A9 and A14 need the deploy HOST; A6's version half compares against the runner's
   php; A10b's comparison half and A13's crontab half need `.env` and a crontab). The gates' content
   predicates — A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's crontab
   render — stay uncovered because they live inline in `phase_a`, which runs only as a whole and
   refuses at A5 without a production `server/.env`; reaching them needs a seam in `bin/deploy.sh`
-  that exposes its target-tree gates as callable units, which is filed rather than carved here.
+  that exposes its target-tree gates as callable units — card#9644, filed rather than carved here.
   Restating them would drift from the gate, which is the shape of the defect card#9203 filed and
-  which `bin/deploy.sh`'s own A6 comment names. `bin/deploy.sh` is untouched; the lane needs no host,
-  database, network, checkout or credential and runs in 0.2 s.
+  which `bin/deploy.sh`'s own A6 comment names. `bin/deploy.sh` is untouched, and neither the check
+  nor its selftest needs a host, database, network, checkout or credential: git and bash over the
+  object database, with every fixture under one temp dir.
 
 - **card#9631** — **`server/package-lock.json` is committed, so a real deploy reaches phase B for the
   first time.** `bin/deploy.sh`'s A12 gate reads the lockfile out of the TARGET tree and refuses
