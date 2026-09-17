@@ -8,7 +8,9 @@
 # suite against a pinned MariaDB service container.
 #
 # WHAT IT DOES. Installs PHP with `pdo_mysql` (and no SQLite driver), restores composer's download
-# cache, installs `server/`'s dependencies from `composer.lock`, makes a `.env` from the committed
+# cache, installs `server/`'s dependencies from `composer.lock`, asserts that the suite REFUSES BY
+# NAME while there is still no `.env` on disk — the configuration every fresh checkout is in, and
+# the one this lane used to test by nothing (card#9754) — makes a `.env` from the committed
 # template and asserts the template still selects the only supported engine, mints an `APP_KEY`,
 # proves the server is MariaDB at § 6.1's floor and the schema empty, runs every migration and
 # proves they landed there, empties the schema again, and runs **the repo's own `composer test`
@@ -247,6 +249,70 @@ jobs:
       - name: Install dependencies
         working-directory: server
         run: composer install --no-interaction --prefer-dist --no-progress
+
+      # ⛔ THE CONFIGURATION EVERY FRESH CHECKOUT IS IN GETS EXERCISED HERE, AND NOWHERE ELSE
+      # (card#9754). `server/.env` is gitignored, so the tree this lane checks out has none, and
+      # nothing above creates one — composer's `post-root-package-install` hook, the one that copies
+      # the template, fires on `create-project` and never on an install into an existing checkout.
+      # `Create .env` below is the first thing that makes one. The window between them is therefore
+      # a genuine no-`.env` run, and it costs no extra runner and no second `composer install`.
+      #
+      # WHAT IT MEASURES: that the suite is HONEST ABOUT ITS OWN PRECONDITIONS — it refuses by name,
+      # from `server/tests/bootstrap.php`, saying which file is missing and how to make one.
+      #
+      # WHAT IT CAUGHT, already paid for: until card#9687 the suite in this configuration errored
+      # with `ReflectionException: Method ...::test_dummy() does not exist`, naming whichever class
+      # the directory iterator reached first — a class with nothing to do with the cause, and a
+      # different one from tree to tree. Every CI run stayed green through all of it, BY
+      # CONSTRUCTION: the copy below runs before the only step that executes the suite, so the one
+      # configuration every fresh worktree and every first contributor is in was tested by nothing.
+      # An agent reading that error either burns a day on someone else's defect or "fixes" working
+      # code, and the suite is the instrument it uses to judge its own change.
+      #
+      # ⚠ THE ASSERTION IS THE MESSAGE TEXT AND NEVER THE EXIT CODE, because the exit code cannot
+      # discriminate: measured on `dev` 90f9663, the pre-guard run of this command exits 2 (612 of
+      # 977 tests error with access-denied) and the post-guard run exits 1 (the refusal), and this
+      # window has no `APP_KEY` yet either. Every one of those states is non-zero, so an exit-code
+      # assertion would pass on all of them and tell them apart in none. The command's status is
+      # discarded on purpose; `grep -F` on a fixed substring of the refusal is the whole verdict,
+      # and a run that does not carry it prints what it got instead.
+      #
+      # NOT A JOB OF ITS OWN: a second job means a second checkout, a second `setup-php` and a
+      # second `composer install` for one `grep`, and it would have to be kept in step with this
+      # one's PHP pin. NOT a `php -r` probe of `bootstrap.php` either — that would assert the guard's
+      # source rather than what the suite DOES, and the thing being checked is the suite's behaviour
+      # in a configuration, not the presence of an `if`.
+      - name: With no server/.env the suite refuses by name
+        working-directory: server
+        env:
+          # ⛔ THE PIN IS THE FIRST LINE OF THE REFUSAL, AND IT CARRIES NO PATH. The guard prints the
+          # absolute path it looked for on its own `Looked for:` line below that sentence, precisely
+          # so this pin does not have to contain one: a pin holding `server/.env` would match the
+          # TAIL of that absolute path and would therefore red the day the server directory is
+          # renamed, for a reason no maintainer reading this lane could predict.
+          #
+          # What a maintainer needs to know, stated so the answer is predictable from here: this
+          # lane pins the guard's label AND the clause naming the state — the label says it is that
+          # guard speaking, the clause says it is the no-file refusal rather than its unreadable-file
+          # sibling, which this window cannot produce (there is no file here at all; that sibling has
+          # its own control on the tree). **Reword either half in `server/tests/bootstrap.php` and
+          # this lane reds** — the sentence the suite shows a human is the contract, so moving it is
+          # a deliberate edit in two places. Everything else in the message — the path line, the
+          # explanation, the remedy — is free to change without touching this lane.
+          EXPECTED: 'Environment guard: the suite has no .env file to read'
+        run: |
+          out="$(composer test 2>&1)" || true
+
+          if printf '%s\n' "$out" | grep -qF "$EXPECTED"; then
+            echo "The suite refused by name with no server/.env:"
+            printf '%s\n' "$out" | grep -F -m1 "$EXPECTED"
+            exit 0
+          fi
+
+          echo "::error::The suite did not refuse by name on a tree with no server/.env. server/tests/bootstrap.php must write a message containing \"$EXPECTED\" to STDERR and exit(1) before any test runs (card#9754). Whatever this run did instead — passing on the job's exported DB_* values, or erroring test by test with an access-denied that points at MariaDB grants — is the state this lane exists to reject."
+          echo "What the run produced instead (last 4000 bytes):"
+          printf '%s\n' "$out" | tail -c 4000
+          exit 1
 
       # `.env.example` is the committed template and is the only one of the pair in git; nothing
       # in `composer install` creates `.env` for an existing checkout. It is COPIED UNCHANGED: the
