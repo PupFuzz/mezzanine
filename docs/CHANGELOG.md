@@ -19,6 +19,25 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9687** — **the full-suite gate no longer errors on a checkout that has no `server/.env`, naming a
+  class that has nothing to do with it.** `FixedWindowPinCoverageTest` probes each class that asserts a
+  `429` by constructing it and invoking its `setUp()`, and it passed the constructor a placeholder name
+  rather than the name of a test method that exists. PHPUnit's constructor argument is not a label: the
+  runner's global error handler resolves it by REFLECTION, at a moment the probe does not choose. Any PHP
+  diagnostic raised while the probe's instance is on the call stack reaches
+  `Event\Code\TestMethodBuilder::fromCallStack()`, which takes the nearest `TestCase` — the probe's, not
+  the running one — and prettifies its name through `new ReflectionMethod($class, $case->name())`. A
+  placeholder therefore throws `ReflectionException: Method ...::<placeholder>() does not exist`, and it
+  names whichever class the directory iterator reached first, so the message points nowhere near the line
+  that caused it. THE DIAGNOSTIC THAT FIRES IS THE MISSING `.env`: the probed class's `setUp()` boots the
+  application, phpdotenv reads the absent file through `@file_get_contents()`, and a SUPPRESSED warning
+  still reaches PHPUnit's handler. `.github/workflows/php-tests.yml` copies `.env.example` to `.env`
+  before it runs the suite, which is why the wall stayed green while a fresh worktree — which has no
+  `.env` — reddened, and why the PHP version the lane pins is not the discriminator it was first read as:
+  measured on this host on PHP 8.5, the same tree errors without an `.env` and passes with one. The probe
+  now derives the name by reflection from the class's own public test-prefixed methods, and a covered
+  class with none fails LOUDLY by name instead of re-minting a placeholder.
+
 - **card#9644** — **`bin/deploy.sh`'s phase-A gates that judge the RELEASE are callable one at a time, and
   the file can be sourced without running a deploy.** A6, A10, A10b, A11, A12 and A13 were written inline in
   `phase_a` — one straight-line function with no per-gate entry point — and the bottom of the file read
