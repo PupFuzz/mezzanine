@@ -19,8 +19,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
-- **card#9754** — **the suite refuses by name when `server/.env` is absent, and `php-tests` runs it in that
-  configuration on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
+- **card#9754** — **the suite refuses by name unless it can READ `server/.env`, and `php-tests` runs it
+  with no `.env` on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
   `.env.example` to `.env` before the only step that executes it, and `server/.env` is gitignored — so the
   tree CI tested always had one and the tree every fresh worktree and every first contributor has never
   did. A defect that manifests only in that configuration was therefore invisible to the green wall BY
@@ -34,23 +34,41 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   reports a cause that is TRUE AND NOT ACTIONABLE. Measured on this host at `dev` `90f9663`: 612 of 977
   tests error with `Access denied for user 'root'@'localhost' (using password: NO)`, which sends a first
   contributor to fix MariaDB grants when the remedy is to copy `.env.example`. `server/tests/bootstrap.php`
-  now refuses on that one predicate — the file's presence — with a named message on STDERR and `exit(1)`,
-  saying which file is missing, that it is how this repository supplies per-host credentials, and the
-  remedy (`cp .env.example .env`, then `README.md`'s *Running the server locally* section). It EXTENDS the
-  card#9499 autoload guard already in that file rather than siblinging it, and it is there rather than in
-  `Tests\TestCase` because that guard runs per test and after the framework has booted — and booting is
-  what raises the diagnostic card#9687 traced. There is deliberately NO *unless the credentials are
-  exported* branch: nothing in this repository runs the suite that way, and in the new lane, where the job
-  exports `DB_*`, such a branch would make the lane pass on variables the configuration under test does not
-  have. **The lane asserts the MESSAGE, never the exit code**, in the genuine no-`.env` window between
+  now refuses on READABILITY, with a named message on STDERR and `exit(1)` — **two states, two messages**,
+  because one sentence cannot honestly say both *there is no file* and *there is a file you cannot open*,
+  and their remedies differ. **The second is the one a presence check would have waved through, and waving
+  it through would have re-minted the class this card exists to close:** `file_exists()` is true for a
+  `.env` this process cannot open, phpdotenv reads it through `@file_get_contents()`, and
+  `Dotenv::safeLoad()` SWALLOWS the `InvalidPathException` that follows — so an unreadable file reaches the
+  suite exactly as an absent one does, on the same fall-back credentials, having raised the suppressed
+  bootstrap warning that is card#9687's whole mechanism. Measured on this host as a non-root user: on a
+  mode-000 `.env`, `file_exists()` is true while `is_readable()`, `fopen()` and `@file_get_contents()` are
+  all false, and the pre-guard tree RAN the suite against it and errored with the access-denied. `bin/deploy.sh`
+  already refuses both states one layer up, in two refusals with two messages — A5's `does not exist` and
+  `env_file_scan`'s `exists but cannot be read by the user this deploy runs as`, which card#9605 named
+  "the I/O sibling of the two cases above, and the one that was missing" — and the suite's guard is now
+  that same shape. It EXTENDS the card#9499 autoload guard already in that file rather than siblinging it,
+  and it is there rather than in `Tests\TestCase` because that guard runs per test and after the framework
+  has booted — and booting is what raises the diagnostic card#9687 traced. There is deliberately NO *unless
+  the credentials are exported* branch: nothing in this repository runs the suite that way, and in the new
+  lane, where the job exports `DB_*`, such a branch would make the lane pass on variables the configuration
+  under test does not have. **What no bootstrap-time guard covers is named in the guard's own comment
+  rather than left to be inferred:** a readable `.env` carrying a WRONG credential — the template copied
+  with `DB_PASSWORD` left unset — reaches the same access-denied, and seeing that requires opening a
+  connection, which is not bootstrap's job. **The lane asserts the MESSAGE, never the exit code**, in the genuine no-`.env` window between
   `Install dependencies` and `Create .env` — no extra runner, no second `composer install`. Both states of
   that window exit non-zero (pre-guard 2, post-guard 1) and it has no `APP_KEY` either, so an exit-code
   assertion would pass on all of them and discriminate between none. **Seen to fail, so the green is
-  evidence:** the lane's own command, extracted from the workflow file and run on this tree with
+  evidence:** the lane's own command, re-extracted from the workflow file and run on this tree with
   `bootstrap.php` restored to its `90f9663` content, exits 1 and prints the access-denied output it got
-  instead; with the guard it exits 0 on the refusal. `README.md` § Running the server locally now states
-  both refusals the bootstrap makes. The full suite passes 977 of 977 with 11268 assertions on PHP 8.5
-  against the host MariaDB with an `.env` in place, which is the run this guard leaves untouched.
+  instead; with the guard it exits 0 on the refusal. The unreadable state was watched both ways too, on a
+  mode-000 `.env` asserted to be genuinely unopenable by this non-root user: the pre-guard tree ran the
+  test and errored on access-denied (exit 2), and this one refuses by name before any test runs (exit 1).
+  The lane pins the first line of the no-file refusal — the guard's label and the clause naming the state,
+  and no path, so the pin does not silently depend on the server directory being named `server`; rewording
+  that line reds the lane by design. `README.md` § Running the server locally states both refusals and the
+  state neither covers. The full suite passes 977 of 977 with 11268 assertions on PHP 8.5 against the host
+  MariaDB with a readable `.env` in place, which is the run this guard leaves untouched.
 
 - **card#9687** — **the full-suite gate no longer errors on a checkout that has no `server/.env`, naming a
   class that has nothing to do with it.** `FixedWindowPinCoverageTest` probes each class that asserts a

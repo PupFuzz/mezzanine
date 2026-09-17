@@ -285,9 +285,21 @@ jobs:
       - name: With no server/.env the suite refuses by name
         working-directory: server
         env:
-          # The one substring this lane pins. It carries the guard's own name and its subject, and
-          # not the absolute path the message also prints, which differs on every host.
-          EXPECTED: 'server/.env is missing, and the suite refuses'
+          # ⛔ THE PIN IS THE FIRST LINE OF THE REFUSAL, AND IT CARRIES NO PATH. The guard prints the
+          # absolute path it looked for on its own `Looked for:` line below that sentence, precisely
+          # so this pin does not have to contain one: a pin holding `server/.env` would match the
+          # TAIL of that absolute path and would therefore red the day the server directory is
+          # renamed, for a reason no maintainer reading this lane could predict.
+          #
+          # What a maintainer needs to know, stated so the answer is predictable from here: this
+          # lane pins the guard's label AND the clause naming the state — the label says it is that
+          # guard speaking, the clause says it is the no-file refusal rather than its unreadable-file
+          # sibling, which this window cannot produce (there is no file here at all; that sibling has
+          # its own control on the tree). **Reword either half in `server/tests/bootstrap.php` and
+          # this lane reds** — the sentence the suite shows a human is the contract, so moving it is
+          # a deliberate edit in two places. Everything else in the message — the path line, the
+          # explanation, the remedy — is free to change without touching this lane.
+          EXPECTED: 'Environment guard: the suite has no .env file to read'
         run: |
           out="$(composer test 2>&1)" || true
 

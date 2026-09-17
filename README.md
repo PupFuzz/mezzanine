@@ -107,11 +107,18 @@ before any test runs, so the message is the whole output:
 * `server/vendor` must be a real directory inside the tree under test, installed there by
   `composer install`. A symlinked `vendor` autoloads another checkout's `App\`, and every result is
   then a statement about code this tree does not hold.
-* `server/.env` must exist. It is where the `DB_PASSWORD` above lives, it is never committed, and
-  with no file the credentials fall back to `root` with an empty password — so the run would fill
-  with an access-denied that points at MariaDB grants instead of at the file you have not made yet.
-  `cp .env.example .env` is the whole remedy; exported `DB_*` variables are not a substitute, and CI
-  runs the suite in exactly this configuration on every run and requires the refusal.
+* `server/.env` must be there **and readable by the user running the suite**. It is where the
+  `DB_PASSWORD` above lives, it is never committed, and with nothing read out of it the credentials
+  fall back to `root` with an empty password — so the run would fill with an access-denied that
+  points at MariaDB grants instead of at the file. Each state gets its own message: `cp .env.example
+  .env` is the whole remedy for the first, and for the second — a `.env` written by another user and
+  left mode 640 is the usual cause — give it to the user that runs the suite, keeping mode 640.
+  Exported `DB_*` variables are not a substitute for the file, and CI runs the suite with no `.env`
+  on every run and requires the refusal.
+
+  What the bootstrap cannot tell you is that a readable `.env` carries a **wrong** credential: a
+  template copied with `DB_PASSWORD` left unset reaches the same access-denied, and no check before
+  the suite connects can see it.
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment
 screen and reaches nothing else until it finishes there.

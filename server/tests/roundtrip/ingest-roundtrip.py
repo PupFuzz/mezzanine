@@ -38,9 +38,9 @@ runs on: Laravel's `mysql` connection, pointed at `mezzanine_test` (`docs/design
 § 6.2`). Host, port, user and password are NOT chosen here — they come from the caller's
 environment or from `server/.env`, resolved exactly as Laravel resolves them for `php artisan test`,
 so the account needs the rights on `mezzanine_test` the suite already needs. What this harness does
-NOT share is the PHPUnit suite's refusal to start at all without that file (card#9754): that guard
-lives in `server/tests/bootstrap.php`, which only PHPUnit loads, so exported credentials alone carry
-a run of this harness.
+NOT share is the PHPUnit suite's refusal to start at all unless that file is there AND readable by
+the user running it (card#9754): that guard lives in `server/tests/bootstrap.php`, which only PHPUnit
+loads, so exported credentials alone carry a run of this harness.
 ⛔ `migrate:fresh` DROPS EVERY TABLE in that database at the start of each run, so never run this
 while `composer test` is running against the same server. Before that step the harness reads the
 RESOLVED connection back and refuses unless it is `mysql` → `mezzanine_test` on a server whose
