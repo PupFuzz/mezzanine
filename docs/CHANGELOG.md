@@ -19,6 +19,99 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9611** — **`bin/deploy.sh`'s ref resolve (A7) and release check (A8) name the cause they
+  actually established.** Both refused correctly and then stated a cause that had never been
+  established, which is canon #10's wrong-but-specific cause and costs an operator the debugging
+  path rather than the deploy: A7 said *"'<ref>' does not resolve to a commit on origin"* and A8
+  *"<sha> is not contained in origin/main"* on a checkout whose OBJECT STORE was what had failed.
+  **The status of the call A7 was making cannot discriminate**, and that is measured rather than
+  argued (git 2.53.0, packed and loose): `rev-parse --verify --quiet <ref>^{commit}` exits **1** for
+  a ref that is not there AND for every object-store failure tried — pack chmod 000, idx chmod 000,
+  pack deleted, one byte flipped mid-pack, loose object chmod 000 — and dropping `--quiet` gives
+  both **128** with the same `fatal: Needed a single revision`. So the fix is not a status threshold
+  on that call: resolving a NAME reads the refs alone and never opens the object store (measured on
+  a broken checkout, `rev-parse --verify --quiet refs/remotes/origin/main` still answers), and
+  whether the object it names is a readable commit is a SECOND question, asked of `cat-file -t`,
+  where a non-zero status can only be a failed read. `git_commit_of` asks them apart, peels an
+  annotated tag in a third step, and hands a failed read to card#9608's existing refusal helper
+  (`git_read_unusable`), which is the one place the PHASE decides whether a refusal may say
+  *"nothing was changed"*. A8 keeps `--is-ancestor`'s statuses apart the same way — 1 is *"it is not
+  an ancestor"* — and drops the `2>/dev/null` that hid git's own error. **And neither the status 1
+  nor the status 128 is ONE condition**, which is the second half of the same defect: `--ref` is the
+  operator's own string, so rev syntax (`main~2`) or an abbreviated id makes the resolve walk into
+  the object store, where a failed read also comes back as 1 — told apart now by git's own SILENCE,
+  which an absent name answers with (and the shapes that silence CANNOT see are named to the
+  operator rather than assumed away: on a checkout whose pack is unreadable, every candidate that
+  needs the pack answers silently); and
+  `--is-ancestor` exits 128 for a `origin/main` THAT IS NOT THERE on a completely healthy store,
+  exactly as for a graph it could not read, so the release branch is resolved by NAME first.
+  **Three behaviour changes beyond the wording**: a git failure at either site now prints git's
+  error above the refusal; `--allow-unreleased` no longer carries a deploy past an ancestry that
+  could not be read — it waives the FINDING that a commit is unreleased, and this run has no finding
+  to waive — while it DOES still waive a `origin/main` that does not exist, where the question is
+  answered (nothing is released, so neither is this commit) and where the old reading had left the
+  in-window recovery deploy (`--ref <sha> --allow-unreleased`) with no override and no next step;
+  and an ancestry that genuinely could not be read is refused with the repair named. Every assertion
+  this card adds to `bin/deploy.selftest.sh` was seen to fail against the commit before it and pass
+  with the fix, each paired with the other direction over the SAME broken store (a ref that is
+  genuinely absent still refuses as absent) and with a control one variable away on a readable one.
+  **The `NEXT STEP` an unreadable ancestry prints is a repair INSIDE the deploy root's own `.git`,
+  and it is one that WORKS** (r4): `fsck` names the object and says whether it is unreadable or gone;
+  an unreadable one is restored in place with `chmod`; one that is GONE is replaced by swapping
+  `.git` alone out of a `git clone --no-checkout` and running `checkout --force`; `repack -a -d`
+  CONFIRMS afterwards, because it refuses outright if anything reachable cannot be read. ⛔ **It also
+  says what does NOT work, because the advice it replaces looked like it had**: `git fetch`
+  negotiates from REFS, and this refusal is only reached after the refs resolved and `$SHA` was read,
+  so the object that cannot be read is an INTERIOR one this checkout's refs already claim and the
+  remote is never asked for it — measured, git 2.53.0: with the object unreadable `fetch --prune`
+  exits 0 having transferred nothing and the object is still unreadable, and with it DELETED it exits
+  0 too and the object is still gone. The prescribed step therefore returned exit 0 and no output to
+  an operator with the app down, who read that as the repair having run and met the identical
+  refusal. It still says outright not to re-clone the deploy root: `server/.env` is created on the
+  host and is in no commit, so its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone
+  also takes `server/storage/` and the `.deploy-failed` marker — the logs and the marker the failure
+  banner sends that same operator to. The `.git`-only swap reaches the same place with no
+  preservation list to get wrong under pressure, which is why it is the last resort named.
+  **And a status that is neither 0 nor 1 is split by that same silence**: `rev-parse`
+  exits 128 having printed NOTHING for `@{…}` reflog syntax on a completely healthy store, and
+  `refs/remotes/origin/HEAD` exists in every clone with a reflog that gets one entry and never grows
+  on a deploy root — so `--ref HEAD@{1}` refused with *"the REFS could not be read"*, under a line
+  saying git's error was above it, on a host where nothing was wrong. That refusal now states the
+  status, claims no failed read where git printed none, and says what to deploy from instead; a LOUD
+  non-zero is still named as the failed read it is. The coverage that missed it is fixed at the
+  contract rather than at the case: `bin/deploy.selftest.sh` carries one case per ANSWER
+  `git_ref_oid` declares — `0`, `1`-silent, `1`-loud, other-silent, other-loud — four of them DRIVEN
+  through the script, and the fifth (`other-loud`) named UNREACHABLE through it, with both halves of
+  that asserted rather than skipped: git really does answer that way with `packed-refs` unreadable,
+  and A7's own `git fetch` really does meet it first. The branch no case exercised was the branch
+  still over-reading. Also: a `--ref` beginning with `-` is
+  classified as the NAME it is (`check-ref-format` parsed it as an option and the note then called
+  it rev syntax; that command accepts neither `--end-of-options` nor `--`, measured, so the leading
+  dashes are stripped for the classification instead). **And the rev-syntax test is POSITIVE now,
+  because a `check-ref-format` failure was never evidence of rev syntax** (r4, the class the dash
+  fix was one input of): `--allow-onelevel` exits 1 for around a dozen rules, measured exit 1 and NOT
+  rev syntax for `a b`, `main..dev`, `foo.lock`, `ab[c`, `.foo`, `foo//bar`, `ab*c`. So an ordinary
+  typo — `--ref 'release 1.2'` — was told *"it carries rev syntax, so resolving it walked the commit
+  graph"* and pointed at a possibly-damaged object store: three false statements in one note, on a
+  completely healthy host, where the fault is a space. Measured for that same input, resolving the
+  name exits 1 with EMPTY stderr — a lookup in the refs that never opens an object. Rev syntax is
+  detected now by the metacharacters that ARE it (`~`, `^`, `:`, `@{`), and a name git simply refuses
+  gets the note that is TRUE of it, which is the more useful answer anyway. **And `1`-loud is not one
+  condition either**: a peel to a type the object is not is LOUD at status 1 on a COMPLETELY HEALTHY
+  store — `--ref 'main^{blob}'` gives `error: …: expected blob type, but the object dereferences to
+  tree type` — so that branch told an operator git's error named what it could not read while every
+  read had succeeded. **And the same claim was live at a SECOND site, found by grepping the tree for
+  this round's own false claim rather than by the review that named the first one**:
+  `git_commit_of`'s tag branch has said since r2 that one of its two cases is git peeling the tag
+  perfectly well and arriving somewhere this deploy cannot use — and it still refused through the
+  wrapper whose fixed line states that git's error names what it could not read, so an annotated tag
+  over a TREE was called a failed read on a store where `git fsck` exits 0 (measured, git 2.53.0:
+  128, `error: …: expected commit type, but the object dereferences to tree type`). Both sites now
+  ask ONE function, `git_peel_mismatch`, and it keys on git's MESSAGE and not on its status, because
+  the same wording arrives at 1 from the `--quiet` call site and at 128 from the one without it — a
+  status rule would have had to be re-derived per caller and would have been wrong at the next one.
+  That call site captures git's stderr now instead of letting it go straight past, because the
+  message IS the discriminator.
 - **card#9693** — **`bin/deploy-gate-inputs.sh` rules on each name in `bin/deploy.sh`'s reader family by
   what that function's own body does, instead of reading the family list as the population.** The lane
   stopped at exit 2 over a healthy `bin/deploy.sh` and blocked PR #178, and it was RIGHT to stop: it

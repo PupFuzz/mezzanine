@@ -1230,8 +1230,18 @@ blind_object() { # blind_object <rev-expr> — the ONE object <rev-expr> names, 
   o="$(git -C "$ROOT" rev-parse "$1")"
   f="$ROOT/.git/objects/${o:0:2}/${o:2}"
   cases=$((cases+1))
-  if [ -f "$f" ]; then chmod 000 "$f"; ok "fixture: $1 is a loose object, now mode 000"
+  if [ -f "$f" ]; then ok "fixture: $1 is a loose object"
   else bad "fixture: $1 is not a loose object under \$ROOT ($f is not there)"; return 1; fi
+  # $ROOT is a LOCAL clone, so its loose objects are hardlinks to $ORIGIN's and a chmod on one lands
+  # on both — which would make the fixture a broken REMOTE as well as a broken checkout, and the
+  # deploy's own `git fetch` would then be the thing that failed, before any of this. Break the link
+  # first: the condition these cases are about is this CHECKOUT's object store (card#9611).
+  cp -p "$f" "$f.unlinked" && mv -f "$f.unlinked" "$f"
+  chmod 000 "$f"
+  cases=$((cases+1))
+  if git -C "$ORIGIN" cat-file -p "$o" >/dev/null 2>&1
+  then ok "fixture: \$ORIGIN can still read $1 — only the checkout's copy is blinded"
+  else bad "fixture: \$ORIGIN lost $1 too (the hardlink was not broken)"; fi
   # ASSERTED, not assumed — root opens every mode, and under a root runner these cases would certify
   # nothing while looking like they had. They red HERE, naming why, rather than skipping (canon #9).
   cases=$((cases+1))
@@ -1411,6 +1421,471 @@ hasnt "a git read that fails in the window: never promises nothing was changed" 
 eq    "a git read that fails in the window: the marker is on disk"  "present" \
       "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
 unlogged "a git read that fails in the window: the app is NEVER brought up" "artisan up"
+
+# ── card#9611 — THE TWO READS THAT REFUSED CORRECTLY AND NAMED A FALSE CAUSE ───────────────────
+# card#9608 ended the DANGEROUS direction of this class: an empty git result read as a PASS. These
+# two are the SAFE direction, and what they cost an operator is the debugging path rather than the
+# deploy. A7 answered "'<ref>' does not resolve to a commit on origin" and A8 "<sha> is not
+# contained in origin/main" — a bad ref name and a statement about the commit graph — on a checkout
+# whose OBJECT STORE was what had failed. Neither cause was ever established (canon #10: a
+# wrong-but-specific cause is worse than an honest generic one).
+#
+# ⛔ THE STATUS OF THE CALL A7 WAS MAKING CANNOT DISCRIMINATE. `rev-parse --verify --quiet
+# <ref>^{commit}` exits 1 for "no such ref" AND for every object-store failure measured (git 2.53.0:
+# pack chmod 000, idx chmod 000, pack deleted, byte flipped mid-pack, loose object chmod 000), and
+# without `--quiet` both are 128 with the same sentence. So the fix is not a status threshold on
+# that call: resolving a NAME (which reads the refs alone) and reading the OBJECT it names are asked
+# as two questions now. The cases below are what says so.
+#
+# ⛔ THEY MUST DISCRIMINATE, NOT MERELY REFUSE. Old and new both exit 1 on every fixture here, so an
+# assertion on the exit code would have passed against the defect. Each case asserts WHICH cause is
+# named AND that the other is not, and each has a control one variable away — the same `--ref` on a
+# readable store, and a genuinely absent ref on the SAME broken one — so a fix that collapsed the
+# two answers into "git could not read it" reds here exactly as loudly as the defect did.
+
+# three_releases <case> — the fixture both halves use. main moves to $V3, so the commit these cases
+# blind ($V2) is no longer the TIP of any ref, and `hotfix` is an unreleased branch off $V1. Both
+# refs are fetched into the checkout before anything is broken.
+# ⚠ THE TIP IS NOT AVAILABLE TO BLIND, and that is measured, not a preference: a checkout whose
+# remote-tracking tip is unreadable cannot `git fetch` at all (it reads its own tips to say what it
+# has), so such a fixture dies at A7's `git fetch` and never reaches either read. A middle commit
+# leaves `git status` (A4) and the fetch working — the fetch prints git's error and still exits 0 —
+# and breaks exactly the two reads this card is about.
+three_releases() {
+  mkfix "$1"
+  printf '0.0.3\n' > "$SRC/VERSION"
+  gitc "$SRC" add -A >/dev/null
+  gitc "$SRC" commit -qm 'fixture v3 — origin/main moves past the commit these cases blind'
+  gitc "$SRC" push -q origin main
+  V3="$(gitc "$SRC" rev-parse HEAD)"
+  gitc "$SRC" checkout -q -b hotfix "$V1"
+  printf 'x\n' > "$SRC/hotfix.txt"; gitc "$SRC" add -A >/dev/null
+  gitc "$SRC" commit -qm 'unreleased hotfix'; gitc "$SRC" push -q origin hotfix
+  gitc "$ROOT" fetch -q --prune --tags origin
+  # The clone left a LOCAL branch `main` behind at $V2, and the fetch runs a connectivity check
+  # over every ref (`rev-list --not --all`), so a ref tip it cannot read aborts the FETCH ITSELF
+  # — the measurement above, reached from the other side. Move that branch too, so no ref of this
+  # checkout points at the commit these cases blind and the fetch stays a read that completes.
+  gitc "$ROOT" update-ref refs/heads/main "$V3"
+}
+
+three_releases git_rev_unreadable_object
+blind_object "$V2"
+
+# A7. `--ref <sha>` is the deploy's own documented recovery path (the in-window banner: "deploy the
+# previous commit deliberately with --ref <sha> --allow-unreleased"), and it is the path that meets
+# a damaged object first. The ref RESOLVES — a full object name always does — and the object behind
+# it does not come back. The old call got exit 1 for that, the same status a ref that is not there
+# gives, and told the operator to go looking for a bad ref name.
+run_refusal "--ref <sha> whose object git cannot read (A7)" \
+  "git could not read the object $V2" --dry-run --ref "$V2"
+hasnt "unreadable object: makes no claim about the ref, which resolved" \
+  "does not resolve to a commit on" "$OUT"
+has  "unreadable object: git's own error reaches the operator (never silenced)" \
+  "unable to open loose object" "$OUT"
+has  "unreadable object: says what was and was not established" \
+  "The REFS were read; the object behind them did not come back." "$OUT"
+
+# THE OTHER DIRECTION, over the SAME broken store, one --ref apart: a name that is genuinely not
+# there still refuses as absent. The refs are read from `packed-refs` and loose refs, never from the
+# object store, so this answer IS established even on this host — and a fix that answered "git could
+# not read it" here would be the same defect pointing the other way.
+run_refusal "a ref that is genuinely absent, on that same broken store" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "absent ref: names no read that failed" "git could not read" "$OUT"
+has  "absent ref: says the refs WERE read" "The refs were read and carry no such name" "$OUT"
+
+# A8, on the same fixture: `hotfix`'s own commit is readable, so A7 passes and the ancestry walk is
+# what meets the blinded object. `--is-ancestor` exits 1 for "it is not one" and 128 when it could
+# not read the graph; `2>/dev/null` on an `if !` read the second as the first.
+run_refusal "the ancestry cannot be read (A8)" \
+  "is contained in origin/main (\`git merge-base --is-ancestor\` exited 128)" --dry-run --ref hotfix
+hasnt "unreadable ancestry: states nothing about the commit graph" "is not contained in origin/main" "$OUT"
+has  "unreadable ancestry: git's own error reaches the operator" "unable to open loose object" "$OUT"
+
+# --allow-unreleased waives a FINDING — "this commit is not released". There is no finding here to
+# waive, so the flag does not apply and the deploy still refuses. Its control is two cases below,
+# where the same flag deploys the same hotfix once the store is readable.
+run --dry-run --ref hotfix --allow-unreleased
+eq  "unreadable ancestry: --allow-unreleased waives no question that was never answered" 1 "$RC"
+has "unreadable ancestry: and says why the flag does not apply" "--allow-unreleased does NOT apply here" "$OUT"
+
+# ── THE CONTROLS: the same fixture, the same three --ref values, every object readable ──────────
+three_releases git_rev_readable_object
+run --dry-run --ref "$V2"
+eq  "control: that same --ref <sha>, with its object readable, deploys" 0 "$RC"
+run_refusal "control: a ref that is genuinely absent, on a healthy store" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "control: absent ref on a healthy store names no read that failed" "git could not read" "$OUT"
+run_refusal "control: the ancestry is READ, and says the commit is not released" \
+  "is not contained in origin/main" --dry-run --ref hotfix
+hasnt "control: the read-failure refusal is not what fires when the graph is readable" \
+  "git could not" "$OUT"
+run --dry-run --ref hotfix --allow-unreleased
+eq  "control: --allow-unreleased deploys the hotfix once the graph can be read" 0 "$RC"
+
+# ⛔ THE ANNOTATED TAG, which A7's second candidate exists for. The old call peeled every candidate
+# with `^{commit}` and got this for free; git_commit_of resolves the NAME to an object and peels it
+# in a second step (that is the whole fix), so what a tag resolves to has to be asserted rather than
+# assumed — a reader that stopped at the tag OBJECT would hand the deploy a tag id to check out, and
+# every case above would still pass. The tag is created only on this fixture: a tag is a ref, `git
+# fetch` walks every ref, and a tag over the blinded commit would break the fetch itself.
+gitc "$SRC" tag -a v0.0.2 -m 'an annotated tag at the middle commit' "$V2"
+gitc "$SRC" push -q origin v0.0.2
+gitc "$ROOT" fetch -q --tags origin
+neq "tag fixture: the tag OBJECT is not the commit it points at" "$V2" "$(gitc "$ROOT" rev-parse refs/tags/v0.0.2)"
+run --dry-run --ref v0.0.2
+eq  "control: an ANNOTATED tag resolves and deploys" 0 "$RC"
+has "control: and it is the COMMIT the tag points at that would be checked out, not the tag object" \
+  "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V2")" "$OUT"
+
+# ⛔ AND THE TAG THAT PEELS SOMEWHERE ELSE IS NOT A FAILED READ EITHER (card#9611 r4). This is the
+# SIBLING of the peel-mismatch case further down — same defect, second surface, found by grepping
+# the tree for r4's own false claim rather than by the review that named the other one. The tag
+# branch's comment has said since r2 that one of its two cases is "git peeling the tag perfectly
+# well and arriving somewhere this deploy cannot use" — but it refused through git_rev_read_failed,
+# whose FIXED second line states that git's error "names what it could not read". So an annotated
+# tag over a TREE refused under a claim of a failed read on a store where `git fsck` exits 0:
+# measured, git 2.53.0, `rev-parse --verify --end-of-options <tag oid>^{commit}` → 128, `error: …:
+# expected commit type, but the object dereferences to tree type`, `fatal: Needed a single
+# revision`. Note the status: 128 here, 1 at the --quiet call site below, SAME wording — which is
+# why git_peel_mismatch keys on git's message and is ONE function both sites call, rather than a
+# status rule re-derived per caller. The assertions are over the CLAIM, not over a command string.
+gitc "$SRC" tag -a treeonly -m 'a tag whose object is a TREE, not a commit' "$V2^{tree}"
+gitc "$SRC" push -q origin treeonly
+gitc "$ROOT" fetch -q --tags origin
+eq "tree-tag fixture: the store is whole — every object reads" \
+  0 "$(gitc "$ROOT" fsck >/dev/null 2>&1; echo $?)"
+run --dry-run --ref treeonly
+eq   "a tag that peels to a TREE: refused, nothing touched" 1 "$RC"
+has  "tree tag: git's own message is what the operator gets" "dereferences to tree type" "$OUT"
+has  "tree tag: says the objects behind the tag WERE read" "WAS read" "$OUT"
+hasnt "tree tag: nothing claims git could not read" "git could not" "$OUT"
+hasnt "tree tag: and nothing claims git's error names something unreadable" \
+  "names what it could not read" "$OUT"
+has  "tree tag: says outright that this establishes nothing about the object store" \
+  "Nothing here says anything about the state of this checkout's object store" "$OUT"
+
+# ── card#9611 r2 — THE CANDIDATE IS NOT ALWAYS A NAME, AND 128 IS NOT ONE CONDITION ────────────
+# The cases above establish the split for ref NAMES, and that half is measured and holds. These are
+# the two places the SAME defect survived it, and both are the card's own acceptance turned around:
+# a refusal that positively asserts a cause nothing established.
+#
+# ⛔ 1. `$REF` IS THE OPERATOR'S OWN STRING, so a candidate can be rev syntax (`main~2`, `v1^{}`,
+# `:/subject`) or an abbreviated id — and resolving one of THOSE walks into the object store, where
+# a failed read comes back as 1, the status "there is no ref of that name". The loop consumed it as
+# absence and the refusal then told an operator to check the spelling, printed directly under git's
+# own `unable to open loose object … Permission denied`. The discriminator is git's SILENCE:
+# measured one variable apart (git 2.53.0, the fixture below), an absent name answers 1 with an
+# EMPTY stderr and the walk answers 1 having printed.
+#
+# ⛔ 2. `merge-base --is-ancestor` EXITS 128 FOR A TARGET REF THAT IS NOT THERE, on a completely
+# healthy store — measured below by removing the release branch from $ORIGIN, where every object
+# reads fine. A8 read every 128 as "git could not read the graph" and took --allow-unreleased away
+# with it, which is wrong twice: the read never failed, and the question IS answered — nothing is
+# released, so this commit is not released, which is the very finding the flag waives.
+#
+# THEY MUST DISCRIMINATE, NOT MERELY REFUSE: every fixture here refuses under the old code too, at
+# the same exit status, so each case asserts WHICH cause is named and that the other is not, and
+# each has a control one variable away.
+
+three_releases git_rev_syntax_walks_the_store
+blind_object "$V2"
+
+# `--ref main~2` is V1, and reaching it means READING V2 — the blinded object — for its parent. The
+# first candidate tried is `refs/remotes/origin/main~2`, so this is the string concatenation of
+# $REF, not some exotic third path.
+run_refusal "--ref <rev syntax> whose walk meets an unreadable object (A7)" \
+  "git could not resolve 'refs/remotes/origin/main~2'" --dry-run --ref 'main~2'
+hasnt "rev syntax over a broken store: does NOT call it the ref's absence" \
+  "does not resolve to a commit on" "$OUT"
+hasnt "rev syntax over a broken store: does not send the operator to check the spelling" \
+  "Check the spelling" "$OUT"
+has "rev syntax over a broken store: git's own error reaches the operator" \
+  "unable to open loose object" "$OUT"
+has "rev syntax over a broken store: names the discriminator it used — git's silence" \
+  "that answer is SILENT" "$OUT"
+# THE OTHER DIRECTION, same store, one --ref apart: an absent NAME is answered by the refs alone and
+# is still an absence. This is the claim the fix must not weaken, asserted against the fix that
+# could have.
+run_refusal "an absent name on that same store is still an absence, not a read" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "absent name beside it: no read-failure claim" "git could not resolve" "$OUT"
+hasnt "absent name beside it: no abbreviation note (the --ref is not hex)" \
+  "looked for it as an ABBREVIATED commit id" "$OUT"
+
+# ── CONTROL: the same --ref, one variable away — every object readable ─────────────────────────
+three_releases git_rev_syntax_readable_store
+run --dry-run --ref 'main~2' --redeploy
+eq  "control: that same rev syntax resolves and deploys once the object can be read" 0 "$RC"
+has "control: and it is V1 — the commit the walk arrives at — that would be checked out" \
+  "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V1")" "$OUT"
+# THE ABBREVIATION, which is the one shape the silence cannot discriminate: it is looked up IN the
+# object store, and a store too damaged to search says nothing. The refusal names that for a hex
+# --ref and for no other, so the operator is told what would tell them apart (the full id) instead
+# of being told a store failure is a typo.
+run_refusal "a hex --ref that names nothing is refused as absent, with the abbreviation named" \
+  "'0badc0de' does not resolve to a commit on origin" --dry-run --ref 0badc0de
+has "hex --ref: says the abbreviation lookup reads the object store" \
+  "looked for it as an ABBREVIATED commit id" "$OUT"
+has "hex --ref: and names the input that does not" "full 40-character commit id" "$OUT"
+# Rev syntax that resolves to nothing is the same shape from the other side: measured on a HEALTHY
+# store, `rev-parse --verify --quiet origin/main~99` is 1 and SILENT, so the silence cannot promise
+# there that the object store was never asked. The refusal says which of the two this --ref is.
+run_refusal "rev syntax that names nothing is refused as absent, with the walk named" \
+  "'main~99' does not resolve to a commit on origin" --dry-run --ref 'main~99'
+has "rev-syntax --ref: says it carries rev syntax and that resolving it walks the graph" \
+  "carries rev syntax (~, ^, :, @{), so resolving it walked the commit graph" "$OUT"
+hasnt "rev-syntax --ref: and does not call it an abbreviated id" \
+  "ABBREVIATED commit id" "$OUT"
+run --dry-run --ref no-such-branch
+hasnt "an ordinary branch name that is absent gets neither note" "READS THE OBJECT STORE" "$OUT"
+hasnt "an ordinary branch name that is absent is not called an invalid NAME either" \
+  "is not a valid ref NAME" "$OUT"
+
+# ⛔ A check-ref-format FAILURE IS NOT EVIDENCE OF REV SYNTAX (card#9611 r4). The note used to be
+# derived from the NEGATION of `check-ref-format --allow-onelevel`, which exits 1 for around a dozen
+# rules — measured, git 2.53.0, exit 1 and NONE of them rev syntax: `a b`, `main..dev`, `foo.lock`,
+# `ab[c`, `.foo`, `foo//bar`, `foo/`, `ab*c`, `ab?c`, `ab\c`, a tab. So an ordinary typo on a
+# COMPLETELY HEALTHY host — `--ref 'release 1.2'` — was told "it carries rev syntax, so resolving it
+# walked the commit graph" and then pointed at a possibly-damaged object store: three false
+# statements in one note, in this card's own direction. Measured for that same input: `rev-parse
+# --verify --quiet --end-of-options 'refs/remotes/origin/release 1.2'` → 1 with EMPTY stderr, a
+# lookup in the refs that never opens an object. r3 fixed ONE INPUT of this class (`-foo`); these
+# cases are over the CLASS, and each is paired with the assertion that the false statement is gone,
+# because the failure mode is a refusal that fires with the wrong reason attached.
+run_refusal "a --ref git refuses as a NAME is refused as that, not as rev syntax" \
+  "'release 1.2' does not resolve to a commit on origin" --dry-run --ref 'release 1.2'
+has  "invalid-name --ref: says git refuses the name" "is not a valid ref NAME" "$OUT"
+hasnt "invalid-name --ref: is NOT called rev syntax" "carries rev syntax" "$OUT"
+hasnt "invalid-name --ref: and no walk of the commit graph is claimed" "walked the commit graph" "$OUT"
+hasnt "invalid-name --ref: and no read of the object store is claimed" "READS THE OBJECT STORE" "$OUT"
+has  "invalid-name --ref: says outright that the store was not read" \
+  "THIS SAYS NOTHING ABOUT THIS CHECKOUT'S OBJECT STORE" "$OUT"
+hasnt "invalid-name --ref: and does not send a typo after a full commit id" \
+  "full 40-character commit id" "$OUT"
+# THE CLASS, not the one input: three more of check-ref-format's rules, none of them rev syntax.
+for bad_ref in 'main..dev' 'foo.lock' 'ab[c'; do
+  run --dry-run --ref "$bad_ref"
+  eq   "invalid-name --ref '$bad_ref': refused, nothing touched" 1 "$RC"
+  has  "invalid-name --ref '$bad_ref': named as a name git refuses" "is not a valid ref NAME" "$OUT"
+  hasnt "invalid-name --ref '$bad_ref': is NOT called rev syntax" "carries rev syntax" "$OUT"
+done
+
+# ⛔ AND THE THIRD SHAPE AT git_ref_oid's 1-LOUD ANSWER, WHERE EVERY READ SUCCEEDED (card#9611 r4).
+# A peel to a type the object is not is LOUD at status 1 on a COMPLETELY HEALTHY store — measured,
+# git 2.53.0: `rev-parse --verify --quiet --end-of-options refs/remotes/origin/main^{blob}` → 1,
+# `error: refs/remotes/origin/main^{blob}: expected blob type, but the object dereferences to tree
+# type`. The 1-loud branch read that as a failed read and said so under git_rev_read_failed's fixed
+# line "git's own error … names what it could not read" — a failure that never happened, reachable
+# with `--ref 'main^{blob}'`. git_commit_of's tag branch already tells this shape apart for its own
+# peel; this is that same discrimination one branch up.
+run --dry-run --ref 'main^{blob}'
+eq  "peel to a type the object is not: refused" 1 "$RC"
+has "peel mismatch: git's own message is what the operator gets" "dereferences to tree type" "$OUT"
+hasnt "peel mismatch: nothing claims git could not read" "git could not" "$OUT"
+hasnt "peel mismatch: and nothing claims git's error names something unreadable" \
+  "names what it could not read" "$OUT"
+has "peel mismatch: says the objects behind it WERE read" "WAS read" "$OUT"
+
+# ── A8: NO RELEASE BRANCH AT ALL, on a store where every object reads ──────────────────────────
+# The release branch is renamed on $ORIGIN, so the deploy's own `fetch --prune` removes
+# refs/remotes/origin/main. Nothing is unreadable; `--is-ancestor` exits 128 all the same.
+three_releases git_rev_no_release_branch
+gitc "$ORIGIN" symbolic-ref HEAD refs/heads/release
+gitc "$ORIGIN" branch -m main release
+eq  "fixture: \$ORIGIN has no main to be contained in" "" \
+  "$(gitc "$ORIGIN" rev-parse --verify --quiet refs/heads/main || true)"
+eq  "fixture: and every object of the checkout still reads" 0 \
+  "$(gitc "$ROOT" cat-file -t "$V2" >/dev/null 2>&1; echo $?)"
+
+run_refusal "no origin/main to compare against (A8)" \
+  "there is no origin/main for" --dry-run --ref hotfix
+hasnt "no release branch: states no read that failed" "git could not" "$OUT"
+hasnt "no release branch: does not claim the graph was unreadable" "could not read the graph" "$OUT"
+has "no release branch: says the flag applies, because the question WAS answered" \
+  "it is the same finding --allow-unreleased waives" "$OUT"
+
+# THE HATCH, which is what the old code took away here. `--ref <sha> --allow-unreleased` is the
+# shape the in-window recovery banner tells an operator with the app DOWN to run, so this is that
+# documented last resort exercised against the condition it now meets.
+run --dry-run --ref "$V2" --allow-unreleased
+eq  "the recovery banner's own shape (--ref <sha> --allow-unreleased) deploys with no release branch" \
+  0 "$RC"
+has "recovery shape: and says in the log WHY it is unreleased — there is no branch" \
+  "DEPLOYING UNRELEASED CODE: there is no origin/main to contain" "$OUT"
+run --dry-run --ref hotfix --allow-unreleased
+eq  "no release branch: the flag waives it for a branch too" 0 "$RC"
+
+# ── AND THE OTHER 128, one variable away: the graph that genuinely could not be read ───────────
+# Same flag, same refusal to deploy — the finding was never made, so there is none to waive — but
+# the refusal now carries the way out, because on THIS store the recovery deploy above is refused
+# too and the old text left an operator with the app down no next step at all.
+three_releases git_rev_unreadable_ancestry
+blind_object "$V2"
+run --dry-run --ref hotfix --allow-unreleased
+eq  "unreadable ancestry: still refused — a question never answered has no finding to waive" 1 "$RC"
+has "unreadable ancestry: says origin/main itself was THERE, and what was not read" \
+  "origin/main IS there" "$OUT"
+has "unreadable ancestry: names the repair as the next step" \
+  "git -C $ROOT fsck" "$OUT"
+has "unreadable ancestry: tells the operator the recovery deploy meets this same refusal" \
+  "--ref <sha> --allow-unreleased" "$OUT"
+# ⛔ AND THE PRESCRIBED REPAIR MUST ACTUALLY REPAIR (card#9611 r4). The refusal used to name
+# `fetch --prune` as "asks origin for the objects behind its refs again" — and it does not: fetch
+# negotiates from REFS, and this refusal is reached only AFTER git_commit_of proved $SHA readable
+# and git_ref_oid resolved refs/remotes/origin/main, so the object that cannot be read is an
+# INTERIOR graph object this checkout's own refs already claim, and origin is never asked for it.
+# Measured, git 2.53.0, on clones of a local origin with one middle commit's loose object damaged
+# (the hardlink broken first, exactly as blind_object does):
+#   object mode 000, remote unchanged  → `fetch --prune origin` exit 0, nothing transferred, mode
+#                                         still 000, `cat-file -t` still 128
+#   object mode 000, remote advanced   → exit 128, object still unreadable
+#   object DELETED                     → exit 0, `cat-file -t` still 128 afterwards
+# An operator with the app down ran it, got exit 0 and no output, read that as the repair having
+# worked, and met the identical refusal. The two repairs that DO work were measured on those same
+# clones: `chmod 644` on the blinded file → `cat-file -t` 0; and replacing .git alone from a
+# `clone --no-checkout` then `checkout --force <sha>` → exit 0, object readable, with server/.env,
+# server/storage/ and .deploy-failed still in place because only .git moved.
+# ⚠ A `has` on a command STRING cannot catch advice that does not work — that is how the false
+# claim survived a green suite. So the assertions below are over the CLAIM: the prescription that
+# does not work must be named as not working, and the ones that do must be present with the
+# sentence that makes them usable.
+hasnt "unreadable ancestry: never prescribes a fetch as the way to get the object back" \
+  "asks origin for the objects behind its refs again" "$OUT"
+has "unreadable ancestry: says outright that fetch cannot restore it" \
+  "⛔ git fetch CANNOT bring that object back" "$OUT"
+has "unreadable ancestry: and why — the refs already claim the commit, so origin is never asked" \
+  "ALREADY claim that commit, so origin is never asked for the objects behind it" "$OUT"
+has "unreadable ancestry: names the in-place repair for a file that is there but unreadable" \
+  "chmod 444 $ROOT/.git/objects/" "$OUT"
+has "unreadable ancestry: and the last resort for one that is GONE — the object store only" \
+  "git clone --no-checkout" "$OUT"
+has "unreadable ancestry: which moves .git and nothing else" \
+  "mv $ROOT/.git $ROOT/.git.broken" "$OUT"
+has "unreadable ancestry: and puts the deploy's own commit back in the tree afterwards" \
+  "git -C $ROOT checkout --force" "$OUT"
+# repack stays in the refusal, described as what it IS. Measured all-or-nothing, git 2.53.0:
+# blinded object → `fatal: Failed to traverse parents of commit …`, exit 128, no new pack written
+# and nothing deleted; deleted object → exit 128; unreadable ref file → `fatal: bad object
+# refs/heads/keep`, exit 128, the pack and the branch-only commit both still there. It salvages
+# nothing, so it is named as the CONFIRMATION step it is.
+has "unreadable ancestry: names repack as the confirmation step" \
+  "git -C $ROOT repack -a -d" "$OUT"
+hasnt "unreadable ancestry: and does not call repack a salvage" \
+  "from what it can still read" "$OUT"
+has "unreadable ancestry: says repack refuses outright rather than salvaging" \
+  "refuses outright if anything reachable cannot be read" "$OUT"
+# ⛔ SAFETY, and the reason this assertion exists at all (card#9611 r3). This refusal is read by an
+# operator with the app DOWN, and the advice used to end "re-fetch it from origin, or RE-CLONE
+# $DEPLOY_ROOT from it". A re-clone destroys `server/.env` — created on the host, in no commit (this
+# repo's own .gitignore), so this host's APP_KEY and DB_PASSWORD exist nowhere else and backups are
+# out of scope on this install — along with `server/storage/` (the logs the in-window banner tells
+# the operator to tail) and `.deploy-failed` (the marker it says must be reviewed). Every repair the
+# refusal now names works inside the checkout's .git and touches none of them.
+hasnt "unreadable ancestry: never tells a mid-incident operator to re-clone the deploy root" \
+  "re-clone $ROOT from it" "$OUT"
+has "unreadable ancestry: says so, so the operator does not reach for one" \
+  "DO NOT RE-CLONE $ROOT" "$OUT"
+has "unreadable ancestry: and names what a re-clone would destroy" "server/.env" "$OUT"
+
+# ── card#9611 r3 — ONE CASE PER DECLARED ANSWER OF git_ref_oid ─────────────────────────────────
+# ⛔ WHY THE COVERAGE IS SHAPED THIS WAY, which is this round's lesson and not a note. r2 covered
+# git_ref_oid's status-1 half — an absence, and the object-store walk that wears an absence's status
+# — and NONE of its rc ∉ {0,1} half. So the branch no case exercised was the branch still making the
+# over-read this whole card exists to end: it read every non-0/1 status as "the REFS could not be
+# read", under git_rev_read_failed's fixed line saying git's error was above the refusal, and
+# `--ref HEAD@{1}` reached it on a COMPLETELY HEALTHY host with git having printed nothing at all.
+# The cases below are therefore one per ANSWER the function declares — the status AND git's silence
+# together, the two things it actually reads — rather than one per failure someone thought of.
+#
+# The blinded-store answers (1-loud through the object store) are the block above; these add the
+# ones a healthy store gives, plus the one answer that is not reachable through this script, named
+# as that rather than skipped.
+three_releases git_ref_oid_answers
+
+# ANSWER 0 — <var> is a full object id, and the deploy goes on to use it.
+run --dry-run --ref main
+eq  "answer 0: a name that resolves deploys" 0 "$RC"
+has "answer 0: and it is what origin/main points at that would be checked out" \
+  "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V3")" "$OUT"
+
+# ANSWER 1 + git SILENT — the one answer that RETURNS. An absence, and A7 says what it means.
+run_refusal "answer 1-silent: a name that is not there is an absence" \
+  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+hasnt "answer 1-silent: claims no read that failed" "git could not resolve" "$OUT"
+
+# ANSWER 1 + git LOUD, WITHOUT THE OBJECT STORE. A dangling symref is the shape that proves this
+# refusal must not name where the read failed: measured (git 2.53.0) `warning: ignoring dangling
+# symref refs/heads/dangling` → exit 1, on a store where every object reads, and `git fetch`
+# survives it — so it is reachable on a healthy host, unlike the blinded-store case above.
+printf 'ref: refs/heads/nowhere-at-all\n' > "$ROOT/.git/refs/heads/dangling"
+run_refusal "answer 1-loud: a ref the refs themselves cannot follow" \
+  "git could not resolve 'dangling'" --dry-run --ref dangling
+has  "answer 1-loud: git's own message reaches the operator" "ignoring dangling symref" "$OUT"
+hasnt "answer 1-loud: does not call a loud 1 the ref's absence" \
+  "does not resolve to a commit on" "$OUT"
+# ⚠ The needle is the OLD text's own words — "went past", which ASSERTS a walk that did not happen
+# here — and it is one printed line of it, because these refusals are printed a line at a time and a
+# needle spanning two of them can never match, which would make this assertion a decoration.
+hasnt "answer 1-loud: and does not assert an object store that was never opened" \
+  "went past the refs and into the object" "$OUT"
+rm -f "$ROOT/.git/refs/heads/dangling"
+
+# ANSWER ∉ {0,1} + git SILENT — the branch this round fixes, reached the way an operator reaches it.
+# `refs/remotes/origin/HEAD` is in every clone, its reflog gets ONE entry at clone time and never
+# grows on a deploy root, and A7's first candidate is the concatenation `refs/remotes/origin/$REF` —
+# so `--ref HEAD@{1}` exits 128 with an EMPTY stderr here, permanently, on a healthy host.
+eq "fixture: the candidate really is 128 with git silent" "128|" \
+  "$(gitc "$ROOT" rev-parse --verify --quiet --end-of-options 'refs/remotes/origin/HEAD@{1}' \
+       2>"$T/ro.err" >/dev/null; printf '%s|%s' "$?" "$(cat "$T/ro.err")")"
+run_refusal "answer other-silent: reflog syntax on a completely healthy store" \
+  "git could not resolve 'refs/remotes/origin/HEAD@{1}'" --dry-run --ref 'HEAD@{1}'
+has  "answer other-silent: names the status it got" "exited 128" "$OUT"
+hasnt "answer other-silent: does NOT claim the refs could not be read" \
+  "the REFS could not be read" "$OUT"
+hasnt "answer other-silent: does not say git's error is above it — git printed nothing" \
+  "git's own error is above this refusal" "$OUT"
+has  "answer other-silent: says nothing was printed, so it claims no failed read" \
+  "NOTHING WAS PRINTED ABOVE THIS REFUSAL" "$OUT"
+has  "answer other-silent: names what a healthy store answers this way" \
+  "reflog syntax whose reflog does not go back that far" "$OUT"
+has  "answer other-silent: and tells the operator what to deploy from instead" \
+  "full 40-character commit id" "$OUT"
+
+# ⛔ AND THE NOTE ITSELF MUST NOT LIE (card#9611 r3). `--ref -foo` was classified by a
+# `check-ref-format` call with no option guard, which parsed the leading `-` as an OPTION: exit 129
+# with the usage message swallowed by 2>/dev/null, after which A7's note told the operator "'-foo'
+# is not a ref name: it carries rev syntax" — false, and false in this card's own direction. ⚠ The
+# guard git_ref_oid uses cannot be borrowed: check-ref-format accepts neither `--end-of-options` nor
+# `--` (measured, git 2.53.0 — both exit 129 for EVERY ref, valid or not), so the leading dashes are
+# stripped for the classification instead.
+run_refusal "a --ref beginning with a dash is refused as the NAME it is" \
+  "'-foo' does not resolve to a commit on origin" --dry-run --ref -foo
+hasnt "dash --ref: is not called rev syntax" "carries rev syntax" "$OUT"
+hasnt "dash --ref: and is not called an abbreviated id" "ABBREVIATED commit id" "$OUT"
+run_refusal "a --ref beginning with a dash that DOES carry rev syntax is still called that" \
+  "'-foo~2' does not resolve to a commit on origin" --dry-run --ref -foo~2
+has "dash --ref with rev syntax: the note fires, one variable away" "carries rev syntax" "$OUT"
+
+# ANSWER ∉ {0,1} + git LOUD — NAMED, NOT ASSERTED. Every shape measured that makes rev-parse exit
+# non-0/1 LOUDLY is a refs-storage read failure (packed-refs unreadable; packed-refs corrupt), and
+# A7's `git fetch` runs BEFORE anything is resolved and meets it first — so the branch is not
+# reachable through this script today. Both halves of that are asserted rather than assumed: git
+# really does answer that way, and the deploy really does die at the fetch with git's error on
+# screen, which is the loud, true failure an operator needs either way.
+three_releases git_ref_oid_refs_unreadable
+chmod 000 "$ROOT/.git/packed-refs"
+eq "fixture: a name resolve really is 128 AND loud with packed-refs unreadable (a root runner is not this)" \
+  "128|loud" \
+  "$(gitc "$ROOT" rev-parse --verify --quiet --end-of-options refs/remotes/origin/main \
+       2>"$T/ro.err" >/dev/null; printf '%s|%s' "$?" "$([ -s "$T/ro.err" ] && echo loud || echo silent)")"
+run --dry-run --ref main
+neq "answer other-loud: the deploy stops (the fetch meets it before git_ref_oid does)" 0 "$RC"
+has  "answer other-loud: git's own error is what the operator gets" "packed-refs" "$OUT"
+hasnt "answer other-loud: and nothing claims the ref is absent" \
+  "does not resolve to a commit on" "$OUT"
+chmod 644 "$ROOT/.git/packed-refs"
 
 # ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
 # `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan

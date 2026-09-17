@@ -511,7 +511,44 @@ rule violations anyone could have committed at the time.
   file** is refused the same way, on its MODE: `ls-tree` calls a symlink's type `blob` exactly as it does a
   file's, and a symlink's blob is the PATH IT POINTS AT, so a type check passed one through and handed A11
   the string `../app.real.php` to grep — the same positive statement about a file never opened, reached from
-  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. And **a release
+  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. **The REF it
+  is asked for, and the ANCESTRY that says the commit is released, are read under that same rule**
+  (card#9611): a ref whose object the checkout cannot read is refused as that, not as *"does not resolve to
+  a commit on origin"*, and an ancestry git could not compute is refused as that, not as *"is not contained
+  in `origin/main`"* — `--allow-unreleased` waives the FINDING that a commit is unreleased and does not
+  apply where the question was never answered. Both named a cause that had never been established, which
+  costs an operator the debugging path rather than the deploy. **What is READ, at either site, is what the
+  refusal is allowed to claim**: resolving a ref NAME reads the refs alone, but `--ref` is the operator's
+  own string, so rev syntax and an abbreviated id walk into the object store after all — there a failed
+  read comes back as *"there is no ref of that name"* and is told apart by git's own SILENCE, which an
+  absence answers with. **That discriminator has measured limits, and the refusals name them instead of
+  claiming more than was read**: a checkout whose PACK is unreadable answers SILENTLY for every candidate
+  that needs the pack — an abbreviated id, `main~1`, `:/subject` — which is the shape a real host is in, so
+  A7 tells an operator which of the two their `--ref` is and what resolves without the store being read at
+  all; and a REF FILE at mode 000 answers silently too, on a store where every object reads, which nothing
+  here can see — not reachable today only because the fetch meets that ref first (card#9646), and written
+  down in `bin/deploy.sh` beside the premise it falsifies rather than left as a premise. **A status that is
+  neither 0 nor 1 is split by that same silence**: git exits 128 without printing anything for `@{…}` reflog
+  syntax on a completely healthy store — `--ref HEAD@{1}` does it on any host — so that refusal states the
+  status, claims no failed read, and says what to deploy from instead. **A LOUD answer is named as the
+  failed read it is, unless git's own message says otherwise**: a peel to a type the object is not is
+  loud on a store where every object reads — `--ref 'main^{blob}'` at status 1, an annotated tag over a
+  TREE at 128, the same wording at both — so one function reads that wording and refuses it as what it
+  is, at both of the sites that can meet it, rather than each site re-deriving a rule out of the status.
+  And a `origin/main` that is **not there at all** is an ANSWER rather than a read that failed — nothing
+  is released, so neither is this commit — so `--allow-unreleased` applies to it exactly as to any other
+  unreleased commit, and where the graph truly could not be read the refusal names the repair, because
+  the in-window recovery deploy meets it too. **The repair it names works inside the deploy root's own
+  `.git`, and it is one that actually repairs**: `fsck` names the object and says whether it is
+  unreadable or gone, `chmod` restores an unreadable one in place, a GONE one is replaced by swapping
+  `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
+  `repack -a -d` confirms — it refuses outright if anything reachable cannot be read. It says outright that
+  `git fetch` CANNOT bring that object back (fetch negotiates from refs, and this checkout's refs already
+  claim the commit, so the remote is never asked — measured, git 2.53.0: exit 0 and nothing transferred with
+  the object unreadable, exit 0 and the object still gone with it deleted), and it says outright not to
+  re-clone the deploy root: `server/.env` is created on the host and is in no commit, so its `APP_KEY` and
+  `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and the `.deploy-failed`
+  marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
   app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
