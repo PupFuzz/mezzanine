@@ -1,0 +1,34 @@
+# shell-lint.analyser.pin — the ONE place this repo names the analyser its shell-lint baseline was
+# measured under, and the release artifact CI installs to get it. Two readers, one file:
+#
+#   * `bin/shell-lint.sh` reads `version` and refuses to emit a verdict from any other ShellCheck,
+#     and reads `asset linux.x86_64` to cross-check the upstream pin where that file is readable.
+#   * `.github/workflows/shell-lint.yml` reads BOTH — the version goes into the download URL and the
+#     digest is checked against the tarball before anything out of it is executed.
+#
+# WHY IT IS A FILE AND NOT TWO CONSTANTS. The digest used to be written in the workflow and the
+# version in the script, which made the digest a restatement of `agent-board-toolkit`'s own `asset`
+# line with nothing checking it (canon #16: a restatement needs a DELETE or a GUARD, and it had
+# neither). Either of the two could be edited alone and the pair would silently describe two
+# different analysers — the one CI ran, and the one the refusal asserted.
+#
+# THE SHAPE IS DELIBERATELY THE SAME as `agent-board-toolkit/.shellcheck-version`, so ONE parser
+# (`pin_field` in bin/shell-lint.sh) reads this file and that one, and the cross-check compares
+# like with like instead of restating a format.
+#
+# PROVENANCE OF THE DIGEST. It is the `asset linux.x86_64` value recorded in
+# `agent-board-toolkit/.shellcheck-version`, taken there from the artifact fetched 2026-08-21 from
+# https://github.com/koalaman/shellcheck/releases/download/v0.9.0/ ; it was re-fetched and re-hashed
+# independently on 2026-09-15 and agreed; and the binary the tarball extracts is byte-identical to
+# the pinned build on the agent box that this repo's baseline was measured under. Upstream publishes
+# no checksum file, so this pins the artifact AS FETCHED: it detects a later substitution, and it is
+# not an upstream-attested digest and is not claimed to be one.
+#
+# TO MOVE THE PIN: run the lane under the new version FIRST and diff the findings over the whole
+# population against the old one. The counts WILL move, and moving them is a change to what CI
+# accepts — so the same change re-measures the ledger deliberately
+# (`bin/shell-lint.sh --update-baseline --accept-shrink`, which is what the ledger's recorded
+# analyser row makes you type) rather than relaxing the assert.
+
+version 0.9.0
+asset   linux.x86_64  700324c6dd0ebea0117591c6cc9d7350d9c7c5c287acbad7630fa17b1d4d9e2f

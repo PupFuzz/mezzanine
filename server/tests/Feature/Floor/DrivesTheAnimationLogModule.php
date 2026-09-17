@@ -112,13 +112,14 @@ trait DrivesTheAnimationLogModule
     }
 
     /**
-     * The module's source with its comments removed — what a source-level bound is checked over,
-     * so a comment that NAMES a forbidden identifier is not mistaken for code that reads it.
+     * The LOG's module source, comments stripped.
+     *
+     * ⚠ The stripping itself is `DrivesAShippedClientModule::moduleSource()`, hoisted there at its
+     * second caller (card#7341 step 3's determinism bound is the second source-level check of this
+     * shape). What is left here is the one thing that is the log's: which file.
      */
-    protected function moduleSource(?string $moduleDir = null): string
+    protected function animationLogSource(?string $moduleDir = null): string
     {
-        $source = (string) file_get_contents(($moduleDir ?? $this->moduleDir()).'/animation-log.js');
-
-        return (string) preg_replace(['#/\*.*?\*/#s', '#(^|[^:\\\\])//[^\n]*#'], ['', '$1'], $source);
+        return $this->moduleSource('animation-log.js', $moduleDir);
     }
 }

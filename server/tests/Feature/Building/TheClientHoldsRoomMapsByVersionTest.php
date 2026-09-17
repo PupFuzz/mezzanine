@@ -23,11 +23,13 @@ use Tests\Feature\Lobby\DrivesTheLobbyClient;
  * that rig copies and drives the whole shipped `public/js` tree, `wire/` included.
  *
  * ⚠ WHAT T39's CLIENT HALF STILL OWES, AND NOTHING HERE CLAIMS IT. The cache has no caller on any page
- * yet: its two callers are Appendix B step 3 (the stream that delivers `room.map`) and step 7 (the floor
- * route that enters rooms and draws their maps), and neither is built. So this file asserts the fetch,
- * the reuse, the invalidation, the one line the apply returns for the client's event record, and the
- * failure the cache holds. It does NOT assert *re-renders one room* (step 7 draws rooms), *one
- * event-log line WRITTEN* (step 3 builds the record the line is written to), or *no § 6.2 row fired*
+ * yet: its two callers are the stream that delivers `room.map` — opened by the client protocol,
+ * built at Appendix B step 3 and constructed by no page before step 8 — and step 7's floor route,
+ * which enters rooms and draws their maps. So this file asserts the fetch, the reuse, the
+ * invalidation, the one line the apply returns for the client's event record, and the failure the
+ * cache holds. It does NOT assert *re-renders one room* (step 7 draws rooms), *one
+ * event-log line WRITTEN* (step 3 builds the record; FLOOR gates the WRITING at step 7, which is
+ * what delivers the `room.map` this apply answers), or *no § 6.2 row fired*
  * (step 2's animation log and step 6's animation set) — a check for an animation on a client with no
  * animations cannot fail, so it is not written.
  */
