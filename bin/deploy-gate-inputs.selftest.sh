@@ -114,6 +114,37 @@ insert() { # insert <line>… — after the last derived read of $DIR's bin/depl
   mv "$DIR/bin/deploy.sh.new" "$DIR/bin/deploy.sh"
   rm -f "$f"
 }
+wrap_family() { # wrap_family — write bin/deploy.sh's reader-family case label over TWO lines with a
+                # trailing `\`, which is what card#9611 did to it when the family outgrew one line.
+                # The split point is DERIVED from the label's own last alternative, never written.
+  awk '
+    /^git_read_call_site\(\)[[:space:]]*\{/ { inf = 1 }
+    inf && /^\}[[:space:]]*$/               { inf = 0 }
+    inf && !done && /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*([[:space:]]*\|[[:space:]]*[A-Za-z_][A-Za-z0-9_]*)+\)[[:space:]]*$/ {
+      n = split($0, p, / \| /)
+      head = p[1]
+      for (i = 2; i < n; i++) head = head " | " p[i]
+      print head " | \\"
+      print "        " p[n]
+      done = 1; next
+    }
+    { print }' "$DIR/bin/deploy.sh" > "$DIR/bin/deploy.sh.new"
+  mv "$DIR/bin/deploy.sh.new" "$DIR/bin/deploy.sh"
+}
+family_add() { # family_add <name> [body…] — name <name> in bin/deploy.sh's OWN reader-family case
+               # list (the list card#9611 grew), and define it at the end of the file if a body is
+               # given. Naming it without defining it is a case of its own below.
+  local nm="$1"; shift
+  awk -v nm="$nm" '
+    /^git_read_call_site\(\)[[:space:]]*\{/ { inf = 1 }
+    inf && /^\}[[:space:]]*$/               { inf = 0 }
+    inf && !done && /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*([[:space:]]*\|[[:space:]]*[A-Za-z_][A-Za-z0-9_]*)+\)[[:space:]]*$/ {
+      sub(/\)[[:space:]]*$/, " | " nm ")"); done = 1
+    }
+    { print }' "$DIR/bin/deploy.sh" > "$DIR/bin/deploy.sh.new"
+  mv "$DIR/bin/deploy.sh.new" "$DIR/bin/deploy.sh"
+  [ "$#" -eq 0 ] || printf '%s\n' "$@" >> "$DIR/bin/deploy.sh"
+}
 run() { # run — commit $DIR's mutation and ask the checker about it
   G "$DIR" add -A >/dev/null
   G "$DIR" diff --cached --quiet || G "$DIR" commit -q -m mutation
@@ -165,6 +196,19 @@ insert '  git_read_at newv $SHA server/NEWPATH.json'
 run
 eq  "A  \$SHA unquoted: exit 2"                     2 "$RC"
 has "A  \$SHA unquoted: the derivation stops"       "shape the derivation does not match" "$OUT"
+# The REMEDY that stop prints is advice about what READ_RE matches — a restatement of the pattern,
+# so it is guarded here rather than trusted (card#9693: the advice told a maintainer to write the
+# read the way the line they were sent to already was, and sent them in a circle). Every shape it
+# prints is matched against the checker's own pattern, extracted above.
+n_advice=0; bad_advice=0
+# shellcheck disable=SC2016  # assertion needle: `$SHA` as the checker PRINTS it, not as a value
+while IFS= read -r advice; do
+  [ -n "$advice" ] || continue
+  n_advice=$((n_advice + 1))
+  printf '%s\n' "$advice" | grep -qE "$RRE" || bad_advice=$((bad_advice + 1))
+done < <(printf '%s\n' "$OUT" | grep -E '^[[:space:]]+git_[a-z_]+ var "\$SHA" ')
+eq  "A  the remedy's own example reads are matched by READ_RE (shapes/unmatched)" \
+    "2 0" "$n_advice $bad_advice"
 
 mkcase esc_b
 # shellcheck disable=SC2016  # injected source: a braced `${SHA}`
@@ -233,6 +277,100 @@ has "raw git show: named as a subcommand that is not one of the non-reading ones
 # match, and point a maintainer at `phase_a`'s caller instead of at the line they just wrote.
 eq  "raw git show: the gate holding it is not itself taken for a reader" \
     1 "$(printf '%s' "$OUT" | grep -c 'bin/deploy.sh:[0-9]* —')"
+
+# ── the family, and what being IN it does and does not mean ────────────────────────────────────
+# card#9693. `bin/deploy.sh`'s reader family is `git_read_call_site`'s own case list, which exists
+# for the deploy's frame-walking and is a DIFFERENT population from "functions that read a path out
+# of the release". When card#9611 grew that list past one line, the checker read the list ITSELF as
+# reads it could not parse, and stopped — on a healthy deploy script, with advice that did not
+# apply to the lines it named. Each case below is one shape of that, and each was watched to fail
+# against the derivation as it stood before this section existed.
+section "THE FAMILY — a name in it is a candidate, and its own body is what rules on it"
+
+# The case list bash lets you write over several lines. Nothing about the deploy changes.
+mkcase fam_wrapped
+wrap_family
+run
+eq  "the family's case list continued with \`\\\`: exit 0"  0 "$RC"
+has "continued case list: the family is still derived from it" "reader family derived" "$OUT"
+eq  "continued case list: git_ls_at, named on its FIRST line, is still a derived reader" \
+    1 "$(printf '%s\n' "$OUT" | grep -c '^  reader family derived .*[^_]git_ls_at')"
+
+# ⭐ And a read written EXACTLY as the stop's own advice prescribes is derived, not stopped on. This
+# is the case the round-4 report was wrong about: `READ_RE` matches `git_ls_at` and always did, and
+# these lines failed because the LOOSE half no longer held the name the STRICT half had just matched.
+mkcase fam_wrapped_read
+wrap_family
+# shellcheck disable=SC2016  # injected source: the matched `$SHA`
+insert '  git_ls_at newv "$SHA" server/NEWPATH.json'
+run
+eq  "a git_ls_at read under a continued case list: exit 2" 2 "$RC"
+has "git_ls_at read: DERIVED and reported unclassified, not stopped on as unparseable" \
+    "NOT classified here: server/NEWPATH.json" "$OUT"
+
+# A refusal helper in the family reads nothing at all, and its call sites are not gate inputs.
+mkcase fam_nonreader
+family_add git_bail_now 'git_bail_now() { refuse "$@"; }'
+insert '  git_bail_now "nothing was read"'
+run
+eq  "a refusal helper named in the family: exit 0"  0 "$RC"
+has "refusal helper: ruled out of the family by its own body" "git_bail_now — it runs no git at all" "$OUT"
+
+# A ref resolver in the family reads a NAME, and no path of the release can come back through it.
+mkcase fam_ref
+# shellcheck disable=SC2016  # injected source: the `$2` a parameterised resolver reads
+family_add git_name_oid 'git_name_oid() { git_at rev-parse --verify --quiet "$2"; }'
+# shellcheck disable=SC2016  # injected source: the `$REMOTE` a ref name is built from
+insert '  git_name_oid oid "refs/remotes/$REMOTE/main"'
+run
+eq  "a ref resolver named in the family: exit 0"    0 "$RC"
+# shellcheck disable=SC2016  # assertion needle: the checker prints those backquotes literally
+has "ref resolver: ruled out by the subcommand it runs" \
+    'git_name_oid — it runs only `git rev-parse`' "$OUT"
+
+# A read of an object BY BARE ID is a read, and it is not a read of a path out of the tree.
+mkcase fam_bareid
+# shellcheck disable=SC2016  # injected source: the `$2` an object id arrives in
+family_add git_type_at 'git_type_at() { git_at cat-file -t "$2"; }'
+# shellcheck disable=SC2016  # injected source: `$SHA` handed to it as an OBJECT, not as a tree
+insert '  git_type_at objtype "$SHA"'
+run
+eq  "an object read by bare id, named in the family: exit 0" 0 "$RC"
+has "bare-id read: ruled out as naming no path"     "git_type_at — it reads an object BY ID and names no path" "$OUT"
+
+# ⛔ AND THE GATE IS STILL A GATE. Being named in the family EXEMPTS NOTHING: a function that really
+# does read a path out of the tree is a reader whoever lists it, and a call to it the strict pattern
+# cannot parse still stops this check. This case passes before and after card#9693 — that is its
+# point — so the evidence that it discriminates is elsewhere: against a derivation deliberately
+# broken to exempt every name the family list carries (the mistake the four cases above could have
+# been "fixed" with), its MESSAGE assertion reds while the exit status stays 2 for an unrelated
+# reason. That is the hazard this suite states at the top, met here rather than argued about.
+mkcase fam_listed_reader
+# shellcheck disable=SC2016  # injected source: the `"$2:$3"` of a real reader body
+family_add git_slurp_at 'git_slurp_at() { git_at show "$2:$3"; }'
+# shellcheck disable=SC2016  # injected source: `$SHA`, read by a name the strict pattern will not match
+insert '  git_slurp_at newv "$SHA" server/NEWPATH.json'
+run
+eq  "a REAL reader named in the family, called unparseably: exit 2" 2 "$RC"
+has "a listed reader is still a reader: the call site stops the check" \
+    "shape the derivation does not match" "$OUT"
+
+# A name in the family this file defines nothing for cannot be ruled on, and is not assumed either way.
+mkcase fam_undefined
+family_add git_nowhere
+run
+eq  "a family name with no function behind it: exit 2" 2 "$RC"
+has "undefined family name: says the body it would rule on is not there" \
+    "defines no such function at the top level" "$OUT"
+
+# …and neither is a subcommand this check has no reading for. `archive` puts paths on disk.
+mkcase fam_unknown_sub
+# shellcheck disable=SC2016  # injected source: the `$2`/`$3` of an archive extraction
+family_add git_arch_at 'git_arch_at() { git_at archive "$2" -- "$3"; }'
+run
+eq  "a family member running an unknown git subcommand: exit 2" 2 "$RC"
+has "unknown subcommand: named, and not assumed harmless" \
+    "a subcommand this check does not know to be a read of the release tree" "$OUT"
 
 # ── the disposition pin ────────────────────────────────────────────────────────────────────────
 section "DISPOSITIONS — the table describes what the gate DOES, and is pinned to it"

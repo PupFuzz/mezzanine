@@ -29,7 +29,7 @@
 #cfg	probe	SC2218
 #cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC1003	1
 #cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2015	1
-#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	12
+#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	22
 #cfg	directive	bin/deploy-gate-inputs.sh	disable=SC2034	2
 #cfg	directive	bin/deploy.selftest.sh	source=bin/supervision.sh	1
 #cfg	directive	bin/deploy.sh	disable=SC2016	1
