@@ -20,14 +20,18 @@
 # claim a green makes is exactly that narrow.
 #
 # It does NOT evaluate the gates' content predicates (A6's constraint shape, A10's `ALGORITHM=`
-# declaration, A11's `trustProxies('*')`, A13's crontab render). Those live INLINE in `phase_a`,
-# which is one straight-line function reachable only by running the whole script, and the whole
-# script refuses at A5 without a production `server/.env`. Evaluating them here would mean either
-# rebuilding the selftest's stub host (a second copy of it) or RESTATING the gates in this file —
-# and a restated copy of a deploy precondition is precisely the defect card#9203 filed, which A6's
-# own comment in `bin/deploy.sh` names. Neither is done. What is needed instead is a seam in
-# `bin/deploy.sh` that exposes its target-tree gates as callable units; that is filed, not carved
-# here. Until it exists this file covers the presence population and says so, loudly, below.
+# declaration, A11's `trustProxies('*')`, A13's crontab render). Evaluating them here would mean
+# either rebuilding the selftest's stub host (a second copy of it) or RESTATING the gates in this
+# file — and a restated copy of a deploy precondition is precisely the defect card#9203 filed, which
+# A6's own comment in `bin/deploy.sh` names. Neither is done.
+#
+# THE SEAM THAT MAKES A THIRD WAY POSSIBLE HAS LANDED, AND THIS FILE DOES NOT YET USE IT
+# (card#9644). Those predicates are no longer inline in one straight-line `phase_a`: each is a
+# top-level function of `bin/deploy.sh` taking the commit — `gate_a6_php_floor`,
+# `gate_a10_migration_algorithm`, `gate_a11_trusted_proxies`, `gate_a13_target_plan` — reading only
+# out of the object database, and that file no longer runs a deploy when it is SOURCED. Calling one
+# from here CHANGES WHAT THIS LANE ASSERTS, so it is its own round of work and not a rider on the
+# carve. Until that round lands this file covers the presence population and says so, loudly, below.
 #
 # THE POPULATION IS DERIVED, NEVER WRITTEN DOWN. A list of required paths typed into this file is a
 # restatement that drifts the moment `bin/deploy.sh` adds a gate — the same shape as the bug above.
@@ -179,13 +183,13 @@ trap 'rm -rf "$WORK"' EXIT
 #   path/expression  kind  gate  rule  fn  digest  what bin/deploy.sh does when it is absent
 CLASSIFIED=()
 while IFS= read -r row; do [ -z "$row" ] || CLASSIFIED+=("$row"); done <<'TABLE'
-server/composer.json	read	A6	required-nonempty	phase_a	6cd7000c6ab9	refuses: it is where the PHP floor is declared, and composer would meet it inside the window instead
-server/database/migrations	ls	A10	optional	phase_a	69438f9e492a	passes, saying the release ships no migrations — git_ls_at's empty is a real answer
-$mig	read	A10	run-time	phase_a	69438f9e492a	each migration the listing above named: the names come from the tree, not from this file, so presence is not in question — the read follows the listing. Its content predicate (ALGORITHM=) is out of scope below.
-server/.env.example	read	A10b	optional	phase_a	c6e6540fcb03	warns that no key of the release was compared against the host's .env
-server/bootstrap/app.php	read	A11	required	phase_a	910d5f07fb9a	refuses: server/artisan requires it, so every artisan command of that release fails inside the window
-server/package-lock.json	ls	A12	required	phase_a	86bdec226cc1	refuses: npm ci needs it and package.json floats, so the prod asset build would not be reproducible
-bin/supervision.sh	read	A13	required-nonempty	phase_a	f2f2b022e57d	refuses: the window installs the deployed release's crontab block from it
+server/composer.json	read	A6	required-nonempty	gate_a6_php_floor	6cd7000c6ab9	refuses: it is where the PHP floor is declared, and composer would meet it inside the window instead
+server/database/migrations	ls	A10	optional	gate_a10_migration_algorithm	69438f9e492a	passes, saying the release ships no migrations — git_ls_at's empty is a real answer
+$mig	read	A10	run-time	gate_a10_migration_algorithm	69438f9e492a	each migration the listing above named: the names come from the tree, not from this file, so presence is not in question — the read follows the listing. Its content predicate (ALGORITHM=) is out of scope below.
+server/.env.example	read	A10b	optional	gate_a10b_config_drift	c6e6540fcb03	warns that no key of the release was compared against the host's .env
+server/bootstrap/app.php	read	A11	required	gate_a11_trusted_proxies	910d5f07fb9a	refuses: server/artisan requires it, so every artisan command of that release fails inside the window
+server/package-lock.json	ls	A12	required	gate_a12_asset_lockfile	86bdec226cc1	refuses: npm ci needs it and package.json floats, so the prod asset build would not be reproducible
+bin/supervision.sh	read	A13	required-nonempty	gate_a13_target_plan	7ec2114d0a10	refuses: the window installs the deployed release's crontab block from it
 server/public/$uif	read	A14	run-time	fpm_code_reload_ready	e3b0c44298fc	the release's .user.ini, whose NAME comes from the host's phpinfo (user_ini.filename): no fixed path exists at this commit. A14 is not run here at all — it needs PHP-FPM.
 TABLE
 
@@ -768,11 +772,11 @@ cat <<'EXCLUDED'
                             that is the runner's php, so a green would be a claim about the runner
                             rather than about this repository.
 
-  CONTENT PREDICATES not covered, pending a seam in bin/deploy.sh (card#9644): A6's constraint
-  shape, A10's ALGORITHM= declaration on migrations that alter `events`, A11's trustProxies('*'),
-  A13's render of the target release's crontab block. They are inline in phase_a, which runs only
-  as a whole and refuses at A5 first. Restating them here would drift from the gate — the shape of
-  the defect card#9203 filed.
+  CONTENT PREDICATES not covered here: A6's constraint shape, A10's ALGORITHM= declaration on
+  migrations that alter `events`, A11's trustProxies('*'), A13's render of the target release's
+  crontab block. The seam they needed has LANDED (card#9644) — each is a callable gate function of
+  bin/deploy.sh taking the commit, reading only out of git — and THIS CHECK DOES NOT CALL ONE YET.
+  Restating them here instead would drift from the gate — the shape of the defect card#9203 filed.
 EXCLUDED
 
 # ── the one home for what a green does NOT establish ───────────────────────────────────────────
@@ -816,10 +820,11 @@ cat <<'LIMITS'
   THE GAP IS A RECORDED DECISION, NOT AN OVERSIGHT (card#9637). Closing it by widening this
     derivation was tried and declined: every widening is one more pattern over the same source text,
     and the shape nobody has thought of escapes the wider pattern exactly as it escaped the narrow
-    one. What makes the population total is card#9644's seam in bin/deploy.sh — its target-tree
-    gates exposed as callable units, so the reads are ENUMERATED by the deploy instead of
-    pattern-matched out of its source. Until that lands, a second guard over the same question is
-    welcome here: this check does not claim to make one unnecessary.
+    one. What would make the population total is the reads being ENUMERATED by the deploy instead
+    of pattern-matched out of its source. card#9644's seam is the half of that which has landed —
+    the target-tree gates are callable units now — and THE ENUMERATION IS NOT BUILT: every read
+    above is still derived from source text, so nothing in this block has narrowed. A second guard
+    over the same question is welcome here: this check does not claim to make one unnecessary.
 LIMITS
 
 if [ "${#missing[@]}" -gt 0 ]; then
