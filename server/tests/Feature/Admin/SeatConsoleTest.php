@@ -7,6 +7,7 @@ use App\Fleet\SeatRetirementOutcome;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Feed\OutboxWire;
+use Tests\Feature\Fold\ConcurrencyError;
 use Tests\Feature\Sweep\SweepTestCase;
 
 /**
@@ -111,6 +112,61 @@ class SeatConsoleTest extends SweepTestCase
         // page that rendered no forms at all would pass assertion 2.
         $page->assertSee(route('admin.agents.retire', [self::INSTALL, 'aimla-impl']), escape: false);
         $this->assertNull(DB::table('seats')->where('id', $liveRef)->value('retired_at'));
+    }
+
+    /**
+     * A seat another writer kept busy past retirement's bounded wait and retries answers the
+     * operator on the page — card#9466 — and not with a 500.
+     *
+     * The act runs here at transaction level 2 (`RefreshDatabase`'s transaction, then
+     * `Outbox::transaction()`'s), where Laravel rethrows a concurrency error at once as a
+     * `DeadlockException` without retrying. So the seam needs only to throw an error carrying the
+     * `1205` message the detector matches on; no second connection is involved.
+     */
+    public function test_a_busy_seat_refuses_the_retirement_on_the_page_rather_than_a_500(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        SeatRetirement::$beforeRetire = fn () => throw ConcurrencyError::raised(1205);
+
+        try {
+            $this->actingAs($this->operator())
+                ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+                    'reason' => 'the box was decommissioned',
+                ])
+                ->assertRedirect(route('admin.agents.index'))
+                ->assertSessionHasErrors('retire');
+        } finally {
+            SeatRetirement::$beforeRetire = null;
+        }
+
+        $this->assertNull($this->seatRow()->retired_at, 'nothing was changed');
+    }
+
+    /**
+     * The busy refusal is for a concurrency error and nothing else — card#9466. Any other error the
+     * act throws is not "busy, try again": it is a defect, and the route answers it with a 500 rather
+     * than telling the operator a retry would help.
+     */
+    public function test_an_error_that_is_not_a_concurrency_error_is_a_500_and_not_a_busy_refusal(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        SeatRetirement::$beforeRetire = fn () => throw new \RuntimeException('a defect in the act');
+
+        try {
+            $this->actingAs($this->operator())
+                ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+                    'reason' => 'the box was decommissioned',
+                ])
+                ->assertStatus(500);
+        } finally {
+            SeatRetirement::$beforeRetire = null;
+        }
+
+        $this->assertNull($this->seatRow()->retired_at, 'nothing was changed');
     }
 
     public function test_retiring_through_the_console_performs_the_whole_act(): void

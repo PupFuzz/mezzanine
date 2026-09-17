@@ -62,7 +62,7 @@ return new class extends Migration
             Ddl::ascii($table->char('seq_epoch', 26));
             $table->dateTime('sent_at', 3);                 // seat clock
             $table->dateTime('received_at', 3);             // server clock
-            $table->bigInteger('clock_skew_ms');            // received_at - sent_at (D1 § 10.1)
+            $table->bigInteger('clock_skew_ms');            // request arrival - sent_at (D1 § 10.1)
             $table->unsignedSmallInteger('event_count');
             $table->unsignedSmallInteger('accepted');
             $table->unsignedSmallInteger('duplicates');

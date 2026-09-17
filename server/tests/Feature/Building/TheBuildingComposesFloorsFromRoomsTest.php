@@ -3,7 +3,6 @@
 namespace Tests\Feature\Building;
 
 use App\Building\Building;
-use App\Building\BuildingLayout;
 use Tests\TestCase;
 
 /**
@@ -99,7 +98,7 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         foreach (self::cases() as $case) {
             $this->assertSame(
                 $case['floors'],
-                Building::compose(BuildingLayout::parse(['floors' => $case['layout']]), $case['installs']),
+                Building::compose(LayoutFixture::read(['floors' => $case['layout']]), $case['installs']),
                 'fixture case: '.$case['name'],
             );
         }
@@ -112,8 +111,8 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         // point (the per-install channel it once named is retired, card#9287) —
         // is carried through untouched whether the room is placed or not, and the composed floor
         // is the ONLY thing that differs between the two arms below.
-        $placed = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]]), ['sola', 'zeta']);
-        $unplaced = Building::compose(BuildingLayout::parse(['floors' => []]), ['sola', 'zeta']);
+        $placed = Building::compose(LayoutFixture::read(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]]), ['sola', 'zeta']);
+        $unplaced = Building::compose(LayoutFixture::read(['floors' => []]), ['sola', 'zeta']);
 
         $rooms = fn (array $b) => array_merge(...array_map(
             fn ($f) => array_column($f['rooms'], 'install'),
@@ -137,9 +136,9 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         $rooms = ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']];
         $installs = ['sola', 'zeta', 'aimla'];
 
-        $plain = Building::compose(BuildingLayout::parse(['floors' => [['rooms' => $rooms]]]), $installs);
+        $plain = Building::compose(LayoutFixture::read(['floors' => [['rooms' => $rooms]]]), $installs);
         $named = Building::compose(
-            BuildingLayout::parse(['floors' => [['label' => 'the solos', 'rooms' => $rooms]]]),
+            LayoutFixture::read(['floors' => [['label' => 'the solos', 'rooms' => $rooms]]]),
             $installs,
         );
 

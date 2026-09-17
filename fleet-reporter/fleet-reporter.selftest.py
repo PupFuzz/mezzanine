@@ -43,6 +43,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import ssl
 import statistics
 import subprocess
@@ -148,6 +149,11 @@ class Seat:
         e = dict(os.environ)
         e["FLEET_REPORTER_CONFIG"] = str(self.cfg_path)
         e.pop("FLEET_REPORTER_NOW_MS", None)
+        # THE MACHINE RUNNING THIS SUITE IS NOT A SEAT UNDER TEST. A developer's shell or an agent
+        # seat exports `$COORD_CONFIG`, and D1 § 3.1 makes a set variable the whole of the roster
+        # resolution — so an inherited one would put THIS box's coordination roster into every
+        # assertion. § 19 passes the variable explicitly where a case needs it.
+        e.pop("COORD_CONFIG", None)
         e.update({k: str(v) for k, v in extra.items()})
         # THE FREEZE BELONGS HERE, at the one place that knows the invocation's clock, and it is
         # re-applied PER `env()` CALL rather than once per seat. Once per seat also expires: a
@@ -173,8 +179,9 @@ class Seat:
         # generated worker source, which could only re-`utime` on WALL time — the very thing this
         # change exists to stop doing — and would silently be wrong the day a burst is given a
         # pinned clock. A duplicated primitive that cannot see the clock its hooks read buys a
-        # margin nothing is spending. § 17 is the guard instead: if the window is ever crossed,
-        # the sweep fails the run and names the leaked daemon rather than leaving it silent.
+        # margin nothing is spending. The suite's last block, the leaked-flusher sweep, is the guard
+        # instead: if the window is ever crossed, the sweep fails the run and names the leaked
+        # daemon rather than leaving it silent.
         if freeze:
             self.freeze_flusher(e.get("FLEET_REPORTER_NOW_MS"))
         return e
@@ -259,8 +266,8 @@ def flush(seat: Seat, *, reporter: Path = REPORTER, **envx):
         seat.freeze_flusher()
 
 
-def selftest(seat: Seat | None = None, *, reporter: Path = REPORTER):
-    env = seat.env() if seat else dict(os.environ)
+def selftest(seat: Seat | None = None, *, reporter: Path = REPORTER, **envx):
+    env = seat.env(**envx) if seat else dict(os.environ)
     if not seat:
         env["FLEET_REPORTER_CONFIG"] = "/nonexistent/config.json"
     r = subprocess.run(["node", str(reporter), "selftest"], capture_output=True, text=True,
@@ -365,6 +372,24 @@ class Ingest:
         self.batches: list[dict] = []
         self.status = 202
         self.body_override: dict | None = None
+        # Seconds a POST is HELD after it is recorded and before it is answered: a slow ingest,
+        # which is the only condition under which a flusher's pass can outlast its own lock.
+        self.delay_s = 0.0
+        # The same hold for the health probe (GET), counted as it arrives: the flusher's other await.
+        self.gets = 0
+        self.get_delay_s = 0.0
+        # What the health surface answers: the accepted schema-version set, and the status. A set
+        # without this reporter's version is an ingest that REFUSES it; a non-200 is an answer
+        # that carries no set at all (a bad token, an outage page) — card#9373 tells those apart.
+        self.accepted: list = [1]
+        self.get_status = 200
+        # A per-GET script, consumed in arrival order before the defaults above apply: an entry may
+        # set `hold` (seconds) and `accepted`. It lets one flusher's successive probes answer
+        # differently without the suite racing that flusher to change a default between two of them.
+        # A held answer closes its connection: the reporter has usually abandoned it by then. An entry's
+        # `run` (a callable) runs when that GET arrives, before it is answered: it changes the seat's
+        # files between the probe and the batch POST of one flusher pass.
+        self.get_script: list[dict] = []
         self.key = workdir / "stub.key"
         self.crt = workdir / "stub.crt"
         subprocess.run(
@@ -389,14 +414,29 @@ class Ingest:
                 return raw
 
             def do_GET(self):
-                body = json.dumps({"accepted_schema_versions": [1],
-                                   "server_time": "2026-08-24T00:00:00.000Z",
-                                   "min_reporter_version": "0.1.0"}).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                outer.gets += 1
+                step = outer.get_script.pop(0) if outer.get_script else {}
+                if step.get("run"):
+                    step["run"]()
+                hold = step.get("hold", outer.get_delay_s)
+                if hold:
+                    time.sleep(hold)
+                if outer.get_status == 200:
+                    body = json.dumps({"accepted_schema_versions": step.get("accepted", outer.accepted),
+                                       "server_time": "2026-08-24T00:00:00.000Z",
+                                       "min_reporter_version": "0.1.0"}).encode()
+                else:
+                    body = json.dumps({"error": "unauthorized"}).encode()
+                try:
+                    self.send_response(outer.get_status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except OSError:   # the probe's deadline passed and the reporter dropped the socket
+                    pass
+                if step.get("hold"):
+                    self.close_connection = True
 
             def do_POST(self):
                 raw = self._read()
@@ -406,6 +446,8 @@ class Ingest:
                     batch = {"_unparseable": raw[:200].decode("utf-8", "replace")}
                 outer.batches.append({"batch": batch, "auth": self.headers.get("Authorization", ""),
                                       "ctype": self.headers.get("Content-Type", "")})
+                if outer.delay_s:
+                    time.sleep(outer.delay_s)
                 st = outer.status
                 body = json.dumps(outer.body_override or {
                     "batch_id": batch.get("batch_id"), "accepted": len(batch.get("events", [])),
@@ -442,6 +484,7 @@ TMP = tmpdir("fr-suite-")
 INGEST = Ingest(TMP)
 CA = str(INGEST.crt)
 SID = "11111111-2222-4333-8444-000000000000"
+DEAD = "https://127.0.0.1:9/api/ingest/events"          # discard port: refused locally, no DNS, no WAN
 
 
 def seat(name: str, **kw) -> Seat:
@@ -548,20 +591,271 @@ def pre(tool="Bash", ti=None, tuid="toolu_1", **extra):
 
 print("== 1. The `selftest` subcommand — the checks of § 6.14's member table this build implements, and each one's RED ==")
 s1 = seat("selftest-seat")
+gets_before = INGEST.gets
 r, rep = selftest(s1)
+gets_by_selftest = INGEST.gets - gets_before
 eq("the checks this build declares are exactly the reported set",
    ["config_readable", "harness_payload_keys", "predicate_discrimination",
-    "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
+    "protocol_agent_name_in_roster", "sanitizer_fixtures", "schema_version_accepted", "tls_verify"],
    sorted(rep.get("checks", {}).keys()))
 eq("config_readable passes on a valid config", "pass", rep["checks"]["config_readable"])
 eq("sanitizer_fixtures passes", "pass", rep["checks"]["sanitizer_fixtures"])
 eq("harness_payload_keys passes", "pass", rep["checks"]["harness_payload_keys"])
 eq("predicate_discrimination passes", "pass", rep["checks"]["predicate_discrimination"])
-# The offline posture is REPORTED as a fail with its reason, never assumed to pass. D1 § 6.14
-# makes these two network checks; a suite with no ingest reachable at selftest time must not
-# quietly call them green.
-eq("schema_version_accepted is honestly `fail` when unprobed", "fail",
+
+# THE TWO NETWORK CHECKS ARE MEASURED BY THE ONE-SHOT (card#9373). `selftest` is the install-time
+# verification, and it used to leave `schema_version_accepted` false on every seat because only the
+# flusher ever asked the ingest — so a healthy install exited 1, and an operator either concluded the
+# install was broken or learned to ignore the command. The one-shot now runs the flusher's own health
+# probe (`refreshHealth`: same TLS path, same `ca_file`, same deadline), and D1 § 6.14 states what a
+# check it could NOT measure reports and exits: `not_measured`, exit 2 — neither a pass nor a fail.
+eq("GREEN: on a healthy config the one-shot asks the ingest's health surface, once", 1, gets_by_selftest)
+eq("  … schema_version_accepted passes against an ingest that accepts this reporter's version", "pass",
    rep["checks"]["schema_version_accepted"])
+eq("  … tls_verify passes, the ingest reached with verification on through the seat's ca_file", "pass",
+   rep["checks"]["tls_verify"])
+eq("  … and the command exits 0 — a correctly configured seat reads green", 0, r.returncode)
+eq("  … with the set it compared against in the detail", [1],
+   rep["detail"]["schema_version_accepted"].get("accepted_schema_versions"))
+
+# (b) An ingest that answers and does NOT list this reporter's version: measured, and a fail.
+INGEST.accepted = [999]
+try:
+    r_refuse, rep_refuse = selftest(s1)
+finally:
+    INGEST.accepted = [1]
+eq("RED (probed and refused): an ingest whose accepted set lacks this version fails "
+   "schema_version_accepted", "fail", rep_refuse["checks"]["schema_version_accepted"])
+eq("  … tls_verify still passes, because the host answered with verification on", "pass",
+   rep_refuse["checks"]["tls_verify"])
+eq("  … and the command exits 1", 1, r_refuse.returncode)
+
+# (c) An ingest that cannot be reached: nothing was measured, and the report says so by name.
+s_dead = seat("selftest-unreachable", ingest=DEAD)
+r_dead, rep_dead = selftest(s_dead)
+eq("NOT MEASURED: with the ingest unreachable, schema_version_accepted is `not_measured`, never "
+   "`fail`", "not_measured", rep_dead["checks"]["schema_version_accepted"])
+eq("  … and tls_verify is `not_measured` too — no TCP connection, so no TLS verdict", "not_measured",
+   rep_dead["checks"]["tls_verify"])
+eq("  … and the command exits 2, which § 6.14 reserves for no fail and something unmeasured", 2,
+   r_dead.returncode)
+eq("  … naming why the probe measured nothing", True,
+   bool(rep_dead["detail"]["tls_verify"].get("probe_error")))
+
+# (d) An answer with no set in it — a refused token, an outage page — is not a refusal of the version.
+INGEST.get_status = 401
+try:
+    r_401, rep_401 = selftest(s1)
+finally:
+    INGEST.get_status = 200
+eq("NOT MEASURED: a 401 from the health surface leaves schema_version_accepted `not_measured` — the "
+   "error body carries no accepted set, so it cannot refuse the version", "not_measured",
+   rep_401["checks"]["schema_version_accepted"])
+eq("  … with the status in the detail", 401, rep_401["detail"]["schema_version_accepted"].get("http_status"))
+eq("  … and exits 2", 2, r_401.returncode)
+
+# (e) A host reached whose certificate does not verify: THAT is a measured tls_verify fail.
+s_noca = seat("selftest-no-ca", ca=None)
+r_noca, rep_noca = selftest(s_noca)
+eq("RED (probed and refused): without the ca_file the stub's self-signed certificate fails "
+   "verification, and tls_verify is `fail`", "fail", rep_noca["checks"]["tls_verify"])
+eq("  … while schema_version_accepted is `not_measured`, since no answer arrived", "not_measured",
+   rep_noca["checks"]["schema_version_accepted"])
+eq("  … and the command exits 1", 1, r_noca.returncode)
+
+# RED — the defect verbatim, planted on a copy: the one-shot that never asks the ingest.
+p_noprobe = plant(("  if (results.config_readable) {\n    const probe = await refreshHealth(",
+                   "  if (false) {\n    const probe = await refreshHealth("))
+r_np, rep_np = selftest(s1, reporter=p_noprobe)
+eq("RED: a one-shot that never probes cannot pass a healthy seat — schema_version_accepted is "
+   "not_measured and the exit is non-zero", ("not_measured", True),
+   (rep_np["checks"]["schema_version_accepted"], r_np.returncode != 0))
+redgreen("the one-shot selftest measures the ingest, and says when it could not (D1 § 6.14, card#9373)",
+         f'no probe in the one-shot -> schema_version_accepted="{rep_np["checks"]["schema_version_accepted"]}", '
+         f'rc={r_np.returncode} on a healthy seat (before card#9373 the same seat read "fail", rc=1)',
+         f'probe via refreshHealth -> healthy: {rep["checks"]["schema_version_accepted"]}/rc={r.returncode}; '
+         f'set lacks v1: {rep_refuse["checks"]["schema_version_accepted"]}/rc={r_refuse.returncode}; '
+         f'unreachable: {rep_dead["checks"]["schema_version_accepted"]}/rc={r_dead.returncode}; '
+         f'401: {rep_401["checks"]["schema_version_accepted"]}/rc={r_401.returncode}; '
+         f'no ca_file: tls_verify={rep_noca["checks"]["tls_verify"]}/rc={r_noca.returncode}')
+
+# (f) THE FLUSHER KEEPS ITS LAST MEASUREMENT, AND RE-PROBES SOONER WHEN A PROBE MEASURED NOTHING. The
+# heartbeat's `selftest` object carries two values, so a check the flusher sends as `fail` is read on
+# the seat as a failure (the ingest folds it into `selftest_failed`). A probe that times out, whose
+# kept-alive socket drops, or that gets an answer carrying no set has falsified nothing: the flusher
+# keeps the value its last probe MEASURED and re-probes after `K.HEARTBEAT_MS` instead of `K.HEALTH_MS`.
+# A probe that did measure overwrites, `false` included.
+#
+# THE TIMING IS SCALED ON A COPY, AND ONLY THE TIMING. The real cadence puts the second probe
+# `K.HEALTH_MS` after the first, which no suite can wait for. The copy rewrites the `K` intervals
+# the scenario runs on (FAST_K's keys) and no line of logic; every RED below is planted on top of
+# the same scaled copy.
+#
+# THE SCALE KEEPS PRODUCTION'S ORDER, FLUSH_MS < REQUEST_MS < HEARTBEAT_MS < HEALTH_MS, because the
+# retry is only told apart by the gaps between those intervals. The next probe after one that measured
+# nothing begins, counted from when that probe began:
+#   - on EVERY pass (the defect): about REQUEST_MS + FLUSH_MS later, the deadline plus one sleep;
+#   - on K.HEARTBEAT_MS (the fix): no sooner than HEARTBEAT_MS later, and about one pass after it;
+#   - on K.HEALTH_MS (round 1): no sooner than HEALTH_MS later.
+# A scale with REQUEST_MS above HEARTBEAT_MS (round 2's) makes the first two the same number: the pass
+# that waits out the deadline has already overrun the heartbeat interval, and an every-pass flusher
+# passed every assertion here. So the order is asserted below, on the copy AND on the reporter itself.
+FAST_K = {"FLUSH_MS": 25, "REQUEST_MS": 300, "HEARTBEAT_MS": 1200, "HEALTH_MS": 4800}
+K_ORDER = ["FLUSH_MS", "REQUEST_MS", "HEARTBEAT_MS", "HEALTH_MS"]
+POLL_S = 0.01                                      # drive_probes' poll of the stub's GET count
+HOLD_PAST_DEADLINE_S = 2 * FAST_K["REQUEST_MS"] / 1000   # probes 2 and 3: answered only after the deadline
+# Probe 4 answers after a third of the deadline: many POLL_S polls see it ARRIVE before it answers, so
+# the heartbeat split is taken before the heartbeat that follows the answer unless the suite stalls for
+# the whole hold; and it still answers inside the deadline, so it measures.
+REFUSAL_HOLD_S = FAST_K["REQUEST_MS"] / 3000
+# LOWER BOUND on the retry. The flusher counts from `atMs`, taken at the start of the pass; the suite
+# times ARRIVALS at the stub, each noticed by a POLL_S poll. An arrival trails its pass's `atMs` by
+# that pass's pre-probe work (index fold, snapshot) and a fresh TLS handshake, and those lags differ
+# between two passes. Measured for card#9373 round 3, the retry landed up to a few tens of milliseconds
+# past HEARTBEAT_MS on an idle machine, and as far as a few tens UNDER it with the suite and the flusher
+# pinned to one CPU. RETRY_SLACK_S is sized for a loaded CI runner stalling one of those lags or one
+# poll, and is asserted to stay under half the gap to the every-pass retry, so the slack can never
+# admit the defect the bound exists to catch.
+RETRY_SLACK_S = 0.25
+RETRY_AT_LEAST_S = FAST_K["HEARTBEAT_MS"] / 1000 - RETRY_SLACK_S
+EVERY_PASS_RETRY_S = (FAST_K["REQUEST_MS"] + FAST_K["FLUSH_MS"]) / 1000
+RETRY_WITHIN_S = FAST_K["HEALTH_MS"] / 2000        # UPPER BOUND: half the full cadence, a retry and not the next round
+WINDOW_S = 0.9 * FAST_K["HEALTH_MS"] / 1000        # past this a fixed-cadence flusher could probe again
+
+_prod_src = REPORTER.read_text(encoding="utf-8")
+PROD_K = {k: int(re.search(rf"\b{k}: (\d+),", _prod_src).group(1)) for k in K_ORDER}
+eq(f"precondition: the reporter's own intervals are in the order the retry bounds rely on "
+   f"({' < '.join(K_ORDER)}; {PROD_K})", True,
+   all(PROD_K[a] < PROD_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
+eq(f"precondition: the scaled copy keeps that order ({FAST_K})", True,
+   all(FAST_K[a] < FAST_K[b] for a, b in zip(K_ORDER, K_ORDER[1:])))
+eq(f"precondition: the lower bound ({RETRY_AT_LEAST_S:.2f} s) sits above an every-pass retry "
+   f"(~{EVERY_PASS_RETRY_S:.3f} s) by more than twice the slack", True,
+   RETRY_AT_LEAST_S - EVERY_PASS_RETRY_S > 2 * RETRY_SLACK_S)
+eq(f"precondition: the upper bound ({RETRY_WITHIN_S:.2f} s) sits above a heartbeat-interval retry plus one "
+   f"pass (~{(FAST_K['HEARTBEAT_MS'] + FAST_K['FLUSH_MS']) / 1000:.3f} s) by more than twice the slack, "
+   f"and inside the window", True,
+   RETRY_WITHIN_S - (FAST_K["HEARTBEAT_MS"] + FAST_K["FLUSH_MS"]) / 1000 > 2 * RETRY_SLACK_S
+   and RETRY_WITHIN_S < WINDOW_S)
+
+
+def fast_flusher(*defects) -> Path:
+    return plant_src(*[(rf"\b{k}: \d+,", f"{k}: {v},") for k, v in FAST_K.items()],
+                     *[(re.escape(old), new) for old, new in defects])
+
+
+def heartbeat_selftests(s: Seat) -> list[dict]:
+    """The `selftest` object of every heartbeat spooled so far — complete lines only, because the
+    flusher under observation may be mid-append."""
+    out = []
+    for f in sorted(s.spool.glob("*.jsonl")):
+        raw = f.read_bytes()
+        for line in raw[: raw.rfind(b"\n") + 1].splitlines():
+            e = json.loads(line)["e"] if line.strip() else {}
+            if e.get("kind") == "reporter.heartbeat":
+                out.append(e["data"]["selftest"])
+    return out
+
+
+def drive_probes(name: str, reporter: Path) -> dict:
+    """A long-lived flusher on an `enabled: false` seat (no drain, so the probe is its only request)
+    against scripted health answers: probe 1 accepts this version; probes 2 and 3 are held past the
+    probe deadline; probe 4 answers with a set that lacks the version. Heartbeats are split at the
+    moment a probe ARRIVES at the stub. The flusher is single-threaded and awaits each probe, so a
+    heartbeat spooled after probe k arrived was spooled after probe k-1 resolved."""
+    s = seat(name, enabled=False)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    INGEST.gets = 0
+    INGEST.get_script = [{}, {"hold": HOLD_PAST_DEADLINE_S}, {"hold": HOLD_PAST_DEADLINE_S},
+                         {"accepted": [999], "hold": REFUSAL_HOLD_S}]
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False),
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    arrived: dict[int, float] = {}
+    split: dict[int, int] = {}
+    try:
+        started = time.time()
+        while p.poll() is None and time.time() - started < 30:
+            for k in (2, 3, 4):
+                if k not in arrived and INGEST.gets >= k:
+                    arrived[k] = time.time()
+                    split[k] = len(heartbeat_selftests(s))
+            if 4 in arrived and len(heartbeat_selftests(s)) > split[4]:
+                break
+            if 2 in arrived and 4 not in arrived and time.time() - arrived[2] > WINDOW_S:
+                break
+            time.sleep(POLL_S)
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        INGEST.get_script = []
+        s.freeze_flusher()
+    hbs = heartbeat_selftests(s)
+    return {"before": hbs[: split.get(2, len(hbs))],
+            "after_timeouts": hbs[split.get(2, len(hbs)): split.get(4, len(hbs))],
+            "after_refusal": hbs[split[4]:] if 4 in arrived else [],
+            "retry_s": round(arrived[3] - arrived[2], 2) if 3 in arrived and 2 in arrived else None}
+
+
+def pair(st: dict) -> tuple:
+    return (st.get("tls_verify"), st.get("schema_version_accepted"))
+
+
+g_f = drive_probes("flusher-keeps-last", fast_flusher())
+eq("precondition: the flusher's first probe measured both network checks, and a heartbeat says so",
+   ("pass", "pass"), pair(g_f["before"][-1]) if g_f["before"] else None)
+eq("GREEN: after probes that timed out, every heartbeat still reports the last measured values — "
+   "no false `schema_version_accepted` fail", (True, {("pass", "pass")}),
+   (bool(g_f["after_timeouts"]), {pair(x) for x in g_f["after_timeouts"]}))
+eq(f"GREEN: a probe that measured nothing re-probes no sooner than K.HEARTBEAT_MS (at least "
+   f"{RETRY_AT_LEAST_S:.2f} s at the scaled {FAST_K['HEARTBEAT_MS']} ms)", True,
+   g_f["retry_s"] is not None and g_f["retry_s"] >= RETRY_AT_LEAST_S)
+eq(f"GREEN: … and well inside the K.HEALTH_MS cadence (under {RETRY_WITHIN_S} s at the scaled "
+   f"{FAST_K['HEALTH_MS']} ms)", True,
+   g_f["retry_s"] is not None and g_f["retry_s"] < RETRY_WITHIN_S)
+eq("GREEN: a later probe that DID measure overwrites — an answer lacking this version turns the kept "
+   "pass into a fail", ("pass", "fail"), pair(g_f["after_refusal"][-1]) if g_f["after_refusal"] else None)
+
+# RED 1 — the defect verbatim, as #143 round 1 shipped it: every probe's result overwrites, null
+# included, and the cadence is K.HEALTH_MS whatever the probe measured.
+r_f = drive_probes("flusher-keeps-last-red-overwrite", fast_flusher(
+    ("          if (checks[c] === null) unmeasured = true;\n          else selftest[c] = checks[c];",
+     "          selftest[c] = checks[c];"),
+    ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = K.HEALTH_MS;")))
+eq("RED: a flusher that lets a timed-out probe overwrite heartbeats a false fail after it",
+   True, ("fail", "fail") in {pair(x) for x in r_f["after_timeouts"]})
+eq("  … and, on a fixed K.HEALTH_MS cadence, does not re-probe inside half of it", True,
+   r_f["retry_s"] is None or r_f["retry_s"] >= RETRY_WITHIN_S)
+
+# RED 2 — keep-last read as keep-FIRST: a measured value is never replaced, so a refusal that arrives
+# after a pass is hidden behind it.
+r_k = drive_probes("flusher-keeps-last-red-keepfirst", fast_flusher(
+    ("else selftest[c] = checks[c];", "else if (selftest[c] === null) selftest[c] = checks[c];")))
+eq("RED: a flusher that never replaces a measured value keeps reporting pass after the ingest "
+   "measurably refuses the version", ("pass", "pass"),
+   pair(r_k["after_refusal"][-1]) if r_k["after_refusal"] else None)
+# RED 3 — a re-probe on EVERY pass while a check is unmeasured, instead of one heartbeat interval on.
+# In production that is a probe on every flush pass, one K.FLUSH_MS sleep (10 s) plus the probe itself,
+# for as long as the ingest does not measure. The heartbeats cannot show it, since a kept value rides
+# the wire either way; only the lower bound can.
+r_e = drive_probes("flusher-keeps-last-red-everypass", fast_flusher(
+    ("healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;", "healthEveryMs = unmeasured ? 0 : K.HEALTH_MS;")))
+eq(f"RED: a flusher that re-probes on every pass while a check is unmeasured fails the lower bound "
+   f"(retry under {RETRY_AT_LEAST_S:.2f} s)", True,
+   r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_AT_LEAST_S)
+eq("  … while its retry sits under the upper bound too, so the lower bound is the assertion that catches it",
+   True, r_e["retry_s"] is not None and r_e["retry_s"] < RETRY_WITHIN_S)
+redgreen("the flusher keeps the last MEASURED network checks and re-probes sooner when a probe measured "
+         "nothing, but no sooner than one heartbeat interval (§ 6.14, card#9373 rounds 2-3; timing scaled on a copy)",
+         f"null overwrites + fixed cadence -> heartbeats after the timed-out probes "
+         f"{sorted({pair(x) for x in r_f['after_timeouts']})}, re-probe after {r_f['retry_s']} s; "
+         f"never replacing a measured value -> heartbeat after a refusing answer "
+         f"{pair(r_k['after_refusal'][-1]) if r_k['after_refusal'] else None}; "
+         f"re-probe on every pass -> re-probe after {r_e['retry_s']} s (lower bound {RETRY_AT_LEAST_S:.2f} s)",
+         f"keep-last + K.HEARTBEAT_MS retry -> before {pair(g_f['before'][-1]) if g_f['before'] else None}, "
+         f"after timeouts {sorted({pair(x) for x in g_f['after_timeouts']})}, re-probe after "
+         f"{g_f['retry_s']} s (bounds [{RETRY_AT_LEAST_S:.2f}, {RETRY_WITHIN_S}) s at {FAST_K}), after a refusal "
+         f"{pair(g_f['after_refusal'][-1]) if g_f['after_refusal'] else None}")
 
 # RED — an http:// ingest_url is REFUSED at install (§ 3.5), not downgraded.
 s_http = seat("http-seat", ingest="http://127.0.0.1:9/api/ingest/events")
@@ -573,15 +867,461 @@ redgreen("transport posture (§ 3.5)",
          f'http:// ingest_url  -> config_readable="fail", errors={rep_http["detail"]["config_readable"]["errors"]}',
          f'https:// ingest_url -> config_readable="{rep["checks"]["config_readable"]}"')
 
+# AN UNREADABLE `ca_file` IS A CONFIG ERROR, NEVER A SILENT FALL-BACK TO THE DEFAULT TRUST STORE
+# (card#9500). `ca` replaces the default store, so a seat with `ca_file` set trusts only that file
+# (§ 3.5). The reporter used to catch the read failure and send with the default store: the seat's
+# trust widened from one pinned CA to every publicly trusted one, and nothing said so. The widening is
+# made observable with NODE_EXTRA_CA_CERTS, which adds the stub's certificate to Node's DEFAULT store —
+# the stand-in for a publicly trusted certificate for the ingest's name. A reporter that falls back
+# therefore DELIVERS to the stub, and one that refuses delivers nothing.
+EXTRA_TRUST = {"NODE_EXTRA_CA_CERTS": CA}
+s_extra = seat("ca-default-store-control", ca=None, enabled=False)
+_, rep_extra = selftest(s_extra, **EXTRA_TRUST)
+eq("precondition: with NODE_EXTRA_CA_CERTS the stub verifies through the default store alone (no ca_file), so "
+   "a fall-back to that store is observable as a delivery", "pass", rep_extra["checks"]["tls_verify"])
+
+
+def seat_log(s: Seat) -> str:
+    d = s.spool / "log"
+    return "".join(f.read_text(encoding="utf-8") for f in sorted(d.glob("*.log"))) if d.exists() else ""
+
+
+# (b) `selftest`, and the flusher's start, on a config whose ca_file the seat must refuse.
+def drive_ca_config(name: str, ca: str, reporter: Path = REPORTER) -> dict:
+    s = seat(name, ca=ca)
+    g0 = INGEST.gets
+    r, rep_ = selftest(s, reporter=reporter, **EXTRA_TRUST)
+    d = dict(path=ca, rc=r.returncode, gets=INGEST.gets - g0,
+             check=rep_.get("checks", {}).get("config_readable"),
+             errors=rep_.get("detail", {}).get("config_readable", {}).get("errors", []))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_start"), reporter=reporter)
+    b0 = len(INGEST.batches)
+    flush(s, reporter=reporter, **EXTRA_TRUST)
+    d.update(posts=len(INGEST.batches) - b0, log=seat_log(s),
+             config_invalid=s.state().get("counters", {}).get("config_invalid", 0))
+    return d
+
+
+def drive_ca_missing(name: str, reporter: Path = REPORTER) -> dict:
+    return drive_ca_config(name, str(TMP / name / "no-such-ca.pem"), reporter)
+
+
+ca_missing = drive_ca_missing("ca-unreadable-selftest")
+eq("an unreadable ca_file fails config_readable in `selftest`", "fail", ca_missing["check"])
+eq("  … and the error names the path and the errno", True,
+   any(ca_missing["path"] in e and "ENOENT" in e for e in ca_missing["errors"]))
+eq("  … the command exits 1, and asks the ingest nothing under a config that failed", (1, 0),
+   (ca_missing["rc"], ca_missing["gets"]))
+eq("a flusher started on it sends nothing, even to an ingest the default store trusts", 0, ca_missing["posts"])
+eq("  … logs the path and the errno, and counts config_invalid", (True, True),
+   (ca_missing["path"] in ca_missing["log"] and "ENOENT" in ca_missing["log"], ca_missing["config_invalid"] > 0))
+
+
+# (a) The request itself: a ca_file readable when the flusher started and gone when the batch is sent —
+# removed while the ingest answers the pass's health probe, which runs before the drain.
+def drive_ca_vanishes(name: str, reporter: Path = REPORTER) -> dict:
+    root = TMP / name
+    root.mkdir(parents=True, exist_ok=True)
+    ca_copy = root / "pinned-ca.pem"
+    shutil.copyfile(CA, ca_copy)
+    s = seat(name, ca=str(ca_copy))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_gone"), reporter=reporter)
+    b0 = len(INGEST.batches)
+    INGEST.get_script = [{"run": ca_copy.unlink}]
+    try:
+        flush(s, reporter=reporter, **EXTRA_TRUST)
+    finally:
+        INGEST.get_script = []
+    counters = s.state().get("counters", {})
+    d = dict(path=str(ca_copy), posts=len(INGEST.batches) - b0, log=seat_log(s), removed=not ca_copy.exists(),
+             config_invalid=counters.get("config_invalid", 0), retried=counters.get("batches_retried", 0),
+             rejected=counters.get("batches_rejected", 0))
+    # The refusal is the file's: restored, the same seat delivers the event it kept.
+    shutil.copyfile(CA, ca_copy)
+    b1 = len(INGEST.batches)
+    flush(s, reporter=reporter, **EXTRA_TRUST)
+    d["recovered"] = any(e.get("kind") == "tool.start" for b in INGEST.batches[b1:] for e in b["batch"].get("events", []))
+    return d
+
+
+ca_gone = drive_ca_vanishes("ca-vanishes")
+eq("precondition: the pinned ca_file was removed during the pass's health probe", True, ca_gone["removed"])
+eq("a batch request whose ca_file cannot be read is refused — nothing reaches an ingest the default store "
+   "trusts", 0, ca_gone["posts"])
+eq("  … the seat's log names the path and the errno", True,
+   ca_gone["path"] in ca_gone["log"] and "ENOENT" in ca_gone["log"])
+eq("  … it is a config failure: config_invalid counted, never a retryable batch and never a rejected one",
+   (True, 0, 0), (ca_gone["config_invalid"] > 0, ca_gone["retried"], ca_gone["rejected"]))
+eq("  … and the event is kept: with the file restored, the next pass delivers it", True, ca_gone["recovered"])
+
+
+# (d) A flusher STARTED while its ca_file is unreadable — a delete-and-recreate rotation, a mount that is
+# not up yet — recovers the way (a)'s does, with no restart. The file is the one config error a running
+# flusher can outlive, because what changes is the file and not the config the flusher loaded: each pass
+# re-reads it, and once it is readable the same process probes, drains and heartbeats `config_readable`
+# `pass`. Refusing it at start and never looking again left a flusher that renewed its lock, so nothing
+# replaced it, and sent nothing until an operator restarted it. Driven on the timing-scaled copy (§ 1's
+# FAST_K) so the passes before and after the file appears take milliseconds, not K.FLUSH_MS each.
+CA_APPEARS_PASSES = 20                                  # passes run on the missing file before it is created
+CA_APPEARS_WITHIN_S = 10.0                              # the bound on the recovery; met in well under a second
+
+
+def drive_ca_appears(name: str, reporter: Path) -> dict:
+    root = TMP / name
+    root.mkdir(parents=True, exist_ok=True)
+    ca_later = root / "pinned-ca.pem"
+    s = seat(name, ca=str(ca_later))
+    hook(s, "PreToolUse", pre(tuid="toolu_ca_appears"), reporter=reporter)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    b0, g0 = len(INGEST.batches), INGEST.gets
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **EXTRA_TRUST), cwd=str(HERE),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    d: dict = {"pid": p.pid, "path": str(ca_later)}
+    try:
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < CA_APPEARS_WITHIN_S and "config invalid" not in seat_log(s):
+            time.sleep(0.02)
+        time.sleep(CA_APPEARS_PASSES * FAST_K["FLUSH_MS"] / 1000)
+        d.update(refused_at_start="config invalid" in seat_log(s) and "ENOENT" in seat_log(s),
+                 posts_before=len(INGEST.batches) - b0, gets_before=INGEST.gets - g0)
+        shutil.copyfile(CA, ca_later)
+        t1, b1 = time.time(), len(INGEST.batches)
+
+        def events_since() -> list[dict]:
+            return [e for b in INGEST.batches[b1:] for e in b["batch"].get("events", [])]
+
+        while p.poll() is None and time.time() - t1 < CA_APPEARS_WITHIN_S:
+            ev = events_since()
+            if any(e.get("kind") == "tool.start" for e in ev) and any(
+                    e.get("kind") == "reporter.heartbeat" and e["data"]["selftest"].get("config_readable") == "pass"
+                    for e in ev):
+                break
+            time.sleep(0.02)
+        ev = events_since()
+        d.update(alive=p.poll() is None, owner_pid=s.state().get("owner_pid"),
+                 delivered=any(e.get("kind") == "tool.start" for e in ev),
+                 heartbeat_readable=[e["data"]["selftest"].get("config_readable") for e in ev
+                                     if e.get("kind") == "reporter.heartbeat"],
+                 recovery_s=round(time.time() - t1, 2))
+    finally:
+        if p.poll() is None:
+            p.kill()
+        p.wait()
+        s.freeze_flusher()
+    return d
+
+
+ca_appears = drive_ca_appears("ca-appears", fast_flusher())
+eq("a flusher started on a missing ca_file refuses the config at start, and sends and probes nothing while "
+   "the file is missing", (True, 0, 0), (ca_appears["refused_at_start"], ca_appears["posts_before"], ca_appears["gets_before"]))
+eq(f"  … once the file is created, the SAME flusher delivers the spooled event within {CA_APPEARS_WITHIN_S} s, "
+   "with no restart", (True, True, ca_appears["pid"]),
+   (ca_appears["alive"], ca_appears["delivered"], ca_appears["owner_pid"]))
+eq("  … and a heartbeat it sends after that carries config_readable `pass`", True,
+   "pass" in ca_appears["heartbeat_readable"])
+# RED — the flusher that refuses the file at start and never looks again (the defect verbatim, planted on the
+# scaled copy): the file appears and nothing is delivered.
+red_appears = drive_ca_appears("ca-appears-red", fast_flusher(("      if (caPending && readCaFile(config).error === null) {",
+                                                               "      if (false) {")))
+eq("RED: a flusher that checks ca_file only at start is still alive and delivers nothing after the file appears",
+   (True, True, False), (red_appears["refused_at_start"], red_appears["alive"], red_appears["delivered"]))
+redgreen("a flusher started on an unreadable ca_file resumes once the file is readable, with no restart (§ 3.5, card#9500)",
+         f"checked only at start -> refused at start {red_appears['refused_at_start']}, file created, "
+         f"{CA_APPEARS_WITHIN_S} s later alive {red_appears['alive']}, delivered {red_appears['delivered']}, "
+         f"heartbeat config_readable {red_appears['heartbeat_readable']}",
+         f"re-checked each pass -> refused at start {ca_appears['refused_at_start']} (posts {ca_appears['posts_before']}, "
+         f"probes {ca_appears['gets_before']} while missing), file created, same pid {ca_appears['owner_pid'] == ca_appears['pid']}, "
+         f"delivered {ca_appears['delivered']} in {ca_appears['recovery_s']} s, heartbeat config_readable "
+         f"{ca_appears['heartbeat_readable']}")
+
+# (c) A `ca_file` that is a string but not an absolute path is the same config error: § 3.1 types the
+# field "absolute path or `null`", and only `null` or an absent key leaves it unset. The empty string used
+# to count as unset, so the seat trusted the whole default store. A relative path was read against the
+# process's working directory, which is not the config's to choose: a flusher inherits it from whatever
+# starts it, the agent's project directory through a hook or the account's home under cron. Both legs run where a fall-back to the default store, or
+# a read of the relative path, shows up as a delivery: the relative path names the stub's own
+# certificate from the suite's working directory.
+def ca_not_absolute_errors(d: dict) -> bool:
+    return any("ca_file must be an absolute path" in e for e in d["errors"])
+
+
+ca_empty = drive_ca_config("ca-empty-string", "")
+ca_relative = drive_ca_config("ca-relative-path", os.path.relpath(CA, HERE))
+for label, d in (("an empty-string ca_file", ca_empty), (f"a relative ca_file ({ca_relative['path']})", ca_relative)):
+    eq(f"{label} fails config_readable in `selftest`, and the error names the field's rule", ("fail", True),
+       (d["check"], ca_not_absolute_errors(d)))
+    eq("  … the command exits 1, and asks the ingest nothing under a config that failed", (1, 0), (d["rc"], d["gets"]))
+    eq("  … a flusher started on it sends nothing, even to an ingest the default store trusts, and counts "
+       "config_invalid", (0, True), (d["posts"], d["config_invalid"] > 0))
+    eq("  … and its log names the rule", True, "ca_file must be an absolute path" in d["log"])
+
+# RED — each leg against the defect verbatim, planted on a copy: the request that catches the read failure
+# and sends with the default store, and the config check that never reads the file.
+p_ca_fallback = plant(("    if (caError) { out.invalid = caError; done(out.invalid); return; }",
+                       "    if (caError) { /* fall back to the system store, still verifying */ }"))
+red_gone = drive_ca_vanishes("ca-vanishes-red", reporter=p_ca_fallback)
+eq("RED: a request that falls back to the default store delivers the batch to an ingest the pinned ca_file "
+   "never trusted, and its log never names the file", (True, 1, False),
+   (red_gone["removed"], red_gone["posts"], red_gone["path"] in red_gone["log"]))
+p_ca_unchecked = plant(("  if (caError) errors.push(caError);\n", ""))
+red_missing = drive_ca_missing("ca-unreadable-selftest-red", reporter=p_ca_unchecked)
+eq("RED: a config check that never reads ca_file passes config_readable in `selftest`, and its errors name "
+   "nothing", ("pass", False),
+   (red_missing["check"], any(red_missing["path"] in e for e in red_missing["errors"])))
+# RED — the not-absolute legs against the defect verbatim: a `ca_file` check that treats the empty string
+# as unset, and one that reads a relative path against the working directory.
+p_ca_empty_unset = plant(("  if (f === null || f === undefined) return { ca: null, error: null };",
+                          "  if (!f) return { ca: null, error: null };"))
+red_empty = drive_ca_config("ca-empty-string-red", "", reporter=p_ca_empty_unset)
+eq("RED: a check that reads \"\" as unset passes config_readable and delivers through the default store",
+   ("pass", 1), (red_empty["check"], red_empty["posts"]))
+p_ca_relative = plant(("  if (!path.isAbsolute(f)) return { ca: null, error: `ca_file must be an absolute path or null (§ 3.1), not ${JSON.stringify(f)}` };\n", ""))
+red_relative = drive_ca_config("ca-relative-path-red", ca_relative["path"], reporter=p_ca_relative)
+eq("RED: a check that reads a relative ca_file against the working directory passes config_readable and delivers",
+   ("pass", 1), (red_relative["check"], red_relative["posts"]))
+redgreen("a ca_file that is not an absolute path, the empty string included, is a config error (§ 3.1, card#9500)",
+         f"\"\" read as unset -> selftest config_readable={red_empty['check']}, rc={red_empty['rc']}, flusher start "
+         f"delivered {red_empty['posts']} through the default store; relative path read from the working directory -> "
+         f"config_readable={red_relative['check']}, rc={red_relative['rc']}, delivered {red_relative['posts']}",
+         f"\"\" -> config_readable={ca_empty['check']}, rc={ca_empty['rc']}, errors={ca_empty['errors']}, delivered "
+         f"{ca_empty['posts']}, config_invalid {ca_empty['config_invalid']}; relative -> "
+         f"config_readable={ca_relative['check']}, rc={ca_relative['rc']}, errors={ca_relative['errors']}, delivered "
+         f"{ca_relative['posts']}, config_invalid {ca_relative['config_invalid']}")
+redgreen("an unreadable ca_file is a config error, never a fall-back to the default trust store (§ 3.5, card#9500)",
+         f"fall back in the request -> ca_file removed mid-pass: {red_gone['posts']} batch delivered through the "
+         f"default store, path in log {red_gone['path'] in red_gone['log']}; no read in the config check -> "
+         f"selftest config_readable={red_missing['check']}, rc={red_missing['rc']}, flusher start delivered "
+         f"{red_missing['posts']}",
+         f"refused -> ca_file removed mid-pass: {ca_gone['posts']} delivered, config_invalid "
+         f"{ca_gone['config_invalid']}, path and errno logged, delivered after restore {ca_gone['recovered']}; "
+         f"selftest config_readable={ca_missing['check']}, rc={ca_missing['rc']}, errors={ca_missing['errors']}, "
+         f"flusher start delivered {ca_missing['posts']}")
+
 # RED — the TLS posture lint AT-15 asks for, made mechanical.
 p_tls = plant(("({ keepAlive: true, maxSockets: 2 })",
                "({ keepAlive: true, maxSockets: 2, rejectUnauthorized: false })"))
 _, rep_tls = selftest(s1, reporter=p_tls)
 eq("RED: a planted `rejectUnauthorized: false` fails tls_verify", "fail", rep_tls["checks"]["tls_verify"])
+eq("  … even though that copy's probe reached the ingest — reachability never overrides the posture", True,
+   rep_tls["detail"]["tls_verify"].get("reached"))
 eq("  … and names the forbidden spelling", True,
    len(rep_tls["detail"]["tls_verify"]["forbidden_spellings_present"]) == 1)
 eq("GREEN: the real source carries no verification-disabling spelling", [],
    rep["detail"]["tls_verify"]["forbidden_spellings_present"])
+
+
+# (g) THE HEALTH PROBE TAKES THE SEAT'S ROUTE, `proxy_url` INCLUDED (card#9473). The probe used to be a
+# second HTTPS client with no proxy leg, so on a seat whose egress requires `proxy_url` the batches
+# were delivered and the probe went direct and measured nothing: the one-shot read `not_measured`
+# (rc 2) and the heartbeat rode both network checks as `fail`. The probe and the sender now share one
+# request primitive, `ingestRequest`, which owns the route, the TLS options and both § 3.5 deadlines.
+#
+# DIRECT EGRESS TO THE INGEST IS UNREACHABLE HERE BY CONSTRUCTION, NOT BY FILTERING: these seats name
+# `DEAD` (127.0.0.1:9, refused) as their ingest, and the stub proxy stands in for the proxy's own
+# egress by forwarding every CONNECT to the TLS ingest stub. The stub records the target each CONNECT
+# ASKED for, so "went through the proxy" is read off the proxy, and "could not have gone direct" is
+# case (c) above: the same `DEAD` address, no proxy, `not_measured`. The ingest's certificate carries
+# IP:127.0.0.1, so verification through the tunnel is the real check, with the seat's own `ca_file`.
+class ConnectProxy:
+    """A plain-HTTP CONNECT proxy on 127.0.0.1. `answer=False` accepts TCP, reads the CONNECT, and never
+    answers it — the proxy that costs a client its whole connect deadline."""
+
+    def __init__(self, upstream_port: int, *, answer: bool = True):
+        self.upstream_port = upstream_port
+        self.answer = answer
+        self.connects: list[str] = []
+        self.lsock = socket.create_server(("127.0.0.1", 0))
+        self.port = self.lsock.getsockname()[1]
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def _accept(self):
+        while True:
+            try:
+                conn, _ = self.lsock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    @staticmethod
+    def _pump(src, dst):
+        try:
+            while True:
+                chunk = src.recv(65536)
+                if not chunk:
+                    break
+                dst.sendall(chunk)
+        except OSError:
+            pass
+        for s in (src, dst):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def _serve(self, conn):
+        conn.settimeout(60)
+        buf = b""
+        try:
+            while b"\r\n\r\n" not in buf:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    return
+                buf += chunk
+            self.connects.append(buf.split(b"\r\n", 1)[0].decode("ascii", "replace").rsplit(" ", 1)[0])
+            if not self.answer:
+                while conn.recv(4096):   # hold until the client gives up and closes
+                    pass
+                return
+            up = socket.create_connection(("127.0.0.1", self.upstream_port))
+            conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            rest = buf.split(b"\r\n\r\n", 1)[1]
+            if rest:
+                up.sendall(rest)
+            conn.settimeout(None)
+            threading.Thread(target=self._pump, args=(up, conn), daemon=True).start()
+            self._pump(conn, up)
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
+    def stop(self):
+        self.lsock.close()
+
+
+PROXY = ConnectProxy(INGEST.port)
+SILENT_PROXY = ConnectProxy(INGEST.port, answer=False)
+DEAD_TARGET = "CONNECT 127.0.0.1:9"          # what a tunnel to DEAD's host:port asks the proxy for
+K_CONNECT_S = int(re.search(r"\bCONNECT_MS: (\d+),", _prod_src).group(1)) / 1000
+K_REQUEST_S = PROD_K["REQUEST_MS"] / 1000
+# A pass bounded by the connect deadline ends near K_CONNECT_S; one that waits out the request deadline
+# ends past K_REQUEST_S. Their midpoint tells the two apart with node's start-up on either side.
+DEADLINE_SPLIT_S = (K_CONNECT_S + K_REQUEST_S) / 2
+eq(f"precondition: § 3.5's connect deadline sits below its request deadline "
+   f"({K_CONNECT_S} s < {K_REQUEST_S} s), so a proxy that never answers is told apart from a hang",
+   True, K_CONNECT_S < K_REQUEST_S)
+
+
+def proxied_seat(name: str, proxy: ConnectProxy, **kw) -> Seat:
+    s = seat(name, ingest=DEAD, **kw)
+    s.cfg["proxy_url"] = proxy.url
+    s.write_cfg()
+    return s
+
+
+def send_one(s: Seat, reporter: Path = REPORTER) -> tuple[list[dict], int]:
+    """Spool one event on `s`, run one flusher pass, and return (the batches the ingest received, the
+    CONNECTs the proxy stub recorded) during that pass."""
+    b0, c0 = len(INGEST.batches), len(PROXY.connects)
+    hook(s, "PreToolUse", pre(tuid="toolu_proxy"))
+    flush(s, reporter=reporter)
+    return INGEST.batches[b0:], PROXY.connects[c0:]
+
+
+eq("precondition: with no proxy, the DEAD address these seats name measures nothing — direct egress "
+   "to it is unreachable", ("not_measured", 2), (rep_dead["checks"]["schema_version_accepted"], r_dead.returncode))
+
+# GREEN — the one-shot, through the proxy.
+s_px = proxied_seat("proxy-probe", PROXY, enabled=False)
+c0, g0 = len(PROXY.connects), INGEST.gets
+r_px, rep_px = selftest(s_px)
+px_connects = PROXY.connects[c0:]
+eq("GREEN: with proxy_url set, the one-shot's health probe asks the proxy for a tunnel to the ingest's host",
+   [DEAD_TARGET], px_connects)
+eq("  … and reaches the health surface through it", 1, INGEST.gets - g0)
+eq("  … so tls_verify and schema_version_accepted pass, and the command exits 0",
+   ("pass", "pass", 0), (rep_px["checks"]["tls_verify"], rep_px["checks"]["schema_version_accepted"], r_px.returncode))
+
+# GREEN — the flusher's heartbeat, through the proxy. `enabled: false`, so the pass sends no batch and
+# the probe is the only thing that can have set either check (the sender sets tls_verify on delivery).
+c1 = len(PROXY.connects)
+flush(s_px)
+hb_px = heartbeat_selftests(s_px)
+eq("GREEN: the flusher's probe goes through the proxy too", [DEAD_TARGET], PROXY.connects[c1:])
+eq("  … and the heartbeat it spools reports both network checks pass", ("pass", "pass"),
+   pair(hb_px[-1]) if hb_px else None)
+
+# RED — the defect verbatim: the probe's request made without the seat's proxy, as before card#9473.
+p_bypass = plant(("  return ingestRequest(config, { method: 'GET',",
+                  "  return ingestRequest(Object.assign({}, config, { proxy_url: null }), { method: 'GET',"))
+c2 = len(PROXY.connects)
+r_bp, rep_bp = selftest(s_px, reporter=p_bypass)
+bp_connects = PROXY.connects[c2:]
+flush(s_px, reporter=p_bypass)
+hb_bp = heartbeat_selftests(s_px)
+eq("RED: a probe that ignores proxy_url asks the proxy for nothing, and the one-shot reads not_measured, rc 2",
+   ([], "not_measured", "not_measured", 2),
+   (bp_connects, rep_bp["checks"]["tls_verify"], rep_bp["checks"]["schema_version_accepted"], r_bp.returncode))
+eq("  … and on a fresh flusher its heartbeat rides both checks as `fail`", ("fail", "fail"),
+   pair(hb_bp[-1]) if hb_bp else None)
+
+# The sender, through the proxy (it must not regress), and a no-proxy seat still direct.
+s_ps = proxied_seat("proxy-send", PROXY)
+got_ps, conn_ps = send_one(s_ps)
+eq("GREEN: the sender delivers through the proxy — the batch arrives, and the pass asked the proxy for two "
+   "tunnels to the ingest's host (the probe's, then the batch's)",
+   (True, [DEAD_TARGET, DEAD_TARGET]),
+   (any(e.get("kind") == "tool.start" for b in got_ps for e in b["batch"].get("events", [])), conn_ps))
+p_send_bypass = plant(("  return ingestRequest(config, { method: 'POST',",
+                       "  return ingestRequest(Object.assign({}, config, { proxy_url: null }), { method: 'POST',"))
+s_psr = proxied_seat("proxy-send-red", PROXY)
+got_psr, conn_psr = send_one(s_psr, reporter=p_send_bypass)
+eq("RED: a sender that ignores proxy_url delivers nothing, and only the probe's tunnel is asked for",
+   ([], [DEAD_TARGET]), (got_psr, conn_psr))
+
+s_direct = seat("direct-send")
+got_d, conn_d = send_one(s_direct)
+c3 = len(PROXY.connects)
+r_d, rep_d = selftest(s_direct)
+eq("GREEN: a seat with no proxy_url sends direct — its batch arrives and the proxy stub is asked for nothing",
+   (True, []), (bool(got_d), conn_d + PROXY.connects[c3:]))
+eq("  … and its one-shot probe measures direct, exit 0", ("pass", "pass", 0),
+   (rep_d["checks"]["tls_verify"], rep_d["checks"]["schema_version_accepted"], r_d.returncode))
+
+# A PROXY THAT ACCEPTS TCP AND NEVER ANSWERS CONNECT. The primitive's connect deadline, K.CONNECT_MS
+# (§ 3.5's 5 s), runs from the start of the request to a verified TLS session, and the proxy's
+# CONNECT answer is inside it — so the probe gives up at the connect deadline, measures nothing, and
+# costs the flush loop K.CONNECT_MS instead of K.REQUEST_MS.
+s_sil = proxied_seat("proxy-silent", SILENT_PROXY, enabled=False)
+t0 = time.monotonic()
+r_sil, rep_sil = selftest(s_sil)
+t_sil = time.monotonic() - t0
+eq("GREEN: against a proxy that never answers CONNECT, the one-shot reports both network checks "
+   "not_measured and exits 2", ("not_measured", "not_measured", 2),
+   (rep_sil["checks"]["tls_verify"], rep_sil["checks"]["schema_version_accepted"], r_sil.returncode))
+eq("  … naming the connect deadline as why", "connect deadline", rep_sil["detail"]["tls_verify"].get("probe_error"))
+eq(f"  … having asked that proxy for the tunnel and waited out the connect deadline, not the request "
+   f"deadline ({K_CONNECT_S} s <= {t_sil:.1f} s < {DEADLINE_SPLIT_S} s)", (True, True),
+   (DEAD_TARGET in SILENT_PROXY.connects, K_CONNECT_S <= t_sil < DEADLINE_SPLIT_S))
+t0 = time.monotonic()
+flush(s_sil)
+t_sil_pass = time.monotonic() - t0
+eq(f"GREEN: a flusher pass on that seat is held by the probe for the connect deadline only "
+   f"({K_CONNECT_S} s <= {t_sil_pass:.1f} s < {DEADLINE_SPLIT_S} s)", True, K_CONNECT_S <= t_sil_pass < DEADLINE_SPLIT_S)
+p_noconnect = plant(("    connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);\n", ""))
+t0 = time.monotonic()
+flush(s_sil, reporter=p_noconnect)
+t_sil_red = time.monotonic() - t0
+eq(f"RED: with no connect deadline the same pass waits out the request deadline "
+   f"({t_sil_red:.1f} s >= {DEADLINE_SPLIT_S} s)", True, t_sil_red >= DEADLINE_SPLIT_S)
+redgreen("the health probe takes the seat's route, proxy_url included, and a silent proxy costs the connect "
+         "deadline, not the request deadline (§ 3.5, card#9473)",
+         f"probe without the proxy -> CONNECTs {bp_connects}, one-shot "
+         f"{rep_bp['checks']['tls_verify']}/{rep_bp['checks']['schema_version_accepted']} rc={r_bp.returncode}, "
+         f"heartbeat {pair(hb_bp[-1]) if hb_bp else None}; sender without the proxy -> batches {len(got_psr)}, "
+         f"CONNECTs {conn_psr}; no connect deadline -> silent-proxy pass {t_sil_red:.1f} s",
+         f"probe via ingestRequest -> CONNECTs {px_connects}, one-shot "
+         f"{rep_px['checks']['tls_verify']}/{rep_px['checks']['schema_version_accepted']} rc={r_px.returncode}, "
+         f"heartbeat {pair(hb_px[-1]) if hb_px else None}; sender -> batches {len(got_ps)}, CONNECTs {conn_ps}; "
+         f"no proxy_url -> batches {len(got_d)}, CONNECTs {conn_d}; silent proxy -> one-shot "
+         f"{rep_sil['checks']['schema_version_accepted']} rc={r_sil.returncode} "
+         f"'{rep_sil['detail']['tls_verify'].get('probe_error')}' in {t_sil:.1f} s, pass {t_sil_pass:.1f} s")
+PROXY.stop()
+SILENT_PROXY.stop()
 
 
 print("\n== 2. SANITIZER — § 7.5's thirteen fixtures, and the four REDs AT-2 names ==")
@@ -780,7 +1520,6 @@ redgreen("never blocks the seat (P-1..P-5, AT-3)",
 
 
 print("\n== 4. SURVIVES THE BRIDGE BEING DOWN (AT-4) ==")
-DEAD = "https://127.0.0.1:9/api/ingest/events"          # discard port: refused locally, no DNS, no WAN
 s4 = seat("outage", ingest=DEAD)
 for i in range(30):
     r = hook(s4, "PreToolUse", pre(tuid=f"out_{i}"))
@@ -1257,6 +1996,145 @@ eq("RED: resetting the cursor to the END of the spool silently loses every unsen
 eq("  … and records NOTHING as dropped — the silent hole this rule designs out", 0,
    s17r.state().get("counters", {}).get("spool_dropped_events", 0))
 
+# A FIRST START IS NOT A STATE RESET (card#9374, D1 § 9.3's `state_reset` row and § 11.4's table).
+# `state_reset` counts a state.json that EXISTS and cannot be used. A missing one is a first start,
+# or state lost with the file, and both mint a new seq_epoch and send from byte 0 of every bucket
+# exactly as a reset does, but count nothing. The defect counted a missing file as a reset, so every
+# new seat carried `epoch_reset` for good: the badge is derived from a running total.
+#
+# "No state.json" is the whole test for a first start, because the spool cannot be: a hook spools
+# its event BEFORE it respawns the flusher, so a first start driven by a hook finds data already
+# waiting, and one driven by the crontab finds none. Both are driven here.
+def epoch_trace(s: Seat, reporter: Path = REPORTER) -> dict:
+    """The seat's next two flusher processes, a start and then a restart, each a real pass against
+    the suite's ingest. Returns what state.json, each start's heartbeat and the wire carry."""
+    INGEST.batches.clear()
+    runs = (flush(s, reporter=reporter), flush(s, reporter=reporter))
+    hbs = [e["data"] for e in s.events() if e["kind"] == "reporter.heartbeat"][-2:]
+    posted = [b["batch"] for b in INGEST.batches]
+    wire_hbs = [e["data"] for b in posted for e in b.get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    return {"rcs": [r.returncode for r in runs],
+            "state_reset": (s.state().get("counters", {}).get("state_reset", 0),
+                            [hb.get("counters", {}).get("state_reset", 0) for hb in hbs]),
+            "degraded": [hb.get("degraded") for hb in hbs],
+            "wire_degraded": [hb.get("degraded") for hb in wire_hbs],
+            "epochs": sorted({b["seq_epoch"] for b in posted}),
+            "ids": {e["event_id"] for b in posted for e in b.get("events", [])}}
+
+
+def spooled_ids(s: Seat) -> set:
+    return {e["event_id"] for e in s.events() if e["kind"] != "reporter.heartbeat"}
+
+
+FIRST_START = ([0, 0], (0, [0, 0]), [[], []], 1)
+
+
+def first_start_view(t: dict) -> tuple:
+    return (t["rcs"], t["state_reset"], t["degraded"], len(t["epochs"]))
+
+
+fs_cron = seat("firststart-cron")
+t_cron = epoch_trace(fs_cron)
+eq("a first start from the CRONTAB, empty spool and no state.json: across that start and a restart, "
+   "`state_reset` is 0 in state.json and on both heartbeats, neither heartbeat is degraded, and both "
+   "starts send under one seq_epoch", FIRST_START, first_start_view(t_cron))
+eq("  … and the first start's heartbeat, sent by the restart, reaches the wire with no badge", True,
+   bool(t_cron["wire_degraded"]) and all(d == [] for d in t_cron["wire_degraded"]))
+
+fs_hook = seat("firststart-hook")
+hook(fs_hook, "PreToolUse", pre(tuid="fs_hook"))
+hook_ids = spooled_ids(fs_hook)
+t_hook = epoch_trace(fs_hook)
+eq("a first start from a HOOK, its event already spooled and no state.json: the same result as the "
+   "crontab's start", FIRST_START, first_start_view(t_hook))
+eq("  … and the hook's event is sent from byte 0, which is § 11.4's re-send, unchanged", (True, True),
+   (bool(hook_ids), hook_ids <= t_hook["ids"]))
+
+# STATE LOST ON A SEAT THAT HAS ALREADY REPORTED is not a reporter reset either: the reporter cannot
+# tell it from a first start, and does not need to. It mints a new seq_epoch, and the server's
+# `seq_epoch_change` counts exactly that, a batch under a new epoch on a seat whose previous epoch is
+# known (server/app/Fold/StateRecompute.php `$epochChanged`), and badges the seat `epoch_reset`
+# (D1 § 10.2). A first epoch has no previous one, so a fresh seat is never badged there.
+# server/tests/Feature/Fold/At11OutOfOrderTest.php `test_the_epoch_is_part_of_the_comparator` asserts
+# that server half: two epochs count 1, not 2. What this side owes that rule is the new epoch on the
+# wire, and the events re-sent under it.
+fs_lost = seat("firststart-lost")
+hook(fs_lost, "PreToolUse", pre(tuid="fs_lost"))
+t_lost_before = epoch_trace(fs_lost)
+lost_ids = spooled_ids(fs_lost)
+(fs_lost.spool / "state.json").unlink()
+t_lost = epoch_trace(fs_lost)
+eq("state.json DELETED on a seat that has already reported: no `state_reset` and no badge from the "
+   "reporter, across the start that found it missing and a restart", FIRST_START, first_start_view(t_lost))
+eq("  … under a NEW seq_epoch, which the server counts as `seq_epoch_change` and badges `epoch_reset`",
+   (1, True), (len(t_lost_before["epochs"]), t_lost["epochs"] != t_lost_before["epochs"]))
+eq("  … and every spooled event is sent again from byte 0, so nothing already spooled is skipped",
+   True, bool(lost_ids) and lost_ids <= t_lost["ids"])
+
+# A state.json that EXISTS and cannot be used stays a reset: § 11.4's "unreadable or corrupt" row.
+STATE_UNUSABLE = [("truncated mid-document", '{"seq_epoch":"trunc'),
+                  ("empty", ""),
+                  ("not JSON at all", "not json {{{"),
+                  ("JSON of the wrong shape (no next_seq)", '{"seq_epoch":"01K3T0000A5N7M2X9V4B6D0FGH"}'),
+                  ("JSON null", "null")]
+RESET = ([0, 0], (1, [1, 1]), [["epoch_reset"], ["epoch_reset"]], 1)
+
+
+def unusable_state(name: str, text: str, *, unreadable: bool = False, reporter: Path = REPORTER) -> dict:
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid=f"{name}_e"))
+    f = s.spool / "state.json"
+    f.write_text(text, encoding="utf-8")
+    if unreadable:
+        f.chmod(0)
+    ids = spooled_ids(s)
+    t = epoch_trace(s, reporter=reporter)
+    t["resent"] = bool(ids) and ids <= t["ids"]
+    return t
+
+
+for i, (label, text) in enumerate(STATE_UNUSABLE):
+    t_bad = unusable_state(f"reset-{i}", text)
+    eq(f"a state.json {label}: a reset, counted once: `state_reset` 1 in state.json and on both "
+       f"heartbeats, both badged `epoch_reset`, and the restart counts no second one", RESET,
+       first_start_view(t_bad))
+    eq("  … and the spool re-sent from byte 0", True, t_bad["resent"])
+if os.geteuid() == 0:
+    skip("a state.json present but unreadable (EACCES) needs a non-root run: root reads a mode-000 file, "
+         "so that branch was NOT measured, and that is not a pass")
+else:
+    t_eacces = unusable_state("reset-eacces", '{"seq_epoch":"01K3T0000A5N7M2X9V4B6D0FGH","next_seq":1}',
+                              unreadable=True)
+    eq("a state.json present but UNREADABLE (mode 000, a non-ENOENT read error): a reset, exactly as a "
+       "corrupt one", RESET, first_start_view(t_eacces))
+
+# THE REDS, planted on copies at the one line that decides. The defect verbatim: every catch a reset.
+p_enoent = plant(("reset: e.code !== 'ENOENT'", "reset: true"))
+r_cron = epoch_trace(seat("firststart-cron-red"), reporter=p_enoent)
+r_hook_seat = seat("firststart-hook-red")
+hook(r_hook_seat, "PreToolUse", pre(tuid="fs_hook_red"))
+r_hook = epoch_trace(r_hook_seat, reporter=p_enoent)
+eq("RED: a reporter counting a missing state.json as a reset badges both first starts, crontab and hook, "
+   "`epoch_reset` on every heartbeat, and the restart keeps it", (RESET, RESET),
+   (first_start_view(r_cron), first_start_view(r_hook)))
+# The opposite defect: no catch a reset. Every unusable state.json then passes silently.
+p_never = plant(("reset: e.code !== 'ENOENT'", "reset: false"))
+r_unusable = [first_start_view(unusable_state(f"reset-red-{i}", text, reporter=p_never))
+              for i, (_label, text) in enumerate(STATE_UNUSABLE)]
+eq("RED: a reporter counting no catch as a reset leaves every unusable state.json (truncated, empty, "
+   "not JSON, wrong shape, null) uncounted and unbadged", [FIRST_START] * len(STATE_UNUSABLE), r_unusable)
+if os.geteuid() != 0:
+    eq("  … and the unreadable (EACCES) one too", FIRST_START,
+       first_start_view(unusable_state("reset-red-eacces", '{"seq_epoch":"01K3T0000A5N7M2X9V4B6D0FGH","next_seq":1}',
+                                       unreadable=True, reporter=p_never)))
+redgreen("a first start is not a state reset; an unusable state.json is (§ 9.3, § 11.4, card#9374)",
+         f"missing state.json counted as a reset -> crontab first start {first_start_view(r_cron)}, hook "
+         f"first start {first_start_view(r_hook)} (rcs, (state_reset in state.json, on each heartbeat), "
+         f"degraded per heartbeat, epochs); no catch a reset -> the {len(STATE_UNUSABLE)} unusable "
+         f"state.json cases all read {FIRST_START}",
+         f"crontab {first_start_view(t_cron)}, hook {first_start_view(t_hook)}, deleted-after-reporting "
+         f"{first_start_view(t_lost)} under a new epoch; each unusable state.json {RESET}, spool re-sent")
+
 
 print("\n== 7. BATCH CORRECTNESS (§ 4.2 envelope, § 11.5 retry ladder and the poison pill) ==")
 INGEST.batches.clear()
@@ -1544,16 +2422,18 @@ worst = subprocess.run(
      "const preds={};for(const p of ['attention_source_permission_hook','descriptor_allowlisted',"
      "'clear_reap_by_session_end','agent_scope_subagent','attention_resolved_by_hook'])"
      "preds[p]={true:MAX,false:MAX};"
-     "const st={};for(const c of ['config_readable','tls_verify','schema_version_accepted',"
-     "'sanitizer_fixtures','predicate_discrimination','harness_payload_keys']) st[c]='fail';"
+     "const st={};for(const c of m.SELFTEST_CHECKS) st[c]='fail';"
      "console.log(JSON.stringify({p:JSON.stringify(preds).length,s:JSON.stringify(st).length}));",
      str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
 w = json.loads(worst.stdout)
 eq(f"`predicates` at its worst case is D1's derived 396 B, under the 512 B cap ({w['p']} B)",
    (396, True), (w["p"], w["p"] <= 512))
-eq(f"`selftest` at its worst case over the check names listed above, under D1's 256 B cap ({w['s']} B) "
-   f"— D1 § 6.14 owns the derived worst case over its own member table, which this build does not fully implement",
-   (171, True), (w["s"], w["s"] <= 256))
+# D1 § 6.14 derives the `selftest` worst case over its member table; the figure is READ from there,
+# so a check added to the reporter and not to the table (or the reverse) reds here.
+_d1 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+_st_worst = int(re.search(r"^- \*\*`selftest` — (\d+) B worst case", _d1, re.M).group(1))
+eq(f"`selftest` at its worst case over every check the reporter reports is D1 § 6.14's derived "
+   f"{_st_worst} B, under the 256 B cap ({w['s']} B)", (_st_worst, True), (w["s"], w["s"] <= 256))
 
 # RED — remove the reduction rule and the heartbeat's data blows the 3 KiB cap, which is the
 # liveness signal dying at exactly the moment the seat becomes interesting.
@@ -1947,13 +2827,43 @@ hook(s12, "Notification", {"session_id": SID, "hook_event_name": "Notification",
                            "notification_type": "brand_new_type_nobody_declared"})
 eq("an UNDECLARED type is counted separately from a known non-attention one", 1,
    s12.counters().get("enum_value_unknown.notification_type"))
+
+# `idle_prompt` IS NOT A WAIT ON A HUMAN, and it is the one member of the table that looked
+# like one (card#9419). The harness fires it about a minute after Claude finishes responding
+# when the human has not typed since — a timer on human ABSENCE, which is the ordinary shape of
+# a seat that finished its turn cleanly and is available for work. Emitting for it flipped every
+# such seat from `idle` to `blocked` (D2 § 4.3 rule 1 renders any open request `blocked`, ahead
+# of every other rule) about a minute after it went quiet, and held it there until its next
+# event: measured on one seat in one day, 19 `input_awaited` requests against 3
+# `permission_required`. So it takes the same counted suppression path as `auth_success`, and it
+# must NOT also raise `enum_value_unknown.notification_type` — it is a declared type the gate
+# decides against, not a type this reporter has never seen, and § 6.12 requires those two to
+# never be one number.
+s12i = seat("notification-idle")
+hook(s12i, "Notification", {"session_id": SID, "hook_event_name": "Notification",
+                            "notification_type": "idle_prompt", "message": "hi"})
+eq("`idle_prompt` is a timer on human absence and emits NOTHING (card#9419)", [],
+   [e for e in s12i.events() if e["kind"] == "attention.request"])
+eq("  … suppressed through the counted path, not dropped silently", 1,
+   s12i.counters().get("notification_not_attention.idle_prompt"))
+eq("  … and NOT counted as an undeclared type — it is declared, and decided against", None,
+   s12i.counters().get("enum_value_unknown.notification_type"))
+s12p = seat("notification-permission")
+hook(s12p, "Notification", {"session_id": SID, "hook_event_name": "Notification",
+                            "notification_type": "permission_prompt", "message": "hi"})
+arp = [e for e in s12p.events() if e["kind"] == "attention.request"]
+eq("CONTROL: a genuine wait on a human still opens a request", 1, len(arp))
+eq("  … so the row above measures the `idle_prompt` decision and not a dead gate",
+   "permission_required", arp[0]["data"]["notification_kind"])
 redgreen("unknown enum values (AT-18) and the blocked pair (AT-20)",
          "passing an unknown value through verbatim -> 422 invalid_event, all 200 events in the "
          "batch rejected, quarantined permanently (D1 § 6.0 rule 4's stated cost)",
          "source=teleport -> coerced to `unknown`, counted as "
          "enum_value_unknown.session.start.source, raw value absent from the wire; control "
          "source=fork passes through with no coercion counted; auth_success emits nothing and is "
-         "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves")
+         "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves; "
+         "idle_prompt emits nothing, is counted notification_not_attention.idle_prompt and is NOT "
+         "counted as an undeclared type, while the permission_prompt control still opens one")
 
 
 print("\n== 15. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
@@ -2174,7 +3084,706 @@ redgreen("the bucket is derived at the write (§ 11.1) and § 6.1's pattern admi
          f"earlier; § 6.1's pattern now admits `{doc_example}` and the reporter emits it")
 
 
-print("\n== 18. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
+print("\n== 18. A FLUSHER THAT LOSES OWNERSHIP STOPS SENDING AND EXITS; A LIVE ONE KEEPS ITS LOCK FRESH (§ 2.3, card#9393) ==")
+# THE DEFECT THIS BLOCK EXISTS FOR. `seq` is correct only while exactly one process assigns it,
+# and § 2.3 makes state.json's owner fields the arbiter: a flusher that finds another owner
+# exits without writing. The reporter used to DETECT that (the save refused) and then carry on —
+# the drain kept posting from its in-memory `next_seq` and the loop kept running passes — so two
+# live flushers emitted overlapping seqs for one seat. The way a second flusher comes to exist
+# at all is the other half: the lock was touched once per pass, and one pass on a slow ingest
+# awaits several 15 s requests, so a LIVE flusher's lock could age past LOCK_STALE_MS and a hook
+# would correctly start another.
+#
+# A SLOW INGEST IS THE ONLY FIXTURE. `INGEST.delay_s` holds every POST before answering it; the
+# takeover is written WHILE the first POST is held, which is the real race (a new owner claims
+# state.json during a request), made deterministic by holding the request rather than by timing.
+# The spool holds enough events for several drain rounds (`BATCH_EVENTS` per POST): one real
+# hook line re-minted under fresh event ids, instead of hundreds of hook processes.
+OTHER_PID = 4194301                       # any pid that is not the flusher under test
+OTHER_STARTED = "2000-01-01T00:00:00.000Z"
+HOLD_S = 0.4
+
+
+def owned_seat(name: str, events: int, *, corrupt: bool = False) -> Seat:
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid=f"{name}_0"))
+    bucket = sorted(s.spool.glob("*.jsonl"))[0]
+    rec = next(json.loads(l) for l in bucket.read_text(encoding="utf-8").splitlines()
+               if l and json.loads(l)["e"]["kind"] == "tool.start")
+    with bucket.open("a", encoding="utf-8") as fh:
+        if corrupt:   # inside batch 1, behind real events: disposed of only once that POST is answered
+            fh.write("{torn line 9393\n")
+        for i in range(events):
+            rec["e"]["event_id"] = f"01K9393{i:019d}"
+            fh.write(json.dumps(rec) + "\n")
+    return s
+
+
+def take_over(s: Seat) -> bytes:
+    """Do what a second flusher does when it wins: replace the lock, then claim state.json."""
+    st = s.state()
+    (s.spool / "flusher.lock").write_text(json.dumps(
+        {"pid": OTHER_PID, "started_at": OTHER_STARTED, "seq_epoch": st["seq_epoch"]}), encoding="utf-8")
+    st["owner_pid"], st["owner_started_at"] = OTHER_PID, OTHER_STARTED
+    body = json.dumps(st).encode("utf-8")
+    tmp = s.spool / "state.json.takeover.tmp"
+    tmp.write_bytes(body)
+    os.replace(tmp, s.spool / "state.json")
+    return body
+
+
+def drive_pass(s: Seat, reporter: Path, *, takeover: bool, one_pass: bool, exit_within: float,
+               hold_health: bool = False) -> dict:
+    """Run a real flusher against the held ingest and observe each POST as it arrives.
+
+    For every POST: the wall time it was seen and the lock's mtime at that moment. With
+    `takeover`, the other owner is written while POST 1 is held — or, with `hold_health`, while
+    the health probe is held instead (the POSTs are then not held). `exit_within` is how long
+    after the last request the process is given to exit on its own; one still running then is
+    SIGKILLed and reported as not exited (SIGTERM would let it finish its pass, which is not an
+    exit).
+    """
+    lock = s.spool / "flusher.lock"
+    lock.unlink(missing_ok=True)
+    INGEST.batches.clear()
+    INGEST.gets = 0
+    INGEST.delay_s, INGEST.get_delay_s = (0.0, HOLD_S) if hold_health else (HOLD_S, 0.0)
+    envx = {"FLEET_REPORTER_ONE_PASS": "1"} if one_pass else {}
+    p = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **envx),
+                         cwd=str(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    posts: list[tuple[float, float | None]] = []
+    taken: bytes | None = None
+    quiet_since = time.time()
+    try:
+        while p.poll() is None:
+            n = len(INGEST.batches)
+            if n > len(posts):
+                seen = time.time()
+                try:
+                    mtime = lock.stat().st_mtime
+                except FileNotFoundError:
+                    mtime = None
+                posts.extend([(seen, mtime)] * (n - len(posts)))
+                quiet_since = seen
+                if takeover and taken is None and not hold_health:
+                    taken = take_over(s)
+            if hold_health and INGEST.gets and taken is None:
+                quiet_since = time.time()
+                if takeover:
+                    taken = take_over(s)
+            if time.time() - quiet_since > exit_within + HOLD_S:
+                break
+            time.sleep(0.01)
+        exited = p.poll() is not None
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        INGEST.delay_s = INGEST.get_delay_s = 0.0
+    lost_log = []
+    for f in sorted((s.spool / "log").glob("*.log")) if (s.spool / "log").exists() else []:
+        lost_log += [l for l in f.read_text(encoding="utf-8").splitlines() if "lost ownership" in l]
+    try:
+        lock_body = json.loads(lock.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        lock_body = None
+    return {"posts": posts, "n_posts": len(INGEST.batches), "exited": exited, "taken": taken,
+            "state_bytes": (s.spool / "state.json").read_bytes(),
+            "lost_counted": s.counters().get("flusher_lost_ownership", 0), "sink": s.counters(),
+            "corrupt_quarantined": _lines(s.spool / "quarantine" / "corrupt.jsonl"),
+            "lost_log": lost_log, "lock": lock_body}
+
+
+def _lines(f: Path) -> int:
+    return len(f.read_text(encoding="utf-8").splitlines()) if f.exists() else 0
+
+
+def refreshed_between_posts(posts) -> list[bool]:
+    """For POST k >= 2: was the lock touched AFTER POST k-1 was seen? Clock-free — both sides are
+    the wall clock, and a touch between posts lands at least HOLD_S after the previous arrival."""
+    return [m is not None and m > posts[k - 1][0] for k, (_, m) in enumerate(posts) if k >= 1]
+
+
+# Three drain rounds' worth, read from the reporter's own K: two full batches and one more event.
+N_EVENTS = 2 * int(subprocess.run(
+    ["node", "-e", f"process.stdout.write(String(require({json.dumps(str(REPORTER))}).K.BATCH_EVENTS))"],
+    capture_output=True, text=True, check=True).stdout) + 1
+
+# GREEN — ownership lost while POST 1 is held, NO one-pass seam: only the loss can end the process.
+g_a = drive_pass(owned_seat("own-lost-green", N_EVENTS, corrupt=True), REPORTER, takeover=True,
+                 one_pass=False, exit_within=1.5)
+eq("GREEN: ownership taken while POST 1 is in flight -> no further POST after that one",
+   1, g_a["n_posts"])
+eq("  … state.json still holds the new owner's bytes: the ex-owner wrote nothing after the loss",
+   g_a["taken"], g_a["state_bytes"])
+eq("  … and the process EXITED on its own (no one-pass seam, no signal)", True, g_a["exited"])
+eq("  … counting `flusher_lost_ownership` exactly once, in the counter sink the new owner folds",
+   1, g_a["lost_counted"])
+eq("  … and logging it exactly once", 1, len(g_a["lost_log"]))
+eq("GREEN: the exiting ex-owner leaves the lock that names the new owner in place",
+   OTHER_PID, (g_a["lock"] or {}).get("pid"))
+eq("GREEN: resuming from the answered POST, the ex-owner disposes of nothing in that batch — the "
+   "torn line is neither quarantined nor counted (the new owner disposes of it once)",
+   (0, None), (g_a["corrupt_quarantined"], g_a["sink"].get("spool_corrupt_lines")))
+
+# GREEN — no takeover, one pass of three held POSTs: the pass outlasts any single touch.
+g_b = drive_pass(owned_seat("own-touch-green", N_EVENTS), REPORTER, takeover=False, one_pass=True,
+                 exit_within=1.5)
+eq(f"GREEN: a pass of {g_b['n_posts']} POSTs each held {HOLD_S} s refreshes the lock between "
+   f"every pair of posts", True, g_b["n_posts"] >= 3 and all(refreshed_between_posts(g_b["posts"])))
+eq("  … and a flusher that still owns its lock releases it on exit", None, g_b["lock"])
+
+# RED 1 — the refusal returned and ignored, which is the reporter before card#9393: a save that
+# finds another owner writes nothing, and nothing stops the drain or the loop.
+p_own = plant_src(
+    (r"throw new LostOwnership\(`[^`]*`\);", "{ count('flusher_lost_ownership'); return false; }"),
+    (re.escape("  assertOwner(spool, state);\n  if (!atomicWrite(statePath(spool)"),
+     "  if (assertOwner(spool, state) === false) return false;\n  if (!atomicWrite(statePath(spool)"),
+    (re.escape("  assertOwner(spool, state);\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"),
+     "  if (assertOwner(spool, state) === false) return;\n  atomicWrite(path.join(indexDir(spool), 'snapshot.json')"))
+r_a = drive_pass(owned_seat("own-lost-red", N_EVENTS), p_own, takeover=True, one_pass=False,
+                 exit_within=1.5)
+eq("RED: with the loss returned and ignored, the ex-owner keeps POSTing after the takeover",
+   True, r_a["n_posts"] > 1)
+eq("  … and never exits on its own", False, r_a["exited"])
+eq("  … and its count never reaches a surface anyone reads", 0, r_a["lost_counted"])
+
+# RED 2 — the lock renewed once per pass only, as before: no touch between posts.
+p_touch = plant_src((re.escape("    renewLock(spool, state);\n    const res = await postBatch(config, body);"),
+                     "    const res = await postBatch(config, body);"))
+r_b = drive_pass(owned_seat("own-touch-red", N_EVENTS), p_touch, takeover=False, one_pass=True,
+                 exit_within=1.5)
+eq("RED: renewed once per pass, the lock is NOT refreshed between held posts", True,
+   r_b["n_posts"] >= 3 and not any(refreshed_between_posts(r_b["posts"])))
+
+# RED 3 — the unconditional unlink on exit.
+p_unlink = plant_src((re.escape("if (held && held.pid === process.pid && held.started_at === state.owner_started_at) fs.unlinkSync(lock);"),
+                      "fs.unlinkSync(lock);"))
+r_c = drive_pass(owned_seat("own-unlink-red", N_EVENTS), p_unlink, takeover=True, one_pass=False,
+                 exit_within=1.5)
+eq("RED: an ex-owner that unlinks unconditionally deletes the NEW owner's lock", None, r_c["lock"])
+
+# RED 4 — no check on resuming from the POST: the answered batch is disposed of by an ex-owner.
+p_send = plant_src((re.escape("    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner\n"), ""))
+r_d = drive_pass(owned_seat("own-send-red", N_EVENTS, corrupt=True), p_send, takeover=True,
+                 one_pass=False, exit_within=1.5)
+eq("RED: with no check after the POST's await, the ex-owner quarantines and counts the torn line "
+   "the new owner will dispose of again — posts sent, quarantined, and spool-corrupt sink count",
+   (1, 1, 1),
+   (r_d["n_posts"], r_d["corrupt_quarantined"], r_d["sink"].get("spool_corrupt_lines")))
+
+# THE END OF A PASS. The heartbeat, the spool bounds and the bucket reaps run after the pass's
+# awaits; a takeover written while the HEALTH PROBE is held reaches them with no POST in between
+# (the seat is `enabled: false`, so no drain runs and the probe is the pass's one await). The seat
+# holds what makes each of them act: a spool bucket past the 8-day residency (dropped, and counted
+# as spool_dropped_events), a counter bucket as old that the pass's own fold consumes (reaped by
+# this process's offsets, which the new owner's state.json does not carry), and no heartbeat yet.
+STALE_BUCKET = time.strftime("%Y%m%d%H", time.gmtime(time.time() - 9 * 86400))
+HOOK_COUNTER = "x_card9393_hook_count"
+
+
+def tail_seat(name: str) -> Seat:
+    s = seat(name, enabled=False)
+    (s.spool / f"{STALE_BUCKET}.jsonl").write_text("".join(
+        json.dumps({"v": 1, "e": {"kind": "tool.start", "event_id": f"01K9393STALE{i:014d}"}}) + "\n"
+        for i in range(3)), encoding="utf-8")
+    (s.spool / "counters").mkdir(exist_ok=True)
+    (s.spool / "counters" / f"{STALE_BUCKET}.jsonl").write_text(json.dumps(
+        {"t": "2000-01-01T00:00:00.000Z", "p": "hook", "c": {HOOK_COUNTER: 5}, "k": {}}) + "\n",
+        encoding="utf-8")
+    return s
+
+
+def tail_effects(s: Seat, r: dict) -> dict:
+    return {"spool_bucket_kept": (s.spool / f"{STALE_BUCKET}.jsonl").exists(),
+            "counter_bucket_kept": (s.spool / "counters" / f"{STALE_BUCKET}.jsonl").exists(),
+            "heartbeats_spooled": sum(1 for e in s.events() if e["kind"] == "reporter.heartbeat"),
+            "spool_dropped_events_in_sink": r["sink"].get("spool_dropped_events"),
+            "hook_counter_in_sink": r["sink"].get(HOOK_COUNTER),
+            "lost_counted": r["lost_counted"], "exited": r["exited"]}
+
+
+T_TAIL = time.time()
+tail_green_seat = tail_seat("own-tail-green")
+g_t = drive_pass(tail_green_seat, REPORTER, takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
+e_gt = tail_effects(tail_green_seat, g_t)
+eq("GREEN: takeover while the health probe is held -> the ex-owner spools no heartbeat, drops no "
+   "spool bucket, reaps no counter bucket, and exits counting the loss once",
+   {"spool_bucket_kept": True, "counter_bucket_kept": True, "heartbeats_spooled": 0,
+    "spool_dropped_events_in_sink": None, "hook_counter_in_sink": 5, "lost_counted": 1, "exited": True},
+   e_gt)
+eq("  … state.json still holds the new owner's bytes", g_t["taken"], g_t["state_bytes"])
+
+# RED 5 — no check on resuming from the health probe: the whole end of the pass acts for an ex-owner.
+CHECK_AFTER_HEALTH = re.escape("        assertOwner(spool, state);   // resumed from an await: see assertOwner's header\n")
+tail_red_seat = tail_seat("own-tail-red")
+r_t = drive_pass(tail_red_seat, plant_src((CHECK_AFTER_HEALTH, "")), takeover=True, one_pass=False,
+                 exit_within=1.5, hold_health=True)
+e_rt = tail_effects(tail_red_seat, r_t)
+eq("RED: with no check after the probe's await, the ex-owner drops the spool bucket, reaps the counter "
+   "bucket the new owner never folded (its hook count reaches no sink), and spools a heartbeat",
+   (False, False, None, 1), (e_rt["spool_bucket_kept"], e_rt["counter_bucket_kept"],
+                             e_rt["hook_counter_in_sink"], e_rt["heartbeats_spooled"]))
+# The same run is the GREEN of the exit path's unfold: it stands in for a takeover landing in the
+# synchronous window after the last check, where the drop happens and then the save throws.
+eq("GREEN: a drop folded into state.counters by a pass whose save then throws still reaches the "
+   "sink (the exit path hands folded-but-unsaved counts back)", 3, e_rt["spool_dropped_events_in_sink"])
+
+# RED 6 — the same, and the exit path flushes only what is still in C: the drop's count is lost.
+tail_unfold_seat = tail_seat("own-unfold-red")
+r_u = drive_pass(tail_unfold_seat, plant_src((CHECK_AFTER_HEALTH, ""),
+                                             (re.escape("  unfoldUnsaved();\n  flushCounters"), "  flushCounters")),
+                 takeover=True, one_pass=False, exit_within=1.5, hold_health=True)
+e_ru = tail_effects(tail_unfold_seat, r_u)
+eq("RED: without the unfold, the bucket is dropped and its 3 events are counted nowhere (§ 0 item 9) "
+   "— bucket kept, dropped-events in sink, exited, and lost-ownership count",
+   (False, None, True, 1), (e_ru["spool_bucket_kept"], e_ru["spool_dropped_events_in_sink"], e_ru["exited"], e_ru["lost_counted"]))
+T_TAIL = time.time() - T_TAIL
+
+
+def _ages(posts):
+    return [round(t - m, 2) if m is not None else None for t, m in posts]
+
+
+redgreen("a flusher that loses ownership stops sending and exits (§ 2.3, card#9393)",
+         f"loss returned and ignored -> {r_a['n_posts']} POSTs in all, {r_a['n_posts'] - 1} of them "
+         f"after a takeover written while POST 1 was held, exited on its own={r_a['exited']}, "
+         f"flusher_lost_ownership in the sink="
+         f"{r_a['lost_counted']}",
+         f"thrown and caught by the loop -> {g_a['n_posts']} POST (the one in flight), state.json "
+         f"byte-identical to the new owner's, exited={g_a['exited']}, counted {g_a['lost_counted']}x "
+         f"in the sink, logged {len(g_a['lost_log'])}x")
+redgreen("a live flusher's lock is renewed before every request (§ 2.3, card#9393)",
+         f"once per pass -> lock age (s) at each of {r_b['n_posts']} POSTs held {HOLD_S} s: "
+         f"{_ages(r_b['posts'])} — it grows by a request per POST, so a slow enough ingest outlasts "
+         f"LOCK_STALE_MS inside one live pass",
+         f"before every request -> lock age (s) at each POST: {_ages(g_b['posts'])} — bounded by one "
+         f"request")
+redgreen("an ex-owner resuming from a POST disposes of nothing in the answered batch (§ 2.3, card#9393)",
+         f"no check after the await -> torn line quarantined {r_d['corrupt_quarantined']}x, "
+         f"spool_corrupt_lines={r_d['sink'].get('spool_corrupt_lines')} in the sink, before the save threw",
+         f"checked on resuming -> quarantined {g_a['corrupt_quarantined']}x, spool_corrupt_lines="
+         f"{g_a['sink'].get('spool_corrupt_lines')}")
+redgreen("the end of a pass does nothing for an ex-owner resuming from the health probe (§ 2.3, § 0 item 9, card#9393)",
+         f"no check after the await -> {e_rt}",
+         f"checked on resuming -> {e_gt} (the three health-probe runs took {T_TAIL:.1f} s)")
+redgreen("counts folded but never saved reach the sink on exit (§ 0 item 9, card#9393)",
+         f"exit flushes only C -> spool bucket kept={e_ru['spool_bucket_kept']}, "
+         f"spool_dropped_events in the sink={e_ru['spool_dropped_events_in_sink']}",
+         f"exit hands back folds since the last landed save -> spool bucket kept={e_rt['spool_bucket_kept']}, "
+         f"spool_dropped_events in the sink={e_rt['spool_dropped_events_in_sink']}")
+redgreen("an exiting ex-owner leaves the new owner's lock alone (§ 2.3, card#9393)",
+         f"unconditional unlink -> lock after exit = {r_c['lock']} (a hook would start a third flusher)",
+         f"unlink only while the lock names this process -> lock after exit names pid "
+         f"{(g_a['lock'] or {}).get('pid')}; a flusher that still owns it releases it (lock={g_b['lock']})")
+
+
+print("\n== 19. A DECLARED AGENT NAME IS CHECKED, AND A DISAGREEMENT FAILS AN ACT (AT-27, § 3.1, card#9375) ==")
+# card#7957's finding was that NO ACT WOULD FAIL if a seat's declared protocol agent name and the
+# coordination roster disagreed. D1 § 3.1 answers it with four declaration states and one check;
+# AT-27 is where they are made to discriminate. Every case below is one seat and one box: a HOME of its
+# own (so the Linux home-path site is a place this suite controls) and, where the case says so, a
+# `$COORD_CONFIG` pointing into a stand-in coordination repository. Each drives `selftest` and one
+# flush, and reads the heartbeat the flusher spooled.
+AT27_NAME = "magento"
+AT27_ROSTER = {"roster": [{"name": "pm", "role": "pm"}, {"name": AT27_NAME, "role": "impl"},
+                          {"name": "moodle", "role": "impl"}]}
+AT27_ROSTER_WITHOUT = {"roster": [{"name": "pm", "role": "pm"}, {"name": "moodle", "role": "impl"}]}
+ABSENT = object()
+
+
+def at27_box(name: str, *, declare=AT27_NAME, home=None, coord=None, seat_id=None) -> "tuple[Seat, dict]":
+    """`home` / `coord`: a roster document (or raw text) to place at that § 3.1 site, or None for no
+    file there. `coord="missing"` sets `$COORD_CONFIG` to a path holding no file."""
+    s = seat(name)
+    if declare is not ABSENT:
+        s.cfg["protocol_agent_name"] = declare
+    if seat_id:
+        s.cfg["seat_id"] = seat_id
+    s.write_cfg()
+    home_dir = s.root / "home"
+    home_dir.mkdir(exist_ok=True)
+    env = {"HOME": str(home_dir)}
+    for doc, f in ((home, home_dir / ".config" / "coord" / "coordination.config.json"),
+                   (coord, s.root / "coordination-repo" / "coordination.config.json")):
+        if doc is None or doc == "missing":
+            continue
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(doc if isinstance(doc, str) else json.dumps(doc), encoding="utf-8")
+    if coord == "missing":
+        env["COORD_CONFIG"] = str(s.root / "moved-away" / "coordination.config.json")
+    elif coord is not None:
+        env["COORD_CONFIG"] = str(s.root / "coordination-repo" / "coordination.config.json")
+    return s, env
+
+
+def last_heartbeat(s: Seat):
+    hbs = [e for e in s.events() if e["kind"] == "reporter.heartbeat"]
+    return hbs[-1]["data"] if hbs else None
+
+
+def wire(hb) -> "dict | None":
+    """The members AT-27 asserts. An ABSENT member reads `<absent>`, never None: an omitted name and an
+    undeclared seat's `null` are what this test exists to keep apart."""
+    if hb is None:
+        return None
+    c = hb.get("counters", {})
+    return {"name": hb["protocol_agent_name"] if "protocol_agent_name" in hb else "<absent>",
+            "check": hb["protocol_agent_name_check"] if "protocol_agent_name_check" in hb else "<absent>",
+            "in_roster": hb.get("selftest", {}).get("protocol_agent_name_in_roster", "<absent>"),
+            "unchecked": c.get("protocol_agent_name_unchecked", 0),
+            "disagreed": c.get("protocol_agent_name_disagreed", 0)}
+
+
+def drive_at27(box, reporter: Path = REPORTER) -> dict:
+    s, env = box
+    r, rep27 = selftest(s, reporter=reporter, **env)
+    flush(s, reporter=reporter, **env)
+    hb = last_heartbeat(s)
+    checks = rep27.get("checks", {})
+    return {"rc": r.returncode, "selftest": checks.get("protocol_agent_name_in_roster", "<absent>"),
+            "failing": sorted(k for k, v in checks.items() if v == "fail"),
+            "config_readable": checks.get("config_readable"), "wire": wire(hb),
+            "degraded": hb.get("degraded") if hb else None,
+            "fingerprint": hb.get("config_fingerprint") if hb else None,
+            "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster")}
+
+
+def act(d: dict) -> tuple:
+    """What an operator and a consumer see: the act's exit and verdict, and the wire."""
+    return (d["rc"], d["selftest"], d["wire"])
+
+
+def want(name, check, in_roster, unchecked=0, disagreed=0) -> dict:
+    return {"name": name, "check": check, "in_roster": in_roster, "unchecked": unchecked, "disagreed": disagreed}
+
+
+at_a = drive_at27(at27_box("at27-a", home=AT27_ROSTER))
+eq("case A — $COORD_CONFIG unset, a roster at the home path containing the name: selftest exits 0 "
+   "and protocol_agent_name_in_roster passes; the heartbeat carries the name and `checked`, both counters 0",
+   (0, "pass", want(AT27_NAME, "checked", "pass")), act(at_a))
+
+at_b = drive_at27(at27_box("at27-b"))
+eq("case B — $COORD_CONFIG unset and no roster at the home path: the name member is PRESENT beside "
+   "`unchecked`, protocol_agent_name_unchecked is 1, and selftest passes",
+   (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(at_b))
+at_b2 = drive_at27(at27_box("at27-b-set", home=AT27_ROSTER, coord="missing"))
+eq("  … and $COORD_CONFIG naming no file, with a roster CONTAINING the name at the home path, gives "
+   "the same result: a set variable is the whole answer",
+   ((0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(at_b)), (act(at_b2), act(at_b2)))
+for label, doc in (("text that is not JSON", "{ roster: pm"), ("a document with no roster[] array", {"roster": "pm"})):
+    tag = "json" if isinstance(doc, str) else "shape"
+    eq(f"  … and a roster file holding {label} is no readable roster: `unchecked`, never a throw and "
+       f"never `disagreed`", (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)),
+       act(drive_at27(at27_box(f"at27-b-malformed-{tag}", coord=doc))))
+
+at_c = drive_at27(at27_box("at27-c", home=AT27_ROSTER_WITHOUT))
+eq("case C — a readable roster WITHOUT the name: selftest exits non-zero with protocol_agent_name_in_roster "
+   "failing; the heartbeat carries the name exactly as declared, `disagreed`, the check failing, and "
+   "protocol_agent_name_disagreed 1",
+   (1, "fail", want(AT27_NAME, "disagreed", "fail", disagreed=1)), act(at_c))
+eq("  … and the act names that check and no other", ["protocol_agent_name_in_roster"], at_c["failing"])
+eq("  … and its detail names the roster it read and the names it holds, so an operator can fix the typo",
+   ("home", ["pm", "moodle"]),
+   ((at_c["detail"] or {}).get("read_via"), (at_c["detail"] or {}).get("roster_names")))
+
+at_d = drive_at27(at27_box("at27-d", declare=ABSENT, home=AT27_ROSTER))
+eq("case D — no key in the config: protocol_agent_name is null (PRESENT), the check `undeclared`, "
+   "selftest passes and both counters are 0", (0, "pass", want(None, "undeclared", "pass")), act(at_d))
+eq("  … and an explicit null declares nothing either", (0, "pass", want(None, "undeclared", "pass")),
+   act(drive_at27(at27_box("at27-d-null", declare=None, home=AT27_ROSTER))))
+# Each of these is a FRESH seat, and a fresh seat's `degraded` is empty: its first flusher start finds
+# no state.json, which is a first start and not § 11.4's `state_reset` (card#9374, § 6 above). What
+# AT-27 case D asserts is that NO DECLARATION STATE raises a badge (§ 9.3 gives neither counter a
+# member), so every case is held to that empty set.
+eq("  … and no declaration state raises a badge: A, B, C and D all carry an empty `degraded`",
+   [[]] * 4,
+   [at_a["degraded"], at_b["degraded"], at_c["degraded"], at_d["degraded"]])
+
+at_e = drive_at27(at27_box("at27-e", coord=AT27_ROSTER))
+# "Identical to case X" is asserted as X's absolute outcome AND as equality with X: equality alone holds
+# between two cases that both omit the members, which is what a reporter predating card#9375 emits.
+eq("case E — the roster only where $COORD_CONFIG points, no file at the home path: identical to case A "
+   "on every member", ((0, "pass", want(AT27_NAME, "checked", "pass")), act(at_a)), (act(at_e), act(at_e)))
+eq("  … read through the variable, not the home path", "$COORD_CONFIG", (at_e["detail"] or {}).get("read_via"))
+
+at_ctl = drive_at27(at27_box("at27-control", declare="magenta", home=AT27_ROSTER))
+eq("discriminating control — case A with the declared name one byte off: case C's outcome exactly",
+   act(at_c), (at_ctl["rc"], at_ctl["selftest"], dict(at_ctl["wire"] or {}, name=AT27_NAME)))
+eq("  … the name carried exactly as declared, typo and all", "magenta", (at_ctl["wire"] or {}).get("name"))
+
+# THE BOUND. § 6.14 states it as a figure because the ingest refuses a heartbeat over it, so a value past
+# it — or any value that is not a valid declaration — never reaches the wire.
+_name_row = [l for l in DOC.splitlines() if l.startswith("| `protocol_agent_name` | slug | — |")][0]
+NAME_BOUND = int(re.search(r"≤ (\d+) B", _name_row).group(1))
+_bound_roster = {"roster": [{"name": "a" * NAME_BOUND}, {"name": "a" * (NAME_BOUND + 1)}, {"name": "Magento"}]}
+at_bnd = drive_at27(at27_box("at27-bound", declare="a" * NAME_BOUND, home=_bound_roster))
+eq(f"a name AT § 6.14's {NAME_BOUND} B bound is a valid declaration: config_readable passes and it is `checked`",
+   ("pass", "checked"), (at_bnd["config_readable"], (at_bnd["wire"] or {}).get("check")))
+
+
+# A MALFORMED NAME DOES NOT SILENCE THE SEAT (D1 § 3.1's state table, card#9375 round 2). A present value
+# that is not a valid declaration declares nothing: the seat keeps reporting, as `undeclared`, and the act
+# that fails is `protocol_agent_name_in_roster`, whose `selftest` detail names the value. It is NOT a config
+# error — `config_invalid` means "spooling and sending nothing" to D1 § 9.3 and to D3's badge, so a seat
+# still sending would render falsely. Each seat runs one hook (whose config read would count
+# `config_invalid`) and two flushes against the suite's ingest, whose batches are the wire: a pass
+# spools its heartbeat after it sends, so the first pass's heartbeat reaches the wire on the second.
+def drive_malformed(name: str, declare, reporter: Path = REPORTER) -> dict:
+    s, env = box = at27_box(name, declare=declare, home=_bound_roster)
+    hook(s, "PreToolUse", pre(), **env)
+    before = len(INGEST.batches)
+    d = drive_at27(box, reporter=reporter)
+    flush(s, reporter=reporter, **env)
+    posted = INGEST.batches[before:]
+    hbs = [e["data"] for b in posted for e in b["batch"].get("events", []) if e.get("kind") == "reporter.heartbeat"]
+    spooled = last_heartbeat(s) or {}
+    logs = "".join(f.read_text(encoding="utf-8") for f in sorted((s.spool / "log").glob("*.log")))
+    d.update(posts=len(posted), posted_wire=wire(hbs[-1]) if hbs else None, posted_text=json.dumps(posted),
+             log=logs, config_invalid=(spooled.get("counters", {}).get("config_invalid", 0),
+                                       s.state().get("counters", {}).get("config_invalid", 0),
+                                       s.counters().get("config_invalid", 0)))
+    return d
+
+
+MALFORMED = ((f"{NAME_BOUND + 1} B, one past the bound", "a" * (NAME_BOUND + 1), "a" * (NAME_BOUND + 1)),
+             ("not a lowercase slug", "Magento", "Magento"),
+             ("not a string", 48, "<number>"))
+malformed_seen = {}
+for label, bad_name, shown in MALFORMED:
+    d_bad = malformed_seen[label] = drive_malformed(f"at27-bad-{type(bad_name).__name__}-{len(str(bad_name))}", bad_name)
+    eq(f"a name {label} leaves the config valid: config_readable passes, and `config_invalid` is counted "
+       f"nowhere — the heartbeat, state.json, the counter sink", ("pass", (0, 0, 0)),
+       (d_bad["config_readable"], d_bad["config_invalid"]))
+    eq("  … and the seat still sends: its flush POSTs a batch whose heartbeat carries null / `undeclared` "
+       "beside a failing protocol_agent_name_in_roster, and an empty `degraded`",
+       (True, want(None, "undeclared", "fail"), []),
+       (d_bad["posts"] > 0, d_bad["posted_wire"], d_bad["degraded"]))
+    eq("  … and `selftest` fails that one check (exit 1), its detail naming the value — a non-string by its type",
+       (1, ["protocol_agent_name_in_roster"], shown, None, "undeclared"),
+       (d_bad["rc"], d_bad["failing"], (d_bad["detail"] or {}).get("malformed_declaration"),
+        (d_bad["detail"] or {}).get("declared"), (d_bad["detail"] or {}).get("protocol_agent_name_check")))
+    if isinstance(bad_name, str):
+        eq("  … and the value reaches neither the wire nor the seat's log: `selftest`'s detail is its only home",
+           (False, False, False), (bad_name in d_bad["posted_text"], bad_name in json.dumps(d_bad["wire"]),
+                                   bad_name in d_bad["log"]))
+eq("  … and the flusher's start log says the declaration is malformed and was sent as `undeclared`", True,
+   all("protocol_agent_name is not a valid declaration" in d["log"] for d in malformed_seen.values()))
+
+# RED 1 — the round-1 build: a malformed name refused as a config error, so the flusher sends nothing.
+_red_silent = plant(("  return { config: c, errors, caError };\n}",
+                     "  if (c.protocol_agent_name !== undefined && c.protocol_agent_name !== null && !declaredAgentName(c)) "
+                     "errors.push('protocol_agent_name malformed');\n  return { config: c, errors, caError };\n}"))
+r_silent = drive_malformed("at27-bad-red-silent", "Magento", reporter=_red_silent)
+eq("RED: a malformed name refused as a config error silences the seat — no POST, config_readable failing, "
+   "`config_invalid` counted", (0, "fail", True),
+   (r_silent["posts"], r_silent["config_readable"], any(r_silent["config_invalid"])))
+# RED 2 — the value passed through: the malformed name reaches the wire.
+_red_value = plant(("  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;", "  return v;"))
+r_value = drive_malformed("at27-bad-red-value", "Magento", reporter=_red_value)
+eq("RED: a reporter that sends the malformed value verbatim puts it on the wire", True,
+   "Magento" in r_value["posted_text"])
+# RED 3 — the value in the start log line.
+_red_log = plant(("heartbeating as undeclared; `selftest` names the value');",
+                  "heartbeating as undeclared; `selftest` names the value: ' + JSON.stringify(config.protocol_agent_name));"))
+r_log = drive_malformed("at27-bad-red-log", "Magento", reporter=_red_log)
+eq("RED: a start log line that names the value puts it in the seat's log", True, "Magento" in r_log["log"])
+_slug = malformed_seen["not a lowercase slug"]
+redgreen("a malformed declared name does not silence the seat, and its value stays off the wire (D1 § 3.1, card#9375)",
+         f"refused as a config error -> POSTs {r_silent['posts']}, config_readable={r_silent['config_readable']}, "
+         f"config_invalid (heartbeat, state, sink) {r_silent['config_invalid']}; value passed through -> "
+         f"'Magento' on the wire: {'Magento' in r_value['posted_text']}; value in the start log -> "
+         f"'Magento' in the log: {'Magento' in r_log['log']}",
+         f"POSTs {_slug['posts']}, posted heartbeat {_slug['posted_wire']}, config_readable={_slug['config_readable']}, "
+         f"config_invalid {_slug['config_invalid']}, selftest rc={_slug['rc']} failing {_slug['failing']} with "
+         f"malformed_declaration {[(d['detail'] or {}).get('malformed_declaration') for d in malformed_seen.values()]}")
+
+# CASE F — the SUPERVISED START. The flusher a healthy seat runs is the one its OS start launches, and
+# that start inherits nothing from the harness. On Linux the start definition is the crontab line
+# `INSTALL-LINUX.md` Step 5 writes, so the line is READ OUT OF THE RUNBOOK and expanded by the
+# runbook's own shell assignment — never re-typed here — and run the way cron runs a line: `/bin/sh -c`
+# from an environment holding HOME, LOGNAME, SHELL and PATH, and no `$COORD_CONFIG`. The only addition is
+# `FLEET_REPORTER_ONE_PASS`, the suite's inert one-pass seam. The seat config goes where a seat keeps it,
+# `$HOME/.config/fleet-reporter/config.json`, since cron's line names no config path either.
+INSTALL_LINUX = (HERE / "INSTALL-LINUX.md").read_text(encoding="utf-8")
+START_LINES = re.findall(r'^\s*LINE="(.+)"\s*$', INSTALL_LINUX, re.M)
+CC_ASSIGNMENT = "${CC:+COORD_CONFIG=$CC }"
+NODE_REAL = os.path.realpath(shutil.which("node") or "node")
+
+
+def cron_start(box, cc: "str | None", template: str, reporter: Path = REPORTER):
+    s, env = box
+    home = Path(env["HOME"])
+    (home / ".config" / "fleet-reporter").mkdir(parents=True, exist_ok=True)
+    (home / ".config" / "fleet-reporter" / "config.json").write_text(json.dumps(s.cfg), encoding="utf-8")
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    expanded = subprocess.run(
+        ["/bin/sh", "-c", f'LINE="{template}"; printf %s "$LINE"'], capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "CC": cc or "", "FLOCK": str(s.root / "flusher.flock"),
+             "NODE": NODE_REAL, "JS": str(reporter)}).stdout
+    try:
+        subprocess.run(["/usr/bin/env", "-i", f"HOME={home}", "LOGNAME=fleet-reporter-suite", "SHELL=/bin/sh",
+                        "PATH=/usr/bin:/bin", "FLEET_REPORTER_ONE_PASS=1", "/bin/sh", "-c", expanded],
+                       capture_output=True, text=True, timeout=90)
+    finally:
+        s.freeze_flusher()
+    return expanded, last_heartbeat(s)
+
+
+eq("precondition: INSTALL-LINUX.md Step 5 writes exactly one flusher start line, and it assigns "
+   "COORD_CONFIG through the runbook's own conditional", (1, True),
+   (len(START_LINES), bool(START_LINES) and CC_ASSIGNMENT in START_LINES[0]))
+if shutil.which("flock") is None or not Path("/usr/bin/env").exists() or not START_LINES:
+    skip("AT-27 case F needs `flock`, /usr/bin/env and the runbook's start line — the supervised start's "
+         "delivery of $COORD_CONFIG was NOT measured, and that is not a pass")
+    at_f = at_f_red = None
+else:
+    box_f = at27_box("at27-f", coord=AT27_ROSTER_WITHOUT)
+    line_f, hb_f = cron_start(box_f, box_f[1]["COORD_CONFIG"], START_LINES[0])
+    at_f = wire(hb_f)
+    eq("case F — case C's box, the flusher started ONLY by the runbook's crontab line from an environment "
+       "with no $COORD_CONFIG: the heartbeat is identical to case C's on every member",
+       (want(AT27_NAME, "disagreed", "fail", disagreed=1), at_c["wire"]), (at_f, at_f))
+    eq("  … because the line itself carries the assignment", True, line_f.startswith("COORD_CONFIG="))
+    # F, MOVED: the coordination config now lives elsewhere. With the start definition rewritten the
+    # launch delivers the new path; without it the flusher reads the install-time path. Fresh boxes, since
+    # counters are monotonic across a seat's flusher restarts (state.json keeps them).
+    box_mv = at27_box("at27-f-moved", coord=AT27_ROSTER_WITHOUT)
+    moved = box_mv[0].root / "coordination-repo-moved" / "coordination.config.json"
+    moved.parent.mkdir(parents=True)
+    Path(box_mv[1]["COORD_CONFIG"]).rename(moved)
+    _, hb_mv = cron_start(box_mv, str(moved), START_LINES[0])
+    eq("case F, moved — the config moved and the start line rewritten with the new path: identical to case F",
+       (want(AT27_NAME, "disagreed", "fail", disagreed=1), at_f), (wire(hb_mv), wire(hb_mv)))
+    box_stale = at27_box("at27-f-moved-stale", coord=AT27_ROSTER_WITHOUT)
+    stale_cc = box_stale[1]["COORD_CONFIG"]
+    moved_s = box_stale[0].root / "coordination-repo-moved" / "coordination.config.json"
+    moved_s.parent.mkdir(parents=True)
+    Path(stale_cc).rename(moved_s)
+    _, hb_stale = cron_start(box_stale, stale_cc, START_LINES[0])
+    eq("  … and WITHOUT the rewrite the flusher reads the install-time path and reports `unchecked`, the "
+       "check passing — § 18.13 row 6's residual, which only the rewrite catches",
+       want(AT27_NAME, "unchecked", "pass", unchecked=1), wire(hb_stale))
+
+    # ⛔ RED — the start path. A start line written without the assignment.
+    box_fr = at27_box("at27-f-red", coord=AT27_ROSTER_WITHOUT)
+    line_fr, hb_fr = cron_start(box_fr, box_fr[1]["COORD_CONFIG"], START_LINES[0].replace(CC_ASSIGNMENT, "", 1))
+    at_f_red = wire(hb_fr)
+    eq("RED: a start line without the COORD_CONFIG assignment reads the home path, finds nothing, and reports "
+       "`unchecked` with the check PASSING — the disagreement that fails nothing, on the start path",
+       want(AT27_NAME, "unchecked", "pass", unchecked=1), at_f_red)
+    eq("  … and a heartbeat still arrives in both arms: the fix is the start definition's, never a gate on "
+       "emission", (True, True), (hb_f is not None, hb_fr is not None))
+
+# ⛔ RED — the silent omission: case B's reporter drops the members rather than emit `unchecked`.
+P_EMIT = ("    protocol_agent_name: declaration.name,\n    protocol_agent_name_check: declaration.check,",
+          "    ...(declaration.check === 'unchecked' ? {} : { protocol_agent_name: declaration.name, "
+          "protocol_agent_name_check: declaration.check }),")
+r_omit = drive_at27(at27_box("at27-red-omission"), reporter=plant(P_EMIT))
+eq("RED: a reporter that drops the members on an unchecked seat puts no name on the wire — the omitted "
+   "field an undeclared seat cannot be told apart from", ("<absent>", "<absent>"),
+   ((r_omit["wire"] or {}).get("name"), (r_omit["wire"] or {}).get("check")))
+
+# ⛔ RED — the equality fallback: a declaration synthesized from a `seat_id` equal to a roster name.
+P_EQ = ("  const name = declaredAgentName(cfg);", "  const name = declaredAgentName(cfg) || cfg.seat_id;")
+eq_box = lambda tag: at27_box(f"at27-eq-{tag}", declare=ABSENT, seat_id=AT27_NAME, home=AT27_ROSTER)
+r_eq, g_eq = drive_at27(eq_box("red"), reporter=plant(P_EQ)), drive_at27(eq_box("green"))
+eq("RED: a reporter that falls back to seat_id sends a name no human wrote in that config, `checked`",
+   (AT27_NAME, "checked"), ((r_eq["wire"] or {}).get("name"), (r_eq["wire"] or {}).get("check")))
+eq("GREEN: the real reporter on that seat sends null and `undeclared`", want(None, "undeclared", "pass"), g_eq["wire"])
+
+# ⛔ RED — the disagreement that fails nothing: the check emits `checked`, or selftest passes.
+r_ok = drive_at27(at27_box("at27-red-checked", home=AT27_ROSTER_WITHOUT),
+                  reporter=plant(("  if (roster.names.includes(name)) return", "  if (true) return")))
+eq("RED: a reporter that calls a non-member `checked` exits 0 with the check passing on a disagreeing seat",
+   (0, "pass", "checked"), (r_ok["rc"], r_ok["selftest"], (r_ok["wire"] or {}).get("check")))
+r_pass = drive_at27(at27_box("at27-red-pass", home=AT27_ROSTER_WITHOUT), reporter=plant(
+    ("results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;",
+     "results.protocol_agent_name_in_roster = declaration ? true : null;")))
+eq("RED: a selftest that passes `disagreed` exits 0 and the heartbeat's check passes, though the wire says "
+   "`disagreed`", (0, "pass", "pass", "disagreed"),
+   (r_pass["rc"], r_pass["selftest"], (r_pass["wire"] or {}).get("in_roster"), (r_pass["wire"] or {}).get("check")))
+
+# ⛔ RED — the same failure through the PATH: a reporter that stats only the home path.
+r_path = drive_at27(at27_box("at27-red-path", coord=AT27_ROSTER),
+                    reporter=plant(("  if (process.env.COORD_CONFIG !== undefined) return", "  if (false) return")))
+eq("RED: on case E's box a reporter reading only the home path finds no roster, reports `unchecked`, passes, "
+   "and exits 0 — with the roster readable on the box the whole time",
+   (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(r_path))
+
+# RED — the name in the identity: `config_fingerprint` covering the declaration.
+P_FP = ("    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}`)",
+        "    .update(`${cfg.install_id}|${cfg.seat_id}|${cfg.ingest_url}|${cfg.protocol_agent_name}`)")
+at_pm = drive_at27(at27_box("at27-identity-pm", declare="pm", home=AT27_ROSTER))
+p_fp = plant(P_FP)
+r_fp = (drive_at27(at27_box("at27-identity-red-a", home=AT27_ROSTER), reporter=p_fp)["fingerprint"],
+        drive_at27(at27_box("at27-identity-red-pm", declare="pm", home=AT27_ROSTER), reporter=p_fp)["fingerprint"])
+eq("RED: a fingerprint covering the name changes when only the label is edited — a re-identified desk",
+   True, r_fp[0] != r_fp[1])
+eq("GREEN: editing the declared name moves no config_fingerprint", at_a["fingerprint"], at_pm["fingerprint"])
+
+
+# NEVER IN A HOOK. Structural, because a hook's roster read has no observable of its own: resolution is
+# reached only through `runSelftestChecks`, and that only from the flusher and the selftest subcommand.
+def callers(source: str, callee: str) -> list[str]:
+    heads = [(m.start(), m.group(1)) for m in re.finditer(r"^(?:async )?function (\w+)\(", source, re.M)]
+    out = []
+    for m in re.finditer(rf"(?<![\w.]){callee}\(", source):
+        enclosing = [n for at, n in heads if at < m.start()]
+        if enclosing and enclosing[-1] != callee:
+            out.append(enclosing[-1])
+    return sorted(set(out))
+
+
+_src19 = REPORTER.read_text(encoding="utf-8")
+eq("resolution is reached only from runSelftestChecks", ["runSelftestChecks"], callers(_src19, "resolveDeclaration"))
+eq("  … and runSelftestChecks only from the flusher's start and the selftest subcommand — never a hook",
+   ["flusherMain", "selftestMain"], callers(_src19, "runSelftestChecks"))
+_red_hook = plant(("function hookMain(hookName) {", "function hookMain(hookName) { resolveDeclaration({});"))
+eq("RED: a hook that resolves the roster is seen by that structural check", True,
+   "hookMain" in callers(_red_hook.read_text(encoding="utf-8"), "resolveDeclaration"))
+
+
+# NEVER PER FLUSH. A long-lived flusher on the timing-scaled copy (§ 1's FAST_K), over several heartbeats.
+def at27_long_run(name: str, reporter: Path) -> list:
+    s, env = at27_box(name)
+    (s.spool / "flusher.lock").unlink(missing_ok=True)
+    proc = subprocess.Popen(["node", str(reporter), "flusher"], env=s.env(freeze=False, **env), cwd=str(HERE),
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        t0 = time.time()
+        while time.time() - t0 < 20 and len([e for e in s.events() if e["kind"] == "reporter.heartbeat"]) < 3:
+            time.sleep(0.1)
+    finally:
+        proc.kill()
+        proc.wait()
+        s.freeze_flusher()
+    return [e["data"].get("counters", {}).get("protocol_agent_name_unchecked", 0)
+            for e in s.events() if e["kind"] == "reporter.heartbeat"]
+
+
+g_long = at27_long_run("at27-per-start", fast_flusher())
+r_long = at27_long_run("at27-per-flush", fast_flusher((P_EMIT[0],
+    "    ...(() => { const d = resolveDeclaration(cfg); return { protocol_agent_name: d.name, "
+    "protocol_agent_name_check: d.check }; })(),")))
+eq("GREEN: over a flusher's successive heartbeats protocol_agent_name_unchecked stays 1 — one read per start",
+   (True, {1}), (len(g_long) >= 3, set(g_long)))
+eq("RED: a flusher that re-resolves at each heartbeat counts a read per heartbeat", True,
+   len(r_long) >= 3 and r_long[-1] > 1)
+
+redgreen("a declared agent name is checked, and a disagreement fails an act (D1 § 3.1, AT-27, card#9375)",
+         f"omitted members on an unchecked seat -> name/check {(r_omit['wire'] or {}).get('name')}/"
+         f"{(r_omit['wire'] or {}).get('check')}; seat_id fallback -> {r_eq['wire']}; non-member called checked -> "
+         f"rc={r_ok['rc']} check={(r_ok['wire'] or {}).get('check')}; selftest passing disagreed -> rc={r_pass['rc']} "
+         f"in_roster={r_pass['selftest']}; home path only on case E -> {act(r_path)}; start line without the "
+         f"assignment -> {at_f_red}; name in the fingerprint -> {r_fp[0]} vs {r_fp[1]}; resolution per heartbeat -> "
+         f"unchecked counts {r_long}",
+         f"A {act(at_a)}; B {act(at_b)}; C {act(at_c)}; D {act(at_d)}; E == A: {act(at_e) == act(at_a)}; "
+         f"F {at_f}; control (one byte off) == C; fingerprint unmoved by the name {at_a['fingerprint']}; "
+         f"one read per flusher start {g_long}")
+
+
+print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
 # and that process loops until it is signalled. A teardown that quietly reaped them would leave

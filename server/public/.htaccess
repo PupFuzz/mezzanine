@@ -5,6 +5,15 @@
 
     RewriteEngine On
 
+    # Redirect plain HTTP to HTTPS on a DIRECT connection only (Apache terminates TLS itself).
+    # Inert behind any proxy that sets X-Forwarded-Proto: the proxy owns the scheme there, so the
+    # rule cannot loop. The ACME HTTP-01 challenge is exempt so a first certificate can be issued
+    # before HTTPS exists on a fresh host.
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} ^$
+    RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

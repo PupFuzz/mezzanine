@@ -19,7 +19,11 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                Second, and bound BOTH WAYS to the FIXTURE NAMES of the
                                                suite a test names (read with `ast`, not grepped -- a
                                                grep is satisfied by the suite's own docstring); the
-                                               build order gates every artifact a test reads; the
+                                               build order gates every artifact a test reads, and
+                                               every Build bullet of a test the harness drives
+                                               declares the harness, while a test naming no fixture
+                                               and not the harness may name an instrument whose own
+                                               Appendix B row gates the test; the
                                                animation-log schema's two homes; the episode walk's
                                                own episode and row counts
   G6  Appendix A counts + D2 `D3`-marker cover  an obligation with no row; a marker section nobody cites
@@ -810,6 +814,7 @@ else:
                     f"— the gate-cell parse is broken and the ordering rule reads an empty population")
 
     BUILD_RE = re.compile(r"^- \*\*Build(?:\s*—\s*the\s+(.+?)\s+half[^:*]*)?:\*\*", re.M)
+    g5_bullets = []                      # (test, half, bullet text, declared names or None), in order
     for h in at_heads:
         name = re.match(r"(AT-D3-\d+)", h[1]).group(1)
         body = "\n".join(lines[h[3]:h[4]])
@@ -833,9 +838,11 @@ else:
                     f"the test states them, by Appendix B's own artifact names, and this gate holds "
                     f"the arithmetic. A test that declares nothing would otherwise be gated anywhere")
                 halves.setdefault(half, set())
+                g5_bullets.append((name, half, seg, None))
                 continue
             names = {re.sub(r"[`\s]+", " ", a).strip().lower()
                      for a in re.findall(r"\*\*([^*]+)\*\*", mr.group(1))}
+            g5_bullets.append((name, half, seg, names))
             for a in sorted(names - set(artifact_step)):
                 fail.append(f"G5: `{name}` declares that it reads `{a}`, which no Appendix B Artifact "
                             f"cell names. Either the artifact is built by no step — in which case "
@@ -1066,6 +1073,110 @@ if fx_declared:
                     f"fixture is described nowhere cannot be built from this document alone")
     for f in sorted(fx_declared - fx_used):
         fail.append(f"G5: `{f}` is declared as a fixture and used by no test")
+
+# G5, fifth half: A BUILD BULLET THE HARNESS DRIVES DECLARES THE HARNESS.  The ordering rule above
+# holds a test to the artifacts its `Reads:` clause declares, so a clause that omits one is a gate the
+# rule cannot see under -- and the harness is the artifact fixture-replaying tests kept omitting:
+# AT-D3-1's instrument half stood at step 2 while its GREEN needed step 3's harness.  Which bullets
+# the harness drives is decided from the document's own vocabulary, never from a list of bullets:
+#
+#   THE FIXTURES are section 11's fixture table (`fx_declared`, above).  A TEST any of whose Build
+#   bullets names one is a harness test, and EVERY bullet of it is harness-driven -- per test, not per
+#   bullet, because a split test's later halves replay "the same fixture" or "both runs above" by
+#   reference, and a per-bullet fixture match under-covers exactly those.  A test whose bullets name
+#   the harness itself (`the harness`, the bold name Appendix B builds it under) is a harness test too.
+#
+#   THE OTHER INSTRUMENTS are Appendix B's bold artifact names whose head noun is `gate` / `gates` --
+#   the other thing this document RUNS rather than reads.  The animation log is not among them: it
+#   records what the harness replays and replays nothing itself.
+#
+# THE CLASSIFICATION DECIDES, AND IT IS CHECKED FIRST.  A harness test's every bullet must declare
+# `the harness`, whatever else its clause names: a gate named beside a replayed fixture does not stand
+# in for the harness that replays it.  Checking the instrument first -- the first revision of this
+# half -- let a harness test swap the harness for a step-0 gate and pass, which is the round-1
+# review's MAJOR on PupFuzz/mezzanine#164.
+#
+# AN INSTRUMENT COVERS ONLY A TEST ITS OWN APPENDIX B ROW GATES.  The classification is fed by
+# recognizers -- a fixture name the token reads, or the test's own mention of the harness -- so a test
+# can leave the harness class by what it omits: a test naming no fixture whose `the harness` is
+# swapped for a gate name, or a fixture name written unbackticked, bold or as a link.  Round 2 of the
+# same review measured exactly that.  A third recognizer would be one more thing to write around, so
+# the exemption is anchored on the build order instead: a bullet that is not a harness test's is
+# covered by an instrument only when the row that BUILDS that instrument also GATES the test (any half
+# of it -- AT-D3-12's lineage half runs the provenance gates its manifest half is gated on at step 0).
+# A test gated elsewhere that names a gate in place of what runs it reds, whatever the recognizers saw.
+# Any other bullet reds too, because what runs it is undeclared and a check that guessed would pass
+# exactly the bullet it cannot read.
+#
+# WHAT THIS HALF CANNOT DO.  It catches the ACCIDENTAL class -- a harness-driven test that forgets the
+# harness.  It cannot prove a `Reads:` clause is true: a deliberately false declaration, such as a test
+# added to row 0's Gate cell that reads only step-0 artifacts, passes, and stays a review question.
+#
+# A backticked name beginning `fx` that the fixture table does not declare is a CONTROL: the predicate
+# cannot recognise that fixture, so it cannot classify the test on it -- and a malformed name dropped
+# out of the harness class is exactly what would let a gate name cover the test.  The token is read
+# wider than the table's own `fx-[a-z0-9-]+` shape -- any separator, any case -- so a malformed name
+# (`fx_gap`, `FX-gap`) is seen rather than skipped.
+G5_HARNESS = "the harness"
+G5_FX_TOKEN = re.compile(r"`(fx[^`\n]*)`", re.I)
+g5_harness_bullets, g5_instrument_bullets = [], []
+g5_other_instruments = sorted(a for a in artifact_step if re.search(r"\bgates?$", a))
+if appB and G5_HARNESS not in artifact_step:
+    fail.append(f"G5 CONTROL: no Appendix B Artifact cell names `{G5_HARNESS}` in bold, so the "
+                f"artifact every harness-driven Build bullet must declare has no step, and the "
+                f"harness half would hold every bullet to a name nothing builds")
+if appB and fx_declared and G5_HARNESS in artifact_step:
+    g5_by_test = {}
+    for name, half, seg, reads in g5_bullets:
+        g5_by_test.setdefault(name, []).append((half, seg, reads))
+    for name, bl in g5_by_test.items():
+        fx_named = {t for _, seg, _ in bl for t in G5_FX_TOKEN.findall(seg)}
+        for t in sorted(fx_named - fx_declared):
+            fail.append(f"G5 CONTROL: `{name}` names `{t}` in a Build bullet and section 11's fixture "
+                        f"table declares no such fixture, so the harness half cannot recognise what "
+                        f"the test replays and classifies it on the fixtures it does recognise, or on "
+                        f"none")
+        fx_replayed = sorted(fx_named & fx_declared)
+        harness_test = bool(fx_replayed) or any(
+            re.search(r"\bthe\s+harness\b", seg, re.I) for _, seg, _ in bl)
+        for i, (half, seg, reads) in enumerate(bl, 1):
+            if reads is None:            # reds above: a bullet with no Reads clause declares nothing
+                continue
+            label = (f"`{name}`'s Build bullet {i} of {len(bl)}"
+                     f"{' (the ' + half + ' half)' if half else ''}")
+            instruments = sorted(reads & set(g5_other_instruments))
+            if harness_test:
+                g5_harness_bullets.append(label)
+                if G5_HARNESS not in reads:
+                    fail.append(
+                        f"G5: {label} is driven by the harness — its test "
+                        f"{'replays ' + str(fx_replayed) if fx_replayed else 'names the harness'}"
+                        f" — and its **Reads:** clause does not declare `{G5_HARNESS}`."
+                        + (f" It names {instruments} instead, and that does not stand in for the "
+                           f"harness: only a test that names no fixture and not the harness, and is "
+                           f"gated by the row that builds the instrument, may name it instead."if instruments else "")
+                        + f" A bullet that replays a fixture reads the harness as surely as anything "
+                          f"it asserts on; leave it out and the ordering rule cannot see that the "
+                          f"test needs step {artifact_step[G5_HARNESS]}'s artifact, which is how "
+                          f"AT-D3-1's instrument half stood at step 2")
+            elif any(st == artifact_step[i] for st, _ in step_of.get(name, []) for i in instruments):
+                g5_instrument_bullets.append(label)
+            else:
+                named = (f"names {instruments}, built at step "
+                         f"{sorted({artifact_step[i] for i in instruments})}, and `{name}` is gated at "
+                         f"step {sorted({st for st, _ in step_of.get(name, [])})}: an instrument "
+                         f"covers only a test that the Appendix B row building it also gates"
+                         if instruments else
+                         f"names no instrument (one of {g5_other_instruments})")
+                fail.append(
+                    f"G5: {label} belongs to a test that names no fixture from section 11's table "
+                    f"and does not name the harness, and its **Reads:** clause {named}. What runs "
+                    f"the test is undeclared, so whether its gate stands on the harness cannot be "
+                    f"decided, and a check that guessed would pass the one bullet it cannot read")
+    if not g5_harness_bullets:
+        fail.append("G5 CONTROL: no Build bullet was recognised as driven by the harness — the "
+                    "fixture names or the Build-bullet parse are unread, and the harness half would "
+                    "pass every bullet over an empty population")
 
 # -------------------------------------- G6. Appendix A counts + marker coverage ---
 appA = section_text("appendix-a--every-obligation-addressed-to-this-document") or ""
@@ -2512,6 +2623,92 @@ if _g12_arith == 0:
                 "age, so leg B measured nothing. The `stale` and `offline` rows are the two this "
                 "leg exists for")
 
+# ---- G13. a Never cell that forbids the empty desk is SCOPED to the client's confirmation ----
+#
+# Section 2.3's row 5 (card#7341 step 3, the operator's 2026-09-14 ruling) makes a HELD seat the
+# client cannot currently confirm render section 7.1's empty chair.  Two Never cells forbade exactly
+# that in ABSOLUTE terms -- `idle`'s ("never the empty desk") and `disabled`'s ("a seat that is off
+# and a seat that is gone must not look alike") -- so the document would state the rule and its own
+# prohibition at once, and no gate read a Never cell at all.
+#
+# ⛔ THE THIRD CELL IS THE ONE A NARROWER CHECK MISSES.  Appendix A's U5 RESTATES the off-versus-gone
+# obligation and names section 7.1 as where it is discharged.  A check reading only 7.1's table
+# returns CLEAN over a document that scopes the rule in 7.1 and publishes it absolutely at the row
+# citing 7.1 as its proof -- which is what happened (card#7341, pass-6 MAJOR 4), and is why this
+# check reads the DISCHARGE cell too.  It never reads U5's Obligation cell: that carries D1
+# § 6.14's own sentence, which this document does not get to scope.
+#
+# ⚠ WHAT IT CANNOT DO: judge whether a scoping clause is the RIGHT one, or that it qualifies the
+# prohibition rather than sitting elsewhere in the same cell.  It holds a cell that forbids the empty
+# desk to CARRYING the qualification in the words all three cells use for it; the argument for the
+# scope is section 7.3's and a reviewer's.
+#
+# ⛔ THE PHRASE, NOT THE WORD `confirm`.  Each of these cells goes on to explain what happens once a
+# read has failed "enough to leave it unconfirmed" — so a check greping the cell for `confirm` stays
+# green with the QUALIFICATION deleted and the explanation left behind, which is a gate that cannot
+# fail on the one edit it exists to catch.  The selftest plants exactly that edit.
+G13_SCOPED = re.compile(r"client can (?:currently )?confirm the seat", re.I)
+g13_rows = table_rows(raw, r"^\|\s*`render_state`\s*\|\s*Desk\s*\|\s*Label line\s*\|\s*Animation\s*\|\s*Never\s*\|")
+g13_seen = {}
+if g13_rows is None:
+    fail.append("G13: section 7.1's render_state table header was not found — this check could not "
+                "run at all, which is a false clean and not a skip")
+else:
+    if len(g13_rows) != len(render_m):
+        fail.append(f"G13: section 7.1's table has {len(g13_rows)} data rows against "
+                    f"{len(render_m)} `render_state` members — the row walk itself is broken, so "
+                    f"every verdict below would be about a table this gate cannot read")
+    for state, forbids, what in (("idle", "empty", "the empty desk"),
+                                 ("disabled", "offline", "rendering as `offline`")):
+        row = next((r for r in g13_rows if r.startswith(f"| `{state}`")), None)
+        if row is None:
+            fail.append(f"G13: no `{state}` row in section 7.1's table — the cell this gate reads "
+                        f"has moved or been deleted")
+            continue
+        c = cells(row)
+        if len(c) != 5:
+            fail.append(f"G13: section 7.1's `{state}` row has {len(c)} cells, not five")
+            continue
+        never = c[4]
+        if forbids not in never.lower():
+            fail.append(f"G13: `{state}`'s Never cell no longer forbids {what} at all — the anchor "
+                        f"this gate reads has moved, so its silence would mean nothing")
+            continue
+        g13_seen[state] = bool(G13_SCOPED.search(never))
+        if not g13_seen[state]:
+            fail.append(f"G13: section 7.1's `{state}` Never cell forbids {what} unconditionally and "
+                        f"names no scoping to the client's own confirmation — section 2.3 row 5 "
+                        f"makes that a live exception: a seat the client cannot confirm renders the "
+                        f"empty chair, which is the very render this cell forbids")
+
+g13_u_rows = table_rows(raw, r"^\|\s*#\s*\|\s*D1 source\s*\|\s*Obligation\s*\|\s*Discharged in\s*\|")
+g13_u5 = None
+if g13_u_rows is None:
+    fail.append("G13: Appendix A's table of obligations D1 addresses to the render layer was not "
+                "found — this leg could not run at all")
+else:
+    hits = [r for r in g13_u_rows if "must not look alike" in r and "`enabled: false`" in r]
+    if len(hits) != 1:
+        fail.append(f"G13: {len(hits)} rows of Appendix A restate D1 § 6.14's off-versus-gone "
+                    f"sentence, not the one this gate reads")
+    else:
+        c = cells(hits[0])
+        if len(c) != 4:
+            fail.append(f"G13: Appendix A's U5 row has {len(c)} cells, not four")
+        elif "7.1" not in c[3]:
+            fail.append("G13: Appendix A's U5 no longer names section 7.1 as where the obligation is "
+                        "discharged — the contradiction this leg reads is between that cell and "
+                        "7.1's own, so the anchor has moved")
+        else:
+            g13_u5 = bool(G13_SCOPED.search(c[3]))
+            if not g13_u5:
+                fail.append("G13: Appendix A's U5 states the off-versus-gone obligation as discharged "
+                            "in section 7.1 and names no scoping to the client's own confirmation — "
+                            "but 7.1's `disabled` cell holds that distinction only while the client "
+                            "can confirm the seat, so the document publishes the obligation as "
+                            "absolute at the very row that cites the scoped section as its proof")
+
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -2543,6 +2740,13 @@ print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Re
       f"is where an undeclared read hides, and a count would hide it again")
 for _n, _a in g5_unread:
     print(f"    G5 residue — named but not declared as read · {_n}: `{_a}`")
+print(f"    G5 harness: {len(g5_harness_bullets)} Build bullets of tests the harness drives, each "
+      f"required to declare it whatever else it names; {len(g5_instrument_bullets)} of tests naming "
+      f"no fixture and not the harness, run by an instrument ({g5_other_instruments}) whose own "
+      f"Appendix B row gates the test: {g5_instrument_bullets}. Classified from the fixture table and "
+      f"the harness's own name first, Appendix B's gates second — no bullet is listed in this tool. "
+      f"NOT MECHANIZED: whether a `Reads:` clause is true — a deliberately false declaration is a "
+      f"review question")
 print(f"    G5 ordinal REDs: {g5_ord_total} across the acceptance tests, each sequence checked "
       f"CONTIGUOUS from Second. Which of them are bound to a suite is printed rather than counted — "
       f"a test whose REDs no fixture file claims has had its ENUMERATION checked and its EXECUTION "
@@ -2621,6 +2825,11 @@ print(f"    G9 table rows outside the render map: {len(g9_exempt)}, every one of
       f"marker-definition, {len(g9_gatedoc_lines)} guard-class")
 for ln, f, ex in g9_exempt:
     print(f"    G9 outside the render map, {ex} · L{ln}: `{f}`")
+print(f"G13 the empty-desk Never cells, scoped to the client's own confirmation (section 2.3 row 5): "
+      f"section 7.1 rows walked {len(g13_rows or [])}; cells read and scoped "
+      f"{sorted(s for s, ok in g13_seen.items() if ok)}; Appendix A's U5 discharge cell scoped: "
+      f"{g13_u5}. The U5 leg is why this is not two cells: a gate reading only 7.1's table returned "
+      f"CLEAN over the same obligation published absolutely one appendix away")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "

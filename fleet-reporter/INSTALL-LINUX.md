@@ -80,8 +80,8 @@ flusher exclusive across *all* starts, cron's and the hooks'. A copy that loses 
 straight away.
 
 **How long an unclean death costs, derived rather than quoted.** `fleet-reporter.js` touches
-`flusher.lock` at the start of every flush pass (`touchLock`), and passes run `K.FLUSH_MS` apart. A start treats
-the lock as held until it is `K.LOCK_STALE_MS` old. A flusher killed uncleanly (SIGKILL, OOM) leaves the
+`flusher.lock` at the start of every flush pass and before every request it sends (`renewLock`), and passes run
+`K.FLUSH_MS` apart. A start treats the lock as held until it is `K.LOCK_STALE_MS` old. A flusher killed uncleanly (SIGKILL, OOM) leaves the
 lock behind, so no start takes over until `K.LOCK_STALE_MS` after its last touch. After that, the first
 start wins: the next cron minute boundary, or any hook that fires sooner. So an idle seat loses up to
 `K.LOCK_STALE_MS` plus one cron minute plus a `node` start. [Step 5](#step-5--supervise-the-flusher-from-the-user-crontab)'s
@@ -613,14 +613,54 @@ went stale, and it took over. It kept the existing `state.json`, so no second st
 node /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js selftest; echo "selftest rc=$?"
 ```
 
-On the sandbox, five checks passed: `config_readable`, `tls_verify`, `sanitizer_fixtures`,
-`predicate_discrimination` and `harness_payload_keys`. `harness_payload_keys` passed for every hook in
-the fixture set. **`schema_version_accepted` was `fail`, so the command exited `rc=1`.** This build
-fails that check on every seat. The one-shot `selftest` never probes the ingest; its detail says
-`read from GET /api/ingest/health by the flusher; unprobed here`. So a non-zero exit from this command
-alone does not mean the install is broken. What says so is the heartbeat's `selftest` object, which the
-flusher refreshes against the real host. Step 7 reads it, and on the sandbox every check there was
-`pass`. Anything *other* than `schema_version_accepted` failing here is a real failure.
+The command measures both network checks itself, with the flusher's own health probe against the
+config's `ingest_url` and `ca_file` (card#9373), through `proxy_url` when the config sets one, the
+route the batches take (card#9473). Read its exit code by D1 § 6.14:
+
+- **`rc=0`** — every check passed. The install is verified.
+- **`rc=1`** — a check failed; `checks` names it and `detail` says why. A `tls_verify` fail with an
+  empty `detail.tls_verify.forbidden_spellings_present` means a TCP connection was made and the TLS
+  handshake failed; `detail.tls_verify.probe_error` names the error, and the usual cause is a
+  `ca_file` that does not trust the ingest's certificate.
+- **`rc=1` with `config_readable` failing** — `detail.config_readable.errors` names each rule the
+  config breaks, and the command runs no probe. `ca_file unreadable at <path>: <errno>` means the seat
+  cannot read the CA file its config pins: it was moved, its permissions changed, or the path has a
+  typo. `ca_file must be an absolute path or null (§ 3.1), not "<value>"` means the config holds an
+  empty string or a relative path: set the file's absolute path, or `null` for a seat that trusts the
+  system store. The reporter never falls back to the system trust store (D1 § 3.5): the flusher sends
+  nothing and keeps spooling, and logs the same error. Fix the file or the config and re-run this step.
+  A running flusher re-reads an unreadable `ca_file` on each pass: once the file is readable it probes
+  and sends the spooled events, logs `ca_file readable at <path>`, and needs no restart. The flusher
+  reads its config only when it starts, so after a config change (an absolute path, or `null`) stop it
+  with Step 5's `stop-flusher.js`, as Step 8 item 3 runs it:
+  `node "$B/stop-flusher.js" /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter/fleet-reporter.js`.
+  A clean stop removes its lock, so the next start, at cron's next minute boundary or from a sooner
+  hook, reads the corrected config.
+- **`rc=1` with `protocol_agent_name_in_roster` failing** — the declared `protocol_agent_name` is not
+  a member of the roster the command read, which D1 § 3.1 calls `disagreed`.
+  `detail.protocol_agent_name_in_roster` names the roster file (`roster`), which site it came from
+  (`read_via`: `$COORD_CONFIG` or `home`) and the names that roster holds (`roster_names`). When
+  `detail.protocol_agent_name_in_roster.malformed_declaration` is not `null`, the check failed for
+  another reason: the declared value is not a valid name by D1 § 3.1, and that field shows the value,
+  or its type for a non-string. The seat still reports, as `undeclared`, until the config is fixed.
+- **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
+  (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
+  (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,
+  D1 § 4.1). Re-run once the ingest answers.
+
+**The roster check reads the environment the command runs in** (D1 § 3.1). The flusher gets
+`$COORD_CONFIG` from Step 5's crontab line, and a shell that has not exported it makes `selftest` read
+the home path instead. `detail.protocol_agent_name_in_roster.read_via` says which it read. To check
+the roster the flusher reads, run the command with the value Step 5 resolved in the environment.
+
+⚠ **This corrected command has not yet been run on the sandbox seat.** It is exercised against the
+acceptance suite's TLS ingest stub (`fleet-reporter.selftest.py` § 1). The card#9368 run on the sandbox
+used the build before card#9373. There five checks passed: `config_readable`, `tls_verify`,
+`sanitizer_fixtures`, `predicate_discrimination` and `harness_payload_keys`, the last for every hook in
+the fixture set. `schema_version_accepted` was `fail` and the command exited `rc=1`, because that build's
+one-shot never probed the ingest and so failed the check on every seat. Its `tls_verify` pass checked
+the source alone. Step 7 reads the heartbeat's `selftest` object, which the flusher measures against the
+real host, and on the sandbox every check there was `pass`.
 
 ## Step 7 — verify that events arrive
 
@@ -708,15 +748,20 @@ processes, as Step 5 reports.
 
 ## What this install does not give you, by name
 
-- **`protocol_agent_name` is written and not yet sent.** `fleet-reporter.js` does not yet read the key
-  or the roster (D1 § 3.1 says so, and card#9375 is the reporter half that would). The heartbeat
-  therefore carries no name, the snapshot shows `protocol_agent_name: null`, and
-  `protocol_agent_name_in_roster` is not among the selftest checks. The config already declares the
-  name a future build will send.
-- **Every fresh seat is badged `epoch_reset`, and the badge stays.** The flusher's first start finds
-  no `state.json`, and the reporter counts that as § 11.4's *unreadable or corrupt* state reset. The
-  first heartbeat carries `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10,
-  eleven minutes later and after a flusher restart, because the counter is a running total.
+- **`protocol_agent_name` is sent only by a build that includes card#9375.** That build reads the key
+  and the roster, and sends the name and `protocol_agent_name_check` on every heartbeat. The sandbox's
+  install used a checkout of `4ce0a19` (Step 1), which is older. A seat running an older build sends no
+  name, and the snapshot shows `protocol_agent_name: null`, until Step 1's artifact is replaced and
+  Step 5's flusher restarted.
+- **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
+  the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
+  `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and
+  after a flusher restart, because the counter is a running total kept in `state.json`. A build that
+  includes card#9374 counts no reset on a first start, so a seat installed from it starts with an
+  empty `degraded`. Replacing Step 1's artifact on an older seat does not clear the badge, because the
+  new build loads the same total. Deleting `state.json` does not clear it either: the next batch
+  arrives under a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
+  `seq_epoch_change`. Whether and how a badge clears is card#9491.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

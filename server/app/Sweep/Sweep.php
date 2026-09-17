@@ -3,12 +3,14 @@
 namespace App\Sweep;
 
 use App\Feed\Outbox;
+use App\Feed\VisiblePrefix;
 use App\Fold\Badges;
 use App\Fold\Clock;
 use App\Fold\Derivation;
 use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
 use App\Ingest\Counters;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -107,8 +109,25 @@ final class Sweep
                 // reason: a crash between closing a call and recording the state that closure
                 // implies would leave a ledger and a render disagreeing, with nothing to say which
                 // is right.
-                Outbox::transaction(fn () => $this->seat((int) $seatRef, $nowMs, $nowSql));
+                $contended = ! Outbox::transaction(fn () => $this->seat((int) $seatRef, $nowMs, $nowSql));
+
+                if ($contended) {
+                    $this->contended((int) $seatRef, 'seat_state held');
+                }
             } catch (\Throwable $e) {
+                // ⛔ A CONCURRENCY ERROR IS CONTENTION, NOT A FAILURE — card#9466. The seat lock
+                // `seat()` takes first covers `seat_state`, and every transaction that samples the
+                // seat's fingerprint takes it first (§ 6.5). It does not cover a downstream row
+                // (`sessions`, `calls`, `attention_requests`, `seat_counters`) written outside those
+                // transactions — § 6.5 names the writers outside the lock — and a job's write to such
+                // a row can still time out (`1205`), deadlock (`1213`) or find it changed (`1020`).
+                // Nothing was written, and the next pass retries the seat.
+                if (app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
+                    $this->contended((int) $seatRef, 'a downstream row held');
+
+                    continue;
+                }
+
                 // ⛔ THE ERROR BOUNDARY IS THE POINT, AND THE TRANSACTION IS NOT IT. An earlier
                 // revision of this comment claimed the per-seat TRANSACTION was what made "one
                 // seat's failure cost one desk". It is not: a transaction bounds what is WRITTEN,
@@ -125,8 +144,7 @@ final class Sweep
                 // COUNTED PER SEAT, mirroring § 7.2's `fold_error` — the other per-seat derivation
                 // failure, stored the same way — because a seat can be named for it and the answer
                 // is about that seat: its time-derived transitions did not advance this pass.
-                // ⚠ § 7.2 declares no counter for this and the name is therefore this card's;
-                // reported in the PR body with the other D2 gaps rather than slipped in.
+                // § 7.2 declares it as `sweep_seat_error`.
                 $failed++;
 
                 Log::error('sweep: seat pass failed; continuing', [
@@ -147,6 +165,12 @@ final class Sweep
         // process does not evaluate, whose branches the fold records at their own evaluation sites.
         Predicates::alarm($nowMs, $nowSql);
 
+        // NOT ONE OF THE SEVEN JOBS — AN OBSERVATION, riding this loop for its cadence (card#9467). A
+        // committed `feed_outbox` row above the streams' visible prefix and `retention − lag` old is one
+        // lag from § 6.7's purge taking it unread; this is the only process that looks every 15 s
+        // whether or not a browser is open. `VisiblePrefix::countStalled()` owns the predicate.
+        VisiblePrefix::countStalled();
+
         // LAST, AND AFTER THE WORK RATHER THAN BEFORE IT. § 8.2.4 reads this as "the sweeper ran",
         // and a stamp written at the top of a pass that then died would assert a pass that never
         // finished — the same class of claim § 2.3 refuses for a fold-written lag.
@@ -160,10 +184,40 @@ final class Sweep
         return new SweepPass($seats->count(), $failed);
     }
 
-    /** One seat, one transaction: jobs 2–6, then the recompute that is job 1's whole effect. */
-    private function seat(int $seatRef, int $nowMs, string $nowSql): void
+    /**
+     * A seat this pass yielded to another writer: counted and logged below ERROR, and kept out of
+     * `SweepPass::$failed`, because the next pass — `CADENCE_S` later — retries it (§ 2.2, § 7.2).
+     */
+    private function contended(int $seatRef, string $why): void
     {
-        $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
+        Counters::seat($seatRef, 'sweep_seat_contended');
+
+        Log::info('sweep: seat contended ('.$why.'); yielding to the next pass', ['seat_ref' => $seatRef]);
+    }
+
+    /**
+     * One seat, one transaction: jobs 2–6, then the recompute that is job 1's whole effect.
+     *
+     * Returns `false`, having written nothing, when another writer holds the seat's `seat_state` row.
+     */
+    private function seat(int $seatRef, int $nowMs, string $nowSql): bool
+    {
+        // ⛔ THE SEAT'S `seat_state` ROW LOCK FIRST — card#9466, § 6.5's lock-first rule — and
+        // `SKIP LOCKED`, so a seat another writer holds is passed over at once rather than waited
+        // on: the next pass is 15 s away, and a sweep that queued behind a rebuild's replay would
+        // stall every seat after this one. A skipped seat reads as no row.
+        //
+        // No `lockForUpdate()` fallback for an engine without `SKIP LOCKED`: MariaDB is the only
+        // engine this runs on. `bin/deploy.sh`
+        // refuses any `DB_CONNECTION` but `mysql`, `Tests\TestCase` aborts a suite whose resolved
+        // default connection is anything else, and `config/database.php` states both.
+        $state = DB::table('seat_state')->where('seat_ref', $seatRef)
+            ->lock('for update skip locked')
+            ->first();
+
+        if ($state === null) {
+            return false;
+        }
 
         // § 4.5's cascade, computed BEFORE the closing jobs because it is what decides which of
         // them are due. It reads receipt and heartbeat fields only, none of which any job below
@@ -218,6 +272,8 @@ final class Sweep
         );
 
         $this->predicates($seatRef, $nowMs, $nowSql);            // JOB 7, per-seat half
+
+        return true;
     }
 
     // ── JOB 2: orphan-timeout closes (§ 4.6, § 4.7) ──────────────────────────────────────────

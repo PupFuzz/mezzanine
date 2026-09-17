@@ -17,7 +17,7 @@ restates none of it.** Where a rule is cited below it is cited by section, never
 node fleet-reporter.js hook <HookName>   # one process per hook fire: read stdin, append, exit 0
 node fleet-reporter.js statusline        # sample context, pass the seat's status line through
 node fleet-reporter.js flusher           # one long-lived process per seat: POST batches, heartbeat
-node fleet-reporter.js selftest          # the § 6.14 checks this build implements; exits non-zero on any fail
+node fleet-reporter.js selftest          # the § 6.14 checks this build implements; § 6.14 states its exit code
 ```
 
 The reporter's contract with the harness is narrow and stable: **it is invoked with the hook
@@ -46,8 +46,13 @@ Linux/macOS `~/.config/fleet-reporter/config.json` (0600), Windows
 from the environment, so a wrong path is a loud `config_readable` failure rather than a silently
 different identity.
 
-Two keys are additions to § 3.1's table and are marked as such in the code:
-`harness_label` (see "What D1 left open", below) and nothing else.
+The one key the reporter reads beyond § 3.1's table is marked as such in the code:
+`harness_label` (see "What D1 left open", below).
+
+`protocol_agent_name` (§ 3.1) is optional. When a seat declares one, the reporter checks it against
+the coordination roster at flusher start and on `selftest`, found by § 3.1's resolution order. The name and the check's state ride every
+heartbeat, and `selftest`'s `protocol_agent_name_in_roster` fails when a readable roster does not hold
+the name.
 
 ## Running the acceptance suite
 
@@ -59,7 +64,8 @@ Python 3 stdlib plus `node` and `openssl` on PATH. It takes a few minutes: it dr
 script as real subprocesses several thousand times, and stands up a TLS ingest stub on
 127.0.0.1 with a throwaway self-signed certificate, trusted through the reporter's **own**
 `ca_file` key — so the transport path runs with certificate verification ON rather than being
-proven by turning it off.
+proven by turning it off. A `CONNECT` proxy stub in front of it drives the `proxy_url` route against
+an ingest address the seat cannot reach directly, for the health probe and the sender alike.
 
 **The last block signals processes, and only ever its own.** § 2.3 has every hook fork a real
 detached flusher when it finds no live one, so a run can leave live daemons behind; the suite
@@ -85,6 +91,7 @@ unilateral divergences left standing, and each says what would have broken.
 | Gap or amendment | Choice |
 |---|---|
 | **Amendment — § 6.1's `harness_label` pattern was `^[A-Za-z0-9._-]+$`, which cannot accept the value that same row mandates** (`claude-code/2.1.240` contains `/`) | D1 § 6.1's pattern widened to `^[A-Za-z0-9._/-]+$`; the reporter's `^[A-Za-z0-9._/-]{1,32}$` was already right and is unchanged. **The doc was the wrong side.** Left alone this is not cosmetic: the ingest is a separate card with D1 as its authority, so a server implementing § 6.1 literally rejects the first seat whose installer writes the mandated value — `422 invalid_event`, all 200 events in that batch rejected (§ 12.4), permanent quarantine (§ 11.5). Guarded by a selftest row that re-reads the pattern *and* the example out of the doc row and asserts the one against the other, so the two cannot drift apart again |
+| **Amendment — § 6.14 said nothing about a check the `selftest` subcommand could not measure**, and the one-shot measured neither network check (card#9373) | § 6.14 now states a third result, `not_measured`, per check, and the exit code: `0` all pass, `1` any fail, `2` no fail and something unmeasured. The one-shot runs the flusher's own health probe (`refreshHealth`) once. Left alone this was not cosmetic: `schema_version_accepted` read `fail` on every correctly configured seat, so the install-time verification exited 1 and an operator had to learn to ignore it; and `tls_verify` read `pass` having checked only the source, so a seat whose `ca_file` did not trust the ingest passed it. The heartbeat's wire object is unchanged: it carries `pass`/`fail`. The flusher keeps each network check at its last measured value, so a probe that measured nothing sends no `fail`; while a check is unmeasured it re-probes no sooner than one heartbeat interval after that probe began, and a check no probe has measured yet rides the heartbeat as `fail` |
 | **Amendment — § 6.1's `project_label` said only "sanitized basename of cwd"**, which a reporter can implement literally and still violate § 1 | D1 § 6.1 now states the rule: `null` when the cwd is the home directory, whose basename is the OS username on all three platform shapes. See "Decisions", below |
 | **Amendment — § 9.3 gained `spool_append_failed.<tree>` and `spool_append_retried.<tree>`** | the append primitive counts its own failures, so § 0 item 9's "a counter for every discarded event" holds for the write path and not only the read path. `spool_append_failed` raises the existing `lossy` member; no new `degraded` member, so § 9.3's "twelve members, and the array's bound is twelve" is untouched |
 | **Amendment — § 9.3's `kill_close_same_session` counted only the SAME-session close** | the second leg of § 6.6's kill signature is equally unevaluable on a **synthesized** close — one whose open was never seen, so the call's session is unknowable — and that case was previously counted by nothing at all. The row now names both, so "the leg did not fire" has one observable rather than one observable and one silence. No new `degraded` member: the counter is informational either way |
@@ -94,6 +101,10 @@ unilateral divergences left standing, and each says what would have broken.
 | Which of the two `/clear` signals emits the boundary events when both fire | whichever reaps first emits them; the second finds the session tombstoned, counts `reap_noop_second_signal`, and emits nothing — so no call is closed twice |
 | Rule 6's rejoin separator on Windows | `/` for `~`, `.` and root-relative tokens (D1's own `~/…/design/…` output), `\` for a `X:` root (D1's own named root prefix) |
 | Order of `attention.resolved` vs `turn.start` on `UserPromptSubmit` | resolution first, matching every close-before-trigger ordering in § 8.3 |
+| **Amendment — § 3.1's state table had no row for a `protocol_agent_name` that is present and malformed** (not a string, not a lowercase slug, or over § 6.14's 48 B) | D1 § 3.1's `undeclared` row now means *no valid name declared* and states the malformed case, and § 6.14's `protocol_agent_name_in_roster` row fails on it. The seat keeps sending: the name is not validated as a config row, so `config_readable` passes and `config_invalid` is not counted; the heartbeat carries `null` and `undeclared`; and `selftest`'s check fails with the value in `detail`, a non-string by its type (`<number>`). The value reaches neither the wire nor the log, and the flusher logs once per start that the declaration is malformed. Refusing it as a config error, as this change first did, would have silenced the whole seat over a typo in an optional label, because `config_invalid` means the flusher spools and sends nothing (card#9375) |
+| The roster's member key (§ 3.1 names the roster, not its shape) | `roster[].name`, the coordination framework's own spelling, which `INSTALL-LINUX.md` Step 2 lists the same way. A file that is not JSON, or holds no `roster` array, is no readable roster: `unchecked`, never a throw (card#9375) |
+| `$COORD_CONFIG` set to an empty string | set, so it is the whole of the resolution: no roster is readable and the check is `unchecked`. The home path is not consulted, because a set-but-empty variable names no roster the coordination framework could use either (card#9375) |
+| `protocol_agent_name_in_roster` when `selftest` finds no readable config | `not_measured`: there is no declaration to check. The flusher never starts without a config, so the heartbeat never carries this case (card#9375) |
 
 ## Decisions a maintainer should not silently reverse
 
@@ -161,7 +172,8 @@ the bursts' own concurrency, the lock's age at the last hook is 22.6 s (AT-10) a
 against `LOCK_STALE_MS` 90 s — a 4x margin, and AT-10 would have to grow ~4x before a hook read
 its own lock as stale. It is left open on purpose: closing it needs a second freeze implementation
 inside generated worker source that could only re-stamp on *wall* time, which is the defect this
-entry exists to remove. § 17 is the guard, and it fails loudly rather than leaking silently.
+entry exists to remove. The suite's last block, the leaked-flusher sweep, is the guard, and it
+fails loudly rather than leaking silently.
 **Do not "fix" a future recurrence by re-freezing more often on wall time:** that
 changes nothing for a pinned invocation, which is where the leak actually was. And the sweep
 stays regardless of the freeze, because prevention that fails is silent: a leaked daemon idles at

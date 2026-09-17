@@ -1,0 +1,110 @@
+# shell-lint.yml — ShellCheck over this repo's shell scripts, on every PR (card#9635).
+#
+# WHAT IT DOES. Runs `bin/shell-lint.sh`, which derives the file population from the checkout,
+# runs ShellCheck over it, and reds when a (file, code) class carries MORE findings than the
+# committed baseline `bin/shell-lint.baseline.tsv`. That script owns every rule this lane applies —
+# how the population is derived, why the baseline is keyed by count and not by line, what a
+# FALLING count does and does not prove, why the analyser version is asserted rather than accepted,
+# and why the ledger records the analyser's CONFIGURATION alongside its population (that is the one
+# input to a finding count which can be narrowed without touching any file the ledger names, so a
+# gate that only watches the population passes while coverage leaves). Read its header; none of it
+# is restated here, so none of it can drift from here.
+#
+# WHY IT EXISTS. `bin/deploy.sh` is the script that deploys production and it grew by roughly 400
+# lines in one cycle with no analyser run over it even once: `shellcheck` appeared nowhere under
+# `.github/`, and the pinned build sitting on the agent box answered only to a name nobody tried
+# (`_shellcheck-pinned`), so three rounds in a row concluded the tool was absent and skipped the
+# lint. A local wrapper alone would only help the rounds that remember to look, which is the same
+# failure with better odds — this lane is the half that does not depend on remembering.
+#
+# THE LANE STARTS GREEN, DELIBERATELY. The baseline was measured over `dev` at the commit this
+# landed on, so every finding that already existed is recorded and only NEW ones red. It is a debt
+# ledger and not an approval: nothing in it has been judged correct. Fixing those findings is
+# separate, reviewed work — a lint fix inside `bin/deploy.sh` changes behaviour on the production
+# deploy path, and this lane is not the place to smuggle one in.
+#
+# VERSION — THE ANALYSER IS INSTALLED HERE, NOT TAKEN FROM THE IMAGE. This lane downloads the
+# ShellCheck release `bin/shell-lint.analyser.pin` names and verifies the artifact's sha256 (also
+# from that file) before running it, and `bin/shell-lint.sh` still REFUSES to run unless the
+# analyser reports the version that same file pins. Using the runner's preinstalled `shellcheck`
+# left that refusal firing on GitHub's image schedule instead of on a decision of this project's:
+# the image moves on its own, and the whole lane would go red on a day nobody chose, for a version
+# nobody picked. A verdict from an unnamed analyser is what the pin in
+# `agent-board-toolkit/.shellcheck-version` exists to stop, and two versions genuinely disagree at
+# ERROR severity over the same file. So when the PIN moves, this download moves with it because
+# both read the one file — deliberately, by running both versions over the population and diffing
+# the findings, never by relaxing the assert. The upstream pin file is NOT reachable from a runner;
+# the script says so in the log by name rather than implying a cross-check it could not do.
+#
+# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: a path-filtered
+# workflow produces NO RUN, which reads as *pending* rather than *passed*. The lint is seconds of
+# analysis over a handful of files.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY. A required-check
+# list is a repository-settings fact that no file in the checkout can verify, and copies of it in
+# workflow headers have already gone stale in this repo. `docs/VERSIONING.md § Branch model` is its
+# one home and carries the command that re-derives it from the API.
+#
+# NEEDS NO CREDENTIAL. IT DOES NEED NETWORK, which is a change: one anonymous download of the
+# pinned ShellCheck release from github.com, sha256-verified before it is executed. A download that
+# fails, or a digest that does not match, FAILS this lane — it never falls back to whatever
+# ShellCheck the image happens to carry, because that fallback is precisely the unnamed verdict the
+# gate refuses. Otherwise: git + bash.
+
+name: Shell lint
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # NEITHER THE VERSION NOR THE DIGEST IS WRITTEN HERE. Both are read from
+      # `bin/shell-lint.analyser.pin`, the one repo file that names this lane's analyser, which
+      # `bin/shell-lint.sh` reads for the very same two values — so the build CI installs and the
+      # build the script's refusal asserts cannot drift apart by one of them being edited alone.
+      # That file carries the digest's provenance and how to move the pin; read it there.
+      - name: Install the pinned ShellCheck, sha256-verified
+        run: |
+          set -euo pipefail
+          pin='bin/shell-lint.analyser.pin'
+          SHELLCHECK_VERSION="$(awk '/^version[[:space:]]/ { print $2; exit }' "${pin}")"
+          SHELLCHECK_SHA256="$(awk '/^asset[[:space:]]+linux\.x86_64[[:space:]]/ { print $3; exit }' "${pin}")"
+          if [ -z "${SHELLCHECK_VERSION}" ] || [ -z "${SHELLCHECK_SHA256}" ]; then
+            echo "::error::${pin} does not carry both a 'version' line and an 'asset linux.x86_64' line — refusing to guess which analyser this lane pins"
+            exit 1
+          fi
+          echo "pinned by ${pin}: ShellCheck ${SHELLCHECK_VERSION}, linux.x86_64 sha256 ${SHELLCHECK_SHA256}"
+          tarball="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "${RUNNER_TEMP}/${tarball}" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${tarball}"
+          if ! printf '%s  %s\n' "${SHELLCHECK_SHA256}" "${RUNNER_TEMP}/${tarball}" | sha256sum --check --status; then
+            echo "::error::sha256 mismatch on ${tarball} — refusing to lint with an analyser this repo did not pin"
+            exit 1
+          fi
+          tar -xJf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}"
+          install -m 0755 "${RUNNER_TEMP}/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" "${RUNNER_TEMP}/shellcheck"
+          "${RUNNER_TEMP}/shellcheck" --version
+          # bin/shell-lint.sh resolves $SHELLCHECK first, and prints whichever program it chose.
+          echo "SHELLCHECK=${RUNNER_TEMP}/shellcheck" >> "${GITHUB_ENV}"
+
+      # The population is derived from the checkout, so print it: a lane that lints nothing passes
+      # exactly like a lane that lints everything, and only this list tells them apart.
+      - name: File population (derived, not listed in any file)
+        run: bash bin/shell-lint.sh --list
+
+      # `bash` explicitly rather than relying on the executable bit surviving a checkout.
+      - name: ShellCheck against the committed baseline
+        run: bash bin/shell-lint.sh

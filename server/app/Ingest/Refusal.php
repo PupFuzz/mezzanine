@@ -179,6 +179,26 @@ final class Refusal
         ]);
     }
 
+    // ── any step, and step 11 above all ──────────────────────────────────────────────────────
+
+    /**
+     * A request the ingest could not finish — `docs/design/FLEET-STATE.md § 2.2`'s ingest-write row
+     * (card#9465). Nothing was acknowledged, and the reporter retries it unchanged (D1 § 11.5); a batch
+     * whose COMMIT landed before the failure is answered from its `batch_id` on that retry (§ 10.4).
+     *
+     * `detail` is the fault's class and never the exception's message, which carries SQL, bindings and
+     * the store's own words — § 12.2's "no internals".
+     */
+    public static function serverError(ServerFault $fault): self
+    {
+        return new self(
+            $fault->status(),
+            'server_error',
+            'The server could not store this batch and did not acknowledge it. Retry it unchanged.',
+            ['detail' => $fault->value],
+        );
+    }
+
     public function withBatchId(?string $batchId): self
     {
         if ($batchId === null) {

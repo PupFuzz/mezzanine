@@ -49,7 +49,7 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         //
         // FIVE SECONDS, and the bound is the tightest time-derived threshold any COMPARED column
         // turns on: § 7.2's `fold_lag` badge at 60 s (`Badges::FOLD_LAG_MS`), then § 4.5's 300 s
-        // `stale`. `deliver()` has already advanced the clock by `VISIBILITY_LAG_S + 1`, so the
+        // `stale`. `deliver()` has already advanced the clock by `Outbox::VISIBILITY_LAG_S + 1`, so the
         // replay derives at receipt + 8 s — inside every one of them by an order of magnitude, so
         // a divergence here is a divergence about the FOLD and not about the fixture's clock.
         $this->advanceServerClock(5);

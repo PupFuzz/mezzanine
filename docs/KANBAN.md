@@ -266,7 +266,9 @@ GitHub ground truth. Nothing in this repo can detect the loss.
   the only one its cards carry: they also carry `payload.pr_number`. Re-derive both populations
   with `kbcard --board mezzanine list` (print the stderr denominator: `--swimlane 14` matches
   nothing, because 14 is the BOARD id); `DL-` is genuinely zero, `pr_number` is not. Whether a
-  released range should be correlated on that key instead is an OPEN choice — `card#9146` holds
-  the live disposition and `bin/promote-cards-by-token`'s header carries the measurements.
+  released range should be correlated on that key instead was RULED on 2026-09-14: no — this
+  repo keeps its `card#<id>` token mover (PupFuzz/agent-roundtable#444, `card#9146`).
+  `bin/promote-cards-by-token`'s header, § WHY THIS MOVER, carries the measurement and the
+  condition that reopens it.
 - **No board-side card creation from CI.** Cards are created by humans and agents on the
   board; CI only moves them.

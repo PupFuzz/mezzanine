@@ -9,7 +9,8 @@
  *
  * ⛔ NO JOIN IS CONSTRUCTED HERE, AND THIS FILE IS NOT WHERE ONE EVER WILL BE. `coordModel`
  * takes an `options.join` and this file passes NONE. ⚠ The reason is no longer that no mapping
- * exists: card#9296 built card#7957's ruling (d), so a seat DECLARES its own protocol agent
+ * exists: card#7957's ruling (d) is built on the server's side on card#9296 and on the
+ * reporter's on card#9375, so a seat DECLARES its own protocol agent
  * name and D2 § 8.2.1 publishes it on the seat object with its check state. What has not been
  * built is the code that reads the seat population and hands `coordModel` a map — that is a
  * follow-up build slice, and until it lands every participant renders `unresolved` and no

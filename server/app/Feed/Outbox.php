@@ -3,7 +3,6 @@
 namespace App\Feed;
 
 use App\Fold\Clock;
-use App\Fold\Fold;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -15,8 +14,9 @@ use Illuminate\Support\Facades\DB;
  *
  * `feed_outbox.id` is assigned at INSERT and becomes visible at COMMIT, so a row inserted early in a
  * long transaction holds a low id while higher ids commit past it — and a stream whose cursor moves
- * past that id never delivers the row. The handler's 2 s visibility lag covers the window only if
- * the id is held for one round trip, not for the transaction's length. This class makes the rule a
+ * past that id never delivers the row. The stream's visible prefix (`App\Feed\VisiblePrefix`) covers
+ * the window only if the id is held for one round trip, not for the transaction's length — that is
+ * its condition (b). This class makes the rule a
  * property of the primitive rather than of every call site: a writer ENQUEUES a message wherever in
  * its transaction it learns of it, and `transaction()` inserts every enqueued row, in enqueue order,
  * in ONE statement immediately before the COMMIT. `enqueue()` outside `transaction()` is refused
@@ -28,17 +28,26 @@ use Illuminate\Support\Facades\DB;
  * included — rolls back the state change with it.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * THE READ SIDE: the two statements § 8.3's handler runs, both behind § 6.5's 2 s visibility lag —
- * the SAME term on both, which is why they are here together. `headBehindLag()` is the connect read
- * (never a bare `MAX(id)`: AT-D2-25's second RED) and `after()` is the tick's.
+ * THE READ SIDE: the two statements § 8.3's handler runs, both a VISIBLE PREFIX bounded by the lag
+ * below — `visiblePrefixHead()` is the connect read (never a bare `MAX(id)`: AT-D2-25's second RED) and
+ * `after()` is the tick's. Both are `App\Feed\VisiblePrefix`'s, which states the boundary, why a
+ * `created_at` FILTER lost a row when two writers' stamps and ids disagree (card#9467), and the
+ * conditions the prefix rests on.
  *
  * ⚠ ONE CLOCK, the application's. `created_at` is stamped here from `now()` and the lag is computed
- * against `now()`, exactly as `events.received_at` and § 6.5's fold lag are. The store is on its own
+ * against `now()`, exactly as `events.received_at` is stamped. The store is on its own
  * host (§ 6.1); comparing a store-clock stamp with an application-clock `server_now` would put the
  * two hosts' skew inside a 2 s bound.
  */
 final class Outbox
 {
+    /**
+     * § 8.3's visibility lag, in seconds: a row younger than this (by `created_at`, against the reader's
+     * `now()`) holds the stream's visible prefix below its id (`App\Feed\VisiblePrefix`). It lived on
+     * `App\Fold\Fold` until card#9467; the fold stopped reading behind it with card#9398.
+     */
+    public const VISIBILITY_LAG_S = 2;
+
     /** @var list<array{t: string, install_id: ?string, message: string}> */
     private static array $pending = [];
 
@@ -49,12 +58,19 @@ final class Outbox
      * inside it. Nested calls join the outermost one (a savepoint for the writes, one flush at the
      * outer end); a nested call that throws discards what it enqueued.
      *
+     * `$attempts` is `DB::transaction()`'s own: the outermost call re-runs `$work` from a clean
+     * rollback when it throws a concurrency error (`1020`/`1205`/`1213`), up to that many times in
+     * all (card#9466). A NESTED call takes no `$attempts`, because Laravel never retries below the
+     * outermost transaction: at depth > 1 it rethrows a concurrency error at once as a
+     * `DeadlockException` (`ManagesTransactions::handleTransactionException()`), so a count passed
+     * there could only be silently inert.
+     *
      * @template T
      *
      * @param  callable(): T  $work
      * @return T
      */
-    public static function transaction(callable $work): mixed
+    public static function transaction(callable $work, int $attempts = 1): mixed
     {
         if (self::$depth > 0) {
             $mark = count(self::$pending);
@@ -72,10 +88,18 @@ final class Outbox
         }
 
         self::$depth = 1;
-        self::$pending = [];
 
         try {
             return DB::transaction(function () use ($work) {
+                // ⛔ RESET ON EVERY ATTEMPT, NOT ONCE BEFORE THEM — card#9466. `DB::transaction()`
+                // runs THIS closure once per attempt, and an attempt that enqueued a message before
+                // it hit a concurrency error leaves that message here while its rows roll back. The
+                // next attempt would then insert it a second time beside its own. The one retrying
+                // caller reaches it: `SeatRetirement::retire()`'s recompute enqueues the seat's
+                // delta (`StateRecompute::settle()` → `Publisher::seatDelta()`) before the
+                // statements that follow it in the same attempt can still fail.
+                self::$pending = [];
+
                 $result = $work();
 
                 if (self::$pending !== []) {
@@ -92,7 +116,7 @@ final class Outbox
                 }
 
                 return $result;
-            });
+            }, $attempts);
         } finally {
             self::$depth = 0;
             self::$pending = [];
@@ -118,32 +142,19 @@ final class Outbox
         ];
     }
 
-    /** § 8.3's connect read: the head BEHIND the lag. A stream starts here and never below it. */
-    public static function headBehindLag(): int
+    /** § 8.3's connect read: the head of the visible prefix. A stream starts here and never below it. */
+    public static function visiblePrefixHead(): int
     {
-        return (int) DB::table('feed_outbox')
-            ->where('created_at', '<=', self::visibleUpTo())
-            ->max('id');
+        return VisiblePrefix::boundary();
     }
 
     /**
-     * § 8.3's tick read: every row past `$cursor`, in `id` order, behind the lag.
+     * § 8.3's tick read: every row past `$cursor` and inside the visible prefix, in `id` order.
      *
      * @return Collection<int, object{id: int, t: string, install_id: ?string, message: string}>
      */
     public static function after(int $cursor): Collection
     {
-        return DB::table('feed_outbox')
-            ->select(['id', 't', 'install_id', 'message'])
-            ->where('id', '>', $cursor)
-            ->where('created_at', '<=', self::visibleUpTo())
-            ->orderBy('id')
-            ->get();
-    }
-
-    /** § 6.5's visibility lag — the fold's own constant, because it is the same term for the same reason. */
-    private static function visibleUpTo(): string
-    {
-        return Clock::sql(now()->subSeconds(Fold::VISIBILITY_LAG_S));
+        return VisiblePrefix::after($cursor);
     }
 }

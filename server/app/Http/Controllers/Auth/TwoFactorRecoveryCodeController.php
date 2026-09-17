@@ -44,8 +44,11 @@ use Illuminate\View\View;
  * ⛔ `password.confirm` IS THE GATE THAT MATTERS AND IS NOT DECORATION. A stolen session cookie
  * alone must not read the codes: without it, an attacker who has a session but not the password
  * could copy eight standing bypasses of the second factor and keep them after the session is
- * revoked. With it, they need the password — at which point they can re-enrol anyway, so the codes
- * add nothing to what they already hold.
+ * revoked. With it, a session with no password confirmation inside `auth.password_timeout`
+ * (`config/auth.php`) must enter the password before the codes are shown; a stolen cookie for a
+ * session that confirmed inside that window still reads them. Outside that window the attacker
+ * needs the password — at which point they can re-enrol anyway, so the codes add nothing to what
+ * they already hold.
  */
 class TwoFactorRecoveryCodeController extends Controller
 {

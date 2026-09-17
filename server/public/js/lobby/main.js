@@ -1,18 +1,26 @@
 /**
  * The lobby, wired to the page — `docs/design/FLOOR.md § 4.1` and § 4.4's `/` row
- * ("Fetches on entry: `GET /api/fleet/snapshot`").
+ * ("Fetches on entry: `GET /api/fleet/snapshot`, then `GET /api/building`").
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS FILE DECIDES NOTHING. Every string it writes comes from `lobby-model.js`, which is
- * pure and is exercised directly. This layer is elements and a `fetch`, and it is the part of
+ * pure and is exercised directly. This layer is elements and the browser's `fetch` handed to
+ * `lobby-entry.js`, whose order is exercised directly too, and it is the part of
  * the client that NO CHECK IN THIS REPOSITORY EXERCISES — there is no browser on the build host,
  * so nothing here has been laid out, painted or clicked. What IS checked is that every element
  * id it addresses exists on the page and vice versa (`LobbyPageWiringTest`). Keeping the split
  * sharp is what keeps the uncovered part free of decisions.
  *
- * ⛔ NO POLL, NO SOCKET, NO ADMIT. The delta feed (D2 § 8.3, § 8.4), § 2.2's ADMIT and § 9 F1's
- * 10 s degraded poll are all out of this slice. The one repeat fetch this file can make is
- * § 4.1's discrepancy budget, which is bounded by `DiscrepancyBudget` and is not a cadence.
+ * ⛔ NO POLL AND NO SOCKET ON THIS PAGE. The delta feed (D2 § 8.3, § 8.4) and § 2.2's ADMIT — which
+ * is the discovery snapshot itself since card#7341 step 3 — live in the client protocol,
+ * `wire/fleet-client.js`, which is built and which no page constructs before Appendix B step 8;
+ * § 9 F1's 10 s degraded poll is out of this slice too. The one repeat fetch this file can make is
+ * § 4.1's discrepancy budget, which is bounded by `DiscrepancyBudget` — now `wire/discrepancy-budget.js`,
+ * the same budget the protocol spends — and is not a cadence. ⚠ Step 9 replaces THIS file's own
+ * trigger with the protocol's, so that one disagreement costs one fetch rather than two.
+ * ⚠ So no `building.layout` reaches this page, and F17's "retry with backoff" is not built either:
+ * F17 publishes no backoff figure, and the snapshot's own F4 retry is unbuilt beside it. A failed
+ * layout request is retried when the viewer presses Refresh, which re-runs the entry fetches.
  *
  * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates". There is no animation in this slice at
  * all, so there is nothing here to suppress — stated because the next reader adding a transition
@@ -21,6 +29,8 @@
 
 import { lobbyModel, storeUnavailableStatement, DiscrepancyBudget } from './lobby-model.js';
 import { buildingModel } from './building-model.js';
+import { enter, fetchSnapshot } from './lobby-entry.js';
+import { Building } from '../wire/building.js';
 
 const budget = new DiscrepancyBudget();
 
@@ -55,14 +65,13 @@ let lastSnapshot = null;
 let lastBuilding = null;
 
 /**
- * THE BUILDING LAYOUT, read ONCE from the page — `docs/design/FLOOR.md § 4.6`, card#9267: a room
- * is an install and a floor is an operator-composed set of rooms. The page delivers the validated,
- * normalised floors in `#lobby-layout` and this client fetches nothing for them: the layout is not
- * fleet state and § 1.2 forbids D3 minting a read surface. Read at module load rather than per
- * render because it cannot change without a page load — § 4.6's stated cost, "a page loaded
- * before the building was rearranged draws the old building until it is reloaded".
+ * THE BUILDING — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install and a floor is an
+ * operator-composed set of rooms. The layout is fetched from `GET /api/building`
+ * (`docs/design/FLEET-STATE.md § 8.7`) by `lobby-entry.js`, after the snapshot, and held here with
+ * its last failure; the page carries none (Appendix B row 13, card#9208).
+ *
  */
-const layout = JSON.parse(el('lobby-layout').textContent);
+const surface = new Building(fetch);
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node ===
@@ -117,15 +126,27 @@ function statement(text, keptLabel) {
  * ruling in the document — see `building-model.js`, which keeps `level` an index into § 4.1's
  * ascending order and leaves the direction here, where a rendering choice belongs.
  */
-function renderBuilding(building) {
+function renderBuilding(building, unclaimed) {
     const list = el('lobby-floors');
 
     list.textContent = '';
 
+    // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
+    // the snapshot carries is listed as a room with no floor claimed — every seat still reachable
+    // through its own link, which § 4.4 resolves once the layout is readable.
+    for (const room of unclaimed) {
+        const row = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = room.href;
+        link.textContent = `${room.install_id} — no floor claimed`;
+        row.append(link);
+        list.append(row);
+    }
+
     // § 9 F4's "never an empty office" has a sibling that is not a failure at all: a fleet with
     // no installs provisioned. It is rendered IN WORDS rather than as an empty list, because an
     // empty list and a lobby that failed to draw are the same pixels.
-    if (building.plates.length === 0) {
+    if (building.plates.length === 0 && unclaimed.length === 0) {
         const none = document.createElement('li');
         none.textContent = 'no installs are provisioned — the fleet reports none';
         list.append(none);
@@ -200,16 +221,32 @@ function renderBuilding(building) {
 }
 
 function render(snapshot) {
-    const model = lobbyModel(snapshot, layout);
-    const building = buildingModel(snapshot, cab, layout);
+    const model = lobbyModel(snapshot, surface.floors, surface.layoutFailure);
+    const section = buildingModel(snapshot, cab, surface.floors);
 
     lastSnapshot = snapshot;
-    lastBuilding = building;
-    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself
-    // once and the next render is an ordinary one.
-    cab = building.elevator.at;
+    lastBuilding = section;
 
-    renderBuilding(building);
+    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself
+    // once and the next render is an ordinary one. An uncomposed lobby (§ 9 F17) resolved nothing,
+    // so the viewer's cab stays where it was for the building to come back to.
+    if (section.composed) {
+        cab = section.elevator.at;
+    }
+
+    renderBuilding(section, model.unclaimed);
+
+    // § 9 F17's statement, in its own region: it can stand beside F4/F5's store statement, which is
+    // the snapshot's, and one region would have to drop one of the two.
+    const layoutBox = el('lobby-layout-statement');
+
+    layoutBox.textContent = model.layout_statement ?? '';
+    layoutBox.hidden = model.layout_statement === null;
+
+    const layoutKept = el('lobby-layout-kept');
+
+    layoutKept.textContent = model.layout_kept ?? '';
+    layoutKept.hidden = model.layout_kept === null;
 
     el('lobby-totals').textContent = model.totals;
 
@@ -236,15 +273,16 @@ function render(snapshot) {
     return model;
 }
 
+/**
+ * The route's entry — § 4.4's two fetches, in `lobby-entry.js`'s order — and its render.
+ */
 async function load() {
-    let response;
+    await show(await enter(fetch, surface));
+}
 
-    try {
-        response = await fetch('/api/fleet/snapshot', {
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json' },
-        });
-    } catch {
+/** One snapshot response, rendered — or refused in words. */
+async function show(response) {
+    if (response.status === null) {
         // The request never reached a status. Say so; do not draw an empty lobby.
         statement(
             'fleet state could not be requested — the browser could not reach the server',
@@ -254,7 +292,7 @@ async function load() {
         return;
     }
 
-    const body = await response.json().catch(() => ({}));
+    const body = response.body ?? {};
 
     if (!response.ok) {
         // § 9 F4 — `503 fleet_unavailable`, with the refusal's own `server_time`.
@@ -274,9 +312,10 @@ async function load() {
     const model = render(body);
 
     // § 4.1's discrepancy check: ONE snapshot fetch per distinct (N, M) observation. A
-    // disagreement still standing after that fetch is rendered and not re-fetched.
+    // disagreement still standing after that fetch is rendered and not re-fetched. It is a SNAPSHOT
+    // fetch — the layout is not asked for again, and the building held is the one rendered.
     if (model.discrepancy !== null && budget.admits(model.held, body?.fleet?.seats_total)) {
-        await load();
+        await show(await fetchSnapshot(fetch));
     }
 }
 
@@ -293,8 +332,8 @@ el('lobby-refresh').addEventListener('click', () => {
  * table".
  *
  * ⚠ Where the ride is SUPPOSED to arrive — § 4.5's camera at `/floor/{floor}` — is not built
- * (card#9208), so this ride moves between the plates of this screen and the plate's own link is
- * still the only way to that route. `building-model.js` says so in full.
+ * (Appendix B step 7, card#7341), so this ride moves between the plates of this screen and the
+ * plate's own link is still the only way to that route. `building-model.js` says so in full.
  */
 el('lobby-elevator').addEventListener('click', () => {
     // ⛔ THE REFUSAL IS RE-ASKED OF THE MODEL RATHER THAN READ OFF THE BUTTON. Before the first

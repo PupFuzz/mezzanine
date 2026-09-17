@@ -10,7 +10,8 @@
  * `rejectUnauthorized: false` anywhere in the reporter to work around. `php artisan serve` speaks
  * only HTTP, so the way to exercise the REAL transport path is to put real TLS in front of it and
  * trust the certificate through the reporter's OWN `ca_file` key, which § 3.5 provides for exactly
- * this ("a sandbox host with a private CA is supported by `ca_file` → NODE_EXTRA_CA_CERTS").
+ * this ("a sandbox host with a private CA is supported by `ca_file`"). The reporter passes that file
+ * as the TLS `ca` option, so the harness seat trusts only the harness's own CA.
  *
  * So certificate verification is ON for the whole round trip. Turning it off would have been one
  * line and would have made the harness prove the transport works in a configuration no seat ever

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Building;
 
-use App\Building\BuildingLayout;
 use App\Building\FloorPlan;
 use App\Building\InvalidBuildingLayout;
 use Tests\TestCase;
@@ -28,7 +27,7 @@ class TheFloorPlanRefusesOverlappingRoomsTest extends TestCase
     /** @param array<string, array{x: int, y: int}> $origins */
     private function floors(array $origins): array
     {
-        return BuildingLayout::parse(['floors' => [['rooms' => array_map(
+        return LayoutFixture::read(['floors' => [['rooms' => array_map(
             fn (array $origin) => ['form' => 'office', 'origin' => $origin],
             $origins,
         )]]])->floors;
@@ -99,7 +98,7 @@ class TheFloorPlanRefusesOverlappingRoomsTest extends TestCase
         // the same origin on two floors are two rooms in two buildings-worth of space. A check
         // that compared every room to every other would refuse this, and it is the ordinary case
         // of a building whose floors were each planned on their own.
-        $floors = BuildingLayout::parse(['floors' => [
+        $floors = LayoutFixture::read(['floors' => [
             ['rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]],
             ['rooms' => ['zeta' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]],
         ]])->floors;
@@ -118,7 +117,7 @@ class TheFloorPlanRefusesOverlappingRoomsTest extends TestCase
         // check that demanded extents here would refuse every building that has no plan — which
         // is every building today.
         FloorPlan::refuseOverlaps(
-            BuildingLayout::parse(['floors' => [['rooms' => [
+            LayoutFixture::read(['floors' => [['rooms' => [
                 'sola' => ['form' => 'office'],
                 'zeta' => ['form' => 'office'],
             ]]]])->floors,
@@ -126,7 +125,7 @@ class TheFloorPlanRefusesOverlappingRoomsTest extends TestCase
         );
 
         $this->assertSame([], FloorPlan::placedRooms(
-            BuildingLayout::parse(['floors' => [['rooms' => ['sola' => ['form' => 'office']]]]])->floors,
+            LayoutFixture::read(['floors' => [['rooms' => ['sola' => ['form' => 'office']]]]])->floors,
         ));
     }
 
@@ -147,7 +146,7 @@ class TheFloorPlanRefusesOverlappingRoomsTest extends TestCase
 
     public function test_placed_rooms_are_exactly_the_rooms_an_extent_is_needed_for(): void
     {
-        $floors = BuildingLayout::parse(['floors' => [
+        $floors = LayoutFixture::read(['floors' => [
             ['rooms' => [
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
                 'zeta' => ['form' => 'office', 'origin' => ['x' => 256, 'y' => 0]],

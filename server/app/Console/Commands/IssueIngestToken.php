@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Console\SecretLine;
+use App\Support\Slug;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -45,24 +46,20 @@ class IssueIngestToken extends Command
 
     protected $description = 'Issue a seat ingest token, creating the install and seat if they are new';
 
-    /** D1 § 3.1 — `^[a-z0-9][a-z0-9-]{1,31}$` and `^[a-z0-9][a-z0-9-]{1,47}$`. */
-    private const INSTALL_PATTERN = '/^[a-z0-9][a-z0-9-]{1,31}$/';
-
-    private const SEAT_PATTERN = '/^[a-z0-9][a-z0-9-]{1,47}$/';
-
     public function handle(): int
     {
         $installId = (string) $this->argument('install_id');
         $seatId = (string) $this->argument('seat_id');
 
-        if (preg_match(self::INSTALL_PATTERN, $installId) !== 1) {
-            $this->error('install_id must match '.self::INSTALL_PATTERN.' (D1 § 3.1)');
+        // D1 § 3.1's slugs, from `App\Support\Slug` — the building surface's route checks the same one.
+        if (preg_match(Slug::pattern(Slug::INSTALL_ID), $installId) !== 1) {
+            $this->error('install_id must match '.Slug::pattern(Slug::INSTALL_ID).' (D1 § 3.1)');
 
             return self::FAILURE;
         }
 
-        if (preg_match(self::SEAT_PATTERN, $seatId) !== 1) {
-            $this->error('seat_id must match '.self::SEAT_PATTERN.' (D1 § 3.1)');
+        if (preg_match(Slug::pattern(Slug::SEAT_ID), $seatId) !== 1) {
+            $this->error('seat_id must match '.Slug::pattern(Slug::SEAT_ID).' (D1 § 3.1)');
 
             return self::FAILURE;
         }

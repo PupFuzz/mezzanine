@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Feed;
 
-use App\Fold\Fold;
+use App\Feed\Outbox;
 use App\Sweep\Purge;
 use Illuminate\Support\Facades\DB;
 
@@ -110,7 +110,7 @@ class At23WireSurfaceTest extends FeedTestCase
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->advanceServerClock(Fold::VISIBILITY_LAG_S + 1);
+        $this->advanceServerClock(Outbox::VISIBILITY_LAG_S + 1);
 
         $stream = $this->openStream($this->enrolled(), [
             fn () => $this->retire(),

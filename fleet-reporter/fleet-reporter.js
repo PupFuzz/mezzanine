@@ -82,6 +82,9 @@ const K = {
   BACKOFF_MAX_MS: 120000,        // § 11.5
   RETRY_AFTER_CAP_S: 600,        // § 11.5
   REQUEST_MS: 15000,             // § 3.5 total request deadline
+  HEALTH_MS: 600000,             // § 6.14 names it — the flusher's health-probe cadence while its last
+                                 // probe measured both network checks; otherwise it re-probes on
+                                 // HEARTBEAT_MS (flusherMain). § 14 has no row for this figure
   CONNECT_MS: 5000,              // § 3.5 connect deadline
   GZIP_MIN: 8192,                // § 3.5
   LOCK_STALE_MS: 90000,          // § 2.3 1.5 heartbeat intervals
@@ -127,22 +130,31 @@ const ENUM = {
     'oauth_org_not_allowed', 'account_on_hold', 'unknown'],
 };
 
-/* § 6.12's lookup table — this reporter's one home for the notification_type value set. The
- * three emitting rows produce `notification_kind`; every other declared member is a real
+/* § 6.12's lookup table — this reporter's one home for the notification_type value set. A type
+ * with a row here produces `notification_kind`; every other declared member is a real
  * notification that is NOT a request for human attention, and emitting for it would put the
  * desk into a false `blocked` — the exact mirror of the false-idle defect D1 exists to prevent.
- * The suppression is never silent: `notification_not_attention.<type>` counts each one. */
+ * `idle_prompt` is the member that LOOKED like a wait on a human and is not (card#9419): the
+ * harness fires it about a minute after Claude finishes responding when nobody has typed since,
+ * so it is a timer on human ABSENCE, and the seats it fires on are exactly the ones that just
+ * finished a turn cleanly and are available for work. It emitted `input_awaited` until that
+ * card, which rendered every such seat `blocked` from a minute after it went quiet until its
+ * next event (D2 § 4.3 rule 1) — measured 19 of them against 3 real permission waits on one
+ * seat in one day. It is now in the suppressed list below, which is the same set as § 6.12's
+ * no-emit row. The suppression is never silent: `notification_not_attention.<type>` counts each
+ * one, and membership of that list is what keeps a type the gate DECIDED against from also
+ * being counted as one this reporter has never seen. */
 const NOTIFICATION_KIND = {
   permission_prompt: 'permission_required',
   worker_permission_prompt: 'permission_required',
-  idle_prompt: 'input_awaited',
   agent_needs_input: 'input_awaited',
   elicitation_dialog: 'elicitation',
   elicitation_url_dialog: 'elicitation',
 };
-const NOTIFICATION_NOT_ATTENTION = ['auth_success', 'agent_completed', 'elicitation_complete',
-  'elicitation_response', 'push_notification', 'computer_use_enter', 'computer_use_exit',
-  'quota_auto_resume_fired', 'quota_auto_resume_disabled', 'quota_auto_resume_stale'];
+const NOTIFICATION_NOT_ATTENTION = ['idle_prompt', 'auth_success', 'agent_completed',
+  'elicitation_complete', 'elicitation_response', 'push_notification', 'computer_use_enter',
+  'computer_use_exit', 'quota_auto_resume_fired', 'quota_auto_resume_disabled',
+  'quota_auto_resume_stale'];
 
 /* § 9.3's degradation members, in that section's order — the array's bound IS this list's
  * length (§ 9.3: "Twelve members, and the array's bound is twelve"). Each maps to the counters
@@ -173,10 +185,11 @@ const DEGRADED = [
 const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted',
   'clear_reap_by_session_end', 'agent_scope_subagent', 'attention_resolved_by_hook'];
 
-/* The six `selftest` checks § 6.14's member table declares — the same set the subcommand runs
- * and the heartbeat reports, so the two cannot drift apart. */
+/* The `selftest` checks § 6.14's member table declares — the same set the subcommand runs and
+ * the heartbeat reports, so the two cannot drift apart. */
 const SELFTEST_CHECKS = ['config_readable', 'tls_verify', 'schema_version_accepted',
-  'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys'];
+  'sanitizer_fixtures', 'predicate_discrimination', 'harness_payload_keys',
+  'protocol_agent_name_in_roster'];
 
 /* Always-present delivery counters — serialized FIRST under § 6.14's reduction rule, so a seat
  * with too many kinds of trouble to fit 1.5 KiB still reports the ones delivery depends on. */
@@ -246,8 +259,13 @@ function configPath() {
 const SLUG_INSTALL = /^[a-z0-9][a-z0-9-]{1,31}$/;
 const SLUG_SEAT = /^[a-z0-9][a-z0-9-]{1,47}$/;
 const TOKEN_RE = /^mzn_[A-Za-z0-9_-]{43}$/;
+/* § 3.1's `protocol_agent_name`: the `slug` vocabulary of § 6.0 (lowercase `[a-z0-9-]`, so a
+ * character is a byte) and the 48 B bound § 6.14's row states as a figure because the ingest refuses
+ * a heartbeat over it (§ 12.1 step 10). The acceptance suite re-reads that figure out of § 6.14 and
+ * drives a name at it and one byte past it, so this literal cannot drift from the row unseen. */
+const AGENT_NAME_RE = /^[a-z0-9-]{1,48}$/;
 
-/* Returns {config, errors[]}. NEVER throws: a hook with an unreadable config still exits 0 and
+/* Returns {config, errors[], caError}. NEVER throws: a hook with an unreadable config still exits 0 and
  * still writes nothing to stdout (P-1, P-2). A config error is loud on the seat's OWN surface
  * (the log, `config_invalid`, `selftest`) — never on the agent's. */
 function loadConfig(p) {
@@ -272,7 +290,108 @@ function loadConfig(p) {
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
   }
-  return { config: c, errors };
+  // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
+  // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
+  // the default trust store (card#9500).
+  // `caError` is that error, also in `errors`: the one a running flusher re-checks (flusherMain).
+  const caError = typeof c.ca_file === 'string' ? readCaFile(c).error : null;
+  if (caError) errors.push(caError);
+  // `protocol_agent_name` is deliberately NOT validated here: a malformed one declares nothing, and
+  // the seat keeps sending (`declaredAgentName` below, § 3.1's state table).
+  return { config: c, errors, caError };
+}
+
+/* THE ONE READ OF `ca_file` (card#9500): the config check above and every request (`ingestRequest`)
+ * both go through here, so the two cannot disagree about what "readable" means. `ca` REPLACES the
+ * default trust store (§ 3.5), so a `ca_file` that cannot be read has no safe fallback: sending with
+ * the default store would widen the seat's trust from the one file it pins to every publicly trusted
+ * CA. The error names the path and the errno. Only `null` or an absent key leaves `ca_file` unset (no
+ * `ca`, the default store). A string that is not an absolute path is the same config error, the empty
+ * string included (§ 3.1 types the field "absolute path or `null`"): "" would otherwise read as unset and
+ * widen the trust the same way, and a relative path would be read against the process's working
+ * directory, which a flusher inherits from whatever starts it: the agent's project directory through the
+ * hook that forks it, the account's home directory through the crontab entry that supervises it. */
+function readCaFile(config) {
+  const f = config.ca_file;
+  if (f === null || f === undefined) return { ca: null, error: null };
+  if (!path.isAbsolute(f)) return { ca: null, error: `ca_file must be an absolute path or null (§ 3.1), not ${JSON.stringify(f)}` };
+  try { return { ca: fs.readFileSync(f), error: null }; }
+  catch (e) { return { ca: null, error: `ca_file unreadable at ${f}: ${e.code || e.message}` }; }
+}
+
+/* ── The declared protocol agent name, and its roster check (§ 3.1) ─────────────────────────
+ * A DECLARATION, NEVER AN IDENTITY: nothing here reaches the token binding, `config_fingerprint`
+ * or anything seeding a character, and a seat that declares nothing is `undeclared` — never a
+ * name synthesized from `seat_id`, which would forge the join's weaker end out of its stronger one.
+ *
+ * RESOLVED AT FLUSHER START AND ON `selftest`, NEVER PER FLUSH AND NEVER IN A HOOK. Its one caller
+ * is `runSelftestChecks`, which only the flusher (once, before its loop) and the `selftest`
+ * subcommand run. A roster read is a file read of another product's config, and a hook has no
+ * budget for it (P-5).
+ *
+ * A MALFORMED NAME — PRESENT, but not a string, not a slug, or over § 6.14's bound — DECLARES
+ * NOTHING, AND THE SEAT KEEPS REPORTING (§ 3.1's state table). It is not a config error:
+ * `config_invalid` means the flusher spools and sends nothing (§ 9.3), and a typo in an optional
+ * label must not silence a seat whose identity and ingest are fine. So it resolves as `undeclared`,
+ * and the heartbeat never carries a value the ingest would refuse — one over-bound name would cost
+ * its whole 200-event batch (§ 12.4). What says it is wrong is `protocol_agent_name_in_roster`,
+ * which FAILS, with the value named in the `selftest` subcommand's `detail` and nowhere else: not on
+ * the wire, and not in the seat's log. */
+function declaredAgentName(cfg) {
+  const v = cfg.protocol_agent_name;
+  return typeof v === 'string' && AGENT_NAME_RE.test(v) ? v : null;
+}
+
+/* The malformed declaration as `selftest`'s detail shows it, or null when the key is absent, null or
+ * valid. A string is shown verbatim (the subcommand's output is redacted like every other); any other
+ * JSON value by its type alone, e.g. `<number>`. */
+function malformedAgentName(cfg) {
+  const v = cfg.protocol_agent_name;
+  if (v === undefined || v === null || declaredAgentName(cfg) !== null) return null;
+  return typeof v === 'string' ? v : `<${Array.isArray(v) ? 'array' : typeof v}>`;
+}
+
+/* § 3.1's resolution order. `$COORD_CONFIG` SET IS THE WHOLE ANSWER — an empty value included, since
+ * a set-but-empty variable names no roster the coordination framework could use either, and falling
+ * through to the home path would check against a list nothing else on the box reads. The home path
+ * is Linux only: § 3.1 sources no other platform's. */
+function rosterSite() {
+  if (process.env.COORD_CONFIG !== undefined) return { path: process.env.COORD_CONFIG, via: '$COORD_CONFIG' };
+  if (process.platform !== 'linux') return { path: null, via: null };
+  let home;
+  try { home = os.homedir(); } catch (e) { return { path: null, via: null, error: 'no home directory' }; }
+  return { path: path.join(home, '.config', 'coord', 'coordination.config.json'), via: 'home' };
+}
+
+/* The roster's member names, or null when NO ROSTER IS READABLE — a missing file, an unreadable
+ * one, invalid JSON, or a document with no `roster` array all map to § 3.1's `unchecked`. D1 names
+ * the roster and not its member key: `roster[].name` is the coordination framework's own spelling
+ * (its orientation templates: "`COORD_AGENT` … must match a `roster[].name`"), and
+ * `fleet-reporter/INSTALL-LINUX.md` Step 2 lists a roster the same way. Never throws. */
+function readRosterNames(file) {
+  let doc;
+  try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { names: null, error: e.code || 'not valid JSON' }; }
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roster)) return { names: null, error: 'no roster[] array' };
+  return { names: doc.roster.filter((r) => r && typeof r.name === 'string').map((r) => r.name), error: null };
+}
+
+/* One row of § 3.1's state table, and its § 9.3 counter. The counter is counted once per resolution:
+ * in the flusher that is one count per flusher START, and like every counter it accumulates across
+ * restarts in state.json, so the heartbeat's value is the number of starts that found the state; in
+ * the `selftest` subcommand nothing flushes the counters, so it costs no count on the seat. */
+function resolveDeclaration(cfg) {
+  const name = declaredAgentName(cfg);
+  if (name === null) return { name: null, check: 'undeclared', roster: null, via: null, error: null, malformed: malformedAgentName(cfg) };
+  const site = rosterSite();
+  const roster = site.path === null ? { names: null, error: site.error || 'no roster site on this platform' } : readRosterNames(site.path);
+  if (roster.names === null) {
+    count('protocol_agent_name_unchecked');
+    return { name, check: 'unchecked', roster: site.path, via: site.via, error: roster.error, malformed: null };
+  }
+  if (roster.names.includes(name)) return { name, check: 'checked', roster: site.path, via: site.via, error: null, malformed: null };
+  count('protocol_agent_name_disagreed');
+  return { name, check: 'disagreed', roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -437,6 +556,7 @@ function atomicWrite(file, text) {
  * an implementer could not construct.                                                        */
 const C = Object.create(null);   // counter deltas for THIS process
 const P = Object.create(null);   // predicate branch deltas for THIS process
+const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null) };   // the flusher's folds not yet saved: see foldLocalCounters
 
 /* A DIAGNOSTIC MUST NOT MOVE AN OPERATIONAL COUNTER. `selftest` runs § 7.5's thirteen fixtures
  * through the real sanitizer, and the flusher runs `selftest` at startup — so without this the
@@ -1848,9 +1968,14 @@ function sampleContext(config, spool, payload, atMs) {
  *
  * THE LOCK IS NOT THE CORRECTNESS MECHANISM — OWNERSHIP IS. flusher.lock is an atomic
  * exclusive-create so exactly one process can win it, but state.json carries owner_pid and
- * owner_started_at, and every write re-reads it and proceeds only if it still names itself.
- * The residual window is the microseconds between that re-read and the rename, and even that is
- * not assumed away: the server counts a repeated (seq_epoch, seq) as `seq_collision`.
+ * owner_started_at, and every write, every send AND every resume from an awaited request re-reads
+ * it and proceeds only if it still names itself. A flusher that finds another owner stops at
+ * once: it sends nothing more, writes nothing more, and exits (`assertOwner`, `LostOwnership`).
+ * The residual windows — between that re-read and the rename, and between the re-read and the
+ * ingest's answer to the one request already in flight — are narrowed, not assumed away: the
+ * server counts a repeated (seq_epoch, seq) as `seq_collision`. The third, local window, the
+ * synchronous end of a pass after its last check, costs no seq; what it can cost is stated at
+ * the exit path in `flusherMain`.
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const statePath = (spool) => path.join(spool, 'state.json');
@@ -1881,33 +2006,69 @@ function loadState(spool, atMs) {
     s.counters = s.counters || {}; s.predicates = s.predicates || {};
     s.counter_offsets = s.counter_offsets || {}; s.cursors = s.cursors || {};
     s.last_session_activity = s.last_session_activity || {};
-    return { state: s, reset: false };
+    return { state: s, reset: false, minted: false };
   } catch (e) {
-    /* § 11.4 — THE STATE RESET RE-SENDS; IT DOES NOT SKIP. A fresh seq_epoch, and the cursor
-     * set to the start of the OLDEST bucket still on disk, not the newest. An earlier draft of
-     * D1 did the opposite and the cost was severe and silent: up to a full spool of unsent
-     * events — days of them — discarded with no counter incremented, while § 0 item 9 promises
-     * a counter for every discarded event and seq_epoch_change is explicitly never alarmed. A
-     * corrupt 200-byte file would have deleted a week of a seat's history invisibly.
-     * Re-sending is nearly free and provably safe: every event carries a unique event_id and
-     * the server's 10-day dedup window exceeds the spool's 8-day residency BY DESIGN. */
+    /* § 11.4 — A MINTED STATE RE-SENDS; IT DOES NOT SKIP. Both branches below get the same
+     * state: a fresh seq_epoch, and the cursor set to the start of the OLDEST bucket still on
+     * disk, not the newest. An earlier draft of D1 did the opposite and the cost was severe and
+     * silent: up to a full spool of unsent events — days of them — discarded with no counter
+     * incremented, while § 0 item 9 promises a counter for every discarded event and
+     * seq_epoch_change is explicitly never alarmed. A corrupt 200-byte file would have deleted a
+     * week of a seat's history invisibly. Re-sending is nearly free and provably safe: every
+     * event carries a unique event_id and the server's 10-day dedup window exceeds the spool's
+     * 8-day residency BY DESIGN.
+     *
+     * WHICH BRANCH IS A RESET (§ 9.3's `state_reset` row, card#9374). A state.json that EXISTS
+     * and cannot be used (a read error other than ENOENT, empty, truncated, unparseable, the
+     * wrong shape) is a reset, counted `state_reset` and badged `epoch_reset`. A MISSING one is
+     * a first start, or state lost with the file, and counts nothing. Counting it badged every
+     * new seat `epoch_reset` for good, because the badge is derived from a running total. The
+     * spool cannot tell a first start from lost state: a hook spools its event before it
+     * respawns the flusher, so a first start usually finds data waiting. Lost state on a seat
+     * that has already reported is still visible, as the server's `seq_epoch_change` on the new
+     * epoch minted here (§ 10.2). */
     const st = newState(spool, atMs);
     st.cursors = {};   // every bucket from byte 0 — the re-send § 11.4 requires
-    return { state: st, reset: true };
+    return { state: st, reset: e.code !== 'ENOENT', minted: true };
   }
 }
 
-function ownsState(spool, state) {
-  try {
-    const on = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
-    if (!on || !on.owner_pid) return true;
-    return on.owner_pid === state.owner_pid && on.owner_started_at === state.owner_started_at;
-  } catch (e) { return true; }   // unreadable: this process is as entitled as any other
+/* § 2.3 — ONE ANSWER TO "AM I STILL THE OWNER", AND ONE OUTCOME WHEN IT IS NO.
+ *
+ * THROWN, NOT RETURNED. The refusal used to be a `false` from `saveState`, and every caller
+ * ignored it: the drain kept posting from its in-memory `next_seq` and the loop kept running
+ * passes, so a flusher that had DETECTED another owner went on emitting the same seqs as that
+ * owner — the two-producer state the check exists to prevent. A return value is one forgotten
+ * `if` away from that again; an exception unwinds the pass to the flusher loop whatever the call
+ * site remembers, and the loop is the one place that counts it, logs it and exits (`flusherMain`).
+ * Every ownership-sensitive act goes through here: each state.json and snapshot write, the lock
+ * renewal, and each request the drain sends.
+ *
+ * AND EVERY AWAIT IN A PASS IS FOLLOWED BY IT. A pass is synchronous local work except where it
+ * awaits the network — the health probe and each batch POST — and an await is where a takeover
+ * lands: a new owner claims state.json while this process is suspended. What the pass does on
+ * resuming is ownership-sensitive whether or not it writes state.json: it disposes of corrupt
+ * lines and quarantines rejected batches the new owner will dispose of too, drops spool buckets,
+ * reaps counter buckets by offsets the new owner has not folded, and spools a heartbeat. So the
+ * check runs on resuming from each await (`refreshHealth` in `flusherMain`, `send` in
+ * `drainOnce`), before any of those. What remains is the synchronous work after a check: no
+ * await, local file operations only, but a new owner can still claim state.json inside it — see
+ * the exit path in `flusherMain` for what that window can and cannot cost. */
+class LostOwnership extends Error {}
+
+function assertOwner(spool, state) {
+  let on;
+  try { on = JSON.parse(fs.readFileSync(statePath(spool), 'utf8')); } catch (e) { return; }   // unreadable: this process is as entitled as any other
+  if (!on || !on.owner_pid) return;
+  if (on.owner_pid === state.owner_pid && on.owner_started_at === state.owner_started_at) return;
+  throw new LostOwnership(`state.json names pid ${on.owner_pid} started ${on.owner_started_at}`);
 }
 
 function saveState(spool, state) {
-  if (!ownsState(spool, state)) { count('flusher_lost_ownership'); return false; }
-  return atomicWrite(statePath(spool), JSON.stringify(state));
+  assertOwner(spool, state);
+  if (!atomicWrite(statePath(spool), JSON.stringify(state))) return false;
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
+  return true;
 }
 
 /* § 2.3 — exclusive create, atomic on both platforms. A starting flusher that loses the create
@@ -1934,8 +2095,29 @@ function acquireLock(spool, state) {
   return tryCreate();
 }
 
-function touchLock(spool) {
+/* § 2.3 — the lock's mtime is the liveness every hook reads, so it is renewed at the start of
+ * every pass AND immediately before every request the pass awaits: the health probe and each
+ * batch POST, the 413 retry included. Once per pass was not enough — one pass on a slow ingest
+ * awaits several requests of up to K.REQUEST_MS each, so a LIVE flusher's lock aged past
+ * K.LOCK_STALE_MS and a hook correctly started a second flusher. Renewed here, a live lock ages
+ * between touches by at most one request plus one K.FLUSH_MS sleep plus the pass's local work,
+ * which is the bound § 2.3's 90 s derivation rests on. Ownership is re-checked FIRST, so an
+ * ex-owner never freshens a lock that is no longer its own. */
+function renewLock(spool, state) {
+  assertOwner(spool, state);
   try { const t = new Date(now()); fs.utimesSync(path.join(spool, 'flusher.lock'), t, t); } catch (e) { /* removed under us; ownership still governs */ }
+}
+
+/* Release the lock ONLY while it still names this process. An exiting ex-owner that unlinked
+ * unconditionally deleted the NEW owner's lock, and the next hook to fire then started a third
+ * flusher. Read-then-unlink is not atomic, and does not need to be: § 2.3's acquire rule replaces
+ * a lock only once it is K.LOCK_STALE_MS old, which a lock renewed by its live owner is not. */
+function releaseLock(spool, state) {
+  const lock = path.join(spool, 'flusher.lock');
+  try {
+    const held = JSON.parse(fs.readFileSync(lock, 'utf8'));
+    if (held && held.pid === process.pid && held.started_at === state.owner_started_at) fs.unlinkSync(lock);
+  } catch (e) { /* absent or unreadable: nothing of ours to release */ }
 }
 
 /* ── The counter sink fold (§ 11.1) ──────────────────────────────────────────────────────────
@@ -2167,91 +2349,152 @@ function buildBatch(config, state, items, maxEvents) {
  * The Mezzanine server runs on a physically separate host from every agent seat (operator
  * ruling): no loopback mode, no unix socket, no "it's local so a retry is cheap".
  *
- * CERTIFICATE VERIFICATION IS ALWAYS ON. There is no `rejectUnauthorized: false` in this file
- * and no read of NODE_TLS_REJECT_UNAUTHORIZED — a sandbox host with a private CA is supported
- * by config.ca_file, which is passed as an ADDITIONAL trust anchor with verification intact.
+ * CERTIFICATE VERIFICATION IS ALWAYS ON. There is no `rejectUnauthorized: false` in this file,
+ * no read of NODE_TLS_REJECT_UNAUTHORIZED and no `checkServerIdentity` override — a sandbox host
+ * with a private CA is supported by config.ca_file, which is passed as the TLS `ca` option with
+ * verification intact. `ca` REPLACES the default trust store: a seat with `ca_file` set trusts
+ * only the certificates in that file, and a `ca_file` that is not an absolute path or that it cannot
+ * read is a config error that sends nothing — never a fallback to the default store (`readCaFile`,
+ * card#9500).
  * Loosening verification to make a sandbox work is the classic constraint-weakening fix, and it
  * ships to production seats. `selftest` and the acceptance suite both lint for it. */
 let _agent = null;
 const getAgent = () => (_agent || (_agent = new (lazy('https').Agent)({ keepAlive: true, maxSockets: 2 })));
 
-function proxyConnect(proxyUrl, targetHost, targetPort) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(proxyUrl);
-    const mod = lazy(u.protocol === 'https:' ? 'https' : 'http');
-    const req = mod.request({
-      host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
-      method: 'CONNECT', path: `${targetHost}:${targetPort}`,
-      headers: { Host: `${targetHost}:${targetPort}` },
-      timeout: K.CONNECT_MS,
+/* THE ONE OUTBOUND REQUEST PRIMITIVE (card#9473). Every request this process makes to the ingest
+ * goes through here — the batch POST (`postBatch`) and the health probe (`refreshHealth`), which the
+ * flusher and the one-shot `selftest` both run. Before card#9473 they were two HTTPS clients, and a
+ * seat whose egress requires `proxy_url` was broken on both: the probe had no proxy leg (and no
+ * connect deadline), so it went direct and measured nothing; the sender opened the tunnel and then
+ * sent over a direct connection anyway (see `delete opts.agent` below).
+ *
+ * What it owns, so no caller restates it (§ 3.5):
+ *   - ROUTE: `config.proxy_url` set ⇒ an HTTP CONNECT tunnel to the ingest host through that proxy;
+ *     null ⇒ direct, on the shared keep-alive agent. `config.proxy_url` ONLY — HTTP(S)_PROXY
+ *     environment variables are IGNORED, § 3.4 rule 1: no transport decision from ambient environment.
+ *   - TLS: `https://` ingest only, verification on, `ca_file` as the TLS `ca` option, which replaces
+ *     the default trust store (the seat trusts only that file). It is read per request, and one that
+ *     is not an absolute path, or cannot be read, ends the request as `invalid` before any socket
+ *     opens, naming the rule or the path and the errno (card#9500). The host name is verified on both
+ *     routes; SNI carries it only when it is a name (RFC 6066 forbids an IP literal there, and Node
+ *     warns, DEP0123, that it will stop honouring one).
+ *   - THE CONNECT DEADLINE, K.CONNECT_MS, from the start of the request to a verified TLS session
+ *     with the ingest: DNS, the TCP connect, the proxy's CONNECT answer and the handshake all spend
+ *     it. A kept-alive socket arrives verified and spends none. A proxy that accepts TCP and never
+ *     answers CONNECT therefore costs the flush loop K.CONNECT_MS, not K.REQUEST_MS.
+ *   - THE TOTAL DEADLINE, K.REQUEST_MS, from the start of the request to the end of the response.
+ *
+ * It always RESOLVES, never rejects, with what it observed: `status`/`headers`/`body` for an answer
+ * (`body` is set only once the response ended), `error` otherwise, `deadline` ('connect' | 'request')
+ * when a deadline ended it, `invalid` when the config named no request to make or one the seat must not
+ * send (a `ca_file` that is not an absolute path or cannot be read), and the two stages a
+ * caller needs to tell a refused certificate from nothing learned: `tcp` (a connection to the ingest
+ * — through a proxy, the CONNECT answered 200) and `secured` (the TLS handshake with it completed). */
+function ingestRequest(config, { method, path: pathOf, headers, body }) {
+  return new Promise((resolve) => {
+    const out = { status: null, headers: null, body: null, error: null, deadline: null, invalid: null, tcp: false, secured: false };
+    let settled = false, connectTimer = null, requestTimer = null;
+    const live = [];   // every request and socket this call opened, destroyed when a deadline ends it
+    const done = (error) => {
+      if (settled) return;
+      settled = true; clearTimeout(connectTimer); clearTimeout(requestTimer);
+      if (error) out.error = error;
+      resolve(out);
+    };
+    let url;
+    try { url = new URL(config.ingest_url); } catch (e) { out.invalid = 'bad ingest_url'; done(out.invalid); return; }
+    if (url.protocol !== 'https:') { out.invalid = 'ingest_url is not https'; done(out.invalid); return; }
+    const { ca, error: caError } = readCaFile(config);
+    if (caError) { out.invalid = caError; done(out.invalid); return; }
+
+    const endByDeadline = (which, error) => {
+      if (settled) return;
+      out.deadline = which; done(error);
+      for (const x of live) { try { x.destroy(); } catch (e) { /* already gone */ } }
+    };
+    requestTimer = setTimeout(() => endByDeadline('request', 'timeout'), K.REQUEST_MS);
+    connectTimer = setTimeout(() => endByDeadline('connect', 'connect deadline'), K.CONNECT_MS);
+    const established = () => { out.tcp = true; out.secured = true; clearTimeout(connectTimer); };
+
+    const port = Number(url.port || 443);
+    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':');
+    const opts = {
+      host: url.hostname, port, path: pathOf(url), method,
+      headers: Object.assign({ Authorization: `Bearer ${config.token}` }, headers), agent: getAgent(),
+    };
+    if (!isIp) opts.servername = url.hostname;
+    if (ca) opts.ca = ca;
+
+    const send = () => {
+      const req = lazy('https').request(opts, (res) => {
+        out.status = res.statusCode; out.headers = res.headers;
+        const chunks = [];
+        res.on('data', (c) => { if (chunks.length < 64) chunks.push(c); });
+        res.on('end', () => { out.body = Buffer.concat(chunks); done(null); });
+      });
+      live.push(req);
+      // A kept-alive socket, or the tunnel's socket below, arrives already connected and verified;
+      // a fresh direct one reports each stage.
+      req.on('socket', (sock) => {
+        if (!sock.connecting) { established(); return; }
+        sock.once('connect', () => { out.tcp = true; });
+        sock.once('secureConnect', established);
+      });
+      req.on('error', (e) => done(String(e && e.code || e && e.message)));
+      req.end(body);
+    };
+
+    if (!config.proxy_url) { send(); return; }
+    let connect;
+    try {
+      const u = new URL(config.proxy_url);
+      connect = lazy(u.protocol === 'https:' ? 'https' : 'http').request({
+        host: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
+        method: 'CONNECT', path: `${url.hostname}:${port}`, headers: { Host: `${url.hostname}:${port}` }, agent: false,
+      });
+    } catch (e) { done(`proxy: ${e && e.message}`); return; }
+    live.push(connect);
+    connect.on('error', (e) => done(`proxy: ${e && e.message}`));
+    connect.on('connect', (res, tunnel) => {
+      live.push(tunnel);
+      tunnel.on('error', (e) => done(String(e && e.code || e && e.message)));
+      if (settled) { tunnel.destroy(); return; }
+      if (res.statusCode !== 200) { tunnel.destroy(); done(`proxy: proxy CONNECT ${res.statusCode}`); return; }
+      out.tcp = true;
+      const tlsOpts = { socket: tunnel, host: url.hostname };
+      if (!isIp) tlsOpts.servername = url.hostname;
+      if (ca) tlsOpts.ca = ca;
+      const secure = lazy('tls').connect(tlsOpts);
+      live.push(secure);
+      secure.on('error', (e) => done(String(e && e.code || e && e.message)));
+      secure.once('secureConnect', () => {
+        if (settled) return;
+        established();
+        // NO AGENT, NOT `agent: false`: Node answers `agent: false` with a fresh Agent, which ignores
+        // `createConnection` and dials the ingest direct — the tunnel then carries nothing (card#9473).
+        delete opts.agent; opts.createConnection = () => secure;
+        send();
+      });
     });
-    req.on('connect', (res, socket) => {
-      if (res.statusCode !== 200) { socket.destroy(); reject(new Error(`proxy CONNECT ${res.statusCode}`)); return; }
-      resolve(socket);
-    });
-    req.on('timeout', () => { req.destroy(new Error('proxy connect timeout')); });
-    req.on('error', reject);
-    req.end();
+    connect.end();
   });
 }
 
 function postBatch(config, body) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
-    let url;
-    try { url = new URL(config.ingest_url); } catch (e) { done({ kind: 'permanent', status: 0, error: 'bad ingest_url' }); return; }
-    if (url.protocol !== 'https:') { done({ kind: 'refused', status: 0, error: 'ingest_url is not https' }); return; }
-
-    const headers = { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${config.token}` };
-    let payload = Buffer.from(body, 'utf8');
-    if (payload.length > K.GZIP_MIN) {
-      try { payload = lazy('zlib').gzipSync(payload); headers['Content-Encoding'] = 'gzip'; } catch (e) { payload = Buffer.from(body, 'utf8'); }
-    }
-    headers['Content-Length'] = String(payload.length);
-
-    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':');
-    const opts = {
-      host: url.hostname, port: url.port || 443, path: url.pathname + url.search,
-      method: 'POST', headers, agent: getAgent(),
-    };
-    // SNI is a HOSTNAME extension: RFC 6066 forbids an IP literal there, and Node warns
-    // (DEP0123) that it will stop honouring one. Verification is unaffected either way.
-    if (!isIp) opts.servername = url.hostname;
-    if (config.ca_file) { try { opts.ca = fs.readFileSync(config.ca_file); } catch (e) { /* fall back to the system store, still verifying */ } }
-
-    // The TOTAL request deadline. 256 KiB on a 1 Mbit/s uplink is 2.1 s; plus TLS setup plus
-    // server processing is ~4 s worst realistic case, and 15 s is ~3.5x that — past it,
-    // retrying beats waiting.
-    const timer = setTimeout(() => { try { req.destroy(new Error('request deadline')); } catch (e) { /* already gone */ } done({ kind: 'retryable', status: 0, error: 'timeout' }); }, K.REQUEST_MS);
-
-    const start = (socketOverride) => {
-      if (socketOverride) { opts.agent = false; opts.createConnection = () => lazy('tls').connect({ socket: socketOverride, servername: url.hostname, ca: opts.ca }); }
-      const r = lazy('https').request(opts, (res) => {
-        const chunks = [];
-        res.on('data', (c) => { if (chunks.length < 64) chunks.push(c); });
-        res.on('end', () => {
-          clearTimeout(timer);
-          const text = Buffer.concat(chunks).toString('utf8').slice(0, 4096);
-          done(classify(res.statusCode, res.headers, text));
-        });
-      });
-      r.on('error', (e) => { clearTimeout(timer); done({ kind: 'retryable', status: 0, error: String(e && e.code || e && e.message) }); });
-      // The CONNECT deadline is enforceable only via socket.setTimeout; § 3.5 makes the 15 s
-      // total the binding requirement and this the refinement.
-      r.on('socket', (s) => { s.setTimeout(K.CONNECT_MS, () => { if (!s.destroyed && !settled) r.destroy(new Error('connect deadline')); }); });
-      r.end(payload);
-      return r;
-    };
-
-    let req;
-    if (config.proxy_url) {
-      // config.proxy_url ONLY. HTTP(S)_PROXY environment variables are IGNORED — § 3.4 rule 1,
-      // no transport decision from ambient environment.
-      proxyConnect(config.proxy_url, url.hostname, url.port || 443)
-        .then((sock) => { req = start(sock); })
-        .catch((e) => { clearTimeout(timer); done({ kind: 'retryable', status: 0, error: `proxy: ${e && e.message}` }); });
-    } else { req = start(null); }
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  let payload = Buffer.from(body, 'utf8');
+  if (payload.length > K.GZIP_MIN) {
+    try { payload = lazy('zlib').gzipSync(payload); headers['Content-Encoding'] = 'gzip'; } catch (e) { payload = Buffer.from(body, 'utf8'); }
+  }
+  headers['Content-Length'] = String(payload.length);
+  return ingestRequest(config, { method: 'POST', path: (u) => u.pathname + u.search, headers, body: payload }).then((r) => {
+    // A request the config forbids — an http:// ingest_url, a `ca_file` that is not absolute or cannot be read — is
+    // `refused`: config_invalid, keep spooling, send nothing (§ 3.5). An unparseable ingest_url is `permanent`.
+    if (r.invalid) return { kind: r.invalid === 'bad ingest_url' ? 'permanent' : 'refused', status: 0, error: r.invalid };
+    // A deadline, a connect/DNS/TLS failure, a proxy that refused or never answered, or an answer
+    // cut off before its end: all transient by nature (§ 11.5).
+    if (r.error) return { kind: 'retryable', status: 0, error: r.error };
+    return classify(r.status, r.headers, r.body.toString('utf8').slice(0, 4096));
   });
 }
 
@@ -2354,7 +2597,7 @@ function spoolLag(spool, state) {
   return { lines, oldest };
 }
 
-function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
+function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
   const all = state.counters;
   const { counters, counters_omitted } = buildCounters(all);
   if (counters_omitted > 0) all['data_truncated.reporter.heartbeat.counters'] = (all['data_truncated.reporter.heartbeat.counters'] || 0) + 1;
@@ -2362,6 +2605,9 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
   const predicates = {};
   for (const p of PREDICATES) predicates[p] = state.predicates[p] || { true: 0, false: 0 };
   const st = {};
+  // The wire object carries two values (§ 6.14's field row), so a check no probe of this flusher has
+  // yet measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`. Once
+  // measured, a check holds its last measured value (flusherMain), never null again.
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
   makeEmitter(cfg, spool)('reporter.heartbeat', null, {
     uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
@@ -2375,6 +2621,11 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
     // emitting and the flusher keeps heartbeating with enabled:false, so the desk renders
     // *disabled* rather than sliding through stale into offline and looking broken.
     enabled: cfg.enabled !== false,
+    // § 6.14's declaration pair: one row of § 3.1's state table on EVERY heartbeat, so the check is
+    // never omitted and the name is null exactly when the check is `undeclared`. Resolved once, at
+    // flusher start — never per flush.
+    protocol_agent_name: declaration.name,
+    protocol_agent_name_check: declaration.check,
     degraded: buildDegraded(all).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
@@ -2382,7 +2633,7 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, atMs) {
 }
 
 function writeSnapshot(spool, state, ix) {
-  if (!ownsState(spool, state)) { count('flusher_lost_ownership'); return; }
+  assertOwner(spool, state);
   atomicWrite(path.join(indexDir(spool), 'snapshot.json'), JSON.stringify({
     taken_at: rfc3339(now()), bucket: ix.bucket, offset: ix.offset,
     entries: [...ix.calls.values()], tombstones: [...ix.tombstones.values()],
@@ -2395,25 +2646,50 @@ function writeSnapshot(spool, state, ix) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* The flusher's own process-local counters are part of the same totals the hook processes
- * contribute through the sink. */
+ * contribute through the sink.
+ *
+ * A FOLD IS NOT DELIVERY UNTIL A STATE.JSON WRITE LANDS. Folding moves a count out of `C`, the
+ * one place the exit path can still flush it from, into `state.counters`, which reaches the
+ * heartbeat only through a later `saveState`. A pass that folds and then never saves — a
+ * takeover between its last ownership check and its save, or a pass that fails and a shutdown
+ * before the next — used to take those counts with it, and the count most exposed is the one
+ * that reports a loss: `spool_dropped_events` from `enforceSpoolBounds` is folded immediately
+ * before the save (§ 0 item 9). `FOLDED_UNSAVED` records what has been folded since the last
+ * write that landed; `saveState` clears it, and `unfoldUnsaved` hands it back to `C`/`P` for the
+ * exit flush. */
 function foldLocalCounters(state) {
-  for (const [k, v] of Object.entries(C)) { state.counters[k] = (state.counters[k] || 0) + v; delete C[k]; }
+  for (const [k, v] of Object.entries(C)) {
+    state.counters[k] = (state.counters[k] || 0) + v;
+    FOLDED_UNSAVED.c[k] = (FOLDED_UNSAVED.c[k] || 0) + v;
+    delete C[k];
+  }
   for (const [k, v] of Object.entries(P)) {
     if (!state.predicates[k]) state.predicates[k] = { true: 0, false: 0 };
     state.predicates[k].true += v.true; state.predicates[k].false += v.false;
+    if (!FOLDED_UNSAVED.p[k]) FOLDED_UNSAVED.p[k] = { true: 0, false: 0 };
+    FOLDED_UNSAVED.p[k].true += v.true; FOLDED_UNSAVED.p[k].false += v.false;
     delete P[k];
   }
 }
 
+function unfoldUnsaved() {
+  for (const [k, v] of Object.entries(FOLDED_UNSAVED.c)) C[k] = (C[k] || 0) + v;
+  for (const [k, v] of Object.entries(FOLDED_UNSAVED.p)) {
+    if (!P[k]) P[k] = { true: 0, false: 0 };
+    P[k].true += v.true; P[k].false += v.false;
+  }
+  FOLDED_UNSAVED.c = Object.create(null); FOLDED_UNSAVED.p = Object.create(null);
+}
+
 async function flusherMain() {
   const cp = configPath();
-  const { config, errors } = loadConfig(cp);
+  const { config, errors, caError } = loadConfig(cp);
   if (!config || !config.spool_dir) { return; }
   registerConfigSecrets(config);
   const spool = config.spool_dir;
   ensureDir(spool);
   const atStart = now();
-  const { state, reset } = loadState(spool, atStart);
+  const { state, reset, minted } = loadState(spool, atStart);
   state.owner_pid = process.pid; state.owner_started_at = rfc3339(atStart); state.started_at = rfc3339(atStart);
   if (!acquireLock(spool, state)) { logLine(spool, 'flusher', 'another flusher owns the lock; exiting'); return; }
   /* CLAIM state.json before any ownership-checked write. Winning the exclusive create IS the
@@ -2425,12 +2701,20 @@ async function flusherMain() {
    * different events, which is the ordering-key collision D2-MUST #4 forbids. */
   if (!atomicWrite(statePath(spool), JSON.stringify(state))) {
     logLine(spool, 'flusher', 'cannot write state.json; exiting rather than running unowned');
-    try { fs.unlinkSync(path.join(spool, 'flusher.lock')); } catch (e) { /* nothing to release */ }
+    releaseLock(spool, state);
     return;
   }
   if (reset) { count('state_reset'); logLine(spool, 'flusher', 'state.json unreadable — new seq_epoch, re-sending from the oldest bucket'); }
+  else if (minted) logLine(spool, 'flusher', 'no state.json (a first start, or lost state) — new seq_epoch, sending from the oldest bucket');
   if (errors.length) { count('config_invalid'); logLine(spool, 'flusher', `config invalid: ${errors.join('; ')} — spooling, sending nothing`); }
-  const configOk = errors.length === 0;
+  let configOk = errors.length === 0;
+  /* A `ca_file` the seat cannot read is the ONE config error a running flusher outlives (card#9500): what
+   * changes is the file — a delete-and-recreate rotation, a mount that comes up late — and not the config
+   * this process loaded, so each pass re-reads it through `readCaFile`, the read every request makes, and
+   * the first pass that finds it readable probes and drains. This is the recovery a file that vanishes
+   * mid-run already has, at the request. Any other config error holds until the flusher restarts on a
+   * corrected config, and so does a `ca_file` that is not an absolute path: its re-check fails every pass. */
+  let caPending = errors.length === 1 && caError !== null;
 
   const emit = makeEmitter(config, spool);
   const ctx = { config, spool, emit };
@@ -2442,15 +2726,20 @@ async function flusherMain() {
     reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', atStart);
   }
 
-  let selftest = runSelftestChecks(config, cp).results;
-  let lastHeartbeat = 0, lastHealth = 0, attempt = 0, waitUntil = 0, running = true;
+  const started = runSelftestChecks(config, cp);
+  let selftest = started.results;
+  const declaration = started.declaration;   // § 3.1: read at flusher start, and never again per flush
+  // Loud on the seat's own surface, once per start, and WITHOUT the value: D1 § 3.1 gives the value
+  // one home, the `selftest` subcommand's detail.
+  if (declaration.malformed !== null) logLine(spool, 'flusher', 'protocol_agent_name is not a valid declaration (§ 3.1) — heartbeating as undeclared; `selftest` names the value');
+  let lastHeartbeat = 0, lastHealth = 0, healthEveryMs = K.HEALTH_MS, attempt = 0, waitUntil = 0, running = true;
   const stop = () => { running = false; };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
 
   while (running) {
     const atMs = now();
     try {
-      touchLock(spool);
+      renewLock(spool, state);
       foldCounterSink(spool, state);
       foldLocalCounters(state);
 
@@ -2459,17 +2748,41 @@ async function flusherMain() {
       expireOpenFacts(ctx, ix, atMs);
       writeSnapshot(spool, state, ix);
 
-      if (configOk && atMs - lastHealth > 600000) { lastHealth = atMs; await refreshHealth(config, selftest); }
+      if (caPending && readCaFile(config).error === null) {
+        caPending = false; configOk = true;
+        selftest.config_readable = true;   // its one error is gone: the heartbeat stops reporting the refusal
+        logLine(spool, 'flusher', `ca_file readable at ${config.ca_file} — probing and sending resume`);
+      }
+
+      if (configOk && atMs - lastHealth > healthEveryMs) {
+        lastHealth = atMs; renewLock(spool, state);
+        const { checks } = await refreshHealth(config);
+        assertOwner(spool, state);   // resumed from an await: see assertOwner's header
+        /* KEEP THE LAST MEASUREMENT (card#9373). The heartbeat carries two values, so a check held
+         * at null rides the wire as `fail` and the seat shows a failure. A probe that measured a
+         * check overwrites it, `false` included; a probe that measured nothing for it (a deadline, a
+         * dropped kept-alive socket, an answer carrying no set) has falsified nothing, so the value
+         * the last measuring probe left stays. Before any probe has measured a check it is null and
+         * rides as `fail`. While anything went unmeasured the next probe comes no sooner than one
+         * heartbeat interval after this one began rather than K.HEALTH_MS: the heartbeat is where the
+         * result is read, so probing more often changes nothing on the wire. */
+        let unmeasured = false;
+        for (const c of Object.keys(checks)) {
+          if (checks[c] === null) unmeasured = true;
+          else selftest[c] = checks[c];
+        }
+        healthEveryMs = unmeasured ? K.HEARTBEAT_MS : K.HEALTH_MS;
+      }
 
       if (atMs >= waitUntil && configOk && config.enabled !== false) {
         const drained = await drainOnce(config, spool, state, atMs);
         if (drained.retry) { attempt += 1; waitUntil = now() + (drained.retry_after_s !== undefined && drained.retry_after_s !== null ? drained.retry_after_s * 1000 : backoffDelay(attempt)); }
-        else { attempt = 0; if (drained.sent) selftest.tls_verify = true; }
+        else { attempt = 0; if (drained.sent) selftest.tls_verify = tlsVerifyResult(true); }
       }
 
       if (atMs - lastHeartbeat >= K.HEARTBEAT_MS) {
         lastHeartbeat = atMs;
-        emitHeartbeat(config, spool, state, ix, selftest, atMs);
+        emitHeartbeat(config, spool, state, ix, selftest, declaration, atMs);
       }
 
       enforceSpoolBounds(spool, state, atMs);
@@ -2481,6 +2794,14 @@ async function flusherMain() {
       foldLocalCounters(state);
       saveState(spool, state);
     } catch (e) {
+      if (e instanceof LostOwnership) {
+        /* § 2.3 — another flusher owns the seat: stop sending, write nothing, exit 0. The
+         * count reaches the heartbeat through the counter sink below, never through state.json,
+         * which is no longer this process's to write. */
+        count('flusher_lost_ownership');
+        logLine(spool, 'flusher', `lost ownership: ${e.message}; sending nothing more, writing nothing more, exiting`);
+        break;
+      }
       logLine(spool, 'flusher', `pass failed: ${e && e.message}`);
     }
     // A TEST SEAM, and a deliberately inert one: it breaks the loop after a completed pass and
@@ -2489,7 +2810,26 @@ async function flusherMain() {
     if (process.env.FLEET_REPORTER_ONE_PASS) break;
     await sleep(K.FLUSH_MS);
   }
-  try { fs.unlinkSync(path.join(spool, 'flusher.lock')); } catch (e) { /* another owner already replaced it */ }
+  /* Counts that never reached a state.json this process wrote go to the counter sink the next
+   * owner folds, the path hook processes use: those still in `C`, and those folded out of it since
+   * the last save that landed (`unfoldUnsaved`). After a clean pass that is nothing, because the
+   * pass folds before its save. After a lost-ownership exit it is the loss itself plus whatever
+   * the abandoned passes counted. Some of that may describe work the new owner redoes and counts
+   * again (a corrupt line it re-disposes); that over-count is the tolerable direction, because
+   * discarding it would also discard losses nobody redoes.
+   *
+   * WHAT THE OWNERSHIP CHECKS DO NOT COVER. Every await is followed by one (see assertOwner's
+   * header), so an ex-owner resuming from a request acts on nothing. The synchronous work between
+   * a pass's last check and its save — the heartbeat, `enforceSpoolBounds`, `reapOldBuckets` — has
+   * no await and does local file operations only, but a new owner can still claim state.json
+   * inside it, and the save then throws. Of what that pass did: a spool bucket it dropped is
+   * still COUNTED, because the fold's count comes back here and reaches the sink. A counter
+   * bucket it reaped by offsets the new owner had not folded is LOST, and uncounted: the hook
+   * counter lines in it reach no total. A heartbeat it spooled, carrying this process's totals,
+   * is sent by the new owner. That window is narrowed to one pass's local work, not closed. */
+  unfoldUnsaved();
+  flushCounters(spool, 'flusher');
+  releaseLock(spool, state);
 }
 
 /* Every open fact has a ceiling, and each one's expiry is a WIRE EVENT this reporter emits —
@@ -2525,6 +2865,18 @@ function expireOpenFacts(ctx, ix, atMs) {
  * always attempts whatever is pending. */
 async function drainOnce(config, spool, state, atMs) {
   let sent = false;
+  /* EVERY request is preceded by the ownership check and the lock renewal (§ 2.3). The check
+   * does not close the race, it narrows it to one request: a new owner can claim state.json
+   * after this check and before the ingest answers, and that one in-flight batch then carries
+   * seqs the new owner may also assign. The ownership check after the await throws before
+   * anything acts on the answer, so an ex-owner disposes of nothing and sends no second request,
+   * and D2's `seq_collision` counts what the one request can still cause. */
+  const send = async (body) => {
+    renewLock(spool, state);
+    const res = await postBatch(config, body);
+    assertOwner(spool, state);   // resumed from an await: nothing below acts for an ex-owner
+    return res;
+  };
   for (let round = 0; round < 8; round++) {
     const items = collectPending(spool, state, K.BATCH_EVENTS);
     if (!items.length) return { retry: false, sent };
@@ -2548,7 +2900,7 @@ async function drainOnce(config, spool, state, atMs) {
       advanceCursors(state, items, built.lastIdx >= 0 ? built.lastIdx : items.length - 1);
       continue;
     }
-    let res = await postBatch(config, built.body);
+    let res = await send(built.body);
 
     if (res.kind === 'too_large') {
       // § 11.5 — 413 gets exactly ONE adaptive retry: halve the batch and resend. If a SINGLE
@@ -2556,7 +2908,7 @@ async function drainOnce(config, spool, state, atMs) {
       // counted rather than blocking every event behind it forever.
       if (built.events.length > 1) {
         built = buildBatch(config, state, items, Math.max(1, Math.floor(built.events.length / 2)));
-        res = await postBatch(config, built.body);
+        res = await send(built.body);
       }
       if (res.kind === 'too_large' && built.events.length === 1) {
         quarantine(spool, 'rejected', JSON.stringify(built.events[0]));
@@ -2585,8 +2937,9 @@ async function drainOnce(config, spool, state, atMs) {
     }
     if (res.kind === 'refused') {
       // config_invalid: keep spooling and send nothing. Fail closed, loudly, on the client's
-      // own surface (§ 3.5).
+      // own surface (§ 3.5), naming what the config got wrong.
       count('config_invalid');
+      logLine(spool, 'flusher', `batch refused by the config, sending nothing: ${res.error}`);
       return { retry: true, sent };
     }
 
@@ -2625,35 +2978,41 @@ function appendRejectedMarker(spool, line) {
 }
 
 /* GET /api/ingest/health — the accepted schema-version set is read from the RUNNING ingest, and
- * this document deliberately restates no accepted set anywhere (VERSIONING.md rule 2). */
-function refreshHealth(config, selftest) {
-  return new Promise((resolve) => {
-    let url;
-    try { url = new URL(config.ingest_url); } catch (e) { resolve(); return; }
-    const opts = {
-      host: url.hostname, port: url.port || 443,
-      path: url.pathname.replace(/\/events$/, '/health'), method: 'GET',
-      headers: { Authorization: `Bearer ${config.token}` }, agent: getAgent(),
+ * this document deliberately restates no accepted set anywhere (VERSIONING.md rule 2).
+ *
+ * THE ONE PROBE BEHIND BOTH NETWORK CHECKS, for the flusher's heartbeat and for the one-shot
+ * `selftest` alike (card#9373: the one-shot used to run none, so `schema_version_accepted` read
+ * false and the install-time verification exited 1 on every correctly configured seat). It returns the
+ * probe, whose `checks` is the MEASUREMENT; each caller decides what to do with it (the one-shot
+ * reports it as it stands, the flusher keeps a previous value over a null). It asks through
+ * `ingestRequest`, the sender's own primitive, so it takes the seat's route — `proxy_url` included —
+ * and its deadlines (card#9473). Each of the two checks is true, false, or null — NOT MEASURED, which
+ * § 6.14 keeps distinct from a fail:
+ *   - tls_verify: an HTTP answer arrived with verification on ⇒ reached. A connection to the ingest
+ *     (through a proxy: a CONNECT answered 200) whose TLS handshake failed ⇒ refused (false). No such
+ *     connection (a proxy that refused or never answered included), a deadline, or a failure after
+ *     the handshake and before an answer ⇒ null: nothing about verification was learned. The source
+ *     posture is the check's other half, and `tlsVerifyResult` composes the two.
+ *   - schema_version_accepted: a 200 carrying an `accepted_schema_versions` array ⇒ whether it holds
+ *     SCHEMA_VERSION. Any other answer (a 401 for a refused token, an outage page) carries no set, so
+ *     it cannot refuse the version ⇒ null. */
+function refreshHealth(config) {
+  return ingestRequest(config, { method: 'GET', path: (u) => u.pathname.replace(/\/events$/, '/health') }).then((r) => {
+    const probe = { reached: null, http_status: r.status, accepted_schema_versions: null, error: r.error, checks: null };
+    if (r.status !== null) probe.reached = true;
+    else if (r.error && !r.deadline && r.tcp && !r.secured) probe.reached = false;
+    if (r.status === 200 && r.body) {
+      try {
+        const body = JSON.parse(r.body.toString('utf8'));
+        if (body && Array.isArray(body.accepted_schema_versions)) probe.accepted_schema_versions = body.accepted_schema_versions;
+      } catch (e) { /* no readable set: schema_version_accepted stays unmeasured */ }
+    }
+    probe.checks = {
+      tls_verify: tlsVerifyResult(probe.reached),
+      schema_version_accepted: Array.isArray(probe.accepted_schema_versions)
+        ? probe.accepted_schema_versions.includes(SCHEMA_VERSION) : null,
     };
-    if (!(/^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':'))) opts.servername = url.hostname;
-    if (config.ca_file) { try { opts.ca = fs.readFileSync(config.ca_file); } catch (e) { /* system store */ } }
-    const timer = setTimeout(() => { try { req.destroy(); } catch (e) { /* gone */ } resolve(); }, K.REQUEST_MS);
-    const req = lazy('https').request(opts, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
-        clearTimeout(timer);
-        try {
-          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          selftest.tls_verify = true;
-          selftest.schema_version_accepted = Array.isArray(body.accepted_schema_versions)
-            && body.accepted_schema_versions.includes(SCHEMA_VERSION);
-        } catch (e) { selftest.schema_version_accepted = false; }
-        resolve();
-      });
-    });
-    req.on('error', () => { clearTimeout(timer); selftest.tls_verify = false; selftest.schema_version_accepted = false; resolve(); });
-    req.end();
+    return probe;
   });
 }
 
@@ -2803,10 +3162,20 @@ function checkTlsPosture() {
   const banned = [
     new RegExp('reject' + 'Unauthorized\\s*:\\s*false'),
     new RegExp('NODE_TLS_' + 'REJECT_UNAUTHORIZED'),
+    new RegExp('check' + 'ServerIdentity'),
   ];
   const hits = banned.filter((r) => r.test(src)).map((r) => r.source);
   return { ok: hits.length === 0, detail: { forbidden_spellings_present: hits } };
 }
+
+/* tls_verify = the source posture AND reachability with verification on (§ 6.14's row: "reachable
+ * with certificate verification on, and refuses to proceed without it"). The posture is a property
+ * of this file, constant for the process, so it is linted once. A failing posture is `false` whatever
+ * a probe saw — an answer from the ingest never overrides it — and a passing one leaves the verdict
+ * to reachability: true, false, or null (not measured). Every writer of tls_verify goes through here. */
+let TLS_POSTURE = null;
+function tlsPosture() { return TLS_POSTURE || (TLS_POSTURE = checkTlsPosture()); }
+function tlsVerifyResult(reached) { return tlsPosture().ok ? reached : false; }
 
 function runSelftestChecks(config, cp) {
   const results = {}; const detail = {};
@@ -2816,26 +3185,51 @@ function runSelftestChecks(config, cp) {
   const s = checkSanitizerFixtures(); results.sanitizer_fixtures = s.ok; detail.sanitizer_fixtures = s.detail;
   const h = checkHarnessPayloadKeys(); results.harness_payload_keys = h.ok; detail.harness_payload_keys = h.detail;
   const p = checkPredicateDiscrimination(); results.predicate_discrimination = p.ok; detail.predicate_discrimination = p.detail;
-  const t = checkTlsPosture();
-  // tls_verify has two halves: the source posture (checkable offline, and the half that can
-  // regress in review) and reachability with verification ON (needs the real host). Offline,
-  // the second half is UNPROVEN and reported as a fail with its reason rather than assumed.
-  results.tls_verify = t.ok && results.config_readable;
-  detail.tls_verify = Object.assign({ reachability: 'not probed in this run — refreshed by the flusher against the real host' }, t.detail);
-  results.schema_version_accepted = false;
-  detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, note: 'read from GET /api/ingest/health by the flusher; unprobed here' };
-  return { results, detail };
+  const t = tlsPosture();
+  // The two network checks are measured only by a probe of the real host (`refreshHealth`), which
+  // these synchronous checks do not run. Until one does, both are NOT MEASURED (null) — never
+  // assumed to pass, never reported as a refusal — except that a failing posture already falsifies
+  // tls_verify.
+  results.tls_verify = tlsVerifyResult(null);
+  detail.tls_verify = Object.assign({ reached: null }, t.detail);
+  results.schema_version_accepted = null;
+  detail.schema_version_accepted = { reporter_schema_version: SCHEMA_VERSION, accepted_schema_versions: null, http_status: null };
+  // § 6.14: `fail` on `disagreed` and on a malformed declaration, and on nothing else — a `pass` states
+  // that no disagreement was found, and `protocol_agent_name_check` says whether a roster was read at
+  // all. With no config there is no declaration to check, so nothing was measured (only the subcommand
+  // can reach that: the flusher never starts without a config).
+  const declaration = config ? resolveDeclaration(config) : null;
+  results.protocol_agent_name_in_roster = declaration ? declaration.check !== 'disagreed' && declaration.malformed === null : null;
+  detail.protocol_agent_name_in_roster = declaration
+    ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
+      read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names,
+      malformed_declaration: declaration.malformed }
+    : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
+  return { results, detail, declaration };
 }
 
-function selftestMain() {
+async function selftestMain() {
   const cp = configPath();
   const { config } = loadConfig(cp);
   registerConfigSecrets(config);   // null-guarded internally
   const { results, detail } = runSelftestChecks(config, cp);
+  // The install-time verification measures the network checks with the flusher's own probe (the
+  // sender's route and TLS path — `proxy_url`, `ca_file` — and deadlines, card#9473), once — and
+  // only on a config that passed validation, because an invalid one names no ingest this command
+  // may trust with the token (card#9373).
+  if (results.config_readable) {
+    const probe = await refreshHealth(config);
+    Object.assign(results, probe.checks);
+    Object.assign(detail.tls_verify, { reached: probe.reached, probe_error: probe.error });
+    Object.assign(detail.schema_version_accepted, { accepted_schema_versions: probe.accepted_schema_versions, http_status: probe.http_status });
+  }
   const report = { reporter_version: REPORTER_VERSION, schema_version: SCHEMA_VERSION, checks: {}, detail };
-  for (const c of SELFTEST_CHECKS) report.checks[c] = results[c] === true ? 'pass' : 'fail';
+  for (const c of SELFTEST_CHECKS) report.checks[c] = results[c] === true ? 'pass' : results[c] === false ? 'fail' : 'not_measured';
   process.stdout.write(redactSecrets(JSON.stringify(report, null, 2)) + '\n');
-  return Object.values(report.checks).every((v) => v === 'pass') ? 0 : 1;
+  // § 6.14's exit rule: 0 every check passed; 1 at least one failed; 2 none failed and at least one
+  // was not measured — a verification that did not happen is neither a pass nor a fail.
+  const verdicts = Object.values(report.checks);
+  return verdicts.includes('fail') ? 1 : verdicts.includes('not_measured') ? 2 : 0;
 }
 
 /* ── main ────────────────────────────────────────────────────────────────────────────────────
@@ -2850,9 +3244,10 @@ function main() {
     return;
   }
   if (cmd === 'selftest') {
-    let code = 1;
-    try { code = selftestMain(); } catch (e) { process.stderr.write(`selftest crashed: ${redactSecrets(String(e && e.stack || e))}\n`); code = 1; }
-    process.exit(code);
+    selftestMain()
+      .catch((e) => { process.stderr.write(`selftest crashed: ${redactSecrets(String(e && e.stack || e))}\n`); return 1; })
+      .then((code) => process.exit(code));
+    return;
   }
   try {
     if (cmd === 'statusline') statuslineMain();
@@ -2877,4 +3272,4 @@ if (require.main === module) main();
  * reproduces only by luck. A RED that reproduces by luck is not evidence. The stress harness
  * calls the primitive directly, in a tight loop, from concurrent processes. */
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
-  appendLine, K, ENUM, SANITIZER_FIXTURES };
+  appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS };
