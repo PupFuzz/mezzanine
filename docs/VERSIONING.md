@@ -189,6 +189,33 @@ correlates on).
 > `branches:` filter, so it produces a completed run on every PR rather than the
 > no-run-reads-as-pending deadlock above — but requiring it is a repository-settings act, which is
 > the operator's to perform and not this repo's; it is raised on card#9635.
+>
+> ⚠ **Re-read 2026-09-17 on NARROWING `release-pr-guard`'s trigger (card#9732) — narrowing a required
+> check's trigger raises the same question as adding a workflow, so the instruction above applies to
+> it.** That job now carries `if: github.event.pull_request.state == 'open'`, because `edited` fires on
+> a MERGED pull request and re-judged PR #176 into a permanent red after v0.5.0 had shipped. **Being
+> required is unaffected, and that is the point of the form chosen:** every PR that can still merge is
+> open, so an open PR produces the same completed run under the same job id — a `branches:` filter or a
+> `types:` narrowing would have produced no run at all and walked into the deadlock above. What the
+> condition removes is only the run on a PR whose merge button is already gone. No ruleset and no
+> classic-protection list was edited by that change.
+>
+> ⛔ **Re-derived with the command above on 2026-09-17, and the 2026-09-13 table no longer describes
+> the branches** — a later settings change moved them and no document moved with it, which is the exact
+> drift the instruction above exists to catch. The two branches now carry DIFFERENT sets, so read them
+> per branch rather than from that table's two columns:
+>
+> - **`dev` · rulesets** — `asset-provenance`, `card-token-lint`, `deploy-gate-inputs`,
+>   `deploy-selftest`, `design-artifact`, `design-docs`, `php-tests`, `release-pr-guard`.
+>   **Classic protection** carries the same set minus `php-tests`, `strict: false`.
+> - **`main` · rulesets** — `asset-provenance`, `card-token-lint`, `design-artifact`, `design-docs`,
+>   `php-tests`, `release-pr-guard`. **Classic protection** carries the same set minus `php-tests`,
+>   `strict: true`.
+>
+> So `deploy-gate-inputs` and `deploy-selftest` are required on `dev` on both layers and on neither
+> layer of `main`, `php-tests` is still ruleset-only on both branches, and `shell-lint` is still
+> required by neither layer on either branch. This is a dated reading like the one above it, not the
+> state: run the command.
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:

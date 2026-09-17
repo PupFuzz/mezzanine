@@ -873,6 +873,131 @@ eq("  … and it measured the growth from that commit, not from zero",
    True, "grew 10,00" in r.stdout)
 
 
+# =============================================================================================
+print("== 12. TRIGGER CONTEXT — the gate judges a PR that CAN still be fixed ==")
+# THE DEFECT THIS ARM GUARDS (card#9732). `edited` fires on a MERGED pull request. On
+# 2026-09-17 an edit to PR #176's body — merged as v0.5.0 some hours earlier — re-ran this gate
+# and failed it: "R2 VERSION bump: VERSION is '0.5.0' at the head and '0.5.0' on main —
+# UNCHANGED" (run 35186872206), a permanent red on a release that shipped correctly. R2 was
+# RIGHT and its CONTEXT was wrong: head == base is a MISSING bump while a release is pending and
+# the CORRECT terminal state once it has landed, and nothing in the two trees tells those apart.
+# The fix is a job-level `if:` on the PR still being open. Both halves are asserted here: the
+# new behaviour, and the behaviour it must not have cost.
+#
+# ⚠ WHAT THIS SECTION CANNOT DO, SAID PLAINLY. The `if:` is evaluated by GitHub and the SKIPPED
+# job it produces is a GitHub Actions behaviour; no python process can exercise either, and a
+# fixture pretending to would be worse than the gap. What IS exercised is the CONDITION — that
+# one exists, that it gates the JOB and not a step, and what it decides for the payload of each
+# PR state — which is every mistake this file can catch: the condition deleted, moved off the
+# job, pointed at a field that does not exist, or compared against the wrong literal. The
+# end-to-end behaviour was measured on the real surface instead, on this change's own PR.
+
+
+def job_if(wf_text: str, job: str) -> str | None:
+    """The `if:` of one JOB, read STRUCTURALLY — the key must sit at that job's own mapping
+    indentation. A substring search for `if:` would be satisfied by a step's `if:`, by a
+    comment, or by an `if:` on some other job, none of which gates this one."""
+    lines = wf_text.splitlines()
+    for i, ln in enumerate(lines):
+        if not re.match(rf"^\s+{re.escape(job)}:\s*$", ln):
+            continue
+        indent = None
+        for sub in lines[i + 1:]:
+            if not sub.strip() or sub.lstrip().startswith("#"):
+                continue
+            cur = len(sub) - len(sub.lstrip())
+            if indent is None:
+                indent = cur          # the job mapping's own indentation
+            if cur < indent:
+                break                 # dedented out of this job
+            if cur == indent and sub.strip().startswith("if:"):
+                return sub.strip()[len("if:"):].strip()
+    return None
+
+
+def gate_runs(expr: str, pull_request: dict) -> bool:
+    """Decide the one expression shape this gate uses — `<dotted.path> == '<literal>'`, with or
+    without the `${{ }}` wrapper — against a pull_request payload. An unresolvable path is
+    `false` rather than an error, which is what GitHub does with a null on either side of `==`
+    and is the SAFE direction: a mis-pointed condition skips the job, it does not sneak past."""
+    m = re.fullmatch(r"(?:\$\{\{)?\s*([A-Za-z0-9_.]+)\s*==\s*'([^']*)'\s*(?:\}\})?", expr)
+    if not m:
+        raise AssertionError(f"not the single-comparison form this arm can decide: {expr!r}")
+    path, literal = m.group(1), m.group(2)
+    cur: object = {"github": {"event": {"pull_request": pull_request}}}
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False
+        cur = cur[part]
+    return cur == literal
+
+
+# PR #176's two states, as the webhook delivers them. `state` is `closed` on a merged PR — the
+# merged/not-merged distinction lives in `merged`, and both are carried here so an `if:` written
+# against either field is decided correctly by this arm.
+PR176 = {"number": 176, "base": {"ref": "main"}, "head": {"ref": "release/v0.5.0"},
+         "title": "release: v0.5.0 — the prod deploy can run, the building surface, "
+                  "2FA re-enrolment, and the seat that stopped reporting blocked"}
+OPEN = dict(PR176, state="open", merged=False, merged_at=None)
+MERGED = dict(PR176, state="closed", merged=True, merged_at="2026-09-17T00:46:55Z")
+CLOSED = dict(PR176, state="closed", merged=False, merged_at=None)
+
+gate = job_if(wf, "release-pr-guard")
+eq("the guard job carries a state condition, at JOB level", True, gate is not None)
+if gate:
+    eq("an OPEN release PR still reaches the guard", True, gate_runs(gate, OPEN))
+    eq("PR #176's MERGED event does not (the card#9732 permanent red)",
+       False, gate_runs(gate, MERGED))
+    eq("a CLOSED-unmerged PR does not either (its head cannot move either)",
+       False, gate_runs(gate, CLOSED))
+    # CONTROLS. The two above are only evidence if this reader can tell a job-level condition
+    # from the other places an `if:` can sit, and if the decision tracks the expression rather
+    # than being hardcoded.
+    eq("  CONTROL: no `if:` at all reads as absent",
+       None, job_if("jobs:\n  release-pr-guard:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - run: true\n", "release-pr-guard"))
+    eq("  CONTROL: an `if:` on a STEP is NOT read as gating the job",
+       None, job_if("jobs:\n  release-pr-guard:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - if: always()\n        run: true\n",
+                    "release-pr-guard"))
+    eq("  CONTROL: an `if:` on ANOTHER job is not read as gating this one",
+       None, job_if("jobs:\n  other:\n    if: github.event.pull_request.state == 'open'\n"
+                    "  release-pr-guard:\n    runs-on: ubuntu-latest\n", "release-pr-guard"))
+    eq("  CONTROL: it does read one that IS at job level (positive control)",
+       "github.event.pull_request.state == 'open'",
+       job_if("jobs:\n  release-pr-guard:\n"
+              "    if: github.event.pull_request.state == 'open'\n"
+              "    runs-on: ubuntu-latest\n", "release-pr-guard"))
+    inverted = "github.event.pull_request.state == 'closed'"
+    eq("  CONTROL: the INVERTED condition flips all three verdicts (the reader decides, "
+       "it does not assume)",
+       [False, True, True], [gate_runs(inverted, OPEN), gate_runs(inverted, MERGED),
+                             gate_runs(inverted, CLOSED)])
+    eq("  CONTROL: a condition on a field that does not exist skips even an OPEN PR "
+       "(a typo cannot read as 'always run')",
+       False, gate_runs("github.event.pull_request.stat == 'open'", OPEN))
+
+# ⭐ THE HALF THAT MATTERS MOST — R2 IS UNTOUCHED. A condition that suppressed R2 generally
+# would be strictly worse than the noise it removes: it would restore the 2026-08-30 state this
+# whole file exists to keep closed. So the SAME tree run 35186872206 judged is driven through
+# the REAL guard here — VERSION 0.5.0 on both sides, head `release/v0.5.0`, the changelog
+# carrying its 0.5.0 section, i.e. v0.5.0 exactly as it looked after it landed — and on an OPEN
+# PR, which is where `gate_runs` says the job still runs, it must still go red on R2.
+fx = make_repo(base_version="0.5.0", head_version="0.5.0",
+               head_changelog=changelog_with("0.5.0"), head_branch="release/v0.5.0")
+r = guard(fx, base_ref="main", head_ref="release/v0.5.0")
+eq("an OPEN release PR with an UNCHANGED VERSION is still REFUSED", 1, r.returncode)
+eq("  … on R2, and on R2 alone — the verdict run 35186872206 printed", ["R2"], rules_flagged(r))
+eq("  … in the same words, naming the after-the-merge failure it prevents",
+   True, "UNCHANGED" in r.stdout and "fails AFTER the merge" in r.stdout)
+# CONTROL for that red: the single variable is the VERSION equality, not the fixture's shape.
+fx = make_repo(base_version="0.5.0", head_version="0.6.0",
+               head_changelog=changelog_with("0.6.0"), head_branch="release/v0.6.0")
+r = guard(fx, base_ref="main", head_ref="release/v0.6.0")
+eq("  CONTROL: the same shape WITH a bump passes (so the red above is the bump, not the tree)",
+   0, r.returncode)
+
+
 print()
 if fails:
     print(f"release-pr-guard.selftest: {fails} check(s) FAILED", file=sys.stderr)
