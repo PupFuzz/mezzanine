@@ -19,6 +19,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9732** — **`release-pr-guard` judges a pull request only while it is still OPEN, so a release
+  that shipped correctly no longer collects a permanent red check.** `edited` fires on a pull request
+  that has already MERGED: editing PR #176's body after v0.5.0 went out re-ran the gate and failed it on
+  R2 — *"VERSION is '0.5.0' at the head and '0.5.0' on main — UNCHANGED"* (run 35186872206). The rule
+  was right and the context was wrong. R2 asks whether a release is about to merge WITHOUT a bump, so
+  head == base is a missing bump while that release is pending and the CORRECT terminal state once it
+  has landed — `main` carries 0.5.0 precisely because the release went out — and nothing in the two
+  trees the rule reads tells those apart. The difference is whether the PR is still open, so the test
+  lives where that difference is: the job now carries `if: github.event.pull_request.state == 'open'`
+  and **no rule changed**. R2 still refuses an open release PR whose `VERSION` has not moved, which is
+  the 2026-08-30 defect — the merge lands, `auto-tag-version` then finds the tag on another commit, and
+  the only remedy is a second release PR — that this gate was built to stop. Being a required status
+  check is unaffected, and that is why the test is a job condition rather than a `branches:` or `types:`
+  narrowing: every PR that can still merge is open, so an open PR produces the same completed run under
+  the same job id, where a filtered-away run would read as pending forever
+  (`docs/VERSIONING.md § Branch model`). What is removed is only the run on a PR whose merge button is
+  already gone. `bin/release-pr-guard.selftest.py § 12` holds both halves — the condition read
+  structurally off the JOB, so a condition on a step, on another job, or on a field that does not exist
+  all read as absent, and the very tree run 35186872206 judged still going red on R2 and on R2 alone
+  when the PR is open. What that section cannot exercise is named in it: GitHub evaluates the `if:` and
+  produces the skip, so the end-to-end behaviour was measured on the real surface instead.
+
 - **card#9611** — **`bin/deploy.sh`'s ref resolve (A7) and release check (A8) name the cause they
   actually established.** Both refused correctly and then stated a cause that had never been
   established, which is canon #10's wrong-but-specific cause and costs an operator the debugging
