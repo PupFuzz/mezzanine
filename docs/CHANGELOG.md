@@ -19,6 +19,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9693** — **`bin/deploy-gate-inputs.sh` rules on each name in `bin/deploy.sh`'s reader family by
+  what that function's own body does, instead of reading the family list as the population.** The lane
+  stopped at exit 2 over a healthy `bin/deploy.sh` and blocked PR #178, and it was RIGHT to stop: it
+  refuses to report green over a read it cannot classify, which is the defect card#9637 built it to end.
+  What it could not classify was the deploy's own family DEFINITION. `git_read_call_site`'s `case` list
+  is the deploy's frame-walking family — a different population from "functions that read a path out of
+  the release" — and card#9611 grew it past one line, where this derivation only ever read a case label
+  written on one. From that single cause the lane failed in both directions at once: the reader names it
+  lost stopped being exempt, so the readers' own plumbing and the case list that defines them read as
+  calls to a reader; and `git_ls_at` fell out of the LOOSE half of the derivation while the STRICT half
+  went on matching it, so a read written exactly as the lane's own remedy prescribes — `git_ls_at <var>
+  "$SHA" <path>`, on one line — was reported as a shape the derivation does not match, over advice
+  telling its author to write it the way it already was. A gate whose advice does not apply to the lines
+  it fires on trains people to ignore it, so that text is fixed in the same change: it names both shapes
+  `READ_RE` matches and prints `READ_RE` itself beside them, and `bin/deploy-gate-inputs.selftest.sh`
+  matches the shapes it prints against that pattern, so the advice cannot drift from what is accepted.
+  A case label is now joined across its `\` continuations and is never read as a call site; the family is
+  derived from that list, from every function whose body reads a path, and from every function that
+  DELEGATES to one (`git_ls_at`'s whole body is a call to `_git_ls_at`, so it was in the family only
+  because the list happened to name it). **Being in that family is no longer being a reader of the
+  release tree.** Each candidate is ruled from its own body and the ruling is PRINTED on every run beside
+  the name: a git invocation naming a path (a `--` pathspec or a `rev:path` argument — how git's CLI
+  names a path inside a tree, which is a property of git rather than a restatement of the deploy) is a
+  read the gate is about; `cat-file -t "$oid"` reads an object by bare id and `rev-parse` resolves a ref,
+  neither of which can hand a caller a file out of the tree; a refusal helper runs no git at all.
+  Ambiguity resolves toward READER, so the error the rule can make is a stop and never a pass — and a
+  family member running a subcommand this check has no reading for (`archive` puts paths on disk), or a
+  name in the list this file defines no function for, stops the check rather than being assumed
+  harmless. Both of those exited 0 before this change. What a green here still does not prove is
+  enumerated, as it has been since card#9637, in the `NOT PROVED BY A GREEN` block the check PRINTS on
+  every run — including the one shape this ruling adds, a reader whose path arrives already assembled
+  inside a variable — rather than in a copy here that would go stale.
+
 ## [0.5.0] — 2026-09-16
 
 - **card#9635** — **`bin/shell-lint.sh` and the `Shell lint` CI lane: every shell script this repo
