@@ -19,6 +19,8 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-16
+
 - **card#9635** — **`bin/shell-lint.sh` and the `Shell lint` CI lane: every shell script this repo
   tracks is analysed on every PR, by a ShellCheck whose version is named.** Both halves of the gap
   were open at once. A pinned ShellCheck 0.9.0 had been on the agent box the whole time, installed
