@@ -744,6 +744,20 @@ class FeedSurfaceTest extends FeedTestCase
 
         $this->assertSame('blocked', $body['render_state'], 'the detail is the seat object PLUS a member');
 
+        // ⛔ AND THE RESPONSE IS AN ENVELOPE, IN THIS ORDER — the CHECK behind § 8.2.3's declaration
+        // (card#7341 step 3). `FleetController::seat()` answers `api_version` and `server_time`,
+        // then the seat object's members, then `detail` last, and D2 § 8.2.3 now says so in those
+        // words. A declaration with no check is a comment: the client protocol
+        // (`public/js/wire/fleet-client.js`) strips exactly those three before anything enters its
+        // held map, and `public/js/drilldown/main.js` reads `server_time` off this same body, so a
+        // silent reshuffle here would be read as a seat MEMBER at one end and lost at the other.
+        $members = array_keys($body);
+
+        $this->assertSame(['api_version', 'server_time'], array_slice($members, 0, 2),
+            'the seat response does not open with § 8.2.3\'s envelope');
+        $this->assertSame('detail', $members[count($members) - 1],
+            'the seat response does not end with `detail`, so "the object, then detail" is not what it sends');
+
         foreach (['heartbeat_counters', 'heartbeat_predicates', 'counters', 'predicates',
             'open_calls', 'attention', 'session'] as $member) {
             $this->assertArrayHasKey($member, $body['detail']);

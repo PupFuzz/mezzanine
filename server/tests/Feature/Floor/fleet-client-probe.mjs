@@ -1,0 +1,189 @@
+/**
+ * The probe the PHP suite drives the SHIPPED client protocol through — `node`, no dependencies, no
+ * network, no DOM, no real clock. `docs/design/FLOOR.md` Appendix B row 3's **harness**.
+ *
+ * ⛔ IT IMPORTS THE SHIPPED MODULE AND RE-IMPLEMENTS NOTHING. The module directory is argv[2], so
+ * the same probe runs against `public/js/wire` and against a MUTATED COPY of it — which is how
+ * every planted control in this directory re-mints its defect against the real code.
+ *
+ * stdin  — JSON: a fixture run, `{ snapshot-less: everything is scripted }`:
+ *   `{ "http":       { "<pathname>": [ {status, body|text, delay_ms} | {unreachable}, … ] },
+ *      "messages":   [ { "at_ms": N, "envelope": <a `mezzanine` event's data> }, … ],
+ *      "until_ms":   N,
+ *      "status_keys":[ "<install/seat>", … ]   // keys to poll readStatus() for, held or not
+ *      "repeat":     N                          // run the same scenario N times IN ONE PROCESS
+ *    }`
+ * stdout — JSON: `{ "runs": [ <one run per repeat> ] }`, each run
+ *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
+ *      "pending_timers": N, "rejections": [] }`
+ *   and each record
+ *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
+ *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state" }`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ THE SCENARIO CLOCK IS THE ONLY CLOCK, AND IT STARTS AT `start()`. Every `at_ms` and every
+ * `delay_ms` is measured on it, and a response resolves at `request time + delay_ms`. That is what
+ * makes § 2.2's 500 ms connect window REACHABLE at all: against a live D2 the stream delivers a
+ * message no sooner than one visibility lag after the row is inserted, so the race would need a
+ * snapshot response slower than that. The client cannot tell a scripted 500 ms from a real 2.5 s.
+ *
+ * ⛔ THE FAKE `EventSource` DROPS EVERY MESSAGE SCHEDULED BEFORE IT WAS CONSTRUCTED, because D2
+ * never replays: no `id:` is sent, `Last-Event-ID` is ignored, and the cursor starts at head. A
+ * fake that delivered them would hide the exact loss § 2.2's open-then-fetch order exists to
+ * prevent, and the ordering test would pass against a client that got the order wrong.
+ *
+ * ⛔ ONE EXPLICIT `setImmediate` TURN SETTLES EACH EVENT. Every continuation this client runs is a
+ * promise continuation, and the microtask queue drains COMPLETELY before a `setImmediate` callback
+ * runs — so one turn is a fixed point, not a guess at "enough ticks". A probe that guessed would
+ * make the determinism check flaky instead of red.
+ *
+ * ⛔ UNHANDLED REJECTIONS ARE RECORDED, NOT SWALLOWED. A `200` whose body is not an object, read as
+ * a success, throws inside the client's own fetch continuation — and a probe that let that pass
+ * would report a green run for a client that has stopped discovering anything for the rest of the
+ * connection.
+ *
+ * ⛔ AN UNSCRIPTED REQUEST IS REPORTED IN THE RECORD, NOT AS AN EXIT CODE. A planted control must
+ * red on the FIELD its plant diverges on; a plant that also happens to issue an extra request
+ * would otherwise kill the probe and "pass" for the wrong reason.
+ */
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import { scriptedFetch } from '../Support/scripted-fetch.mjs';
+
+const dir = process.argv[2];
+
+if (typeof dir !== 'string' || dir === '') {
+    console.error('usage: node fleet-client-probe.mjs <module-dir>  (JSON payload on stdin)');
+    process.exit(2);
+}
+
+const { FleetClient } = await import(pathToFileURL(join(dir, 'fleet-client.js')).href);
+
+const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
+
+let rejections = [];
+process.on('unhandledRejection', (error) => {
+    rejections.push(String(error?.message ?? error));
+});
+
+const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+const runs = [];
+
+for (let i = 0; i < (fx.repeat ?? 1); i++) {
+    runs.push(await replay(fx));
+}
+
+console.log(JSON.stringify({ runs }, null, 2));
+
+async function replay(scenario) {
+    rejections = [];
+
+    let now = 0;
+    const clock = { now: () => now };
+
+    const timers = [];
+    let seq = 0;
+    const schedule = (at, label, fire) => timers.push({ at, seq: seq++, label, fire });
+
+    const http = scriptedFetch(scenario.http, {
+        schedule: (delay, label, fire) => schedule(now + delay, label, fire),
+    });
+
+    const streams = [];
+
+    class FakeEventSource {
+        constructor(path) {
+            this.path = path;
+            this.openedAt = now;
+            this.listeners = {};
+            streams.push(this);
+        }
+
+        addEventListener(type, callback) {
+            (this.listeners[type] ??= []).push(callback);
+        }
+
+        close() {
+            this.closedAt = now;
+        }
+    }
+
+    for (const message of scenario.messages ?? []) {
+        const label = `message ${message.envelope.t} ${message.envelope.seat_id ?? ''} ${message.envelope.state_version ?? ''}`;
+
+        schedule(message.at_ms, label, () => {
+            const es = streams[streams.length - 1];
+
+            if (es === undefined || es.openedAt > message.at_ms || es.closedAt !== undefined) {
+                return 'dropped';
+            }
+
+            for (const callback of es.listeners.mezzanine ?? []) {
+                callback({ data: JSON.stringify(message.envelope) });
+            }
+
+            return 'delivered';
+        });
+    }
+
+    const client = new FleetClient(http.fetch, FakeEventSource, clock);
+    const records = [];
+
+    const snap = (label, outcome = null) => {
+        const seats = [...client.seats];
+        const keys = [...new Set([...seats.map(([k]) => k), ...(scenario.status_keys ?? [])])].sort();
+
+        records.push({
+            at: now,
+            label,
+            outcome,
+            seats: Object.fromEntries(seats.map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])),
+            event_log: client.eventLog,
+            requests: [...http.requests],
+            phase: client.phase,
+            clock_offset_ms: client.clockOffsetMs,
+            read_status: Object.fromEntries(keys.map((k) => [k, client.readStatus(k)])),
+            discrepancy_state: client.discrepancyState(),
+        });
+    };
+
+    // Before `start()`: constructed, holding nothing, having asked for nothing.
+    snap('pre-start');
+
+    client.start();
+    await turn();
+    snap('start');
+
+    for (;;) {
+        timers.sort((a, b) => a.at - b.at || a.seq - b.seq);
+
+        const timer = timers[0];
+
+        if (timer === undefined || timer.at > scenario.until_ms) {
+            break;
+        }
+
+        timers.shift();
+        now = timer.at;
+
+        const outcome = timer.fire();
+
+        await turn();
+        snap(timer.label, outcome ?? null);
+    }
+
+    return {
+        records,
+        final: records[records.length - 1],
+        unscripted: [...http.unscripted],
+        listeners: streams.map((s) => Object.fromEntries(
+            Object.entries(s.listeners).map(([type, list]) => [type, list.length]),
+        )),
+        pending_timers: timers.length,
+        rejections: [...rejections],
+    };
+}

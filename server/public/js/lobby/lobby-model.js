@@ -43,6 +43,7 @@
 
 import { RENDER_STATES, isRenderState } from './render-state.js';
 import { clockTime } from '../wire/clock.js';
+import { disagrees, DiscrepancyBudget } from '../wire/discrepancy-budget.js';
 
 /**
  * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
@@ -244,9 +245,14 @@ export function fleetTotals(fleet) {
  * unexercised on the direction where it is false (AT-D3-15).
  *
  * `null` when they agree, which is the intact fixture's discriminating control: no notice.
+ *
+ * ⚠ THE CONDITION IS `../wire/discrepancy-budget.js`'s `disagrees`, NOT A SECOND COPY OF IT. The
+ * budget asks the same question, and it used to ask it by calling THIS function and testing for
+ * `null` — which made "do these two counts differ" a fact only the lobby's WORDING function could
+ * answer, and a `wire/` module cannot import a `lobby/` one.
  */
 export function discrepancyNotice(held, total) {
-    if (!Number.isInteger(total) || held === total) {
+    if (!disagrees(held, total)) {
         return null;
     }
 
@@ -341,44 +347,13 @@ export function storeUnavailableStatement(serverTime) {
 }
 
 /**
- * § 4.1's one-fetch-per-distinct-`(N, M)` budget, as a thing with a memory rather than a rule
- * written at the call site.
- *
- * § 4.1: "It triggers **one snapshot fetch per distinct (N, M) observation**: a disagreement still
- * standing after that fetch is rendered and **not** re-fetched, so a discrepancy the snapshot
- * cannot resolve costs one request rather than one every 15 s." AT-D3-15's second GREEN is the
- * property directly: "the **second** identical heartbeat issues **no** fetch, because the trigger
- * is one fetch per *distinct* (N, M) observation and not a poll".
- *
- * ⚠ ADMIT's own fetch is NOT counted against this budget (§ 2.2 step 6, § 2.3, decision 9) —
- * "that budget exists to bound a *disagreement* and ADMIT is bounded by the install set instead".
- * ADMIT belongs to the delta feed, which is out of this slice; nothing here calls this for it.
+ * ⚠ `DiscrepancyBudget` MOVED to `../wire/discrepancy-budget.js` at its second caller — the client
+ * protocol (`../wire/fleet-client.js`, FLOOR Appendix B step 3) spends the same § 4.1 budget for
+ * the same disagreement — and is re-exported here so every lobby caller's import is unchanged,
+ * exactly as `clockTime` is above. Its reasoning, and the `refund` a failed fetch needs, moved
+ * with it rather than being copied.
  */
-export class DiscrepancyBudget {
-    #spent = new Set();
-
-    /** True at most once per distinct `(held, total)` pair, and never while they agree. */
-    admits(held, total) {
-        if (discrepancyNotice(held, total) === null) {
-            return false;
-        }
-
-        const key = `${held}/${total}`;
-
-        if (this.#spent.has(key)) {
-            return false;
-        }
-
-        this.#spent.add(key);
-
-        return true;
-    }
-
-    /** How many fetches this budget has admitted — the client's own count of its own acts. */
-    get spent() {
-        return this.#spent.size;
-    }
-}
+export { DiscrepancyBudget };
 
 /**
  * § 9 F17's statement, from the failed layout request's `{ status }` (`../wire/building.js`):

@@ -532,6 +532,53 @@ PLANTS = [
         "G5 must refuse because the row that builds the gate does not gate the test (#164 round 2)",
         "an instrument covers only a test that the Appendix B row building it also gates",
     ),
+    (
+        # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
+        # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
+        # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a
+        # looser check cannot see: the remaining sentence still says "unconfirmed", so a gate
+        # greping the cell for `confirm` stays green over the edit it exists to catch.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(never as an empty desk\*\* \(\[§ 7\.5\]\(#75-what-a-degraded-desk-may-never-look-like\)\) )"
+        r"(\*\*while the client can confirm the seat\*\* \(\[§ 2\.3\]"
+        r"\(#23-membership-a-seat-or-an-install-the-client-does-not-hold\) row 5\))(\. Idle is a)",
+        "drop",
+        "the scoping of § 7.1's `idle` Never cell to the client's own confirmation, which G13 holds "
+        "every cell forbidding the empty desk to carrying (card#7341 step 3)",
+        "`idle` Never cell forbids the empty desk unconditionally",
+    ),
+    (
+        # card#7341 step 3, G13.  The same edit on the cell the seat RULED on rather than inherited:
+        # `disabled`'s prohibition on looking like `offline` is claimable only on a confirmed read,
+        # because a seat the client cannot read is the empty chair whatever flag it last carried.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(shown as `offline` )(\*\*while the client can confirm the seat\*\* \(\[§ 2\.3\]"
+        r"\(#23-membership-a-seat-or-an-install-the-client-does-not-hold\) row 5\) )"
+        r"(— a seat that is off)",
+        "drop",
+        "the scoping of § 7.1's `disabled` Never cell to the client's own confirmation (card#7341 "
+        "step 3, the ruling on the `disabled`/`offline` collision)",
+        "`disabled` Never cell forbids rendering as `offline` unconditionally",
+    ),
+    (
+        # card#7341 step 3, G13's third leg, and the reason the check is not two cells.  Appendix A's
+        # U5 restates the off-versus-gone obligation and names § 7.1 as its discharge; with § 7.1
+        # scoped and U5 absolute the document publishes both readings at once, and the guard written
+        # for this class returned CLEAN over it because it read only § 7.1's own table (pass-6
+        # MAJOR 4).  Only the DISCHARGE cell is planted — U5's Obligation cell carries D1's words.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| \[§ 7\.1\]\(#71-the-render-per-state\) — )(\*\*which discharges it while the client can "
+        r"confirm the seat\*\* \(\[§ 2\.3\]\(#23-membership-a-seat-or-an-install-the-client-does-not-hold\)"
+        r" row 5, card#7341 step 3\))(: on every confirmed read)",
+        "drop",
+        "the scoping of Appendix A's U5 DISCHARGE cell, which names § 7.1 as where D1 § 6.14's "
+        "off-versus-gone obligation is discharged while § 7.1 itself holds it only on a confirmed "
+        "read (card#7341 step 3, pass-6 MAJOR 4)",
+        "Appendix A's U5 states the off-versus-gone obligation as discharged",
+    ),
 ]
 
 # PLANTS' shape plus a premise; the substring is the failure a WRONG gate would print, which the

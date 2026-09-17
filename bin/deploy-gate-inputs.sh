@@ -49,13 +49,36 @@
 #      line that `READ_RE` does not match stops this check (exit 2).** A shape this file cannot
 #      read is never a shape it passes over.
 #
-#   The reader family is itself DERIVED, two ways, and both are unioned: the names `bin/deploy.sh`
-#   lists in `git_read_call_site`'s own `case` — that function exists to walk its own reader frames,
-#   so the list is maintained there for the deploy's own reasons — plus every function whose body
-#   invokes `git_at ls-tree|show|cat-file`, which catches a reader added without touching that case.
+#   The reader family is itself DERIVED, three ways, all unioned: the names `bin/deploy.sh` lists in
+#   `git_read_call_site`'s own `case` — that function exists to walk its own reader frames, so the
+#   list is maintained there for the deploy's own reasons, and it is read here as the CASE LABEL it
+#   is, joined across the `\` continuations bash allows it — plus every function whose body invokes
+#   `git_at ls-tree|show|cat-file`, which catches a reader added without touching that case, plus
+#   every function that DELEGATES to one of those, because `git_ls_at`'s entire body is a call to
+#   `_git_ls_at` and names no path of its own.
 #   A line naming `$SHA` that runs some OTHER git subcommand is allowed only for the handful of
 #   NON-READING subcommands named below; anything else — `cat-file`, `archive`, `log`, a subcommand
 #   nobody has thought of yet — stops the check rather than being assumed harmless.
+#
+#   ⛔ AND BEING IN THAT FAMILY IS NOT BEING A READER OF THE RELEASE TREE (card#9693). This gate is
+#   about ONE thing: a PATH read out of the tree under test. `git_read_call_site`'s list is the
+#   deploy's FRAME-WALKING family, which is a different population — it grew to carry a ref
+#   resolver, a read of an object by bare id and two refusal helpers, and every MENTION of one of
+#   those then became a candidate read this check could not parse, the case list that defines them
+#   included. So every candidate is RULED on from its own body, and each ruling is printed on every
+#   run beside the name it was made about:
+#     * it reads a PATH out of a tree — a git invocation carrying a `--` pathspec separator or an
+#       argument holding a `:`, which are the only two ways git's CLI names a path inside a tree.
+#       That is a property of git and not of this file, so it does not drift with bin/deploy.sh.
+#       Such a function is a reader, and its call sites are the population above.
+#     * it reads an object BY ID (`cat-file -t "$oid"`): no path can come back, so no call site of
+#       it is a gate input.
+#     * it runs only NON-READING subcommands (`rev-parse` over a ref name): the same.
+#     * it runs no git at all — a refusal helper, which reads nothing by construction.
+#   AMBIGUITY RESOLVES TOWARD READER: an invocation whose argument this check cannot tell apart is
+#   ruled a path read, which STOPS the check rather than passing over it. And a name the family
+#   list carries that this file defines no function for stops it too — there is no body to rule on,
+#   and assuming either answer would be inventing one.
 #
 #   ⚠ WHAT THAT BUYS IS BOUNDED BY THE SUPERSET, AND THE BOUND IS NOT NARROW. A read the superset
 #   does not SEE is invisible to the stop as well as to the guard, so it is still a green over a
@@ -180,6 +203,14 @@ READ_RE="$READ_PREFIX_RE$READ_ARG_RE"
 # until somebody adds it here, having first asked whether it reads the release.
 NON_READING_SUBCOMMANDS='rev-parse merge-base checkout fetch status'
 
+# A git invocation at a COMMAND POSITION, which is how the derivation reads WHICH subcommands a
+# reader-family member's own body runs. The position matters because a refusal's message text is
+# prose about git — `"git could not read $3 at $2"` — and a pattern that takes any `git <word>` for
+# an invocation reads that as `git could` and stops this check on a helper that runs nothing at all.
+# Reading subcommands are matched loosely instead (§ the derivation), because over-reading one costs
+# a stop and under-reading one costs a green over an unchecked gate.
+GIT_CMD_RE='((^|[({;&|`!])[[:space:]]*|(^|[[:space:]])(if|then|elif|else|do|while|until)[[:space:]]+)git(_at)?[[:space:]]+(-[cC][[:space:]]+[^[:space:]]+[[:space:]]+)*[a-z][a-z-]*'
+
 # § the digest. A read's DISPOSITION is what the gate does with it, and it is written as `refuse`,
 # `warn` or `say`. The digest covers exactly those lines, from the read down to where the next read
 # AT THE SAME NESTING takes over (or the end of the enclosing function) — comments and logic in
@@ -198,7 +229,7 @@ cat > "$WORK/derive.awk" <<'AWK'
 #   reads.tsv  idx, kind, arg, line, fn, region-end   — one per derived read
 #   d.<idx>    the disposition lines of that read's region (the digest's input)
 #   stops.tsv  line, reason                           — superset lines the strict pattern missed
-#   facts.tsv  family / modes / modewhat / modefn / examined
+#   facts.tsv  reader / notreader / modes / modewhat / modefn / examined
 #   fatal      the derivation's own input was not there
 function bail(m) { print m > (out "/fatal"); exit }
 function note(i, why) { print i "\t" why > (out "/stops.tsv"); nstop++ }
@@ -241,22 +272,71 @@ END {
     }
   }
 
-  # ── the reader family, leg 1: the names bin/deploy.sh itself lists in git_read_call_site's
-  # `case`. That list exists for the deploy's own frame-walking, so it is maintained there.
+  # ── case LABELS, joined across their continuations. A case alternative is a list of PATTERNS and
+  # never a pipeline of calls, and bash lets one be written over several lines with `\`. Both halves
+  # of that sentence are card#9693: bin/deploy.sh's reader family grew past one line, so leg 1 below
+  # read only the names on the LAST line of the deploy's own list — and the superset read the list
+  # ITSELF as a call to every reader it defines.
+  for (i = 1; i <= n; i++) {
+    if (L[i] ~ /^[[:space:]]*#/) continue
+    t = L[i]; j = i
+    while (t ~ /\\[[:space:]]*$/ && j < n) { sub(/\\[[:space:]]*$/, "", t); j++; t = t " " L[j] }
+    if (t !~ /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*([[:space:]]*\|[[:space:]]*[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]*\)[[:space:]]*$/) continue
+    LABELTEXT[i] = t
+    for (k = i; k <= j; k++) LABEL[k] = 1
+  }
+
+  # ── the family, leg 1: the names bin/deploy.sh itself lists in git_read_call_site's `case`. That
+  # list exists for the deploy's own frame-walking, so it is maintained there — and what it names is
+  # a CANDIDATE here, ruled on below rather than taken for a reader of the release tree.
   if (!("git_read_call_site" in FSTART))
     bail("bin/deploy.sh defines no git_read_call_site() at this commit — the reader family is derived from its case list, and without it nothing was derived")
   nprim = 0
   for (i = FSTART["git_read_call_site"]; i <= FEND["git_read_call_site"]; i++) {
-    t = L[i]
-    if (t !~ /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*([[:space:]]*\|[[:space:]]*[A-Za-z_][A-Za-z0-9_]*)+\)[[:space:]]*$/) continue
+    if (!(i in LABELTEXT)) continue
+    t = LABELTEXT[i]
     sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]*\)[[:space:]]*$/, "", t)
     k = split(t, pp, /[[:space:]]*\|[[:space:]]*/)
-    for (a = 1; a <= k; a++) { PRIM[pp[a]] = 1; FAM[pp[a]] = 1; nprim++ }
+    for (a = 1; a <= k; a++) { CAND[pp[a]] = 1; nprim++ }
   }
   if (nprim == 0)
-    bail("git_read_call_site() at this commit lists no reader family in a `a | b | c)` case — that list is one of the two ways this check derives which functions read the target tree")
+    bail("git_read_call_site() at this commit lists no reader family in a `a | b | c)` case — that list is one of the ways this check derives which functions read the target tree")
 
-  # ── the reader family, leg 2: any function that runs a READING git subcommand on a rev it was
+  # ── what each function's own body DOES with git. Every invocation is read for its subcommand
+  # (positionally, past `-c k=v`/`-C dir`, as git_ok does) and for whether it NAMES A PATH: a `--`
+  # pathspec separator, or an argument holding a `:`. Those are the only two ways git's CLI names a
+  # path inside a tree, so this rule is a property of git rather than a restatement of bin/deploy.sh.
+  #   ⚠ IT RESOLVES TOWARD READER. Anything else on the line — a `${x:-y}`, a trailing `2>:` — reads
+  #   as a path and makes the function a reader, which STOPS this check at an unmatched call site.
+  #   The error it can make is a stop, never a pass.
+  #   ⚠ AND IT IS READ TWO WAYS, because the two answers fail in opposite directions. A READING
+  #   subcommand is looked for LOOSELY — anywhere on a non-comment line, the shape leg 2 has always
+  #   used — since over-reading one means a stop and under-reading one means a silent green. Every
+  #   OTHER subcommand is taken only at a COMMAND POSITION (line start, `(`, `$(`, `` ` ``, `|`,
+  #   `&`, `;`, `!`, or after if/then/elif/else/do/while/until), because that answer decides whether
+  #   this check STOPS on a name it cannot rule on — and a refusal's own message text is full of
+  #   prose like "git could not read $3", which read loosely is an invocation of `git could`.
+  for (name in FSTART) {
+    for (i = FSTART[name]; i <= FEND[name]; i++) {
+      if (L[i] ~ /^[[:space:]]*#/) continue
+      if (L[i] ~ /[$]\{?SHA\}?/) OWNSHA[name] = 1
+      rest = L[i]
+      while (match(rest, /git(_at)?[[:space:]]+(-[cC][[:space:]]+[^[:space:]]+[[:space:]]+)*(ls-tree|show|cat-file)([[:space:]]|$)/)) {
+        rest = substr(rest, RSTART + RLENGTH)
+        if (rest ~ /(^|[[:space:]])--([[:space:]]|$)/ || rest ~ /:/) PATHREAD[name] = 1
+        else OBJREAD[name] = 1
+      }
+      rest = L[i]
+      while (match(rest, cmdpos_re)) {
+        inv = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
+        sc = inv; sub(/^.*[[:space:]]/, "", sc)
+        if (index(" " SUBS[name] " ", " " sc " ") == 0)
+          SUBS[name] = SUBS[name] (SUBS[name] == "" ? "" : " ") sc
+      }
+    }
+  }
+
+  # ── the family, leg 2: any function whose own body reads a PATH out of a tree, on a rev it was
   # HANDED. This is what catches a reader added without touching the case list above.
   #   ⚠ "on a rev it was handed" is what keeps a GATE out of the family. A reader is parameterised
   #   — every one above reads `$__rev`/`$2` and never the global — while a gate that reads the
@@ -264,24 +344,75 @@ END {
   #   into `phase_a` would make PHASE_A a reader, and every call to it a call site the strict
   #   pattern cannot match: a true stop, with a message about the wrong line. Such a line is
   #   already stopped, by name, as a $SHA line running a reading subcommand.
-  for (name in FSTART) {
-    hit = 0; own_sha = 0
-    for (i = FSTART[name]; i <= FEND[name]; i++) {
-      if (L[i] ~ /^[[:space:]]*#/) continue
-      if (L[i] ~ /git(_at)?[[:space:]]+(-[cC][[:space:]]+[^[:space:]]+[[:space:]]+)*(ls-tree|show|cat-file)([[:space:]]|$)/) hit = 1
-      if (L[i] ~ /[$]\{?SHA\}?/) own_sha = 1
+  for (name in FSTART)
+    if (PATHREAD[name] && !OWNSHA[name]) { READER[name] = "its body reads a path out of a tree"; CAND[name] = 1 }
+
+  # ── the family, leg 3: and a function that DELEGATES to a reader is one. git_ls_at is the worked
+  # case — its whole body is `_git_ls_at "$1" "$2" "$3" --name-only -r`, so nothing IN it names a
+  # path, and before card#9693 it was a reader only because the case list happened to name it. A
+  # list that stopped naming it would have dropped it out of the superset silently, which is what
+  # a continued case list did.
+  changed = 1
+  while (changed) {
+    changed = 0
+    nr = 0
+    for (r in READER) RLIST[++nr] = r
+    for (name in FSTART) {
+      if ((name in READER) || OWNSHA[name]) continue
+      got = ""
+      for (i = FSTART[name]; i <= FEND[name] && got == ""; i++) {
+        if (L[i] ~ /^[[:space:]]*#/ || LABEL[i]) continue
+        for (q = 1; q <= nr && got == ""; q++)
+          if (L[i] ~ "(^|[^A-Za-z0-9_])" RLIST[q] "([[:space:]]|$)") got = RLIST[q]
+      }
+      if (got != "") NEWR[name] = got
     }
-    if (hit && !own_sha) FAM[name] = 1
+    # Collected first and applied after: an awk that deletes the element it is iterating over is not
+    # a portable one, and this file runs under whichever awk the runner ships.
+    nn = 0
+    for (name in NEWR) NLIST[++nn] = name
+    for (q = 1; q <= nn; q++) { READER[NLIST[q]] = "it delegates to " NEWR[NLIST[q]]; CAND[NLIST[q]] = 1; changed = 1 }
+    delete NEWR
   }
-  famlist = ""
-  for (name in FAM) famlist = famlist (famlist == "" ? "" : " ") name
+
+  # ── and the RULING on every candidate that is not a reader, read off that same body. It is
+  # printed on every run: a name this check drops from the population is a name a maintainer has to
+  # be able to check it was right to drop.
+  for (name in CAND) {
+    if (name in READER) continue
+    if (!(name in FSTART))
+      bail("bin/deploy.sh's reader family names " name ", and this commit defines no such function at the top level — whether it reads a path out of the release tree cannot be read off a body that is not there, and assuming either answer would be inventing one")
+    if (OWNSHA[name]) {
+      NOTREADER[name] = "it names $SHA itself, so it is a gate reading the release inline and not a reader handed a rev"
+      continue
+    }
+    # Every subcommand its body runs, against the two vocabularies this check has: the READING ones
+    # it takes a path out of, and the non-reading ones named in NON_READING_SUBCOMMANDS. A third
+    # answer is not assumed — `archive` and `worktree` can both put a path on disk — so a candidate
+    # running one stops the check, which is the rule this file already applies to a $SHA line.
+    known = ""; unknown = ""
+    k = split(SUBS[name], ss, /[[:space:]]+/)
+    for (a = 1; a <= k; a++) {
+      if (ss[a] == "") continue
+      if (ss[a] == "ls-tree" || ss[a] == "show" || ss[a] == "cat-file" || (ss[a] in ALLOW))
+        known = known " " ss[a]
+      else unknown = unknown " " ss[a]
+    }
+    if (unknown != "")
+      bail("bin/deploy.sh's reader family names " name ", whose body runs `git" unknown "` — a subcommand this check does not know to be a read of the release tree or not, so whether its call sites are gate inputs was not derived. Name it in NON_READING_SUBCOMMANDS, having first asked whether it can hand a caller a path out of the target tree")
+    if (OBJREAD[name]) NOTREADER[name] = "it reads an object BY ID and names no path (`git" known "`), so no path of the release can come back through it"
+    else if (known != "") NOTREADER[name] = "it runs only `git" known "`, which names no path inside a tree"
+    else NOTREADER[name] = "it runs no git at all"
+  }
+  for (name in READER) print "reader\t" name "\t" READER[name] > (out "/facts.tsv")
+  for (name in NOTREADER) print "notreader\t" name "\t" NOTREADER[name] > (out "/facts.tsv")
 
   # ── the accepted file MODES, read off the reader's own `case`: the one alternative it lets
   # through with an empty body. Restating `100644|100755` here would be the drift this file exists
-  # to prevent, so it is taken from the source instead. `for (name in FAM)` has no defined order, so
+  # to prevent, so it is taken from the source instead. `for (name in READER)` has no order, so
   # the answer is required to be UNIQUE rather than whichever reader awk happened to walk first.
   modes_seen = ""; modefn_seen = ""
-  for (name in FAM) {
+  for (name in READER) {
     if (!(name in FSTART)) continue
     for (i = FSTART[name]; i <= FEND[name]; i++) {
       if (L[i] !~ /^[[:space:]]*[0-9]+([[:space:]]*\|[[:space:]]*[0-9]+)*\)[[:space:]]*;;[[:space:]]*$/) continue
@@ -308,14 +439,18 @@ END {
     t = L[i]
     if (t ~ /^[[:space:]]*$/) continue
     if (t ~ /^[[:space:]]*#/) continue            # a comment naming a reader is not a call site
-    # The readers' own plumbing is exempt because it reads the rev it was HANDED — `$__rev`, never
+    # The family's own DEFINITION is not a set of calls to it: a case alternative naming the readers
+    # is a list of patterns, which is how the deploy's own family list came to be read as a page of
+    # reads of the release nobody had written (card#9693).
+    if (LABEL[i]) continue
+    # The family's own plumbing is exempt because it reads the rev it was HANDED — `$__rev`, never
     # the global. A line inside one that names $SHA is not that, and is examined like any other.
-    if (FN[i] != "" && (FN[i] in PRIM) && t !~ /[$]\{?SHA\}?/) continue
+    if (FN[i] != "" && (FN[i] in CAND) && t !~ /[$]\{?SHA\}?/) continue
 
     match(t, /^[[:space:]]*/); ind = RLENGTH
 
     ncalls = 0
-    for (name in FAM) {
+    for (name in READER) {
       rest = t
       while (match(rest, "(^|[^A-Za-z0-9_])" name "([[:space:]]|$)")) {
         ncalls++; rest = substr(rest, RSTART + RLENGTH)
@@ -332,8 +467,15 @@ END {
 
     if (ncalls > 0 || nm > 0) {
       if (!(i in SEEN)) { SEEN[i] = 1; nexam++ }   # a LINE of the superset, counted once
-      if (nm != ncalls) {
+      if (ncalls > nm) {
         note(i, "a reader of the target tree is called here in a shape the derivation does not match, so this read would be in NEITHER the derived set nor the table — and the run would be green")
+        continue
+      }
+      # The other way round, and it is a different fault with a different remedy: the strict pattern
+      # took a read out of this line and the family derivation does not hold the reader it names. One
+      # of the two is wrong about bin/deploy.sh, and neither answer may be assumed here.
+      if (nm > ncalls) {
+        note(i, "the strict pattern reads this line as a call to a reader, and the reader family derived from this same file does not contain the name it calls — the two halves of the derivation disagree about this line, so what it reads is not established")
         continue
       }
       split_call = 0
@@ -356,7 +498,6 @@ END {
     }
   }
 
-  print "family\t" famlist > (out "/facts.tsv")
   print "examined\t" nexam > (out "/facts.tsv")
 
   # ── each read's disposition region (§ the digest in the caller) ──────────────────────────────
@@ -376,7 +517,7 @@ AWK
 
 : > "$WORK/facts.tsv"; : > "$WORK/stops.tsv"; : > "$WORK/reads.tsv"
 awk -v out="$WORK" -v read_re="$READ_RE" -v prefix_re="$READ_PREFIX_RE" \
-    -v dispo_re="$DISPO_RE" -v allow="$NON_READING_SUBCOMMANDS" \
+    -v dispo_re="$DISPO_RE" -v allow="$NON_READING_SUBCOMMANDS" -v cmdpos_re="$GIT_CMD_RE" \
     -f "$WORK/derive.awk" < "$WORK/deploy.sh"
 
 [ ! -s "$WORK/fatal" ] || die "the derivation's own input is not there in bin/deploy.sh at $SHORT" \
@@ -385,11 +526,26 @@ awk -v out="$WORK" -v read_re="$READ_RE" -v prefix_re="$READ_PREFIX_RE" \
   "Nothing was measured. This check refuses rather than reporting a tree it never derived a" \
   "population for."
 
-# Sorted, because awk's `for (name in FAM)` has no defined order and this line is printed on every
-# run: an unsorted list changes between awk implementations on the same tree, and a reader comparing
-# two runs would be reading an ordering difference as a change in the deploy.
-FAMILY="$(awk -F'\t' '$1=="family"{print $2}' "$WORK/facts.tsv" | tr ' ' '\n' | sort | tr '\n' ' ')"
+# Sorted, because awk's `for (name in READER)` has no defined order and these lines are printed on
+# every run: an unsorted list changes between awk implementations on the same tree, and a reader
+# comparing two runs would be reading an ordering difference as a change in the deploy.
+FAMILY="$(awk -F'\t' '$1=="reader"{print $2}' "$WORK/facts.tsv" | sort | tr '\n' ' ')"
 FAMILY="${FAMILY% }"
+# The candidates this check RULED OUT of that family, each with the reason it read off their own
+# bodies. Printed beside the family on every run: a name dropped from the population silently is a
+# name nobody can check the drop of, and card#9693 is what a silent drop cost.
+RULEDOUT="$(awk -F'\t' '$1=="notreader"{printf "    %s — %s\n", $2, $3}' "$WORK/facts.tsv" | sort)"
+
+# Printed HERE, before the stops below rather than in the report after them, because a run that
+# stops is exactly the run whose reader needs it: what this derivation took for a reader of the
+# release is what decides which lines it went on to demand a match for.
+printf 'bin/deploy.sh phase A — target-tree inputs at %s\n' "$SHORT"
+printf '  reader family derived from bin/deploy.sh at %s: %s\n' "$SHORT" "$FAMILY"
+if [ -n "$RULEDOUT" ]; then
+  printf '  named in that reader family and ruled NOT a reader of the release tree, each by what\n'
+  printf '  its own body does (card#9693):\n'
+  printf '%s\n' "$RULEDOUT"
+fi
 EXAMINED="$(awk -F'\t' '$1=="examined"{print $2}' "$WORK/facts.tsv")"
 MODES="$(awk -F'\t' '$1=="modes"{print $2}' "$WORK/facts.tsv")"
 MODEFN="$(awk -F'\t' '$1=="modefn"{print $2}' "$WORK/facts.tsv")"
@@ -408,10 +564,22 @@ if [ -s "$WORK/stops.tsv" ]; then
   done < "$WORK/stops.tsv"
   die "bin/deploy.sh at $SHORT reads the target tree in a shape this check cannot derive" \
     "${detail[@]}" \
-    "Write the read as \`git_read_at <var> \"\$SHA\" <path>\` on ONE line (which is how every other" \
-    "read in that file is written), or widen READ_RE deliberately and add the case to" \
-    "bin/deploy-gate-inputs.selftest.sh. Passing over it would leave the gate unchecked with this" \
-    "lane still green — the defect this stop exists to end."
+    "Write the read on ONE line, in one of the two shapes this check's own READ_RE matches — which" \
+    "is how every other read of the release in that file is written:" \
+    "" \
+    "    git_read_at var \"\$SHA\" path        the CONTENT of one file" \
+    "    git_ls_at var \"\$SHA\" pathspec      the paths under a pathspec" \
+    "" \
+    "READ_RE itself, so this advice cannot drift from what actually matches:" \
+    "    $READ_RE" \
+    "" \
+    "Or widen READ_RE deliberately and add the case to bin/deploy-gate-inputs.selftest.sh." \
+    "Passing over it would leave the gate unchecked with this lane still green — the defect this" \
+    "stop exists to end. ⚠ A line this stop names that reads NO path out of the release tree —" \
+    "a ref resolved, an object read by bare id, a refusal helper — is this check misreading" \
+    "bin/deploy.sh rather than bin/deploy.sh being written wrong: the family rulings printed" \
+    "ABOVE, at the top of this run, are where that misreading is legible, and card#9693 is" \
+    "where it came from."
 fi
 
 [ -s "$WORK/reads.tsv" ] || die "no target-tree read was derived from bin/deploy.sh at $SHORT" \
@@ -496,10 +664,8 @@ for row in "${CLASSIFIED[@]}"; do
   if [ "$c_rule" = run-time ]; then n_runtime=$((n_runtime + 1)); else n_fixed=$((n_fixed + 1)); fi
 done
 
-printf 'bin/deploy.sh phase A — target-tree inputs at %s\n' "$SHORT"
-printf '  population derived from bin/deploy.sh at %s: %d fixed path(s), %d built at run time\n' \
+printf '\n  population derived from bin/deploy.sh at %s: %d fixed path(s), %d built at run time\n' \
   "$SHORT" "$n_fixed" "$n_runtime"
-printf '  reader family derived from that same file: %s\n' "$FAMILY"
 printf '  every one of the %d line(s) this derivation SEES as a possible read was matched by it\n' "$EXAMINED"
 printf '  (which lines it does not see is printed below, under NOT PROVED BY A GREEN)\n\n'
 
@@ -640,6 +806,12 @@ cat <<'LIMITS'
       * a read in bin/supervision.sh, which bin/deploy.sh sources UNCONDITIONALLY beside itself and
         this derivation never opens — as would one reached through `eval`, or made with a git binary
         held in a variable ("$GIT" show …).
+      * a reader whose git invocation names its path through a variable that already holds one
+        (`git_at cat-file -p "$spec"`, where $spec was assembled as "$rev:$path" earlier). Whether a
+        family member reads a PATH or an object BY ID is read off the invocation — a `--` pathspec
+        or a `:` in an argument — so an argument that carries the colon out of sight reads as an
+        object id, and that function's call sites are then not in the superset. It is the sibling of
+        the first shape above, at the reader instead of at the call site.
 
   THE GAP IS A RECORDED DECISION, NOT AN OVERSIGHT (card#9637). Closing it by widening this
     derivation was tried and declined: every widening is one more pattern over the same source text,

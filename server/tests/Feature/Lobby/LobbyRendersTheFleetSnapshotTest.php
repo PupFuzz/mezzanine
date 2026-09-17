@@ -266,8 +266,16 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
 
         // CONTROL 6 — the budget as a poll. The second identical observation must stop being
         // refused, which is the "one fetch per distinct (N, M), and not a poll" property.
+        //
+        // ⚠ THE FILE IS `../wire/discrepancy-budget.js`, NOT `lobby-model.js` (card#7341 step 3).
+        // The budget was hoisted to `wire/` at its second caller — the client protocol spends the
+        // same § 4.1 budget — and `lobby-model.js` now re-exports it. The ANCHOR is unchanged,
+        // because the hoist moved it verbatim; had this control kept pointing at `lobby-model.js`
+        // it would have found the anchor zero times and failed on the rig's own anchor assertion
+        // instead of on the budget, which is a control reporting on nothing.
+        // Re-derive: `grep -c 'this.#spent.has(key)' server/public/js/wire/discrepancy-budget.js`.
         $polling = $this->mutatedModules([
-            'lobby-model.js',
+            '../wire/discrepancy-budget.js',
             "        if (this.#spent.has(key)) {\n            return false;\n        }",
             '        // control: the memory removed',
         ]);

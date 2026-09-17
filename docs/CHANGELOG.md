@@ -112,6 +112,40 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   status rule would have had to be re-derived per caller and would have been wrong at the next one.
   That call site captures git's stderr now instead of letting it go straight past, because the
   message IS the discriminator.
+- **card#9693** — **`bin/deploy-gate-inputs.sh` rules on each name in `bin/deploy.sh`'s reader family by
+  what that function's own body does, instead of reading the family list as the population.** The lane
+  stopped at exit 2 over a healthy `bin/deploy.sh` and blocked PR #178, and it was RIGHT to stop: it
+  refuses to report green over a read it cannot classify, which is the defect card#9637 built it to end.
+  What it could not classify was the deploy's own family DEFINITION. `git_read_call_site`'s `case` list
+  is the deploy's frame-walking family — a different population from "functions that read a path out of
+  the release" — and card#9611 grew it past one line, where this derivation only ever read a case label
+  written on one. From that single cause the lane failed in both directions at once: the reader names it
+  lost stopped being exempt, so the readers' own plumbing and the case list that defines them read as
+  calls to a reader; and `git_ls_at` fell out of the LOOSE half of the derivation while the STRICT half
+  went on matching it, so a read written exactly as the lane's own remedy prescribes — `git_ls_at <var>
+  "$SHA" <path>`, on one line — was reported as a shape the derivation does not match, over advice
+  telling its author to write it the way it already was. A gate whose advice does not apply to the lines
+  it fires on trains people to ignore it, so that text is fixed in the same change: it names both shapes
+  `READ_RE` matches and prints `READ_RE` itself beside them, and `bin/deploy-gate-inputs.selftest.sh`
+  matches the shapes it prints against that pattern, so the advice cannot drift from what is accepted.
+  A case label is now joined across its `\` continuations and is never read as a call site; the family is
+  derived from that list, from every function whose body reads a path, and from every function that
+  DELEGATES to one (`git_ls_at`'s whole body is a call to `_git_ls_at`, so it was in the family only
+  because the list happened to name it). **Being in that family is no longer being a reader of the
+  release tree.** Each candidate is ruled from its own body and the ruling is PRINTED on every run beside
+  the name: a git invocation naming a path (a `--` pathspec or a `rev:path` argument — how git's CLI
+  names a path inside a tree, which is a property of git rather than a restatement of the deploy) is a
+  read the gate is about; `cat-file -t "$oid"` reads an object by bare id and `rev-parse` resolves a ref,
+  neither of which can hand a caller a file out of the tree; a refusal helper runs no git at all.
+  Ambiguity resolves toward READER, so the error the rule can make is a stop and never a pass — and a
+  family member running a subcommand this check has no reading for (`archive` puts paths on disk), or a
+  name in the list this file defines no function for, stops the check rather than being assumed
+  harmless. Both of those exited 0 before this change. What a green here still does not prove is
+  enumerated, as it has been since card#9637, in the `NOT PROVED BY A GREEN` block the check PRINTS on
+  every run — including the one shape this ruling adds, a reader whose path arrives already assembled
+  inside a variable — rather than in a copy here that would go stale.
+
+## [0.5.0] — 2026-09-16
 
 - **card#9635** — **`bin/shell-lint.sh` and the `Shell lint` CI lane: every shell script this repo
   tracks is analysed on every PR, by a ShellCheck whose version is named.** Both halves of the gap
@@ -631,6 +665,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   moved. `tools/design/verify-design-docs.selftest.py` plants each red: the harness dropped, the
   harness swapped for a gate in a test that replays a fixture and in one that names none, an
   undeclared fixture name carrying a suffix, and one whose first hyphen is an underscore.
+  **Step 3 lands the client protocol and the fixture harness** (`docs/design/FLOOR.md` Appendix B
+  step 3). `server/public/js/wire/fleet-client.js` opens the feed, buffers the connect window,
+  applies the snapshot, drains, applies every delta through ONE per-seat primitive, resyncs a gap
+  from the last version it applied, inserts a seat it does not hold by fetching it, discovers an
+  install a `fleet.seats_total` disagreement points at, holds § 2.4's clock offset, and writes
+  § 5.5's record newest-first at 200 lines. `server/public/js/wire/discrepancy-budget.js` is § 4.1's
+  budget, hoisted out of `lobby-model.js` at its second caller and gaining the `refund` a failed
+  discovery needs; `lobby-model.js` re-exports it, so every lobby import is unchanged.
+  `server/tests/Feature/Support/scripted-fetch.mjs` is the lobby probe's own fake transport, hoisted
+  the same way and given a scheduling hook, and `server/tests/Feature/Floor/fleet-client-probe.mjs`
+  drives the shipped module under `node` on a scenario clock with a fake `EventSource` that replays
+  nothing, exactly as D2 does not. Four checked-in fixture files carry every byte the tests replay —
+  `fx-snapshot-4`, `fx-gap`, `fx-membership` and `fx-confirm` — and six test classes assert the three
+  step-3 acceptance halves, the determinism bound, the record's cap, the confirmation signal and the
+  fixtures' own agreement with `docs/design/FLEET-STATE.md § 8.2.1`, each with planted controls that
+  were run and seen to red. The protocol also reports what it CANNOT confirm: a held seat whose own
+  read has failed twice consecutively is `missing` in `readStatus()`, and `discrepancyState()` says
+  whether a check for the lobby's disagreement can still run — data only, drawn by nobody until
+  Appendix B step 10. FLOOR.md now says discovery IS admission, carries § 2.3's new row 5 for the
+  unconfirmed desk, scopes `idle`'s and `disabled`'s Never cells and Appendix A's U5 to what the
+  client can confirm, states the lobby's notice in the office's own nouns, and FLEET-STATE § 8.2.3
+  names the seat response's REST envelope, which `FeedSurfaceTest` now asserts in order.
   **Installer action:** none; no migration.
 - **card#9322** — **A layout whose `floors` is `{}` is refused by name, and a floor's hallway is
   served with every `{}` it was authored with.** The layout reader decoded the document

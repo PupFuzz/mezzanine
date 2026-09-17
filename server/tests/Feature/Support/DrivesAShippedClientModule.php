@@ -200,6 +200,21 @@ trait DrivesAShippedClientModule
         return $found;
     }
 
+    /**
+     * One module's source with its comments removed — what a SOURCE-LEVEL bound is checked over,
+     * so a comment that NAMES a forbidden identifier is not mistaken for code that reads it.
+     *
+     * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7341 step 3). It was the animation log's, with its
+     * file name hard-coded; the client protocol's determinism check is the second bound of exactly
+     * this shape, so the file became a parameter instead of the function becoming two functions.
+     */
+    protected function moduleSource(string $file, ?string $moduleDir = null): string
+    {
+        $source = (string) file_get_contents(($moduleDir ?? $this->moduleDir()).DIRECTORY_SEPARATOR.$file);
+
+        return (string) preg_replace(['#/\*.*?\*/#s', '#(^|[^:\\\\])//[^\n]*#'], ['', '$1'], $source);
+    }
+
     private function copyTree(string $from, string $to): void
     {
         foreach ((array) scandir($from) as $entry) {
