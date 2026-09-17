@@ -19,6 +19,39 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9754** — **the suite refuses by name when `server/.env` is absent, and `php-tests` runs it in that
+  configuration on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
+  `.env.example` to `.env` before the only step that executes it, and `server/.env` is gitignored — so the
+  tree CI tested always had one and the tree every fresh worktree and every first contributor has never
+  did. A defect that manifests only in that configuration was therefore invisible to the green wall BY
+  CONSTRUCTION, and card#9687 is the instance already paid for: the suite errored with
+  `ReflectionException: Method ...::test_dummy() does not exist`, naming whichever class the directory
+  iterator reached first, while CI stayed green throughout. THE BEHAVIOUR WAS DECIDED BEFORE THE LANE WAS
+  BUILT, because a lane built first would only have pinned whatever happened to occur: the suite cannot run
+  without an `.env` — `phpunit.xml` pins the test database and deliberately no credentials, since
+  credentials are per-host and a committed file must never carry them — so with no file
+  `config/database.php` falls back to `env('DB_USERNAME', 'root')` with an empty password, and the run
+  reports a cause that is TRUE AND NOT ACTIONABLE. Measured on this host at `dev` `90f9663`: 612 of 977
+  tests error with `Access denied for user 'root'@'localhost' (using password: NO)`, which sends a first
+  contributor to fix MariaDB grants when the remedy is to copy `.env.example`. `server/tests/bootstrap.php`
+  now refuses on that one predicate — the file's presence — with a named message on STDERR and `exit(1)`,
+  saying which file is missing, that it is how this repository supplies per-host credentials, and the
+  remedy (`cp .env.example .env`, then `README.md`'s *Running the server locally* section). It EXTENDS the
+  card#9499 autoload guard already in that file rather than siblinging it, and it is there rather than in
+  `Tests\TestCase` because that guard runs per test and after the framework has booted — and booting is
+  what raises the diagnostic card#9687 traced. There is deliberately NO *unless the credentials are
+  exported* branch: nothing in this repository runs the suite that way, and in the new lane, where the job
+  exports `DB_*`, such a branch would make the lane pass on variables the configuration under test does not
+  have. **The lane asserts the MESSAGE, never the exit code**, in the genuine no-`.env` window between
+  `Install dependencies` and `Create .env` — no extra runner, no second `composer install`. Both states of
+  that window exit non-zero (pre-guard 2, post-guard 1) and it has no `APP_KEY` either, so an exit-code
+  assertion would pass on all of them and discriminate between none. **Seen to fail, so the green is
+  evidence:** the lane's own command, extracted from the workflow file and run on this tree with
+  `bootstrap.php` restored to its `90f9663` content, exits 1 and prints the access-denied output it got
+  instead; with the guard it exits 0 on the refusal. `README.md` § Running the server locally now states
+  both refusals the bootstrap makes. The full suite passes 977 of 977 with 11268 assertions on PHP 8.5
+  against the host MariaDB with an `.env` in place, which is the run this guard leaves untouched.
+
 - **card#9687** — **the full-suite gate no longer errors on a checkout that has no `server/.env`, naming a
   class that has nothing to do with it.** `FixedWindowPinCoverageTest` probes each class that asserts a
   `429` by constructing it and invoking its `setUp()`, and it passed the constructor a placeholder name

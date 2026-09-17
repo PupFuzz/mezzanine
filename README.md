@@ -100,9 +100,18 @@ php artisan mezzanine:user:create                   # ← the first account; not
 php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
-`server/vendor` must be a real directory inside the tree under test, installed there by
-`composer install`: the suite's bootstrap (`server/tests/bootstrap.php`) exits before any test runs
-when `App\` autoloads from another checkout, which is what a symlinked `vendor` does.
+**The suite refuses to start rather than report a result it cannot stand behind, and it names the
+precondition that is missing** — both refusals are in its bootstrap (`server/tests/bootstrap.php`),
+before any test runs, so the message is the whole output:
+
+* `server/vendor` must be a real directory inside the tree under test, installed there by
+  `composer install`. A symlinked `vendor` autoloads another checkout's `App\`, and every result is
+  then a statement about code this tree does not hold.
+* `server/.env` must exist. It is where the `DB_PASSWORD` above lives, it is never committed, and
+  with no file the credentials fall back to `root` with an empty password — so the run would fill
+  with an access-denied that points at MariaDB grants instead of at the file you have not made yet.
+  `cp .env.example .env` is the whole remedy; exported `DB_*` variables are not a substitute, and CI
+  runs the suite in exactly this configuration on every run and requires the refusal.
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment
 screen and reaches nothing else until it finishes there.
