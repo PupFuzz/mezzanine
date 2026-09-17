@@ -116,9 +116,20 @@ correlates on).
 > above is kept rather than deleted because it is the reason the requirement was safe to add;
 > read it as history.** *(And this block is history too — see the state below.)*
 >
-> ✅ **THE STATE — what a PR into `dev` or `main` must pass. TWO independent layers require status
-> checks on each branch, and BOTH apply: a PR merges only when every context required by EITHER
-> layer has passed.**
+> ⛔ **SUPERSEDED 2026-09-17 by card#9746 — READ THE RE-READING BELOW BEFORE ACTING ON THIS BLOCK.**
+> Classic branch protection was **deliberately retired** on `dev` and on `main` that day; rulesets are
+> now the single source of truth, and `main` was brought up to the same eight required contexts as
+> `dev` in the same act. The classic configuration is backed up at
+> `~/.cache/coord/protection-backup/{classic-dev,classic-main}.json`. ⇒ **`solo-self-merge` printing
+> `protection=404` is CORRECT and must not be "fixed"** — it was confirmed empirically on
+> `PupFuzz/mezzanine#184`, which resolved its eight contexts and merged.
+>
+> The two-layer description below is kept as the history it now is, because the rest of this section
+> reasons about it:
+>
+> ✅ **THE STATE AS IT WAS BEFORE card#9746 — what a PR into `dev` or `main` had to pass. TWO
+> independent layers required status checks on each branch, and BOTH applied: a PR merged only when
+> every context required by EITHER layer had passed.**
 >
 > 1. **Rulesets** — `21222661` "dev — integration branch" and `21222660` "main — release branch",
 >    both `enforcement: active`, both with `bypass_actors: []`.
@@ -227,13 +238,15 @@ correlates on).
 >   `asset-provenance`, `card-token-lint`, `deploy-gate-inputs`, `deploy-selftest`, `design-artifact`,
 >   `design-docs`, `php-tests`, `release-pr-guard`. `main` has gained `deploy-gate-inputs` and
 >   `deploy-selftest` since the reading above, so the two branches no longer differ.
-> - ⛔ **CLASSIC BRANCH PROTECTION IS GONE FROM BOTH BRANCHES.** `GET /branches/<b>/protection`
->   returns `404 Branch not protected` for `dev` AND for `main` — the documented ABSENT signal, not a
->   failed read: the same credential read both rulesets successfully in the same command. So the
->   "TWO independent layers" framing above now has ONE live layer, and the `strict: true` on `main`
->   that required a head to be up to date with the base **is no longer in force**. Nothing in this
->   repository removed it; it is a repository-settings change made outside any PR, recorded here
->   because this section is its one home.
+> - ✅ **CLASSIC BRANCH PROTECTION IS GONE FROM BOTH BRANCHES, BY DESIGN — card#9746.**
+>   `GET /branches/<b>/protection` returns `404 Branch not protected` for `dev` AND for `main` — the
+>   documented ABSENT signal, not a failed read: the same credential read both rulesets successfully
+>   in the same command. ⇒ **This is the intended end state, not drift and not an external change to
+>   raise:** classic protection was retired deliberately so that rulesets are the single source of
+>   truth, and the classic configuration is backed up at `~/.cache/coord/protection-backup/`. ⚠ What
+>   genuinely did go away with it is `main`'s `strict: true`, which required a head to be up to date
+>   with its base; no ruleset replaced that, so it is a real consequence of the retirement rather
+>   than an oversight to reverse silently.
 > - **`pr-body-fields` is required by NEITHER layer**, so it runs on every open PR and a red there
 >   does not block a merge today. It is safe to require: it carries no `branches:` filter, so it
 >   produces a completed run on every PR that can still merge. Its `if:` condition skips only a
