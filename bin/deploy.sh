@@ -113,6 +113,19 @@
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
 set -Eeuo pipefail
+# ── library mode (card#9644) ──────────────────────────────────────────────────────────────────
+# RUN, or SOURCED? Phase A's target-tree gates are callable one at a time (§ PHASE A's TARGET-TREE
+# GATES), and a checker reaches them by sourcing this file — which, while the bottom of it read
+# `main "$@"` unguarded, ran a DEPLOY instead. `$0` is the sourcing script's name when this file is
+# sourced and this file's own when it is run, so the two are equal exactly when it is being run.
+# That is what the argument parsing below and `main` at the bottom are gated on, and nothing else.
+#
+# ⚠ SOURCING THIS FILE IS NOT FREE, and the effects are named here rather than left to be found:
+# `set -Eeuo pipefail` above is set in the SOURCING shell, bin/supervision.sh is sourced beside this
+# file, and DEPLOY_ROOT, HOST_PHP_VERSION and FPM_BIN are resolved below — the last two by running
+# `php`. A caller that does not want any of that sources this file in a shell of its own.
+DEPLOY_IS_RUN=0
+[ "${BASH_SOURCE[0]}" != "$0" ] || DEPLOY_IS_RUN=1
 
 # ── output ────────────────────────────────────────────────────────────────────────────────────
 say()  { printf '%s\n' "$*"; }
@@ -167,6 +180,9 @@ MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
 
 REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""; TARGET_DAEMONS=""
 
+# Sourced, `$@` is the SOURCING script's argument list, which is not this deploy's and must not be
+# parsed as one — `--ref` would be taken from it, and anything else refused outright.
+[ "$DEPLOY_IS_RUN" -eq 1 ] || set --
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref)               REF="${2:?--ref needs a value}"; shift 2 ;;
@@ -1768,6 +1784,61 @@ phase_a() {
       "  $0 --ref $REF --redeploy"
   fi
 
+  # ── THE TARGET-TREE GATES, called in the order they refuse in (card#9644) ────────────────────
+  # A6 and A10–A13 decide about the RELEASE BEING DEPLOYED rather than about this host: each reads
+  # the tree at $SHA out of the object database and refuses before the checkout. They are functions
+  # of their own — § PHASE A's TARGET-TREE GATES, below — so that a checker can run one over a real
+  # commit with no host to run it against. Inline, the only ways to reach a content predicate were
+  # to fabricate a host, which is a second copy of deploy.selftest.sh's stub (canon #5), or to
+  # restate the predicate in the checker, which is the drift card#9203 filed.
+  #
+  # THE ORDER OF THESE CALLS IS THE REFUSAL ORDER, and it is the whole of what this sequence
+  # decides: a gate refuses out of the process, so the first refusal any of them reaches is the
+  # first one a deploy meets. Each gate's own header says whether it touches anything but git.
+  gate_a6_php_floor "$SHA" "${HOST_PHP_VERSION:-0}"
+  gate_a10_migration_algorithm "$SHA"
+  gate_a10b_config_drift "$SHA"
+  gate_a11_trusted_proxies "$SHA"
+  gate_a12_asset_lockfile "$SHA"
+  gate_a13_supervision "$SHA"
+
+  # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
+  # fpm_code_reload_ready; phase B re-reads the same posture before it waits.
+  step "Checking that PHP-FPM picks up new code without a reload, and can serve and drain the feed's streams"
+  fpm_code_reload_ready || refuse "${FPM_NOT_READY[@]}"
+  say "  ok — $FPM_BIN, pool(s) running as $(id -un): $FPM_POSTURE"
+  say "  ok — $STREAM_POSTURE"
+
+  say ""
+  say "Ready:"
+  say "  from     $(git_at rev-parse --short "$CURRENT_SHA")"
+  say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
+  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
+  say "  php-fpm  not reloaded — $FPM_POSTURE"
+  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL:-}])"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE A's TARGET-TREE GATES — callable one at a time, on a commit, with no host (card#9644)
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Each takes the commit being deployed as its FIRST argument, bound to a local named SHA: that is
+# the deploy's own name for the rev, and it is what keeps every read in these bodies written
+# `git_read_at <var> "$SHA" <path>` — the one shape bin/deploy-gate-inputs.sh's derivation takes a
+# gate input out of. phase_a calls them in order (§ THE TARGET-TREE GATES); a checker calls one.
+#
+# HOST-FREE is stated per gate and it is a promise about the GATE, not about this file: sourcing
+# bin/deploy.sh has its own effects (§ library mode). A gate marked host-free reads the object
+# database of $DEPLOY_ROOT and the arguments it was handed, and nothing else. The two that are not
+# are marked, with what they read: neither can be, because what they decide IS a comparison with
+# this host — A10b against its `.env`, A13 against its crontab and the SERVING release's locks.
+
+# gate_a6_php_floor <sha> <host PHP version> — A6. HOST-FREE: it derives the PHP floor from
+# server/composer.json at <sha> and compares it against the version it is HANDED, so a checker
+# names the host version instead of having one. Its first two refusals are properties of the target
+# tree ALONE — no `require.php`, and a constraint this cannot evaluate — which makes them
+# unconditional every-deploy refusals that no lane over fixtures can see (card#9644's comment 5498).
+gate_a6_php_floor() {
+  local SHA="$1" phpver="$2"
   # A6 — THE PHP FLOOR, read from the RELEASE BEING DEPLOYED. Out of letter order on purpose: it
   # needs $SHA (A7), and the floor that matters is the TARGET tree's, not this host's checkout.
   # Those two differ on exactly one deploy — the one that RAISES the floor — and that is the deploy
@@ -1778,7 +1849,7 @@ phase_a() {
   # marker on disk, nothing rolled back and a bare re-run refused (card#7459). This check is that
   # same failure, moved to before anything is touched — and it is DERIVED from composer.json rather
   # than restated, because a restated copy of it is what card#9203 was.
-  local composer_json="" floor_constraint floor_op floor_min floor_max phpver
+  local composer_json="" floor_constraint floor_op floor_min floor_max
   # The `|| true` drops ONE status — "no such file at $SHA" — and the line below disposes of it by name,
   # together with a file that is there and empty. A git read that FAILED never reaches either.
   git_read_at composer_json "$SHA" server/composer.json || true
@@ -1811,7 +1882,6 @@ phase_a() {
   # `^X.…` is bounded above at the next major; `>=X.…` is not bounded at all.
   floor_max=""
   if [ "$floor_op" = '^' ]; then floor_max="$(( 10#${floor_min%%.*} + 1 )).0.0"; fi
-  phpver="${HOST_PHP_VERSION:-0}"
   if ! ver_ge "$phpver" "$floor_min" || { [ -n "$floor_max" ] && ver_ge "$phpver" "$floor_max"; }; then
     refuse "PHP $phpver does not satisfy server/composer.json's $floor_constraint at $(git_at rev-parse --short "$SHA")" \
       "\`composer install\` reads that same constraint and would refuse — but it runs in the" \
@@ -1822,7 +1892,11 @@ phase_a() {
       "floor it already meets."
   fi
   say "  ok — PHP $phpver satisfies $floor_constraint, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
+}
 
+# gate_a10_migration_algorithm <sha> — A10. HOST-FREE: the migrations at <sha> and their text.
+gate_a10_migration_algorithm() {
+  local SHA="$1"
   # A10 — FLEET-STATE.md § 6.9 rule 1: "Every migration on `events` states its algorithm in a
   # comment AND THE DEPLOY CHECKS IT". This is that check, and it reads the TARGET tree out of the
   # object database (git show) rather than the working copy, so it can refuse BEFORE the checkout
@@ -1861,7 +1935,13 @@ phase_a() {
     # THAT, rather than saying it read a list of migrations and found them all declared.
     say "  ok — $(git_at rev-parse --short "$SHA") ships no migrations: nothing under server/database/migrations"
   fi
+}
 
+# gate_a10b_config_drift <sha> — A10b. NOT host-free: it reads the release's server/.env.example
+# out of git and asks env_get what THIS HOST's $ENV_FILE sets, which is the comparison it exists to
+# make. It warns and never refuses.
+gate_a10b_config_drift() {
+  local SHA="$1"
   # A10b — config drift between the release and the host. A release that introduces a setting ships
   # it in `server/.env.example`; the host's `.env` was written by hand when the host was stood up
   # and NOTHING ever updates it again. The failure this catches is the quiet one: the deploy is
@@ -1894,7 +1974,11 @@ phase_a() {
     || warn "the target release's .env.example names keys this host's .env does not set: ${missing_keys[*]}"
   [ ${#unread_keys[@]} -eq 0 ] \
     || warn "the target release's .env.example names keys this host's .env writes in a form this deploy does not read, so whether the release's default or the host's value is in force is not established: ${unread_keys[*]}"
+}
 
+# gate_a11_trusted_proxies <sha> — A11. HOST-FREE: server/bootstrap/app.php at <sha> and its text.
+gate_a11_trusted_proxies() {
+  local SHA="$1"
   # A11 — trusted proxies (docs/PLAN.md § 5). Checked against the TARGET tree for the same reason
   # as A10. `trustProxies('*')` lets any client forge X-Forwarded-For, which defeats the key that
   # D1 § 12.3's failed-authentication limit is built on and turns that limit into the decoration
@@ -1930,7 +2014,11 @@ phase_a() {
       "It is also where docs/PLAN.md § 5's trusted proxies are declared, and which proxies that" \
       "release trusts cannot be read either."
   fi
+}
 
+# gate_a12_asset_lockfile <sha> — A12. HOST-FREE: whether server/package-lock.json is at <sha>.
+gate_a12_asset_lockfile() {
+  local SHA="$1"
   # A12 — a lockfile for the asset build. `npm ci` is used below and requires one; more to the
   # point, package.json floats (vite ^8, tailwind ^4), so a lockfile-less prod build can ship
   # different JavaScript from the same commit on two consecutive days, and nothing in the repo
@@ -1943,7 +2031,53 @@ phase_a() {
     "The prod asset build must be reproducible: package.json floats (vite ^8, tailwind ^4)," \
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
+}
 
+# gate_a13_target_plan <sha> <workdir> <deploy root> <php binary> — A13's HOST-FREE half, and the
+# one a checker wants: it reads the TARGET release's bin/supervision.sh out of git and runs that
+# release's own install plan in a bash process of its own, writing <workdir>/plan, <workdir>/locks
+# and <workdir>/daemons. Every refusal that install makes is made here — including "it defines no
+# supervision_install_plan", which is an unconditional every-deploy refusal of the target tree
+# (card#9644's comment 5498) — and the caller compares the result against the host.
+# <workdir> is the caller's, and this function removes it on the paths that refuse out of the
+# process, since a refusal never returns for the caller to clean up after.
+gate_a13_target_plan() {
+  local SHA="$1" work="$2" root="$3" php_bin="$4"
+  local short target_sup eval_err
+  short="$(git_at rev-parse --short "$SHA")"
+  target_sup=""
+  git_read_at target_sup "$SHA" bin/supervision.sh || true
+  [ -n "$target_sup" ] || {
+    rm -rf "$work"
+    refuse "bin/supervision.sh is missing or empty at $short" \
+      "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
+      "A release without it cannot be supervised by this deploy."
+  }
+  printf '%s\n' "$target_sup" > "$work/supervision.sh"
+  # shellcheck disable=SC2016 # expanded by the bash it is handed to, not by this one
+  eval_err="$(env -u BASH_ENV bash -c '
+      set -Eeuo pipefail
+      . "$1/supervision.sh"
+      for f in supervision_install_plan supervision_lock; do
+        declare -F "$f" >/dev/null || { echo "it defines no $f, which this deploy runs from it" >&2; exit 1; }
+      done
+      supervision_install_plan "$2" "$3" > "$1/plan"
+      supervision_lock "$2" "mezzanine:*" > "$1/locks"
+      printf "%s " "${SUPERVISED_DAEMONS[@]}" > "$1/daemons"
+    ' a13 "$work" "$root" "$php_bin" 2>&1)" || {
+    rm -rf "$work"
+    refuse "the crontab block of bin/supervision.sh at $short could not be installed here" \
+      "$(printf '%s\n' "$eval_err" | sed 's/^/  | /')" \
+      "" \
+      "The maintenance window installs it; this is that install's refusal, made before anything is touched."
+  }
+}
+
+# gate_a13_supervision <sha> — A13. NOT host-free: it compares the target release's crontab block
+# against THIS HOST's installed crontab, and the lock files that release would use against the
+# SERVING release's. Its target-tree half is gate_a13_target_plan, above, which a checker calls.
+gate_a13_supervision() {
+  local SHA="$1"
   # A13 — supervision: the DEPLOYED release's crontab block, judged by that release's own bin/supervision.sh.
   # The long-lived daemons of FLEET-STATE.md § 2.1 have no systemd unit (the header's NO ROOT note): this
   # user's crontab supervises them, and the window installs the deployed release's block (restart_daemons).
@@ -1966,33 +2100,11 @@ phase_a() {
   # the serving copy's is refused: its window would stop nothing the serving release started, and those
   # daemons would run the previous code beside the new ones for as long as they lived.
   step "Checking cron supervision (bin/supervision.sh)"
-  local php_bin short target_sup work eval_err installed added removed serving_locks target_locks
+  local php_bin short work installed added removed serving_locks target_locks
   short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
-  target_sup=""
-  git_read_at target_sup "$SHA" bin/supervision.sh || true
-  [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $short" \
-    "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
-    "A release without it cannot be supervised by this deploy."
   work="$(mktemp -d)"
-  printf '%s\n' "$target_sup" > "$work/supervision.sh"
-  # shellcheck disable=SC2016 # expanded by the bash it is handed to, not by this one
-  eval_err="$(env -u BASH_ENV bash -c '
-      set -Eeuo pipefail
-      . "$1/supervision.sh"
-      for f in supervision_install_plan supervision_lock; do
-        declare -F "$f" >/dev/null || { echo "it defines no $f, which this deploy runs from it" >&2; exit 1; }
-      done
-      supervision_install_plan "$2" "$3" > "$1/plan"
-      supervision_lock "$2" "mezzanine:*" > "$1/locks"
-      printf "%s " "${SUPERVISED_DAEMONS[@]}" > "$1/daemons"
-    ' a13 "$work" "$DEPLOY_ROOT" "$php_bin" 2>&1)" || {
-    rm -rf "$work"
-    refuse "the crontab block of bin/supervision.sh at $short could not be installed here" \
-      "$(printf '%s\n' "$eval_err" | sed 's/^/  | /')" \
-      "" \
-      "The maintenance window installs it; this is that install's refusal, made before anything is touched."
-  }
+  gate_a13_target_plan "$SHA" "$work" "$DEPLOY_ROOT" "$php_bin"
   TARGET_DAEMONS="$(cat "$work/daemons")"; TARGET_DAEMONS="${TARGET_DAEMONS% }"
   target_locks="$(cat "$work/locks")"
   installed="$(crontab -l 2>/dev/null || true)"
@@ -2017,21 +2129,6 @@ phase_a() {
     if [ -n "$added" ]; then printf '%s\n' "$added" | sed 's/^/    + /'; fi
     if [ -n "$removed" ]; then printf '%s\n' "$removed" | sed 's/^/    - /'; fi
   fi
-
-  # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
-  # fpm_code_reload_ready; phase B re-reads the same posture before it waits.
-  step "Checking that PHP-FPM picks up new code without a reload, and can serve and drain the feed's streams"
-  fpm_code_reload_ready || refuse "${FPM_NOT_READY[@]}"
-  say "  ok — $FPM_BIN, pool(s) running as $(id -un): $FPM_POSTURE"
-  say "  ok — $STREAM_POSTURE"
-
-  say ""
-  say "Ready:"
-  say "  from     $(git_at rev-parse --short "$CURRENT_SHA")"
-  say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
-  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
-  say "  php-fpm  not reloaded — $FPM_POSTURE"
-  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL:-}])"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -2562,4 +2659,8 @@ PLAN
   phase_b_open_window   # never returns: it execs
 }
 
-main "$@"
+# Run, not sourced — § library mode. Sourced, this file defines its functions and returns,
+# which is what lets a checker call one gate (§ PHASE A's TARGET-TREE GATES) without deploying.
+if [ "$DEPLOY_IS_RUN" -eq 1 ]; then
+  main "$@"
+fi

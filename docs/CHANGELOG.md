@@ -19,6 +19,44 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9644** — **`bin/deploy.sh`'s phase-A gates that judge the RELEASE are callable one at a time, and
+  the file can be sourced without running a deploy.** A6, A10, A10b, A11, A12 and A13 were written inline in
+  `phase_a` — one straight-line function with no per-gate entry point — and the bottom of the file read
+  `main "$@"` unguarded, so the only way to reach a gate's CONTENT predicate was to run a whole deploy, and
+  that refuses at A5 without a production `server/.env`. Three of the refusals behind that wall are
+  unconditional properties of the target tree and fire on every deploy: a `server/composer.json` with no
+  `require.php`, a PHP constraint the floor check will not evaluate, and a target `bin/supervision.sh` that
+  defines no `supervision_install_plan`. That is the shape which let a missing `server/package-lock.json`
+  refuse every deploy for days while the suite stayed green against fixtures that carried one (card#9631,
+  card#9637). Each gate is now a top-level function taking the commit being deployed —
+  `gate_a6_php_floor`, `gate_a10_migration_algorithm`, `gate_a10b_config_drift`,
+  `gate_a11_trusted_proxies`, `gate_a12_asset_lockfile`, `gate_a13_target_plan` and
+  `gate_a13_supervision` — called by `phase_a` in the order they refuse in, and callable one at a time by
+  anything else. Each header states what the gate touches besides git: four read the object database and
+  the arguments they are handed and nothing else, and the two whose whole job is a comparison with THIS
+  host say so — A10b against its `.env`, A13 against its crontab and the serving release's lock paths —
+  which is why A13's host-free half, reading the target's `bin/supervision.sh` and running that release's
+  own install plan in a bash process of its own, is `gate_a13_target_plan`. `main "$@"` runs when the file
+  is RUN; sourcing it defines the functions and returns, and what sourcing DOES do is named at the guard
+  (`set -Eeuo pipefail` in the caller's shell, `bin/supervision.sh` sourced beside it, `php` run for the
+  host version, and the caller's `$@` cleared so it is never parsed as this deploy's arguments).
+
+  **The behaviour is unchanged, and that is the whole of the claim.** `bin/deploy.selftest.sh` passes every
+  assertion before and after, and the two runs' output agrees line for line except for the fixture COMMIT
+  IDS the harness prints when it blinds an object: those fixture trees carry `bin/deploy.sh` itself and
+  their commits pin no date, so those ids move between any two runs of any tree — measured against a second
+  run of the unchanged one.
+
+  **`bin/deploy-gate-inputs.sh` derives three of its classification fields out of `bin/deploy.sh`'s source
+  text, so moving the reads moved them.** Its `fn` column now names each gate instead of `phase_a`, and
+  A13's disposition digest changed because that read no longer sits last in `phase_a`, where its region ran
+  on through A14's refusal and the `Ready:` block; every other digest is unchanged. Both rows are the ones
+  that check derived and printed for pasting. Its own selftest passes unchanged.
+
+  **The seam is the half that landed.** The reads are still DERIVED from `bin/deploy.sh`'s source text
+  rather than enumerated by it, so every escape shape in that lane's `NOT PROVED BY A GREEN` block is as
+  wide as it was, and the lane calls no gate yet. Both are stated where those claims are made.
+
 - **card#9732** — **`release-pr-guard` judges a pull request only while it is still OPEN, so a release
   that shipped correctly no longer collects a permanent red check.** `edited` fires on a pull request
   that has already MERGED: editing PR #176's body after v0.5.0 went out re-ran the gate and failed it on

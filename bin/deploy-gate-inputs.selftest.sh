@@ -105,7 +105,9 @@ mkcase() { # mkcase <name> — the fixture, back at the state the control passed
   G "$DIR" reset -q --hard "$BASE_SHA"
   G "$DIR" clean -qfdx
 }
-insert() { # insert <line>… — after the last derived read of $DIR's bin/deploy.sh, inside phase_a
+insert() { # insert <line>… — after the last derived read of $DIR's bin/deploy.sh, inside whichever
+           # function holds it (card#9644 carved phase A's target-tree gates into functions of their
+           # own, so that is a gate_* function now and no longer phase_a itself)
   local at f="$DIR/ins.$$"
   printf '%s\n' "$@" > "$f"
   at="$(grep -nE "$RRE" "$DIR/bin/deploy.sh" | tail -1 | cut -d: -f1)"
@@ -274,7 +276,7 @@ has "raw git show: named as a subcommand that is not one of the non-reading ones
     'runs `git show`' "$OUT"
 # …and ONE line is named, not two. A gate that reads the release inline must not be taken for a
 # reader FUNCTION: that would make every call to the gate a call site the strict pattern cannot
-# match, and point a maintainer at `phase_a`'s caller instead of at the line they just wrote.
+# match, and point a maintainer at the gate's CALLER instead of at the line they just wrote.
 eq  "raw git show: the gate holding it is not itself taken for a reader" \
     1 "$(printf '%s' "$OUT" | grep -c 'bin/deploy.sh:[0-9]* —')"
 

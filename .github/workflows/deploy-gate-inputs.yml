@@ -25,14 +25,15 @@
 # NAMED — in ONE place, the `NOT PROVED BY A GREEN` block the check PRINTS in the log of the run
 # below. This header deliberately keeps no copy of that list: it was restated on four surfaces and
 # was incomplete on all four. Read it in the run you are about to trust, not here. The gap is a
-# recorded decision on card#9637, and card#9644's seam in `bin/deploy.sh` is what would close it.
+# recorded decision on card#9637. card#9644 carved that seam; what would close the gap is the
+# deploy ENUMERATING its reads through it, which is not built, so those shapes still escape.
 #
 # SCOPE, STATED HERE SO A GREEN IS NOT READ AS MORE THAN IT IS. This lane checks the PRESENCE
 # population — the files phase A reads out of the target tree that the check's derivation SEES
 # (the block named above is where the rest of that sentence lives). It does not evaluate the gates'
 # content predicates (A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's
-# crontab render), which are inline in `phase_a` — a single straight-line function reachable only by
-# running the whole script, which refuses at A5 without a production `server/.env`. The script's own
+# crontab render). Since card#9644 each of those is a callable gate function of `bin/deploy.sh`
+# taking the commit, and this lane does not call one yet. The script's own
 # output names every excluded gate and every uncovered predicate on each run, so the log says what
 # was and was not measured rather than this comment being the only place it is written.
 #
