@@ -36,7 +36,7 @@ member.
 
 | File | What it is |
 |---|---|
-| `.github/workflows/card-token-lint.yml` | PR gate. Rejects a card-token spelling the correlators cannot parse. **Needs no credential — live as soon as it lands.** |
+| `.github/workflows/card-token-lint.yml` | PR gates — **two jobs, and only the first is kanban's.** `card-token-lint` rejects a card-token spelling the correlators cannot parse; `pr-body-fields` (card#9767) reds a PR body missing a required audit field and is documented by `bin/pr-body-fields.py`'s docstring, not here. The file keeps its name from the kanban job; its display name does not. **Neither needs a credential — both are live as soon as they land.** |
 | `.github/workflows/release-promote-cards.yml` | On a push to `main` (a release landing) or a manual dispatch, promotes the board cards named in the released range. **Inert until the secret and variables below exist — it fails loudly, it does not skip.** |
 | `bin/promote-cards-by-token` | The mover the release workflow runs. **Vendored** from `PupFuzz/agent-board-framework`; its header carries the provenance and the re-vendor recipe. `--help` prints the full contract, including the exit table. |
 | `bin/promote-cards-by-token.selftest.sh` | The mover's hermetic acceptance suite — stubbed `curl`, fixture git repo, no network, no board. Runs in the release workflow before any write. |

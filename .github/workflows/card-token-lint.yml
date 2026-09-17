@@ -1,8 +1,32 @@
-# card-token-lint.yml — reject card-token spellings the correlators cannot parse, at PR time.
+# card-token-lint.yml — the PR-metadata gates: two jobs that read what a PR SAYS about itself and
+# red when a downstream consumer could not parse it. Both need no credential and no network, and
+# both judge through a VENDORED authority rather than a pattern retyped here.
 #
-# IT ALSO GUARDS THE TWO VENDORED FILES' DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, first
-# step below) — the mover this gate extracts its grammar from declares in its header exactly
-# what its body is, and until PupFuzz/agent-roundtable#463 nothing checked that declaration.
+#   job `card-token-lint`  — the PR's TITLE and HEAD BRANCH, against the card-token grammar the
+#                            kanban correlators use. The file keeps its name from this job.
+#   job `pr-body-fields`   — the PR's BODY, against the parsers that consume its audit fields
+#                            (card#9767). Its own block below carries its reasoning.
+#
+# ⚠ WHY ONE FILE AND NOT A TWELFTH WORKFLOW. These two are one primitive family: PR metadata, no
+# credential, no network, a vendored authority, and a verdict addressed to the author while the
+# fix is still free. They also share `bin/vendor-pin-check.sh`, which both jobs run FIRST because
+# both extract their grammar from a vendored file. A separate workflow would duplicate the trigger
+# block, the pin step and the reasoning, and put the same class of gate in two places to keep in
+# sync. ⛔ THEY ARE SEPARATE JOBS, NOT STEPS IN ONE. A ruleset matches the JOB id
+# (`docs/VERSIONING.md § Branch model`, measured 2026-08-30), so two jobs are two independently
+# requirable contexts and a red on one names which gate failed; folding the body check into the
+# card-token job would report a missing `Built:` line as "card-token-lint" failing.
+#
+# ⚠ THE WORKFLOW'S DISPLAY NAME CHANGED WITH THAT SECOND JOB, AND THE JOB IDS DID NOT. Rulesets and
+# classic protection match the job id, never the display name — that is measured in
+# `docs/VERSIONING.md § Branch model`, which is also where the required set lives. So `card-token-lint`
+# is still the same required context it was; `pr-body-fields` is a NEW context that is NOT required
+# until somebody edits the ruleset, and `docs/VERSIONING.md` records that state rather than this file.
+#
+# IT ALSO GUARDS EVERY VENDORED FILE'S DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, the first
+# step of each job; its MANIFEST is the list) — the mover the card-token gate extracts its grammar
+# from declares in its header exactly what its body is, and until PupFuzz/agent-roundtable#463
+# nothing checked that declaration.
 #
 # WHAT IT DOES. Reads this PR's TITLE and HEAD BRANCH — the two surfaces the kanban webhook
 # bridge parses — and fails if either carries something that LOOKS like a card reference but
@@ -25,12 +49,15 @@
 # which push-driven test workflows do not subscribe to. A retitle that introduces `cards #N`
 # would otherwise never be re-checked.
 
-name: Card-token lint
+name: PR metadata gates
 
 on:
   pull_request:
     # `edited` is load-bearing: the title is half the linted surface, and it is edited after
-    # the fact far more often than a branch is renamed.
+    # the fact far more often than a branch is renamed. It is load-bearing TWICE OVER since
+    # `pr-body-fields` landed — `edited` is the ONLY event that fires on a body change, and the
+    # body is that job's entire subject. A PR opened with all three fields and later regenerated
+    # without them is exactly the defect card#9767 measured, and this is the event that catches it.
     types: [opened, edited, reopened, synchronize]
     # NO `branches:` FILTER, DELIBERATELY. `branches:` and `types:` are INDEPENDENT filters
     # and the event runs only if BOTH match, so a base-branch allowlist would drop every
@@ -85,3 +112,63 @@ jobs:
         # argparse usage error that names nothing the author did wrong. Measured, not
         # theorised. The `=` form takes everything after the first `=` as the value.
         run: python3 bin/card-token-lint.py --branch="$HEAD_REF" --title="$PR_TITLE"
+
+  # ── pr-body-fields (card#9767) ───────────────────────────────────────────────────────────────
+  # WHAT IT DOES. Reads this PR's BODY and fails when it lacks a non-empty `Built:` or
+  # `Coordinated in:` line. PRESENCE ONLY — it never reads, prints or judges a VALUE.
+  # `bin/pr-body-fields.py`'s docstring is the contract.
+  #
+  # WHY IT EXISTS. Those fields have no generator: they are added by hand, and regenerating a body
+  # drops them, silently. `PupFuzz/mezzanine#176` carried its hand-added attribution, a peer
+  # re-read that body at the API to VERIFY it, and a later regeneration destroyed the line — so a
+  # careful verification was made false by a mechanism nobody was watching, which is worse than the
+  # original miss because the fleet then believes it is fixed. `PupFuzz/mezzanine#180` carries no
+  # `Built:` line at all, and `built-line.md` makes that line a defined plane-1 review finding —
+  # so a regeneration silently mints a finding no author committed.
+  #
+  # THE VERDICT IS COMPUTED BY THE FIELD'S OWN PARSER, VENDORED, NEVER BY A REGEX WRITTEN HERE.
+  # Both fields go through `review-prep.py`'s `_audit_field`, which is line-anchored over the WHOLE
+  # body with NO window, takes both the bold and the plain spelling, and reads outside fences — so
+  # `PupFuzz/mezzanine#185`'s `Built:` at line 44 PASSES. A windowed rule would red that correct
+  # body, and the selftest runs one over it and requires it to red.
+  #
+  # ⚠ IT SAYS NOTHING ABOUT A `FROM:` LINE — neither requiring nor rejecting one. That leg was in
+  # the original scope and was removed by operator directive on 2026-09-17; `bin/pr-body-fields.py`
+  # owns the reasoning, including why the gate does not reject a stray one either.
+  pr-body-fields:
+    # ONLY A PR THAT CAN STILL BE JUDGED AS A MERGE CANDIDATE IS JUDGED, for the reason
+    # `release-pr-guard.yml` measured on card#9732: `edited` keeps firing on a CLOSED PR for as
+    # long as anyone touches its body, and a gate verdict on a PR whose merge button is gone
+    # gates nothing. The three merged bodies card#9767 measured are also mid-correction on a
+    # deliberately sequenced schedule, and a permanent red on them would be noise against a
+    # decision that is being held on purpose.
+    if: github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # BEFORE the guard, for the same reason the card-token job runs it: the guard's authority IS
+      # the vendored parsers, and an unpinned authority is an unchecked one.
+      - name: Vendored-body pins (selftest reds on a body mutation, then the real check)
+        run: |
+          bash bin/vendor-pin-check.sh --selftest
+          bash bin/vendor-pin-check.sh
+
+      # The RED fixtures run HERE, against THIS checkout — the same bytes about to judge somebody's
+      # PR. They include a META-CONTROL that executes the wrong implementation: a windowed
+      # first-ten-lines rule is run over the line-44 body this gate PASSES and is required to RED
+      # it. Without that, the fixtures show the gate behaves without showing that the obvious wrong
+      # gate would behave differently, which is the whole claim.
+      - name: Self-test (RED fixtures, the no-window arms, and the windowed-rule meta-control)
+        run: python3 bin/pr-body-fields.selftest.py
+
+      # THE BODY GOES THROUGH `env:` AND THEN THROUGH A PIPE — never `${{ }}` inside `run:`, which
+      # is a script-injection sink, and a PR body is the most attacker-controlled text on the whole
+      # event. It is piped rather than passed as an argument: a body is multi-line free text, and
+      # `--opt=$VAR` would put it on argv where it appears in process listings and in any error
+      # argparse prints back. `--body-file=-` is the one input path the guard has.
+      - name: Judge this PR's body against the required audit fields
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" | python3 bin/pr-body-fields.py --body-file=-

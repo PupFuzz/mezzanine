@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# vendor-pin-check.sh — the two VENDORED files' headers declare what their bodies are; this
-# pins that declaration to a sha256 so it cannot quietly stop being true.
+# vendor-pin-check.sh — every VENDORED file's header declares what its body is; this pins that
+# declaration to a sha256 so it cannot quietly stop being true. The MANIFEST below is the list —
+# it is the only census, and no prose here counts its rows.
 #
 # WHY IT EXISTS. `bin/promote-cards-by-token` declared its whole body a BYTE-FOR-BYTE copy of
 # upstream at pin e2f131f and called that "a one-diff check". Nothing ran the diff. PR #51 had
@@ -40,7 +41,16 @@
 # WHY NOT `git diff` AGAINST UPSTREAM. Upstream is a private repo; a public CI runner cannot
 # clone it. The sha is the offline stand-in — it cannot tell you WHAT changed, only that
 # something did, which is the signal that was missing. The pin commit in each manifest row is
-# provenance for a human, not something this script fetches. No network, no git, stdlib only.
+# provenance for a human, not something this script fetches. No network, no git, stdlib only.#
+#
+# ⭐ ONE ROW CARRIES A LEG THIS SCRIPT CANNOT: `bin/coord_audit_field.py` is vendored from the
+# `coord` PLUGIN, which an agent's own machine HAS even though a public runner does not.
+# `bin/pr-body-fields.selftest.py` § 6 diffs that body against the live plugin wherever one
+# resolves, and where none resolves it prints NOT VERIFIED HERE by name instead of passing quietly
+# — so the upstream comparison this script has to do without is genuinely performed, just not on
+# the runner. Its fence-mask region goes one better: upstream's own generator stamps a
+# `fragment-sha256` over the spliced bytes, and § 5 recomputes it offline — the only leg here that
+# checks a mezzanine copy against a figure UPSTREAM published.
 #
 # Usage: bash bin/vendor-pin-check.sh              # check every manifest row (exit 1 on drift)
 #        bash bin/vendor-pin-check.sh --selftest   # prove the check CAN fail, then that a
@@ -56,9 +66,18 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # FRAGMENTS entry must be present in the body. A header entry with no FRAGMENTS twin is NOT
 # detected here — the header's list is read by humans, the table by this script, and a review
 # of any change to either owes a glance at the other.
+#
+# ⚠ THE PIN COLUMN IS A PROVENANCE STRING, NOT ALWAYS A COMMIT. The mover rows were vendored from
+# a commit and name it. The `coord_audit_field.py` row was vendored from the PLUGIN as this install
+# runs it, where the addressable identity is the plugin VERSION — that is what a reader needs to
+# re-derive the copy and what `bin/pr-body-fields.selftest.py` § 6 compares against. This script
+# reads the column and never uses it, so a non-commit here changes no behaviour; it is spelled out
+# because a column that silently holds two kinds of thing is how a reader gets a wrong answer
+# confidently.
 MANIFEST=(
   "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|8ce23f47b6761e6f2f712e0fce52a66ab2fd4ed1bf97c86671ff26598ad63657"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|e9f6f87704f14541c2e194c926d0b0a44399f858b31cbdf607605648fcc53cf5"
+  "bin/coord_audit_field.py|coord v0.52.0|0d20e6187b3c3e9b15e318a742b54d0f2a5c357febf4e8a9cddeb31d8bf2caaf"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>

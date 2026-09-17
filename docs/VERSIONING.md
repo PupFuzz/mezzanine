@@ -216,6 +216,30 @@ correlates on).
 > layer of `main`, `php-tests` is still ruleset-only on both branches, and `shell-lint` is still
 > required by neither layer on either branch. This is a dated reading like the one above it, not the
 > state: run the command.
+>
+> ⚠ **Re-read 2026-09-17 on adding the `pr-body-fields` JOB to `.github/workflows/card-token-lint.yml`
+> (card#9767), as the instruction above requires — a new job is a new CONTEXT, so it raises the same
+> question a new workflow file does.** Re-derived that afternoon with the command above, and **the
+> reading directly above it no longer describes either branch**, which is again the drift this
+> instruction exists to catch:
+>
+> - **`dev` · rulesets** and **`main` · rulesets** now carry the SAME eight contexts:
+>   `asset-provenance`, `card-token-lint`, `deploy-gate-inputs`, `deploy-selftest`, `design-artifact`,
+>   `design-docs`, `php-tests`, `release-pr-guard`. `main` has gained `deploy-gate-inputs` and
+>   `deploy-selftest` since the reading above, so the two branches no longer differ.
+> - ⛔ **CLASSIC BRANCH PROTECTION IS GONE FROM BOTH BRANCHES.** `GET /branches/<b>/protection`
+>   returns `404 Branch not protected` for `dev` AND for `main` — the documented ABSENT signal, not a
+>   failed read: the same credential read both rulesets successfully in the same command. So the
+>   "TWO independent layers" framing above now has ONE live layer, and the `strict: true` on `main`
+>   that required a head to be up to date with the base **is no longer in force**. Nothing in this
+>   repository removed it; it is a repository-settings change made outside any PR, recorded here
+>   because this section is its one home.
+> - **`pr-body-fields` is required by NEITHER layer**, so it runs on every open PR and a red there
+>   does not block a merge today. It is safe to require: it carries no `branches:` filter, so it
+>   produces a completed run on every PR that can still merge. Its `if:` condition skips only a
+>   CLOSED PR, which is the form `release-pr-guard` already uses for the same reason — a PR that can
+>   merge is open, so the deadlock the 2026-08-23 caveat describes cannot be reached through it.
+>   Requiring it is a repository-settings act and therefore the operator's, not this repo's.
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:

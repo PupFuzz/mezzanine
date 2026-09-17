@@ -725,6 +725,31 @@ and where they were already stated verbatim while the block duplicated them.
 > must open this file to read it. Reference and rationale only; standing rules that must reach a
 > session belong between the `coord:install-rules` markers above.
 
+## PR bodies carry `Built:` and `Coordinated in:`, and CI now reds when one is missing
+
+The `Built:` rule and its legitimate values are the managed block's above (`built-line.md`);
+`Coordinated in:` is the PR ↔ coord-thread anchor a reviewer cites. Neither has a line window: put
+them anywhere outside a fenced block, in either the bold or the plain spelling.
+
+⛔ **A PR BODY IS WRITTEN FOR AN INSTALLER TO READ, AND DOES NOT OPEN WITH A `FROM:` LINE.**
+Operator directive, 2026-09-17, fleet-wide with no per-repo exemption: protocol addressing lines do
+not belong in a PR description. Which agent produced the work is recorded beside the Claude Code
+model-attribution line in the trailer instead. A third body field naming the producing agent is
+coming; its spelling is not yet agreed across the fleet, so do not invent one.
+
+⚠ **A REGENERATED BODY DROPS BOTH FIELDS, SILENTLY** — that is the defect card#9767 exists to close,
+and it has already made one peer's careful API-level verification false. After regenerating a body
+(release bodies especially — `release-pr-body` emits neither), put them back.
+
+The gate is the `pr-body-fields` job in `.github/workflows/card-token-lint.yml`; the contract and
+what it deliberately does NOT assert — including why it does not REJECT a stray `FROM:` either —
+are in `bin/pr-body-fields.py`'s docstring. It judges PRESENCE only and never reads a value.
+Reproduce its verdict locally with:
+
+```
+gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body | python3 bin/pr-body-fields.py --body-file=-
+```
+
 ## Burn-down
 
 **The sprint is a single lane** keyed `A` (defined 2026-09-09 in PupFuzz/mezzanine#62, narrowed
