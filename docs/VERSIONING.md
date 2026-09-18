@@ -116,9 +116,20 @@ correlates on).
 > above is kept rather than deleted because it is the reason the requirement was safe to add;
 > read it as history.** *(And this block is history too — see the state below.)*
 >
-> ✅ **THE STATE — what a PR into `dev` or `main` must pass. TWO independent layers require status
-> checks on each branch, and BOTH apply: a PR merges only when every context required by EITHER
-> layer has passed.**
+> ⛔ **SUPERSEDED 2026-09-17 by card#9746 — READ THE RE-READING BELOW BEFORE ACTING ON THIS BLOCK.**
+> Classic branch protection was **deliberately retired** on `dev` and on `main` that day; rulesets are
+> now the single source of truth, and `main` was brought up to the same eight required contexts as
+> `dev` in the same act. The classic configuration is backed up at
+> `~/.cache/coord/protection-backup/{classic-dev,classic-main}.json`. ⇒ **`solo-self-merge` printing
+> `protection=404` is CORRECT and must not be "fixed"** — it was confirmed empirically on
+> `PupFuzz/mezzanine#184`, which resolved its eight contexts and merged.
+>
+> The two-layer description below is kept as the history it now is, because the rest of this section
+> reasons about it:
+>
+> ✅ **THE STATE AS IT WAS BEFORE card#9746 — what a PR into `dev` or `main` had to pass. TWO
+> independent layers required status checks on each branch, and BOTH applied: a PR merged only when
+> every context required by EITHER layer had passed.**
 >
 > 1. **Rulesets** — `21222661` "dev — integration branch" and `21222660` "main — release branch",
 >    both `enforcement: active`, both with `bypass_actors: []`.
@@ -216,6 +227,36 @@ correlates on).
 > layer of `main`, `php-tests` is still ruleset-only on both branches, and `shell-lint` is still
 > required by neither layer on either branch. This is a dated reading like the one above it, not the
 > state: run the command.
+>
+> ⚠ **Re-read 2026-09-17 on adding a second JOB to `.github/workflows/card-token-lint.yml`
+> (card#9767), as the instruction above requires — a new job is a new CONTEXT, so it raises the same
+> question a new workflow file does.** Re-derived that afternoon with the command above, and **the
+> reading directly above it no longer describes either branch**, which is again the drift this
+> instruction exists to catch:
+>
+> - **`dev` · rulesets** and **`main` · rulesets** now carry the SAME eight contexts:
+>   `asset-provenance`, `card-token-lint`, `deploy-gate-inputs`, `deploy-selftest`, `design-artifact`,
+>   `design-docs`, `php-tests`, `release-pr-guard`. `main` has gained `deploy-gate-inputs` and
+>   `deploy-selftest` since the reading above, so the two branches no longer differ.
+> - ✅ **CLASSIC BRANCH PROTECTION IS GONE FROM BOTH BRANCHES, BY DESIGN — card#9746.**
+>   `GET /branches/<b>/protection` returns `404 Branch not protected` for `dev` AND for `main` — the
+>   documented ABSENT signal, not a failed read: the same credential read both rulesets successfully
+>   in the same command. ⇒ **This is the intended end state, not drift and not an external change to
+>   raise:** classic protection was retired deliberately so that rulesets are the single source of
+>   truth, and the classic configuration is backed up at `~/.cache/coord/protection-backup/`. ⚠ What
+>   genuinely did go away with it is `main`'s `strict: true`, which required a head to be up to date
+>   with its base; no ruleset replaced that, so it is a real consequence of the retirement rather
+>   than an oversight to reverse silently.
+> - **That job shipped as `pr-body-lint`, and it is required by NEITHER layer.** ⛔ **It is also
+>   REPORT-ONLY: it prints its verdict and exits 0, so it cannot report a failure to either layer
+>   even if one required it.** Two facts, not one — the second is the card#9767 decision, the first
+>   is this table's subject, and requiring the context would not by itself make the check block.
+>   It remains SAFE to require whenever it is made to block: it carries no `branches:` filter, so it
+>   produces a completed run on every PR that can still merge, and its `if:` condition skips only a
+>   CLOSED PR — the form `release-pr-guard` already uses for the same reason, so the deadlock the
+>   2026-08-23 caveat describes cannot be reached through it. ⇒ **BOTH acts are the operator's:**
+>   the dated flip from report-only to blocking, and requiring the context in the ruleset. Neither
+>   is this repo's to take, and each is tracked on card#9767.
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:

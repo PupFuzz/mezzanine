@@ -19,6 +19,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and it
+  REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
+  install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
+  that records the source commit and plugin version, because the upstream repository is private and a
+  public runner cannot clone it. The new **`pr-body-lint` job** in
+  `.github/workflows/card-token-lint.yml` prints its whole verdict and **exits 0 whatever it finds**.
+  ⛔ **THE REPORT-ONLY WIRING IS THE DECISION, NOT AN UNFINISHED STAGING STEP.** Run over this
+  repository's recent merged bodies, most of them FAIL the standard — and **those reds are correct**:
+  the standard governs every PR body an agent writes and is ratified twice, and this repo is genuinely
+  non-compliant with it, principally because its house sections (`## What is in it`, `## What you must
+  do`, `## What you will see change`, `## Evidence`) are none of them in the standard's closed allowed
+  set. A gate that reds ordinary correct-looking work on its first day teaches the people it governs
+  to route around it, so this lane makes the findings visible without minting that habit. ⚠ **It is a
+  WINDOW, not a destination** — adopting the body shape, and then a dated flip to blocking, are
+  tracked on card#9767 and are the operator's calls; requiring the job as a ruleset context is
+  likewise the operator's, and **would not by itself make it block**, because the job exits 0. **The
+  lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
+  — `bin/pr-body-fields.py` and `bin/coord_audit_field.py`, a mezzanine-local two-field presence guard
+  built around `review-prep.py`'s `_audit_field`, are **deleted**. That function has MOVED upstream and
+  now lives inside this very linter, so the local pair was a copy of something that was no longer
+  where it had been copied from, and keeping it would have shipped a second divergent implementation
+  of a capability the framework already owns. Upstream's is a strict superset of it: the same two
+  presence rules, plus the installer-POV narration rules, plus `attribution-line` — the rule that
+  refuses the `FROM:` line the 2026-09-17 operator directive removed from PR bodies fleet-wide.
+  **BOTH VENDORED FILES ARE PINNED** in `bin/vendor-pin-check.sh`, whose `--selftest` control arm
+  needed the `#` provenance header to exist at all (it requires line 2 of a manifest file to be a
+  comment and upstream's line 2 is the docstring; a comment before a module's first string statement
+  does not displace `__doc__`). The vendored fixtures carry no manifest row and need none —
+  **upstream's own selftest pins each of them by sha256**, which checks the copy against the SOURCE
+  rather than against this repo's last declaration, and that selftest runs in the job.
 - **card#9754** — **the suite refuses by name unless it can READ `server/.env`, and `php-tests` runs it
   with no `.env` on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
   `.env.example` to `.env` before the only step that executes it, and `server/.env` is gitignored — so the

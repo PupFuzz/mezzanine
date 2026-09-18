@@ -725,6 +725,55 @@ and where they were already stated verbatim while the block duplicated them.
 > must open this file to read it. Reference and rationale only; standing rules that must reach a
 > session belong between the `coord:install-rules` markers above.
 
+## PR bodies are judged against the fleet standard, and the lane REPORTS — it does not block
+
+**The standard is not this repository's and is not restated here.** It is `skills/release-pr/SKILL.md
+§ PR body — write it for the software installer` in the coord install, ratified twice, governing every
+PR body an agent writes. The linter is upstream's own program, vendored at `bin/pr-body-lint.py`; its
+docstring is the contract, including what it deliberately refuses to judge.
+
+⛔ **THE `pr-body-lint` JOB PRINTS ITS VERDICT AND EXITS 0. ALWAYS.** ⇒ **A green CI run says nothing
+about whether your body meets the standard** — read the job's log, not its tick.
+
+Report-only is the decision recorded on card#9767, and it rests on a measurement rather than a taste.
+⭐ **MOST OF THIS REPOSITORY'S RECENT BODIES FAIL THE STANDARD, AND THOSE REDS ARE CORRECT** — the
+repo is genuinely non-compliant, principally on structure: its house sections (`## What is in it`,
+`## What you must do`, `## What you will see change`, `## Evidence`) are none of them in the
+standard's closed allowed set. A gate that reds ordinary correct-looking work on its first day
+teaches the people it governs to route around it, so the lane reports instead. **No figure is written
+down here** — a count of failing bodies is false at the next merge and nothing re-checks it. Derive it:
+
+```
+gh pr list --repo PupFuzz/mezzanine --state merged --limit 20 --jq '.[].number' --json number |
+while read -r n; do
+  gh api "repos/PupFuzz/mezzanine/pulls/$n" --jq .body |
+    python3 bin/pr-body-lint.py --body-file=- --label="#$n" >/dev/null || echo "#$n FAILS"
+done
+```
+
+⚠ **THE LANE EXISTING IS NOT THE CLASS BEING HANDLED, AND A PERMANENTLY-RED-AND-IGNORED CHECK IS THE
+SAME BYPASS TRAINING BY A SLOWER ROUTE.** Report-only is a window: it closes when this repo adopts the
+body shape and an operator makes the dated flip to blocking. Both are tracked on card#9767, and both
+are the operator's call, not this repo's.
+
+⛔ **A PR BODY DOES NOT OPEN WITH A `FROM:` LINE.** Operator directive, 2026-09-17, fleet-wide with no
+per-repo exemption; the linter's `attribution-line` rule reds it. Which agent produced the work is
+recorded beside the Claude Code model-attribution line in the trailer instead. A third body field
+naming the producing agent is coming; its spelling is not yet agreed across the fleet, so do not
+invent one.
+
+⚠ **A REGENERATED BODY DROPS `Built:` AND `Coordinated in:`, SILENTLY** — that is the defect card#9767
+opened on, and it has already made one peer's careful API-level verification false. After regenerating
+a body (release bodies especially — `release-pr-body` emits neither), put them back. Neither field has
+a line window: put them anywhere outside a fenced block, in either the bold or the plain spelling.
+`built-line.md` owns the `Built:` value set.
+
+Read the verdict on a body before you push it, which is the whole point of a lane that cannot stop you:
+
+```
+gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body | python3 bin/pr-body-lint.py --body-file=-
+```
+
 ## Burn-down
 
 **The sprint is a single lane** keyed `A` (defined 2026-09-09 in PupFuzz/mezzanine#62, narrowed
