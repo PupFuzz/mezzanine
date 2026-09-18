@@ -385,6 +385,16 @@ rule violations anyone could have committed at the time.
   changes. R5 refuses only a PR that makes an over-threshold file **bigger**; over threshold
   while flat or shrinking is a loud warning, so the archiving PR is never blocked by the
   condition it fixes.
+  ⚠ **The fortnight of runway is not there during the fortnight after an archive, and the
+  clamp that removes it is correct.** The growth term is `growth = max(0, head_size -
+  window_size)`, so it reads **zero** whenever the head is SMALLER than the file was 14 days ago
+  — which is exactly the state an archive leaves behind. For those 14 days the threshold is the
+  full cliff, and R5 gives its notice AT the cliff rather than a fortnight ahead of it. Keep the
+  clamp: without it a shrinking file derives a threshold ABOVE the cliff, and R5 would license a
+  file that is already past the truncation point. The notice window returns of its own accord
+  once 14 days of post-archive history exist, and the margin an archive buys is large enough that
+  nothing needs to happen in between — re-print it with `wc -c docs/CHANGELOG.md` against the
+  1,048,576 B cliff.
   ⚠ **This bullet claimed the gate in the present tense from 2026-08-23 (D-11) until 2026-08-30,
   and no such gate existed** — every `CHANGELOG` reference in `bin/`, `tools/` and `.github/` was
   the release guard's section-existence check. It exists now; the note stays because a decisions
@@ -396,6 +406,38 @@ rule violations anyone could have committed at the time.
   150,881 B in six days (mean ≈ 25 KB/day, peak day 43.5 KB). At that mean the 1 MiB cliff is
   roughly **five weeks** out, not years — the size gate is a live concern, which is why it was
   built rather than withdrawn.
+  ⚑ **Measured again 2026-09-18, on the day of the first archive:** `docs/CHANGELOG.md` was
+  509,802 B and 92.8 % of it was released sections, which is what card#9813 moved out. Re-derive
+  both with the per-section census — `LC_ALL=C awk '/^## /{if(n!="")printf "%s\t%d\n",n,b; n=$0;
+  b=0} {b+=length($0)+1} END{printf "%s\t%d\n",n,b}' docs/CHANGELOG.md` — and the live total with
+  `wc -c docs/CHANGELOG.md`; the figures above are the reading on that date, not a standing claim.
+- **Archived releases — one file per tag, and why they need no gate of their own.** The live
+  `docs/CHANGELOG.md` holds `## [Unreleased]` and **exactly the latest released section**. Every
+  older released section lives verbatim at `docs/changelog/<tag>.md`, one file per tag
+  (`v0.2.0.md`, `v0.3.0.md`, `v0.4.0.md` at the first archive, card#9813) — named by the tag
+  because `docs/VERSIONING.md` core rule 3 makes the tag the unit that owes an entry. Moving a
+  section is a **verbatim** move: `cmp` the extracted section against the same section on the
+  base, and extract with `tail -n +6` rather than an `awk` range, because `awk` re-emits a
+  trailing newline and so cannot see a missing one (measured on this card — the `awk` form passed
+  a file whose final newline had been stripped).
+  ✅ **Archiving is release flow step 13**, not a periodic act — `docs/VERSIONING.md § Release
+  flow` owns it, including why it lands on `dev` in its own tokenless docs PR rather than on the
+  release branch. Nothing enforces step 13; its omission surfaces as R5's notice on some later
+  PR.
+  ⭐ **The archive files carry no size gate, and that is an invariant rather than an omission.**
+  Every byte in `docs/changelog/<tag>.md` was part of `docs/CHANGELOG.md` at the release commit
+  that produced it, where R5 held the whole file under the cliff — so one section plus a
+  five-line header is necessarily under the cliff too, and the file never receives bytes again
+  because a release **collects** entries rather than authoring them. The invariant rests on
+  **released sections being immutable**, which this repo states here for the first time: a
+  released section is as fixed as the tag that carries it, and editing one post hoc is the single
+  way to push an archive file at a cliff nothing is watching. That residual is left to review on
+  purpose; a mechanical backstop (`find docs/changelog -size +1000k`) is recorded on card#9814
+  with R7, not built.
+  ⭐ **Enumerate the changelog's readers by derivation, never from a remembered directory list:**
+  `grep -rn -i changelog bin tools .github docs CLAUDE.md README.md fleet-reporter resources
+  server --exclude-dir=vendor | grep -v '^docs/CHANGELOG.md:'`. The `-i` is load-bearing — the
+  archive directory is lowercase and a case-sensitive sweep misses every reference to it.
 - **Cite only the card the PR is about.** The same `card#N` token drives the changelog obligation
   *and* the board writeback (#343's mention-vs-closure defect). A card cited "for context" is a
   spurious changelog obligation and a wrongly-moved card at once. Nothing enforces this yet —

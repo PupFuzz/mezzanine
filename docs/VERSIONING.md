@@ -16,8 +16,9 @@ specific to Mezzanine and has no counterpart there.
 > **Status — read it at its sources; this note states no version and counts no tags.** The
 > released version is the root `VERSION` file on `main` (`git show origin/main:VERSION`). The
 > releases are the tags (`git tag --list 'v*'`), each immutable and never moved, and each release's
-> notes are its section of `docs/CHANGELOG.md`, which is written to per PR (`docs/PLAN.md § 4`
-> owns its format). The first tag, `v0.1.0`, is the bootstrap case the ⚠ under
+> notes are its section of `docs/CHANGELOG.md` — or, once [step 13](#release-flow) has moved it,
+> the whole of `docs/changelog/v<version>.md` — written to per PR (`docs/PLAN.md § 4` owns its
+> format and the archive layout). The first tag, `v0.1.0`, is the bootstrap case the ⚠ under
 > [§ Release flow](#release-flow) records, not a release anybody reviewed as one.
 > **Deploy state is `docs/PLAN.md § 5`'s to record** — its `bin/deploy.sh` bullet says whether the
 > script has run against a host. Until a first deploy has run, both target verdicts in
@@ -42,8 +43,12 @@ specific to Mezzanine and has no counterpart there.
    its changelog entry *is* the release act; a feature PR that also moves `VERSION` has
    quietly cut a release nobody reviewed as one.
 3. **Every tag `v<version>` owes a changelog entry** describing the bundle of PRs it carries.
-   The changelog lives at [`docs/CHANGELOG.md`](CHANGELOG.md). **This policy owns the
-   obligation and not the format**: roundtable #344 settled headings, ordering and per-PR
+   The changelog lives at [`docs/CHANGELOG.md`](CHANGELOG.md), which holds `## [Unreleased]` and
+   the latest released section; **every released section older than the latest lives at
+   [`docs/changelog/`](changelog/)`v<version>.md`, one file per tag**, moved there verbatim by
+   [step 13](#release-flow). The tag is the archive's unit precisely because this rule makes the
+   tag the unit that owes the entry. **This policy owns the obligation and not the format**:
+   roundtable #344 settled headings, ordering and per-PR
    versus at-release authorship, and `docs/PLAN.md § 4` is where that answer was adopted,
    including the card-level entry rule and the size gate this project added to it. Read § 4
    before writing an entry; it is deliberately not restated here.
@@ -401,6 +406,21 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
     ([§ Branch model](#branch-model)); not with `solo-self-merge`, which always squashes.
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
+13. **Archive the previous release.** Once step 11's back-merge has landed on `dev`, move the
+    released section that is no longer the latest out of
+    [`docs/CHANGELOG.md`](CHANGELOG.md) into `docs/changelog/v<previous version>.md`, **verbatim**,
+    in a **tokenless** docs PR into `dev` (branch and title carrying no `card#NNNN`, so R4 is NOT
+    APPLICABLE by its trigger exactly as a back-merge is) and self-merged with `solo-self-merge`.
+    The live file is then `## [Unreleased]` plus the release just cut, and nothing else. The move
+    is verbatim in the byte sense — `cmp` the section against the base, extracting the archive
+    file's body with `tail -n +6`, since an `awk` range re-emits a trailing newline and cannot see
+    a missing one. `docs/PLAN.md § 4` owns the layout and the reason the archive files carry no
+    size gate of their own.
+    ⚠ **Do it BEFORE the next release branch is cut.** An archive PR that lands on `dev` after
+    the cut makes `docs/changelog/*.md` R6a residue on that release PR, because the release head
+    will not have the files `dev` has just gained. The answer is the refresh from `dev` that R6
+    demands anyway — never a `Release-excludes:` line, which would declare an exclusion that is
+    not one.
 
 > ✅ **The steps named here are mechanically checked** — added by card#8174 after PR #38
 > merged on 2026-08-30 breaking three documented rules at once and merging green.
@@ -416,19 +436,26 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > `docs/CHANGELOG.md`, and every card `dev` bullets under `## [Unreleased]` that the head's
 > changelog dropped, is residue. Residue is allowed only when the PR body says so exactly, in a
 > `Release-excludes: <tokens> — <reason>` line, because **deliberately shipping without recent
-> work is legitimate and shipping without noticing is not**. The rule, the escape hatch and the
-> reason it is a tree comparison rather than an ancestry test are the guard docstring's; they
-> are not restated here. What this document adds is the measurement that bought it: PR #176
+> work is legitimate and shipping without noticing is not**. `docs/changelog/` is residue to R6a
+> like any other path — `RELEASE_ARTIFACT_PATHS` is `VERSION` and `docs/CHANGELOG.md` and nothing
+> else — which is why step 13 lands its move on `dev` first rather than riding the release
+> branch. The rule, the escape hatch and the reason it is a tree comparison rather than an
+> ancestry test are the guard docstring's; they are not restated here. What this document adds is the measurement that bought it: PR #176
 > (v0.5.0) sat open for roughly a day at a head four merges behind `dev`, every check green,
 > and merging it would have shipped a release omitting four cards.
 >
-> ⛔ **Steps 5, 6, 8, 9, 11 and 12 remain unenforced, and deliberately so.** The deploy and
+> ⛔ **Steps 5, 6, 8, 9, 11, 12 and 13 remain unenforced, and deliberately so.** The deploy and
 > wire verdicts are human judgement stated in prose — a gate that grepped for a phrase would
 > report having checked a judgement when it had checked a string. "Wait for CI" is about other
 > checks; "a human merges it" cannot be enforced at all here, because one GitHub identity is
 > shared by the agent and the operator, and that is the whole reason card#8174 gates *what* is
 > merged rather than *who* merges it. **Nor is the bump SIZE checked** — nothing mechanical can
-> tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
+> tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). **Step 13's omission is
+> caught only by R5, on some later PR by some other author** — the changelog grows past the
+> threshold and the red lands on whoever happens to be pushing, not on the release cutter who
+> skipped the step. Moving that red onto the release PR is filed as **R7** on card#9814 ("the head's
+> `docs/CHANGELOG.md` carries at most TWO released sections", release path only); it changes what
+> CI refuses on a release PR, so it is ask-first and is not built. Read the guard's green as
 > covering exactly the steps named above and nothing else. **Step 11's back-merge in particular
 > is NOT what R6 checks** — R6 asks whether this release carries `dev`'s content, and says
 > nothing about whether any past release was merged back. On this repo an ancestry test would
