@@ -12,13 +12,69 @@ owe nothing are a PR into `main` (the release retitles this section) and a PR th
 card's bullet (a revert of unreleased work); both are argued in that file's docstring. **R5**
 holds this file's SIZE under `1 MiB − the bytes it grew in the last 14 days`, so it reds while
 there is still time to archive released sections rather than after the contents API has begun
-returning it empty.
+returning it empty. **R6** (card#9707) gives this section a third reader: on a release PR it
+compares the cards bulleted here on `dev` against the head's changelog, so a release cannot
+quietly ship with fewer cards than `dev` holds.
 
 Sections are newest-first: `[Unreleased]` collects what has landed on `dev` since the last
 release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4).
 
 ## [Unreleased]
 
+- **card#9707** — **`release-pr-guard` R6 refuses a release that ships less than `dev` holds unless
+  the PR body says exactly what it leaves out.** Nothing compared a release head to the integration
+  branch, and the cost was measured rather than imagined: PR #176 (v0.5.0) sat open for roughly a day
+  at head `e5c1d9e` while four PRs merged to `dev` behind it, every check green the whole time, and
+  merging it in that state would have shipped a release omitting four cards with no automated surface
+  saying so — the tag, the changelog section and the green wall all describe the BRANCH, while the harm
+  is the gap between the branch and `dev`. A human reading the branch caught it, which is not a
+  mechanism. **Two measurements compose into one verdict.** R6a is content: every path where the head
+  differs from `origin/dev` outside the release's own two edits (`VERSION`, `docs/CHANGELOG.md`) is
+  residue — symmetric on purpose, since a non-artifact difference is either `dev` moving after the cut
+  or a feature edit riding the release branch, and neither is a release. R6b is cards: R6a excuses the
+  changelog, which is precisely where "four fewer cards than `dev` held" hides, so every card bulleted
+  under `dev`'s `## [Unreleased]` must appear bulleted somewhere in the head's changelog — not scoped to
+  `[Unreleased]` at the head, because release flow step 4 has just retitled that section and a scoped
+  rule would red every correct release. **The hatch is a declaration, not an opt-out:** a line-initial
+  `Release-excludes: <paths and/or card#NNNN> — <reason>` in the PR body, read through a new
+  `--body`/`--body-file` pair, and it must EQUAL the measured residue — a hatch satisfied by any
+  non-empty acknowledgement would be a checkbox, and a declaration written for yesterday's exclusion
+  must not silently cover drift that arrived after it, so a partial declaration reds naming both sides.
+  **⛔ It is a TREE comparison and may never become an ancestry test.** `git merge-base --is-ancestor`
+  answers FALSE on this repo's correctly back-merged v0.5.0 — PR #180 was squashed, so the release line
+  is not an ancestor of `dev` and never will be, while `git diff --stat origin/main origin/dev` is
+  empty. An ancestry R6 would have been born false here, and the natural response to a false red is to
+  weaken the rule. **Ancestry is wrong in BOTH directions and the selftest pins both**: a head that
+  reaches `dev`'s content through unrelated history must PASS (the false-RED direction), and a head
+  that is a true DESCENDANT of `dev` — which is what the normal release path produces, since the
+  branch is cut FROM `dev` — must still RED when it carries a feature edit of its own (the false-PASS
+  direction, and R6a's second half). Only the first was pinned when this was first written, and a
+  hybrid that short-circuited on ancestry everywhere except the unrelated-history case passed the
+  whole suite while asserting nothing on the common path; the descendant fixture is what closed it.
+  **Fail-closed where it
+  cannot measure:** an unresolvable `origin/dev` is exit 2 rather than a green (the workflow gained the
+  integration-branch fetch, with no `--depth` for the measured reason the base fetch carries, and the
+  selftest now asserts that of EVERY fetch line rather than the first), and a run never given the PR
+  body exits 2 rather than refusing a PR for a declaration it was not shown — an empty body is a real
+  state and reds. **Every arm was seen to fail first**, each mutation below producing a targeted red
+  with none uncaught: R6 replaced by an ancestry test, R6 *short-circuited* on ancestry with the tree
+  diff kept only for unrelated history (the one that reached review passing, and the reason the
+  descendant fixture exists), the hatch reduced to non-empty, R6b dropped, R6a's residue emptied, an
+  unresolvable `dev` passing, the integration fetch deleted, the body no longer passed, and a
+  `--depth` restored on a fetch line.
+  **The same card's second finding, fixed in the same PR: `.release-pr.json` now declares
+  `card_token_regex`, so `release-pr-body`'s shipped-cards manifest is no longer empty.** With the key
+  absent the generic helper could correlate nothing and
+  emitted a `## Correlation gaps` section on every release body; card promotion was unaffected (the
+  mover carries its own `CARD_RE`), but the one cross-check on the mover could never run. Measured over
+  `v0.4.0..v0.5.0`: absent, `--card-manifest` printed nothing; declared, it prints exactly the id set
+  the mover's own sweep of that range prints, and the gaps section is gone. The value is the mover's
+  `CARD_RE` verbatim rather than the obvious `card#[0-9]+`, which would silently drop the `card-NNNN`
+  and glued `cardNN` spellings the correlators accept — and because the helper reads JSON and cannot
+  extract the mover's bash, the copy is GUARDED: `bin/card-token-lint.selftest.py` now asserts the two
+  are byte-identical and reds if either moves. `ref_token_regex` stays undeclared deliberately: its
+  numeric part correlates against a card's `payload.dl_number` and this repo has no decision-log id
+  space.
 - **card#9742** — **`DatabasePinTest` asserts the key set it guards against the key set `phpunit.xml`
   declares, so a pin the file gains and the test does not is reported as UNGUARDED instead of skipped.**
   The test iterates a hand-written constant, and nothing asserted that constant still described the file:

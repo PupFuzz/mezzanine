@@ -29,9 +29,9 @@ agent. So this gate asks WHAT is being merged, never WHO is merging it. That is
 actor-independent, free, and — unlike a permission — it states its verdict to the author while
 the fix is still one commit.
 
-WHAT THIS GATE ASSERTS — five rules in TWO FAMILIES, applicable on different conditions.
+WHAT THIS GATE ASSERTS — the rules below, in TWO FAMILIES, applicable on different conditions.
 
-RELEASE SHAPE (R1-R3) — only on a PR whose base is the release branch:
+RELEASE SHAPE (R1-R3, R6) — only on a PR whose base is the release branch:
   * R1 — HEAD BRANCH SHAPE. The head ref must be exactly `release/` + the tag this PR would
     mint (see AUTHORITY SOURCING). It is an EQUALITY against the head's own `VERSION`, not a
     shape match, so `release/v0.3.0` carrying `VERSION` 0.2.0 is also refused: the branch name
@@ -43,6 +43,11 @@ RELEASE SHAPE (R1-R3) — only on a PR whose base is the release branch:
     naming the new version, and the `[Unreleased]` heading does not count as one (step 4 of
     the release flow RETITLES it — a version still sitting under `Unreleased` is precisely the
     not-yet-released state).
+  * R6 — CURRENT WITH THE INTEGRATION BRANCH, or saying what it leaves out. The release
+    head's CONTENT equals `origin/dev`'s, modulo the release's own two edits (`VERSION` and
+    `docs/CHANGELOG.md`), and the changelog edit does not DROP a card `dev` holds. Residue is
+    permitted, but only DECLARED: a `Release-excludes:` line in the PR body naming exactly the
+    residue and why. See WHY R6 EXISTS and ⛔ R6 IS NOT AN ANCESTRY TEST below.
 
 CHANGELOG DISCIPLINE (R4-R5) — on EVERY PR, because that is where the entries are written:
   * R4 — THE CARD'S BULLET. If the head ref or the PR title names a card, `docs/CHANGELOG.md`
@@ -135,6 +140,49 @@ every PR in the repo is the archetype of a gate people switch off, and it would 
 that archives the file. So R5 fails only when the head is over threshold AND the head is LARGER
 than the base; over threshold while flat or shrinking is a loud `::warning::` and exit 0.
 
+WHY R6 EXISTS — a release that shipped LESS than `dev` held, green the whole time (card#9707).
+PR #176 (v0.5.0) sat open for roughly a day at head `e5c1d9e` while four PRs merged to `dev`
+behind it — `f539566` (#174), `0ee9fe2` (#177), `a94d0cd` (#175) and `445526b` (#179). Every
+check was green for the whole day, because nothing here compared the head to `dev`. Had it
+merged in that state it would have shipped a release omitting four cards, and no automated
+surface would have said so: the tag, the changelog section and the green wall all describe the
+BRANCH, and the harm is the GAP between the branch and `dev`. A human reading the branch caught
+it, which is not a mechanism. R6 is the mechanism.
+
+⛔ R6 IS NOT AN ANCESTRY TEST, AND THAT IS MEASURED RATHER THAN STYLISTIC. The obvious spelling
+of "is the release line current with the integration line" is `git merge-base --is-ancestor`,
+and it is WRONG here. The v0.5.0 back-merge (PR #180) was SQUASHED, so `origin/main` is not an
+ancestor of `dev` and never will be, while `git diff --stat origin/main origin/dev` is EMPTY —
+identical trees, entirely correct content, a FALSE answer from ancestry forever. The two
+previous back-merges landed as merge commits, so `v0.3.0` and `v0.4.0` ARE ancestors and
+`v0.5.0` is not: the property depends on which merge button was pressed, not on what shipped.
+An ancestry-based R6 would have been born false on this repo, and the natural response to a
+false red is to weaken the rule — which is how a gate gets switched off. So R6 compares TREES
+(`git diff --name-only`), which answers the question actually being asked and gives a squashed
+history the same verdict as a merged one. The same applies to any "has this been back-merged"
+query anywhere else.
+
+R6'S ESCAPE HATCH IS A DECLARATION, NOT AN OPT-OUT, AND IT IS CHECKED FOR EQUALITY. Cutting a
+release that deliberately excludes recent work is legitimate, so the rule is "current, or say
+what you are leaving out" and never "always current". The saying-so is a line in the PR body:
+
+    Release-excludes: <paths and/or card#NNNN tokens> — <reason>
+
+and it must name EXACTLY the residue R6 measured. A hatch satisfied by any non-empty
+acknowledgement would be worth nothing — it would be a checkbox, and it would let a
+declaration written for yesterday's exclusion silently cover drift that arrived after it. So a
+declared set that differs from the measured one is a FAIL naming both sides, and `edited` is
+already in this gate's trigger types, so fixing the line re-judges the PR. Note what the hatch
+is NOT: it is not authorisation. It cannot be, on a surface the PR author writes. What it buys
+is that the exclusion is VISIBLE in the PR a human merges, instead of invisible in a diff
+nobody takes.
+
+R6 NEEDS `origin/dev` AND EXITS 2 WITHOUT IT. The workflow fetches the integration branch
+explicitly (a release PR's base is `main`, so the base fetch does not bring it), and if that ref
+does not resolve, R6 raises rather than skipping: a release gate that cannot see the branch it
+is comparing against must red, exactly as R5 does in a shallow clone. An unmeasurable currency
+reported green is the false-clean this whole file exists to avoid.
+
 AND WHAT IT DELIBERATELY DOES NOT ASSERT:
   * NO CARD TOKEN is required. R4 fires on a token that is there; a PR that names no card owes
     nothing and passes, which is `card-token-lint`'s posture and `docs/PLAN.md § 4`'s rule.
@@ -151,7 +199,15 @@ AND WHAT IT DELIBERATELY DOES NOT ASSERT:
     saying so here is more honest than a decoration that reads as coverage.
   * NOT step 8's "wait for CI", step 9's "a human merges it", or step 11's back-merge: the
     first is about other checks, the second is the actor question this file cannot answer, and
-    the third happens after this PR is gone.
+    the third happens after this PR is gone. R6 does not assert it either — R6 asks whether the
+    HEAD carries `dev`'s content, and says nothing about whether any past release was merged
+    back; on this repo ancestry answers that one falsely anyway (⛔ above).
+  * NOT whether a declared exclusion is a GOOD IDEA. R6 checks that the `Release-excludes:`
+    line EQUALS what it measured, never whether leaving that work out is wise — that is the
+    release author's judgement and a gate grading it would be inventing a rule nobody wrote.
+    What R6 removes is the SILENCE, not the choice.
+  * NOT anything about `dev` itself. R6 compares against the integration branch as it stands;
+    a release is not asked to be better than the branch it was cut from.
 
 AUTHORITY SOURCING — DERIVED, NOT RETYPED, AND LOUD WHEN THE AUTHORITY MOVES.
 This repo already established the doctrine in `bin/card-token-lint.py`: a gate that hardcodes a
@@ -180,12 +236,21 @@ failure is exit 2 — never a fallback to a guessed value:
     `bin/card-token-lint.py`. Hoisting them into a shared helper is the right fix and is filed
     rather than done: it edits `card-token-lint.py`, which this change's scope excludes.
 
-THE REMAINING LITERALS ARE NAMED RATHER THAN HIDDEN. `release/`, `docs/CHANGELOG.md`, the
-`## [Unreleased]` heading, the `- **card#NNNN**` bullet form and the 1 MiB cliff are written out
-below because no machine-readable authority in this repo states any of them; each is a prose
-rule (`docs/VERSIONING.md § Release flow` steps 2 and 4 and § The core rules rule 3;
-`docs/PLAN.md § 4` for the last three) and each is cited at its definition. Where a literal is
-unavoidable the honest thing is to say which doc owns it, not to pretend it was derived.
+THE REMAINING LITERALS ARE NAMED RATHER THAN HIDDEN. `release/`, `VERSION`, `docs/CHANGELOG.md`,
+the `## [Unreleased]` heading, the `- **card#NNNN**` bullet form, the INTEGRATION BRANCH and the
+1 MiB cliff are written out below because no machine-readable authority in this repo states any
+of them; each is a prose rule (`docs/VERSIONING.md § Release flow` steps 2 and 4, § The core
+rules rules 1 and 3, and § Branch model; `docs/PLAN.md § 4` for the bullet form and the cliff)
+and each is cited at its definition. Where a literal is unavoidable the honest thing is to say
+which doc owns it, not to pretend it was derived.
+⚠ THE INTEGRATION BRANCH WAS LOOKED FOR AND IS NOT THERE, which is why R6's is a literal while
+the RELEASE branch next to it is derived. `.release-pr.json`'s `_note` explicitly refuses a
+`dev_branch` key ("nothing here reads them today … a second copy would be free to drift"), and
+`branches: [dev, main]` appears across this repo's workflow triggers as an ALLOWLIST of two —
+which states that pushes to either are built, not which one is the integration branch. Deriving
+it by eliminating the release branch from those lists would be clever, would depend on every one
+of those files keeping the same shape, and would answer a question none of them asks. The named
+literal below, with its owning prose section cited, is the honest form.
 
 SEMVER: TWO DIFFERENT QUESTIONS, DELIBERATELY ANSWERED BY TWO DIFFERENT THINGS. "Is this an
 accepted spelling?" is the repo's ruling and comes from the extracted regex. "Which of these
@@ -202,17 +267,26 @@ is not called `dev`.
 
 USAGE
     release-pr-guard.py --base-ref REF --head-ref REF [--title TEXT] [--repo DIR]
-                        [--head-rev REV] [--base-rev REV]
-`--base-ref`/`--head-ref` are the PR's branch NAMES and `--title` its title (all from the
-event). `--head-rev` (default `HEAD`) and `--base-rev` (default `origin/<base ref>`) are the git
-revisions whose CONTENT is measured; both are read with `git show`, so this never depends on a
-working tree matching the refs it claims to judge.
+                        [--head-rev REV] [--base-rev REV] [--integration-rev REV]
+                        [--body TEXT | --body-file PATH]
+`--base-ref`/`--head-ref` are the PR's branch NAMES, `--title` its title and `--body` (or
+`--body-file`, `-` for stdin) its body — all from the event. `--head-rev` (default `HEAD`),
+`--base-rev` (default `origin/<base ref>`) and `--integration-rev` (default
+`origin/<integration branch>`, R6's subject) are the git revisions whose CONTENT is measured;
+all are read with `git show` / `git diff`, so this never depends on a working tree matching the
+refs it claims to judge.
+⚠ THE BODY IS PASSED, NOT READ FROM THE EVENT, and an ABSENT `--body`/`--body-file` is not the
+same state as an EMPTY body. A PR with no body is a real state and means "no declaration"
+(R6 reds if there is residue); a run that was never TOLD the body cannot see a declaration that
+may well be there, so R6 exits 2 rather than refusing a PR for a line it was not shown.
 
 Exit 0 = clean. The release-shape rules may have been NOT APPLICABLE; R4 and R5 were judged.
 Exit 1 = this PR breaks a rule — the author fixes the PR.
-Exit 2 = the guard COULD NOT MEASURE — missing `VERSION`, unreadable base rev, unparseable
-         semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading to scope R4 to, a
-         shallow clone R5 cannot measure growth in, or an authority that moved. Someone fixes
+Exit 2 = the guard COULD NOT MEASURE — missing `VERSION`, unreadable base rev, an unresolvable
+         integration branch (R6), a run not given the PR body while R6 has residue to declare,
+         unparseable semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading to scope
+         R4 or R6b to, a shallow clone R5 cannot measure growth in, or an authority that moved.
+         Someone fixes
          the repo or this guard. The split matters: a 1 and a 2 send different people to
          different files, and collapsing them would send authors to rename branches that were
          fine.
@@ -245,8 +319,20 @@ CARD_GRAMMAR_CONST = "CARD_RE"
 # § The release-PR head hazard ("always a throwaway `release/v<version>` branch"). Only the
 # PREFIX is a literal; the version part is composed from the extracted tag format.
 RELEASE_BRANCH_PREFIX = "release/"
+# `docs/VERSIONING.md § The core rules` rule 1 (`VERSION` is the single source of truth for the
+# repo's version) — the file release flow step 3 bumps.
+VERSION_PATH = "VERSION"
 # `docs/VERSIONING.md § The core rules` rule 3 ("The changelog lives at `docs/CHANGELOG.md`").
 CHANGELOG_PATH = "docs/CHANGELOG.md"
+# `docs/VERSIONING.md § Branch model`: "Two long-lived branches: `main` (releases only; the repo
+# default) and `dev` (integration). All feature work branches off `dev` and PRs back into `dev`."
+# R6's subject. It is a LITERAL and the release branch beside it is DERIVED — see AUTHORITY
+# SOURCING for what was looked for and why nothing in this repo states this one machine-readably.
+INTEGRATION_BRANCH = "dev"
+# The only two paths a release PR is EXPECTED to carry differently from the integration branch:
+# release flow steps 3 and 4 ARE these two edits and nothing else. R6a's residue is every other
+# differing path.
+RELEASE_ARTIFACT_PATHS = (VERSION_PATH, CHANGELOG_PATH)
 # `docs/PLAN.md § 4` ("a line-initial `- **card#NNNN** — …` bullet under `## [Unreleased]`"),
 # restated in `docs/CHANGELOG.md`'s own preamble. Both halves are literals: the heading R4 is
 # scoped to, and the bullet form. "Bold-anywhere is not accepted — line-initial is the rule."
@@ -300,6 +386,13 @@ _CARD_AUTHORITY_LINE_RE = re.compile(r"^" + CARD_GRAMMAR_CONST + r"='([^']*)'\s*
 # a BRANCH may spell the same card `card-8174` (that spelling is hostile in a heading and the
 # doc's own example uses `#`).
 _BULLET_RE = re.compile(r"^- \*\*card#([0-9]+)\*\*", re.M)
+
+# R6's declaration, in the PR body. LINE-INITIAL, for the reason `docs/PLAN.md § 4` gives about
+# changelog bullets: a prose mention must not discharge an obligation, and a body quoting this
+# rule's own error message should not read as a declaration. Everything after the keyword is one
+# capture — the token list and the reason are split on the em dash below.
+EXCLUDES_KEYWORD = "Release-excludes:"
+_EXCLUDES_RE = re.compile(r"^" + re.escape(EXCLUDES_KEYWORD) + r"[ \t]*(.*)$", re.M)
 
 # A version's structural parts, for ORDERING only (semver.org § 11). Validity is the extracted
 # authority's ruling, not this pattern's — this runs only after that check has passed.
@@ -426,13 +519,17 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
                            "`git show` and cannot measure anything without it.") from None
 
 
-def resolve_rev(repo: Path, rev: str, role: str) -> str:
+def resolve_rev(repo: Path, rev: str, role: str, hint: str = "") -> str:
+    """`hint` appends what the CALLER knows about why this particular ref might be missing —
+    one primitive rather than a near-copy per role, so every unresolvable ref fails the same
+    way and only the diagnosis differs."""
     r = _git(repo, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")
     if r.returncode != 0 or not r.stdout.strip():
         raise Unmeasurable(
             f"cannot resolve the {role} revision {rev!r} in {repo} — a shallow clone, a ref "
             f"that was never fetched, or a typo. The comparison this guard exists to make is "
-            f"unmeasurable without it, and an unmeasurable comparison is not a pass.")
+            f"unmeasurable without it, and an unmeasurable comparison is not a pass."
+            + (f" {hint}" if hint else ""))
     return r.stdout.strip()
 
 
@@ -471,7 +568,7 @@ def decode_changelog(raw: bytes, where: str) -> str:
 
 def read_version(repo: Path, rev: str, role: str, version_re: re.Pattern) -> str:
     """`rev` is a RESOLVED commit sha (see `resolve_rev`), which is why messages abbreviate it."""
-    raw = read_at(repo, rev, "VERSION")
+    raw = read_at(repo, rev, VERSION_PATH)
     if raw is None:
         raise Unmeasurable(
             f"VERSION does not exist at the {role} revision ({rev[:7]}). It is the single source "
@@ -651,6 +748,121 @@ def check_changelog(text: str, version: str) -> list[str]:
             f"`[Unreleased]` heading does not count — that is the state this step ends."]
 
 
+# --- R6: the release head is CURRENT with the integration branch ------------------------------
+
+def changed_paths(repo: Path, head_rev: str, other_rev: str) -> list[str]:
+    """Every path whose CONTENT differs between two revisions — a TREE comparison.
+
+    ⛔ Deliberately not `git merge-base --is-ancestor`, and the reason is measured rather than
+    stylistic: this repo's v0.5.0 back-merge was squashed, so the release line is not an
+    ancestor of `dev` while the two trees are identical (module docstring, ⛔ R6 IS NOT AN
+    ANCESTRY TEST). A name-diff gives a squashed history the same verdict as a merged one.
+    """
+    r = _git(repo, "diff", "--name-only", head_rev, other_rev)
+    if r.returncode != 0:
+        raise Unmeasurable(
+            f"`git diff --name-only {head_rev[:7]} {other_rev[:7]}` failed in {repo} "
+            f"({r.stderr.strip()}) — R6 compares the release head's CONTENT against "
+            f"`{INTEGRATION_BRANCH}`'s and has no second way to ask.")
+    return [ln for ln in r.stdout.splitlines() if ln.strip()]
+
+
+def currency_residue(paths: list[str], head_changelog: str, integration_region: str) -> list[str]:
+    """R6's two measurements, composed into ONE set of residue tokens.
+
+    R6a — CONTENT. Every differing path, minus the release's own two edits. The name-diff is
+    SYMMETRIC on purpose and no direction test is applied: the release branch is cut FROM the
+    integration branch, so a non-artifact difference is either `dev` moving after the cut (the
+    harm card#9707 measured) or the release branch carrying a feature edit of its own — which
+    is also not a release, and also worth the red.
+
+    R6b — CARDS. R6a excuses `docs/CHANGELOG.md`, and that file is exactly where the named harm
+    hides: "four fewer cards than `dev` held" IS a changelog difference and nothing else, so
+    without R6b the one path the excuse covers would be the one path the defect travels on. So
+    every card bulleted under the integration branch's `## [Unreleased]` must be bulleted
+    SOMEWHERE in the head's changelog. Not scoped to `[Unreleased]` at the head, deliberately:
+    release flow step 4 RETITLES that section, so a correct release carries those very bullets
+    under the new version's heading and a scoped rule would red every correctly-executed one.
+    """
+    residue = sorted(p for p in paths if p not in RELEASE_ARTIFACT_PATHS)
+    dropped = bulleted_card_ids(integration_region) - bulleted_card_ids(head_changelog)
+    return residue + [f"card#{c}" for c in sorted(dropped, key=int)]
+
+
+def parse_release_excludes(body: str | None) -> tuple[set[str] | None, list[str], list[str]]:
+    """(declared tokens, the reasons given, format problems) from the PR body.
+
+    `None` for the tokens means the body carries NO declaration — which is a different state
+    from an empty one and is what makes "residue with nothing declared" a rule failure rather
+    than a malformed line.
+
+    Backticks are stripped from each token because a PR body is markdown and ``server/x.php``
+    is the same path as server/x.php. That is normalising ONE token's markup, not loosening the
+    rule: the equality below is over the SET, and it stays exact.
+    """
+    specs = _EXCLUDES_RE.findall(body or "")
+    if not specs:
+        return None, [], []
+    tokens: set[str] = set()
+    reasons: list[str] = []
+    problems: list[str] = []
+    for spec in specs:
+        listed, sep, reason = spec.partition("—")
+        if not sep or not reason.strip():
+            problems.append(
+                f"R6 declaration: `{EXCLUDES_KEYWORD}{spec}` gives no reason. The form is "
+                f"`{EXCLUDES_KEYWORD} <paths and/or card#NNNN tokens> — <why>`, with an em "
+                f"dash: a release that leaves work out says WHY, and a bare list is the blanket "
+                f"acknowledgement this hatch exists in order not to be.")
+            continue
+        reasons.append(reason.strip())
+        for tok in re.split(r"[,\s]+", listed.strip()):
+            tok = tok.strip("`")
+            if tok:
+                tokens.add(tok)
+    return tokens, reasons, problems
+
+
+def check_release_currency(residue: list[str], declared: set[str] | None, reasons: list[str],
+                           head_sha: str, integration_sha: str) -> tuple[list[str], list[str]]:
+    """R6 — residue empty passes; residue declared EXACTLY passes; anything else fails."""
+    if not residue:
+        return [], []
+    exact_line = (f"{EXCLUDES_KEYWORD} {' '.join(residue)} — <why this release ships without "
+                  f"them>")
+    if declared is None:
+        return [f"R6 currency: the release head ({head_sha[:7]}) is not current with "
+                f"`{INTEGRATION_BRANCH}` ({integration_sha[:7]}), and the PR body declares no "
+                f"exclusion. A release is `{INTEGRATION_BRANCH}`'s content plus {VERSION_PATH} "
+                f"and {CHANGELOG_PATH}; these differ and are neither: "
+                f"{', '.join(residue)}. Either bring the release branch up to date with "
+                f"`{INTEGRATION_BRANCH}`, or declare the exclusion by putting this line in the "
+                f"PR body:\n    {exact_line}\n"
+                f"Measured on card#9707: PR #176 sat open for a day at a head four merges "
+                f"behind `{INTEGRATION_BRANCH}` with every check green, and would have shipped "
+                f"a release omitting four cards — the tag, the changelog and the green wall all "
+                f"describe the BRANCH, and the harm is the gap between the branch and "
+                f"`{INTEGRATION_BRANCH}`."], []
+    missing = sorted(set(residue) - declared)
+    surplus = sorted(declared - set(residue))
+    if not missing and not surplus:
+        return [], [f"R6 declared: this release deliberately excludes {', '.join(residue)} — "
+                    f"{'; '.join(reasons)}. The declaration EQUALS what R6 measured, so R6 "
+                    f"passes. It does not judge the reason: leaving work out of a release is "
+                    f"the author's call, and what this rule removes is the silence, not the "
+                    f"choice."]
+    parts = []
+    if missing:
+        parts.append(f"MEASURED but not declared: {', '.join(missing)}")
+    if surplus:
+        parts.append(f"DECLARED but not measured: {', '.join(surplus)}")
+    return [f"R6 currency: the PR body's `{EXCLUDES_KEYWORD}` line does not match what this PR "
+            f"actually leaves out. {'; '.join(parts)}. The declaration must EQUAL the residue: "
+            f"a hatch satisfied by any non-empty acknowledgement would be a checkbox, and a "
+            f"declaration written for yesterday's exclusion must not silently cover drift that "
+            f"arrived after it. The line that matches this PR is:\n    {exact_line}"], []
+
+
 # --- R4: the card's changelog bullet ---------------------------------------------------------
 
 def cards_named(accept_re: re.Pattern, surfaces: list[tuple[str, str]]) -> dict[str, list[str]]:
@@ -809,11 +1021,37 @@ def _strip_ref(ref: str) -> str:
     return ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
 
 
+def read_body(args) -> str | None:
+    """The PR body, or None when this run was not given one at all.
+
+    The `--x` / `--x-file` pairing is the convention this repo already uses (`bin/pr-body-lint.py
+    --body-file=-`), and the FILE form is the one to prefer from a workflow: a PR body is
+    attacker-controlled free text on a fork PR, so it reaches the process through `env:` or a
+    file, never through `${{ }}` interpolated into a `run:` block.
+    """
+    if args.body is not None and args.body_file is not None:
+        raise Unmeasurable(
+            "both --body and --body-file were given. They are two spellings of one input and "
+            "this guard will not pick between them — a run that silently preferred one would "
+            "judge R6's declaration against a body nobody meant.")
+    if args.body_file is not None:
+        if args.body_file == "-":
+            return sys.stdin.read()
+        try:
+            return Path(args.body_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise Unmeasurable(f"--body-file {args.body_file!r} is unreadable ({exc}). R6's "
+                               f"declaration lives in the PR body; an unread body is not an "
+                               f"empty one.") from exc
+    return args.body
+
+
 def run(args) -> int:
     repo = Path(args.repo).resolve()
     base_ref = _strip_ref(args.base_ref)
     head_ref = _strip_ref(args.head_ref)
     title = args.title or ""
+    body = read_body(args)
 
     release_branch = load_release_branch(repo)
     is_release_pr = base_ref == release_branch
@@ -873,6 +1111,70 @@ def run(args) -> int:
         print(f"  R1-R3 NOT APPLICABLE — this PR targets {base_ref!r}, and the release branch "
               f"is {release_branch!r} (from `on.push.branches` in {TAG_WORKFLOW}). The "
               f"release-SHAPE rules have nothing to say about a feature PR.")
+
+    # --- R6: current with the integration branch, or declaring what it leaves out ------------
+    if is_release_pr:
+        applicable.append("R6")
+        if release_branch == INTEGRATION_BRANCH:
+            raise Unmeasurable(
+                f"the release branch derived from {TAG_WORKFLOW} is {release_branch!r}, which "
+                f"is also the integration branch this guard was taught ({CANON_DOC} § Branch "
+                f"model). R6 would then be comparing a release PR against its own base, which "
+                f"asserts nothing. One of the two authorities moved — fix the branch model or "
+                f"teach this guard the new one; do not let R6 pass vacuously.")
+        integration_rev = args.integration_rev or f"origin/{INTEGRATION_BRANCH}"
+        integration_sha = resolve_rev(
+            repo, integration_rev, f"integration branch (`{INTEGRATION_BRANCH}` tip)",
+            hint=(f"On a release PR the BASE is {release_branch!r}, so the base fetch does not "
+                  f"bring `{INTEGRATION_BRANCH}` — the workflow fetches it in its own step "
+                  f"(`.github/workflows/release-pr-guard.yml`, 'Fetch the integration branch "
+                  f"tip'). R6 exits 2 rather than passing: a release gate that cannot see the "
+                  f"branch it is comparing against must red."))
+        integration_raw = read_bytes_at(repo, integration_sha, CHANGELOG_PATH)
+        if integration_raw is None:
+            raise Unmeasurable(
+                f"{CHANGELOG_PATH} does not exist at the `{INTEGRATION_BRANCH}` tip "
+                f"({integration_sha[:7]}), so R6b cannot ask which cards that branch holds. "
+                f"That is a broken integration branch, not a release this guard can certify.")
+        integration_changelog = decode_changelog(
+            integration_raw, f"`{INTEGRATION_BRANCH}` tip ({integration_sha[:7]})")
+        integration_region = unreleased_region(integration_changelog)
+        if integration_region is None:
+            raise Unmeasurable(
+                f"{CHANGELOG_PATH} at the `{INTEGRATION_BRANCH}` tip ({integration_sha[:7]}) "
+                f"has no `{UNRELEASED_HEADING}` heading. R6b asks which cards that section "
+                f"holds, so with no such heading the rule cannot be applied at all — which is a "
+                f"broken changelog on the integration branch, not a release that satisfies it "
+                f"({CHANGELOG_CANON_DOC}).")
+        residue = currency_residue(changed_paths(repo, head_sha, integration_sha),
+                                   changelog, integration_region)
+        residue_desc = (", ".join(residue) if residue
+                        else "none — the head carries what that branch carries")
+        print(f"  measured:     head {head_sha[:7]} vs `{INTEGRATION_BRANCH}` "
+              f"{integration_sha[:7]} ({integration_rev}); residue outside "
+              f"{', '.join(RELEASE_ARTIFACT_PATHS)}: {residue_desc}")
+        if residue and body is None:
+            raise Unmeasurable(
+                f"R6 measured residue ({', '.join(residue)}) but this run was never given the "
+                f"PR body (`--body`/`--body-file`), so it cannot see a `{EXCLUDES_KEYWORD}` "
+                f"declaration that may well be there. Refusing the PR for a line it was not "
+                f"shown would be a false red; passing it would be a false clean. Pass the "
+                f"body — the workflow does, through `env:`.")
+        declared, reasons, fmt_problems = parse_release_excludes(body)
+        if fmt_problems:
+            problems += fmt_problems
+            print(f"  R6 equality NOT evaluated — the `{EXCLUDES_KEYWORD}` line in the body "
+                  f"cannot be read, and judging a half-parsed declaration would report a "
+                  f"mismatch this guard caused. Fix the line; this gate re-runs on `edited`.")
+        else:
+            r6_problems, r6_notes = check_release_currency(residue, declared, reasons,
+                                                          head_sha, integration_sha)
+            problems += r6_problems
+            notes += r6_notes
+    else:
+        print(f"  R6 NOT APPLICABLE — this PR targets {base_ref!r} rather than the release "
+              f"branch {release_branch!r}, and 'is this current with `{INTEGRATION_BRANCH}`?' "
+              f"is a question about a release, not about a feature PR.")
 
     # --- R4: the card's changelog bullet, off the release path only ---------------------------
     # Keyed on the BASE REF exactly as `release-consistency.yml`'s back-merge exemption is: on
@@ -953,18 +1255,20 @@ def run(args) -> int:
           f"integration branch survived only because a ruleset backstop that had never been "
           f"exercised happened to hold — and a sweep the same day found six cards whose work "
           f"had merged with no changelog entry at all.")
-    print(f"The rules this enforces are {CANON_DOC} § Release flow steps 2, 3, 4 and 7 (R1-R3) "
-          f"and {CHANGELOG_CANON_DOC} (R4-R5). Fix the PR and push; this gate re-runs on every "
-          f"push, and on a title or base change.")
+    print(f"The rules this enforces are {CANON_DOC} § Release flow steps 2, 3, 4 and 7 (R1-R3), "
+          f"§ Release flow step 2's 'off `{INTEGRATION_BRANCH}`' read as a statement about the "
+          f"release's CONTENT (R6), and {CHANGELOG_CANON_DOC} (R4-R5). Fix the PR and push; "
+          f"this gate re-runs on every push, and on a title, body or base change.")
     return 1
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Refuse a PR into the release branch that is not shaped like a release "
-                    "(head branch, VERSION bump, changelog section), and refuse any PR that "
-                    "names a card without a changelog bullet or that pushes the changelog "
-                    "past its size threshold.")
+                    "(head branch, VERSION bump, changelog section) or that ships less than the "
+                    "integration branch holds without declaring what it leaves out, and refuse "
+                    "any PR that names a card without a changelog bullet or that pushes the "
+                    "changelog past its size threshold.")
     ap.add_argument("--base-ref", required=True, help="the PR's base branch name")
     ap.add_argument("--head-ref", required=True, help="the PR's head branch name")
     ap.add_argument("--title", default="",
@@ -975,6 +1279,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="git revision whose content is the head's (default: HEAD)")
     ap.add_argument("--base-rev", default=None,
                     help="git revision for the base branch tip (default: origin/<base ref>)")
+    ap.add_argument("--integration-rev", default=None,
+                    help=f"git revision for the integration branch tip, R6's subject "
+                         f"(default: origin/{INTEGRATION_BRANCH})")
+    ap.add_argument("--body", default=None,
+                    help="the PR body (R6's declaration surface; absent is not the same as "
+                         "empty — see the module docstring's USAGE)")
+    ap.add_argument("--body-file", default=None,
+                    help="read the PR body from this file, or from stdin with `-`")
     args = ap.parse_args(argv)
     try:
         return run(args)
