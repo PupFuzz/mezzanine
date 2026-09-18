@@ -782,10 +782,9 @@ EXCLUDED
 # ── the one home for what a green does NOT establish ───────────────────────────────────────────
 # Printed on every run, green or red, because the log of the run being trusted is the surface a
 # maintainer actually reads. Every other surface — this script's own header, the workflow header,
-# its changelog entry (card#9637), the PR body — points HERE rather than keeping a copy; four copies
-# of this list
-# existed and all four were incomplete, which is the drift this file refuses to accept in its path
-# table and had no business accepting in its own claim.
+# its changelog entry (card#9637), the PR body — points HERE rather than keeping a copy; four
+# copies of this list existed and all four were incomplete, which is the drift this file refuses to
+# accept in its path table and had no business accepting in its own claim.
 cat <<'LIMITS'
 
   WHAT A GREEN HERE PROVES, AND WHAT IT DOES NOT — the one home for this list (card#9637):

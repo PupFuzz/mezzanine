@@ -47,8 +47,8 @@ specific to Mezzanine and has no counterpart there.
    the latest released section; **every released section older than the latest lives at
    [`docs/changelog/`](changelog/)`v<version>.md`, one file per tag**, moved there verbatim by
    [step 13](#release-flow). The tag is the archive's unit precisely because this rule makes the
-   tag the unit that owes the entry. **This policy owns the
-   obligation and not the format**: roundtable #344 settled headings, ordering and per-PR
+   tag the unit that owes the entry. **This policy owns the obligation and not the format**:
+   roundtable #344 settled headings, ordering and per-PR
    versus at-release authorship, and `docs/PLAN.md § 4` is where that answer was adopted,
    including the card-level entry rule and the size gate this project added to it. Read § 4
    before writing an entry; it is deliberately not restated here.
@@ -439,9 +439,8 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > work is legitimate and shipping without noticing is not**. `docs/changelog/` is residue to R6a
 > like any other path — `RELEASE_ARTIFACT_PATHS` is `VERSION` and `docs/CHANGELOG.md` and nothing
 > else — which is why step 13 lands its move on `dev` first rather than riding the release
-> branch. The rule, the escape hatch and the
-> reason it is a tree comparison rather than an ancestry test are the guard docstring's; they
-> are not restated here. What this document adds is the measurement that bought it: PR #176
+> branch. The rule, the escape hatch and the reason it is a tree comparison rather than an
+> ancestry test are the guard docstring's; they are not restated here. What this document adds is the measurement that bought it: PR #176
 > (v0.5.0) sat open for roughly a day at a head four merges behind `dev`, every check green,
 > and merging it would have shipped a release omitting four cards.
 >
@@ -454,7 +453,7 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). **Step 13's omission is
 > caught only by R5, on some later PR by some other author** — the changelog grows past the
 > threshold and the red lands on whoever happens to be pushing, not on the release cutter who
-> skipped the step. Moving that red onto the release PR is filed as **R7** ("the head's
+> skipped the step. Moving that red onto the release PR is filed as **R7** on card#9814 ("the head's
 > `docs/CHANGELOG.md` carries at most TWO released sections", release path only); it changes what
 > CI refuses on a release PR, so it is ask-first and is not built. Read the guard's green as
 > covering exactly the steps named above and nothing else. **Step 11's back-merge in particular

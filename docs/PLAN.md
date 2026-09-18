@@ -432,7 +432,8 @@ rule violations anyone could have committed at the time.
   **released sections being immutable**, which this repo states here for the first time: a
   released section is as fixed as the tag that carries it, and editing one post hoc is the single
   way to push an archive file at a cliff nothing is watching. That residual is left to review on
-  purpose; a mechanical backstop (`find docs/changelog -size +1000k`) is filed, not built.
+  purpose; a mechanical backstop (`find docs/changelog -size +1000k`) is recorded on card#9814
+  with R7, not built.
   ⭐ **Enumerate the changelog's readers by derivation, never from a remembered directory list:**
   `grep -rn -i changelog bin tools .github docs CLAUDE.md README.md fleet-reporter resources
   server --exclude-dir=vendor | grep -v '^docs/CHANGELOG.md:'`. The `-i` is load-bearing — the

@@ -167,9 +167,9 @@ has "control: the reader family is derived too"     "reader family derived" "$OU
 has "control: says every line it SEES was matched"  "SEES as a possible read was matched by it" "$OUT"
 # The claim about what a green does NOT establish has ONE home — the block the check prints — and
 # three in-repo surfaces (its own header, the workflow header, its changelog entry for card#9637)
-# point at it by name
-# rather than keeping a copy. Deleting the block would leave those three pointing at nothing, which
-# is how the four copies that preceded it all went stale; this is the assertion that reds instead.
+# point at it by name rather than keeping a copy. Deleting the block would leave those three
+# pointing at nothing, which is how the four copies that preceded it all went stale; this is the
+# assertion that reds instead.
 has "control: prints what a green does NOT prove"   "WHAT A GREEN HERE PROVES, AND WHAT IT DOES NOT" "$OUT"
 has "control: names the decision that left the gap" "card#9637" "$OUT"
 
