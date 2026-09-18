@@ -1279,6 +1279,18 @@ believed they had already done:
 - A second test asserts the `phpunit.xml` file itself: every pinned key has both an `<env force="true">`
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
+- **That test's own population is asserted too, and is not a hand-written list it is trusted to keep
+  current** (card#9742, taking the shape kanban-solo published on rt#506 after hitting it in their copy
+  of the same guard). It iterates a constant, so without this leg it reported on whatever subset that
+  constant happened to name: a pin added to `phpunit.xml` and not to the constant was never
+  visited, and the suite stayed green while the NEWEST pin — the one most likely to be wrong — was the
+  one it could silently omit. The key set read from the file must therefore equal the guarded set
+  **exactly, in both directions**: a key the file pins and the test does not name reds as `UNGUARDED`,
+  and a key the test names and the file no longer pins reds as `GUARDED BUT ABSENT`. A key claimed by
+  EITHER half — a forced `<env>` or a `<server>` — is in the file's set, because a half-written pin is
+  the divergence the pairing test above exists to catch and must be judged rather than fall out of the
+  set. The unforced `<env>` entries (`DB_CONNECTION` and the defaults above it) claim nothing and are
+  not pins.
 - `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
   comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
   configuration anywhere this application runs, so nothing selects a backend any more
@@ -5055,7 +5067,8 @@ and the gate on trusting the derived signal at all.*
   `config('database.redis.cache.database')` resolve to the pinned values and
   `DB::connection()->getDatabaseName()` resolves to `mezzanine_test`; the connection's resolved
   `time_zone` is `+00:00`; every isolation-critical key has both an `<env force="true">` and a matching
-  `<server>` entry with equal values; `DB_CONNECTION` is declared `mysql` and not forced.
+  `<server>` entry with equal values; the key set the shape test guards is exactly the key set
+  `phpunit.xml` declares; `DB_CONNECTION` is declared `mysql` and not forced.
 - **The hostile export is a GREEN, not a RED — corrected 2026-08-25 (card#7334; this row previously
   said the opposite).** `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **passes, and passing is
   the correct outcome**: with BOTH halves of each pin present the export is *defeated*, so the resolved
@@ -5089,6 +5102,14 @@ and the gate on trusting the derived signal at all.*
   silent-divergence mode (one line of a two-line pin edited, everything still reading correctly)
   **and the only lever that demonstrates the guard refusing** — deleting a half is what lets an export
   reach the resolved value at all.
+- **Fourth RED — the shape test's own population, and it is staged on a FIXTURE COPY of `phpunit.xml`,
+  never on the file itself** (card#9742). Staging it in the real file changes the isolation of the very
+  run that performs the control, so the copy is part of the method rather than caution. Add a further pin
+  — both halves, any name the test does not know — to a copy of `phpunit.xml`, point the test's read at
+  the copy, and leave its constant untouched → it reds naming that key `UNGUARDED`. Delete a pinned key
+  from the same copy while the constant still names it → it reds naming that key `GUARDED BUT ABSENT`.
+  Both directions, because a guard that reports on a set it does not define is the same defect whichever
+  way the sets have drifted.
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 
