@@ -45,6 +45,19 @@
 #   - the stream drain (phase B): a stream the previous release opened ended by SIGTERM, one opened after
 #     fleet.reload left alone — and the same run with the release's kill cut out, where it survives.
 #
+# ⛔ AND THE REFUSAL CONTRACT ITSELF, ASSERTED AT `run_refusal` RATHER THAN PER CASE (card#9646).
+# A refusal is three things together — exit 1, the `⛔ REFUSED — <cause>` banner, and the closing
+# `Nothing was changed. The previous release is still serving.` — and every one of them is met by a
+# banner-less DEATH on a command phase A ran without reading its status: under `set -Eeuo pipefail`
+# the script exits with that command's status, and git's exit 1 is the very code the exit table says
+# means "refused, nothing was touched". This suite asserted only the exit code, so it could not tell
+# the two apart. `run_refusal` now carries all three, which upgrades every case that uses it in one
+# edit rather than one case at a time — `grep -c 'run_refusal '` counts them. The sites where the
+# status was not being read (`--ref` with no value, A3, A4, A7's fetch) have cases of their own under
+# § card#9646, each with the mutant it catches named in the case, and the ASYMMETRIC ones marked ⭐:
+# a fetch fix that handles git's 1 and lets its 128 escape, and an A3 fix that matches `dubious
+# ownership` and defaults everything else back to "not a git checkout", each pass every case but one.
+#
 # RUN: bin/deploy.selftest.sh          (exit 0 = every case passed)
 
 set -uo pipefail
@@ -427,10 +440,28 @@ hasnt "control: a document root with no .user.ini is not warned about" "no docum
 eq  "control: --dry-run left HEAD where it was" "$V1" "$(git -C "$ROOT" rev-parse HEAD)"
 
 section "REFUSAL — the host is not in a deployable state"
+# ⛔ THE REFUSAL CONTRACT IS ASSERTED HERE, ONCE, FOR EVERY CASE THAT USES THIS (card#9646).
+# What `refuse` promises is three things together — exit 1, the `⛔ REFUSED — <cause>` banner, and
+# the closing `Nothing was changed. The previous release is still serving.` — and until this card
+# the suite asserted only the first of them. Measured at 7bca04a: `grep -c '⛔ REFUSED'` over this
+# file returned 0, and both `Nothing was changed` hits were non-positive (a comment, and a `hasnt`
+# for the in-window mutant). EVERY ONE of those three is satisfiable by a banner-less DEATH: any
+# command phase A runs without reading its status exits the script under `set -Eeuo pipefail` with
+# THAT command's status, and git's exit 1 — a ref of this checkout it could not read — is exactly
+# the status the exit table says MEANS "refused, nothing was touched". So a green here proved the
+# deploy stopped, and said nothing about whether the operator could tell WHY.
+#
+# ⚠ THE FIX IS AT THE CONTRACT, NOT AT THE CASES, and that is the point rather than a convenience:
+# `grep -c 'run_refusal '` counts the call sites this one edit upgrades, and re-deriving that count
+# is the only honest way to state it. It reds cases that were green for the wrong reason — that red
+# is the FINDING. Each is fixed by making the case assert the real contract; NEVER by weakening the
+# three assertions below, which is how this class would come straight back.
 run_refusal() { # run_refusal <label> <needle> <args…>
   local label="$1" needle="$2"; shift 2
   run "$@"
   eq  "$label: exit 1 (refused, nothing touched)" 1 "$RC"
+  has "$label: the ⛔ REFUSED banner, so exit 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
+  has "$label: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
   has "$label: says why" "$needle" "$OUT"
   unlogged "$label: never opened the window" "artisan down"
 }
