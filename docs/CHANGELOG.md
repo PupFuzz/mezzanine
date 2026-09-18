@@ -19,43 +19,36 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
-- **card#9767** — **a PR body missing `Built:` or `Coordinated in:` now reds, judged by the parser that
-  actually consumes them.** Both fields have no generator: they are added by hand, and regenerating a
-  body deletes them with nothing saying so. That is measured, not feared — `PupFuzz/mezzanine#176`
-  carried its hand-added attribution, a peer re-read that body AT THE API rather than resting on a
-  claim, and a later regeneration destroyed the line, so **a careful verification was made false by a
-  mechanism neither seat was watching**, which is worse than the original miss because the fleet then
-  believes the thing is fixed. `PupFuzz/mezzanine#180` carries no `Built:` line at all, and
-  `built-line.md` makes that line mandatory with no seat exempt and a missing one a defined plane-1
-  review finding — **so every regeneration silently mints a finding no author committed, on a PR that
-  is then reviewed against it.** **The new `pr-body-fields` job** in
-  `.github/workflows/card-token-lint.yml` (a second job in that file, not a twelfth workflow: same
-  family — PR metadata, no credential, no network, a vendored authority, and a verdict addressed to the
-  author while the fix is still free; separate jobs rather than steps because a ruleset matches the JOB
-  id, so a red names which gate failed) runs `bin/pr-body-fields.py` on every open PR, including on
-  `edited`, which is the only event a body change fires. ⛔ **PRESENCE ONLY — it never reads, prints or
-  judges a VALUE**, so no body text can reach its output and no naming convention can be pinned by it.
-  ⭐ **THERE IS NO LINE WINDOW, AND THAT IS THE WHOLE REASON IT GOES THROUGH `_audit_field`.** That
-  function is line-anchored over the WHOLE body, accepts both the bold and the plain spelling, and
-  reads outside the body's fences, so `#185`'s `Built:` at line 44 PASSES — a rule of the shape "it
-  must be near the top" would red a CORRECT body. `bin/pr-body-fields.selftest.py` runs in the job
-  before the verdict and carries a **meta-control that executes that wrong implementation**: a windowed
-  first-ten-lines pattern is run over the same line-44 body and required to RED it, because otherwise
-  the fixtures show the gate behaves without showing the obvious wrong gate would not. **The parser is
-  VENDORED, not retyped** (`bin/coord_audit_field.py`): a hosted runner has no plugin installed and the
-  upstream repository is private, so an import is impossible, and a third hand-written copy of that
-  grammar would have re-minted the defect `_audit_field` exists to fix — two hand-written regexes
-  strict in OPPOSITE directions that reported a COMPLIANT PR as ABSENT, on the surface a reviewer is
-  told to CITE rather than re-derive. Its body is pinned by `bin/vendor-pin-check.sh`, and two legs
-  reach past what that pin can see: the vendored fence-mask region is checked offline against the
-  `fragment-sha256` **upstream's own generator published for it**, and the selftest diffs the vendored
-  body against the live plugin on any machine where one resolves — printing NOT VERIFIED HERE by name
-  where none does, rather than passing quietly. ⚠ **A `FROM:` leg was in this card's scope and was
-  removed by operator directive on 2026-09-17**: a PR body is written for an installer to read,
-  protocol addressing lines do not belong in a PR description, and the producing agent is recorded
-  beside the model-attribution line in the trailer instead. The gate therefore neither requires a
-  `FROM:` line nor rejects one — rejecting it has not been ruled, and a gate that reds on something
-  unruled is worse than one that stays silent on it.
+- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and it
+  REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
+  install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
+  that records the source commit and plugin version, because the upstream repository is private and a
+  public runner cannot clone it. The new **`pr-body-lint` job** in
+  `.github/workflows/card-token-lint.yml` prints its whole verdict and **exits 0 whatever it finds**.
+  ⛔ **THE REPORT-ONLY WIRING IS THE DECISION, NOT AN UNFINISHED STAGING STEP.** Run over this
+  repository's recent merged bodies, most of them FAIL the standard — and **those reds are correct**:
+  the standard governs every PR body an agent writes and is ratified twice, and this repo is genuinely
+  non-compliant with it, principally because its house sections (`## What is in it`, `## What you must
+  do`, `## What you will see change`, `## Evidence`) are none of them in the standard's closed allowed
+  set. A gate that reds ordinary correct-looking work on its first day teaches the people it governs
+  to route around it, so this lane makes the findings visible without minting that habit. ⚠ **It is a
+  WINDOW, not a destination** — adopting the body shape, and then a dated flip to blocking, are
+  tracked on card#9767 and are the operator's calls; requiring the job as a ruleset context is
+  likewise the operator's, and **would not by itself make it block**, because the job exits 0. **The
+  lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
+  — `bin/pr-body-fields.py` and `bin/coord_audit_field.py`, a mezzanine-local two-field presence guard
+  built around `review-prep.py`'s `_audit_field`, are **deleted**. That function has MOVED upstream and
+  now lives inside this very linter, so the local pair was a copy of something that was no longer
+  where it had been copied from, and keeping it would have shipped a second divergent implementation
+  of a capability the framework already owns. Upstream's is a strict superset of it: the same two
+  presence rules, plus the installer-POV narration rules, plus `attribution-line` — the rule that
+  refuses the `FROM:` line the 2026-09-17 operator directive removed from PR bodies fleet-wide.
+  **BOTH VENDORED FILES ARE PINNED** in `bin/vendor-pin-check.sh`, whose `--selftest` control arm
+  needed the `#` provenance header to exist at all (it requires line 2 of a manifest file to be a
+  comment and upstream's line 2 is the docstring; a comment before a module's first string statement
+  does not displace `__doc__`). The vendored fixtures carry no manifest row and need none —
+  **upstream's own selftest pins each of them by sha256**, which checks the copy against the SOURCE
+  rather than against this repo's last declaration, and that selftest runs in the job.
 - **card#9754** — **the suite refuses by name unless it can READ `server/.env`, and `php-tests` runs it
   with no `.env` on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
   `.env.example` to `.env` before the only step that executes it, and `server/.env` is gitignored — so the

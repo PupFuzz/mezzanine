@@ -1,26 +1,33 @@
-# card-token-lint.yml — the PR-metadata gates: two jobs that read what a PR SAYS about itself and
-# red when a downstream consumer could not parse it. Both need no credential and no network, and
-# both judge through a VENDORED authority rather than a pattern retyped here.
+# card-token-lint.yml — the PR-metadata checks: two jobs that read what a PR SAYS about itself.
+# Both need no credential and no network, and both judge through a VENDORED authority rather than a
+# pattern retyped here. ⚠ THEY DIFFER ON THE ONE THING THAT MATTERS TO AN AUTHOR — one BLOCKS and
+# one only REPORTS — so the index below says which is which rather than leaving it to be inferred.
 #
 #   job `card-token-lint`  — the PR's TITLE and HEAD BRANCH, against the card-token grammar the
-#                            kanban correlators use. The file keeps its name from this job.
-#   job `pr-body-fields`   — the PR's BODY, against the parsers that consume its audit fields
-#                            (card#9767). Its own block below carries its reasoning.
+#                            kanban correlators use. It BLOCKS: it is a required context. The file
+#                            keeps its name from this job.
+#   job `pr-body-lint`     — the PR's BODY, against the FLEET's PR-body standard (card#9767). It
+#                            is REPORT-ONLY: it prints the verdict and exits 0, always. Its own
+#                            block below carries that reasoning and what would change it.
 #
 # ⚠ WHY ONE FILE AND NOT A TWELFTH WORKFLOW. These two are one primitive family: PR metadata, no
 # credential, no network, a vendored authority, and a verdict addressed to the author while the
 # fix is still free. They also share `bin/vendor-pin-check.sh`, which both jobs run FIRST because
-# both extract their grammar from a vendored file. A separate workflow would duplicate the trigger
-# block, the pin step and the reasoning, and put the same class of gate in two places to keep in
-# sync. ⛔ THEY ARE SEPARATE JOBS, NOT STEPS IN ONE. A ruleset matches the JOB id
-# (`docs/VERSIONING.md § Branch model`, measured 2026-08-30), so two jobs are two independently
-# requirable contexts and a red on one names which gate failed; folding the body check into the
-# card-token job would report a missing `Built:` line as "card-token-lint" failing.
+# both judge through a vendored file. A separate workflow would duplicate the trigger block, the
+# pin step and the reasoning, and put the same class of check in two places to keep in sync.
+# ⛔ THEY ARE SEPARATE JOBS, NOT STEPS IN ONE, AND THERE IS NO `needs:` BETWEEN THEM. A ruleset
+# matches the JOB id (`docs/VERSIONING.md § Branch model`, measured 2026-08-30), so two jobs are two
+# independently requirable contexts and a red on one names which check failed. Two jobs also means
+# the REPORT-ONLY one is structurally incapable of touching the BLOCKING one: with no `needs:` edge
+# they are separate runners with separate results, so nothing `pr-body-lint` does — a finding, a
+# crash, a timeout — can fail or skip `card-token-lint`. ⚠ This repository has ZERO `needs:` edges
+# in ANY workflow, and that is the property that makes the previous sentence true rather than
+# hopeful; a future edit that adds one here owes a re-read of this paragraph.
 #
 # ⚠ THE WORKFLOW'S DISPLAY NAME CHANGED WITH THAT SECOND JOB, AND THE JOB IDS DID NOT. Rulesets and
 # classic protection match the job id, never the display name — that is measured in
 # `docs/VERSIONING.md § Branch model`, which is also where the required set lives. So `card-token-lint`
-# is still the same required context it was; `pr-body-fields` is a NEW context that is NOT required
+# is still the same required context it was; `pr-body-lint` is a NEW context that is NOT required
 # until somebody edits the ruleset, and `docs/VERSIONING.md` records that state rather than this file.
 #
 # IT ALSO GUARDS EVERY VENDORED FILE'S DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, the first
@@ -55,9 +62,9 @@ on:
   pull_request:
     # `edited` is load-bearing: the title is half the linted surface, and it is edited after
     # the fact far more often than a branch is renamed. It is load-bearing TWICE OVER since
-    # `pr-body-fields` landed — `edited` is the ONLY event that fires on a body change, and the
-    # body is that job's entire subject. A PR opened with all three fields and later regenerated
-    # without them is exactly the defect card#9767 measured, and this is the event that catches it.
+    # `pr-body-lint` landed — `edited` is the ONLY event that fires on a body change, and the
+    # body is that job's entire subject. A PR opened with its audit fields and later regenerated
+    # without them is exactly the defect card#9767 measured, and this is the event that reports it.
     types: [opened, edited, reopened, synchronize]
     # NO `branches:` FILTER, DELIBERATELY. `branches:` and `types:` are INDEPENDENT filters
     # and the event runs only if BOTH match, so a base-branch allowlist would drop every
@@ -113,62 +120,104 @@ jobs:
         # theorised. The `=` form takes everything after the first `=` as the value.
         run: python3 bin/card-token-lint.py --branch="$HEAD_REF" --title="$PR_TITLE"
 
-  # ── pr-body-fields (card#9767) ───────────────────────────────────────────────────────────────
-  # WHAT IT DOES. Reads this PR's BODY and fails when it lacks a non-empty `Built:` or
-  # `Coordinated in:` line. PRESENCE ONLY — it never reads, prints or judges a VALUE.
-  # `bin/pr-body-fields.py`'s docstring is the contract.
+  # ── pr-body-lint (card#9767) ─────────────────────────────────────────────────────────────────
+  # WHAT IT DOES. Reads this PR's BODY, judges it against the fleet's PR-body standard with
+  # upstream's own linter, prints the whole verdict — and EXITS 0 WHATEVER IT FINDS. Nothing in
+  # this job can fail a pull request. `bin/pr-body-lint.py`'s docstring is the contract; the
+  # standard itself is `skills/release-pr/SKILL.md § PR body` in a coord install, and neither is
+  # restated here.
   #
-  # WHY IT EXISTS. Those fields have no generator: they are added by hand, and regenerating a body
-  # drops them, silently. `PupFuzz/mezzanine#176` carried its hand-added attribution, a peer
-  # re-read that body at the API to VERIFY it, and a later regeneration destroyed the line — so a
-  # careful verification was made false by a mechanism nobody was watching, which is worse than the
-  # original miss because the fleet then believes it is fixed. `PupFuzz/mezzanine#180` carries no
-  # `Built:` line at all, and `built-line.md` makes that line a defined plane-1 review finding —
-  # so a regeneration silently mints a finding no author committed.
+  # ⛔ REPORT-ONLY IS THE DECISION, NOT A STAGING STEP THAT SOMEBODY FORGOT TO FINISH. It was taken
+  # on a measurement, in the open, and that measurement is the reason: run over this repository's
+  # recent merged bodies, MOST OF THEM FAIL — and they still fail after the `FROM:` lines the
+  # 2026-09-17 operator directive already removes going forward. ⭐ THOSE REDS ARE CORRECT. The
+  # standard "governs EVERY PR body an agent writes" and is ratified twice; this repository is
+  # genuinely non-compliant with it, principally on structure — its house sections (`## What is in
+  # it`, `## What you must do`, `## What you will see change`, `## Evidence`) are none of them in
+  # the standard's closed `ALLOWED_H2` set, so almost every body reds on `heading-not-allowed`.
+  # ⚠ NO COUNT IS WRITTEN HERE — it would be false at the next merge and nothing re-checks it.
+  # `CLAUDE.md § PR bodies are judged against the fleet standard` carries the derivation to re-run.
+  # ⇒ A GATE WIRED TO BLOCK TODAY WOULD RED ORDINARY CORRECT-LOOKING WORK ON ITS FIRST DAY, which
+  # is how a gate teaches the people it governs to route around it. Report-only makes the findings
+  # visible without minting that habit. (card#9767 comments 5680, 5688.)
   #
-  # THE VERDICT IS COMPUTED BY THE FIELD'S OWN PARSER, VENDORED, NEVER BY A REGEX WRITTEN HERE.
-  # Both fields go through `review-prep.py`'s `_audit_field`, which is line-anchored over the WHOLE
-  # body with NO window, takes both the bold and the plain spelling, and reads outside fences — so
-  # `PupFuzz/mezzanine#185`'s `Built:` at line 44 PASSES. A windowed rule would red that correct
-  # body, and the selftest runs one over it and requires it to red.
+  # ⚠ AND REPORT-ONLY IS A WINDOW, NOT A DESTINATION — a permanently-red-and-ignored check is the
+  # same bypass training by a slower route. Two things close it, and neither is this file's to do:
+  # rewriting this repository's body shape to the ratified template, and then a DATED flip to
+  # blocking. Both are tracked on card#9767. ⛔ THE FLIP, AND REQUIRING THIS JOB AS A RULESET
+  # CONTEXT, ARE THE OPERATOR'S ACTS: each changes what the system rejects. Nothing here should be
+  # read as the body-shape question being handled because this lane exists.
   #
-  # ⚠ IT SAYS NOTHING ABOUT A `FROM:` LINE — neither requiring nor rejecting one. That leg was in
-  # the original scope and was removed by operator directive on 2026-09-17; `bin/pr-body-fields.py`
-  # owns the reasoning, including why the gate does not reject a stray one either.
-  pr-body-fields:
+  # ⚠ THIS PR'S OWN BODY REDS, AND THAT IS EXPECTED. #187 introduced this job and its body uses the
+  # house sections above. It is not "fixed" by renaming them: that rewrite is separate, undecided
+  # work with a different owner, and renaming four headings to satisfy a report-only lane would be
+  # the tail wagging the dog.
+  #
+  # THE VERDICT IS UPSTREAM'S, VENDORED, NEVER A RULE RETYPED HERE. `bin/pr-body-lint.py` is the
+  # framework's own linter — the same program every install's CI runs and the review path spawns —
+  # copied in byte-for-byte under a `#` provenance header, because the upstream repository is
+  # private and a public runner cannot clone it. It replaced a mezzanine-local two-field presence
+  # guard that had been written against a function which has since MOVED upstream; keeping the local
+  # one would have been a second divergent implementation of a capability the framework already
+  # owns, and upstream's is a strict superset of it (card#9767 comment 5664).
+  pr-body-lint:
     # ONLY A PR THAT CAN STILL BE JUDGED AS A MERGE CANDIDATE IS JUDGED, for the reason
     # `release-pr-guard.yml` measured on card#9732: `edited` keeps firing on a CLOSED PR for as
-    # long as anyone touches its body, and a gate verdict on a PR whose merge button is gone
-    # gates nothing. The three merged bodies card#9767 measured are also mid-correction on a
-    # deliberately sequenced schedule, and a permanent red on them would be noise against a
-    # decision that is being held on purpose.
+    # long as anyone touches its body, and a verdict on a PR whose merge button is gone is noise
+    # aimed at nobody who can act on it.
     if: github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      # BEFORE the guard, for the same reason the card-token job runs it: the guard's authority IS
-      # the vendored parsers, and an unpinned authority is an unchecked one.
+      # ⚠ THESE TWO STEPS *CAN* FAIL THIS JOB, AND THE REPORT-ONLY RULE ABOVE IS STILL TRUE.
+      # What they judge is the CHECKOUT — whether this repository's vendored copies are still the
+      # bytes their headers declare — and NEVER the pull request's BODY, which is the only surface
+      # report-only is a promise about. So no body, compliant or not, can make them red: the one
+      # thing that reds them is a PR that EDITS a vendored file, which is a defect in this repo and
+      # must be loud. It is not a verdict on anybody's prose.
       - name: Vendored-body pins (selftest reds on a body mutation, then the real check)
         run: |
           bash bin/vendor-pin-check.sh --selftest
           bash bin/vendor-pin-check.sh
 
-      # The RED fixtures run HERE, against THIS checkout — the same bytes about to judge somebody's
-      # PR. They include a META-CONTROL that executes the wrong implementation: a windowed
-      # first-ten-lines rule is run over the line-44 body this gate PASSES and is required to RED
-      # it. Without that, the fixtures show the gate behaves without showing that the obvious wrong
-      # gate would behave differently, which is the whole claim.
-      - name: Self-test (RED fixtures, the no-window arms, and the windowed-rule meta-control)
-        run: python3 bin/pr-body-fields.selftest.py
+      # Upstream's own controls, run HERE against THIS checkout — the same bytes about to judge
+      # somebody's PR. It is a red-then-green suite: every rule is driven RED by a deliberately
+      # broken copy of itself before its green is believed, because a lint that has stopped reding
+      # is byte-indistinguishable from a body that complies. It also re-asserts a pinned sha256 for
+      # each fixture, which is what pins `bin/pr-body-lint-fixtures/` (there is no manifest row for
+      # those — `bin/vendor-pin-check.sh`'s own header says why, and why this pin is the better one).
+      - name: Self-test (upstream's red-then-green controls for every rule)
+        run: python3 bin/pr-body-lint.selftest.py
 
-      # THE BODY GOES THROUGH `env:` AND THEN THROUGH A PIPE — never `${{ }}` inside `run:`, which
-      # is a script-injection sink, and a PR body is the most attacker-controlled text on the whole
-      # event. It is piped rather than passed as an argument: a body is multi-line free text, and
-      # `--opt=$VAR` would put it on argv where it appears in process listings and in any error
-      # argparse prints back. `--body-file=-` is the one input path the guard has.
-      - name: Judge this PR's body against the required audit fields
+      # THE BODY IS READ FROM `env:`, NEVER `${{ }}` INSIDE `run:`, which is a script-injection
+      # sink and a PR body is the most attacker-controlled text on the whole event. `--env` is the
+      # linter's own injection-safe route and is preferred to a pipe: it keeps the body off argv,
+      # where it would show in process listings and in anything argparse echoes back.
+      #
+      # ⛔ `exit 0` IS THE POINT OF THIS STEP AND IT IS UNCONDITIONAL. The rc is CAPTURED and NAMED
+      # rather than swallowed with `|| true`, so the log says which of the three outcomes happened —
+      # a silent `|| true` cannot tell a clean body from a lint that never ran, and a report-only
+      # check whose own failure is invisible reports nothing. rc 2 (the linter could not read a
+      # body) does not red either, because the contract this job makes is that it exits 0; it is
+      # printed loudly instead, and the pin + selftest steps above are what would catch a broken
+      # vendored copy.
+      - name: Report this PR's body against the fleet standard (REPORT-ONLY — never fails the job)
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: printf '%s' "$PR_BODY" | python3 bin/pr-body-fields.py --body-file=-
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          rc=0
+          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" || rc=$?
+          echo
+          case "$rc" in
+            0) echo "REPORT-ONLY · rc=0 — this body meets the standard." ;;
+            1) echo "REPORT-ONLY · rc=1 — the findings above are REAL and this job does NOT fail on"
+               echo "them. This repository has not yet adopted the fleet body shape; that work and"
+               echo "the dated flip to blocking are tracked on card#9767, not hidden by this job." ;;
+            *) echo "REPORT-ONLY · rc=$rc — the linter could not judge this body (usage/input"
+               echo "fault). No verdict was produced. This is a WIRING defect in this step, not a"
+               echo "finding about the body, and it still does not fail the job." ;;
+          esac
+          exit 0

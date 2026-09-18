@@ -228,7 +228,7 @@ correlates on).
 > required by neither layer on either branch. This is a dated reading like the one above it, not the
 > state: run the command.
 >
-> ⚠ **Re-read 2026-09-17 on adding the `pr-body-fields` JOB to `.github/workflows/card-token-lint.yml`
+> ⚠ **Re-read 2026-09-17 on adding a second JOB to `.github/workflows/card-token-lint.yml`
 > (card#9767), as the instruction above requires — a new job is a new CONTEXT, so it raises the same
 > question a new workflow file does.** Re-derived that afternoon with the command above, and **the
 > reading directly above it no longer describes either branch**, which is again the drift this
@@ -247,12 +247,16 @@ correlates on).
 >   genuinely did go away with it is `main`'s `strict: true`, which required a head to be up to date
 >   with its base; no ruleset replaced that, so it is a real consequence of the retirement rather
 >   than an oversight to reverse silently.
-> - **`pr-body-fields` is required by NEITHER layer**, so it runs on every open PR and a red there
->   does not block a merge today. It is safe to require: it carries no `branches:` filter, so it
->   produces a completed run on every PR that can still merge. Its `if:` condition skips only a
->   CLOSED PR, which is the form `release-pr-guard` already uses for the same reason — a PR that can
->   merge is open, so the deadlock the 2026-08-23 caveat describes cannot be reached through it.
->   Requiring it is a repository-settings act and therefore the operator's, not this repo's.
+> - **That job shipped as `pr-body-lint`, and it is required by NEITHER layer.** ⛔ **It is also
+>   REPORT-ONLY: it prints its verdict and exits 0, so it cannot report a failure to either layer
+>   even if one required it.** Two facts, not one — the second is the card#9767 decision, the first
+>   is this table's subject, and requiring the context would not by itself make the check block.
+>   It remains SAFE to require whenever it is made to block: it carries no `branches:` filter, so it
+>   produces a completed run on every PR that can still merge, and its `if:` condition skips only a
+>   CLOSED PR — the form `release-pr-guard` already uses for the same reason, so the deadlock the
+>   2026-08-23 caveat describes cannot be reached through it. ⇒ **BOTH acts are the operator's:**
+>   the dated flip from report-only to blocking, and requiring the context in the ruleset. Neither
+>   is this repo's to take, and each is tracked on card#9767.
 
 **Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
 2026-08-30 and both load-bearing on the release flow:
