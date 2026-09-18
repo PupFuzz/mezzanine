@@ -52,7 +52,17 @@ verbatim by release flow step 13 (`docs/VERSIONING.md`). R5 gates this file's si
   preserved shapes and reds only on a `.git/config` git cannot parse. `git status`'s status is read
   because the precondition is live and was measured to be: on a checkout whose `.git/index` is mode
   000, A3 exits 0 — it never opens the index — and A4 exits 128, and the empty result a failed
-  `status` hands back reads exactly like a clean tree.
+  `status` hands back reads exactly like a clean tree. **And a condition the runner cannot produce is
+  now named rather than skipped**: every fixture that manufactures a state — a file this user cannot
+  open, an object at mode 000, a checkout git treats as another user's — asserts that state before it
+  asserts anything about the refusal, and where the state depends on the runner's own git build or
+  configuration the suite prints `⚠ NOT VERIFIED HERE` with what that runner answered and what would
+  have to be true, repeats the count in its summary, and does not fail. That is not hypothetical: the
+  dubious-ownership fixture was green locally and red in CI, because `GIT_TEST_ASSUME_DIFFERENT_OWNER`
+  only forces git past the uid check and `ensure_valid_ownership` then consults `safe.directory` — so
+  a `safe.directory = *` in the system or global gitconfig turns its 128 back into a 0. The fixture is
+  hermetic against both now, and it reported the absence by name rather than certifying a refusal that
+  never happened.
 
 - **card#9813** — **every released section but the latest now lives in its own file, so the
   changelog the contents API returns stays a fraction of the truncation cliff.** `[0.2.0]`,

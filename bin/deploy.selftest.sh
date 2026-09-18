@@ -58,7 +58,19 @@
 # a fetch fix that handles git's 1 and lets its 128 escape, and an A3 fix that matches `dubious
 # ownership` and defaults everything else back to "not a git checkout", each pass every case but one.
 #
-# RUN: bin/deploy.selftest.sh          (exit 0 = every case passed)
+# ⛔ AND A CONDITION THIS RUNNER CANNOT PRODUCE IS NAMED, NEVER SKIPPED (card#9646). Several cases
+# here depend on a state the suite has to MANUFACTURE — a file this user cannot open, an object at
+# mode 000, a checkout git treats as another user's. Each asserts that state before it asserts
+# anything about the refusal, so a runner that cannot hold it (a ROOT one opens every mode; a git
+# that does not honour `GIT_TEST_ASSUME_DIFFERENT_OWNER`, or a `safe.directory` entry that covers
+# the fixture, defeats the ownership one) reports the ABSENCE rather than certifying a refusal that
+# never happened. Where the state is one this suite can still be sure it wants, that assertion is a
+# RED. Where it depends on the runner's own git build or configuration, `notverified` prints
+# ⚠ NOT VERIFIED HERE with what this runner answered and what would have to be true, the count is
+# repeated in the summary, and the suite does not fail: the case did not run, and saying which one
+# and why IS the result. ⛔ A silent skip is worse than either, because it is shaped like coverage.
+#
+# RUN: bin/deploy.selftest.sh          (exit 0 = every case passed; ⚠ lines name what did not run)
 
 set -uo pipefail
 
@@ -94,9 +106,20 @@ trap cleanup EXIT
 export CALL_LOG="$T/calls.log"; : > "$CALL_LOG"
 ME="$(/usr/bin/id -un)"
 
-fails=0; cases=0
+fails=0; cases=0; unverified=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
+# notverified <headline> <detail line…> — a CONDITION THIS RUNNER COULD NOT PRODUCE. It is not a
+# pass and not a failure: the case did not run, and saying so BY NAME is the result (card#9646).
+# ⛔ A SILENT SKIP IS WORSE THAN A RED, because it is shaped exactly like coverage. Every caller
+# names the knob or the state it needed, what this runner answered instead, and what would have to
+# be true to exercise it — so the next reader gets the measurement rather than a mystery. The
+# summary at the bottom repeats the count, so it cannot scroll past unseen.
+notverified() {
+  unverified=$((unverified + 1))
+  printf '  ⚠ NOT VERIFIED HERE  %s\n' "$1" >&2
+  local l; for l in "${@:2}"; do printf '                       %s\n' "$l" >&2; done
+}
 eq()  { cases=$((cases+1)); [ "$2" = "$3" ] && ok "$1" || bad "$1 — expected '$2', got '$3'"; }
 neq() { cases=$((cases+1)); [ "$2" != "$3" ] && ok "$1" || bad "$1 — expected anything but '$2'"; }
 has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
@@ -2020,28 +2043,61 @@ has  "corrupt .git/config: says outright it is not that, so the operator does no
   "IT IS NOT \"not a git checkout\"" "$OUT"
 
 # G1 — dubious ownership: the shape a prod checkout restored from backup, rsynced or chowned is in.
+#
+# ⛔ THE CONDITION IS PRODUCED HERMETICALLY, AND THAT IS A MEASUREMENT RATHER THAN A PRECAUTION.
+# A real ownership difference needs a second uid, which this suite does not have, so the condition
+# comes from git's own `GIT_TEST_ASSUME_DIFFERENT_OWNER`. That knob only forces git PAST the uid
+# check — `ensure_valid_ownership` then consults `safe.directory` — so a `safe.directory = *` in
+# the SYSTEM or the GLOBAL gitconfig turns the 128 straight back into a 0, and the case would then
+# be asserting a refusal against a run that succeeded. Measured, git 2.53.0, on a throwaway repo:
+#   knob alone, no such entry                                      → 128, `detected dubious ownership`
+#   knob + `safe.directory = *` in the SYSTEM config               → 0
+#   knob + `safe.directory = *` in the GLOBAL config               → 0
+#   knob + GIT_CONFIG_NOSYSTEM=1 + an EMPTY GIT_CONFIG_GLOBAL      → 128, even with both entries set
+#   no knob, same hermetic environment                             → 0   ← the control below
+# ⚠ THIS ARRIVED AS A CI RED WHERE THE CASE WAS GREEN LOCALLY (run 35370819477): the runner's git
+# answered 0. The fixture asserted its own condition, so what the log said was that THE CONDITION
+# WAS ABSENT — by name — rather than certifying a refusal that never happened. That is the check
+# doing its job, and the reason the gate below exists rather than the reason to delete it.
+: > "$T/empty.gitconfig"
+DUBIOUS_ENV=( GIT_TEST_ASSUME_DIFFERENT_OWNER=1 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$T/empty.gitconfig" )
 mkfix repo_dubious_ownership
-# ASSERTED, not assumed. Without the knob this git would answer 0 and the case would certify
-# nothing while looking like it had, so it reds HERE, by name (canon #9).
-eq "fixture: this git really refuses a differently-owned checkout at 128 (the test knob exists)" 128 \
-  "$(GIT_TEST_ASSUME_DIFFERENT_OWNER=1 LC_ALL=C gitc "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
-: > "$CALL_LOG"
-OUT="$(GIT_TEST_ASSUME_DIFFERENT_OWNER=1 MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-eq  "dubious ownership: exit 1" 1 "$RC"
-has "dubious ownership: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
-has "dubious ownership: the phase-A promise" \
-  "Nothing was changed. The previous release is still serving." "$OUT"
-has "dubious ownership: named as a repository git could not OPEN" \
-  "git could not open $ROOT as a repository" "$OUT"
-has "dubious ownership: git's own message reaches the operator" "detected dubious ownership" "$OUT"
-has "dubious ownership: with the repair git prints for it" "safe.directory" "$OUT"
-has "dubious ownership: and the other fix, which is the better one on a single-user host" \
-  "chowning the checkout to the deploy user" "$OUT"
-hasnt "dubious ownership: is NOT called 'not a git checkout'" "is not a git checkout" "$OUT"
-unlogged "dubious ownership: never opened the window" "artisan down"
-# THE CONTROL, one variable away: the same fixture without the knob deploys.
-run --dry-run
-eq "the control: the same checkout, owned by this user, deploys" 0 "$RC"
+dubious_rc="$(env "${DUBIOUS_ENV[@]}" LC_ALL=C git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
+if [ "$dubious_rc" -ne 128 ]; then
+  # ⛔ NOT A SKIP AND NOT A PASS. `GIT_TEST_*` is git's own test scaffolding, not an interface git
+  # promises to honour, so a build that ignores it is a thing that exists. The honest output is to
+  # NAME what could not be produced — never to assert less, and never to drop the case quietly.
+  notverified \
+    "A3's generic branch against a DIFFERENTLY-OWNED checkout — the condition was never produced here, so none of that case ran." \
+    "GIT_TEST_ASSUME_DIFFERENT_OWNER=1, with the system gitconfig off and an empty global one, exited $dubious_rc rather than 128." \
+    "This runner: $(git --version); safe.directory system=[$(git config --system --get-all safe.directory 2>/dev/null | tr '\n' ' ')] global=[$(git config --global --get-all safe.directory 2>/dev/null | tr '\n' ' ')]." \
+    "To exercise it here, this git must honour that knob, and no safe.directory entry it still reads may cover the fixture." \
+    "A3's GENERIC BRANCH IS STILL COVERED on this runner by the corrupt \`.git/config\` case above, which uses no knob at all." \
+    "What is NOT covered without this case is git's dubious-ownership WORDING and the two repairs the refusal quotes for it."
+else
+  eq "fixture: this git really refuses a differently-owned checkout at 128 (the knob is honoured)" \
+    128 "$dubious_rc"
+  : > "$CALL_LOG"
+  OUT="$(env "${DUBIOUS_ENV[@]}" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+  eq  "dubious ownership: exit 1" 1 "$RC"
+  has "dubious ownership: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+  has "dubious ownership: the phase-A promise" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+  has "dubious ownership: named as a repository git could not OPEN" \
+    "git could not open $ROOT as a repository" "$OUT"
+  has "dubious ownership: git's own message reaches the operator" "detected dubious ownership" "$OUT"
+  has "dubious ownership: with the repair git prints for it" "safe.directory" "$OUT"
+  has "dubious ownership: and the other fix, which is the better one on a single-user host" \
+    "chowning the checkout to the deploy user" "$OUT"
+  hasnt "dubious ownership: is NOT called 'not a git checkout'" "is not a git checkout" "$OUT"
+  unlogged "dubious ownership: never opened the window" "artisan down"
+  # THE CONTROL, ONE VARIABLE AWAY: the same fixture, the same hermetic git environment, the knob
+  # gone. It must deploy — which is also what says the NOSYSTEM/GLOBAL pair is not itself the cause.
+  : > "$CALL_LOG"
+  OUT="$(env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$T/empty.gitconfig" \
+      MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+  eq "the control: the same checkout, owned by this user, deploys" 0 "$RC"
+fi
 
 # ── G2-G5 — the four shapes that really ARE "not a git checkout", each preserved ───────────────
 # These are what the old refusal was RIGHT about, and a fix that generalised the headline over
@@ -2735,6 +2791,13 @@ has "APP_URL=null: reported as unset, and the deploy as unverified" "APP_URL is 
 unlogged "APP_URL=null: no smoke request was made to a URL the app does not have" "curl "
 
 printf '\n──────────────────────────────────────────────\n'
+# ⚠ REPEATED HERE because a line 1,400 assertions up has scrolled past. A condition this runner
+# could not produce is not a failure — the suite has nothing to say about it either way — but it
+# IS a hole in the coverage, and it is named rather than counted as a pass (card#9646).
+if [ "$unverified" -gt 0 ]; then
+  printf '⚠ %d condition(s) could NOT BE PRODUCED on this runner, so the cases that need them did not run.\n' "$unverified" >&2
+  printf '  Each is named above with what this runner answered and what would have to be true to exercise it.\n' >&2
+fi
 if [ "$fails" -eq 0 ]; then
   printf 'deploy.selftest.sh: %d assertions, all passed\n' "$cases"; exit 0
 fi
