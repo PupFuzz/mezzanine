@@ -22,7 +22,7 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 - **card#9742** — **`DatabasePinTest` asserts the key set it guards against the key set `phpunit.xml`
   declares, so a pin the file gains and the test does not is reported as UNGUARDED instead of skipped.**
   The test iterates a hand-written constant, and nothing asserted that constant still described the file:
-  a sixth forced pin added to `phpunit.xml` and not to `PAIRED_KEYS` was simply never visited, and the
+  a forced pin added to `phpunit.xml` and not to `PAIRED_KEYS` was simply never visited, and the
   suite stayed green reporting on a subset it no longer defined — with the NEWEST pin, the one most
   likely to be wrong, the one it could silently omit. The sets agreed when this landed, so this closes a
   LATENT gap rather than a live divergence; what it protects is store isolation on a shared host, where

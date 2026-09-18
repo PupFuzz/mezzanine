@@ -67,7 +67,7 @@ class DatabasePinTest extends TestCase
      * The set-equality leg (card#9742), taking kanban-solo's shape from rt#506 as offered.
      *
      * The test below iterates PAIRED_KEYS, so before this existed the guard reported on whatever
-     * subset that hand-written constant happened to name: a sixth pin added to phpunit.xml and not
+     * subset that hand-written constant happened to name: a pin added to phpunit.xml and not
      * to the constant was simply never visited, and the suite stayed green while the new pin — the
      * one most likely to be wrong, being the newest — was UNGUARDED. Set equality is what makes the
      * constant an assertion about the file instead of an agreement maintained by hand.

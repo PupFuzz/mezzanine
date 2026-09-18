@@ -1282,7 +1282,7 @@ believed they had already done:
 - **That test's own population is asserted too, and is not a hand-written list it is trusted to keep
   current** (card#9742, taking the shape kanban-solo published on rt#506 after hitting it in their copy
   of the same guard). It iterates a constant, so without this leg it reported on whatever subset that
-  constant happened to name: a sixth pin added to `phpunit.xml` and not to the constant was never
+  constant happened to name: a pin added to `phpunit.xml` and not to the constant was never
   visited, and the suite stayed green while the NEWEST pin — the one most likely to be wrong — was the
   one it could silently omit. The key set read from the file must therefore equal the guarded set
   **exactly, in both directions**: a key the file pins and the test does not name reds as `UNGUARDED`,
@@ -5104,7 +5104,7 @@ and the gate on trusting the derived signal at all.*
   reach the resolved value at all.
 - **Fourth RED — the shape test's own population, and it is staged on a FIXTURE COPY of `phpunit.xml`,
   never on the file itself** (card#9742). Staging it in the real file changes the isolation of the very
-  run that performs the control, so the copy is part of the method rather than caution. Add a sixth pin
+  run that performs the control, so the copy is part of the method rather than caution. Add a further pin
   — both halves, any name the test does not know — to a copy of `phpunit.xml`, point the test's read at
   the copy, and leave its constant untouched → it reds naming that key `UNGUARDED`. Delete a pinned key
   from the same copy while the constant still names it → it reds naming that key `GUARDED BUT ABSENT`.
