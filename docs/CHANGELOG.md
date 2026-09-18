@@ -19,6 +19,28 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
 
 ## [Unreleased]
 
+- **card#9742** — **`DatabasePinTest` asserts the key set it guards against the key set `phpunit.xml`
+  declares, so a pin the file gains and the test does not is reported as UNGUARDED instead of skipped.**
+  The test iterates a hand-written constant, and nothing asserted that constant still described the file:
+  a sixth forced pin added to `phpunit.xml` and not to `PAIRED_KEYS` was simply never visited, and the
+  suite stayed green reporting on a subset it no longer defined — with the NEWEST pin, the one most
+  likely to be wrong, the one it could silently omit. The sets agreed when this landed, so this closes a
+  LATENT gap rather than a live divergence; what it protects is store isolation on a shared host, where
+  `mezzanine_test` is rebuilt destructively by `RefreshDatabase` on every run and a neighbouring tenant's
+  data is what a silent shrink eventually costs. The shape is kanban-solo's, published on rt#506 after
+  they hit the identical defect in their own copy of this guard, and taken as offered rather than
+  re-derived. **Set equality, in both directions**: a key the file pins and `PAIRED_KEYS` does not name
+  reds as `UNGUARDED`, a key `PAIRED_KEYS` names and the file no longer pins reds as `GUARDED BUT
+  ABSENT` — the second is the same defect pointed the other way, a pairing asserted for a pin that
+  isolates nothing. A key claimed by EITHER half of the pair — a forced `<env>` or a `<server>` — enters
+  the file's set, because a half-written pin is exactly what the pairing assertion exists to catch and
+  must be judged rather than fall out of the population; the unforced `<env>` entries (`DB_CONNECTION`
+  and the defaults above it) claim nothing, since an exported value beats them. **Seen to fail in both
+  directions on a FIXTURE COPY of `phpunit.xml`** — staging the control in the real file would change
+  the isolation of the run performing it — reporting `UNGUARDED: phpunit.xml pins REDIS_SESSION_DB,
+  which PAIRED_KEYS does not name` and `GUARDED BUT ABSENT: PAIRED_KEYS names REDIS_URL, which
+  phpunit.xml no longer pins`. `docs/design/FLEET-STATE.md` § 6.2 records the leg and AT-D2-14 carries
+  the fixture control as its fourth RED.
 - **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and it
   REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
   install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
