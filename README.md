@@ -46,6 +46,7 @@ resources/characters/       the procedural character generator + LINEAGE.md ← 
 resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
 fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
+docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
                             automation, CI gates, harnesses          ← exists
 ```

@@ -22,7 +22,8 @@
 # under `server/tests/` was run only by whoever remembered to run it, which means every
 # `php artisan test` figure in a PR body on this repo was self-attested and unreproducible.
 #
-# ⚠ THE COST IS ALREADY REALISED, NOT PREDICTED — read `docs/CHANGELOG.md`'s card#8075 entry.
+# ⚠ THE COST IS ALREADY REALISED, NOT PREDICTED — read `docs/changelog/v0.3.0.md`'s card#8075
+# entry (archived out of `docs/CHANGELOG.md` by card#9813).
 # `Tests\Feature\Feed\SeatObjectMatchesTheDocumentTest` sat RED on `dev` for days: D2 § 8.2.1
 # declared `blocked_since` and `App\Read\SeatObject` did not carry it — a contract a consumer
 # could read and the server never answered. The guard that catches it had been written, had
@@ -37,8 +38,8 @@
 # DEPLOY, and MariaDB has no transactional DDL: a multi-statement migration halts PART-APPLIED with
 # no automatic rollback, and `bin/deploy.sh` is forward-only by design. The first MariaDB run
 # (card#9250) measured what the other engine had been hiding: two tests matched SQLite's `"`
-# identifier quoting, and one of them PASSED vacuously on MariaDB — `docs/CHANGELOG.md`'s card#9250
-# entry has the detail.
+# identifier quoting, and one of them PASSED vacuously on MariaDB — `docs/changelog/v0.4.0.md`'s
+# card#9250 entry has the detail (archived out of `docs/CHANGELOG.md` by card#9813).
 #
 # NO `paths:` FILTER, AND HERE THAT IS MEASURED RATHER THAN INHERITED. The house argument
 # applies (`asset-provenance.yml`: a path-filtered workflow produces NO RUN, which as a required
