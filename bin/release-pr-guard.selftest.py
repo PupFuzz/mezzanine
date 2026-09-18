@@ -207,6 +207,18 @@ def shallow_clone(repo: Path, head_branch: str, base_branch: str = "main",
     return dst
 
 
+def commit_files(repo: Path, files: dict[str, str], message: str) -> None:
+    """Write each path and commit them onto whatever branch is checked out — the ONE place a
+    fixture adds a commit after `make_repo` has built it, used by both the integration branch
+    and the release head so the two sides cannot drift into different commit shapes."""
+    for rel, content in files.items():
+        p = repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", message)
+
+
 def add_integration(repo: Path, *, branch: str = "dev", from_ref: str = "main",
                     files: dict[str, str] | None = None) -> None:
     """Plant an INTEGRATION branch on an existing fixture, and optionally move it ahead.
@@ -220,12 +232,7 @@ def add_integration(repo: Path, *, branch: str = "dev", from_ref: str = "main",
     """
     git(repo, "checkout", "-q", "-b", branch, from_ref)
     if files:
-        for rel, content in files.items():
-            p = repo / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
-        git(repo, "add", "-A")
-        git(repo, "commit", "-qm", f"{branch} moves on after the release branch was cut")
+        commit_files(repo, files, f"{branch} moves on after the release branch was cut")
     git(repo, "checkout", "-q", "-")          # back to the head branch
 
 
@@ -1071,8 +1078,16 @@ print("== 13. R6 — the release head is CURRENT with `dev`, or DECLARES what it
 #
 # ⛔ AND THE ONE SPELLING THIS RULE MAY NOT HAVE. `git merge-base --is-ancestor` answers FALSE on
 # this repo's correctly back-merged v0.5.0 (PR #180 was squashed), so an ancestry R6 would have
-# been born false — and the natural response to a false red is to weaken the rule. The last arm
-# below is the one that fails if anyone ever rewrites R6 that way.
+# been born false — and the natural response to a false red is to weaken the rule.
+# ⭐ ANCESTRY IS WRONG IN BOTH DIRECTIONS, AND BOTH ARE PINNED HERE, BECAUSE ONE ARM COVERED ONLY
+# ONE OF THEM. The LAST arm below is the false-RED direction: identical content reached by
+# unrelated history, which ancestry refuses and R6 must pass. The DESCENDANT arm is the false-PASS
+# direction, and it is the one the normal release path actually takes — a release branch is cut
+# FROM `dev`, so `dev`'s tip IS an ancestor of the head and ancestry calls it current no matter
+# what that branch went on to carry. Measured while reviewing this change: a HYBRID that keeps the
+# tree diff only for the unrelated-history case and short-circuits on ancestry everywhere else
+# passed this whole file, § 13 included, while asserting NOTHING on the common case. A rule this
+# file only half-pins is a rule the next author can quietly delete half of.
 #
 # The fixture's `dev` is created at the BASE commit, which is what `make_repo` cut the head from:
 # with nothing else done to it the head differs by exactly VERSION and the changelog, which is
@@ -1231,6 +1246,32 @@ eq("  … and says so rather than passing silently", True, "R6 NOT APPLICABLE" i
 # CONTROL: the same tree on the release path reds — so the pass above is the base ref's doing.
 r = r6(fx, body="")
 eq("  CONTROL: the same tree with base=main goes RED on R6", ["R6"], rules_flagged(r))
+
+# --- ⛔ THE FALSE-PASS DIRECTION OF ANCESTRY, which is the NORMAL release path. Here `dev` sits
+# at the cut point, so the head is a true DESCENDANT of it and `merge-base --is-ancestor` says
+# "current" — and R6a's second half is what still has something to say: a release branch carrying
+# a feature edit of its own is residue too, not only a `dev` that moved. Every other arm in this
+# section has `dev` AHEAD of the head, where ancestry answers correctly by accident, which is why
+# an ancestry short-circuit could pass all of them.
+fx = make_repo(**R6FX)
+add_integration(fx)                       # `dev` AT the cut point, not ahead of it
+eq("  (fixture premise) `dev`'s tip IS an ancestor of this head — ancestry calls it current",
+   0, subprocess.run(["git", "-C", str(fx), "merge-base", "--is-ancestor", "dev",
+                      R6HEAD]).returncode)
+# CONTROL FIRST: the descendant head carrying only the release's own two edits passes, so the red
+# below is the feature edit and not the fixture's shape.
+r = r6(fx, body="")
+eq("  CONTROL: a descendant head carrying only VERSION + the changelog → exit 0", 0, r.returncode)
+commit_files(fx, {LATE: "<?php // a feature edit made ON the release branch\n"},
+             "a feature edit riding the release branch")
+eq("  (fixture premise) …and it is STILL an ancestor after that commit",
+   0, subprocess.run(["git", "-C", str(fx), "merge-base", "--is-ancestor", "dev",
+                      R6HEAD]).returncode)
+r = r6(fx, body="")
+eq("a DESCENDANT head carrying a feature edit of its own → RED (ancestry would pass it)",
+   1, r.returncode)
+eq("  … R6 alone (single-variable off the control above)", ["R6"], rules_flagged(r))
+eq("  … naming the path the release branch carries and `dev` does not", True, LATE in r.stdout)
 
 # --- ⛔ THE CONSTRAINT THIS RULE WAS BORN UNDER (card#9707 comment 5565). A release whose
 # content matches `dev` but whose HISTORY shares nothing with it — the shape a squashed

@@ -44,16 +44,24 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   answers FALSE on this repo's correctly back-merged v0.5.0 — PR #180 was squashed, so the release line
   is not an ancestor of `dev` and never will be, while `git diff --stat origin/main origin/dev` is
   empty. An ancestry R6 would have been born false here, and the natural response to a false red is to
-  weaken the rule; the selftest carries a fixture whose head reaches `dev`'s content through unrelated
-  history and must PASS, which is what reds if anyone rewrites it that way. **Fail-closed where it
+  weaken the rule. **Ancestry is wrong in BOTH directions and the selftest pins both**: a head that
+  reaches `dev`'s content through unrelated history must PASS (the false-RED direction), and a head
+  that is a true DESCENDANT of `dev` — which is what the normal release path produces, since the
+  branch is cut FROM `dev` — must still RED when it carries a feature edit of its own (the false-PASS
+  direction, and R6a's second half). Only the first was pinned when this was first written, and a
+  hybrid that short-circuited on ancestry everywhere except the unrelated-history case passed the
+  whole suite while asserting nothing on the common path; the descendant fixture is what closed it.
+  **Fail-closed where it
   cannot measure:** an unresolvable `origin/dev` is exit 2 rather than a green (the workflow gained the
   integration-branch fetch, with no `--depth` for the measured reason the base fetch carries, and the
   selftest now asserts that of EVERY fetch line rather than the first), and a run never given the PR
   body exits 2 rather than refusing a PR for a declaration it was not shown — an empty body is a real
-  state and reds. **Every arm was seen to fail first**: eight single-variable mutations of the guard and
-  the workflow — R6 rewritten as an ancestry test, the hatch reduced to non-empty, R6b dropped, R6a's
-  residue emptied, an unresolvable `dev` passing, the fetch deleted, the body no longer passed, and a
-  `--depth` restored — each produced a targeted red, and none went uncaught.
+  state and reds. **Every arm was seen to fail first**, each mutation below producing a targeted red
+  with none uncaught: R6 replaced by an ancestry test, R6 *short-circuited* on ancestry with the tree
+  diff kept only for unrelated history (the one that reached review passing, and the reason the
+  descendant fixture exists), the hatch reduced to non-empty, R6b dropped, R6a's residue emptied, an
+  unresolvable `dev` passing, the integration fetch deleted, the body no longer passed, and a
+  `--depth` restored on a fetch line.
   **The same card's second finding, fixed in the same PR: `.release-pr.json` now declares
   `card_token_regex`, so `release-pr-body`'s shipped-cards manifest is no longer empty.** With the key
   absent the generic helper could correlate nothing and
