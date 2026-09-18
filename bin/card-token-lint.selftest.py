@@ -222,6 +222,34 @@ if run_lines:
 eq("the workflow passes the title through env:", True, "PR_TITLE: ${{" in wf)
 eq("the workflow passes the head ref through env:", True, "HEAD_REF: ${{" in wf)
 
+print("== 9. `.release-pr.json`'s copy of the accept grammar IS the mover's, byte for byte ==")
+# WHY A COPY EXISTS AT ALL (card#9707). `release-pr-body` — the fleet helper that generates this
+# repo's release-PR bodies — correlates shipped cards with `card_token_regex` from
+# `.release-pr.json`. It reads JSON and cannot read the mover's bash, so it cannot EXTRACT the
+# grammar the way this lint and `bin/release-pr-guard.py` do. With the key absent its
+# `shipped-cards` manifest came back empty and every release body carried a `## Correlation gaps`
+# section instead; with it declared the manifest matches the mover's own sweep exactly.
+# So the duplication is unavoidable — and an unguarded copy of an accept grammar is exactly the
+# drift this file exists to prevent, which is why the copy is checked HERE, against the one home
+# of the grammar, rather than described in a comment nobody can execute.
+import json as _json
+cfg_path = REPO / ".release-pr.json"
+cfg = _json.loads(cfg_path.read_text(encoding="utf-8"))
+declared = cfg.get("card_token_regex")
+eq("`.release-pr.json` declares card_token_regex at all (absent = an empty shipped-cards "
+   "manifest and a Correlation-gaps section on every release body)", True, declared is not None)
+if declared is not None and accept_lit:
+    eq("  … and it is EXACTLY the mover's CARD_RE", accept_lit.group(1), declared)
+    # CONTROL: the comparison must be capable of the other answer, and the difference is not
+    # cosmetic — the obvious narrower spelling silently drops two accepted forms.
+    narrow = "card#[0-9]+"
+    eq("  CONTROL: the obvious narrower spelling is NOT equal (the check discriminates)",
+       False, narrow == accept_lit.group(1))
+    lost = [s for s in ("card-1234", "card56")
+            if re.search(accept_lit.group(1), s, re.I) and not re.search(narrow, s, re.I)]
+    eq("  CONTROL: … and that narrower spelling would drop spellings the correlators accept",
+       ["card-1234", "card56"], lost)
+
 print()
 if fails:
     print(f"card-token-lint.selftest: {fails} check(s) FAILED", file=sys.stderr)

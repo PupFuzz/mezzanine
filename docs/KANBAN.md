@@ -41,8 +41,8 @@ member.
 | `bin/promote-cards-by-token` | The mover the release workflow runs. **Vendored** from `PupFuzz/agent-board-framework`; its header carries the provenance and the re-vendor recipe. `--help` prints the full contract, including the exit table. |
 | `bin/promote-cards-by-token.selftest.sh` | The mover's hermetic acceptance suite — stubbed `curl`, fixture git repo, no network, no board. Runs in the release workflow before any write. |
 | `bin/card-token-lint.py` | The lint the PR gate runs. Extracts the accept grammar from the mover at run time; it does not carry its own copy. |
-| `bin/card-token-lint.selftest.py` | The lint's RED fixtures plus a meta-control. Runs in the PR gate. |
-| `.release-pr.json` | Board id, the released stage, and the shipped-stage source set. Read by the mover — and, for `tag_format` only, by `bin/release-pr-guard.py` (card#8174), so that key has two readers and this table is not the whole list. Its own `_note` is. |
+| `bin/card-token-lint.selftest.py` | The lint's RED fixtures plus a meta-control — and, since card#9707, the check that `.release-pr.json`'s `card_token_regex` still EQUALS the mover's `CARD_RE`. Runs in the PR gate. |
+| `.release-pr.json` | Board id, the released stage, the shipped-stage source set, and `card_token_regex` — the card grammar `release-pr-body` correlates a release's shipped cards with (card#9707; it reads JSON and cannot extract the mover's bash, which is why this one key is a COPY and why the selftest above pins it to the original). Read by the mover — and, for `tag_format` only, by `bin/release-pr-guard.py` (card#8174), so that key has two readers and this table is not the whole list. Its own `_note` is. |
 
 ---
 

@@ -207,17 +207,57 @@ def shallow_clone(repo: Path, head_branch: str, base_branch: str = "main",
     return dst
 
 
+def add_integration(repo: Path, *, branch: str = "dev", from_ref: str = "main",
+                    files: dict[str, str] | None = None) -> None:
+    """Plant an INTEGRATION branch on an existing fixture, and optionally move it ahead.
+
+    `from_ref` is the fixture's base commit, which is also what `make_repo` cut the head from —
+    so with no `files` the head differs from this branch by exactly the release's own two edits
+    and R6 measures "current". Each entry in `files` is one path this branch then moved AFTER
+    the cut, which is the single variable every R6 arm turns. Real commits on a real branch, the
+    same idiom as every other fixture here: R6 runs `git diff --name-only`, and a stubbed
+    content reader would prove nothing about that.
+    """
+    git(repo, "checkout", "-q", "-b", branch, from_ref)
+    if files:
+        for rel, content in files.items():
+            p = repo / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", f"{branch} moves on after the release branch was cut")
+    git(repo, "checkout", "-q", "-")          # back to the head branch
+
+
 def guard(repo: Path, *, base_ref: str = "main", head_ref: str = "release/v0.2.0",
           title: str = "", base_rev: str = "main",
-          head_rev: str = "HEAD") -> subprocess.CompletedProcess:
-    return run("--repo", str(repo), "--base-ref", base_ref, "--head-ref", head_ref,
-               "--title", title, "--base-rev", base_rev, "--head-rev", head_rev)
+          head_rev: str = "HEAD", integration_rev: str | None = None,
+          body: str | None = None,
+          body_file: str | None = None) -> subprocess.CompletedProcess:
+    """`integration_rev` (R6's subject) DEFAULTS TO THE BASE REV, which in `make_repo` is the
+    very commit the head was cut from — VERSION and the changelog are the only paths the head
+    moved, so R6 measures "current" and stays silent in every arm that is not about R6. § 13
+    builds a second branch and MOVES it, which is where R6's verdict is the subject.
+
+    The body is passed only when an arm is about R6's declaration: absent is a different state
+    from empty (the guard exits 2 rather than refusing a PR for a line it was never shown), and
+    § 13 asserts that difference."""
+    argv = ["--repo", str(repo), "--base-ref", base_ref, "--head-ref", head_ref,
+            "--title", title, "--base-rev", base_rev, "--head-rev", head_rev,
+            "--integration-rev", integration_rev if integration_rev is not None else base_rev]
+    if body is not None:
+        argv += [f"--body={body}"]
+    if body_file is not None:
+        argv += [f"--body-file={body_file}"]
+    return run(*argv)
 
 
 def rules_flagged(r: subprocess.CompletedProcess) -> list[str]:
-    """Which of R1-R5 the run actually named — an exit code alone would not distinguish a
-    guard that reds for the right reason from one that reds for any reason."""
-    return sorted(set(re.findall(r"::error::release-pr-guard: (R[1-5])", r.stdout)))
+    """Which rule the run actually named — an exit code alone would not distinguish a guard
+    that reds for the right reason from one that reds for any reason. The class is `R<digits>`
+    rather than a bounded `R[1-5]`: a bounded one silently stops seeing the next rule added,
+    and an arm asserting `[]` would then pass on a red."""
+    return sorted(set(re.findall(r"::error::release-pr-guard: (R[0-9]+)", r.stdout)))
 
 
 # =============================================================================================
@@ -569,12 +609,36 @@ eq("the workflow fetches the base ref before measuring against it",
 # is the only thing standing between that one-word optimisation and a gate that always reds.
 fetch_lines = [ln for ln in wf.splitlines()
                if "git fetch" in ln and ln.lstrip().startswith("run:")]
-eq("exactly one fetch line", 1, len(fetch_lines))
-if fetch_lines:
-    eq("  … with NO --depth (a shallow fetch silently undoes the full checkout)",
-       False, "--depth" in fetch_lines[0])
-    eq("  … CONTROL: that check catches the spelling it replaced",
-       True, "--depth" in "run: git fetch --no-tags --depth=1 origin \"+refs/heads/x:y\"")
+eq("the workflow carries fetch lines to judge at all", True, bool(fetch_lines))
+# EVERY fetch line, not "the one fetch line": R6 added a second, and an assertion pinned to the
+# first would have gone on passing while the new one carried `--depth`. The list of offenders is
+# the value asserted so a failure NAMES the line rather than printing False.
+eq("  … and NO fetch line carries --depth (a shallow fetch silently undoes the full checkout)",
+   [], [ln.strip() for ln in fetch_lines if "--depth" in ln])
+eq("  … CONTROL: that check catches the spelling it replaced",
+   ["run: git fetch --no-tags --depth=1 origin \"+refs/heads/x:y\""],
+   [ln for ln in ["run: git fetch --no-tags --depth=1 origin \"+refs/heads/x:y\""]
+    if "--depth" in ln])
+# R6 COMPARES AGAINST `origin/dev`, AND A RELEASE PR'S BASE IS `main` — so the base fetch above
+# does not bring it and without this line R6 exits 2 on every release PR. The branch NAME is read
+# out of the guard rather than retyped here: the guard's `INTEGRATION_BRANCH` is the one home of
+# it, and this is the assertion that keeps the workflow's literal from drifting away from it.
+integration = mod.INTEGRATION_BRANCH
+eq(f"the workflow fetches the integration branch `{integration}` (R6's subject)",
+   True, any(f"+refs/heads/{integration}:refs/remotes/origin/{integration}" in ln
+             for ln in fetch_lines))
+eq("  CONTROL: that check rejects a workflow whose only fetch is the base ref",
+   False, any(f"+refs/heads/{integration}:refs/remotes/origin/{integration}" in ln
+              for ln in ['run: git fetch --no-tags origin '
+                         '"+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"']))
+# R6's declaration lives in the PR BODY, which is the largest attacker-controlled free-text field
+# a fork PR carries — so it travels through `env:` exactly as the title does, never `${{ }}` in a
+# `run:` block (the `${{` assertion on the invocation line above covers that half).
+eq("the workflow passes the PR body through env: (R6's declaration surface)",
+   True, "PR_BODY: ${{" in wf)
+if run_lines:
+    eq("  … and hands it to the guard as --body= (option-safe, like the title)",
+       True, "--body=" in run_lines[0])
 eq("the workflow checks out the PR HEAD sha, not the merge ref",
    True, "pull_request.head.sha" in wf)
 eq("the workflow runs THIS selftest before judging anybody's PR",
@@ -996,6 +1060,199 @@ fx = make_repo(base_version="0.5.0", head_version="0.6.0",
 r = guard(fx, base_ref="main", head_ref="release/v0.6.0")
 eq("  CONTROL: the same shape WITH a bump passes (so the red above is the bump, not the tree)",
    0, r.returncode)
+
+
+# =============================================================================================
+print("== 13. R6 — the release head is CURRENT with `dev`, or DECLARES what it leaves out ==")
+# THE DEFECT THIS ARM GUARDS (card#9707). PR #176 (v0.5.0) sat open for roughly a day at head
+# `e5c1d9e` while four PRs merged to `dev` behind it, every check green the whole time; merging
+# it would have shipped a release omitting four cards, and nothing in the repo would have said
+# so. Nothing here compared the head to `dev`.
+#
+# ⛔ AND THE ONE SPELLING THIS RULE MAY NOT HAVE. `git merge-base --is-ancestor` answers FALSE on
+# this repo's correctly back-merged v0.5.0 (PR #180 was squashed), so an ancestry R6 would have
+# been born false — and the natural response to a false red is to weaken the rule. The last arm
+# below is the one that fails if anyone ever rewrites R6 that way.
+#
+# The fixture's `dev` is created at the BASE commit, which is what `make_repo` cut the head from:
+# with nothing else done to it the head differs by exactly VERSION and the changelog, which is
+# what "current" means. Every arm then moves ONE thing.
+R6FX = dict(base_version="0.1.0", head_version="0.2.0",
+            base_changelog=unreleased_with("8174"),
+            head_changelog=changelog_with("0.2.0"))
+R6HEAD = "release/v0.2.0"
+LATE = "server/Late.php"
+LATER = "server/Later.php"
+
+
+def r6(repo, **kw):
+    kw.setdefault("base_ref", "main")
+    kw.setdefault("head_ref", R6HEAD)
+    kw.setdefault("head_rev", R6HEAD)
+    kw.setdefault("integration_rev", "dev")
+    return guard(repo, **kw)
+
+
+# --- THE CONTROL: a release cut from `dev` with nothing merged behind it PASSES. Without this
+# every red below would be evidence of nothing. Note that `dev`'s `[Unreleased]` carries
+# card#8174 here and the head carries it under `## [0.2.0]` — so R6b is SATISFIED rather than
+# vacuous, which is the state release flow step 4 actually produces.
+fx = make_repo(**R6FX)
+add_integration(fx)
+r = r6(fx)
+eq("a release current with `dev` → exit 0", 0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+eq("  … and the run PRINTS the residue it measured (no silent verdict)",
+   True, "residue outside VERSION, docs/CHANGELOG.md: none" in r.stdout)
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
+
+# --- THE PLANT (R6a): one path merged to `dev` after the release branch was cut. This is #176's
+# shape, minimised — the release would ship without it and every other check stays green.
+fx = make_repo(**R6FX)
+add_integration(fx, files={LATE: "<?php // merged to dev after the release branch was cut\n"})
+r = r6(fx, body="")
+eq("`dev` moved after the cut and the body declares nothing → RED", 1, r.returncode)
+eq("  … R6 alone (single-variable off the control above)", ["R6"], rules_flagged(r))
+eq("  … naming the path that would be left out", True, LATE in r.stdout)
+eq("  … and printing the exact declaration line that would satisfy it",
+   True, f"Release-excludes: {LATE} —" in r.stdout)
+eq("  … and citing the measured incident rather than an abstraction",
+   True, "PR #176 sat open for a day" in r.stdout)
+
+# --- THE HATCH: the same PR, declaring EXACTLY that residue, passes. Deliberately shipping a
+# release that excludes recent work is legitimate; the rule is "current, or say what you leave
+# out", so this arm is what keeps R6 from being a rule authors route around.
+DECL = f"Release-excludes: {LATE} — landed after the cut; ships in the next release."
+r = r6(fx, body=f"## Release v0.2.0\n\n{DECL}\n")
+eq("the same PR with an EXACT declaration → exit 0", 0, r.returncode)
+eq("  … and it SAYS it accepted a declaration rather than passing silently",
+   True, "R6 declared:" in r.stdout)
+eq("  … carrying the reason the author gave",
+   True, "ships in the next release" in r.stdout)
+
+# --- …and the declaration must EQUAL the residue. A blanket acknowledgement would be worthless.
+r = r6(fx, body="Release-excludes: docs/SOMETHING-ELSE.md — I know about this one.\n")
+eq("a declaration naming something else → RED", ["R6"], rules_flagged(r))
+eq("  … naming BOTH sides, so the author can see which half is wrong",
+   (True, True),
+   (f"MEASURED but not declared: {LATE}" in r.stdout,
+    "DECLARED but not measured: docs/SOMETHING-ELSE.md" in r.stdout))
+
+# --- THE STALE DECLARATION, which is the case a merely-non-empty hatch would wave through: two
+# paths landed on `dev`, the body still names only the one that was there yesterday.
+fx = make_repo(**R6FX)
+add_integration(fx, files={LATE: "<?php // one\n", LATER: "<?php // two\n"})
+r = r6(fx, body=DECL + "\n")
+eq("a declaration that covers only part of the residue → RED", ["R6"], rules_flagged(r))
+eq("  … naming the undeclared half and not the declared one",
+   (True, False),
+   (f"MEASURED but not declared: {LATER}" in r.stdout,
+    f"MEASURED but not declared: {LATE}," in r.stdout))
+# CONTROL: declaring BOTH passes — so the red above is the set difference, not the arm's shape.
+r = r6(fx, body=f"Release-excludes: {LATE} {LATER} — both landed after the cut.\n")
+eq("  CONTROL: declaring both paths → exit 0 (the equality discriminates)", 0, r.returncode)
+
+# --- A declaration with no REASON is refused as a rule failure (exit 1 — the author fixes the
+# body), not accepted as a bare list. A release that leaves work out says why.
+r = r6(fx, body=f"Release-excludes: {LATE} {LATER}\n")
+eq("a declaration with no reason → RED, not accepted", 1, r.returncode)
+eq("  … flagged as R6 and naming the form it wants",
+   (["R6"], True), (rules_flagged(r), "with an em dash" in r.stdout))
+
+# --- FAIL LOUD: R6 cannot see `dev` at all. The workflow fetches it in its own step precisely
+# because a release PR's base is `main`; if that step is dropped, this is what must happen.
+r = r6(fx, integration_rev="origin/dev", body="")
+eq("`origin/dev` unresolvable → exit 2, never a pass", 2, r.returncode)
+eq("  … and names the workflow step that fetches it",
+   True, "Fetch the integration branch tip" in r.stderr)
+eq("  … as CANNOT MEASURE, distinct from a rule verdict",
+   True, "CANNOT MEASURE (exit 2)" in r.stderr)
+# CONTROL: the same fixture WITH a resolvable integration rev reaches a RULE verdict (exit 1
+# here — it is genuinely behind), so the 2 above is the missing ref and not the fixture.
+r = r6(fx, body="")
+eq("  CONTROL: the same repo with `dev` resolvable reaches a rule verdict, not a 2",
+   1, r.returncode)
+
+# --- FAIL LOUD: the run was never GIVEN the body. Refusing a PR for a declaration nobody showed
+# the guard would be a false red; passing it would be a false clean. The pair below is the whole
+# distinction: same fixture, same residue, the ONLY variable is whether `--body` was passed.
+r = r6(fx)
+eq("residue with NO --body passed at all → exit 2", 2, r.returncode)
+eq("  … and says it cannot see a declaration that may be there",
+   True, "never given the PR body" in r.stderr)
+r = r6(fx, body="")
+eq("  CONTROL: an EMPTY body is a real state — no declaration → exit 1, not 2", 1, r.returncode)
+
+# --- The `--body-file` half of the pair, which is the form a workflow should prefer for
+# attacker-controlled free text.
+bf = Path(tempfile.mkdtemp(prefix="relguard-body-"))
+FIXTURES.append(bf)
+(bf / "body.md").write_text(f"Release-excludes: {LATE} {LATER} — both landed after the cut.\n",
+                            encoding="utf-8")
+r = r6(fx, body_file=str(bf / "body.md"))
+eq("--body-file carries the same declaration to the same verdict", 0, r.returncode)
+r = r6(fx, body="", body_file=str(bf / "body.md"))
+eq("  … and both spellings at once → exit 2 (the guard refuses to pick)", 2, r.returncode)
+
+# --- R6b: THE CARD THE CHANGELOG DROPPED. R6a excuses `docs/CHANGELOG.md`, which is exactly
+# where "four fewer cards than `dev` held" hides — so without this arm the one excused path
+# would be the one the defect travels on. Here the whole tree matches `dev`; only a bullet is
+# missing, so R6a's residue is empty and R6b's is not.
+fx = make_repo(**R6FX)
+add_integration(fx, files={"docs/CHANGELOG.md": unreleased_with("8174", "7929")})
+r = r6(fx, body="")
+eq("the tree matches `dev` but the changelog drops a card `dev` holds → RED", 1, r.returncode)
+eq("  … R6 alone", ["R6"], rules_flagged(r))
+eq("  … naming the dropped card and no path", (True, False),
+   ("card#7929" in r.stdout, LATE in r.stdout))
+# CONTROL: the same `dev`, with the head's changelog carrying BOTH cards under the retitled
+# section — which is what release flow step 4 actually produces — passes. This is what proves
+# R6b reads the head's whole changelog and not `[Unreleased]` at the head, where a correct
+# release has just emptied it.
+fx = make_repo(**dict(R6FX,
+                      head_changelog="# Changelog\n\n## [Unreleased]\n\n"
+                                     "## [0.2.0] - 2026-08-30\n\n- **card#8174** — a line.\n"
+                                     "- **card#7929** — the other line.\n"))
+add_integration(fx, files={"docs/CHANGELOG.md": unreleased_with("8174", "7929")})
+r = r6(fx, body="")
+eq("  CONTROL: both cards carried under the RETITLED section → exit 0", 0, r.returncode)
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
+
+# --- APPLICABILITY: R6 is a question about a release. A feature PR is untouched by it, even
+# with `dev` far ahead of its branch.
+fx = make_repo(**R6FX)
+add_integration(fx, files={LATE: "<?php // one\n"})
+r = guard(fx, base_ref="dev", head_ref="chore/tidy", base_rev="main", head_rev=R6HEAD,
+          integration_rev="dev", body="")
+eq("a feature PR is NOT APPLICABLE to R6 → exit 0", 0, r.returncode)
+eq("  … and says so rather than passing silently", True, "R6 NOT APPLICABLE" in r.stdout)
+# CONTROL: the same tree on the release path reds — so the pass above is the base ref's doing.
+r = r6(fx, body="")
+eq("  CONTROL: the same tree with base=main goes RED on R6", ["R6"], rules_flagged(r))
+
+# --- ⛔ THE CONSTRAINT THIS RULE WAS BORN UNDER (card#9707 comment 5565). A release whose
+# content matches `dev` but whose HISTORY shares nothing with it — the shape a squashed
+# back-merge leaves behind, measured live on this repo at v0.5.0 — must PASS. This arm is what
+# reds if R6 is ever rewritten as `git merge-base --is-ancestor`.
+fx = make_repo(**R6FX)
+add_integration(fx)
+git(fx, "checkout", "-q", "--orphan", "release/v0.2.0-squashed", "dev")
+(fx / "VERSION").write_text("0.2.0\n", encoding="utf-8")
+(fx / "docs" / "CHANGELOG.md").write_text(changelog_with("0.2.0"), encoding="utf-8")
+git(fx, "add", "-A")
+git(fx, "commit", "-qm", "release v0.2.0 as ONE commit with no shared ancestry")
+# ASSERT THE FIXTURE'S OWN PREMISE, or this arm proves nothing about ancestry.
+eq("  (fixture premise) an ancestry test WOULD refuse this head",
+   1, subprocess.run(["git", "-C", str(fx), "merge-base", "--is-ancestor",
+                      "dev", "release/v0.2.0-squashed"]).returncode)
+r = r6(fx, head_rev="release/v0.2.0-squashed", body="")
+eq("identical CONTENT reached by unrelated HISTORY → R6 passes (trees, never ancestry)",
+   0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
 
 
 print()

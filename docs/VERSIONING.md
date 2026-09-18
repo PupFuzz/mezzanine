@@ -402,13 +402,25 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag
     is not a deploy — next section.
 
-> ✅ **Four of these steps are now mechanically checked** — added by card#8174 after PR #38
+> ✅ **The steps named here are mechanically checked** — added by card#8174 after PR #38
 > merged on 2026-08-30 breaking three documented rules at once and merging green.
 > [`bin/release-pr-guard.py`](../bin/release-pr-guard.py), on every PR whose base is `main`,
 > asserts **step 2/7's head branch**, **step 3's `VERSION` bump** (strictly greater than
 > `main`'s) and **step 4's changelog section**. That file's docstring is the contract; this
 > list stays the authority, and where the two disagree **this document wins and the guard is
 > the defect**.
+>
+> ✅ **And since card#9707, step 2's "off `dev`" is checked as a statement about CONTENT, not
+> only about where the branch was cut.** The same guard's **R6** asserts that the release head
+> carries what `dev` carries — every path differing from `origin/dev` outside `VERSION` and
+> `docs/CHANGELOG.md`, and every card `dev` bullets under `## [Unreleased]` that the head's
+> changelog dropped, is residue. Residue is allowed only when the PR body says so exactly, in a
+> `Release-excludes: <tokens> — <reason>` line, because **deliberately shipping without recent
+> work is legitimate and shipping without noticing is not**. The rule, the escape hatch and the
+> reason it is a tree comparison rather than an ancestry test are the guard docstring's; they
+> are not restated here. What this document adds is the measurement that bought it: PR #176
+> (v0.5.0) sat open for roughly a day at a head four merges behind `dev`, every check green,
+> and merging it would have shipped a release omitting four cards.
 >
 > ⛔ **Steps 5, 6, 8, 9, 11 and 12 remain unenforced, and deliberately so.** The deploy and
 > wire verdicts are human judgement stated in prose — a gate that grepped for a phrase would
@@ -417,7 +429,11 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > shared by the agent and the operator, and that is the whole reason card#8174 gates *what* is
 > merged rather than *who* merges it. **Nor is the bump SIZE checked** — nothing mechanical can
 > tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
-> covering exactly the four steps named above and nothing else.
+> covering exactly the steps named above and nothing else. **Step 11's back-merge in particular
+> is NOT what R6 checks** — R6 asks whether this release carries `dev`'s content, and says
+> nothing about whether any past release was merged back. On this repo an ancestry test would
+> answer that one falsely anyway: the v0.5.0 back-merge was squashed, so the release line is not
+> an ancestor of `dev` while the two trees are identical.
 
 > ⚠ **The bootstrap trap — it FIRED, and what it left is immutable.** `auto-tag-version` tags
 > on *any* push to `main`, not only a release PR, using whatever `VERSION` reads at that

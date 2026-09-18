@@ -6,6 +6,12 @@
 # `release/v<version>` branch, `VERSION` is strictly greater than the release branch's, and
 # `docs/CHANGELOG.md` carries a section for the new version. A PR into any other base is NOT
 # APPLICABLE to those three.
+# It also asserts, on that same release path, that the head is CURRENT with the integration
+# branch (R6): every path differing from `origin/dev` outside the release's own two edits
+# (`VERSION`, `docs/CHANGELOG.md`), and every card `dev` has under `## [Unreleased]` that the
+# head's changelog dropped, is RESIDUE — permitted only when the PR body declares it exactly, in
+# a `Release-excludes: <tokens> — <reason>` line. R6 was added after PR #176 (v0.5.0) sat open
+# for a day, green throughout, at a head four merges behind `dev` (card#9707).
 # On EVERY PR it asserts `docs/PLAN.md § 4`'s changelog discipline (R4-R5): a PR whose head ref
 # or title names a card carries that card's line-initial `- **card#NNNN**` bullet under
 # `## [Unreleased]`, and `docs/CHANGELOG.md` stays below the contents-API truncation cliff with
@@ -55,8 +61,13 @@
 # `edited` is load-bearing for that second reason — and, since R4 landed, for card-token-lint's
 # reason too: `edited` also fires on a TITLE change, and the title is one of R4's two surfaces,
 # so retitling a PR to name a card creates a changelog obligation that must be re-judged.
+# ⭐ AND IT IS WHAT MAKES R6's ESCAPE HATCH WORK AT ALL: `edited` fires on a BODY change, and R6's
+# `Release-excludes:` declaration lives in the body, so writing (or correcting) that line
+# re-judges the PR with no push. A hatch that needed a commit to take effect would be one nobody
+# used.
 # `synchronize` is how the author's fix — the bump, the changelog section, the missing bullet,
-# the branch rename — gets re-judged.
+# the branch rename, the merge that brings the release branch back up to date with `dev` — gets
+# re-judged.
 #
 # ⛔ `edited` ALSO FIRES ON A PR THAT HAS ALREADY MERGED, WHICH IS WHY THE JOB CARRIES AN `if:`.
 # MEASURED 2026-09-17 (card#9732): editing the BODY of PR #176 — merged as v0.5.0 some hours
@@ -139,6 +150,24 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
+      # THE INTEGRATION BRANCH, WHICH THE FETCH ABOVE DOES NOT BRING. R6 compares the release
+      # head's content against `origin/dev`, and on a release PR the BASE is `main` — so without
+      # this step `origin/dev` is simply not in the clone and R6 exits 2 on every release PR.
+      # Fetched UNCONDITIONALLY rather than only on the release path: a conditional would have to
+      # restate which base is the release branch, which this file deliberately derives nowhere
+      # (the guard reads it off the tagger's trigger), and re-fetching `dev` on a PR into `dev`
+      # costs one already-satisfied ref update.
+      # ⛔ NO `--depth` HERE EITHER, for the reason the step above records — a shallow FETCH
+      # re-shallows a full CHECKOUT and the graft boundary is global to history traversal, which
+      # would take R5 down with it. `bin/release-pr-guard.selftest.py § 8` asserts that EVERY
+      # fetch line in this file carries no `--depth`, so a one-word optimisation on either line
+      # reds CI rather than silently disabling a rule.
+      # ⚠ The branch NAME is a literal in two places — here and `INTEGRATION_BRANCH` in
+      # `bin/release-pr-guard.py`. That selftest section reads the name out of the guard and
+      # requires THIS line to fetch it, so the two cannot drift apart quietly.
+      - name: Fetch the integration branch tip (R6's subject)
+        run: git fetch --no-tags origin "+refs/heads/dev:refs/remotes/origin/dev"
+
       # The guard's own prove-it-can-fail fixtures run HERE, against THIS checkout — the same
       # bytes that are about to judge somebody's PR. § 9 replays PR #38's real shape and
       # requires all three rules to red; § 3 requires a well-formed release PR to pass, so the
@@ -154,9 +183,17 @@ jobs:
       # consumed as an OPTION by the space form and reds the gate with an argparse error naming
       # nothing the author did wrong, and a PR title is far likelier to start with `-` than a
       # branch name is.
+      # THE BODY ARRIVES THE SAME WAY AND FOR A STRONGER REASON: R6 reads a `Release-excludes:`
+      # line out of it, and a PR body is the largest piece of attacker-controlled free text a
+      # fork PR carries. `env:` + `--body="$PR_BODY"` keeps it a VALUE the whole way; `${{ }}`
+      # inline would be the textbook injection with the largest possible payload. It is passed on
+      # every PR, not only release ones, because the guard decides applicability internally — and
+      # a run that is not GIVEN the body exits 2 rather than refusing a PR for a declaration it
+      # was never shown, so dropping this variable reds the gate instead of quietly hardening it.
       - name: Judge this PR against the release and changelog rules
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: python3 bin/release-pr-guard.py --base-ref="$BASE_REF" --head-ref="$HEAD_REF" --title="$PR_TITLE" --base-rev="origin/$BASE_REF"
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 bin/release-pr-guard.py --base-ref="$BASE_REF" --head-ref="$HEAD_REF" --title="$PR_TITLE" --body="$PR_BODY" --base-rev="origin/$BASE_REF"
